@@ -11,7 +11,7 @@ paths:
 
 > 🔴 **사고 재현·측정 로그는 [`docs/_archive/rules-incident-log.md#testing`](../../docs/_archive/rules-incident-log.md#testing) 로 옮겼다 — 규칙을 완화·삭제하려면 아카이브를 먼저 읽을 것** (2026-08-12 밀도 압축).
 > 여기 남은 것은 규칙 · 왜 한 줄 · 가드 파일명뿐이며, 서사가 짧아진 것이 규칙이 약해졌다는 뜻이 아니다.
-> 역링크·앵커·절 보존 집행: `tests/unit/scripts/test_rules_archive_backlink.py`.
+> 역링크·앵커 도달성만 잰다(서사 보존은 기계 집행 아님 — R81 옵션 (b), 2026-08-15): `tests/unit/scripts/test_rules_archive_backlink.py`.
 >
 > **먼저 열 것 2건** (2026-08-13 3층 분리): 순서 = [`docs/process/guard-authoring.md`](../../docs/process/guard-authoring.md) ·
 > 함정 = [`.claude/traps.md`](../traps.md). 아래는 **테스트 표면에만 있는 계약**이다.

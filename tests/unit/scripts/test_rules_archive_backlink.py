@@ -1,38 +1,38 @@
-"""밀도 압축이 아카이브로 옮긴 **서사가 실제로 도달 가능한지** 를 집행한다.
+"""밀도 압축이 아카이브로 옮긴 **서사에 규칙 파일이 도달 가능한지** 를 잰다.
+
+이 가드는 도달성(역링크·앵커·절 존재)을 잰다. 서사 보존을 재지 않는다.
+공동화된 아카이브는 통과한다.
 
 ## 사고 배경 (2026-08-12 밀도 압축)
 
 `.claude/rules/` 7파일에서 사고 재현·측정 로그를 걷어내 **101,544 → 37,761자(−63%)** 로
-줄이고, 걷어낸 원문을 `docs/_archive/rules-incident-log.md` 에 보존했다.
+줄이고, 걷어낸 원문을 `docs/_archive/rules-incident-log.md` 에 두었다.
 
-🔴 **이 압축은 하나의 단언 위에 서 있다** — *"규칙문은 남고 서사는 아카이브에 보존됐다."*
-그런데 그 단언에는 집행자가 없었다. 아카이브를 지우거나 앵커를 바꿔도 규칙 파일은
-멀쩡해 보이고, 규칙을 **완화하려는 다음 세션은 그 규칙이 왜 생겼는지 읽을 길을 잃는다**.
-서사가 없으면 규칙은 *과하다* 고 판단되기 쉽다 — 압축의 가장 큰 역효과가 그것이다.
-
-## 이 가드가 닫는 축 / what this closes
+## 이 가드가 재는 축 / what this measures
 
 1. 규칙 파일 → 아카이브 **역링크 존재**
 2. 그 링크의 **앵커가 아카이브에 실재**(끊긴 앵커 = 조용한 사각)
-3. 아카이브의 각 영역 절이 **비어 있지 않음**(지우고 헤딩만 남기는 우회 차단)
-4. 아카이브가 **실행 대상이 아님**을 자기 선언(원문에 실행 지시 어휘가 그대로 들어 있다)
+3. 아카이브의 각 영역 절이 **헤딩만은 아님**(길이 하한 — 빈 절 차단. 채움 문자열은 통과한다)
+4. 아카이브가 **실행 대상이 아님**을 자기 선언
+5. 아카이브 파일 크기가 압축된 규칙 합계보다 큼 (크기 비교. 서사 동일성은 보지 않는다)
 
-5. 각 절의 **내용 충실도** — 리터럴 지문 + 인용 다양성 하한
+## 이 가드가 재지 **않는** 축 — 보존 축은 내렸다 (R81 옵션 b, 2026-08-15)
 
-🔴 **5축은 Grok claim-review `019ff591` 이 이 가드의 초판을 WEAKENED 로 판정해 추가됐다.**
-초판은 1~4축뿐이었고, 지적된 반례가 실제로 성립했다: *"각 `## <area>` 절 본문을
-2000자짜리 `X` 로 갈아치우고 전체 길이만 패딩하면 전건 green"*. 즉 **서사를 통째로
-공동화해도 관측자가 참으로 보였다** — 이 저장소가 반복해 온 observer-lie 그 자체다.
-그래서 절마다 그 영역에만 있는 식별자를 **테스트 쪽에 리터럴로 못박고**, 백틱 인용의
-**서로 다른 개수**에 하한을 둔다. 채움 문자열은 둘 다 통과하지 못한다.
+이 가드는 도달성을 잰다. 서사 보존을 재지 않는다. 공동화된 아카이브는 통과한다.
 
-## 이 가드가 닫지 **않는** 축 (정직 기준)
+보존 축(리터럴 지문 + 인용 다양성 하한 25)을 내린 이유: 그 축이 있다고 단언한
+문장 *"채움 문자열은 둘 다 통과하지 못한다"* 는 실측으로 거짓이었다.
 
-내용이 *옳은지* 는 여전히 보지 않는다. 지문이 남아 있는 채로 문장을 다시 쓰면 통과한다 —
-5축이 올린 것은 "공동화 비용" 이지 "서사 진위" 가 아니다. 그 축은 claim-review 가 방어한다.
+독립 재현 2회:
+- 2026-08-13 이 리포 회고: 서사 100% 제거 + 지문·인용 채움 + 필러 → **38/38 green**
+- 2026-08-14 Grok `01a00061` 격리 worktree: 아카이브 **101,380 → 40,191자**(≈60% 공동화)
+  → **38/38 green**
 
-This guard enforces that the compressed rules keep a live path back to the
-narrative that justifies them; it does not judge that narrative's correctness.
+그래서 2026-08-15 사용자 결정 옵션 (b) 가 보존 축을 제거하고, 문서의 보존 주장을
+철회했다. 아카이브가 내용을 유지하는지를 기계가 재는 장치는 이제 없다.
+
+This guard measures reachability (backlinks, anchors, section presence). It does
+not measure narrative preservation. A hollowed archive passes by design.
 """
 import re
 from pathlib import Path
@@ -48,29 +48,11 @@ _ARCHIVE = _ROOT / "docs" / "_archive" / "rules-incident-log.md"
 # Pinned literally: deriving this from the rules dir would go green when a file is deleted.
 _COMPRESSED_AREAS = ("ui", "pipeline", "api", "db", "testing", "deploy", "i18n")
 
-# 아카이브 영역 절의 최소 분량. 압축 전 원문이라 가장 작은 절(i18n)도 8천자를 넘는다 —
-# 2000 은 "헤딩만 남기고 본문을 비우는" 우회를 막는 하한이지 품질 기준이 아니다.
+# 헤딩만 남기는 우회를 막는 길이 하한. 채움 문자열·필러도 통과한다 — 서사 보존
+# 검사가 아니다 (R81: 2000자 `X` 패딩이 이 축을 통과한 것이 실측).
+# Length floor against heading-only sections. Filler still passes; this is not
+# a narrative-preservation check.
 _MIN_SECTION_CHARS = 2000
-
-# 🔴 **분량만으로는 공동화를 막지 못한다** (Grok `019ff591` 반례: 2000자 `X` 로 통과).
-# 그래서 절마다 **그 영역에만 있는 식별자**를 테스트 쪽에 리터럴로 못박는다.
-# 🔴 아카이브에서 **유도하지 않는다** — 유도하면 지우는 순간 기대값도 같이 사라져 초록이 된다
-# (guards.md §기대값을 피검사 모듈에서 유도하지 말 것).
-# Pinned literally on the test side; deriving them from the archive would go green when gutted.
-_SECTION_FINGERPRINTS = {
-    "ui": ("landing.html", "setApproveMode", "ai_review_enabled"),
-    "pipeline": ("_BACKGROUND_MODULES", "run_gate_check", "AutoMergeAction"),
-    "api": ("approve_mode", "auto_approve_threshold", "run_gate_check"),
-    "db": ("effective_migration_url", "_REGISTERED_MODELS", "alembic/env.py"),
-    "testing": ("DATABASE_URL_TEST_POSTGRES", "e2e/pytest.ini", "asyncio_mode"),
-    "deploy": ("numReplicas", "preDeployCommand", "cronSchedule"),
-    "i18n": ("i18n_args", "RepoConfig.notification_language", "review_guides/"),
-}
-
-# 서로 다른 백틱 인용의 최소 개수 — 지문을 남긴 채 나머지를 채움 문자열로 바꾸는 것을 막는다.
-# 실측 최소 절(i18n)이 60종을 넘으므로 25 는 여유 있는 하한이다.
-_MIN_DISTINCT_CITATIONS = 25
-_INLINE = re.compile(r"`([^`\n]+)`")
 
 
 def _read(path: Path) -> str:
@@ -117,35 +99,15 @@ def test_archive_anchor_resolves_to_a_real_section(area: str) -> None:
 
 
 @pytest.mark.parametrize("area", _COMPRESSED_AREAS)
-def test_archive_section_is_not_hollowed_out(area: str) -> None:
-    """절이 존재하되 **비어 있으면** 보존이 아니다 — 헤딩만 남기는 우회를 막는다."""
+def test_archive_section_is_not_just_a_heading(area: str) -> None:
+    """비보존 검사 — 헤딩만 남기는 우회를 막는다. 채움 문자열은 통과한다.
+
+    Not a preservation check: filler of this length still passes (R81).
+    """
     section = _archive_sections().get(area, "")
     assert len(section) >= _MIN_SECTION_CHARS, (
         f"아카이브 `## {area}` 절이 {len(section)}자뿐이다(하한 {_MIN_SECTION_CHARS}). "
-        "압축 전 원문 보존이 아니라 껍데기다."
-    )
-
-
-@pytest.mark.parametrize("area", _COMPRESSED_AREAS)
-def test_archive_section_keeps_its_pinned_fingerprints(area: str) -> None:
-    """🔴 분량 하한을 채움 문자열로 통과하는 공동화를 막는다 (Grok `019ff591` 반례)."""
-    section = _archive_sections().get(area, "")
-    missing = [f for f in _SECTION_FINGERPRINTS[area] if f not in section]
-    assert not missing, (
-        f"아카이브 `## {area}` 절에서 지문 {missing} 이 사라졌다 — "
-        "분량은 남아도 원문 서사가 아니다(채움/재작성 의심). "
-        "정당하게 원문이 바뀌었다면 이 테스트의 리터럴 지문을 같은 PR 에서 갱신할 것."
-    )
-
-
-@pytest.mark.parametrize("area", _COMPRESSED_AREAS)
-def test_archive_section_keeps_citation_diversity(area: str) -> None:
-    """지문만 남기고 나머지를 채움으로 바꾸는 우회를 막는다 — 인용 다양성 하한."""
-    section = _archive_sections().get(area, "")
-    distinct = {m.group(1).strip() for m in _INLINE.finditer(section) if m.group(1).strip()}
-    assert len(distinct) >= _MIN_DISTINCT_CITATIONS, (
-        f"아카이브 `## {area}` 절의 서로 다른 인용이 {len(distinct)}종뿐이다"
-        f"(하한 {_MIN_DISTINCT_CITATIONS}) — 사고 재현 로그가 아니라 요약본이다."
+        "헤딩만 남기고 본문을 비운 상태다."
     )
 
 
@@ -166,10 +128,14 @@ def test_archive_declares_itself_non_executable() -> None:
 
 
 def test_archive_is_larger_than_the_rules_it_replaced() -> None:
-    """아카이브는 압축분(≈63,783자)을 담아야 한다 — 요약본으로 바뀌면 보존이 아니다."""
+    """비보존 검사 — 크기 비교만. 서사 동일성은 보지 않는다.
+
+    Grok `01a00061` 의 60% 공동화(101,380 → 40,191)도 이 축은 green 이었다.
+    Not a preservation check: size only, not narrative identity.
+    """
     archive_size = len(_read(_ARCHIVE))
     rules_size = sum(len(_read(_RULES / f"{a}.md")) for a in _COMPRESSED_AREAS)
     assert archive_size > rules_size, (
         f"아카이브({archive_size:,}자)가 압축본 합계({rules_size:,}자)보다 작다 — "
-        "걷어낸 서사가 보존되지 않았다."
+        "옮긴 분량이 압축본보다 짧다(도달 대상이 요약본 크기다)."
     )

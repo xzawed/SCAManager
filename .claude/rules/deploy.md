@@ -16,7 +16,7 @@ paths:
 > 상세 절차 + Railway 대시보드 설정: [`docs/runbooks/railway.md`](../../docs/runbooks/railway.md)
 > 🔴 **사고 재현·측정 로그는 [`docs/_archive/rules-incident-log.md#deploy`](../../docs/_archive/rules-incident-log.md#deploy) 로 옮겼다 — 규칙을 완화·삭제하려면 아카이브를 먼저 읽을 것** (2026-08-12 밀도 압축).
 > 여기 남은 것은 규칙 · 왜 한 줄 · 가드 파일명뿐이며, 서사가 짧아진 것이 규칙이 약해졌다는 뜻이 아니다.
-> 역링크·앵커·절 보존 집행: `tests/unit/scripts/test_rules_archive_backlink.py`.
+> 역링크·앵커 도달성만 잰다(서사 보존은 기계 집행 아님 — R81 옵션 (b), 2026-08-15): `tests/unit/scripts/test_rules_archive_backlink.py`.
 
 ## 조용히 무시되는 것들 — 이 영역 최다 재발 클래스
 

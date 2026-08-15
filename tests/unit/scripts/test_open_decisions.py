@@ -106,19 +106,48 @@ def test_prose_red_markers_are_not_statuses():
     assert gate.open_decisions(noisy) == []
 
 
-def test_real_backlog_is_parsed_and_finds_open_decisions():
-    """🔴 대조군 — 실파일에서 **실제로 결정 대기를 찾아야** 한다.
+def test_real_backlog_shape_keeps_the_counter_alive():
+    """🔴 대조군 — **실파일 형태**에서 계수가 살아 있어야 한다.
 
     초판은 `isinstance(..., list)` 만 봤다. 그래서 `open_decisions()` 를 `return []` 로
     죽여도 **green 이었다**(반례 (a)) — 계수를 주장하는 이름의 테스트가 계수를 안 쟀다.
+
+    🔴 **2026-08-15 재설계 — 그 후속판(`assert found`)은 원장이 비면 거짓 red 였다.**
+    사용자 결정 4건(R48·R80·R81·R82)이 전부 닫혀 현재 창 🔴 이 **0건**이 되자 red 가
+    났는데, 계수는 멀쩡했고 **원장이 legitimately 비었을 뿐**이다. 그 단언의 실패
+    메시지조차 *"계수가 죽었거나 원장이 비었다"* 로 두 원인을 구분하지 못했다 —
+    즉 이 대조군은 «닫을 수 있는 항목이 늘 남아 있다» 를 암묵 전제로 깔고 있었다.
+
+    그래서 축을 **주입 프로브**로 바꾼다: 실파일 텍스트에 알려진 🔴 행 하나를 끼워
+    넣으면 반드시 잡혀야 한다. `return []` 뮤테이션은 여전히 red 이고(원 의도 보존),
+    원장이 0건이어도 red 가 아니다(거짓 red 제거).
+
+    진짜 0건 ↔ 파서 파손 구분은 별도 축이다 —
+    `test_zero_pending_is_distinguishable_from_a_broken_parser`.
     """
     text = (_ROOT / "docs" / "backlog.md").read_text(encoding="utf-8")
     rows = gate._ROW.findall(text)  # pylint: disable=protected-access
     assert len(rows) >= 30, f"실 backlog 에서 {len(rows)}행만 파싱했다 — 정규식 확인"
 
-    found = gate.open_decisions(text)
-    assert found, "실 backlog 에서 결정 대기를 0건 찾았다 — 계수가 죽었거나 원장이 비었다"
-    assert all(zone in ("현재", "역사") for _, zone in found)
+    # 실파일 그대로의 계수. 0건은 정상이다 — 사용자가 전건 종결할 수 있다.
+    live = gate.open_decisions(text)
+    assert all(zone in ("현재", "역사") for _, zone in live)
+
+    # 🔴 계수 생존 축 — 실파일 구조 안에 프로브 행을 주입한다(합성 표가 아니라 실텍스트).
+    first = gate._ROW.search(text)  # pylint: disable=protected-access
+    assert first, "실 backlog 에서 표 행을 하나도 못 찾았다 — 정규식 파손"
+    cut = text.index("\n", first.start()) + 1
+    probe_row = "| **RPROBE1** | 🔴 결정 대기 | 주입된 대조군 — 실파일에 없는 ID |\n"
+    probe = text[:cut] + probe_row + text[cut:]
+    assert probe != text, "주입이 no-op 이다 — 뮤테이션이 아무것도 안 바꿨다"
+
+    probed = gate.open_decisions(probe)
+    assert any(rid == "RPROBE1" for rid, _ in probed), (
+        "실파일 형태에 🔴 행을 주입했는데 계수가 못 찾았다 — 계수가 죽었다"
+    )
+    assert len(probed) == len(live) + 1, (
+        f"주입 전 {len(live)}건 → 주입 후 {len(probed)}건. 정확히 1 늘어야 한다"
+    )
 
 
 # ── ② 실행 관측 — '판정 불가'·'파손' 을 '0건' 으로 흘리지 않는다 ──────────

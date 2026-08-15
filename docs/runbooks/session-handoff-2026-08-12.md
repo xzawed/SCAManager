@@ -25,11 +25,15 @@ py -3 scripts/pre_push_gate.py          # 로컬 게이트 (make 불필요)
 ## 1. 이번 세션에 머지된 것
 
 **PR #1335** `docs(rules): rules 7파일 밀도 압축 −61% + 서사 보존 집행 가드` — 머지 완료(체크 13/13).
+🔴 **2026-08-15 정정 (R81 옵션 b)**: 제목의 *"서사 보존 집행"* 은 거짓이었다. 가드는
+도달성(역링크·앵커)만 잰다. 보존 축(지문·인용 다양성)은 내렸다. 공동화된 아카이브는
+통과한다. `#1335` 본문은 머지된 PR 이라 고칠 수 없다.
 
 - `.claude/rules/` 7파일 **101,544 → 40,019자 (−61%)**. 걷어낸 사고 재현·측정 로그는
-  [`docs/_archive/rules-incident-log.md`](../_archive/rules-incident-log.md) 에 원문 보존.
-- 신규 가드 `tests/unit/scripts/test_rules_archive_backlink.py` (38건) — 역링크·앵커·절 보존·
-  **리터럴 지문·인용 다양성** 5축.
+  [`docs/_archive/rules-incident-log.md`](../_archive/rules-incident-log.md) 로 옮겼다
+  (위치만. 내용 보존을 기계가 재지 않는다).
+- 가드 `tests/unit/scripts/test_rules_archive_backlink.py` — 역링크·앵커 도달성만.
+  리터럴 지문·인용 다양성 축은 2026-08-15 에 내렸다(R81).
 - 🔴 압축은 그대로 두면 CI 를 깼다: `check_red_budget` **Δ+37 EXIT=1**. 원인은 서사 삭제가
   아니라 **줄바꿈**이었다 — HEAD 는 한 줄 평균 390자 미포장이라 🔴 와 가드 파일명이 같은
   물리 줄에 있었는데, 80칼럼 포장이 블록을 다음 🔴 줄에서 끊어 집행자를 분리했다.
@@ -190,5 +194,5 @@ tip 에 실려 같은 게이트를 깨뜨렸다. **가드가 처방하는 행동
 - 감사 보고서(항목별 점수 128건, 필터·정렬 가능): 세션 아티팩트 — 리포 사본은
   [`docs/_archive/reports/2026-08-12-docs-audit.md`](../_archive/reports/2026-08-12-docs-audit.md)
 - 문서 총량 감축 제안서(결정 5건 중 C′ 만 실행): [`doc-volume-reduction-plan.md`](doc-volume-reduction-plan.md)
-- rules 압축 원문 보존: [`docs/_archive/rules-incident-log.md`](../_archive/rules-incident-log.md)
+- rules 압축 원문(옮긴 위치 — 보존은 기계 집행 아님, R81): [`docs/_archive/rules-incident-log.md`](../_archive/rules-incident-log.md)
 - Grok claim-review 세션: `019ff591`(가드 반례) · `019ff5b7`(감사 설계 BROKEN) · `019ff5ed`(감사 결과 WEAKENED)

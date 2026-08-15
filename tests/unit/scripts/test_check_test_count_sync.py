@@ -82,9 +82,16 @@ def _no_ambient_pr_body(monkeypatch):
     가 매번 인쇄하는 로컬↔CI 이원(backlog R30)이 실제로 발현한 사례다.
 
     기본값을 비워 두고, 본문을 보는 테스트만 `_patch_body` 로 **명시 주입**한다.
+    🔴 저자·SHA env 도 지운다 — CI PR job 은 `PR_HEAD_SHA` 를 실제로 심고, 남기면
+    `main()` 이 PR 컨텍스트로 오판해 수치 부재 테스트가 CI 에서만 red 가 된다.
     CI really sets PR_BODY; default it empty so tests opt in explicitly.
     """
     monkeypatch.setattr(mod, "deferral_carriers", lambda: ("", ""))
+    for key in (
+        "PR_BODY", "PR_BASE_SHA", "PR_HEAD_SHA",
+        "PR_AUTHOR_LOGIN", "PR_AUTHOR_TYPE",
+    ):
+        monkeypatch.delenv(key, raising=False)
 
 
 def _patch_counts(monkeypatch, unit: int, integration: int):
@@ -209,6 +216,13 @@ def test_ci_wires_blocking_step_for_pull_requests():
     assert any("PR_BODY" in str(s.get("env", {})) for s in hits), (
         "PR 스텝이 `PR_BODY` 를 넘기지 않는다 — 이월 마커가 원리적으로 동작하지 않는다"
     )
+    env_blob = " ".join(str(s.get("env", {})) for s in hits)
+    assert "PR_AUTHOR_LOGIN" in env_blob, (
+        "PR 스텝이 `PR_AUTHOR_LOGIN` 을 넘기지 않는다 — 봇 판정이 본문 자기인증이 된다"
+    )
+    assert "PR_AUTHOR_TYPE" in env_blob, (
+        "PR 스텝이 `PR_AUTHOR_TYPE` 을 넘기지 않는다 — 봇 판정이 본문 자기인증이 된다"
+    )
 
 
 def test_ci_wires_enforce_step_for_main_push():
@@ -233,10 +247,8 @@ def test_ci_wires_enforce_step_for_main_push():
 #   #1312 6860+9=6869 vs 6885(−16). 🔴 **base drift 가설은 배제됐다**: 브랜치 tip 에서
 #   재측정해도 수집값이 머지 커밋과 같았다(6819·6851·6885) — 저자 수치가 실제로 틀렸다.
 #
-# 🔴 이 축이 증명하지 않는 것 (정직 기준): 수치를 **아예 안 적으면** 축이 돌지 않는다.
-#   그래서 미검출은 조용한 통과가 아니라 *"안 쟀음"* 을 명시 출력한다 — 빈 범위 위의 ✅ 를
-#   만들지 않기 위해서다. 우회로를 닫는 것(수치 라인 의무화)은 dependabot 등 봇 PR 을
-#   깨뜨리므로 별도 결정 영역이다.
+# 🔴 2026-08-15: 비봇 PR 의 수치 라인 부재는 red. 봇 PR · `--advisory-drift` · CI push
+#   는 기존 *"미실행"* 문구 + 0. 이 축은 여전히 *신선도* 만 잰다 (R76).
 
 # 실제 PR 본문에서 그대로 가져온 형식 2종 (합성 문자열 아님 — 불변식 2)
 _REAL_ARROW = "pytest tests/unit  →  6800 passed / 9 skipped / EXIT=0  (+16)"      # #1305
@@ -346,13 +358,105 @@ def test_advisory_branch_is_actually_reached_by_that_test(monkeypatch, tmp_path,
 
 
 def test_absent_claim_is_reported_not_silently_green(monkeypatch, tmp_path, capsys):
-    """🔴 빈 범위 위의 ✅ 는 fail-open 이다 — 미검출은 '안 쟀음' 으로 발화해야 한다."""
+    """PR 컨텍스트가 없으면(로컬·push) 미검출은 '안 쟀음' + 0 — 매번 red 가 되면 안 된다.
+
+    비봇 PR 의 수치 부재 red 는 `test_non_bot_missing_claim_is_red` 가 잰다.
+    """
     _patch_state(monkeypatch, tmp_path, 7022, 6851)
     _patch_counts(monkeypatch, 6851, 171)
     _patch_body(monkeypatch, "수치 라인이 없는 본문")
     assert mod.main([]) == 0
     out = capsys.readouterr().out
     assert "미실행" in out, "미검출이 조용히 통과하면 이 축은 관측되지 않는다"
+
+
+def test_non_bot_missing_claim_is_red(monkeypatch, capsys):
+    """비봇 저자 + 수치 라인 없음 → red (R48 잔여 — 공허 통과 차단)."""
+    monkeypatch.setenv("PR_AUTHOR_LOGIN", "xzawed")
+    monkeypatch.setenv("PR_AUTHOR_TYPE", "User")
+    assert mod.check_body_claim("수치 라인이 없는 본문", 6851) == 1
+    captured = capsys.readouterr()
+    assert "미실행" in captured.out
+
+
+def test_bot_type_missing_claim_is_advisory(monkeypatch, capsys):
+    """`user.type == Bot` + 수치 없음 → 0, 미실행 문구는 남긴다."""
+    monkeypatch.setenv("PR_AUTHOR_LOGIN", "dependabot[bot]")
+    monkeypatch.setenv("PR_AUTHOR_TYPE", "Bot")
+    assert mod.check_body_claim("수치 라인이 없는 본문", 6851) == 0
+    assert "미실행" in capsys.readouterr().out
+
+
+def test_bot_login_suffix_missing_claim_is_advisory(monkeypatch, capsys):
+    """로그인만 `[bot]` 이어도 봇 — type 단독에 의존하면 안 된다."""
+    monkeypatch.setenv("PR_AUTHOR_LOGIN", "renovate[bot]")
+    monkeypatch.setenv("PR_AUTHOR_TYPE", "User")
+    assert mod.check_body_claim("수치 라인이 없는 본문", 6851) == 0
+    assert "미실행" in capsys.readouterr().out
+
+
+def test_missing_author_env_is_not_a_bot_exemption(monkeypatch):
+    """저자 env 부재 = 비봇 = 수치 부재 red. 부재가 면제가 되면 fail-open."""
+    monkeypatch.delenv("PR_AUTHOR_LOGIN", raising=False)
+    monkeypatch.delenv("PR_AUTHOR_TYPE", raising=False)
+    assert mod.check_body_claim("수치 라인이 없는 본문", 6851) == 1
+
+
+def test_empty_author_env_is_not_a_bot_exemption(monkeypatch):
+    """빈 문자열도 부재와 같다 — 공백을 봇으로 읽으면 안 된다."""
+    monkeypatch.setenv("PR_AUTHOR_LOGIN", "")
+    monkeypatch.setenv("PR_AUTHOR_TYPE", "   ")
+    assert mod.check_body_claim("수치 라인이 없는 본문", 6851) == 1
+
+
+def test_matching_claim_still_passes_without_author_env(monkeypatch):
+    """기존 동작 — 일치하는 수치 라인은 저자 env 없이도 0."""
+    monkeypatch.delenv("PR_AUTHOR_LOGIN", raising=False)
+    monkeypatch.delenv("PR_AUTHOR_TYPE", raising=False)
+    assert mod.check_body_claim(
+        "pytest tests/unit  →  6842 passed / 9 skipped / EXIT=0", 6851,
+    ) == 0
+
+
+def test_mismatched_claim_still_fails_without_author_env(monkeypatch):
+    """기존 동작 — 불일치 수치는 저자 env 없이도 1."""
+    monkeypatch.delenv("PR_AUTHOR_LOGIN", raising=False)
+    monkeypatch.delenv("PR_AUTHOR_TYPE", raising=False)
+    assert mod.check_body_claim(_REAL_MISMATCH, 6851) == 1
+
+
+def test_advisory_flag_does_not_fail_on_missing_claim(monkeypatch, capsys):
+    """`--advisory-drift` / 로컬 pre-push — 수치 부재를 hard-fail 하지 않는다."""
+    monkeypatch.setenv("PR_AUTHOR_LOGIN", "xzawed")
+    monkeypatch.setenv("PR_AUTHOR_TYPE", "User")
+    assert mod.check_body_claim(
+        "수치 라인이 없는 본문", 6851, advisory=True,
+    ) == 0
+    assert "미실행" in capsys.readouterr().out
+
+
+def test_main_requires_claim_in_pr_context_when_author_missing(
+    monkeypatch, tmp_path,
+):
+    """배선: PR SHA 가 있으면 저자 env 부재도 비봇 → 수치 부재 red."""
+    _patch_state(monkeypatch, tmp_path, 7022, 6851)
+    _patch_counts(monkeypatch, 6851, 171)
+    _patch_body(monkeypatch, "수치 라인이 없는 본문")
+    monkeypatch.setenv("PR_HEAD_SHA", "deadbeef")
+    assert mod.main([]) == 1
+
+
+def test_advisory_drift_via_main_does_not_fail_on_missing_claim(
+    monkeypatch, tmp_path, capsys,
+):
+    """로컬 `pre_push_gate --advisory-drift` 는 PR SHA 가 있어도 수치 부재를 막지 않는다."""
+    _patch_state(monkeypatch, tmp_path, 7022, 6851)
+    _patch_counts(monkeypatch, 6851, 171)
+    _patch_body(monkeypatch, "수치 라인이 없는 본문")
+    monkeypatch.setenv("PR_HEAD_SHA", "deadbeef")
+    monkeypatch.setenv("PR_AUTHOR_TYPE", "User")
+    assert mod.main(["--advisory-drift"]) == 0
+    assert "미실행" in capsys.readouterr().out
 
 
 def test_body_claim_axis_reads_the_single_hardened_reader(monkeypatch, tmp_path):
@@ -364,6 +468,6 @@ def test_body_claim_axis_reads_the_single_hardened_reader(monkeypatch, tmp_path)
     _patch_state(monkeypatch, tmp_path, 7022, 6851)
     _patch_counts(monkeypatch, 6851, 171)
     monkeypatch.setattr(mod, "deferral_carriers", lambda: ("", ""))
-    assert mod.main([]) == 0          # 본문이 없으면 미실행
+    assert mod.main([]) == 0          # PR 컨텍스트 없음 → 미실행
     _patch_body(monkeypatch, _REAL_MISMATCH)
     assert mod.main([]) == 1          # 같은 리더로 본문이 오면 red
