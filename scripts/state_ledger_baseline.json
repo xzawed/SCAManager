@@ -1,6 +1,6 @@
 {
-  "min_items": 175,
-  "min_chars": 40942,
+  "min_items": 176,
+  "min_chars": 42293,
   "known_breaks": [
     {
       "prev_end": 6819,

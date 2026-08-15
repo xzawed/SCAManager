@@ -17,6 +17,7 @@ from doc_review_gate import (
     apply_veto_matrix,
     read_payload,
     build_system_blocks,
+    _read_agent_prompt,
 )
 
 
@@ -1724,6 +1725,88 @@ def test_demotion_keys_on_the_flag_not_the_reason_text():
         "agent": "consistency", "decision": "block",
         "reason": "STATE.md 를 볼 수 없어 확인 불가"}])
     assert decision == "block", "산문만으로 강등됐다 — 에이전트가 문구로 게이트를 끌 수 있다"
+
+
+# ── R80 A — 6-step ⑤ 꼬리→파생 중간 상태는 block 이 아니다 ──────────────
+#
+# 게이트가 실제로 심의자에게 넣는 문자열은 `_read_agent_prompt` 가 읽는다
+# (`doc_review_gate.py` 정의 · `_call_single_agent` 가 호출). 경로를 테스트에
+# 하드코딩하면 로더 리네임·frontmatter 파싱 회귀가 안 보인다.
+# The live system prompt is whatever `_read_agent_prompt` returns.
+
+
+def _consistency_prompt() -> str:
+    """게이트가 consistency 에이전트에게 넣는 본문 — 로더를 우회하지 않는다.
+    The body the gate actually injects; do not open the .md by path."""
+    return _read_agent_prompt("consistency")
+
+
+def test_consistency_prompt_strips_frontmatter_via_the_gate_loader():
+    """로더가 YAML frontmatter 를 벗기지 않으면 이 단언이 red.
+    A frontmatter-parsing regression must fail here, not just 'file is non-empty'."""
+    prompt = _consistency_prompt()
+    assert prompt, "consistency 프롬프트가 비었다"
+    assert not prompt.startswith("---"), (
+        "로더가 frontmatter 를 벗기지 않았다 — 게이트가 YAML 을 지시로 넣는다"
+    )
+    assert "name: doc-consistency-reviewer" not in prompt, (
+        "frontmatter 키 `name:` 이 본문에 남았다 — 파싱 회귀"
+    )
+    assert prompt.startswith("당신은 SCAManager"), (
+        "본문 시작이 사라졌다 — 로더가 잘못된 파일을 읽거나 본문을 잘랐다"
+    )
+
+
+def test_consistency_prompt_teaches_tail_to_derived_shape():
+    """🔴 파생 계약 본문이 로더 출력에 실재해야 한다 (R80 A).
+
+    헤딩만 남기고 본문을 비우면 이 단언이 red 여야 한다 — 헤딩 존재 검사는
+    공허한 섹션을 통과시킨다 (traps A4 · '비운 섹션이 green').
+    Distinctive body pins, not just the section heading.
+    """
+    prompt = _consistency_prompt()
+    assert "check_docs_sync.py --fix" in prompt, (
+        "파생 명령 `check_docs_sync.py --fix` 가 로더 출력에 없다 — 섹션이 비었거나 빠졌다"
+    )
+    assert "테스트 수 추적 이력" in prompt, (
+        "SSOT 위치(`테스트 수 추적 이력`)가 로더 출력에 없다"
+    )
+    assert "정상 중간 상태" in prompt, (
+        "꼬리=새·파생=옛 을 '정상 중간 상태' 로 부르는 문장이 없다"
+    )
+    assert "종합 수치·배지는 옛 수인데 이력 꼬리만 새 수다" in prompt, (
+        "❌ 예시(옛 종합/배지 + 새 꼬리를 block)가 없다 — 심의자가 그 모양을 모른다"
+    )
+
+
+def test_consistency_prompt_keeps_the_scope_fence():
+    """🔴 면제만 남기고 울타리를 지우면 red — 진짜 불일치를 눈감게 된다.
+
+    면제(꼬리→파생 중간 상태)를 둔 채 '그래도 block 할 때' 절을 지우면
+    리뷰어가 STATE 수치 일반을 무시한다. 그 회귀가 이 단언의 대상이다.
+    """
+    prompt = _consistency_prompt()
+    assert "면제 범위는 꼬리→파생 방향만이다" in prompt, (
+        "범위 울타리 문장이 없다 — 면제가 STATE 수치 일반으로 넓어질 수 있다"
+    )
+    assert "비-파생" in prompt, (
+        "'비-파생 문서가 제3의 수를 단언하면 여전히 block' 절이 없다"
+    )
+    assert "파생 4지점이 **서로** 어긋남" in prompt, (
+        "'파생 지점이 서로 어긋나면 여전히 block' 절이 없다"
+    )
+
+
+def test_consistency_prompt_still_carries_r37_unable_to_verify():
+    """🔴 새 절이 R37 `unable_to_verify` 계약을 밀어내면 red.
+    The new section must not silently replace the R37 path."""
+    prompt = _consistency_prompt()
+    assert '"unable_to_verify": true' in prompt, (
+        "R37 경로(`\"unable_to_verify\": true`)가 로더 출력에서 사라졌다"
+    )
+    assert '"확인 불가" 는 차단 사유가 아니다' in prompt, (
+        "R37 섹션 헤딩이 사라졌다 — 새 절이 그 계약을 대체한 것으로 본다"
+    )
 
 
 # ──────────────────────────────────────────────────────────────────────────────
