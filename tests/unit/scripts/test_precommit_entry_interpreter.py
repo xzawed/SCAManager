@@ -155,15 +155,15 @@ def test_commit_msg_stage_hook_still_exists():
 
 # ── ③ 자동 수정 훅의 파괴 반경 ──────────────────────────────────────────
 
-_PROTECTED = ("docs/_archive/", "alembic/versions/", "src/static/vendor/")
+_PROTECTED = ("alembic/versions/", "src/static/vendor/")
 
 
 @pytest.mark.parametrize("hook_id", ["trailing-whitespace", "end-of-file-fixer"])
 def test_autofixers_exclude_records_and_vendored_files(hook_id: str):
-    """🔴 자동 수정 훅은 **기록·vendor·수정금지 파일**을 재작성하면 안 된다.
+    """🔴 자동 수정 훅은 **vendor·수정금지 파일**을 재작성하면 안 된다.
 
-    `docs/_archive/**` 는 그 시점의 사실 기록(재작성 금지 규약) · `alembic/versions/**` 는
-    CLAUDE.md 수정 금지 파일 · `src/static/vendor/**` 는 외부 산출물이다.
+    `alembic/versions/**` 는 CLAUDE.md 수정 금지 파일 · `src/static/vendor/**` 는
+    외부 산출물이다.
     """
     hooks = [h for r in _config()["repos"] for h in r.get("hooks", []) if h.get("id") == hook_id]
     assert hooks, f"{hook_id} 훅이 없다 — 이 가드가 공허해졌다"
@@ -171,5 +171,8 @@ def test_autofixers_exclude_records_and_vendored_files(hook_id: str):
     missing = [p for p in _PROTECTED if p not in exclude]
     assert not missing, (
         f"{hook_id} 가 보호 대상 경로를 제외하지 않는다: {missing}\n"
-        "→ 아카이브(기록)·vendor·수정금지 파일을 자동 재작성하게 된다"
+        "→ vendor·수정금지 파일을 자동 재작성하게 된다"
+    )
+    assert "docs/_archive/" not in exclude, (
+        "퇴역한 이력 트리가 exclude 에 남아 있다 — 분모가 빈 경로를 센다"
     )

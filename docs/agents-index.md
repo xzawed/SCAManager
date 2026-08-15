@@ -70,7 +70,7 @@
 
 | 모듈 | 역할 |
 |------|------|
-| `src/services/merge_retry_service.py` | CI-aware Auto Merge 재시도 워커 (`process_pending_retries`) — **운영 PRIMARY 머지 메커니즘** (R13 2026-06-24: 운영 DB 실측 native enable 0회·native auto-merge 부적합[branch protection 부재→PR UNSTABLE, 아키텍처 부정합] → 폐기 **철회**, retry 큐 영구 유지. 상세 `docs/design/2026-04-27-tier3-native-automerge-design.md` §5). |
+| `src/services/merge_retry_service.py` | CI-aware Auto Merge 재시도 워커 (`process_pending_retries`) — **운영 PRIMARY 머지 메커니즘** (운영 DB 실측 native enable 0회·native auto-merge 부적합[branch protection 부재→PR UNSTABLE] → retry 큐 영구 유지). |
 | `src/gate/retry_policy.py` | 재시도 정책 순수 함수 (`should_retry`, `compute_next_retry_at`, `is_expired`) |
 | `src/models/merge_retry.py` | MergeRetryQueue ORM (append-only claim 패턴) |
 

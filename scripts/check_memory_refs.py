@@ -26,13 +26,12 @@ PROJECTS_ROOT = Path.home() / ".claude" / "projects"
 # 좁으면 `.claude/rules/*.md` 나 runbook 이 죽은 슬러그를 가리켜도 가드가 **"✅ 전부 존재"**
 # 를 인쇄한다 — 빈/좁은 범위 위의 초록은 fail-open 이다(이 리포가 반복해 고쳐 온 클래스).
 #
-# 🔴 **아카이브와 `cycle-history.md` 는 의도적으로 제외한다**(실측 dangling 59 + 25건).
-# 그것들은 *그 시점의 사실 기록*이고 `.claude/rules/docs.md` 가 "재작성하지 않는다" 로 못박은
-# 표면이다. red 로 만들면 (a) 역사 재작성이나 (b) 참조 삭제 = **지식 손실**을 강요하게 된다
-# (구 PC 슬러그 유실로 실제 소실된 메모리가 있어 복원 불가한 참조가 섞여 있다).
-#
-# Scope = prescriptive docs only. Archive and cycle-history are point-in-time records; making
-# their dangling refs red would force rewriting history or deleting irrecoverable pointers.
+# 스캔 = 처방 표면만. 2026-08-16 이력 퇴역 후 `docs/_archive/**` · `docs/cycle-history.md`
+# 는 디스크에 없다 — 제외 목록이 아니라 **글롭에 처음부터 안 넣는다**.
+# 캠페인 런북 6건도 같은 날 삭제됐다. `docs/runbooks/*.md` 분모가 그만큼 줄었다
+# (글롭은 존재하는 파일만 돌려준다 — 아래 리터럴과 달리 부재를 못 본다).
+# Scope = prescriptive docs only. Retired history trees are gone, so they are not
+# in the globs. The runbooks glob shrank when six campaign records were deleted.
 _DOC_GLOBS = (
     ".claude/policies/*.md",
     ".claude/rules/*.md",

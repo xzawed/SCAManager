@@ -203,5 +203,4 @@ make test  # tests/unit/test_main.py::test_static_chartjs_returns_200
 
 - `CLAUDE.md` UI/템플릿 카테고리 — Chart.js vendoring + StaticFiles mount 규칙
 - `docs/STATE.md` 그룹 57 — Chart.js vendoring 도입 (PR #166) 본문
-- `docs/design/2026-05-01-ui-redesign-claude-linear-hybrid.md` 진화 기록 — Step C 진행 사실
 - `tests/unit/test_main.py::test_static_*` — 회귀 가드

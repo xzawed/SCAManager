@@ -47,12 +47,13 @@ _CRITICAL = [
 #   · `docs/reference/env-vars.md` — "운영 절대 설정 금지"(`API_AUTH_DISABLED`)
 #   · `.github/PULL_REQUEST_TEMPLATE.md` · `CONTRIBUTING*.md` · `docs/agents-index.md`
 # 즉 심의 게이트가 **지시를 담은 문서의 편집을 검토 없이 통과**시키고 있었다(false coverage).
-# 🔴 `docs/design/**` 이 한 세그먼트만 매칭해 `docs/design/brief/*` 5개가 빠지던 것도 함께 시정.
 # 🔴 Second scope recovery: 25 directive-bearing files were graded `skip`, so the gate passed
 # edits to the very surfaces that tell agents what to do.
+#
+# 2026-08-16 이력 퇴역: `docs/design/**` · `docs/superpowers/**` · `docs/_archive/plans/**`
+# 패턴 3개를 제거했다. 그 트리가 디스크에 없으므로 패턴을 남기면 **빈 분모를 채점**한다.
+# Removed three patterns whose trees were deleted; keeping them would grade an empty set.
 _IMPORTANT = [
-    r"^docs/design/.+\.md$",          # `brief/` 등 하위 디렉토리 포함 (이전엔 한 세그먼트만)
-    r"^docs/superpowers/.+\.md$",
     r"^README(\.[a-z]{2})?\.md$",     # README.ko.md 등 로케일 변형 포함
     r"^\.claude/policies/[^/]+\.md$",
     # 아래는 2026-08-01 승격분 — 전부 에이전트가 따르는 지시문을 담는다.
@@ -62,10 +63,6 @@ _IMPORTANT = [
     r"^docs/reference/[^/]+\.md$",
     r"^CONTRIBUTING(\.[a-z]{2})?\.md$",
     r"^\.github/PULL_REQUEST_TEMPLATE\.md$",
-    # 🔴 2026-08-13 이동: `.claude/plans/` → `docs/_archive/plans/`.
-    #    아카이브로 옮겼어도 심의 대상으로 남긴다 — 위험은 위치가 아니라 **완료 표지**에 있고,
-    #    그 표지가 지워지면 미래 세션이 출시된 기능을 재구현한다(이 훅이 생긴 이유).
-    r"^docs/_archive/plans/[^/]+\.md$",
     r"^SECURITY(\.[a-z]{2})?\.md$",   # 취약점 보고 절차 = 보안 지시문
     r"^scripts/i18n_comments/glossary\.md$",  # "번역 시 아래 용어를 반드시 사용" = 번역 계약
     r"^src/scripts/README\.md$",     # "Production code MUST NOT import from src/scripts/" = 실제 지시문
@@ -79,23 +76,17 @@ _IMPORTANT = [
 ]
 
 # 🔴 의도적으로 `skip` 으로 남긴 것 (판단 기록 — 다음 세션이 재검토를 반복하지 않도록):
-#   · `docs/cycle-history.md` — append-only **과거 서사**다. 지시 어휘가 많은 이유는 과거 결정을
-#     인용하기 때문이지 지금 지시하기 때문이 아니다. 매 trailing sync 마다 3-에이전트 심의를
-#     붙이면 비용만 늘고, 원장 퇴역 캠페인의 삭제 대상이라 이 훅의 대상 목록에도 넣지 않는다.
-#   · `docs/reports/**` — 시점 스냅샷(감사 보고서). 현재 계약이 아니다.
 #   · `docs/README.md` — 순수 색인이다(지시문 없음). 🔴 `src/scripts/README.md` 는 여기 있었으나
 #     "Production code MUST NOT import from src/scripts/" 라는 **실제 지시문**이 있어 승격했다
 #     (2026-08-01 Grok claim-review `019fbd1e` 적발 — "지시 밀도가 낮다" 는 내 판단이 틀렸다).
+#   · `docs/reports/**` — 워크플로 산출물 착지. 현재 계약이 아니다.
 # Deliberately left `skip`, with the reasoning recorded so it is not re-litigated every session.
+#
+# 2026-08-16: `_LOW_RISK` 의 `docs/reports/artifacts/` · `docs/history/` 를 비웠다.
+# 두 경로 모두 디스크에 없다. 빈 패턴을 남기면 분모가 조용히 0 이다.
+# Emptied: those trees are gone, so a leftover pattern would measure nothing.
 
-_LOW_RISK = [
-    r"^docs/reports/artifacts/",
-    r"^docs/history/",
-    # 🔴 2026-08-13: 구 `docs/integrations/` 가 `docs/runbooks/` 로 합쳐지며 이 자리에
-    #    `^docs/runbooks/` 가 들어갔었다. `_IMPORTANT` 가 먼저 매칭돼 실제 강등은 없었지만,
-    #    **런북 전체를 low_risk 로 읽히게 하는 죽은 패턴**이라 제거했다.
-    #    통합된 문서는 런북과 같은 등급(important)을 받는 것이 맞다.
-]
+_LOW_RISK: list[str] = []
 
 
 def _project_root() -> str:

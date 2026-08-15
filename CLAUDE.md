@@ -99,7 +99,7 @@ GitHub Push/PR 이벤트 시 정적 분석 + AI 코드 리뷰를 자동 수행�
 모든 AI 에이전트(Claude Code 및 서브에이전트)는 SCAManager 작업 시 아래 규칙을 **반드시** 따른다.
 `.claude/` 디렉토리에 정의된 스킬과 에이전트는 선택이 아닌 의무적 도구다.
 
-> **📚 협업 회고 + 사용자 합의 정책**: 2026-05-01 회고 결과 사용자가 합의한 협업 정책 5건은 [docs/_archive/reports/2026-05-01-collaboration-retrospective.md](docs/_archive/reports/2026-05-01-collaboration-retrospective.md) 참조. 다음 세션의 Claude 는 본 정책을 default 로 적용. 핵심 5건은 아래 "사용자 협업 정책 (2026-05-01 합의)" 섹션 명시.
+> **📚 협업 정책**: 사용자가 합의한 협업 정책의 정본은 [`.claude/policies/active.md`](.claude/policies/active.md) 와 [`history.md`](.claude/policies/history.md) 다. 핵심 5건은 아래 "사용자 협업 정책 (2026-05-01 합의)" 섹션 명시.
 
 ### 사용자 협업 정책 (2026-05-01 합의)
 

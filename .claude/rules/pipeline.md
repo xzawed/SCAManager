@@ -10,9 +10,7 @@ paths:
 
 # 파이프라인 / 비즈니스 로직 규칙
 
-> 🔴 **사고 재현·측정 로그는 [`docs/_archive/rules-incident-log.md#pipeline`](../../docs/_archive/rules-incident-log.md#pipeline) 로 옮겼다 — 규칙을 완화·삭제하려면 아카이브의 사고 기록을 먼저 읽을 것** (2026-08-12 밀도 압축).
-> 여기 남은 것은 규칙 · 왜 한 줄 · 가드 파일명뿐이며, 서사가 짧아진 것이 규칙이 약해졌다는 뜻이 아니다.
-> 역링크·앵커 도달성만 잰다(서사 보존은 기계 집행 아님 — R81 옵션 (b), 2026-08-15): `tests/unit/scripts/test_rules_archive_backlink.py`.
+> 여기 남은 것은 규칙 · 왜 한 줄 · 가드 파일명이다. 서사가 짧아진 것이 규칙이 약해졌다는 뜻이 아니다.
 
 ## 세션 라우팅
 
