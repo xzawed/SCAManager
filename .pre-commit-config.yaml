@@ -112,13 +112,13 @@ repos:
         description: STATE §테스트 수 추적 이력 항목 수·문자 수 하한 + 수치 사슬. 감소는 baseline 을 같은 PR 에서 낮추는 명시 결정.
 
       - id: check-toc-anchors
-        name: "🔗 cycle-history TOC 앵커 정합"
+        name: "🔗 TOC 앵커 정합"
         language: python
         entry: python scripts/check_toc_anchors.py
-        files: "^docs/cycle-history\\.md$"
+        files: "^(CONTRIBUTING\\.ko\\.md|docs/runbooks/github-integration-guide\\.md|docs/runbooks/onpremise-migration-guide\\.md)$"
         pass_filenames: false
         stages: [pre-commit]
-        description: cycle-history.md TOC `](#...)` 앵커가 헤딩 GitHub slug(중복 -1, em-dash 더블하이픈)과 일치하는지 검사 (과거 #958 끊긴 앵커 차단).
+        description: 활성 `## 목차` 문서의 `](#...)` 앵커가 헤딩 GitHub slug(중복 -1, em-dash 더블하이픈)과 일치하는지 검사 (과거 #958 끊긴 앵커 차단).
 
       - id: check-memory-refs
         name: "🧠 메모리 슬러그 참조 정합"

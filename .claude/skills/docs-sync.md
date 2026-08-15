@@ -1,6 +1,6 @@
 ---
 name: docs-sync
-description: PR 작업 후 docs 수치·서사 동기화 — STATE.md 최신/종합/추적셀 + cycle-history TOC·섹션 + README 배지 쌍 갱신 가이드 (check_docs_sync·check_toc_anchors 페어)
+description: PR 작업 후 docs 수치·서사 동기화 — STATE.md 최신/종합/추적셀 + README 배지 쌍 갱신 가이드 (check_docs_sync 페어). TOC 앵커는 check_toc_anchors 가 활성 `## 목차` 문서를 본다.
 ---
 
 PR 작업 완료/머지 시 테스트 수치·작업 서사를 STATE.md·cycle-history.md·README 배지에 일관 반영하는 절차.
@@ -47,10 +47,10 @@ py -3 -m pytest tests/integration --collect-only -q | tail -1  # 통합 (리터�
 
 ### 손으로 갱신하는 나머지 (수치 아님 — 서사)
 
-- **STATE.md 최신 블록**: 새 작업으로 **교체** (직전 서사는 cycle-history 최신순 맨 앞으로 이관)
-- **cycle-history.md** (앵커만 🔒`check_toc_anchors`): TOC 엔트리 + body 섹션(최신순 맨 앞)
+- **STATE.md 최신 블록**: 새 작업으로 **교체** (직전 서사는 세션 기록으로 이관)
+- TOC 앵커(`check_toc_anchors.TARGETS`): 활성 `## 목차` 문서를 고치면 slug 을 함수로 실측
 
-## slug 계산 (cycle-history TOC 앵커 — 추정 금지·함수 실측)
+## slug 계산 (TOC 앵커 — 추정 금지·함수 실측)
 ```bash
 python -c "import sys; sys.path.insert(0,'scripts'); import check_toc_anchors as t; print(t.github_slug('<헤더 텍스트>', {}))"
 ```
@@ -58,7 +58,7 @@ em-dash(`—`)/`+`/`()`/`.` 가 더블하이픈·제거를 유발하므로 반�
 
 ## 검증 (커밋 전 의무)
 - `python scripts/check_docs_sync.py` → ✅ (4 지점 카운트 일치)
-- `python scripts/check_toc_anchors.py docs/cycle-history.md` → ✅ (앵커 정합)
+- `python scripts/check_toc_anchors.py` → ✅ (TARGETS 의 `## 목차` 앵커 정합)
 - 카운트 실측 대조: `pytest tests/unit --collect-only -q | tail -1` 이 M 인지
 
 ## 주의

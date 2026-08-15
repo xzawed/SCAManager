@@ -175,7 +175,7 @@ jobs:
       - name: STATE 원장 하한 (check_state_ledger)
         run: python scripts/check_state_ledger.py
 
-      - name: cycle-history TOC 앵커 정합 (check_toc_anchors)
+      - name: TOC 앵커 정합 (check_toc_anchors)
         run: python scripts/check_toc_anchors.py
 
       - name: architecture 트리 싱크 (check_architecture_tree_sync)

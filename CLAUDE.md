@@ -16,7 +16,7 @@ GitHub Push/PR 이벤트 시 정적 분석 + AI 코드 리뷰를 자동 수행�
 ## 🧭 탐색
 
 작업 착수 전 → [작업 시작 전](#작업-시작-전-매-작업-30초) · 완료 시 → [필수 원칙 6-step](#필수-원칙)
-· 미해결 일감 → [`docs/backlog.md`](docs/backlog.md) · 아키텍처 → [`docs/architecture.md`](docs/architecture.md)
+· 미해결 일감 → **GitHub Issues** (2026-08-16 `docs/backlog.md` 퇴역) · 아키텍처 → [`docs/architecture.md`](docs/architecture.md)
 · 영역별 규칙 → `.claude/rules/<area>.md`(해당 파일 편집 시 **자동 로드**)
 · 새 환경 → [`docs/runbooks/new-machine-setup.md`](docs/runbooks/new-machine-setup.md)
 
@@ -46,7 +46,8 @@ GitHub Push/PR 이벤트 시 정적 분석 + AI 코드 리뷰를 자동 수행�
    집행하는지는 판정하지 않으며, **무관한 가드 이름을 적어도 통과한다**.
 2. **표면 삭제 축은 CI(PR)에서만** 돈다 — 로컬 EXIT 0 은 "통과" 가 아니라 "안 쟀음" 이다.
 3. 🔴 **계수 범위가 리포 전체가 아니다** — `SURFACE_GLOBS` 6개 밖에 빨강 마커가 **약 475건**
-   더 있다(`docs/backlog.md` 92 · `docs/STATE.md` 41 · `docs/runbooks/**` 등). 그것들은 원장·
+   더 있다(`docs/STATE.md` 41 · `docs/runbooks/**` 등 — `docs/backlog.md` 92건은 2026-08-16 원장
+   퇴역으로 소멸했다). 그것들은 원장·
    시점 기록이라 규칙 층과 성격이 다르지만, **«100%» 는 그 475건을 뺀 값**이다. 명령형 표면
    전체로 재면 집행률은 약 11% 다. 2026-08-13 에 이 축을 밝히지 않은 채 «무집행 0건» 을
    조건 없이 단언했고, 회고가 그것을 **P0-A** 로 적발했다.
@@ -169,11 +170,12 @@ git status && git checkout -b <브랜치명>   # main 직접 커밋 금지 (정�
 Code Scanning open alert 확인(정책 14)은 GitHub Security 탭 또는
 `gh api repos/xzawed/SCAManager/code-scanning/alerts`.
 
-> 🔴 **SessionStart 훅이 5개 스크립트를 자동 실행한다 — 그중 원장 카운터가 3종**이다:
+> 🔴 **SessionStart 훅이 4개 스크립트를 자동 실행한다 — 그중 원장 카운터가 2종**이다:
 > 회고 카덴스(`check_retro_cadence.py`) ·
-> owed 원장 미결(`check_owed_verification.py`) · **backlog 🔴 결정 대기**(`check_open_decisions.py`,
-> 2026-08-14 신설 — 🔴 은 **사용자만** 닫을 수 있는데 다시 올리는 장치가 없어 R81·R82 가 6 PR 동안
-> 정체했다). 나머지 2개는 `check_main_red.py` · `check_precommit_installed.py` 다.
+> owed 원장 미결(`check_owed_verification.py`).
+> 나머지 2개는 `check_main_red.py` · `check_precommit_installed.py` 다.
+> 열린 일감은 GitHub Issues 로 옮겼고, backlog 파일 카운터는 원장과 함께 퇴역한다
+> (SessionStart 에서 네트워크를 치지 않는다).
 > 훅 stdout 이 컨텍스트에 주입되므로 **수동 실행 불필요**. 전부 advisory(비차단).
 > 배선 회귀 가드: `test_session_start_wiring.py`.
 
@@ -185,7 +187,7 @@ Code Scanning open alert 확인(정책 14)은 GitHub Security 탭 또는
 - **TDD 우선**: 구현 코드 작성 전 반드시 `test-writer` 에이전트로 테스트를 먼저 작성한다.
 - **Hook = best-effort 조기 실패 탐지 (전체 게이트 아님)**: `src/` 파일 편집 후 PostToolUse Hook(`posttool_pytest_smoke.py`)이 **편집된 영역의 tests/unit 서브디렉토리만** 빠르게 실행(대응 없으면 collection 스모크)한다. ❌ 배너 시 즉시 조사. **전체 게이트는 push-time(6-step ②)로 위임** — 이 훅은 스코프 스모크라 통과가 전체 통과를 보장하지 않는다 (2026-07-18 P1 테마 C — 구 훅이 전체 5566 을 60s 타임아웃에 돌려 완주 불가·`|| true` 로 삼켜 false-green 이던 것을 봉인).
 - **Phase 완료 조건**: 테스트 전체 통과 + **CI `lint-src` job 통과**(pylint `--fail-under=9.90` + bandit) + (파이프라인 변경 시 `pipeline-reviewer` 승인) 세 조건이 모두 충족될 때만 Phase 완료를 선언한다. **로컬 `make lint` 통과는 근거가 아니다** — 그 타깃은 세 린터를 `|| true` 로 삼키는 advisory 점검이다. 검증 가능한 근거는 CI job 결과뿐이다. **로컬 사전 확인은 `py -3 scripts/pre_push_gate.py` 를 쓴다** — `make` 이 없는 머신에서도 돌고, CI 가 강제하는 **repo-integrity 9종 + PR-diff 한정 4종**을 실행하며, **자기가 못 보는 축(CodeQL·Sonar·Codecov·TruffleHog·pip-audit·lint-js·PG job·통합테스트)을 매번 인쇄**한다. `--full` 이면 pylint·bandit·`pytest tests/unit` 도 돈다. ⚠️ **`make gate` 는 "CI 와 동일 기준" 이 아니었다**(2026-08-01 정정) — 그 타깃은 pytest·pylint·bandit 뿐이라 위 13 가드를 **하나도** 돌리지 않고, 애초에 이 머신에는 `make` 자체가 없다(backlog R29). 이전에는 `lint-strict`(fail-under)가 CI·pre-commit 어디에도 배선되지 않아 **"lint 통과" 주장이 기계로 검증 불가**했다(회고 D13).
-- **완료 시 필수 6-step**: 작업이 완료되면 반드시 ① 커밋 → ② 🔴 **push 전 `pytest tests/unit` 전체 통과 실측** (영역 서브셋[`tests/unit/ui`+`i18n` 등]만 실행으로 대체 금지 — #1041 에서 i18n 키 제거가 타 영역 `test_i18n_settings._KEYS` parametrize 연쇄를 깨뜨렸으나 서브셋만 돌려 놓쳐 CI 6-fail. **인라인 cleanup·docs-only 예외 없음**. 🔴 **로컬 통과 ≠ CI 통과** — 로컬 인터프리터[3.14]와 CI[3.12]가 이원이라 버전 의존 회귀는 로컬이 못 잡는다. `pre_push_gate` 가 이 이원을 매 실행 인쇄한다 — backlog R30) → ③ `git push` → ④ PR 생성(`gh pr create`) → ⑤ `docs/STATE.md` 수치 갱신 (🔴 **손으로 고치는 곳은 §테스트 수 추적 이력 맨 아래 한 줄뿐** — 나머지 4지점[종합 수치·추적셀 머리·README 2배지]은 `py -3 scripts/check_docs_sync.py --fix` 가 그 한 줄에서 **파생**한다. 2026-08-05 문서 감사 P0-3: 같은 정수를 5곳에 손유지하던 것이 실제 drift 사고를 냈다 — N지점 동기화는 N-1번의 실패 기회다) + `docs/cycle-history.md` 사이클 이력 동기화 → ⑥ **docs/architecture.md 동기화** (신규 파일 추가·삭제·이름 변경 시 `src/` 트리와 `### 핵심 데이터 흐름` 내 언급 갱신) 를 순서대로 수행한다. 예외 없음.
+- **완료 시 필수 6-step**: 작업이 완료되면 반드시 ① 커밋 → ② 🔴 **push 전 `pytest tests/unit` 전체 통과 실측** (영역 서브셋[`tests/unit/ui`+`i18n` 등]만 실행으로 대체 금지 — #1041 에서 i18n 키 제거가 타 영역 `test_i18n_settings._KEYS` parametrize 연쇄를 깨뜨렸으나 서브셋만 돌려 놓쳐 CI 6-fail. **인라인 cleanup·docs-only 예외 없음**. 🔴 **로컬 통과 ≠ CI 통과** — 로컬 인터프리터[3.14]와 CI[3.12]가 이원이라 버전 의존 회귀는 로컬이 못 잡는다. `pre_push_gate` 가 이 이원을 매 실행 인쇄한다 — backlog R30) → ③ `git push` → ④ PR 생성(`gh pr create`) → ⑤ `docs/STATE.md` 수치 갱신 (🔴 **손으로 고치는 곳은 §테스트 수 추적 이력 맨 아래 한 줄뿐** — 나머지 4지점[종합 수치·추적셀 머리·README 2배지]은 `py -3 scripts/check_docs_sync.py --fix` 가 그 한 줄에서 **파생**한다. 2026-08-05 문서 감사 P0-3: 같은 정수를 5곳에 손유지하던 것이 실제 drift 사고를 냈다 — N지점 동기화는 N-1번의 실패 기회다. 🔴 **`docs/cycle-history.md` 동기화 단계는 2026-08-16 에 삭제됐다** — 그 파일이 없다) → ⑥ **docs/architecture.md 동기화** (신규 파일 추가·삭제·이름 변경 시 `src/` 트리와 `### 핵심 데이터 흐름` 내 언급 갱신) 를 순서대로 수행한다. 예외 없음.
   - **⑤ 배치-PR 이월 분기 (2026-07-09 rank6 — 병렬 STATE/badge 충돌 자초 학습)**: 세션 내 **동일 파일(STATE.md 수치 라인·README 배지)을 건드리는 미머지 PR 이 1건 이상 in-flight** 이면, per-PR ⑤는 **commit body 에 카운트 delta 만 기록**하고 STATE/배지 실갱신은 **세션 종료 시 단일 trailing sync PR 로 이월**한다. 이유: 여러 PR 이 STATE 동일 라인을 연속 write 하면 git merge conflict 자초(본 세션 ⑤ #1048 이 ③ 머지 후 README 인접-라인 충돌 자초 → 사후 수습). PR 착수 전 `git log --oneline main..<open-branches>` 또는 `gh pr list` 로 동일 파일 touch 미머지 PR 존재 여부 1줄 확인 의무.
 - **README.md 배지 동기화**: 테스트 수·pylint·커버리지 수치가 바뀌면 `README.md` 21~25줄 배지도 함께 갱신한다. 수치 출처는 항상 `docs/STATE.md`.
 - **신규 파일 추가 시 동기화 의무** (전례 3건 — 누락 시 다음 Phase 착수 전 보완):
@@ -236,4 +238,7 @@ Code Scanning open alert 확인(정책 14)은 GitHub Security 탭 또는
 
 ## 현재 상태
 
-최신 수치는 [docs/STATE.md](docs/STATE.md) 참조. 사이클 이력: [`docs/cycle-history.md`](docs/cycle-history.md) (사이클 60~166).
+최신 수치는 [docs/STATE.md](docs/STATE.md) 참조.
+**`docs/cycle-history.md`·`docs/backlog.md` 는 2026-08-16 에 삭제됐다** — 과거 서사는 git 이력에,
+열린 일감은 **GitHub Issues** 에, 재발 클래스는 [`.claude/traps.md`](.claude/traps.md) 에 있다.
+(집행 가드를 만들 수 없는 사실 기술이라 빨강 마커 없이 평문으로 적는다 — 위 3층 분리 규약.)

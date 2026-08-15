@@ -135,13 +135,22 @@ def tracked_docs(root: Path | None = None) -> list:
     per merge stage, which silently inflated the collected-test count and shipped a wrong
     number to four sinks. NUL-separated so spaces in names cannot split one path into two.
     """
+    base = root or _ROOT
     out = subprocess.run(  # nosec B603 B607
-        ["git", "ls-files", "-z", "*.md"], cwd=str(root or _ROOT),
+        ["git", "ls-files", "-z", "*.md"], cwd=str(base),
         capture_output=True, text=True, encoding="utf-8", errors="replace", check=True,
     ).stdout.split("\0")
     # 🔴 dict.fromkeys = 순서 보존 dedupe. set() 는 parametrize 순서를 비결정적으로 만든다.
     # dict.fromkeys keeps order; set() would make the parametrize order nondeterministic.
-    return list(dict.fromkeys(f for f in out if f and "_archive" not in f))
+    # 🔴 인덱스는 있는데 워킹트리가 없는 경로(삭제 실험·반쯤 체크아웃)는 건너뛴다.
+    #    이 테스트는 문서 **주장**을 읽는 것이지 파일 존재를 재는 것이 아니다.
+    #    존재 축은 각 문서의 전용 가드가 진다. 인덱스만 보고 read_text 하면
+    #    퇴역 예정 파일을 지우자마자 여기가 FileNotFoundError 로 죽는다.
+    # Skip tracked-but-missing paths: this test reads claims, not file presence.
+    return list(dict.fromkeys(
+        f for f in out
+        if f and "_archive" not in f and (base / f).is_file()
+    ))
 
 
 # ── 파서가 공허하지 않은지 ────────────────────────────────────────────────

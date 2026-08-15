@@ -29,7 +29,6 @@ _ROOT = Path(__file__).resolve().parents[3]
 _REPORTS = _ROOT / "docs" / "_archive" / "reports"
 _INDEX = _REPORTS / "INDEX.md"
 _STATE = _ROOT / "docs" / "STATE.md"
-_CYCLE = _ROOT / "docs" / "cycle-history.md"
 
 # 색인 행의 링크 대상: `| 2026-07-19 | [retrospective](2026-07-19-retrospective.md) | …`
 _LINK_RE = re.compile(r"\]\(([^)]+\.md)\)")
@@ -157,38 +156,7 @@ def test_current_region_excludes_the_append_only_ledger():
     assert "추적 이력" not in region, "추적 이력이 현재-값 영역에 포함됐다"
 
 
-# ── 3. 섹션 제목 ↔ 본문 PR 수 / heading vs body ──────────────────────────
-
-
-def _pr_range_count(text: str):
-    """`#1102~#1114` → 13. 범위 표기가 없으면 None."""
-    m = re.search(r"#(\d{3,5})\s*~\s*#(\d{3,5})", text)
-    return abs(int(m.group(2)) - int(m.group(1))) + 1 if m else None
-
-
-def test_cycle_history_headline_pr_count_matches_its_range():
-    """🔴 `총 N PR #A~#B` 의 N 이 범위 폭과 일치해야 한다.
-
-    실측: 제목 `13 PR` · 본문 `총 9 PR #1102~#1110` 이 같은 섹션에 공존했고,
-    본문에는 #1112~#1114 서술이 실제로 들어 있었다(본문이 자기 서술과도 불일치).
-    """
-    text = _CYCLE.read_text(encoding="utf-8")
-    bad = []
-    for m in re.finditer(r"총 (\d+) PR (#\d{3,5}\s*~\s*#\d{3,5})", text):
-        claimed, span = int(m.group(1)), _pr_range_count(m.group(2))
-        if span is not None and claimed != span:
-            bad.append(f"'총 {claimed} PR {m.group(2)}' → 범위 폭 {span}")
-    assert not bad, "선언 PR 수와 PR 범위 폭이 어긋난다:\n  " + "\n  ".join(bad)
-
-
 # ── 탐지력 자가 검증 / self-verification ─────────────────────────────────
-
-
-def test_pr_range_arithmetic_is_inclusive():
-    """경계 산술 고정 — off-by-one 이면 위 단언이 조용히 무의미해진다."""
-    assert _pr_range_count("#1102~#1114") == 13
-    assert _pr_range_count("#1102 ~ #1102") == 1
-    assert _pr_range_count("범위 표기 없음") is None
 
 
 def test_index_link_extraction_finds_real_rows():

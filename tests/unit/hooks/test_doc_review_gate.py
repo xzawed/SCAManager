@@ -1271,19 +1271,26 @@ def test_directive_bearing_surfaces_are_reviewed():
     디스크를 스캔하므로 신규 런북/가이드가 추가돼도 자동으로 검사 대상이 된다.
     """
     root = Path(__file__).resolve().parents[3]
+    # 🔴 글롭은 존재하는 파일만 돌려준다. 리터럴 경로는 부재면 단언이 red 여야 한다 —
+    #    `if t.exists()` 로 걸러내면 감시 문서를 지워도 이 테스트가 초록이다.
+    # Globs only match existing files. A missing literal must fail, not shrink the set.
+    _literal = (
+        "docs/architecture.md",
+        "docs/agents-index.md",
+        ".github/PULL_REQUEST_TEMPLATE.md",
+        "CONTRIBUTING.md",
+        "CONTRIBUTING.ko.md",
+        "SECURITY.md",
+    )
+    missing = [rel for rel in _literal if not (root / rel).is_file()]
+    assert not missing, (
+        "지시문 리터럴 표면이 디스크에 없다 — exists() 필터로 조용히 빼지 않는다: "
+        f"{missing}"
+    )
     targets = sorted((root / "docs" / "runbooks").glob("*.md"))
     targets += sorted((root / "docs" / "reference").glob("*.md"))
     targets += sorted((root / ".claude" / "plans").glob("*.md"))
-    targets += [
-        root / "docs" / "architecture.md",
-        root / "docs" / "backlog.md",
-        root / "docs" / "agents-index.md",
-        root / ".github" / "PULL_REQUEST_TEMPLATE.md",
-        root / "CONTRIBUTING.md",
-        root / "CONTRIBUTING.ko.md",
-        root / "SECURITY.md",
-    ]
-    targets = [t for t in targets if t.exists()]
+    targets += [root / rel for rel in _literal]
     assert len(targets) > 25, f"대조 집합이 {len(targets)}개 — 스캐너 고장 또는 경로 변경"
 
     skipped = [

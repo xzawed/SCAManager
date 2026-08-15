@@ -275,3 +275,32 @@ def test_scan_scope_is_derived_not_hardcoded(tmp_path):
     files = mod._doc_files(tmp_path)
     assert ".claude/rules/brandnew.md" in files, files
     assert "docs/runbooks/brandnew.md" in files, files
+
+
+def test_doc_literals_do_not_include_retiring_ledgers():
+    """원장 두 파일은 스캔 리터럴이 아니다 — 묶여 있으면 삭제가 범위를 조용히 줄인다."""
+    assert "docs/backlog.md" not in mod._DOC_LITERALS
+    assert "docs/cycle-history.md" not in mod._DOC_LITERALS
+
+
+def test_doc_files_keeps_missing_literals(tmp_path):
+    """부재 리터럴을 목록에서 빼면 스코프가 조용히 줄어든다.
+
+    예전 판은 `(project_root / f).is_file()` 로 걸러 `docs/backlog.md` 가 없어도
+    DOC_FILES 가 그 이름을 잊고, main() 의 부재 검사가 그 이름을 보지 못했다.
+    """
+    files = mod._doc_files(tmp_path)
+    for lit in mod._DOC_LITERALS:
+        assert lit in files, f"{lit} 이 부재인데 목록에서 빠졌다 — 조용한 범위 축소"
+
+
+def test_main_fails_when_a_literal_doc_is_missing(tmp_path, monkeypatch, capsys):
+    """리터럴 문서가 없으면 exit 1 — `.is_file()` 필터를 되돌려도 진입점에서 걸린다."""
+    memory = tmp_path / "mem"
+    memory.mkdir()
+    monkeypatch.setenv("CLAUDE_PROJECT_MEMORY_DIR", str(memory))
+    monkeypatch.setattr(mod, "PROJECTS_ROOT", tmp_path)
+    monkeypatch.setattr(mod, "DOC_FILES", list(mod._DOC_LITERALS))
+    assert mod.main(project_root=tmp_path) == 1
+    err = capsys.readouterr().err
+    assert any(lit in err for lit in mod._DOC_LITERALS), err

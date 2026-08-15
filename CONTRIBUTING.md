@@ -265,7 +265,7 @@ before you push. (A separate test does catch the specific case of a form control
 | See which languages each analyzer covers | [`docs/reference/language-coverage.md`](docs/reference/language-coverage.md) |
 | Deploy or operate it | [`docs/runbooks/`](docs/runbooks/) |
 | See current test counts and quality numbers | [`docs/STATE.md`](docs/STATE.md) |
-| Find open work | [`docs/backlog.md`](docs/backlog.md) |
+| Find open work | [GitHub Issues](https://github.com/xzawed/SCAManager/issues) |
 
 `CLAUDE.md` and `AGENTS.md` at the repository root are working agreements for the AI agents that
 contribute to this project. You do not need to read them to contribute, but they explain why some

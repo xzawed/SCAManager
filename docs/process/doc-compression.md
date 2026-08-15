@@ -21,7 +21,7 @@ grep -rn "<파일경로>" tests/ scripts/ .claude/hooks/ .github/workflows/
 ### (b) **앵커·링크 소비자**가 있는가
 
 ```bash
-py -3 scripts/check_toc_anchors.py        # TOC 앵커
+py -3 scripts/check_toc_anchors.py        # 활성 `## 목차` 문서 TOC 앵커
 grep -rn "<파일명>#" docs/ .claude/        # 앵커 참조
 ```
 

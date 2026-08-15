@@ -45,11 +45,11 @@ _BASELINE = _ROOT / "scripts" / "state_ledger_baseline.json"
 # 리터럴 — 피검사 모듈에서 유도하지 않는다. 사슬 실측 (단위 2 착수, 형식 있는 항목만).
 # Literals, not derived from the module. Measured on formal-pattern items only.
 _KNOWN_BREAK = (6819, 6821)
-_MIN_ITEMS_FLOOR = 177
+_MIN_ITEMS_FLOOR = 178
 # 리터럴 = 커밋된 baseline 과 동일. 43000 여유는 같은 PR 에서 min_chars 를
 # 785자 내려도 이 핀이 통과하게 해, 다음 PR 의 짧은 공동화가 안 보였다.
 # Literal equals the committed floor. Slack hid the next hollowing.
-_MIN_CHARS_FLOOR = 43_578
+_MIN_CHARS_FLOOR = 44_113
 _MAX_KNOWN_BREAKS = 1
 
 

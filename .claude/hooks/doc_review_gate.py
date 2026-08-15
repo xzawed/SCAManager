@@ -45,7 +45,7 @@ _CRITICAL = [
 #   · `docs/runbooks/owed-verification.md` — "사용자 회신 전까지 **행 삭제 금지**"
 #   · `docs/architecture.md` — "신규 파일 추가 시 이 문서 갱신 **의무**"
 #   · `docs/reference/env-vars.md` — "운영 절대 설정 금지"(`API_AUTH_DISABLED`)
-#   · `.github/PULL_REQUEST_TEMPLATE.md` · `CONTRIBUTING*.md` · `docs/agents-index.md` · `docs/backlog.md`
+#   · `.github/PULL_REQUEST_TEMPLATE.md` · `CONTRIBUTING*.md` · `docs/agents-index.md`
 # 즉 심의 게이트가 **지시를 담은 문서의 편집을 검토 없이 통과**시키고 있었다(false coverage).
 # 🔴 `docs/design/**` 이 한 세그먼트만 매칭해 `docs/design/brief/*` 5개가 빠지던 것도 함께 시정.
 # 🔴 Second scope recovery: 25 directive-bearing files were graded `skip`, so the gate passed
@@ -58,7 +58,6 @@ _IMPORTANT = [
     # 아래는 2026-08-01 승격분 — 전부 에이전트가 따르는 지시문을 담는다.
     r"^docs/runbooks/[^/]+\.md$",
     r"^docs/architecture\.md$",
-    r"^docs/backlog\.md$",
     r"^docs/agents-index\.md$",
     r"^docs/reference/[^/]+\.md$",
     r"^CONTRIBUTING(\.[a-z]{2})?\.md$",
@@ -82,7 +81,7 @@ _IMPORTANT = [
 # 🔴 의도적으로 `skip` 으로 남긴 것 (판단 기록 — 다음 세션이 재검토를 반복하지 않도록):
 #   · `docs/cycle-history.md` — append-only **과거 서사**다. 지시 어휘가 많은 이유는 과거 결정을
 #     인용하기 때문이지 지금 지시하기 때문이 아니다. 매 trailing sync 마다 3-에이전트 심의를
-#     붙이면 비용만 늘고, 이 파일은 `check_toc_anchors` 가 이미 구조를 지킨다.
+#     붙이면 비용만 늘고, 원장 퇴역 캠페인의 삭제 대상이라 이 훅의 대상 목록에도 넣지 않는다.
 #   · `docs/reports/**` — 시점 스냅샷(감사 보고서). 현재 계약이 아니다.
 #   · `docs/README.md` — 순수 색인이다(지시문 없음). 🔴 `src/scripts/README.md` 는 여기 있었으나
 #     "Production code MUST NOT import from src/scripts/" 라는 **실제 지시문**이 있어 승격했다
