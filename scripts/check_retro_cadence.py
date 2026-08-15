@@ -25,7 +25,7 @@ from pathlib import Path
 # When merged PRs since the last formal retrospective reach this, a 5+1 retrospective is due.
 RETRO_PR_THRESHOLD = 15
 
-_REPORTS_DIR = Path("docs/_archive/reports")
+_REPORTS_DIR = Path("docs/reports")
 # 카덴스 이월 원장 — breach 중 회고 미진입으로 계속하려면 여기에 승인 기록 의무 (정책 8 진화 (6)).
 # Cadence-deferral ledger — to continue past a breach without a retro, a deferral must be recorded here.
 _DEFERRALS = Path("docs/runbooks/retro-cadence-deferrals.md")
@@ -171,7 +171,7 @@ def _git(args):
 def _boundary_commit(retro_filename):
     """정식 회고 리포트가 추가된 커밋 SHA — 카운트 경계. 미발견 시 None.
     The commit that added the retro report (count boundary); None if not found."""
-    path = f"docs/_archive/reports/{retro_filename}"
+    path = f"docs/reports/{retro_filename}"
     sha = _git(["log", "--diff-filter=A", "--format=%H", "-1", "--", path]).strip()
     return sha or None
 

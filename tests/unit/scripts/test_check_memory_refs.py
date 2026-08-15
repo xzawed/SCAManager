@@ -252,10 +252,9 @@ def test_scan_scope_covers_rules_and_runbooks():
 
 
 def test_scan_scope_excludes_point_in_time_records():
-    """🔴 아카이브·cycle-history 는 **의도적 제외** — 그것들은 당시의 사실 기록이다.
+    """🔴 퇴역한 이력 트리는 스캔에 다시 넣지 않는다.
 
-    red 로 만들면 (a) 역사 재작성이나 (b) 복원 불가한 참조 삭제 = 지식 손실을 강요한다.
-    이 단언이 없으면 나중에 "커버리지를 더 넓히자" 며 무심코 포함시키게 된다.
+    그 트리는 디스크에 없다. 글롭에 되살리거나 리터럴로 넣으면 빈 분모를 채점한다.
     """
     for f in mod.DOC_FILES:
         assert "_archive" not in f, f"아카이브가 범위에 들어왔다: {f}"

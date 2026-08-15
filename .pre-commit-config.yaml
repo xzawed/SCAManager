@@ -182,16 +182,14 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
-      # 🔴 자동 수정 훅은 **기록·vendor·수정금지 파일**을 건드리면 안 된다 (backlog R56).
-      #   `docs/_archive/**` 는 그 시점의 사실 기록(재작성 금지) · `alembic/versions/**` 는
-      #   CLAUDE.md 수정 금지 파일 · `src/static/vendor/**` 는 외부 산출물이다.
-      #   실측(2026-08-06): 이 제외가 없으면 trailing-whitespace 17 파일 + end-of-file-fixer
-      #   3 파일이 대상이고 그중 대부분이 위 3 부류다.
-      # Autofixers must not rewrite archives (records), vendored assets, or edit-forbidden files.
+      # 🔴 자동 수정 훅은 **vendor·수정금지 파일**을 건드리면 안 된다.
+      #   `alembic/versions/**` 는 CLAUDE.md 수정 금지 파일 · `src/static/vendor/**` 는
+      #   외부 산출물이다.
+      # Autofixers must not rewrite vendored assets or edit-forbidden files.
       - id: trailing-whitespace
-        exclude: "^(docs/_archive/|alembic/versions/|src/static/vendor/)"
+        exclude: "^(alembic/versions/|src/static/vendor/)"
       - id: end-of-file-fixer
-        exclude: "^(docs/_archive/|alembic/versions/|src/static/vendor/)"
+        exclude: "^(alembic/versions/|src/static/vendor/)"
       - id: check-yaml
       - id: check-added-large-files
         args: ["--maxkb=500"]

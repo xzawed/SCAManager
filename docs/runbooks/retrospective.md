@@ -47,7 +47,7 @@ Workflow({ scriptPath: '<repo-abs>/.claude/workflows/retrospective.mjs',
   roi: { fp_blocked, confirmed, severity_adjusted, p0, p1, p2 } }
 ```
 - **verdict**: `CONFIRMED`(실제 결함/개선) · `FALSE_POSITIVE`(차단) · `SEVERITY_ADJUST`(adjusted_severity) · `UNVERIFIED`(재시도 3회 소진).
-- 보고서 작성: `docs/_archive/reports/YYYY-MM-DD-retrospective.md` (ROI + verdict_coverage + 클러스터). **아카이브는 6-step 의무**(회고 P1 #39 = 미아카이브 반복 근본).
+- 보고서 작성: `docs/reports/YYYY-MM-DD-retrospective.md` (ROI + verdict_coverage + 클러스터). 산출은 6-step 의무.
 
 ## verdict_coverage 해석
 - `1.0` = 모든 finding 이 verdict 수신(목표). 단일 패스 13/8 한계 해소 입증.
@@ -67,4 +67,4 @@ Workflow({ scriptPath: '<repo-abs>/.claude/workflows/retrospective.mjs',
 - ✅ **verdict_coverage < 1.0 자동 보강**(C10-d): UNVERIFIED finding 만 1회 bounded 재검증(고동시성 StructuredOutput flake 해소) — 토큰 비용 최소(소수 한정). 1회 후에도 UNVERIFIED 면 보고서 unverified 표 노출(현행).
 - ⚠️ SEVERITY_ADJUST 시 adjusted_severity 미수신이면 count 가 원 severity 로 graceful fallback — 스키마 강제(if/then) 미적용(백로그 C10-c, 검증기 스키마 위험 회피).
 - 자유 발언·회고 질문·cross-verify 생략 정량 표는 워크플로우 출력 밖 = 스킬/Claude 절차 의존.
-- 회귀 가드: `tests/unit/scripts/test_retrospective_resilience.py` (try/catch + evidence 출력, 주석 false-pass 봉인). 추적: [`docs/_archive/reports/2026-06-23-retrospective.md`](../_archive/reports/2026-06-23-retrospective.md) §C10.
+- 회귀 가드: `tests/unit/scripts/test_retrospective_resilience.py` (try/catch + evidence 출력).

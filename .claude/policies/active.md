@@ -134,7 +134,7 @@ git push -u origin <branch>
 
 ## 정책 13 신설 (2026-05-02 P0 OAuth 사고 후속): 운영 endpoint smoke check 의무
 
-회고 P0 #4 자기 예언 ("운영 사고 0 = 운 + Copilot Autofix + Railway CI") 무시 → 본 사고 발생. 사고 회고: [`docs/reports/2026-05-02-oauth-redirect-uri-incident.md`](../reports/2026-05-02-oauth-redirect-uri-incident.md).
+회고 P0 #4 자기 예언 ("운영 사고 0 = 운 + Copilot Autofix + Railway CI") 무시 → 본 사고 발생. 의무 자체는 아래 3-endpoint 가 정본이다.
 
 **default 의무** — 매 사이클 종료 시 (또는 Phase 종료 시) 최소 3-endpoint smoke check:
 - `GET /health` → 200 (lifeness)
@@ -395,7 +395,7 @@ git push -u origin <branch>
 | Agent-2 | 활성 정책 + 이력 | `.claude/policies/active.md` / `.claude/policies/history.md` |
 | Agent-3 | 아키텍처 + 상태 | `docs/architecture.md` / `docs/STATE.md` |
 | Agent-4 | Path-scoped rules | `.claude/rules/*.md` (8 영역 전체) |
-| Agent-5 | 참조 + 운영 문서 | `docs/reference/*.md` / `docs/runbooks/*.md` / `docs/_archive/reports/` (최근 3건) |
+| Agent-5 | 참조 + 운영 문서 | `docs/reference/*.md` / `docs/runbooks/*.md` |
 | Agent-6 (cross-verify) | 전체 합성 | 1~5 결과 종합 + false-positive 제거 + P0/P1/P2 정렬 |
 
 **적용 시 의무 조건** (CLAUDE.md 정책 8 기존 조건 전부 유지):

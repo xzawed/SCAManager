@@ -2,13 +2,8 @@
 
 ## 사고 (2026-08-01 문서 감사)
 
-`docs/design/brief/00-service-overview.md` 와 `03-design-direction.md` 가 등급 임계값을
-**A 90 / B 80 / C 70 / D 60 / F <60** 이라 적고 있었다. 실제 정본
-(`src/constants.py::GRADE_THRESHOLDS`)은 **A 90 / B 75 / C 60 / D 45 / F <45** 다.
-
-🔴 **행동 영향**: 이 브리프는 UI 색상 체계와 서비스 설명의 근거 문서다. 여기서 임계값을 읽고
-작업하면 대시보드 색상 경계·문구·테스트 기대값이 전부 어긋난다. 그리고 **두 문서가 같은
-오류를 공유**했다 — 한쪽만 고치면 다른 쪽이 남는 전형이다.
+살아 있는 점수 문서가 등급 임계값을 정본과 다르게 적으면 대시보드 문구가 어긋난다.
+정본 = `src/constants.py::GRADE_THRESHOLDS`. 문서는 `docs/reference/scoring.md` 한 곳이다.
 
 ## 이 파일이 강제하는 것
 
@@ -27,10 +22,9 @@ import pytest
 _ROOT = Path(__file__).resolve().parents[3]
 _CONSTANTS = _ROOT / "src" / "constants.py"
 
-# 임계값을 문장으로 적는 문서들 (등급 문자 + 숫자 패턴이 나타나는 곳).
+# 임계값을 문장으로 적는 **살아 있는** 문서. 설계 브리프는 2026-08-16 에 퇴역했다.
 _DOCS = (
-    "docs/design/brief/00-service-overview.md",
-    "docs/design/brief/03-design-direction.md",
+    "docs/reference/scoring.md",
 )
 
 # `A(90+)` · `A (90+)` · `A 90` 형태를 모두 잡는다.

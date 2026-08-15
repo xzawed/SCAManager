@@ -258,5 +258,5 @@ alembic history --verbose
 
 - [Railway 운영 가이드](railway.md)
 - [환경변수 전체 목록](../reference/env-vars.md)
-- [DB/마이그레이션 규칙](.claude/rules/db.md) — ORM 변경 시 체크리스트
+- [DB/마이그레이션 규칙](../../.claude/rules/db.md) — ORM 변경 시 체크리스트
 - [운영 smoke check](operational-smoke-checks.md)

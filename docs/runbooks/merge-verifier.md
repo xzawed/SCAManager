@@ -104,4 +104,5 @@ When an auto-merge for a borderline-band PR triggers:
 - 환경변수: [`docs/reference/env-vars.md` §머지 검증자](../reference/env-vars.md#머지-검증자-2nd-llm-cross-vendor-opt-in)
 - 코드: [`src/gate/merge_verifier.py`](../../src/gate/merge_verifier.py) · [`src/verifier/openai_client.py`](../../src/verifier/openai_client.py)
 - 게이트 가드 규칙: [`.claude/rules/api.md`](../../.claude/rules/api.md) §2nd-LLM 검증자 가드
-- 설계: [`docs/superpowers/specs/2026-06-11-merge-verifier-design.md`](../superpowers/specs/2026-06-11-merge-verifier-design.md)
+- 설계 문서는 2026-08-16 이력 퇴역으로 삭제됐다 — 필요하면 git 이력에서 연다
+  (`git log --diff-filter=D -- docs/superpowers/specs/`). 현재 동작의 정본은 `src/gate/merge_verifier.py` 다.
