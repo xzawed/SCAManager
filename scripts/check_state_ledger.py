@@ -59,10 +59,6 @@ HIST_HEADING = "## 테스트 수 추적 이력"
 # Independent _first(TOTAL)/_first(UNIT) assembled a pair from two different matches.
 _UNIT_OPEN = re.compile(r"\((\d+)\s*→\s*\*\*(\d+)\*\*\s*단위")
 _FULL_TOTAL = re.compile(r"=\s*\*\*(\d+)\*\*\s*수집")
-# 하위 호환 별칭 — 외부 테스트가 예전에 쓰던 이름. 신규 코드는 formal_pairs 만.
-# Aliases for older tests. New code goes through formal_pairs only.
-_START = re.compile(r"\((\d+)\s*→")
-_END = re.compile(r"→\s*\*\*(\d+)\*\*\s*단위")
 _REASON_MIN = 16
 # 예외 상한. 늘리려면 이 숫자와 테스트 리터럴 집합을 같은 PR 에서 바꿔야 한다.
 # Cap on exceptions. Raising it is a two-file, reviewable change.
