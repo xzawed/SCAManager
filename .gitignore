@@ -74,6 +74,10 @@ Thumbs.db
 # Claude Code 런타임 상태 파일
 .claude/scheduled_tasks.lock
 
+# doc_review_gate 로컬 판정 원장 (문서 본문 없음 — 경로·판정·회계만)
+# Local doc-review verdict ledger (paths/verdicts/usage only — never document bodies)
+.claude/hooks/.doc_review_ledger.jsonl
+
 # Playwright MCP 세션 산출물 (로컬 디버깅용 — console 로그·page 스냅샷)
 # Playwright MCP session artifacts (local debugging — console logs, page snapshots)
 .playwright-mcp/

@@ -165,6 +165,7 @@ Claude Code 로컬 훅(`.claude/hooks/`)에서만 읽는 env — 운영 서버(R
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
 | `DOC_REVIEW_GATE_DISABLED` | `1`/`true`/`yes` 설정 시 문서 리뷰 게이트(`.claude/hooks/doc_review_gate.py`) 비용 kill-switch — 로컬 Anthropic 호출 0. **로컬 훅 전용** (운영 파이프라인 무관). 3-레이어 비용 제어 맥락: [`docs/runbooks/cost-controls.md`](../runbooks/cost-controls.md) | `0` (기본) |
+| `DOC_REVIEW_GATE_LEDGER` | 문서 심의 훅 로컬 판정 원장. **기본 ON** — `0`/`false`/`no` 만 끈다. 기록 파일은 `.claude/hooks/.doc_review_ledger.jsonl`(gitignore). 본문·diff·발췌는 기록하지 않는다 — 경로·개수·판정·캐시 회계·해시만. 로컬 훅 전용(운영 무관). | 미설정 (기본=ON) / `0` (끔) |
 | `SKIP_MAIN_RED_CHECK` | 임의 값 설정 시 SessionStart 의 `scripts/check_main_red.py` 가 main CI red 관측을 **건너뛴다**. 운영 서버 무관(로컬 훅 전용). 🔴 **무음이 아니다** — 건너뛴다는 한 줄을 인쇄한다. 미등재 킬스위치였던 것을 가시화(backlog R70) | 미설정 (기본) / `1` (건너뜀) |
 
 ## 내부 모듈 상수 (참고 — env var 아님)
