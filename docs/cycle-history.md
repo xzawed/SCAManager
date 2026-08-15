@@ -475,6 +475,7 @@ Anthropic 구조화 출력(`output_config.format`)을 훅 + 서비스 3경로에
 2. `pylint 10.00` — CI 강제 수치는 [ci.yml:203](../.github/workflows/ci.yml) `--fail-under=9.90`. 10.00 은 관측값이지 게이트가 아니라, 관측값이 흔들릴 때마다 템플릿이 **가짜 차단**을 만든다.
 3. `make migrate` 왕복 검증 (`downgrade -1` → `upgrade head`) — [Makefile:126-127](../Makefile) `migrate:` 는 `alembic upgrade head` 2줄뿐이고 Makefile 전체에 `downgrade` **0건**. 명령을 실행해도 왕복이 안 되는 **실행 불가 지시**.
 4. `docs/STATE.md 그룹 이력에 신규 파일 표 추가` — STATE.md 헤딩은 3개(현재 수치/주요 파일 역할/작업 이력)뿐. **그런 섹션이 없다.**
+   · **2026-08-15 정정**: 이 문장의 «3개» 는 **당시에도 틀렸다** — `## 테스트 수 추적 이력` 이 빠져 실제로는 **4개**였다(`grep -c "^## " docs/STATE.md` 실측). 결론(*"그런 섹션이 없다"*)은 그대로 참이라 판정은 유효하다. 원문은 그 시점 기록이라 재작성하지 않고 정정만 덧붙인다.
 
 **정책 19 슬롯 신설 (유일한 순증)** — [ci.yml:161-168](../.github/workflows/ci.yml)이 매 PR 에 claim-review 흔적을 요구하는데 템플릿에 자리가 없어 **직전 #1241 이 실제 red**(자초). 🔴 **공허 통과 방지 실증**: 예시값이 가드 정규식을 만족하면 *모든* PR 이 가드를 무력화하므로 3 시나리오 실행 검증 — (a) 일반+미기입 exit 0 · (b) **seal+미기입 exit 1** · (c) seal+기입 exit 0. placeholder 를 `<...>` 로 감싸 hex 형식·닫힌 열거형·16자 하한을 전부 빗나가게 했다. Grok(019fb01f) 독립 재현 = **SURVIVES**, 추가로 `find_seal_claims(template)==[]`(템플릿 자체에 seal 어휘 0 = repo 전체 오발화 없음) 확인. 순 결과 62 → 74줄이나 **렌더 본문은 축소**(체크박스 13 → 12, 증가분 전부 주석).
 
