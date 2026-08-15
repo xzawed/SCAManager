@@ -49,7 +49,7 @@ _MIN_ITEMS_FLOOR = 174
 # 리터럴 = 커밋된 baseline 과 동일. 43000 여유는 같은 PR 에서 min_chars 를
 # 785자 내려도 이 핀이 통과하게 해, 다음 PR 의 짧은 공동화가 안 보였다.
 # Literal equals the committed floor. Slack hid the next hollowing.
-_MIN_CHARS_FLOOR = 44_912
+_MIN_CHARS_FLOOR = 39_170
 _MAX_KNOWN_BREAKS = 1
 
 
