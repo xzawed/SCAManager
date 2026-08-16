@@ -856,6 +856,8 @@
       "auto_reject": "❌ 자동 반려: 점수 {score}점 (기준: {threshold}점 미만)",
       "manual_approve_body": "✅ 승인 by @{decided_by}",
       "manual_reject_body": "❌ 반려 by @{decided_by}",
+      "callback_head_moved": "⚠️ 분석 이후 head 가 이동해 승인 리뷰가 <b>게시되지 않았습니다</b> (미게시).",
+      "callback_failed": "⚠️ 승인 처리 중 오류가 발생해 리뷰가 <b>게시되지 않았습니다</b> (미게시).",
       "tg_review_title": "🔍 *PR 검토 요청*",
       "tg_repo_line": "리포: `{repo}` — PR #{pr}",
       "tg_score_line": "점수: *{score}점* ({grade}등급)",

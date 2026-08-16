@@ -856,6 +856,8 @@
       "auto_reject": "❌ 自動却下: スコア {score}点 (基準: {threshold}点未満)",
       "manual_approve_body": "✅ 承認 by @{decided_by}",
       "manual_reject_body": "❌ 却下 by @{decided_by}",
+      "callback_head_moved": "⚠️ 分析後に head が移動したため、承認レビューは<b>投稿されませんでした</b>。",
+      "callback_failed": "⚠️ 承認処理中にエラーが発生し、レビューは<b>投稿されませんでした</b>。",
       "tg_review_title": "🔍 *PRレビュー依頼*",
       "tg_repo_line": "リポ: `{repo}` — PR #{pr}",
       "tg_score_line": "スコア: *{score}点* ({grade})",

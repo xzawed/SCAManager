@@ -83,9 +83,17 @@ async def handle_gate_callback(  # pylint: disable=too-many-locals
     decision: str,
     decided_by: str,
     telegram_user_id: str | None = None,
+    chat_id: str | None = None,
 ) -> None:
-    """Telegram 인라인 키보드 콜백을 처리해 GitHub Review 결정을 실행한다."""
+    """Telegram 인라인 키보드 콜백을 처리해 GitHub Review 결정을 실행한다.
+
+    chat_id: 실패 시 버튼 누른 채팅으로 미게시 알림을 보낼 때 사용 (None 이면 알림 skip).
+    chat_id: used to notify the clicker when the GitHub review was NOT posted (skip if None).
+    """
     with SessionLocal() as db:
+        # 실패 알림 언어 — post 직전 resolve 결과를 except 에서 재사용 (미설정 시 default fallback)
+        # Language for failure notice — reuse the value resolved before post (default if unset)
+        language: str | None = None
         try:
             analysis = analysis_repo.find_by_id(db, analysis_id)
             if not analysis:
@@ -215,11 +223,37 @@ async def handle_gate_callback(  # pylint: disable=too-many-locals
                 "Gate callback: head moved since analysis — GitHub Review 미게시 (fail-closed): "
                 "analysis=%d (%s)", analysis_id, exc,
             )
+            # 갈래 A: claim 은 유지(철회 없음). 버튼 누른 사람에게 리뷰 미게시만 알린다.
+            # Branch A: keep the claim (no retraction). Only tell the clicker the review was NOT posted.
+            # 🔴 예외 문자열은 사용자 메시지에 넣지 않는다 — httpx 형제 경로가 URL 에 토큰을 실음.
+            # 🔴 Never put exception text in the user message — sibling httpx paths embed the bot token.
+            if chat_id is not None:
+                text = get_text(
+                    "notifier.gate.callback_head_moved",
+                    language or resolve_notification_language(db, config=None),
+                )
+                await _post_message_guarded(
+                    settings.telegram_bot_token,
+                    chat_id,
+                    {"text": text, "parse_mode": "HTML"},
+                )
         except (httpx.HTTPError, KeyError, ValueError, RuntimeError, SQLAlchemyError):
             # Phase H PR-6A: logger.exception 으로 stack trace 보존
             # RuntimeError 포함 — _run_auto_merge(legacy 경로)가 누출할 수 있어 콜백 격리 보강
             # Include RuntimeError — _run_auto_merge (legacy path) may leak it; isolate the callback
             logger.exception("Gate callback failed")
+            # 갈래 A: claim 유지 + 미게시 알림. 예외 본문(토큰 URL 가능)은 절대 발신하지 않는다.
+            # Branch A: keep claim + not-posted notice. Never send exception body (may hold token URL).
+            if chat_id is not None:
+                text = get_text(
+                    "notifier.gate.callback_failed",
+                    language or resolve_notification_language(db, config=None),
+                )
+                await _post_message_guarded(
+                    settings.telegram_bot_token,
+                    chat_id,
+                    {"text": text, "parse_mode": "HTML"},
+                )
 
 
 async def _post_message_guarded(bot_token, chat_id, payload):
@@ -255,6 +289,7 @@ async def _handle_gate_callback_guarded(
     decision: str,
     decided_by: str,
     telegram_user_id: str | None = None,
+    chat_id: str | None = None,
 ):
     """백그라운드 게이트 콜백 — 위와 동일한 이유로 예외를 흡수한다.
     Guarded gate callback; same rationale as _post_message_guarded.
@@ -267,6 +302,9 @@ async def _handle_gate_callback_guarded(
     못해(`missing-kwoa` 침묵) `handle_gate_callback` 시그니처가 바뀌어도 조용히 어긋난다.
     실제로 `#1122` 작업 중 같은 형태가 자기 테스트의 인자 누락을 숨기고 있었다.
     Explicit params (not **kwargs) so the linter verifies the call and signature drift fails loudly.
+
+    chat_id: 실패 시 미게시 알림 대상 채팅 (부재 시 None → 알림 skip).
+    chat_id: chat for the not-posted failure notice (None → skip notify).
     """
     try:
         await handle_gate_callback(
@@ -274,6 +312,7 @@ async def _handle_gate_callback_guarded(
             decision=decision,
             decided_by=decided_by,
             telegram_user_id=telegram_user_id,
+            chat_id=chat_id,
         )
     except (httpx.HTTPError, SQLAlchemyError) as exc:
         logger.warning("telegram gate callback failed: %s", type(exc).__name__)
@@ -404,11 +443,18 @@ async def telegram_webhook(  # pylint: disable=too-many-locals
     # 클릭 사용자 telegram_user_id 를 소유권 검증용으로 전달 (str 정규화, 부재 시 None → 차단)
     # Pass the clicking user's telegram_user_id for the ownership check (None → blocked)
     telegram_user_id = str(user_id) if user_id != "unknown" else None
+    # 실패 알림용 chat_id — message.chat.id 방어적 추출 (_handle_message :304-309 미러)
+    # chat_id for failure notice — defensive extract of message.chat.id (mirrors _handle_message)
+    _msg = (callback_query or {}).get("message") or {}
+    _chat = (_msg or {}).get("chat") or {}
+    _raw_chat_id = _chat.get("id")
+    chat_id = str(_raw_chat_id) if _raw_chat_id is not None else None
     background_tasks.add_task(
         _handle_gate_callback_guarded,
         analysis_id=analysis_id,
         decision=decision,
         decided_by=decided_by,
         telegram_user_id=telegram_user_id,
+        chat_id=chat_id,
     )
     return {"status": "ok"}
