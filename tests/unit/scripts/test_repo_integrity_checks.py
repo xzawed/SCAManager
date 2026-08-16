@@ -427,11 +427,30 @@ def test_formal_pairs_does_not_cross_assemble_a_decoy():
 
 def test_history_tail_uses_full_pairs_not_independent_first():
     """읽기 규약 통일 — `_history_tail` 은 `full_pairs` 를 호출하고
-    `_first(_STATE_HIST_*)` 로 독립 첫-매치하지 않는다.
+    누계·단위를 **따로** 첫-매치하지 않는다.
+
+    ## 2026-08-17 강화 — 이름 열거를 버리고 **형태**로 잰다
+
+    초판은 `_first(_STATE_HIST_TOTAL)` / `_first(_STATE_HIST_UNIT)` 이라는 **특정 이름**만
+    금지했다. 그런데 그 두 상수는 아무도 쓰지 않는 채 남아 CodeQL
+    `py/unused-global-variable`(alert 581·582)로 잡혔고, 삭제하는 순간 이 단언은
+    **영원히 참**이 된다 — 이름이 없으니 AST 에서 찾힐 리가 없다(A4 자기참조 공허화).
+
+    그래서 두 축으로 바꾼다:
+      ① `_history_tail` 이 `_first(<모듈 전역 정규식>)` 을 **어떤 이름으로도** 부르지 않는다
+         — 새 상수를 다른 이름으로 만들어 되살려도 잡힌다.
+      ② 문제의 두 이름이 모듈에 **다시 생기지 않았다** — 되살리면 그 사고의 도구가 돌아온다.
+
+    ## 왜 이 규약인가 (원 사고)
+
+    누계와 단위를 따로 첫-매치하면 한 불릿 안의 decoy 쌍이 틀린 (C, B) 를 조립한다.
+    실측: 1171 이 파생 3지점에 퍼졌다.
+    Shape-based, not name-based: deleting the constants would make a name-based assertion
+    vacuously true forever.
     """
     fn = _history_tail_ast()
     called_full = False
-    independent_first = False
+    independent_first: list[str] = []
     for node in ast.walk(fn):
         if not isinstance(node, ast.Call):
             continue
@@ -440,13 +459,23 @@ def test_history_tail_uses_full_pairs_not_independent_first():
             called_full = True
         if isinstance(func, ast.Name) and func.id == "_first" and node.args:
             arg0 = node.args[0]
-            if isinstance(arg0, ast.Name) and arg0.id in {
-                "_STATE_HIST_TOTAL",
-                "_STATE_HIST_UNIT",
-            }:
-                independent_first = True
+            # 🔴 이름을 열거하지 않는다 — `_first(<Name>)` 형태 자체가 금지다.
+            # Any Name argument is the forbidden shape, whatever it is called.
+            if isinstance(arg0, ast.Name):
+                independent_first.append(arg0.id)
+
     assert called_full, "_history_tail 이 full_pairs 를 호출하지 않는다"
-    assert not independent_first, "_history_tail 이 _STATE_HIST_* 를 독립 _first 한다"
+    assert not independent_first, (
+        f"_history_tail 이 전역 정규식을 독립 _first 한다: {independent_first} — "
+        "누계·단위를 따로 읽으면 decoy 쌍이 틀린 (C, B) 를 조립한다"
+    )
+
+    for gone in ("_STATE_HIST_TOTAL", "_STATE_HIST_UNIT"):
+        assert not hasattr(check_docs_sync, gone), (
+            f"{gone} 이 되살아났다 — 2026-08-17 에 CodeQL 지적(py/unused-global-variable)으로 "
+            "지운 것이고, 되살리면 독립 첫-매치 사고의 도구가 돌아온다. "
+            "읽기는 full_pairs() 하나로 통일한다"
+        )
 
 
 # --- check_docs_sync 의존성 핀 축 (backlog R15 — ground truth 대조) ---

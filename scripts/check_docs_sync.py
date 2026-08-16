@@ -41,8 +41,16 @@ _STATE_CELL_UNIT = re.compile(r"단위 (\d+) \+ 통합 \d+ \(현재\)")
 # Anchor on the section, then its last bullet — searching the whole file would stay green
 # even if the section were deleted.
 _STATE_HIST_HEADING = "## 테스트 수 추적 이력"
-_STATE_HIST_TOTAL = re.compile(r"=\s*\*\*(\d+)\*\* 수집")
-_STATE_HIST_UNIT = re.compile(r"→\s*\*\*(\d+)\*\* 단위")
+# 🔴 `_STATE_HIST_TOTAL` / `_STATE_HIST_UNIT` 은 **의도적으로 없다** (2026-08-17 삭제).
+#    누계·단위를 **따로** 첫-매치하면 한 불릿 안의 decoy 쌍이 틀린 (C, B) 를 조립한다 —
+#    실제로 1171 이 파생 3지점에 퍼진 사고가 났다. 그래서 읽기는 `full_pairs()` 하나로
+#    통일했고, 두 정규식은 아무도 쓰지 않는 채 남아 CodeQL `py/unused-global-variable`
+#    (alert 581·582) 로 잡혔다.
+#    **다시 추가하지 말 것** — 되살리면 그 사고의 도구가 돌아온다. 회귀 가드가
+#    `_history_tail` 이 `full_pairs` 를 쓰는지와 이 이름들의 부재를 함께 잰다:
+#    `tests/unit/scripts/test_repo_integrity_checks.py::test_history_tail_uses_full_pairs_not_independent_first`
+# Deliberately absent: reading total/unit independently lets a decoy pair inside one bullet
+# assemble a wrong (C, B). Reading is unified on full_pairs(); do not resurrect these.
 # README 배지: "Tests-5196%2B_total_(5042_unit_%2B_154_integration)"
 _README_BADGE = re.compile(r"Tests-(\d+)%2B_total_\((\d+)_unit_%2B_\d+_integration\)")
 # README FastAPI 배지: "FastAPI-0.141-009688" — 관례상 핀의 major.minor 만 표기
