@@ -10,11 +10,11 @@
 - `docs/cycle-history.md`·`docs/backlog.md` 퇴역. 과거 서사는 git, 열린 일감은 GitHub Issues.
 - 이 파일은 현재 수치 + 측정 방법만 유지한다. 테스트 수 SSOT = 파일 끝 불릿 한 줄.
 
-**종합 수치**: 전체 **7265** 수집 (단위 **7094** + 통합 171) / E2E **121** (`#1291` 중복 제거 후; CI 120 통과 / 1 skip / 0 실패) / pylint **9.99/10** (`src/` — CI `lint-src` 가 `--fail-under` 를 README 배지에서 파생. `scripts/` 미게이트).
+**종합 수치**: 전체 **7267** 수집 (단위 **7096** + 통합 171) / E2E **121** (`#1291` 중복 제거 후; CI 120 통과 / 1 skip / 0 실패) / pylint **9.99/10** (`src/` — CI `lint-src` 가 `--fail-under` 를 README 배지에서 파생. `scripts/` 미게이트).
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 전체 테스트 | **7265 수집** | `pytest tests/` — 단위 7094 + 통합 171 (현재). SSOT = 아래 §테스트 수 추적 이력 한 줄. |
+| 전체 테스트 | **7267 수집** | `pytest tests/` — 단위 7096 + 통합 171 (현재). SSOT = 아래 §테스트 수 추적 이력 한 줄. |
 | 통합 테스트 | **171개** | `py -3 -m pytest --collect-only -q tests/integration`. PG 전용은 `pg-concurrency` CI job, 로컬 미설정 시 skip. |
 | E2E 테스트 | **121개** | `make test-e2e` (Chromium Playwright). = 121 collected (110 표준 + 11 perf). 성분 대조 = `scripts/check_e2e_scope.py`. `make test-perf` 로 perf 만. e2e ↔ `tests/integration` 동시 실행 금지 (`e2e/pytest.ini` 가 asyncio_mode 미설정). |
 | SonarCloud Quality Gate | **OK** (2026-07-22 live API) | `api/qualitygates/project_status` |
@@ -74,4 +74,4 @@
 > 아래 **한 줄**이 `check_docs_sync.py` 의 SSOT 다. 테스트 수가 바뀌면 이 불릿의
 > `(A→**B** 단위 … = **C** 수집)` 만 고치고 `py -3 scripts/check_docs_sync.py --fix` 를 돌린다.
 
-- **현재** (7092→**7094** 단위; 통합 171 불변 = **7265** 수집, collect-only 실측 2026-08-16)
+- **현재** (7094→**7096** 단위; 통합 171 불변 = **7267** 수집, collect-only 실측 2026-08-17)

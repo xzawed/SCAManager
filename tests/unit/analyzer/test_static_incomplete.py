@@ -82,6 +82,15 @@ def _force_absent(monkeypatch, absent_names):
 
     `is_enabled` 를 이름 기준으로 갈아끼워 `unavailable_tools` 경로를 실제로 태운다
     (합성 결과 객체를 만들지 않는다 — 불변식 2).
+
+    🔴 **`shutil.which` 도 함께 갈아끼운다** (2026-08-17 CI 실측으로 추가).
+    `is_enabled` 만 조작하면 «바이너리 부재» 축은 **실행 환경에 맡겨진다**:
+    개발 PC(Windows)에는 shellcheck 이 없어 통과했지만, CI 러너에는 설치돼 있어
+    `_binary_is_absent` 가 False 를 내며 두 테스트가 red 였다.
+    헬퍼 이름이 «바이너리 없음» 이면 그 사실을 **테스트가 만들어야** 한다 —
+    환경이 우연히 만들어 주기를 기대하면 그 초록은 머신마다 다른 것을 잰다.
+    Also stub `shutil.which`: patching `is_enabled` alone leaves the binary-absence axis to
+    the host, so the same test measured different things on the dev PC and on CI.
     """
     from src.analyzer.pure.registry import REGISTRY
 
@@ -90,6 +99,12 @@ def _force_absent(monkeypatch, absent_names):
             monkeypatch.setattr(
                 type(analyzer), "is_enabled", lambda self, ctx: False, raising=False
             )
+
+    absent = set(absent_names)
+    monkeypatch.setattr(
+        "src.analyzer.io.static.shutil.which",
+        lambda name: None if name in absent else f"/usr/bin/{name}",
+    )
 
 
 def test_unprovisioned_tool_absence_surfaces_without_blocking(monkeypatch):
@@ -204,4 +219,60 @@ def test_operator_opt_out_suppresses_the_provisioned_regression_promotion(monkey
     assert "shellcheck" in result.unavailable_tools, "전제 붕괴 — 부재 기록이 없다"
     assert result.incomplete is False, (
         "운영자가 도구를 끈 상태인데 조달 회귀로 승격했다 — 자기 설정이 결함으로 보고된다"
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 🔴 2026-08-17 운영 회귀 — `is_enabled()` False 의 두 원인을 갈라야 한다
+#
+# `#1410` 이 조달 회귀 승격을 `ran == 0` 게이트 밖으로 꺼내면서, `is_enabled()` 가
+# **정책상 미적용**으로 False 를 내는 도구까지 «배포 회귀» 로 읽었다. bandit 이 정확히
+# 그 경우다 — `_BanditAnalyzer.is_enabled` 는 `not ctx.is_test` 이고 bandit 은
+# `PROVISIONED_ANALYZERS` 안에 있다. 결과: **모든 Python 테스트 파일이 incomplete**.
+# 실측: analyze_file("tests/unit/test_foo.py", …) → unavailable=['bandit'] incomplete=True
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def test_policy_disabled_provisioned_tool_does_not_block(monkeypatch):
+    """🔴 bandit 이 테스트 파일에서 꺼지는 것은 **배포 회귀가 아니다**.
+
+    이 단언이 없으면 테스트 파일을 건드리는 모든 PR 의 auto-merge 가 막힌다 —
+    조달은 멀쩡한데 게이트만 닫히는, 이 리포가 R21 에서 겪은 «벽» 의 재발이다.
+    A policy-gated tool (bandit on tests) must not read as a deployment regression.
+    """
+    from src.analyzer.io.static import PROVISIONED_ANALYZERS, analyze_file
+
+    assert "bandit" in PROVISIONED_ANALYZERS, "전제 붕괴 — bandit 은 조달 대상이어야 한다"
+    # 🔴 bandit 바이너리는 **있다고 본다** — 이 리포의 requirements.txt 가 설치한다.
+    #    `_binary_is_absent` 가 그것을 확인하므로 승격되면 안 된다.
+    monkeypatch.setattr("src.analyzer.io.static.shutil.which", lambda _n: "/usr/bin/" + _n)
+
+    result = analyze_file("tests/unit/test_foo.py", "def test_x():\n    assert True\n")
+
+    assert "bandit" in result.unavailable_tools, (
+        "전제 붕괴 — bandit 이 is_enabled False 로 unavailable_tools 에 들어가야 한다"
+    )
+    assert result.incomplete is False, (
+        "정책상 미적용(테스트 파일의 bandit)을 배포 회귀로 승격했다 — "
+        "테스트를 건드리는 모든 PR 의 auto-merge 가 막힌다"
+    )
+
+
+def test_binary_absence_still_blocks_when_which_returns_none(monkeypatch):
+    """대칭 — 바이너리가 **정말로** 없으면 여전히 차단한다.
+
+    위 완화가 조달 회귀 축까지 꺼버리면 `#1410` 이 되돌려진다.
+    """
+    from src.analyzer.io.static import PROVISIONED_ANALYZERS, analyze_file
+
+    assert "shellcheck" in PROVISIONED_ANALYZERS
+    _force_absent(monkeypatch, {"shellcheck"})
+    # `which` 가 None → 진짜 부재
+    monkeypatch.setattr("src.analyzer.io.static.shutil.which", lambda _n: None)
+
+    result = analyze_file("deploy.sh", "#!/bin/sh\necho hi\n")
+
+    assert "shellcheck" in result.unavailable_tools
+    assert result.incomplete is True, (
+        "바이너리가 실제로 없는데 차단하지 않았다 — #1410 이 되돌려졌다"
     )
