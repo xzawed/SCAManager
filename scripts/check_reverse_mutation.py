@@ -27,6 +27,10 @@ PR 의 **생산 표면 변경 전체**를 base 로 되돌린 뒤, 그 PR 이 추
 - 되돌림이 no-op 이면(파일이 실제로 안 바뀜) **판정 불가로 실패**한다 — 뮤테이션 유효성
   (AGENTS.md 불변식 2)을 게이트 자신에게도 적용한다.
 - baseline(되돌리기 전)이 이미 red 면 **판정 불가로 실패**한다 — 무엇 때문에 빨간지 모른다.
+- **삭제한 테스트는 대상이 아니다.** HEAD 에 없는 경로는 고를 수 없다 — 고르면 pytest 가
+  0건 수집 + 비-0 을 내 *되돌리기 전에 이미 red* 로 오판한다 (`#1385`).
+  선택이 비면 이 축은 **안 잰다**(성공 배너가 아니다). 셀렉터 고장으로 글롭이
+  비는 스코프 붕괴와는 다른 빈 범위다.
 
 ## 🔴 이 게이트가 닫지 못하는 것 (정직 기준)
 
@@ -109,6 +113,25 @@ def classify(files: list[str]) -> tuple[list[str], list[str]]:
     return prod, tests
 
 
+def _blob_exists(sha: str, path: str, cwd: Path) -> bool:
+    """`sha` 트리에 `path` blob 이 있는가."""
+    probe = _run(["git", "cat-file", "-e", f"{sha}:{path}"], cwd, timeout=60)
+    return probe.returncode == 0
+
+
+def existing_at(sha: str, paths: list[str], cwd: Path) -> list[str]:
+    """`sha` 트리에 실제로 있는 경로만 남긴다.
+
+    PR 이 테스트를 삭제하면 `git diff --name-only` 에 그 경로가 남는다.
+    worktree 는 HEAD 라 파일이 없고, pytest 가 0건 수집 + 비-0 을 내
+    '되돌리기 전에 이미 red' 로 오판한다 (`#1385` · 2026-08-16).
+    삭제된 테스트는 보호할 관측자가 없다 — 대상이 아니다.
+    Keep only paths that exist as blobs at `sha`. A test the PR deleted
+    cannot be a reverse-mutation target (#1385).
+    """
+    return [p for p in paths if _blob_exists(sha, p, cwd)]
+
+
 def changed_files(base_sha: str, head_sha: str, cwd: Path) -> list[str] | None:
     """`base...head`(merge-base) 변경 파일. 판정 불가면 None.
 
@@ -188,13 +211,28 @@ def evaluate(base_sha: str, head_sha: str, repo: Path | None = None) -> tuple[in
     if not prod:
         return 0, [f"⏭️  생산 표면 변경 0건 — 되돌릴 것이 없다 (테스트 {len(tests)}건)."]
 
+    # HEAD 에 있는 테스트만 고른다. 삭제분은 대상이 아니다 (`#1385`).
+    # Only tests that still exist at HEAD are targets; a deleted test is not.
+    present = existing_at(head_sha, tests, root)
+    if not present:
+        # 정당한 빈 범위 — 이 PR 이 바꾼 테스트를 전부 지웠다. 측정할 관측자가 없다.
+        # 셀렉터 고장(classify 가 0건)은 위의 '테스트 변경 0건' 분기.
+        # 둘 다 ✅/통과 를 찍지 않는다 — 안 잰 것을 통과로 읽히면 traps A6 이다.
+        # Legitimately empty: every changed test was deleted by this PR.
+        # Distinct from selector collapse (classify returned no tests).
+        # Neither path may print a success banner (traps A6).
+        return 0, [
+            f"⏭️  HEAD 에 남은 테스트 0건 — 삭제된 테스트는 역-뮤테이션 대상이 아니다. "
+            f"이 축은 안 쟀음 (생산 표면 {len(prod)}건 · 삭제된 테스트 {len(tests)}건).",
+        ]
+
     with tempfile.TemporaryDirectory() as tmp:
         wt = Path(tmp) / "wt"
         add = _run(["git", "worktree", "add", "--detach", str(wt), head_sha], root, timeout=600)
         if add.returncode != 0:
             return 1, [f"🔴 worktree 생성 실패 — 판정 불가: {add.stderr[-200:]}"]
         try:
-            base_proc = _pytest(tests, wt)
+            base_proc = _pytest(present, wt)
             if base_proc.returncode != 0:
                 return 1, [
                     "🔴 되돌리기 **전에 이미 red** — 무엇 때문에 빨간지 알 수 없다(판정 불가).",
@@ -203,8 +241,7 @@ def evaluate(base_sha: str, head_sha: str, repo: Path | None = None) -> tuple[in
 
             existing, created = [], []
             for f in prod:
-                probe = _run(["git", "cat-file", "-e", f"{base_sha}:{f}"], wt, timeout=60)
-                (existing if probe.returncode == 0 else created).append(f)
+                (existing if _blob_exists(base_sha, f, wt) else created).append(f)
             if existing:
                 rv = _run(["git", "checkout", base_sha, "--", *existing], wt, timeout=600)
                 if rv.returncode != 0:
@@ -218,7 +255,7 @@ def evaluate(base_sha: str, head_sha: str, repo: Path | None = None) -> tuple[in
             if not (dirty.stdout or "").strip():
                 return 1, ["🔴 되돌림이 **no-op** — 뮤테이션이 무효라 아무것도 증명하지 못한다."]
 
-            after = _pytest(tests, wt)
+            after = _pytest(present, wt)
             tail = [l for l in (after.stdout or "").splitlines()
                     if "passed" in l or "failed" in l or "error" in l]
             summary = tail[-1] if tail else "?"
@@ -230,14 +267,14 @@ def evaluate(base_sha: str, head_sha: str, repo: Path | None = None) -> tuple[in
                 lines.append(f"   신호 등급: **{grade}**"
                              + ("  (수집 오류 — 결합은 증명하나 단언 내용은 증명하지 않는다)"
                                 if grade == "collection" else ""))
-                lines.append(f"   되돌린 생산 파일 {len(prod)}건 · 실행 테스트 {len(tests)}건")
+                lines.append(f"   되돌린 생산 파일 {len(prod)}건 · 실행 테스트 {len(present)}건")
                 return 0, lines
 
             lines.append("🔴 역-뮤테이션이 **green** — 이 PR 의 테스트는 이 PR 의 변경을 "
                          "관측하지 않는다.")
             lines.append(f"   되돌린 생산 파일 {len(prod)}건: {', '.join(prod[:6])}"
                          + (" …" if len(prod) > 6 else ""))
-            lines.append(f"   실행 테스트 {len(tests)}건: {', '.join(tests[:6])}")
+            lines.append(f"   실행 테스트 {len(present)}건: {', '.join(present[:6])}")
             lines.append(f"   결과: {summary}")
             lines.append("")
             lines.append("   → 그 변경을 **실제로 깨뜨리는** 단언을 추가하세요.")
