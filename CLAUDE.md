@@ -99,25 +99,25 @@ GitHub Push/PR 이벤트 시 정적 분석 + AI 코드 리뷰를 자동 수행�
 모든 AI 에이전트(Claude Code 및 서브에이전트)는 SCAManager 작업 시 아래 규칙을 **반드시** 따른다.
 `.claude/` 디렉토리에 정의된 스킬과 에이전트는 선택이 아닌 의무적 도구다.
 
-> **📚 협업 정책**: 사용자가 합의한 협업 정책의 정본은 [`.claude/policies/active.md`](.claude/policies/active.md) 와 [`history.md`](.claude/policies/history.md) 다. 핵심 5건은 아래 "사용자 협업 정책 (2026-05-01 합의)" 섹션 명시.
+> **📚 협업 정책**: 사용자가 합의한 협업 정책의 정본은 [`.claude/policies/active.md`](.claude/policies/active.md) 다. 핵심 5건은 아래 "사용자 협업 정책 (2026-05-01 합의)" 섹션 명시.
 
 ### 사용자 협업 정책 (2026-05-01 합의)
 
 > **아래는 default rule 만이다.** 사용자 발화 인용 · 진화 이력 · 검증 사례 · Why/How 는
-> [`.claude/policies/active.md`](.claude/policies/active.md) 와
-> [`history.md`](.claude/policies/history.md) 가 정본이다(정책 17 원칙 2).
+> [`.claude/policies/active.md`](.claude/policies/active.md) 가 정본이다(정책 17 원칙 2).
+> 진화 이력 문서는 2026-08-16 에 삭제됐다 — 정책의 **현재 계약**만 남긴다.
 > 판단이 갈리거나 위반 회복이 필요하면 **그 파일을 열 것** — 여기 요약만 보고 결정하지 않는다.
 
 | # | default rule | detail |
 |---|---|---|
-| **1** | 옵션 제시 시 **장단점 표**(옵션·장점·단점·위험·권장시점) + ★ 권장 + "고려했으나 제시 안 한 안" 1줄. "전부다" 류 일괄 결정 **또는 다중 PR 빠른 진행 신호 ≥10회** 시 **검토 깊이 자가 보고 요청 의무**(누락 시 다음 응답에서 회복). 예외: 단순 머지 보고 + 옵션 표 결정 | [history](.claude/policies/history.md#정책-1-진화) |
+| **1** | 옵션 제시 시 **장단점 표**(옵션·장점·단점·위험·권장시점) + ★ 권장 + "고려했으나 제시 안 한 안" 1줄. "전부다" 류 일괄 결정 **또는 다중 PR 빠른 진행 신호 ≥10회** 시 **검토 깊이 자가 보고 요청 의무**(누락 시 다음 응답에서 회복). 예외: 단순 머지 보고 + 옵션 표 결정 | [active](.claude/policies/active.md) |
 | **2** | 모든 PR 본문에 §"🔍 사용자 검증 필요" — 시각/운영 확인 1~3개 명시. "tests pass" 만 적기 **금지** | [active](.claude/policies/active.md#정책-2) |
-| **3** | 위임받은 작업 중 **Claude 가 판단한 항목**은 PR 본문 또는 응답 끝에 명시 | — |
+| **3** | 위임받은 작업 중 **Claude 가 판단한 항목**은 PR 본문 또는 응답 끝에 명시 | [active](.claude/policies/active.md#정책-3) |
 | **4** | 단언과 회귀 가드를 **같은 PR** 에 묶는다. 가드 없는 단언은 사고 시 책임 귀속 불가 | — |
 | **5** | 사이클 끝마다 종료 신호 명시. 다중 단계 발화("A+B+C 진행") 후 일부만 하고 종료하면 **잔여 단계 진행 신호 회신 의무**. **Phase 종료 진입 시 정책 2/5/8/11 4 정책 cross-reference 자가 검토 의무**(한 정책만 적용하면 나머지 3 위반). **NEW-P0-N(운영 사고 차단)은 매 사이클 회신 의무** — 보류 default·정책 9 완화 **모두 미적용** | [active](.claude/policies/active.md#정책-5-phase-종료-cross-reference) |
 | **6** | 에이전트 프롬프트에 `line:span` 인용 강제. 정책·메모리 본문의 `file:line` 은 **`grep -n` 실측값**이어야 한다(추정 금지 — drift 실사고 5건) | — |
 | **8** | 회고는 **최소 4~5 에이전트 병렬 + 관점 분리 + cross-verify 1건(5+1)**. Claude 단독 회고 금지. 직전 정식 회고 이후 **≥3 세션 또는 ≥15 PR** 시 강제 트리거(SessionStart 훅이 경고) · 이월하려면 `docs/runbooks/retro-cadence-deferrals.md` 에 **사용자 승인 인용 + 목표 세션 기록 의무**. **회고 범위 = 직전 회고 이후 머지 PR + 본 세션 산출물 전체**(기계 산출 `scripts/retro_scope.py`) — 세션 산출물이 빠지면 **가장 검증 덜 된 코드가 회고를 피한다**. 자기회고 갈음은 **사용자 명시 승인 시에만** | [active](.claude/policies/active.md#정책-8-회고-카덴스) |
-| **9** | 회고 직후 **자유 발언 4 섹션**(바라는 점 / 자성 / 필요한 것 / 수정 제안). 완화: 회신 부재 시 자율 판단 보고로 대체 OK — 단 (a) 운영 사고 차단 (b) destructive (c) architecture/UX/데이터모델 은 **명시 회신 의무**. **Phase 종료 시** §"🔍 회고 질문(사용자 회신 의무)" 1줄 추가 | [active](.claude/policies/active.md) |
+| **9** | 회고 직후 **자유 발언 4 섹션**(바라는 점 / 자성 / 필요한 것 / 수정 제안). 완화: 회신 부재 시 자율 판단 보고로 대체 OK — 단 (a) 운영 사고 차단 (b) destructive (c) architecture/UX/데이터모델 은 **명시 회신 의무**. **Phase 종료 시** §"🔍 회고 질문(사용자 회신 의무)" 1줄 추가 | — (detail 섹션 없음 — 이 표 한 줄이 전부) |
 | **10** | PR 은 **직접 생성**(`gh pr create`) — URL 안내 금지. 본문은 **임시 파일 + `--body-file`** 로만(`@-`/stdin 금지 — 8건 본문 소실 사고) + 생성 직후 `gh pr view --json body` 길이 검증 | [active](.claude/policies/active.md#정책-10) |
 | **11** | `templates/**`·`static/**` 등 **시각 변경 PR** 은 본문 최상단에 **4테마 × 모바일/데스크탑 8조합** 체크리스트. "테스트 통과" 만 적기 금지 — 정적↔시각 비대칭 명시 의무 | [active](.claude/policies/active.md#정책-11) |
 | **12** | MCP: SELECT-only 자율 OK / **INSERT·UPDATE·DELETE·DROP·ALTER + PII·credential SELECT = 사전 승인 의무**. 호출 시 PR 본문에 결과 명시 | [active](.claude/policies/active.md#정책-12) |
@@ -157,7 +157,7 @@ Codex mutual 검증 폐기. **`codex exec` 실패 = 정상**(이상 징후로 �
   PR 은 `claim-review-not-required` 로 통과할 수 없다. 대상 목록·예외·근거는 AGENTS.md 가 정본.
   집행: `check_claim_review_trace.py` · `tests/unit/scripts/test_claim_review_mandatory_on_guards.py`.
 
-detail: [active](.claude/policies/active.md) · 진화 이력: [history](.claude/policies/history.md)
+detail: [active](.claude/policies/active.md)
 
 ### 작업 시작 전 (매 작업 30초)
 

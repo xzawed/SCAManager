@@ -20,7 +20,7 @@ paths:
   신규 진입점은 `tests/unit/test_worker_session_routing.py` 의 `_BACKGROUND_MODULES` 등재 의무.
   *왜 여기 있나*: `db.md` path 매칭이 이 영역을 포함하지 않아 **자동 로드되지 않는다**.
 
-## fail-open 봉인 — 이 영역 최다 재발 클래스
+## 미분석·실패가 만점으로 머지되면 안 된다
 
 - **미분석·실패 상태가 만점으로 auto-merge 되면 안 된다.** 3축 전부 마커로 차단:
   - AI 리뷰 genuine 실패(`api_error`·`parse_error`) → `src/gate/_common.py` 의 `ai_review_failed()`
@@ -38,10 +38,10 @@ paths:
   가드: `tests/unit/analyzer/test_procurement_contract.py` · `tests/unit/analyzer/test_static_incomplete.py`
 - **외부 린터가 "실행됐지만 아무것도 분석 안 함" 은 `[]` 와 구별 불가 → 점수 인플레.** 계약 3항:
   (a) 실행 cwd = **분석 대상 파일의 디렉토리** (b) 비-JSON stdout = `RuntimeError`
-  (c) `ruleId=None` + 非fatal = **"린트되지 않았다"** 라 집계 금지 + fail-closed.
+  (c) `ruleId=None` + 非fatal = **"린트되지 않았다"** 라 집계 금지 + 예외로 중단.
   🔴 **mock 은 이 클래스를 원리적으로 못 잡는다** — 단위 40건 green 중 운영은 무동작이었다.
   신규/수정 외부 린터는 **실바이너리 통합 테스트 동반 의무**(`tests/integration/test_eslint_analyzer.py` 형식).
-- **린터 메시지 3분류**: 코드 결함(집계) / 미린트(fail-closed raise) / **우리 설정에 대한 메타(드롭)**.
+- **린터 메시지 3분류**: 코드 결함(집계) / 미린트(raise) / **우리 설정에 대한 메타(드롭)**.
   *왜*: 대상 리포가 자기 설정 룰을 참조하면 린터가 "모르는 룰" 로 보고하는데, 이를 결함으로 세면
   **정상 코드를 감점**(score-lie → auto-merge 전파)하고 미린트로 세면 정상 PR 이 incomplete 가 된다.
   구조 신호만으로 (c)를 (a)와 구별할 수 없어 텍스트에 의존한다 → 실바이너리 테스트가 유일한 방어다.
@@ -52,7 +52,7 @@ paths:
   *왜*: `with_for_update()` 는 SQL 잠금만 걸고 ORM 속성을 갱신하지 않아, identity map 의 stale 값으로
   판정하면 **gate(auto-merge) + notify 가 2회** 실행된다(Postgres 동일).
   회귀 가드는 **교차 세션**으로 짤 것 — 같은 세션 테스트는 결함이 있어도 통과한다.
-  ⚠️ SQLite 는 `FOR UPDATE` 를 조용히 버린다 → 그 가드가 증명하는 것은 **stale read 봉인**이지 행 잠금이 아니다.
+  ⚠️ SQLite 는 `FOR UPDATE` 를 조용히 버린다 → 그 가드가 증명하는 것은 **stale read 차단**이지 행 잠금이 아니다.
   ⚠️ `populate_existing()` 은 **미flush 더티 속성을 무예외로 폐기**한다(운영은 `autoflush=False`).
 - **멱등성 = commit SHA 중복 체크.** `pr_number` 갱신은 **None → 최초 PR# 1회만**(first-writer-wins);
   다른 non-None 값이면 WARNING 후 skip. *왜*: 동일 head SHA 를 두 PR 이 공유하면 댓글·승인·머지가 오배송된다.
@@ -116,7 +116,7 @@ paths:
   전역 `AI_REVIEW_DISABLED` 가 리포별보다 우선. 검증 절차 = `docs/runbooks/cost-controls.md`
 - **`asyncio.gather` 내 코루틴은 각각 독립 `SessionLocal()`** — 세션 공유 시 트랜잭션 충돌.
 - **`_run_static_with_timeout`** = deadline 기반 **파일별 순차**, 타임아웃 시 부분결과 보존 + `incomplete`.
-  단일 파일 예외는 격리, **비어있지 않은 배치 전량 실패 → `incomplete`**(fail-closed 안전망).
+  단일 파일 예외는 격리, **비어있지 않은 배치 전량 실패 → `incomplete`**(안전망).
 - **Railway webhook** `POST /webhooks/railway/{token}` — 토큰 미일치 404, `railway_api_token` 은 Fernet 복호화 후 전달.
   `RailwayDeployEvent` 는 **nested**(`event.project.project_id`) — 평면 접근 불가.
 - **`commit_scamanager_files`** — 기존 파일이면 GET 으로 sha 조회 후 body 포함(누락 시 422).
