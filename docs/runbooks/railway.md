@@ -1,22 +1,21 @@
 # Railway 배포 + 운영 DB 운영 가이드
 
-> CLAUDE.md 분리본 (사이클 85 정리, 2026-05-06). Railway 배포 변경 / 운영 DB 작업 시 read 의무.
+Railway 배포 변경 / 운영 DB 작업 시 연다.
 
-## 운영 DB 환경 (2026-05-02 기준)
+## 운영 DB
 
-Supabase PostgreSQL + 온프레미스 PostgreSQL 이중 setup. Railway PostgreSQL 도 호환 (legacy 또는 staging). 모든 환경에 동일 alembic 마이그레이션 적용 — schema 일관성 보장.
+Supabase PostgreSQL + 온프레미스 PostgreSQL 이중. Railway PostgreSQL 도 호환.
+모든 환경에 동일 alembic 적용.
 
-운영 SQL 검증 도구 `scripts/dev/verify_phase2_data.sql` + runbook(2026-08-16 이력 퇴역으로 삭제 — `git log --diff-filter=D -- docs/runbooks/`)이 4 환경 (Supabase Dashboard / Supabase MCP / 온프레미스 psql / Railway) 모두 호환 (`\echo` meta-command 미사용 + `section` 라벨 컬럼).
+## Railway ↔ Supabase 연결 invariants
 
-## 🔴 Railway ↔ Supabase 연결 invariants (2026-06-15 사고 학습)
-
-> 2026-06-15 prod 수 시간 다운(pooler host `aws-0`→`aws-1` 한 줄)의 재발 방지. 연결/credential 장애 진단 시 이 박스를 먼저 읽는다. 핵심 메모리: `feedback-connectivity-probe-first`.
+연결/credential 장애 진단 시 이 절을 먼저 읽는다. 메모리: `feedback-connectivity-probe-first`.
 
 **① Railway egress = 기본 IPv4-only (Outbound IPv6 는 service별 opt-in·기본 비활성) → pooler(IPv4 도달 경로) 사용 의무.**
 Railway 컨테이너는 **기본적으로** IPv6 아웃바운드를 사용하지 않는다(Railway Outbound IPv6 는 service별 opt-in — 미활성이 기본값, `src/database.py:23` 주석). 따라서 **Supabase pooler 엔드포인트(`*.pooler.supabase.com` — IPv4 도달 경로)** 를 사용한다. 🔴 direct 호스트(`db.<ref>.supabase.co`)는 2024년 이후 **IPv6-only**(IPv4 A 레코드 없음 — 유료 IPv4 add-on 별매)라 **Outbound IPv6 미활성 기본 Railway 에서 도달 불가** → pooler 사용(권장) 또는 Railway Outbound IPv6 opt-in 활성화 또는 유료 IPv4 add-on 필요. (Supabase IPv4 add-on 이 있으면 direct 도 IPv4 도달 가능.) `DB_FORCE_IPV4=true`(`src/config.py` `db_force_ipv4`, default `false` → `src/database.py::_ipv4_connect_args`)는 `socket.getaddrinfo(..., AF_INET)` 로 **A 레코드(IPv4)를 강제 선택**해 psycopg2 `hostaddr` 로 전달(SSL 은 hostname 으로 검증)하는 옵션이다 — **dual-stack 호스트에서 기본 해석이 라우팅 불가한 IPv6 을 고르는 것을 교정**하는 용도이며, A 레코드가 없는 IPv6-only 호스트에 IPv4 를 만들어내지는 못한다(해석 실패 시 `{}` 반환 = no-op → 원래 IPv6 해석으로 `Network unreachable`). 즉 *도달성*은 pooler(또는 유료 add-on)가 보장하고, `DB_FORCE_IPV4` 는 dual-stack 의 IPv6 선호를 교정하는 보조 수단이다. 🔴 **이 프로젝트 운영 기본값(Railway Outbound IPv6 미활성 + Supabase IPv4 add-on 미사용)에서는 direct `db.<ref>`(IPv6-only) 사용 금지 — pooler 사용** (Outbound IPv6 opt-in 또는 IPv4 add-on 시에만 direct 가능).
 
 **② pooler `aws-N` 클러스터 prefix 는 project-specific·가변 — stale 로그 가정 금지.**
-pooler 호스트의 `aws-0`/`aws-1`/`aws-2…` prefix 는 프로젝트가 올라간 Supavisor 클러스터에 따라 다르고 **이전될 수 있다**. canonical 호스트는 **Supabase Dashboard → Connect** 또는 **Supabase MCP `get_project`** 에서 매번 **재도출**한다. 🔴 첫 배포 로그·기존 `.env`·다른 문서에서 복사한 호스트 값은 *사실이 아니라 가설* 이다(2026-06-15 = `aws-0` 을 미검증 상속 → 수 시간 낭비. 정답 `aws-1` 은 repo `docs/runbooks/onpremise-migration-guide.md:339` 에 내내 존재 → `grep aws-1` 한 줄이면 발견). 호스트를 의심할 땐 `grep` 으로 repo 안 대안 호스트를 먼저 표면화한다.
+pooler 호스트의 `aws-0`/`aws-1`/`aws-2…` prefix 는 프로젝트가 올라간 Supavisor 클러스터에 따라 다르고 **이전될 수 있다**. canonical 호스트는 **Supabase Dashboard → Connect** 또는 **Supabase MCP `get_project`** 에서 매번 **재도출**한다. 첫 배포 로그·기존 `.env`·다른 문서에서 복사한 호스트 값은 *사실이 아니라 가설* 이다. 호스트를 의심할 땐 `grep` 으로 repo 안 대안 호스트를 먼저 표면화한다.
 
 **③ 유료 IPv4 add-on 은 최후 수단** — 무료 secret-safe probe 가 전 permutation(host·user·접미사·port·sslmode·IP-family)을 반증한 *후에만* 검토. 비용 결정 전에 "어떤 단일 변수가 틀렸는가"를 probe 로 먼저 좁힌다.
 
@@ -35,7 +34,8 @@ pooler 호스트의 `aws-0`/`aws-1`/`aws-2…` prefix 는 프로젝트가 올라
 ```bash
 # 시작 명령 (railway.toml에 설정됨 — --proxy-headers 포함)
 uvicorn src.main:app --host 0.0.0.0 --port $PORT --proxy-headers
-# DB 마이그레이션은 앱 lifespan에서 자동 실행
+# 마이그레이션 실게이트 = railway.toml preDeployCommand `alembic upgrade head`
+# lifespan `_run_migrations` 는 실패해도 STRICT_MIGRATION 이 아니면 앱을 띄운다
 ```
 
 ## Railway 대시보드 설정
@@ -59,7 +59,7 @@ uvicorn src.main:app --host 0.0.0.0 --port $PORT --proxy-headers
 | 3 | `nixpacks.toml`의 `providers` | NIXPACKS 언어 감지 오버라이드 |
 | 4 | NIXPACKS 자동 감지 | `requirements.txt`, `package.json` 등 파일 기반 |
 
-현재: `railway.toml`에 `buildCommand` = eslint/solc-select/rubocop/golangci-lint 전역 설치 + `npm ci && npm run build` (Tailwind v4 CSS 빌드 포함) 체인 설정됨. Node.js는 `nixpacks.toml` `[phases.setup]` NodeSource 스크립트(`deb.nodesource.com/setup_20.x`)로 설치. Python 의존성은 nixpacks Python provider 기본값(venv 자동 생성 + pip install)으로 처리 — `[phases.install]` 직접 작성 시 pip exit 127 위험 (2026-05-10 사고 사례: nixpacks.toml `[phases.install]` 명시 → Python venv provider 우선순위 충돌 → pip exit 127 → Railway 빌드 실패, #379 수정).
+현재: `railway.toml`에 `buildCommand` = eslint/solc-select/rubocop/golangci-lint 전역 설치 + `npm ci && npm run build` (Tailwind v4 CSS 빌드 포함) 체인. Node.js는 `nixpacks.toml` `[phases.setup]` NodeSource 스크립트(`deb.nodesource.com/setup_20.x`)로 설치. Python 의존성은 nixpacks Python provider 기본값(venv + pip). `[phases.install]` 을 직접 쓰면 Python venv provider 와 충돌해 pip exit 127 이 난다.
 
 ## requirements.txt 분리
 
@@ -75,7 +75,7 @@ requirements-dev.txt  ← 로컬 개발 환경 — pytest, playwright 포함 (-r
 - **NIXPACKS nixPkgs 오버라이드 함정**: `nixpacks.toml`에 `nixPkgs = ["nodejs"]` 등을 명시하면 Python provider의 nix 자동 설치(python3 + pip 포함)를 **완전히 교체**한다. Python+Node.js 공존 패턴: `nixPkgs` 사용 금지, `aptPkgs = ["nodejs", "npm"]`으로 Node.js 설치, pip install은 Python provider 자동 처리.
 - **APP_BASE_URL**: Railway 리버스 프록시 환경 필수 설정. **OAuth redirect_uri**와 **GitHub Webhook 등록 URL** 양쪽에 HTTPS URL 강제 적용 — 미설정 시 `http://`로 등록.
 - **Railway 빌드 검증 필수**: `git push` 성공 ≠ Railway 빌드 성공. `railway.toml`, `nixpacks.toml`, `requirements.txt` 변경 후 Railway 대시보드 빌드 로그 직접 확인 후 완료 선언.
-- **빌드 실패는 로그 우선, 추측 수정 금지**: Railway/CI 빌드 실패 보고를 받으면 즉각 수정 PR 을 작성하지 말 것. 전체 빌드 로그(실패 구간 위아래 30줄)를 먼저 받아 근본 원인을 특정한 뒤 수정. 2026-04-23 rubocop/prism 사건에서 "추측 기반 1차 수정 → 2차 재실패 → 로그 분석 후 3차 성공" 패턴으로 1시간 낭비 실적 있음. 상세: 회고(회고 문서는 2026-08-16 퇴역, git 이력 참조).
+- **빌드 실패는 로그 우선, 추측 수정 금지**: Railway/CI 빌드 실패 보고를 받으면 즉각 수정 PR 을 작성하지 말 것. 전체 빌드 로그(실패 구간 위아래 30줄)를 먼저 받아 근본 원인을 특정한 뒤 수정.
 - **gem/npm transitive 의존성 핀**: Ruby gem 또는 npm 패키지의 **직접 의존성만 버전 고정해도 transitive 의존성은 시간에 따라 바뀐다**. rubocop 1.57.2 는 pure Ruby 지만 transitive `rubocop-ast` 가 2024년 이후 prism 네이티브 확장을 필수로 요구하게 변경됨 → Railway 빌드 실패. 해결책은 `gem install rubocop-ast -v 1.36.2` (prism-free 마지막 버전) 를 rubocop 설치 **이전에** 명시 핀. 새 Ruby 도구 추가 시 동일 패턴 주의.
-- **SMTP_PORT 빈 문자열**: Railway 환경에서 `SMTP_PORT=""`로 설정 시 pydantic ValidationError 크래시. Railway Variables에서 SMTP_PORT 값을 삭제하거나 숫자로 설정.
+- **SMTP_PORT 빈 문자열**: `config.py` `coerce_smtp_port` 가 `""`/`None` 을 587 로 바꾼다(크래시 없음). 그래도 Railway Variables 에는 숫자를 넣는 편이 낫다.
 - **postgres:// URL**: Railway PostgreSQL이 `postgres://`로 제공하는 경우 `config.py`에서 `postgresql://`로 자동 변환.

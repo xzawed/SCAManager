@@ -1,25 +1,22 @@
 # 브랜치 보호 운영 (main)
 
-> 🔴 **이 문서는 GitHub 설정의 기록이지 집행면이 아니다.** 리포 안의 어떤 테스트도
+> **이 문서는 GitHub 설정의 기록이지 집행면이 아니다.** 리포 안의 어떤 테스트도
 > 라이브 설정을 관측하지 않는다(사유는 아래 §관측의 한계). 설정을 바꾸면 **여기도 같이**
 > 갱신해야 하고, 그 동기화는 사람이 한다.
 
-## 🔴 허용 머지 방식 — **3종 전부 유지** (2026-08-08 사용자 결정)
+## 허용 머지 방식 — 3종 전부 유지
 
 `gh api repos/xzawed/SCAManager` 실측: `allow_squash_merge` · `allow_merge_commit` ·
 `allow_rebase_merge` **전부 true**. `squash_merge_commit_message` = `COMMIT_MESSAGES`.
 
-세션17 에서 *"표면을 줄이려면 squash 만 남기는 방법이 있다"* 고 제안했고 사용자가
-**"셋 다 좋습니다"** 로 유지를 결정했다. 따라서 이것은 **영구 제약**이다:
+> **커밋 메시지를 판정 입력으로 쓰는 모든 가드는 세 방식 전부에서 동작해야 한다.**
+> tip 하나(`git log -1`)가 아니라 **범위**로 읽는다 — merge commit / rebase 는 tip 에
+> 마커가 없다.
 
-> 🔴 **커밋 메시지를 판정 입력으로 쓰는 모든 가드는 세 방식 전부에서 동작해야 한다.**
+정본: `scripts/check_test_count_sync.py` 의 `before..after` 범위 조회.
+회귀: `tests/unit/scripts/test_deferral_marker_survives_merge.py`.
 
-이 제약이 실제로 결함을 만든 전례: `STATE-sync-deferred:` 마커 초판이 push 이벤트에서
-`git log -1` 만 읽어, **merge commit 으로 머지하면 tip 에 마커가 없어** "PR 초록 → main red"
-가 재현됐다(Grok claim-review `019fe026` 이 BROKEN 판정, `#1315` 에서 `before..after` **범위**
-조회로 수정). 새 가드가 커밋 메시지를 읽는다면 **범위로 읽어라 — tip 하나로는 부족하다.**
-
-## 현재 상태 (2026-08-06 실측)
+## 현재 상태
 
 - `enforce_admins`: **true** — 관리자도 우회 불가
 - `required_pull_request_reviews`: **없음** (사람 리뷰 요구 없음)
@@ -37,22 +34,10 @@
 | 7 | `lint-js 공허화 차단 (검사 범위 비면 fail)` | |
 | 8 | `PG-only tests (SKIP LOCKED + migration round-trip)` | |
 | 9 | `Analyze (python)` | CodeQL |
-| 10 | **`E2E (Playwright)`** | 🔴 **2026-08-06 승격 (backlog R64)** |
+| 10 | **`E2E (Playwright)`** | required. `enforce_admins: true` 이라 플레이크 1건이 전 리포 머지를 멈춘다 — 그때 아래 롤백을 쓴다. |
 
-## R64 — e2e 승격 근거 (실측)
-
-| 구간 | e2e job 성공률 |
-|---|---|
-| `#1294`(CSP 결함 + CI 의 CSS 빌드 누락) 이전 | **2 / 17** |
-| 그 이후 | **16 / 16** |
-
-빨강의 원인은 플레이크가 아니라 **원인이 밝혀진 두 결함**이었고, 그것이 닫힌 뒤로 한 번도
-실패하지 않았다. `#1298` 이 공허화 3경로(전건 skip · 수집 범위 축소 · 통과 하한)를 닫아
-"초록이 공허할 수 있다" 는 축도 함께 제거했다.
-
-🔴 **정직 기준**: 16/16 은 **점추정**이다. 95% 신뢰 상한(rule of three)으로 플레이크율은
-**≤ 17%** 이지 0% 가 아니다. `enforce_admins: true` 라 플레이크 1건이 전 리포 머지를
-멈출 수 있다 — 그럴 때 아래 롤백을 쓴다.
+이름 불변 가드: `tests/unit/scripts/test_required_check_names.py` (`ci.yml` job `name:` ↔ 위 표).
+라이브 GitHub 목록은 이 테스트가 **보지 않는다**.
 
 ## 승격·롤백 절차
 
@@ -78,11 +63,10 @@ gh api repos/xzawed/SCAManager/branches/main/protection \
   --jq '{checks:(.required_status_checks.contexts|length), admins:.enforce_admins.enabled}'
 ```
 
-## 체크가 인프라 사유로 실패했을 때 (실사례 2026-08-06)
+## 체크가 인프라 사유로 실패했을 때
 
-required 체크는 **코드와 무관한 이유로도** 빨개진다. `#1306` 에서 `Repo integrity guards`
-job 이 `Set up job` 단계에서 실패했다 — 러너 할당 실패이고 리포 코드와 무관하다.
-`enforce_admins: true` 라 그 순간 머지는 물리적으로 막힌다.
+required 체크는 **코드와 무관한 이유로도** 빨개진다(러너 할당 실패 등 `Set up job` /
+`Checkout`). `enforce_admins: true` 라 그 순간 머지는 물리적으로 막힌다.
 
 **대응 순서** (롤백은 마지막 수단이다):
 
@@ -92,9 +76,9 @@ job 이 `Set up job` 단계에서 실패했다 — 러너 할당 실패이고 �
    나머지 job 이 끝날 때까지 기다린 뒤 `gh run rerun <run_id> --failed` 로 실패 job 만 돌린다.
 3. 재실행도 같은 단계에서 실패하면 그때 §승격·롤백 절차의 롤백을 검토한다.
 
-🔴 **`--no-verify`·admin 우회는 선택지가 아니다** — `enforce_admins: true` 는 그러라고 켠 것이다.
+**`--no-verify`·admin 우회는 선택지가 아니다** — `enforce_admins: true` 는 그러라고 켠 것이다.
 
-## 🔴 이름이 곧 계약이다
+## 이름이 곧 계약이다
 
 required check 는 **(SHA, 이름)** 으로 식별된다. `ci.yml` 의 job `name:` 을 바꾸면
 GitHub 이 기다리는 이름의 체크는 **영원히 보고되지 않고** 머지가 멈춘다 —
@@ -104,9 +88,9 @@ GitHub 이 기다리는 이름의 체크는 **영원히 보고되지 않고** �
 job 이름을 바꿀 때는 **같은 PR 에서** 위 표와 그 테스트의 리터럴, 그리고 라이브 설정을
 함께 갱신한다.
 
-## 관측의 한계 (정직 기준)
+## 관측의 한계
 
-🔴 **리포 안의 어떤 가드도 라이브 브랜치 보호를 보지 못한다.** GitHub 에서 항목을 빼도
+**리포 안의 어떤 가드도 라이브 브랜치 보호를 보지 못한다.** GitHub 에서 항목을 빼도
 CI 는 전건 초록이다. 관측하려면 `Administration: read` 토큰이 필요한데, 그것을 리포
 시크릿에 두면 **같은 리포의 어떤 워크플로에서도 읽을 수 있어** containment 가 성립하지
 않는다(Environment 스코프 + 브랜치 제한이 필요). 그래서 만들지 않았다 —
@@ -114,12 +98,18 @@ CI 는 전건 초록이다. 관측하려면 `Administration: read` 토큰이 필
 
 ## 알려진 상호작용 — auto-merge
 
-`mergeable_state="blocked"`(required check 미충족)는 `merge_reasons.BRANCH_PROTECTION_BLOCKED`
-로 매핑되고, 그 태그는 `_RETRIABLE_TAGS`(= `unstable_ci`, `unknown_state_timeout`)에
-**없다** → 재시도 큐가 기다리지 못하는 **종결 실패**다.
+`mergeable_state="blocked"`(required check 미충족 또는 규칙상 충족 불가)는
+`merge_reasons.BRANCH_PROTECTION_BLOCKED` 로 매핑된다. 이 태그는 `_RETRIABLE_TAGS` 에
+**있다** — 집합은 `UNSTABLE_CI` · `UNKNOWN_STATE_TIMEOUT` · `BRANCH_PROTECTION_BLOCKED`
+(`src/gate/merge_reasons.py` 의 `_RETRIABLE_TAGS`).
 
-즉 required check 가 아직 도는 동안 auto-merge 가 시도되면 그 PR 은 영구 포기된다.
-🔴 이것은 R64 가 만든 것이 **아니다** — 브랜치 보호 자체(2026-08-01, R2-b, 사용자 승인)가
-켜진 시점부터 있던 성질이고, 체크를 하나 더 넣으면 그 창이 길어질 뿐이다.
-분류를 바꾸는 것(= `blocked` 를 retriable 로)은 auto-merge 동작 변경이라 **High tier**
-(정책 15)로 별도 결정이 필요하다 — backlog 에 등재돼 있다.
+재시도 여부는 `retry_policy.should_retry(tag, ci_status)` 가 정한다.
+`BRANCH_PROTECTION_BLOCKED` 는 **`ci_status == "running"` 일 때만** 큐에 넣는다.
+
+- required check 가 아직 도는 중이면 재시도 큐가 기다린다.
+- CI 가 끝났는데도 (`passed` / `failed` / `unknown`) 여전히 blocked 면 종결한다
+  — 리뷰 미승인처럼 기다려도 풀리지 않는 경우다. 이 태그는 `UNSTABLE_CI` 와 달리
+  `passed` 를 재시도하지 않는다.
+
+가드: `tests/unit/gate/test_retry_policy.py` ·
+`tests/unit/gate/test_merge_reasons.py` (`test_branch_protection_blocked_is_retriable`).
