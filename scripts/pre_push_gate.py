@@ -17,9 +17,13 @@
 ## 이 스크립트가 덮는 것 / 덮지 못하는 것 (정직 기준)
 
 덮는다 — CI 가 강제하고 로컬에서 네트워크 없이 재현 가능한 것:
-  · repo-integrity stdlib 가드 7종 (whole-repo 상태)
-  · PR-diff 한정 4종 (flake8 F401/F841 · dual-import · noqa 은닉 · dead-code)
-  · `--full` 시 pylint(`--fail-under=9.90`) + bandit + `pytest tests/unit`
+  · repo-integrity stdlib 가드 (whole-repo 상태) — 목록 정본은 `_INTEGRITY` + `_INTEGRITY_WITH_ARGS`
+  · PR-diff 한정 — 목록 정본은 `_DIFF_SCOPED` + flake8 F401/F841
+  · `--full` 시 pylint(임계는 README 배지에서 파생) + bandit + `pytest tests/unit`
+
+  개수를 여기 적지 않는다 — 2026-08-16 실측에서 이 docstring 의 «7종» 이 실제 13 과
+  어긋나 있었다. 목록이 늘면 손유지 숫자가 조용히 거짓이 된다(N지점 손유지).
+  Counts are not duplicated here; the tuples above are the single source.
 
 **덮지 못한다** — 여기서 초록이어도 CI 는 red 일 수 있다:
   · CodeQL · SonarCloud · Codecov(patch coverage) · TruffleHog · pip-audit  (서비스 의존)
