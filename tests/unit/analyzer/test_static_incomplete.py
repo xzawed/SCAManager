@@ -129,3 +129,79 @@ def test_provisioned_tool_absence_still_blocks(monkeypatch):
         "조달된 도구가 사라졌는데 차단하지 않았다 — 배포 회귀가 무음으로 통과한다"
     )
     assert "shellcheck" in result.unavailable_tools
+
+
+def test_provisioned_tool_absence_blocks_even_when_another_analyzer_ran(monkeypatch):
+    """🔴 조달된 도구가 사라지면 **다른 도구가 돌았어도** 차단한다.
+
+    ## 이것이 왜 별도 축인가 — 위 테스트는 이 결함을 보지 못한다
+
+    바로 위 `test_provisioned_tool_absence_still_blocks` 는 semgrep 까지 함께 없애
+    `ran == 0` 을 만든 뒤에야 차단을 확인한다. 그 테스트의 주석은 그 조정을
+    *"처음엔 shellcheck 만 없애고 «차단 안 됨» 을 결함으로 오독했다"* 라고 적었다 —
+    **오독이 아니라 실제 결함이었다.** 테스트가 코드에 맞춰 굽은 것이다.
+
+    ## 실측된 운영 연쇄 (2026-08-16 재검증)
+
+    `railway.toml` 의 조달은 `|| echo WARNING` 으로 실패를 삼킨다. rubocop·golangci-lint·
+    slither 가 빠져도 semgrep 은 `requirements.txt` 로 항상 설치되고
+    `SUPPORTED_LANGUAGES` 에 ruby·go·solidity 가 **모두** 있다. 따라서 `ran >= 1` 이 되어
+    승격 분기 자체가 돌지 않고, `incomplete` 가 서지 않아
+    `src/gate/actions/auto_merge.py` 의 차단이 발동하지 않는다 →
+    **Ruby·Go·Solidity PR 이 전용 분석기 0회 실행으로 정적 만점을 받고 auto-merge 에 도달한다.**
+
+    `PROVISIONED_ANALYZERS` 의 docstring 은 스스로
+    *"a listed tool going missing is a deployment regression (block)"* 이라 적는다.
+    이 테스트는 코드가 그 계약을 실제로 이행하는지 잰다.
+    A provisioned tool going missing must block regardless of what else ran.
+    """
+    from src.analyzer.io.static import PROVISIONED_ANALYZERS, analyze_file
+
+    assert "shellcheck" in PROVISIONED_ANALYZERS, "전제 붕괴 — shellcheck 는 조달 대상이어야 한다"
+    # 🔴 semgrep 은 **없애지 않는다** — 그것이 이 축의 전부다.
+    _force_absent(monkeypatch, {"shellcheck"})
+
+    result = analyze_file("deploy.sh", "#!/bin/sh\necho hi\n")
+
+    assert "shellcheck" in result.unavailable_tools, (
+        "전제 붕괴 — shellcheck 가 unavailable_tools 에 기록되지 않았다"
+    )
+    assert result.incomplete is True, (
+        "조달된 shellcheck 가 사라졌는데 semgrep 이 돌았다는 이유로 통과했다 — "
+        "배포 회귀가 무음으로 정적 만점을 받고 auto-merge 에 도달한다"
+    )
+
+
+class _OptOutConfig:
+    """`disabled_tools` 만 가진 최소 stub (`test_static_disabled.py` 와 같은 관용구)."""
+
+    def __init__(self, disabled):
+        self.disabled_tools = list(disabled)
+
+
+def test_operator_opt_out_suppresses_the_provisioned_regression_promotion(monkeypatch):
+    """🔴 운영자가 명시적으로 끈 상태면 조달 회귀 승격도 하지 않는다.
+
+    `is_enabled()` 는 «바이너리 부재» 와 «이 파일엔 해당 없음» 을 구별하지 않는다.
+    운영자가 `disabled_tools` 로 도구를 껐는데 그것을 «배포 회귀» 로 되돌려주면
+    **자기 설정이 결함으로 보고**된다 — 원래 승격 분기가 `opted_out == 0` 을 요구한
+    이유(Grok claim-review P1)와 같은 축이고, `ran` 게이트를 푼 뒤에도 유지돼야 한다.
+
+    이 단언이 없으면 `opted_out` 조건을 지워도 초록이다(뮤테이션 H 생존 실측).
+    The operator's own opt-out must never be reported back as a deployment regression.
+    """
+    from src.analyzer.io.static import PROVISIONED_ANALYZERS, analyze_file
+
+    assert "shellcheck" in PROVISIONED_ANALYZERS
+    assert "semgrep" in PROVISIONED_ANALYZERS
+    _force_absent(monkeypatch, {"shellcheck"})
+
+    # semgrep 을 운영자가 끈다 → opted_out >= 1. shellcheck 은 부재(조달 회귀 후보).
+    result = analyze_file(
+        "deploy.sh", "#!/bin/sh\necho hi\n", repo_config=_OptOutConfig(["semgrep"])
+    )
+
+    assert "shellcheck" in result.unavailable_tools, "전제 붕괴 — 부재 기록이 없다"
+    assert result.incomplete is False, (
+        "운영자가 도구를 끈 상태인데 조달 회귀로 승격했다 — 자기 설정이 결함으로 보고된다"
+    )
