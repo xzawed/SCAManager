@@ -94,6 +94,14 @@ async def handle_gate_callback(  # pylint: disable=too-many-locals
         # 실패 알림 언어 — post 직전 resolve 결과를 except 에서 재사용 (미설정 시 default fallback)
         # Language for failure notice — reuse the value resolved before post (default if unset)
         language: str | None = None
+        # 🔴 GitHub 리뷰가 **실제로 게시됐는지** — 실패 알림 문구가 이 값에 달려 있다.
+        #    `post_github_review` 는 성공했는데 그 뒤 `_run_auto_merge` 가 예외를 내면
+        #    아래 broad except 로 떨어진다. 이 플래그가 없으면 그때도 «게시되지 않았습니다» 를
+        #    보내게 되는데 그것은 **거짓**이다 — 리뷰는 GitHub 에 붙어 있다.
+        #    실측 적발: `#1412`(fcad25ca) 가 그 상태로 머지됐다.
+        # Whether the GitHub review actually landed; the failure notice text depends on it,
+        # because a post-success + auto-merge-failure falls into the same broad except.
+        review_posted = False
         try:
             analysis = analysis_repo.find_by_id(db, analysis_id)
             if not analysis:
@@ -169,6 +177,10 @@ async def handle_gate_callback(  # pylint: disable=too-many-locals
                 # 결속은 post_github_review 가 POST 전에 head 를 조회해 직접 강제한다.
                 commit_id=analysis.commit_sha,
             )
+            # 🔴 여기를 지나면 리뷰는 GitHub 에 **붙어 있다**. 이 뒤의 어떤 실패도
+            #    «게시되지 않았습니다» 로 알리면 거짓이다.
+            # Past this point the review is live on GitHub; a "not posted" notice would be a lie.
+            review_posted = True
             # 결정은 위 claim 단계에서 이미 원자적으로 기록됨 (별도 저장 불필요)
             # The decision was already recorded atomically by the claim above (no save needed)
             result_dict = analysis.result if isinstance(analysis.result, dict) else {}
@@ -242,11 +254,17 @@ async def handle_gate_callback(  # pylint: disable=too-many-locals
             # RuntimeError 포함 — _run_auto_merge(legacy 경로)가 누출할 수 있어 콜백 격리 보강
             # Include RuntimeError — _run_auto_merge (legacy path) may leak it; isolate the callback
             logger.exception("Gate callback failed")
-            # 갈래 A: claim 유지 + 미게시 알림. 예외 본문(토큰 URL 가능)은 절대 발신하지 않는다.
-            # Branch A: keep claim + not-posted notice. Never send exception body (may hold token URL).
+            # 갈래 A: claim 유지 + 실패 알림. 예외 본문(토큰 URL 가능)은 절대 발신하지 않는다.
+            # 🔴 **문구는 리뷰가 실제로 붙었는지에 따라 갈린다.** `post_github_review` 가 성공한 뒤
+            #    `_run_auto_merge` 가 터지면 여기로 오는데, 그때 «게시되지 않았습니다» 를 보내면
+            #    사용자는 (a) 다시 누르거나(무시된다) (b) GitHub 에서 수동 승인해 **중복 리뷰**를
+            #    만든다. 게이트가 조용한 것보다 **틀린 말을 하는 것이 나쁘다**.
+            # Branch A: keep claim + failure notice. The wording depends on whether the review
+            # actually landed — telling the user "not posted" when it is posted causes a duplicate.
             if chat_id is not None:
                 text = get_text(
-                    "notifier.gate.callback_failed",
+                    "notifier.gate.callback_posted_then_failed" if review_posted
+                    else "notifier.gate.callback_failed",
                     language or resolve_notification_language(db, config=None),
                 )
                 await _post_message_guarded(
