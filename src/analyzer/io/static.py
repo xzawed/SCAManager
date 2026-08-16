@@ -104,8 +104,10 @@ def _run_analyzers(ctx: AnalyzeContext, result: StaticAnalysisResult) -> tuple[i
         supported += 1
         if not analyzer.is_enabled(ctx):
             # 바이너리 부재 = 배포 이미지에 조달되지 않음. 기록만 하고 계속 — 승격 판정은
-            # 호출부에서 "실행 0개" 일 때만(semgrep 등이 커버하는 언어의 과차단 방지).
-            # Binary absent. Record only; the caller promotes solely when ZERO analyzers ran.
+            # 호출부가 한다. 🔴 조달 계약(`PROVISIONED_ANALYZERS`) 안 도구면 `ran` 과 무관하게
+            # 승격하고, 계약 밖 도구는 «실행 0개» 일 때만 `uncovered_language` 로 가시화한다.
+            # Binary absent. Record only; the caller decides — provisioned tools promote
+            # regardless of `ran`, unprovisioned ones only surface when ZERO analyzers ran.
             result.unavailable_tools.append(analyzer.name)
             continue
         if analyzer.name in disabled:
@@ -207,6 +209,33 @@ def analyze_file(  # pylint: disable=too-many-locals
     if supported == 0 and language and language != "unknown":
         result.uncovered_language = language
 
+    # 🔴 **조달 회귀는 `ran` 과 무관하다** (2026-08-16 재검증 P0 — 이 리포의 운영 사고 축).
+    #
+    # 아래 `ran == 0` 게이트는 *"optional 도구 하나 없다고 과차단하지 말자"* 는 결정이었고
+    # 그 자체는 옳다. 그런데 그 뒤에 들어온 `PROVISIONED_ANALYZERS` 갈라치기가 **그 게이트
+    # 안쪽**에 놓이면서, 조달 대상 도구가 사라져도 semgrep 하나만 돌면 승격이 **도달 불가**가
+    # 됐다. `PROVISIONED_ANALYZERS` docstring 은 스스로 "a listed tool going missing is a
+    # deployment regression (block)" 이라 적는데 코드가 그 계약을 이행하지 않았다.
+    #
+    # 실측 연쇄: `railway.toml` 이 조달 실패를 `|| echo WARNING` 으로 삼킴 → rubocop·
+    # golangci-lint·slither 부재 → 그러나 semgrep 은 `requirements.txt` 상시 설치이고
+    # `SUPPORTED_LANGUAGES` 에 ruby·go·solidity 가 있어 `ran >= 1` → incomplete 미설정 →
+    # `score_is_unreliable()` False → `auto_merge.py` 의 incomplete 차단 미발동.
+    # 결과: 그 세 언어 PR 이 **전용 분석기 0회 실행**으로 정적 만점을 받고 auto-merge 에 도달.
+    #
+    # 🔴 `opted_out == 0` 은 유지한다 — 운영자가 명시적으로 끈 것을 결함으로 되돌려주면 안 된다.
+    # A provisioned tool going missing is a deployment regression regardless of what else ran;
+    # the `ran == 0` gate only ever protected *optional* tools.
+    provisioned_missing = [
+        t for t in result.unavailable_tools if t in PROVISIONED_ANALYZERS
+    ]
+    if provisioned_missing and opted_out == 0:
+        result.incomplete = True
+        logger.warning(
+            "provisioned analyzer missing for %s (language=%s, ran=%d) — %s",
+            filename, language, ran, ", ".join(sorted(provisioned_missing)),
+        )
+
     if ran == 0 and result.unavailable_tools and opted_out == 0:
         # 🔴 **조달 계약으로 갈라친다** (backlog R21, 사용자 결정 2026-08-01 — 옵션 C).
         # `unavailable_tools`(바이너리 부재)를 무조건 incomplete 로 올리면, 배포 이미지가
@@ -218,18 +247,14 @@ def analyze_file(  # pylint: disable=too-many-locals
         # "차단 없이 가시화만" 이라 적은 것과 정면 모순이기도 하다.
         #
         # 갈라치는 기준은 **의도**다:
-        #   · 조달 대상인데 없다 → 실제 배포 회귀 → incomplete (fail-closed 보존)
+        #   · 조달 대상인데 없다 → 실제 배포 회귀 → incomplete (**위 블록이 처리한다**)
         #   · 애초에 조달 대상이 아니다 → 제품 미제공 → `uncovered_language` 와 동급, 가시화만
-        # Split by procurement intent: a PROVISIONED tool going missing is a real deployment
-        # regression (keep blocking); a never-provisioned tool is product scope (surface only).
-        blocking = [t for t in result.unavailable_tools if t in PROVISIONED_ANALYZERS]
-        if blocking:
-            result.incomplete = True
-            logger.warning(
-                "no analyzer ran for %s (language=%s) — provisioned but missing: %s",
-                filename, language, ", ".join(sorted(blocking)),
-            )
-        else:
+        # 🔴 조달 회귀 판정을 여기서 **다시 하지 않는다** — 같은 로직을 두 곳에 두면 한쪽만
+        #    고쳐지고 다른 쪽이 조용히 낡는다(정책 16). 위 블록이 `ran` 과 무관하게 판정하므로
+        #    여기 남는 것은 «조달 대상이 아닌 도구만 부재» 경우뿐이다.
+        # Split by procurement intent; the regression axis is decided above (independent of `ran`),
+        # so only the never-provisioned case remains here.
+        if not provisioned_missing:
             # 조달 대상이 아닌 도구만 부재 — 차단하지 않고 미커버로 표면화한다.
             # Only never-provisioned tools are absent: surface as uncovered, do not block.
             result.uncovered_language = result.uncovered_language or language
