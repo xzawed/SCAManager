@@ -212,9 +212,9 @@ STATUS:     static-only | reproduced
 
 | 영향 계층 | 라우팅 |
 |-----------|--------|
-| `wrong-merge` · `secret` · `fail-open` | [`owed-verification.md`](owed-verification.md) **안전등급** (SessionStart 훅 집행) |
+| `wrong-merge` · `secret` · `fail-open` | [GitHub Issues](https://github.com/xzawed/SCAManager/issues) — 운영에서 아직 확인되지 않은 경고 |
 | `silent-disable` | [GitHub Issues](https://github.com/xzawed/SCAManager/issues) — 단 **사용자 가시 효과 명시 의무** ("언어 X 가 영영 미분석") 없으면 잡무로 죽는다 |
-| `score-lie` | 🔴 **merge/gate 에 영향하면 안전등급**. 순수 대시보드 표시 오류만 backlog |
+| `score-lie` | merge/gate 에 영향하면 Issue. 순수 대시보드 표시 오류도 Issue |
 
 > `score-lie` 분기는 협의 중 Grok 이 Claude 안(전량 backlog)을 반박해 수정된 것이다 —
 > 부풀린 점수가 auto-merge 를 유발하면 그것은 대시보드 문제가 아니다.

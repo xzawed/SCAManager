@@ -104,7 +104,7 @@ def test_file_without_a_matching_test_falls_back_to_collection():
 
 @pytest.mark.parametrize("path", [
     "alembic/env.py",
-    "scripts/check_retro_cadence.py",
+    "scripts/check_main_red.py",
     "src/gate/engine.py",
 ])
 def test_high_defect_roots_are_watched(path):
@@ -121,8 +121,8 @@ def test_alembic_edits_route_to_migration_tests():
 
 def test_script_edits_route_to_their_exact_test_when_one_exists():
     """`scripts/X.py` → `tests/unit/scripts/test_X.py`(있으면), 없으면 디렉토리."""
-    assert derive_test_target("scripts/check_retro_cadence.py", _ROOT) == (
-        "tests/unit/scripts/test_check_retro_cadence.py"
+    assert derive_test_target("scripts/check_main_red.py", _ROOT) == (
+        "tests/unit/scripts/test_check_main_red.py"
     )
     assert derive_test_target("scripts/does_not_exist_xyz.py", _ROOT) == "tests/unit/scripts"
 
@@ -166,7 +166,7 @@ def _run_main_with(path, monkeypatch, captured):
 
 @pytest.mark.parametrize("path", [
     "alembic/env.py",
-    "scripts/check_retro_cadence.py",
+    "scripts/check_main_red.py",
 ])
 def test_main_actually_fires_for_watched_non_src_roots(path, monkeypatch):
     """🔴 `main()` 이 alembic/·scripts/ 편집에 **실제로 발동**해야 한다.

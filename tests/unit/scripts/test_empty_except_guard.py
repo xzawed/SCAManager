@@ -3,7 +3,7 @@ Empty-except guard — pre-empts CodeQL py/empty-except across the guard script/
 
 배경 / Background: 세션2 가드 3종(`check_dead_code`·`check_noqa_sideeffect`·`posttool_pytest_smoke`)이
 `sys.stdout.reconfigure` best-effort 관용구를 설명 주석 없이 복사해 CodeQL alert #547~#549 를 자초했다.
-같은 관용구의 4번째 사본(`check_retro_cadence.py`)만 주석을 달고 있어 미발화 — 드리프트가 곧 alert 원인.
+같은 관용구의 다른 사본만 주석을 달고 있어 미발화 — 드리프트가 곧 alert 원인.
 Session-2 guards copied the best-effort `sys.stdout.reconfigure` idiom without an explanatory comment,
 self-inflicting CodeQL #547~#549. Only the 4th copy carried the comment — the drift *was* the alert.
 
@@ -71,7 +71,7 @@ def test_comment_on_except_line_passes():
 
 
 def test_comment_on_pass_line_passes():
-    """pass 라인 주석 = 설명 있음 (check_retro_cadence.py 가 쓰는 정본 형태).
+    """pass 라인 주석 = 설명 있음 (가드 스크립트가 쓰는 정본 형태).
     A comment on the pass line counts as explanatory (the canonical in-repo shape)."""
     src = "try:\n    f()\nexcept ValueError:\n    pass  # 미지원 스트림 — 무시 / unsupported stream\n"
     assert find_uncommented_empty_excepts(src) == []

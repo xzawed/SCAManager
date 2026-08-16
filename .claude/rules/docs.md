@@ -31,7 +31,7 @@ paths:
 
 원장은 행의 **존재**로 판정한다. 부정·유보·주석은 **행을 만들지 말고** 산문 단락에 적는다. 산문이 부정해도 기계는 행만 본다.
 
-적용: `docs/runbooks/retro-cadence-deferrals.md` (`scripts/check_retro_cadence.py`) · `docs/runbooks/owed-verification.md` (append-only, 행 삭제 금지, `scripts/check_owed_verification.py`).
+적용 대상 파일 원장은 현재 없다. 열린 일감·미결 운영 검증은 GitHub Issues.
 
 ## 파생 집계는 손으로 유지하지 않는다
 
@@ -45,8 +45,6 @@ paths:
 |---|---|
 | `docs/STATE.md` | `check_docs_sync.py` · `check_test_count_sync.py` · `doc_review_gate.py` |
 | `docs/architecture.md` | 아키텍처 트리 sync 가드 |
-| `docs/runbooks/owed-verification.md` | SessionStart `check_owed_verification.py` |
-| `docs/runbooks/retro-cadence-deferrals.md` | SessionStart `check_retro_cadence.py` |
 | `docs/reference/env-vars.md` | env 인용 sync 가드 |
 | `CLAUDE.md` · `AGENTS.md` | `doc_review_gate` 컨텍스트 · `check_memory_refs` |
 

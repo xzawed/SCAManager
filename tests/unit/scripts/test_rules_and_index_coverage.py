@@ -8,9 +8,8 @@
    파일을 편집하는 세션은 보안 규칙을 로드하지 않는다** — 통제를 지탱하는 코드가 통제를
    설명하는 문서와 연결되지 않은 상태.
 
-2. **runbook 3건이 색인에서 누락됐다** — `ai-collaboration.md`(정책 19 가 **단일 출처**로
-   지목) · `owed-verification.md`(SessionStart 훅이 매 세션 읽는 원장) · `cost-controls.md`.
-   색인만 보는 세션에게 미등재 문서는 존재하지 않는 것과 같다.
+2. **runbook 이 색인에서 누락됐다** — `ai-collaboration.md`(정책 19 가 **단일 출처**로
+   지목) · `cost-controls.md`. 색인만 보는 세션에게 미등재 문서는 존재하지 않는 것과 같다.
 
 3. CLAUDE.md 의 9영역 매트릭스와 각 규칙 파일의 `paths:` frontmatter 는 **같은 사실의
    두 사본**이라 조용히 갈라질 수 있다.
@@ -188,7 +187,7 @@ def test_every_runbook_is_indexed():
     """🔴 `docs/runbooks/` 의 모든 문서는 `docs/README.md` 에 등재돼야 한다.
 
     실측 누락 3건 중 둘이 특히 아팠다 — `ai-collaboration.md` 는 정책 19 가 **단일 출처**로
-    지목한 프로토콜이고, `owed-verification.md` 는 SessionStart 훅이 매 세션 읽는 원장이다.
+    지목한 프로토콜이다.
     """
     disk = {p.name for p in _RUNBOOKS.glob("*.md")}
     missing = sorted(disk - _indexed_runbooks())

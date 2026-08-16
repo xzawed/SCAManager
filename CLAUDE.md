@@ -116,7 +116,7 @@ GitHub Push/PR 이벤트 시 정적 분석 + AI 코드 리뷰를 자동 수행�
 | **4** | 단언과 회귀 가드를 **같은 PR** 에 묶는다. 가드 없는 단언은 사고 시 책임 귀속 불가 | — |
 | **5** | 사이클 끝마다 종료 신호 명시. 다중 단계 발화("A+B+C 진행") 후 일부만 하고 종료하면 **잔여 단계 진행 신호 회신 의무**. **Phase 종료 진입 시 정책 2/5/8/11 4 정책 cross-reference 자가 검토 의무**(한 정책만 적용하면 나머지 3 위반). **NEW-P0-N(운영 사고 차단)은 매 사이클 회신 의무** — 보류 default·정책 9 완화 **모두 미적용** | [active](.claude/policies/active.md#정책-5-phase-종료-cross-reference) |
 | **6** | 에이전트 프롬프트에 `line:span` 인용 강제. 정책·메모리 본문의 `file:line` 은 **`grep -n` 실측값**이어야 한다(추정 금지 — drift 실사고 5건) | — |
-| **8** | 회고는 **최소 4~5 에이전트 병렬 + 관점 분리 + cross-verify 1건(5+1)**. Claude 단독 회고 금지. 직전 정식 회고 이후 **≥3 세션 또는 ≥15 PR** 시 강제 트리거(SessionStart 훅이 경고) · 이월하려면 `docs/runbooks/retro-cadence-deferrals.md` 에 **사용자 승인 인용 + 목표 세션 기록 의무**. **회고 범위 = 직전 회고 이후 머지 PR + 본 세션 산출물 전체**(기계 산출 `scripts/retro_scope.py`) — 세션 산출물이 빠지면 **가장 검증 덜 된 코드가 회고를 피한다**. 자기회고 갈음은 **사용자 명시 승인 시에만** | [active](.claude/policies/active.md#정책-8-회고-카덴스) |
+| **8** | 회고는 **최소 4~5 에이전트 병렬 + 관점 분리 + cross-verify 1건(5+1)**. Claude 단독 회고 금지. 직전 정식 회고 이후 **≥3 세션 또는 ≥15 PR** 시 강제 트리거. 이월하려면 **GitHub Issue 에 사용자 승인 인용 + 목표 세션 기록 의무**. **회고 범위 = 직전 회고 이후 머지 PR + 본 세션 산출물 전체**(기계 산출 `scripts/retro_scope.py`) — 세션 산출물이 빠지면 **가장 검증 덜 된 코드가 회고를 피한다**. 자기회고 갈음은 **사용자 명시 승인 시에만** | [active](.claude/policies/active.md#정책-8-회고-카덴스) |
 | **9** | 회고 직후 **자유 발언 4 섹션**(바라는 점 / 자성 / 필요한 것 / 수정 제안). 완화: 회신 부재 시 자율 판단 보고로 대체 OK — 단 (a) 운영 사고 차단 (b) destructive (c) architecture/UX/데이터모델 은 **명시 회신 의무**. **Phase 종료 시** §"🔍 회고 질문(사용자 회신 의무)" 1줄 추가 | — (detail 섹션 없음 — 이 표 한 줄이 전부) |
 | **10** | PR 은 **직접 생성**(`gh pr create`) — URL 안내 금지. 본문은 **임시 파일 + `--body-file`** 로만(`@-`/stdin 금지 — 8건 본문 소실 사고) + 생성 직후 `gh pr view --json body` 길이 검증 | [active](.claude/policies/active.md#정책-10) |
 | **11** | `templates/**`·`static/**` 등 **시각 변경 PR** 은 본문 최상단에 **4테마 × 모바일/데스크탑 8조합** 체크리스트. "테스트 통과" 만 적기 금지 — 정적↔시각 비대칭 명시 의무 | [active](.claude/policies/active.md#정책-11) |
@@ -170,12 +170,9 @@ git status && git checkout -b <브랜치명>   # main 직접 커밋 금지 (정�
 Code Scanning open alert 확인(정책 14)은 GitHub Security 탭 또는
 `gh api repos/xzawed/SCAManager/code-scanning/alerts`.
 
-> 🔴 **SessionStart 훅이 4개 스크립트를 자동 실행한다 — 그중 원장 카운터가 2종**이다:
-> 회고 카덴스(`check_retro_cadence.py`) ·
-> owed 원장 미결(`check_owed_verification.py`).
-> 나머지 2개는 `check_main_red.py` · `check_precommit_installed.py` 다.
-> 열린 일감은 GitHub Issues 로 옮겼고, backlog 파일 카운터는 원장과 함께 퇴역한다
-> (SessionStart 에서 네트워크를 치지 않는다).
+> 🔴 **SessionStart 훅이 2개 스크립트를 자동 실행한다**:
+> `check_main_red.py` · `check_precommit_installed.py`.
+> 열린 일감과 미결 운영 검증은 GitHub Issues 다 (SessionStart 에서 네트워크를 치지 않는다).
 > 훅 stdout 이 컨텍스트에 주입되므로 **수동 실행 불필요**. 전부 advisory(비차단).
 > 배선 회귀 가드: `test_session_start_wiring.py`.
 

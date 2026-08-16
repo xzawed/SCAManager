@@ -89,7 +89,6 @@ def _rev(ref: str) -> str:
         ".pre-commit-config.yaml",
         "tests/unit/scripts/test_red_budget.py",
         "tests/unit/hooks/test_doc_review_gate.py",
-        "docs/runbooks/owed-verification.md",
     ],
 )
 def test_guard_surface_is_recognised(mod, path: str):
@@ -188,7 +187,7 @@ def test_docs_only_pr_quoting_a_seal_still_exempts(mod, monkeypatch):
     이제 **실제 docs-only 머지 범위**(`e76f2d43` — 비-docs 파일 0건 실측)를 쓴다.
 
     ⚠️ 함께 정정: 초판 docstring 은 `#1316` 을 예로 들었는데 **틀렸다**. `#1316` 은
-    `tests/unit/scripts/` 가드 2개와 owed 원장을 건드렸으므로 docs-only 가 아니고,
+    `tests/unit/scripts/` 가드 2개를 건드렸으므로 docs-only 가 아니고,
     새 규칙에서 **차단되는 것이 옳다**(그 가드들은 적대 검증을 받은 적이 없었다).
     """
     body = f"과거에 **봉인**했다고 적혀 있다(인용).\n\n{_EXEMPT_LINE}\n"
@@ -210,7 +209,7 @@ def test_the_docs_only_fixture_really_has_no_code_surface(mod):
 def test_a_pr_that_authors_a_guard_is_blocked_even_amid_docs(mod, monkeypatch):
     """🔴 반대 축 — 문서가 대부분이어도 **가드를 저술했으면** 면제되지 않는다.
 
-    `#1316` 이 정확히 그런 PR 이었다(문서 9 + 가드 테스트 2 + owed 원장).
+    `#1316` 이 정확히 그런 PR 이었다(문서 9 + 가드 테스트 2).
     """
     head = _rev("4d0a8dda")
     body = f"회고 기록. 과거에 **봉인**했다고 적혀 있다.\n\n{_EXEMPT_LINE}\n"

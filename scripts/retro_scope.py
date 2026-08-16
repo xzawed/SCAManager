@@ -20,25 +20,47 @@ starting the run is silently excluded — exactly the case the policy exists to 
     python scripts/retro_scope.py            # 사람이 읽는 요약
     python scripts/retro_scope.py --json     # 워크플로 args 에 넣을 JSON
 
-경계는 `check_retro_cadence` 와 **같은 함수**로 판정한다(`newest_retro` · `_boundary_commit`)
-— 두 곳이 다른 회고를 최신으로 고르면 카운터와 회고 범위가 어긋난다.
+최신 회고 판정(`newest_retro`)은 이 파일이 단일 출처다.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+# 정식 회고 파일명 = YYYY-MM-DD-...retrospective....md
+# Formal-retro filename must contain 'retrospective'; audits/reviews/plans are excluded.
+_RETRO_NAME = re.compile(r"^(\d{4}-\d{2}-\d{2})-.*retrospective.*\.md$")
 
-# 🔴 카덴스 카운터와 **동일 판정 로직 공유** — 각자 구현하면 최신 회고가 갈린다.
-# Share the counter's selection logic; duplicating it would let the two disagree.
-from check_retro_cadence import (  # noqa: E402  # pylint: disable=wrong-import-position
-    _RETRO_NAME,
-    newest_retro,
-)
+
+def retro_date(filename: str) -> str | None:
+    """정식 회고 파일명에서 날짜(YYYY-MM-DD) 추출 — 회고 아니면 None.
+    Extract the date from a formal-retro filename; None if not a retrospective."""
+    m = _RETRO_NAME.match(filename)
+    return m.group(1) if m else None
+
+
+def _retro_seq(filename: str) -> int:
+    """같은 날 회고의 순번 — `-N.md` 접미사가 있으면 N, 없으면 1.
+    Sequence within a same-day set: `-N.md` suffix → N, otherwise 1."""
+    m = re.search(r"-(\d+)\.md$", filename)
+    return int(m.group(1)) if m else 1
+
+
+def newest_retro(filenames):
+    """정식 회고 파일명 목록에서 가장 최신 반환 — 없으면 None.
+    Return the newest formal-retro filename, or None.
+
+    정렬 키 = (날짜, 같은 날 순번). 파일명 문자열은 tie-break 에 쓰지 않는다 —
+    사전순은 최신성과 무관하다 (`-`(0x2D) < `.`(0x2E) 이라 1차가 2차를 이긴다).
+    Sorted by (date, same-day sequence); the filename string is never a tiebreaker.
+    """
+    dated = [(d, _retro_seq(f), f) for f in filenames if (d := retro_date(f))]
+    return max(dated)[2] if dated else None
+
 
 _ROOT = Path(__file__).resolve().parents[1]
 _REPORTS = _ROOT / "docs" / "reports"

@@ -42,7 +42,6 @@ _CRITICAL = [
 #   · `docs/runbooks/ai-collaboration.md` — "Grok 은 정책·backlog 를 **저술하지 않는다**",
 #     "🔴 **P0/P1 부여 금지**" (정책 19 프로토콜 SSOT 인데 심의 대상이 아니었다)
 #   · `docs/runbooks/workflow.md` — "테스트 환경 미구성에서는 **절대 수정하지 않는다**"
-#   · `docs/runbooks/owed-verification.md` — "사용자 회신 전까지 **행 삭제 금지**"
 #   · `docs/architecture.md` — "신규 파일 추가 시 이 문서 갱신 **의무**"
 #   · `docs/reference/env-vars.md` — "운영 절대 설정 금지"(`API_AUTH_DISABLED`)
 #   · `.github/PULL_REQUEST_TEMPLATE.md` · `CONTRIBUTING*.md` · `docs/agents-index.md`

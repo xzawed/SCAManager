@@ -3,7 +3,7 @@
 **목적**: 정책 13 (운영 endpoint smoke check 의무) 의 default 실행 가이드.
 **기획 근거**: 2026-05-02 P0 OAuth 사고 후속 — 정책 13 정본은 [`.claude/policies/active.md`](../../.claude/policies/active.md) §정책 13.
 
-> 📋 **PR 별 미결 운영 검증 추적**: 코드로 증명 불가한 검증(cron 실행·외부 API 계약·이메일 실발송 등)을 남긴 PR 은 [`owed-verification.md`](owed-verification.md) 원장(append-only)에 등재된다 (회고 2026-07-18 P1#13).
+> 코드로 증명 불가한 운영 검증(cron 실행·외부 API 계약·이메일 실발송 등)은 GitHub Issue 로 남긴다.
 
 **정책 13 적용 시점**:
 - 매 사이클 종료 시 (또는 Phase 종료 시) — 최소 3-endpoint
