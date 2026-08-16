@@ -51,7 +51,10 @@ _GOOD_TRACE = """## Grok claim-review
 @pytest.fixture(autouse=True)
 def _clear_env(monkeypatch):
     """PR_* env 를 매 테스트마다 초기화 — 누수 시 결과가 서로 오염된다."""
-    for key in ("PR_TITLE", "PR_BODY", "PR_BASE_SHA", "PR_HEAD_SHA"):
+    for key in (
+        "PR_TITLE", "PR_BODY", "PR_BASE_SHA", "PR_HEAD_SHA",
+        "PR_AUTHOR_TYPE", "PR_AUTHOR_LOGIN",
+    ):
         monkeypatch.delenv(key, raising=False)
 
 
@@ -851,3 +854,111 @@ def test_no_new_identifier_matches_the_lob_pattern():
         "정확히 40자인 `test_`/`live_` 식별자가 있다 — TruffleHog Lob 탐지기가 API 키로 "
         "오인한다. 한 글자 늘리거나 줄일 것: " + ", ".join(hits)
     )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 봇 저자 면제 — Dependabot PR 은 흔적/마커를 쓸 수 없다.
+#
+# 측정된 사고: #1407 · #1408 이 `.github/workflows/` (코드 표면) 만 바꾸고
+# `🔴 코드 표면을 바꾸는데 claim-review 흔적이 없습니다` 로 영구 차단됐다.
+# 봇 면제는 수동 마커와 **같은** `exemption_blocked` 규칙을 쓴다 —
+# 가드 표면(`scripts/check_*.py` 등)은 봇도 리뷰 없이 랜딩할 수 없다.
+# 부재·공백 env 는 봇이 아니다 (fail-closed).
+# Bot-author exemption: same exemption_blocked rule as the manual marker.
+# Absent/empty author env is NOT a bot.
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def test_bot_author_workflow_without_trace_passes(monkeypatch, capsys, tmp_path):
+    """봇 + 워크플로 변경 + 흔적/마커 없음 → exit 0.
+
+    `_run_with_surfaces` 관용구를 쓴다 — 코드 표면 축만 주입하고 `changed_paths`
+    는 비운다. 가드 표면 차단은 아래 `test_bot_author_guard_surface_still_blocked`
+    가 잰다.
+    Bot + workflow code-surface + no trace/marker must exit 0 (Dependabot case).
+    """
+    monkeypatch.setenv("PR_AUTHOR_TYPE", "Bot")
+    monkeypatch.setenv("PR_AUTHOR_LOGIN", "dependabot[bot]")
+    monkeypatch.setattr(f"{_MOD}.changed_paths", lambda _b, _h: [])
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    rc = _run_with_surfaces(
+        monkeypatch, [".github/workflows/ci.yml"],
+        title="chore(deps): bump actions/checkout",
+        body="Bumps actions/checkout from 4 to 5.",
+    )
+    assert rc == 0, "봇이 워크플로만 바꾸는데 흔적 없이 차단됐다"
+    out = capsys.readouterr().out
+    notice_lines = [line for line in out.splitlines() if line.startswith("::notice")]
+    assert notice_lines, "봇 면제가 ::notice annotation 으로 가시화되지 않았다"
+    assert any("dependabot[bot]" in line for line in notice_lines), (
+        f"::notice 가 저자 로그인을 알리지 않았다:\n{out}"
+    )
+    recorded = summary.read_text(encoding="utf-8")
+    assert "dependabot[bot]" in recorded, f"job summary 에 저자가 없다: {recorded!r}"
+
+
+def test_bot_author_guard_surface_still_blocked(monkeypatch):
+    """봇 + 가드 표면(`scripts/check_*.py`) → exit 1.
+
+    면제의 `guarded` 접속사가 load-bearing 인지 여기를 잰다.
+    이 단언이 없으면 봇이 가드를 리뷰 없이 랜딩해도 초록이다.
+    Bot + guard surface must stay blocked — same exemption_blocked rule.
+    """
+    monkeypatch.setenv("PR_AUTHOR_TYPE", "Bot")
+    monkeypatch.setenv("PR_AUTHOR_LOGIN", "dependabot[bot]")
+    paths = ["scripts/check_something.py"]
+    monkeypatch.setattr(f"{_MOD}.changed_paths", lambda _b, _h: paths)
+    rc = _run_with_surfaces(
+        monkeypatch, paths,
+        title="chore: dependabot guard bump",
+        body="Bumps a guard script.",
+    )
+    assert rc == 1, "봇이 가드 표면을 흔적 없이 통과했다"
+
+
+def test_absent_author_env_is_not_a_bot(monkeypatch):
+    """PR_AUTHOR_TYPE · PR_AUTHOR_LOGIN 둘 다 부재 → 봇이 아니다 → exit 1.
+
+    부재를 봇으로 읽으면 로컬·미배선 CI 가 만능 면제가 된다 (fail-open).
+    Absent author env is NOT a bot — fail-closed.
+    """
+    # _clear_env 가 이미 두 키를 지운다 / fixture already deletes both keys
+    rc = _run_with_surfaces(
+        monkeypatch, [".github/workflows/ci.yml"],
+        title="chore(deps): bump actions/checkout",
+        body="Bumps actions/checkout from 4 to 5.",
+    )
+    assert rc == 1, "저자 env 부재가 봇 면제로 새어 통과했다"
+
+
+def test_empty_author_type_is_not_a_bot(monkeypatch):
+    """PR_AUTHOR_TYPE 가 빈 문자열이면 봇이 아니다 → exit 1.
+
+    strip 후 공백도 부재와 같다. 빈 값을 Bot 으로 읽으면 안 된다.
+    Empty PR_AUTHOR_TYPE is NOT a bot — fail-closed.
+    """
+    monkeypatch.setenv("PR_AUTHOR_TYPE", "")
+    monkeypatch.setenv("PR_AUTHOR_LOGIN", "")
+    rc = _run_with_surfaces(
+        monkeypatch, [".github/workflows/ci.yml"],
+        title="chore(deps): bump actions/checkout",
+        body="Bumps actions/checkout from 4 to 5.",
+    )
+    assert rc == 1, "빈 PR_AUTHOR_TYPE 이 봇 면제로 새어 통과했다"
+
+
+def test_human_author_on_workflow_still_blocked(monkeypatch):
+    """사람 저자(User / xzawed) + 워크플로 → exit 1. 기존 동작 불변.
+
+    봇 면제가 사람 PR 까지 열어 버리면 정책 19 default 가 죽는다.
+    Human author + workflow file stays blocked (unchanged behaviour).
+    """
+    monkeypatch.setenv("PR_AUTHOR_TYPE", "User")
+    monkeypatch.setenv("PR_AUTHOR_LOGIN", "xzawed")
+    rc = _run_with_surfaces(
+        monkeypatch, [".github/workflows/ci.yml"],
+        title="chore(deps): bump actions/checkout",
+        body="Bumps actions/checkout from 4 to 5.",
+    )
+    assert rc == 1, "사람 저자 + 워크플로가 봇 면제로 통과했다"

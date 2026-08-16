@@ -399,6 +399,30 @@ def _make_stdout_safe():
         pass  # 캡처된 stream 등 reconfigure 미지원 — 무시
 
 
+# CI 가 넘기는 저자 신원. 본문에서 읽지 않는다 — 본문 마커는 자기인증.
+# Author identity comes from CI env, never from the PR body (self-certification trap).
+_AUTHOR_LOGIN_ENV = "PR_AUTHOR_LOGIN"
+_AUTHOR_TYPE_ENV = "PR_AUTHOR_TYPE"
+
+
+def is_bot_author() -> bool:
+    """CI env 기준 봇 여부. 본문을 보지 않는다.
+
+    GitHub App 은 `user.type == "Bot"` 이고, dependabot 로그인은 `dependabot[bot]`.
+    둘 중 하나면 봇으로 본다.
+
+    🔴 **부재·공백은 봇이 아니다.** 저자 env 가 비는 순간 전 PR 이 면제되면
+    이 리포의 fail-open 사고와 같은 클래스다. 호출자가 변수를 안 넘기는 것이
+    만능 면제가 되면 안 된다.
+    Absent/empty author env is NOT a bot — that must not become a universal exemption.
+    """
+    login = (os.environ.get(_AUTHOR_LOGIN_ENV) or "").strip()
+    typ = (os.environ.get(_AUTHOR_TYPE_ENV) or "").strip()
+    if not login and not typ:
+        return False
+    return typ.casefold() == "bot" or login.casefold().endswith("[bot]")
+
+
 def main() -> int:
     """seal 주장이 있으면 claim-review 흔적을 요구한다 (blocking — exit 1)."""
     _make_stdout_safe()
@@ -505,6 +529,30 @@ def main() -> int:
         )
         print(
             f"⏭️  면제 마커(claim-review-not-required) 확인 — "
+            f"seal 주장 {len(claims)}건 · 코드 표면 {len(surfaces or [])}개 통과"
+        )
+        return 0
+
+    # 봇 저자 면제 — Dependabot 등은 흔적/마커를 쓸 수 없다.
+    #    수동 마커와 **같은** exemption_blocked 규칙을 적용한다
+    #    (`bool(guarded) or bool(claims and surfaces)`).
+    #    가드 표면을 건드리는 봇 PR 은 여전히 차단한다.
+    # Bot-author exemption uses the same exemption_blocked rule as the
+    # manual marker. A bot must never land a guard change unreviewed.
+    # 🔴 부재·공백 env 는 봇이 아니다 (`is_bot_author` fail-closed).
+    # Absent/empty author env is NOT a bot.
+    if is_bot_author() and not bool(guarded) and not bool(claims and surfaces):
+        login = (os.environ.get(_AUTHOR_LOGIN_ENV) or "").strip() or "(unknown)"
+        print(f"::notice title=claim-review bot exemption::{login}")
+        # 🔴 job summary 에도 남긴다 — `::notice` 는 Actions 로그 안쪽이라 추세가
+        #    안 보인다. 수동 면제와 같은 관측 자리.
+        # Also record in the job summary so the trend is observable.
+        _append_step_summary(
+            f"- ⏭️ **claim-review 봇 면제** — 저자 `{login}` · "
+            f"seal 주장 {len(claims)}건 · 코드 표면 {len(surfaces or [])}개 파일\n"
+        )
+        print(
+            f"⏭️  봇 저자 면제 — {login} · "
             f"seal 주장 {len(claims)}건 · 코드 표면 {len(surfaces or [])}개 통과"
         )
         return 0
