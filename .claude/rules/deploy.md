@@ -41,7 +41,7 @@ paths:
 - **전 직접 의존성 `==` 정확 핀** + SCA 게이트(`pip-audit`). `>=` 금지.
   *왜*: transitive 는 시간에 따라 바뀌므로 직접 의존성만 고정해도 빌드가 갈린다.
 - **`.python-version` 이 Railway nixpacks Python 빌드 버전의 SSOT**(현재 `3.12`).
-- **FastAPI/starlette 핀은 dependabot 정기 bump 대상** — 현재 `fastapi==0.141.1` + `starlette==1.4.1`.
+- **FastAPI/starlette 핀은 dependabot 정기 bump 대상** — 현재 `fastapi==0.141.1` + `starlette==1.6.0`.
   🔴 **이 인용 리터럴은 장식이 아니라 검사 대상이다** — `check_dependency_pins` 가 `requirements.txt` 실핀과
   대조하는 ground-truth 축이라, 지우면 *"검사 범위 붕괴"* 로 red 다.
   핀 변경 시 이 인용 + README FastAPI 배지 동시 갱신(가드: `scripts/check_docs_sync.py`).
