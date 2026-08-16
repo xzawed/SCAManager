@@ -1118,3 +1118,50 @@ async def test_message_reply_guard_does_not_log_bot_token(caplog):
             f"🔴 원본 레코드 메시지에 토큰이 들어 있다 — 필터가 가려 주기 전 단계에서 이미 "
             f"유출됐다.\n메시지: {record.getMessage()!r}"
         )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 배선 — dispatcher 가 실제로 `chat_id` 를 넘기는가 (3-불변식 ③: 정의 ≠ 배선)
+#
+# 🔴 위 실패-알림 테스트들은 `handle_gate_callback` 을 **직접** 호출한다. 그래서
+# dispatcher(`telegram_webhook`)에서 `chat_id=chat_id` 한 줄을 지워도 전부 초록이다 —
+# 알림 기능은 코드에 존재하지만 운영에서는 `chat_id=None` 이라 **한 번도 발화하지 않는다**.
+# 이 축은 라우트를 실제로 태워서만 잴 수 있다.
+# The failure-notice tests call the handler directly, so dropping `chat_id=chat_id` at the
+# dispatcher would keep them green while production silently always passes None.
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def test_dispatcher_passes_chat_id_from_callback_message():
+    """🔴 라우트가 `callback_query.message.chat.id` 를 핸들러까지 전달한다."""
+    with patch("src.webhook.providers.telegram.handle_gate_callback",
+               new_callable=AsyncMock) as mock_gate:
+        r = client.post("/api/webhook/telegram", json=APPROVE, headers=_TG_HEADERS)
+    assert r.status_code == 200
+    mock_gate.assert_called_once()
+    kwargs = mock_gate.call_args.kwargs
+    assert "chat_id" in kwargs, (
+        "dispatcher 가 chat_id 를 안 넘긴다 — 실패 알림이 운영에서 영원히 skip 된다"
+    )
+    expected = str(APPROVE["callback_query"]["message"]["chat"]["id"])
+    assert kwargs["chat_id"] == expected, (
+        f"chat_id 가 payload 와 다르다: {kwargs['chat_id']!r} != {expected!r}"
+    )
+
+
+def test_dispatcher_passes_none_when_chat_is_absent():
+    """chat 이 없는 페이로드면 None — 크래시 없이 알림만 skip 된다."""
+    payload = {
+        "update_id": 4242,
+        "callback_query": {
+            "id": "c4242",
+            "from": {"id": 1, "username": "john"},
+            "data": f"gate:approve:42:{_TOKEN_42}",
+        },
+    }
+    with patch("src.webhook.providers.telegram.handle_gate_callback",
+               new_callable=AsyncMock) as mock_gate:
+        r = client.post("/api/webhook/telegram", json=payload, headers=_TG_HEADERS)
+    assert r.status_code == 200
+    mock_gate.assert_called_once()
+    assert mock_gate.call_args.kwargs.get("chat_id") is None
