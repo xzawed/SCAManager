@@ -70,9 +70,6 @@ jobs:
       - name: STATE↔README 배지 수치 정합 (check_docs_sync)
         run: python scripts/check_docs_sync.py
 
-      - name: STATE 원장 하한 (check_state_ledger)
-        run: python scripts/check_state_ledger.py
-
       - name: cycle-history TOC 앵커 정합 (check_toc_anchors)
         run: python scripts/check_toc_anchors.py
 

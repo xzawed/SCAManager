@@ -3,7 +3,7 @@ name: docs-sync
 description: PR 작업 후 docs 수치·서사 동기화 — STATE.md 최신/종합/추적셀 + README 배지 쌍 갱신 가이드 (check_docs_sync 페어). TOC 앵커는 check_toc_anchors 가 활성 `## 목차` 문서를 본다.
 ---
 
-PR 작업 완료/머지 시 테스트 수치·작업 서사를 STATE.md·cycle-history.md·README 배지에 일관 반영하는 절차.
+PR 작업 완료/머지 시 테스트 수치·작업 서사를 STATE.md·README 배지에 일관 반영하는 절차.
 `scripts/check_docs_sync.py`(commit-time 검증)·`scripts/check_toc_anchors.py`(TOC 앵커 검증)와 **페어** —
 스킬이 생성하고 훅이 차단한다 (turn-0 drift 방지).
 
@@ -24,12 +24,13 @@ PR 작업 완료/머지 시 테스트 수치·작업 서사를 STATE.md·cycle-h
 
 🔴 **2026-08-05 변경 — 손으로 고치는 곳은 이제 한 곳뿐이다.**
 같은 정수가 5지점에 손으로 복제돼 있었고(**N지점 동기화는 N-1번의 실패 기회**), 실제로
-그중 하나를 빠뜨려 가드가 red 를 냈다. 지금은 **이력 꼬리 한 줄이 SSOT** 이고 나머지는 파생이다.
+그중 하나를 빠뜨려 가드가 red 를 냈다. 지금은 **§테스트 수 추적 이력의 현재 불릿 한 줄이 SSOT** 이고 나머지는 파생이다.
+(절은 이력이 아니다. 과거 항목은 git 에 있다. 새 줄을 덧붙이지 말고 그 한 줄을 고친다.)
 
 ```bash
-# ① 이력 절 맨 아래에 항목 한 줄 추가 (docs/STATE.md §테스트 수 추적 이력)
+# ① docs/STATE.md §테스트 수 추적 이력의 **현재 불릿** 을 실측값으로 고친다.
 #    형식이 곧 계약 — 단위와 누계를 **모두** 담아야 한다:
-#      - **<날짜/작업> (#PR) +Δ** (A→**B** 단위 — 상세; 통합 K 불변 = **C** 수집, collect-only 실측).
+#      - **현재** (A→**B** 단위; 통합 K = **C** 수집)
 #
 # ② 파생 3지점(STATE 종합·추적셀 머리·README 2배지)을 자동 갱신
 py -3 scripts/check_docs_sync.py --fix
@@ -63,5 +64,5 @@ em-dash(`—`)/`+`/`()`/`.` 가 더블하이픈·제거를 유발하므로 반�
 
 ## 주의
 - README.md ↔ README.ko.md 배지 쌍 **동시 갱신 의무** (과거 Codex 적발 drift — `feedback-docs-sync-codeql-gotchas`).
-- **카운트 무변경 PR**(docs-only·`.mjs`·스킬)은 1~3·5 갱신 불필요, 4(최신)·6(cycle-history)만 갱신.
+- **카운트 무변경 PR**(docs-only·`.mjs`·스킬)은 수치 불릿·배지 갱신 불필요, STATE.md 최신 블록만 교체.
 - 신규 `src/` 파일 추가 시 `docs/architecture.md` 동기화(6-step ⑥)는 본 스킬 범위 밖 — 별도 수행.
