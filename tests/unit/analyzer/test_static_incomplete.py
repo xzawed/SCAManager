@@ -82,6 +82,15 @@ def _force_absent(monkeypatch, absent_names):
 
     `is_enabled` 를 이름 기준으로 갈아끼워 `unavailable_tools` 경로를 실제로 태운다
     (합성 결과 객체를 만들지 않는다 — 불변식 2).
+
+    🔴 **`shutil.which` 도 함께 갈아끼운다** (2026-08-17 CI 실측으로 추가).
+    `is_enabled` 만 조작하면 «바이너리 부재» 축은 **실행 환경에 맡겨진다**:
+    개발 PC(Windows)에는 shellcheck 이 없어 통과했지만, CI 러너에는 설치돼 있어
+    `_binary_is_absent` 가 False 를 내며 두 테스트가 red 였다.
+    헬퍼 이름이 «바이너리 없음» 이면 그 사실을 **테스트가 만들어야** 한다 —
+    환경이 우연히 만들어 주기를 기대하면 그 초록은 머신마다 다른 것을 잰다.
+    Also stub `shutil.which`: patching `is_enabled` alone leaves the binary-absence axis to
+    the host, so the same test measured different things on the dev PC and on CI.
     """
     from src.analyzer.pure.registry import REGISTRY
 
@@ -90,6 +99,12 @@ def _force_absent(monkeypatch, absent_names):
             monkeypatch.setattr(
                 type(analyzer), "is_enabled", lambda self, ctx: False, raising=False
             )
+
+    absent = set(absent_names)
+    monkeypatch.setattr(
+        "src.analyzer.io.static.shutil.which",
+        lambda name: None if name in absent else f"/usr/bin/{name}",
+    )
 
 
 def test_unprovisioned_tool_absence_surfaces_without_blocking(monkeypatch):
