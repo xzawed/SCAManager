@@ -237,3 +237,9 @@ Code Scanning open alert 확인(정책 14)은 GitHub Security 탭 또는
 최신 수치는 [docs/STATE.md](docs/STATE.md) 참조.
 열린 일감은 **GitHub Issues** 에, 재발 클래스는 [`.claude/traps.md`](.claude/traps.md) 에 있다.
 과거 서사는 git 이력에 있다.
+
+**여러 세션·여러 PC 에 걸치는 다단계 작업은 GitHub 마일스톤 + `[WBS]` 추적 Issue 가 진입점이다.**
+`gh issue list --label scamanager --search "WBS in:title"` 또는
+`gh api repos/xzawed/SCAManager/milestones --jq '.[].title'` 로 찾는다.
+추적 Issue 는 **콜드 스타트 가능해야** 한다 — 실측값·재실측 명령·순서·완료 판정법을 본문에 담고,
+「다음 세션이 알아서 재측정한다」에 기대지 않는다. 원장 파일을 새로 만들지 않는다(2026-08-16 퇴역분 재생산 금지).
