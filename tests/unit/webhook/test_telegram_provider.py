@@ -610,6 +610,189 @@ async def test_handle_gate_callback_exception_does_not_propagate():
                 )
 
 
+# --- 갈래 A: 게이트 콜백 실패 시 Telegram 미게시 알림 (claim 유지, 스키마 변경 없음) ---
+# Branch A: notify clicker when GitHub review was NOT posted (claim kept, no schema change)
+
+
+def _gate_callback_failure_mocks():
+    """실패 알림 테스트용 analysis/repo/db/config mock 묶음.
+    Mock bundle for failure-notification tests (analysis/repo/db/config)."""
+    mock_analysis = MagicMock(
+        id=42, repo_id=1, pr_number=5, score=85, commit_sha="abc", result={"score": 85},
+    )
+    mock_repo = MagicMock(id=1, full_name="owner/repo", user_id=1)
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter_by.return_value.first.side_effect = [
+        mock_analysis, mock_repo
+    ]
+    config = RepoConfigData(repo_full_name="owner/repo", auto_merge=False)
+    return mock_db, config
+
+
+async def test_handle_gate_callback_head_moved_notifies_user():
+    """HeadMovedError → 미게시 알림 1회 + claim_decision 철회 없음.
+    HeadMovedError → one not-posted notice; claim is NOT rolled back."""
+    from src.gate.github_review import HeadMovedError  # pylint: disable=import-outside-toplevel
+    from src.webhook.router import handle_gate_callback  # pylint: disable=import-outside-toplevel
+
+    mock_db, config = _gate_callback_failure_mocks()
+    with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
+        with patch(
+            "src.webhook.providers.telegram.post_github_review",
+            new_callable=AsyncMock,
+            side_effect=HeadMovedError("analyzed=aaa head=bbb"),
+        ):
+            with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
+                with patch(
+                    "src.webhook.providers.telegram.resolve_notification_language",
+                    return_value="ko",
+                ):
+                    with patch(
+                        "src.webhook.providers.telegram.gate_decision_repo.claim_decision",
+                        return_value=True,
+                    ) as mock_claim:
+                        with patch(
+                            "src.webhook.providers.telegram._post_message_guarded",
+                            new_callable=AsyncMock,
+                        ) as mock_post:
+                            await handle_gate_callback(
+                                analysis_id=42,
+                                decision="approve",
+                                decided_by="john",
+                                telegram_user_id="1",
+                                chat_id="-100999",
+                            )
+    mock_claim.assert_called_once()
+    mock_post.assert_called_once()
+    _bot, _chat, payload = mock_post.call_args[0]
+    assert _chat == "-100999"
+    assert payload.get("parse_mode") == "HTML"
+    assert "미게시" in payload["text"]
+
+
+async def test_handle_gate_callback_broad_exception_notifies_user():
+    """broad except (HTTPError 등) → 미게시 알림 발송.
+    Broad exception path also notifies the clicker that the review was not posted."""
+    from src.webhook.router import handle_gate_callback  # pylint: disable=import-outside-toplevel
+
+    mock_db, config = _gate_callback_failure_mocks()
+    with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
+        with patch(
+            "src.webhook.providers.telegram.post_github_review",
+            new_callable=AsyncMock,
+            side_effect=httpx.ConnectError("GitHub API down"),
+        ):
+            with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
+                with patch(
+                    "src.webhook.providers.telegram.resolve_notification_language",
+                    return_value="ko",
+                ):
+                    with patch(
+                        "src.webhook.providers.telegram._post_message_guarded",
+                        new_callable=AsyncMock,
+                    ) as mock_post:
+                        await handle_gate_callback(
+                            analysis_id=42,
+                            decision="approve",
+                            decided_by="john",
+                            telegram_user_id="1",
+                            chat_id="-100999",
+                        )
+    mock_post.assert_called_once()
+    payload = mock_post.call_args[0][2]
+    assert "미게시" in payload["text"]
+
+
+async def test_handle_gate_callback_failure_skips_notify_when_chat_id_none():
+    """chat_id=None → 발신 없음, 예외 전파 없음.
+    chat_id=None → no send and no raise."""
+    from src.gate.github_review import HeadMovedError  # pylint: disable=import-outside-toplevel
+    from src.webhook.router import handle_gate_callback  # pylint: disable=import-outside-toplevel
+
+    mock_db, config = _gate_callback_failure_mocks()
+    with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
+        with patch(
+            "src.webhook.providers.telegram.post_github_review",
+            new_callable=AsyncMock,
+            side_effect=HeadMovedError("head moved"),
+        ):
+            with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
+                with patch(
+                    "src.webhook.providers.telegram._post_message_guarded",
+                    new_callable=AsyncMock,
+                ) as mock_post:
+                    await handle_gate_callback(
+                        analysis_id=42,
+                        decision="approve",
+                        decided_by="john",
+                        telegram_user_id="1",
+                        chat_id=None,
+                    )
+    mock_post.assert_not_called()
+
+
+async def test_handle_gate_callback_success_does_not_send_failure_notice():
+    """성공 경로 → 실패 알림 미발송 (스팸 회귀 방지).
+    Success path must not send a failure notification (no spam on success)."""
+    from src.webhook.router import handle_gate_callback  # pylint: disable=import-outside-toplevel
+
+    mock_db, config = _gate_callback_failure_mocks()
+    with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
+        with patch(
+            "src.webhook.providers.telegram.post_github_review",
+            new_callable=AsyncMock,
+        ):
+            with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
+                with patch(
+                    "src.webhook.providers.telegram._post_message_guarded",
+                    new_callable=AsyncMock,
+                ) as mock_post:
+                    await handle_gate_callback(
+                        analysis_id=42,
+                        decision="approve",
+                        decided_by="john",
+                        telegram_user_id="1",
+                        chat_id="-100999",
+                    )
+    mock_post.assert_not_called()
+
+
+async def test_handle_gate_callback_failure_notice_omits_exception_text():
+    """발신 텍스트에 예외 문자열 부재 — httpx URL 에 bot token 이 실림.
+    Sent text must not contain the exception string (httpx embeds bot token in URL)."""
+    from src.webhook.router import handle_gate_callback  # pylint: disable=import-outside-toplevel
+
+    secret_exc = "Client error '401' for url 'https://api.telegram.org/botSECRET_TOKEN/sendMessage'"
+    mock_db, config = _gate_callback_failure_mocks()
+    with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
+        with patch(
+            "src.webhook.providers.telegram.post_github_review",
+            new_callable=AsyncMock,
+            side_effect=httpx.ConnectError(secret_exc),
+        ):
+            with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
+                with patch(
+                    "src.webhook.providers.telegram.resolve_notification_language",
+                    return_value="ko",
+                ):
+                    with patch(
+                        "src.webhook.providers.telegram._post_message_guarded",
+                        new_callable=AsyncMock,
+                    ) as mock_post:
+                        await handle_gate_callback(
+                            analysis_id=42,
+                            decision="approve",
+                            decided_by="john",
+                            telegram_user_id="1",
+                            chat_id="-100999",
+                        )
+    mock_post.assert_called_once()
+    sent_text = mock_post.call_args[0][2]["text"]
+    assert secret_exc not in sent_text
+    assert "SECRET_TOKEN" not in sent_text
+    assert "미게시" in sent_text
+
+
 # --- Phase F.2 관측 테스트 — Q1 A 이후 engine._run_auto_merge 로 이관됨 ---
 # 반자동 merge 시도의 log_merge_attempt 관측은 이제 engine._run_auto_merge 내부에서
 # 수행된다(자동/반자동 단일 출처). 해당 동작은 tests/unit/gate/ 의 engine 테스트가 커버하고,
@@ -935,3 +1118,50 @@ async def test_message_reply_guard_does_not_log_bot_token(caplog):
             f"🔴 원본 레코드 메시지에 토큰이 들어 있다 — 필터가 가려 주기 전 단계에서 이미 "
             f"유출됐다.\n메시지: {record.getMessage()!r}"
         )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 배선 — dispatcher 가 실제로 `chat_id` 를 넘기는가 (3-불변식 ③: 정의 ≠ 배선)
+#
+# 🔴 위 실패-알림 테스트들은 `handle_gate_callback` 을 **직접** 호출한다. 그래서
+# dispatcher(`telegram_webhook`)에서 `chat_id=chat_id` 한 줄을 지워도 전부 초록이다 —
+# 알림 기능은 코드에 존재하지만 운영에서는 `chat_id=None` 이라 **한 번도 발화하지 않는다**.
+# 이 축은 라우트를 실제로 태워서만 잴 수 있다.
+# The failure-notice tests call the handler directly, so dropping `chat_id=chat_id` at the
+# dispatcher would keep them green while production silently always passes None.
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def test_dispatcher_passes_chat_id_from_callback_message():
+    """🔴 라우트가 `callback_query.message.chat.id` 를 핸들러까지 전달한다."""
+    with patch("src.webhook.providers.telegram.handle_gate_callback",
+               new_callable=AsyncMock) as mock_gate:
+        r = client.post("/api/webhook/telegram", json=APPROVE, headers=_TG_HEADERS)
+    assert r.status_code == 200
+    mock_gate.assert_called_once()
+    kwargs = mock_gate.call_args.kwargs
+    assert "chat_id" in kwargs, (
+        "dispatcher 가 chat_id 를 안 넘긴다 — 실패 알림이 운영에서 영원히 skip 된다"
+    )
+    expected = str(APPROVE["callback_query"]["message"]["chat"]["id"])
+    assert kwargs["chat_id"] == expected, (
+        f"chat_id 가 payload 와 다르다: {kwargs['chat_id']!r} != {expected!r}"
+    )
+
+
+def test_dispatcher_passes_none_when_chat_is_absent():
+    """chat 이 없는 페이로드면 None — 크래시 없이 알림만 skip 된다."""
+    payload = {
+        "update_id": 4242,
+        "callback_query": {
+            "id": "c4242",
+            "from": {"id": 1, "username": "john"},
+            "data": f"gate:approve:42:{_TOKEN_42}",
+        },
+    }
+    with patch("src.webhook.providers.telegram.handle_gate_callback",
+               new_callable=AsyncMock) as mock_gate:
+        r = client.post("/api/webhook/telegram", json=payload, headers=_TG_HEADERS)
+    assert r.status_code == 200
+    mock_gate.assert_called_once()
+    assert mock_gate.call_args.kwargs.get("chat_id") is None
