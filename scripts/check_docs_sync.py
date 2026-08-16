@@ -24,11 +24,11 @@ from pathlib import Path
 if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
-# 이력 형식 쌍의 단일 읽기 규약 — 이 파일의 `_first(TOTAL)`/`_first(UNIT)` 과
-# check_state_ledger.parse_chain 의 "첫 A · 마지막 B" 가 갈리면, 불릿 안 decoy 가
-# SSOT 를 조작한다 (claim-review 01a00434).
+# 형식 쌍 문법 — `_first(TOTAL)`/`_first(UNIT)` 를 따로 쓰면 불릿 안 decoy 가
+# SSOT 를 조립한다 (claim-review 01a00434). 이 파일의 `_history_tail` 이 유일한 소비자.
 # Single pair grammar. Independent first-matches assembled a forged SSOT.
-from check_state_ledger import full_pairs  # noqa: E402
+_UNIT_OPEN = re.compile(r"\((\d+)\s*→\s*\*\*(\d+)\*\*\s*단위")
+_FULL_TOTAL = re.compile(r"=\s*\*\*(\d+)\*\*\s*수집")
 
 # STATE 종합 수치: "전체 **5196** 수집 (단위 **5042** + 통합 154)"
 _STATE_TOTAL = re.compile(r"전체 \*\*(\d+)\*\* 수집 \(단위 \*\*(\d+)\*\*")
@@ -61,6 +61,36 @@ def _first(pattern: re.Pattern, text: str, groups: int = 1):
     if not m:
         return None
     return m.group(1) if groups == 1 else tuple(m.group(i) for i in range(1, groups + 1))
+
+
+def formal_pairs(line: str) -> list[tuple[int, int, int | None]]:
+    """한 줄의 형식 쌍. `_history_tail` 의 단일 읽기 규약.
+
+    각 쌍은 `(A→**B** 단위` 로 시작한다. `= **C** 수집` 은 그 시작부터
+    **다음** `(A→**B** 단위` 앞까지만 본다. 한 불릿에 decoy 쌍을 앞에
+    붙여도 첫 C 와 첫 B 가 다른 쌍에서 조립되지 않는다.
+    One grammar. C is scoped to the span before the next opener.
+    """
+    opens = list(_UNIT_OPEN.finditer(line))
+    out: list[tuple[int, int, int | None]] = []
+    for i, match in enumerate(opens):
+        end = opens[i + 1].start() if i + 1 < len(opens) else len(line)
+        segment = line[match.end() : end]
+        total = _FULL_TOTAL.search(segment)
+        out.append((
+            int(match.group(1)),
+            int(match.group(2)),
+            int(total.group(1)) if total else None,
+        ))
+    return out
+
+
+def full_pairs(line: str) -> list[tuple[int, int, int]]:
+    """C 가 있는 형식 쌍만. SSOT 는 이 목록이 마지막 불릿에서 길이 1 이어야 한다.
+
+    Full pairs only (C present). The last bullet must have exactly one.
+    """
+    return [(a, b, c) for a, b, c in formal_pairs(line) if c is not None]
 
 
 def _exactly_one(pattern: re.Pattern, text: str, groups: int = 1):
@@ -464,7 +494,7 @@ def main() -> int:
     for m in msgs + pin_msgs + lint_msgs:
         print(m)
     print(
-        "\n해결: (수치) 손으로 고칠 곳은 STATE.md §테스트 수 추적 이력 **마지막 한 줄**뿐이다 —"
+        "\n해결: (수치) 손으로 고칠 곳은 STATE.md §테스트 수 추적 이력 **현재 불릿 한 줄**뿐이다 —"
         " 그 줄을 실측값(`--collect-only`)으로 고친 뒤 `py -3 scripts/check_docs_sync.py --fix`"
         " 를 돌리면 나머지 4지점(종합 수치·추적셀 머리·README 2배지)이 파생된다."
         " (핀) requirements.txt 실핀에 맞춰 .claude/rules/deploy.md 인용과 README/README.ko"

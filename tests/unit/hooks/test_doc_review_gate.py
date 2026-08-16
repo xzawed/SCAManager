@@ -1486,8 +1486,18 @@ def test_state_context_budget_reaches_the_aggregate_numbers():
     assert dict(_CONTEXT_SOURCES)["docs/STATE.md"] == _STATE_BUDGET, (
         "STATE 예산이 계약값과 다르다 — 의도한 변경이면 이 테스트의 리터럴도 함께 고칠 것"
     )
-    assert len(state_section) >= _STATE_BUDGET, (
-        f"STATE 슬라이스가 {len(state_section):,}자뿐이다 — 예산이 실제로 실리지 않았다"
+    # 🔴 2026-08-16: STATE.md 가 **예산보다 작아졌다**(이력 원장 퇴역, 44,710자 → 한 줄).
+    #    그래서 «슬라이스가 예산만큼 크다» 는 더 이상 성립하지 않는다 — 원천 자체가 그만큼
+    #    없기 때문이다. 그것은 회귀가 아니라 개선이다(심의자가 STATE 전문을 본다).
+    #    단언의 **의도**(예산이 실제로 적용되는가)는 유지한다: 슬라이스는 예산과 원천 크기 중
+    #    **작은 쪽 이상**이어야 한다. 원천이 다시 커지면 이 단언은 자동으로 예산 하한이 된다.
+    #    The source is now smaller than the budget; assert min(budget, source) so the axis
+    #    keeps meaning in both regimes.
+    state_full_len = len((_ROOT / "docs" / "STATE.md").read_text(encoding="utf-8"))
+    expected_floor = min(_STATE_BUDGET, state_full_len)
+    assert len(state_section) >= expected_floor, (
+        f"STATE 슬라이스가 {len(state_section):,}자뿐이다 — 예산({_STATE_BUDGET:,}) 과 "
+        f"원천({state_full_len:,}) 중 작은 쪽({expected_floor:,}) 에도 못 미친다"
     )
 
 
