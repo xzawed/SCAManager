@@ -254,6 +254,10 @@ def missing_trace_fields(text: str) -> list[str]:
 #
 # The guard fired only on seal vocabulary while the policy applies to substantive work; that
 # gap is what the self-issued exemptions filled. Measured FP rate with this list: 3/30.
+# 워크플로 디렉토리 — `_CODE_SURFACES` · `_GUARD_SURFACES` 와 같은 값을 세 번 적지 않는다.
+# Single source for the workflow dir literal (also used by both surface tuples).
+_WORKFLOW_DIRS = (".github/workflows/",)
+
 _CODE_SURFACES = (
     "src/",
     "scripts/",
@@ -262,7 +266,7 @@ _CODE_SURFACES = (
     ".claude/hooks/",
     ".claude/workflows/",
     ".claude/settings.json",
-    ".github/workflows/",
+    *_WORKFLOW_DIRS,
     ".pre-commit-config.yaml",
     "tests/unit/scripts/",
     "tests/unit/hooks/",
@@ -291,7 +295,7 @@ _GUARD_SURFACES = (
     ".claude/hooks/",
     ".claude/workflows/",
     ".claude/settings.json",
-    ".github/workflows/",
+    *_WORKFLOW_DIRS,
     ".pre-commit-config.yaml",
     "tests/unit/scripts/",
     "tests/unit/hooks/",
@@ -399,6 +403,100 @@ def _make_stdout_safe():
         pass  # 캡처된 stream 등 reconfigure 미지원 — 무시
 
 
+# CI 가 넘기는 저자 신원. 본문에서 읽지 않는다 — 본문 마커는 자기인증.
+# Author identity comes from CI env, never from the PR body (self-certification trap).
+_AUTHOR_LOGIN_ENV = "PR_AUTHOR_LOGIN"
+_AUTHOR_TYPE_ENV = "PR_AUTHOR_TYPE"
+
+
+def is_bot_author() -> bool:
+    """CI env 기준 봇 여부. 본문을 보지 않는다.
+
+    GitHub App 은 `user.type == "Bot"` 이고, dependabot 로그인은 `dependabot[bot]`.
+    둘 중 하나면 봇으로 본다.
+
+    🔴 **부재·공백은 봇이 아니다.** 저자 env 가 비는 순간 전 PR 이 면제되면
+    이 리포의 fail-open 사고와 같은 클래스다. 호출자가 변수를 안 넘기는 것이
+    만능 면제가 되면 안 된다.
+    Absent/empty author env is NOT a bot — that must not become a universal exemption.
+    """
+    login = (os.environ.get(_AUTHOR_LOGIN_ENV) or "").strip()
+    typ = (os.environ.get(_AUTHOR_TYPE_ENV) or "").strip()
+    if not login and not typ:
+        return False
+    return typ.casefold() == "bot" or login.casefold().endswith("[bot]")
+
+
+# `uses: <owner>/<repo>[/path]@<ref>` 한 줄. 뒤에 오는 `# v7.0.0` 주석은 허용한다
+# (dependabot 이 실제로 붙인다). `@` 앞이 **액션 경로**, 뒤가 버전이다.
+# 🔴 끝의 공백은 정규식이 아니라 호출부의 `rstrip()` 이 없앤다 — `\s*(?:#.*)?$` 처럼
+#    쓰면 `.` 과 `\s*` 가 겹쳐 super-linear 백트래킹이 된다(Sonar S8786).
+# One `uses:` line; trailing blanks are stripped by the caller, not by the pattern.
+_USES_LINE = re.compile(
+    r"^[+-]\s*(?:-\s+)?uses:\s*(?P<action>[^@\s]+)@(?P<ref>[^\s#]+)(?:\s+#.*)?$"
+)
+
+
+def action_version_bump_only(paths: list[str], base_sha: str, head_sha: str) -> bool:
+    """워크플로 변경이 **액션 버전 범프뿐**인가 (그 외 한 줄이라도 있으면 False).
+
+    ## 왜 이 판정이 필요한가
+
+    `.github/workflows/` 는 `_GUARD_SURFACES` 다 — 관측자를 저술하는 표면이라
+    자기면제가 막혀 있다. 그런데 Dependabot 은 흔적도 면제 마커도 쓸 수 없어서,
+    그 규칙이 **액션 버전 범프까지 영구 차단**하고 있었다(실측 `#1407` · `#1408`).
+
+    그래서 «봇이라서» 면제하는 대신 **«바뀐 것이 버전 문자열뿐임을 기계가 확인했을 때만»**
+    면제한다. 봇은 액션 버전을 올릴 수 있고, 워크플로 **로직**은 여전히 못 바꾼다.
+    Bots may bump action versions; they still cannot change workflow logic.
+
+    ## 판정 규칙 (하나라도 어긋나면 False — fail-closed)
+
+    1. 대상 경로가 전부 `.github/workflows/` 아래여야 한다.
+    2. diff 의 모든 `+`/`-` 줄이 `uses: <action>@<ref>` 형태여야 한다.
+       `run:` · `if:` · `env:` 한 줄이라도 섞이면 False.
+    3. 제거된 **액션 경로 목록**과 추가된 목록이 정확히 같아야 한다 —
+       `actions/checkout` 을 `attacker/checkout` 으로 바꾸는 것은 «버전 범프» 가 아니다.
+    4. git 이 실패하면 False (모른다 = 면제 없음).
+
+    🔴 **이것이 닫지 못하는 것**: 액션 `v4 → v7` 은 그 액션의 **동작을 바꾼다**.
+    이 판정은 *"우리 워크플로 코드가 안 바뀌었다"* 만 말하고 *"동작이 안 바뀐다"* 는
+    말하지 않는다. 후자는 정적으로 판정 불가다.
+    This says our workflow source is unchanged — not that behaviour is unchanged.
+    """
+    targets = [p for p in paths if p.startswith(_WORKFLOW_DIRS)]
+    if not targets or len(targets) != len(paths):
+        return False
+    try:
+        proc = subprocess.run(  # nosec B603 B607
+            ["git", "diff", "-U0", f"{base_sha}...{head_sha}", "--", *targets],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=60, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    if proc.returncode != 0:
+        return False
+
+    removed: list[str] = []
+    added: list[str] = []
+    for line in (proc.stdout or "").splitlines():
+        if line.startswith(("+++", "---", "@@", "diff --git", "index ")):
+            continue
+        if not line.startswith(("+", "-")):
+            continue
+        matched = _USES_LINE.match(line.rstrip())
+        if not matched:
+            # 🔴 uses: 가 아닌 변경 한 줄이면 즉시 탈락 — 부분 허용은 없다.
+            # Any non-`uses:` change disqualifies the whole PR.
+            return False
+        (added if line.startswith("+") else removed).append(matched.group("action"))
+
+    # 순수 추가·순수 삭제도 «범프» 가 아니다 — step 신설/제거이므로 짝이 맞아야 한다.
+    # Pure additions or deletions are new/removed steps, not bumps.
+    return bool(removed) and sorted(removed) == sorted(added)
+
+
 def main() -> int:
     """seal 주장이 있으면 claim-review 흔적을 요구한다 (blocking — exit 1)."""
     _make_stdout_safe()
@@ -455,7 +553,8 @@ def main() -> int:
     # Self-exemption is unavailable when the PR authors a guard, or claims a seal over code.
     # 🔴 **필터 전** 경로로 판정한다 — `surfaces` 는 `_CODE_SURFACES` 로 걸러진 뒤라
     #    목록 밖 가드(`tools/check_x.py`)가 이미 사라져 있다(Grok `019fe089` 적발).
-    guarded = guard_surfaces(changed_paths(base_sha, head_sha) if base_sha and head_sha else None)
+    raw_paths = changed_paths(base_sha, head_sha) if base_sha and head_sha else None
+    guarded = guard_surfaces(raw_paths)
     exemption_blocked = bool(guarded) or bool(claims and surfaces)
 
     if exemption and exemption_blocked:
@@ -508,6 +607,46 @@ def main() -> int:
             f"seal 주장 {len(claims)}건 · 코드 표면 {len(surfaces or [])}개 통과"
         )
         return 0
+
+    # ── 봇 면제 ────────────────────────────────────────────────────────────
+    #
+    # Dependabot 은 흔적도 면제 마커도 쓸 수 없다(본문이 템플릿 생성). 그래서 이 게이트는
+    # 봇 PR 에 대해 **통과가 원리적으로 불가능**했다 — 실측 `#1407` · `#1408` 영구 red.
+    #
+    # 🔴 면제 근거는 «봇이라서» 가 아니라 **«판정할 claim 이 없어서»** 다. 그러므로
+    #    seal 주장 + 코드 표면 조합은 봇에게도 그대로 막힌다(수동 마커와 같은 축).
+    #
+    # 🔴 `raw_paths is None` 이면 면제하지 않는다 — **fail-closed** (Grok claim-review
+    #    `01a00ad5` 적발). `guard_surfaces(None)` 은 `[]` 를 돌려주는데(그 함수 docstring 이
+    #    이유를 적는다: fail-closed 로 두면 모든 로컬 실행이 영구 red), 그 `[]` 를 봇 분기가
+    #    «가드 없음» 으로 읽으면 **git 이 실패한 순간 봇이 가드 변경을 통과**한다.
+    #    「모른다」를 「없다」로 읽지 않는다.
+    # Undecidable path list must not read as "no guard surfaces" for the bot branch.
+    if is_bot_author() and raw_paths is not None and not bool(claims and surfaces):
+        login = (os.environ.get(_AUTHOR_LOGIN_ENV) or "").strip() or "(unknown)"
+        why = None
+        if not guarded:
+            why = "가드 표면 아님"
+        elif action_version_bump_only(guarded, base_sha, head_sha):
+            # 🔴 가드 표면(`.github/workflows/`)이지만 **바뀐 것이 액션 버전 문자열뿐**임을
+            #    기계가 확인했다. 봇은 로직을 못 바꾼다 — `run:`/`if:` 한 줄이라도 섞이면
+            #    위 판정이 False 라 여기 못 온다.
+            # Machine-verified pure version bump: bots may bump, not rewrite logic.
+            why = f"액션 버전 범프뿐 ({len(guarded)}개 워크플로)"
+        if why:
+            print(f"::notice title=claim-review bot exemption::{login} — {why}")
+            # 🔴 job summary 에도 남긴다 — `::notice` 는 Actions 로그 안쪽이라 추세가
+            #    안 보인다. 수동 면제와 같은 관측 자리.
+            # Also record in the job summary so the trend is observable.
+            _append_step_summary(
+                f"- ⏭️ **claim-review 봇 면제** — 저자 `{login}` · {why} · "
+                f"seal 주장 {len(claims)}건 · 코드 표면 {len(surfaces or [])}개 파일\n"
+            )
+            print(
+                f"⏭️  봇 저자 면제 — {login} · {why} · "
+                f"seal 주장 {len(claims)}건 · 코드 표면 {len(surfaces or [])}개 통과"
+            )
+            return 0
 
     missing = missing_trace_fields(body)
     if not missing:

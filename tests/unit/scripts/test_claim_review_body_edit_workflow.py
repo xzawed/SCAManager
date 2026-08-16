@@ -156,3 +156,49 @@ def test_ci_full_matrix_still_uses_default_pull_request_types():
     assert "edited" not in head, (
         "ci.yml 이 전체 매트릭스에 `edited` 를 달았다 — 얇은 워크플로와 중복이고 비용이 크다."
     )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 저자 신원 배선 — 정의 ≠ 배선 (3-불변식 ③).
+#
+# 측정된 사고: `check_claim_review_trace.py` 에 `is_bot_author()` 를 넣었는데
+# 두 워크플로 중 어느 쪽도 `PR_AUTHOR_*` 를 넘기지 않아, 함수는 **CI 에서 항상
+# False** 였다. 그러면 Dependabot 면제는 코드에만 존재하고 실제로는 한 번도 안 돈다.
+# 이 축은 «스크립트가 env 를 읽는가» 가 아니라 «워크플로가 그 env 를 채우는가» 다.
+# Definition is not wiring: the predicate reads env the workflows never supplied.
+# ──────────────────────────────────────────────────────────────────────────────
+
+_CLAIM_STEP = "run: python scripts/check_claim_review_trace.py"
+
+
+def _claim_review_step_env(text: str) -> str:
+    """claim-review 가드를 돌리는 step 의 **주석 제거된** env 블록.
+
+    🔴 주석을 남기면 설명 문구(`# PR_AUTHOR_LOGIN 을 넘긴다`)가 단언을 충족한다 —
+    이 파일의 `_without_comments` 가 이미 같은 사고로 도입됐다.
+    Comments are stripped so prose cannot satisfy the assertion.
+    """
+    body = _without_comments(text)
+    idx = body.index(_CLAIM_STEP)
+    start = body.rindex("- name:", 0, idx)
+    return body[start:idx]
+
+
+@pytest.mark.parametrize("path", [_CI, _THIN], ids=["ci.yml", "body-edit.yml"])
+@pytest.mark.parametrize("var", ["PR_AUTHOR_LOGIN", "PR_AUTHOR_TYPE"])
+def test_claim_review_step_supplies_author_identity(path, var):
+    """🔴 두 워크플로 **모두** 저자 신원을 넘겨야 한다.
+
+    한쪽만 넘기면 그 이벤트에서만 봇 면제가 돌아, 같은 이름의 required check 가
+    이벤트에 따라 다른 답을 낸다 — 이 파일이 존재하는 이유인 그 사고다.
+    Both workflows must supply it; a one-sided env makes one event answer differently.
+    """
+    env_block = _claim_review_step_env(_text(path))
+    assert f"{var}:" in env_block, (
+        f"{path.name} 의 claim-review step 이 {var} 를 안 넘긴다 — "
+        "`is_bot_author()` 가 CI 에서 영원히 False 가 된다(정의만 있고 배선 없음)."
+    )
+    assert "github.event.pull_request.user." in env_block, (
+        f"{path.name} 의 {var} 가 이벤트가 아닌 값에서 온다 — "
+        "저자 신원은 본문·입력이 아니라 이벤트에서만 읽는다(자기인증 차단)."
+    )

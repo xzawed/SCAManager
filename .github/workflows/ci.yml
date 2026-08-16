@@ -219,6 +219,11 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # 저자 신원은 이벤트에서만 — 본문은 자기인증이라 못 믿는다.
+          # 봇(Dependabot)은 흔적도 면제 마커도 쓸 수 없어 이 축이 없으면 영구 차단이다.
+          # Author identity from the event only; bots can write neither a trace nor the marker.
+          PR_AUTHOR_LOGIN: ${{ github.event.pull_request.user.login }}
+          PR_AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
         run: python scripts/check_claim_review_trace.py
 
 

@@ -102,4 +102,9 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # 🔴 ci.yml 의 같은 이름 step 과 **동일**해야 한다 — 한쪽만 저자 env 를 넘기면
+          #    본문 수정 재판정에서 봇이 다시 차단된다(같은 이름 check 가 빨간 채로 남는다).
+          # Must stay identical to the ci.yml step; a one-sided env would re-block bots here.
+          PR_AUTHOR_LOGIN: ${{ github.event.pull_request.user.login }}
+          PR_AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
         run: python scripts/check_claim_review_trace.py

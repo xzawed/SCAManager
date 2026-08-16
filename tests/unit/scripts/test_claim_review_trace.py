@@ -11,6 +11,7 @@ AGENTS.md 3-불변식 대응:
 env 로 전달돼야 한다. 이건 가드 자신의 보안 결함이 될 수 있어 별도로 고정한다.
 """
 import pathlib
+import subprocess
 
 import pytest
 import yaml
@@ -18,6 +19,7 @@ import yaml
 from tests.unit.scripts._wiring_shape import any_invokes
 from scripts.check_claim_review_trace import (
     _CODE_SURFACES,
+    action_version_bump_only,
     changed_code_surfaces,
     commit_messages,
     find_seal_claims,
@@ -51,7 +53,10 @@ _GOOD_TRACE = """## Grok claim-review
 @pytest.fixture(autouse=True)
 def _clear_env(monkeypatch):
     """PR_* env 를 매 테스트마다 초기화 — 누수 시 결과가 서로 오염된다."""
-    for key in ("PR_TITLE", "PR_BODY", "PR_BASE_SHA", "PR_HEAD_SHA"):
+    for key in (
+        "PR_TITLE", "PR_BODY", "PR_BASE_SHA", "PR_HEAD_SHA",
+        "PR_AUTHOR_TYPE", "PR_AUTHOR_LOGIN",
+    ):
         monkeypatch.delenv(key, raising=False)
 
 
@@ -851,3 +856,301 @@ def test_no_new_identifier_matches_the_lob_pattern():
         "정확히 40자인 `test_`/`live_` 식별자가 있다 — TruffleHog Lob 탐지기가 API 키로 "
         "오인한다. 한 글자 늘리거나 줄일 것: " + ", ".join(hits)
     )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 봇 저자 면제 — Dependabot PR 은 흔적/마커를 쓸 수 없다.
+#
+# 측정된 사고: #1407 · #1408 이 `.github/workflows/` (코드 표면) 만 바꾸고
+# `🔴 코드 표면을 바꾸는데 claim-review 흔적이 없습니다` 로 영구 차단됐다.
+# 봇 면제는 수동 마커와 **같은** `exemption_blocked` 규칙을 쓴다 —
+# 가드 표면(`scripts/check_*.py` 등)은 봇도 리뷰 없이 랜딩할 수 없다.
+# 부재·공백 env 는 봇이 아니다 (fail-closed).
+# Bot-author exemption: same exemption_blocked rule as the manual marker.
+# Absent/empty author env is NOT a bot.
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def test_bot_author_workflow_without_trace_passes(monkeypatch, capsys, tmp_path):
+    """봇 + 워크플로 변경 + 흔적/마커 없음 → exit 0.
+
+    `_run_with_surfaces` 관용구를 쓴다 — 코드 표면 축만 주입하고 `changed_paths`
+    는 비운다. 가드 표면 차단은 아래 `test_bot_author_guard_surface_still_blocked`
+    가 잰다.
+    Bot + workflow code-surface + no trace/marker must exit 0 (Dependabot case).
+    """
+    monkeypatch.setenv("PR_AUTHOR_TYPE", "Bot")
+    monkeypatch.setenv("PR_AUTHOR_LOGIN", "dependabot[bot]")
+    monkeypatch.setattr(f"{_MOD}.changed_paths", lambda _b, _h: [])
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    rc = _run_with_surfaces(
+        monkeypatch, [".github/workflows/ci.yml"],
+        title="chore(deps): bump actions/checkout",
+        body="Bumps actions/checkout from 4 to 5.",
+    )
+    assert rc == 0, "봇이 워크플로만 바꾸는데 흔적 없이 차단됐다"
+    out = capsys.readouterr().out
+    notice_lines = [line for line in out.splitlines() if line.startswith("::notice")]
+    assert notice_lines, "봇 면제가 ::notice annotation 으로 가시화되지 않았다"
+    assert any("dependabot[bot]" in line for line in notice_lines), (
+        f"::notice 가 저자 로그인을 알리지 않았다:\n{out}"
+    )
+    recorded = summary.read_text(encoding="utf-8")
+    assert "dependabot[bot]" in recorded, f"job summary 에 저자가 없다: {recorded!r}"
+
+
+def test_bot_author_guard_surface_still_blocked(monkeypatch):
+    """봇 + 가드 표면(`scripts/check_*.py`) → exit 1.
+
+    면제의 `guarded` 접속사가 load-bearing 인지 여기를 잰다.
+    이 단언이 없으면 봇이 가드를 리뷰 없이 랜딩해도 초록이다.
+    Bot + guard surface must stay blocked — same exemption_blocked rule.
+    """
+    monkeypatch.setenv("PR_AUTHOR_TYPE", "Bot")
+    monkeypatch.setenv("PR_AUTHOR_LOGIN", "dependabot[bot]")
+    paths = ["scripts/check_something.py"]
+    monkeypatch.setattr(f"{_MOD}.changed_paths", lambda _b, _h: paths)
+    rc = _run_with_surfaces(
+        monkeypatch, paths,
+        title="chore: dependabot guard bump",
+        body="Bumps a guard script.",
+    )
+    assert rc == 1, "봇이 가드 표면을 흔적 없이 통과했다"
+
+
+def test_absent_author_env_is_not_a_bot(monkeypatch):
+    """PR_AUTHOR_TYPE · PR_AUTHOR_LOGIN 둘 다 부재 → 봇이 아니다 → exit 1.
+
+    부재를 봇으로 읽으면 로컬·미배선 CI 가 만능 면제가 된다 (fail-open).
+    Absent author env is NOT a bot — fail-closed.
+    """
+    # _clear_env 가 이미 두 키를 지운다 / fixture already deletes both keys
+    rc = _run_with_surfaces(
+        monkeypatch, [".github/workflows/ci.yml"],
+        title="chore(deps): bump actions/checkout",
+        body="Bumps actions/checkout from 4 to 5.",
+    )
+    assert rc == 1, "저자 env 부재가 봇 면제로 새어 통과했다"
+
+
+def test_empty_author_type_is_not_a_bot(monkeypatch):
+    """PR_AUTHOR_TYPE 가 빈 문자열이면 봇이 아니다 → exit 1.
+
+    strip 후 공백도 부재와 같다. 빈 값을 Bot 으로 읽으면 안 된다.
+    Empty PR_AUTHOR_TYPE is NOT a bot — fail-closed.
+    """
+    monkeypatch.setenv("PR_AUTHOR_TYPE", "")
+    monkeypatch.setenv("PR_AUTHOR_LOGIN", "")
+    rc = _run_with_surfaces(
+        monkeypatch, [".github/workflows/ci.yml"],
+        title="chore(deps): bump actions/checkout",
+        body="Bumps actions/checkout from 4 to 5.",
+    )
+    assert rc == 1, "빈 PR_AUTHOR_TYPE 이 봇 면제로 새어 통과했다"
+
+
+def test_human_author_on_workflow_still_blocked(monkeypatch):
+    """사람 저자(User / xzawed) + 워크플로 → exit 1. 기존 동작 불변.
+
+    봇 면제가 사람 PR 까지 열어 버리면 정책 19 default 가 죽는다.
+    Human author + workflow file stays blocked (unchanged behaviour).
+    """
+    monkeypatch.setenv("PR_AUTHOR_TYPE", "User")
+    monkeypatch.setenv("PR_AUTHOR_LOGIN", "xzawed")
+    rc = _run_with_surfaces(
+        monkeypatch, [".github/workflows/ci.yml"],
+        title="chore(deps): bump actions/checkout",
+        body="Bumps actions/checkout from 4 to 5.",
+    )
+    assert rc == 1, "사람 저자 + 워크플로가 봇 면제로 통과했다"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 순수 액션 버전 범프 판정 — `.github/workflows/` 는 가드 표면이라 봇 면제가
+# 그냥은 안 통한다. «바뀐 것이 버전 문자열뿐» 임을 기계가 확인했을 때만 연다.
+#
+# 🔴 아래는 **실제 git 저장소**를 만들어 실제 `git diff` 를 태운다. diff 문자열을
+# 손으로 지어내면 파서가 생산 형태와 갈라져도 초록이 된다(그 형태는 실측했다:
+# `-        uses: actions/upload-artifact@v4` / `+        uses: actions/upload-artifact@v7`).
+# Real git repos, real diffs — a hand-written diff string would drift from production.
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def _git_repo_with_change(tmp_path, before: str, after: str, name="ci.yml"):
+    """워크플로 파일 1개를 before → after 로 바꾼 실제 저장소. `(root, base, head)` 반환."""
+    root = tmp_path / "repo"
+    (root / ".github" / "workflows").mkdir(parents=True)
+    wf = root / ".github" / "workflows" / name
+
+    def git(*args):
+        out = subprocess.run(
+            ["git", *args], cwd=root, capture_output=True, text=True,
+            encoding="utf-8", errors="replace", check=True,
+        )
+        return out.stdout.strip()
+
+    git("init", "-q")
+    git("config", "user.email", "t@t.t")
+    git("config", "user.name", "t")
+    wf.write_text(before, encoding="utf-8")
+    git("add", "-A")
+    git("commit", "-q", "-m", "base")
+    base = git("rev-parse", "HEAD")
+    wf.write_text(after, encoding="utf-8")
+    git("add", "-A")
+    git("commit", "-q", "-m", "head")
+    return root, base, git("rev-parse", "HEAD")
+
+
+_WF_BEFORE = "jobs:\n  a:\n    steps:\n      - uses: actions/upload-artifact@v4\n"
+
+
+@pytest.mark.parametrize(
+    ("after", "expected", "why"),
+    [
+        (
+            "jobs:\n  a:\n    steps:\n      - uses: actions/upload-artifact@v7\n",
+            True, "버전만 v4→v7 — 이것이 허용 대상",
+        ),
+        (
+            "jobs:\n  a:\n    steps:\n      - uses: attacker/upload-artifact@v4\n",
+            False, "액션 경로가 바뀌었다 — 범프가 아니라 대체다",
+        ),
+        (
+            "jobs:\n  a:\n    steps:\n      - uses: actions/upload-artifact@v4\n      - run: curl evil\n",
+            False, "`run:` 한 줄이 섞였다 — 로직 변경",
+        ),
+        (
+            "jobs:\n  a:\n    steps:\n      - uses: actions/upload-artifact@v4\n      - uses: actions/cache@v5\n",
+            False, "순수 추가는 step 신설이지 범프가 아니다",
+        ),
+        (
+            "jobs:\n  a:\n    steps: []\n",
+            False, "순수 삭제는 step 제거지 범프가 아니다",
+        ),
+        (
+            "jobs:\n  a:\n    steps:\n      - uses: actions/upload-artifact@v7  # v7.0.1\n",
+            True, "dependabot 이 붙이는 후행 주석은 허용",
+        ),
+    ],
+    ids=["bump", "action-swapped", "run-added", "step-added", "step-removed", "trailing-comment"],
+)
+def test_action_version_bump_only_judges_the_real_diff(tmp_path, monkeypatch, after, expected, why):
+    """무엇이 «순수 버전 범프» 인가 — 실제 git diff 로 판정한다."""
+    root, base, head = _git_repo_with_change(tmp_path, _WF_BEFORE, after)
+    monkeypatch.chdir(root)
+    got = action_version_bump_only([".github/workflows/ci.yml"], base, head)
+    assert got is expected, f"{why} — 기대 {expected}, 실제 {got}"
+
+
+def test_action_version_bump_only_rejects_paths_outside_workflows(tmp_path, monkeypatch):
+    """🔴 워크플로 밖 경로가 하나라도 섞이면 False.
+
+    이 판정은 «워크플로 버전 범프» 전용 탈출구다. `scripts/check_x.py` 를 같이 들고 오면
+    그 파일은 diff 대상에서 빠져 «범프뿐» 으로 보일 수 있으므로, 목록 단계에서 막는다.
+    A non-workflow path must disqualify before the diff is even read.
+    """
+    root, base, head = _git_repo_with_change(
+        tmp_path, _WF_BEFORE,
+        "jobs:\n  a:\n    steps:\n      - uses: actions/upload-artifact@v7\n",
+    )
+    monkeypatch.chdir(root)
+    mixed = [".github/workflows/ci.yml", "scripts/check_x.py"]
+    assert action_version_bump_only(mixed, base, head) is False
+
+
+def test_action_version_bump_only_is_false_when_git_fails(tmp_path, monkeypatch):
+    """git 이 실패하면 False — 「모른다」를 「범프다」로 읽지 않는다 (fail-closed)."""
+    monkeypatch.chdir(tmp_path)  # git 저장소가 아니다
+    assert action_version_bump_only(
+        [".github/workflows/ci.yml"], "dead1234", "beef5678"
+    ) is False
+
+
+def test_bot_exemption_is_closed_when_changed_paths_is_undecidable(monkeypatch):
+    """🔴 `changed_paths` 가 None 이면 봇 면제가 발화하지 않는다 → exit 1.
+
+    ## 왜 이 축이 따로 필요한가 (Grok claim-review `01a00ad5` 적발)
+
+    `guard_surfaces(None)` 은 **`[]`** 를 돌려준다 — 그 함수 docstring 이 이유를 적는다
+    (fail-closed 로 두면 base/head 없는 모든 로컬 실행이 영구 red). 초판 봇 분기는 그
+    `[]` 를 «가드 표면 없음» 으로 읽어서, **git 이 실패한 순간 봇이 가드 변경을 통과**했다.
+    「모른다」와 「없다」를 같은 값으로 접는 자리가 정확히 이 리포의 observer-lie 모양이다.
+    Undecidable must not read as "no guard surfaces".
+    """
+    monkeypatch.setenv("PR_AUTHOR_TYPE", "Bot")
+    monkeypatch.setenv("PR_AUTHOR_LOGIN", "dependabot[bot]")
+    monkeypatch.setattr(f"{_MOD}.changed_paths", lambda _b, _h: None)
+    rc = _run_with_surfaces(
+        monkeypatch, [".github/workflows/ci.yml"],
+        title="chore(deps): bump actions/checkout",
+        body="Bumps actions/checkout from 4 to 5.",
+    )
+    assert rc == 1, "경로 판정 불가인데 봇 면제가 발화했다 — 「모른다」가 「없다」로 새고 있다"
+
+
+def test_version_bump_combined_with_a_logic_change_is_rejected(tmp_path, monkeypatch):
+    """🔴 범프 + 로직 변경이 **함께** 오면 거부한다 — 이 축은 따로 재야 한다.
+
+    ## 왜 위 parametrize 의 `run-added` 케이스로는 부족한가 (뮤테이션 생존 실측)
+
+    `run:` 만 **추가**하면 `git diff -U0` 에 제거 줄이 없다. 그러면 판정은
+    `bool(removed)` 가 False 라서 탈락하고, *"uses: 아닌 줄을 거부한다"* 규칙은
+    **한 번도 돌지 않는다**. 실제로 그 규칙을 `continue` 로 무력화한 뮤테이션이
+    그 케이스만 있을 때 **생존**했다(87 passed).
+
+    범프(제거+추가 짝)와 로직 변경이 같이 있어야 `removed`/`added` 가 모두 차고,
+    그때 비로소 «uses: 아닌 줄» 판정이 결과를 좌우한다.
+    Only a combined change fills both sides so the non-`uses:` rule is load-bearing.
+    """
+    before = (
+        "jobs:\n  a:\n    steps:\n"
+        "      - uses: actions/upload-artifact@v4\n"
+        "      - run: echo base\n"
+    )
+    after = (
+        "jobs:\n  a:\n    steps:\n"
+        "      - uses: actions/upload-artifact@v7\n"
+        "      - run: echo CHANGED\n"
+    )
+    root, base, head = _git_repo_with_change(tmp_path, before, after)
+    monkeypatch.chdir(root)
+    assert action_version_bump_only([".github/workflows/ci.yml"], base, head) is False, (
+        "버전 범프에 로직 변경을 얹었는데 «범프뿐» 으로 통과했다 — "
+        "봇이 워크플로 로직을 바꿀 수 있게 된다"
+    )
+
+
+def test_that_combined_case_actually_exercises_the_non_uses_rule(tmp_path, monkeypatch):
+    """🔴 위 테스트가 **올바른 이유로** red 인지 확인 — 오라클의 오라클.
+
+    `bool(removed)` 단락에서 걸려도 결과는 False 라 위 단언은 통과한다. 그러면
+    무엇을 쟀는지 알 수 없다. 여기서는 diff 가 실제로 **제거·추가 양쪽을 채우는지**를
+    직접 본다 — 채우지 못하면 위 테스트는 공허하다.
+    Guards the guard: assert the diff really fills both sides, or the test above is vacuous.
+    """
+    before = (
+        "jobs:\n  a:\n    steps:\n"
+        "      - uses: actions/upload-artifact@v4\n"
+        "      - run: echo base\n"
+    )
+    after = (
+        "jobs:\n  a:\n    steps:\n"
+        "      - uses: actions/upload-artifact@v7\n"
+        "      - run: echo CHANGED\n"
+    )
+    root, base, head = _git_repo_with_change(tmp_path, before, after)
+    diff = subprocess.run(
+        ["git", "diff", "-U0", f"{base}...{head}", "--", ".github/workflows/ci.yml"],
+        cwd=root, capture_output=True, text=True, encoding="utf-8", check=True,
+    ).stdout
+    body = [
+        ln for ln in diff.splitlines()
+        if ln.startswith(("+", "-")) and not ln.startswith(("+++", "---"))
+    ]
+    removed = [ln for ln in body if ln.startswith("-")]
+    added = [ln for ln in body if ln.startswith("+")]
+    assert len(removed) == 2, f"제거 줄이 2개가 아니다 — 결합 케이스가 성립 안 함: {removed}"
+    assert len(added) == 2, f"추가 줄이 2개가 아니다: {added}"
+    assert any("run:" in ln for ln in removed), "제거 쪽에 uses: 아닌 줄이 없다 — 축이 공허하다"
