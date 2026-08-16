@@ -38,12 +38,17 @@ _DOC_GLOBS = (
     ".claude/rules/*.md",
     "docs/runbooks/*.md",
 )
-_DOC_LITERALS = ("CLAUDE.md", "AGENTS.md", "docs/backlog.md")
+# 🔴 리터럴은 `.is_file()` 로 걸러내지 않는다. 걸러내면 파일이 사라진 순간 스코프가
+#    조용히 줄어들고, `main()` 의 부재 검사가 그 이름을 보지 못해 초록이 된다.
+#    글롭은 존재하는 파일만 돌려주는 것이 글롭의 정의라 그대로 둔다.
+# Literals stay in the list even when missing so main() can fail loudly; globs only
+# match existing files (that is what a glob is).
+_DOC_LITERALS = ("CLAUDE.md", "AGENTS.md")
 
 
 def _doc_files(project_root: Path) -> list[str]:
-    """스캔 대상 문서 목록 — 리터럴 + 글롭. / Scan targets: literals plus globs."""
-    files = [f for f in _DOC_LITERALS if (project_root / f).is_file()]
+    """스캔 대상 문서 목록 — 리터럴은 부재여도 남긴다. / Literals stay even if missing."""
+    files = list(_DOC_LITERALS)
     for pattern in _DOC_GLOBS:
         files += sorted(p.relative_to(project_root).as_posix()
                         for p in project_root.glob(pattern))

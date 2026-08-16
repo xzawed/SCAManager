@@ -58,7 +58,8 @@ updates:
     # 🔴 해제 조건: sqlfluff 가 click 상한을 완화한 릴리스를 내면 이 ignore 항목을 제거하고
     #    `pip install --dry-run -r requirements.txt -r requirements-dev.txt` 로 해석 성공을 먼저 확인.
     # 🔴 이 ignore 는 dependabot 의 재제안을 **영구히 막는다** — 해제 조건이 충족돼도 아무도
-    #    알려주지 않는 silent-disable 클래스다. 그래서 `docs/backlog.md` ⏸️ 항목으로 추적한다.
+    #    알려주지 않는 silent-disable 클래스다. 추적처는 **GitHub Issues** 다
+    #    (`docs/backlog.md` 는 2026-08-16 퇴역).
     #
     # semgrep hold made explicit (#1227 item 2, user decision 2026-07-29). This rule only removes
     # the repeated-proposal noise; the pin itself is owned by the requirements.txt comment.
@@ -102,7 +103,8 @@ updates:
     # 🔴 해제 조건: `@typescript-eslint/parser` 가 typescript 7 을 peer 로 받는 버전을 내면
     #    이 항목 제거 후 `npm install` 해석 성공 + `pytest tests/integration/test_eslint_analyzer.py`
     #    (.ts/.tsx 축) 통과를 먼저 확인.
-    # 🔴 이 ignore 도 해제 조건 충족을 알려주지 않는다(silent-disable) → `docs/backlog.md` H4 추적.
+    # 🔴 이 ignore 도 해제 조건 충족을 알려주지 않는다(silent-disable) → GitHub Issues 추적
+    #    (구 backlog H4; 원장은 2026-08-16 퇴역).
     #
     # Pin typescript below 6.1 (#1232, measured): @typescript-eslint/parser 8.x peers on
     # `typescript >=4.8.4 <6.1.0`, so bumping to 7 makes `npm ci` fail with ERESOLVE. That parser is

@@ -17,6 +17,7 @@ pytest 재실행 → 판정)를 돌린다. 스파이로 대체하고 kwargs 만 
 | 생산 변경 + **관측하지 않는** 테스트 | **exit 1** ← 이 게이트의 본체 |
 | 테스트 변경 0건 | exit 0 (대상 아님) |
 | 생산 변경 0건 | exit 0 (되돌릴 것 없음) |
+| PR 이 **삭제한** 테스트만 남음 | exit 0 (**안 쟀음** — 통과 배너 아님. `#1385`) |
 | 되돌림이 no-op | **exit 1** (뮤테이션 무효 = 판정 불가) |
 | PR env 부재 | exit 0 (로컬에서 쉰다 — 로컬 게이트를 영구 red 로 만들지 않는다) |
 """
@@ -263,6 +264,111 @@ def test_already_red_baseline_fails_closed(repo: Path):
     code, lines = gate.evaluate(base, head, repo=repo)
     assert code == 1
     assert any("이미 red" in l for l in lines)
+
+
+# ── ③-b 삭제된 테스트는 대상이 아니다 (`#1385`) ─────────────────────────
+
+
+def _commit_that_deletes_the_only_test(repo: Path) -> tuple[str, str]:
+    """생산을 바꾸고 유일한 테스트 파일을 삭제한다 — 선택이 비는 경우."""
+    (repo / "src" / "thing.py").write_text("def value():\n    return 2\n", encoding="utf-8")
+    (repo / "tests" / "test_thing.py").unlink()
+    return _commit(repo, "delete the only test")
+
+
+def test_existing_at_drops_paths_absent_from_sha(repo: Path):
+    """HEAD 에 없는 경로는 선택에서 빠진다 — 삭제된 테스트는 대상이 아니다."""
+    head = _head(repo)
+    kept = gate.existing_at(
+        head, ["tests/test_thing.py", "tests/nope.py"], repo)
+    assert kept == ["tests/test_thing.py"]
+
+
+def test_deleted_test_file_is_not_a_target(repo: Path, monkeypatch):
+    """삭제한 테스트는 pytest 에 넘기지 않는다 — 넘기면 '이미 red' 로 오판한다 (`#1385`)."""
+    seen: list[list[str]] = []
+    real = gate._pytest
+
+    def wrap(paths, cwd):
+        seen.append(list(paths))
+        return real(paths, cwd)
+
+    monkeypatch.setattr(gate, "_pytest", wrap)
+    base, head = _commit_that_deletes_the_only_test(repo)
+    code, lines = gate.evaluate(base, head, repo=repo)
+    text = "\n".join(lines)
+    assert code == 0, f"삭제한 테스트를 대상 삼아 막았다:\n{text}"
+    assert "이미 red" not in text, f"삭제분을 되돌리기 전 red 로 오판했다:\n{text}"
+    assert all("test_thing.py" not in p for batch in seen for p in batch), (
+        f"삭제한 테스트를 pytest 에 넘겼다: {seen}")
+
+
+def test_empty_selection_says_not_measured(repo: Path):
+    """선택이 비면 '통과' 가 아니라 '안 쟀음' 이다 (traps A6 · `#1385`).
+
+    셀렉터 고장으로 글롭이 0건인 스코프 붕괴와 달리, 이 PR 이 바꾼 테스트를
+    전부 삭제한 것은 측정할 관측자가 없는 정당한 빈 범위다. 둘을 같은
+    성공 배너로 인쇄하면 안 잰 것을 통과로 읽는다.
+    """
+    base, head = _commit_that_deletes_the_only_test(repo)
+    code, lines = gate.evaluate(base, head, repo=repo)
+    text = "\n".join(lines)
+    assert code == 0, f"정당한 빈 선택을 실패로 돌렸다:\n{text}"
+    assert any("안 쟀음" in l for l in lines), (
+        f"빈 선택이 '안 쟀음' 이 아니다:\n{text}")
+    assert not any("✅" in l for l in lines), (
+        f"빈 선택에 성공 배너를 인쇄했다:\n{text}")
+    assert not any("통과" in l for l in lines), (
+        f"빈 선택을 '통과' 로 인쇄했다:\n{text}")
+
+
+def test_deleted_test_does_not_block_surviving_observer(repo: Path):
+    """존재 필터가 실축을 약화하면 안 된다 — 살아남은 테스트는 되돌림 red 를 본다."""
+    (repo / "tests" / "test_doomed.py").write_text(
+        "def test_doomed():\n    assert True\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "add doomed")
+    (repo / "src" / "thing.py").write_text("def value():\n    return 2\n", encoding="utf-8")
+    (repo / "tests" / "test_thing.py").write_text(
+        "import sys, pathlib\n"
+        "sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))\n"
+        "from src.thing import value\n\n\n"
+        "def test_value():\n    assert value() == 2\n",
+        encoding="utf-8",
+    )
+    (repo / "tests" / "test_doomed.py").unlink()
+    base, head = _commit(repo, "observe + delete doomed")
+
+    code, lines = gate.evaluate(base, head, repo=repo)
+    text = "\n".join(lines)
+    assert code == 0, f"살아남은 관측 테스트를 막았다:\n{text}"
+    assert "이미 red" not in text, f"삭제분이 baseline 을 오염시켰다:\n{text}"
+    assert any("assertion" in l for l in lines), (
+        f"신호 등급 assertion 이 사라졌다:\n{text}")
+
+
+def test_collection_error_grade_differs_from_assertion(repo: Path):
+    """되돌림이 import 를 깨면 등급은 collection 이다 — assertion 과 구별한다.
+
+    `test_observing_test_passes` 가 assertion 축. 둘 중 하나만 있으면
+    `_grade` 가 상수를 반환해도 한쪽은 통과한다.
+    """
+    (repo / "src" / "newmod.py").write_text("X = 1\n", encoding="utf-8")
+    (repo / "tests" / "test_newmod.py").write_text(
+        "import sys, pathlib\n"
+        "sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))\n"
+        "from src.newmod import X\n\n\n"
+        "def test_x():\n    assert X == 1\n",
+        encoding="utf-8",
+    )
+    base, head = _commit(repo, "new module")
+    code, lines = gate.evaluate(base, head, repo=repo)
+    text = "\n".join(lines)
+    assert code == 0, f"신규 모듈 관측을 막았다:\n{text}"
+    assert any("collection" in l for l in lines), (
+        f"신호 등급 collection 이 아니다:\n{text}")
+    assert not any("**assertion**" in l for l in lines), (
+        f"collection 을 assertion 으로 인쇄했다:\n{text}")
 
 
 # ── ④ 분류·범위 계약 ────────────────────────────────────────────────────

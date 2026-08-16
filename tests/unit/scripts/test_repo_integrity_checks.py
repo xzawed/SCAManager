@@ -562,9 +562,70 @@ def test_precommit_hook_watches_every_file_the_check_reads():
 # --- check_toc_anchors (WF-3) ---
 
 def test_toc_anchors_passes_on_current_repo():
-    text = (_ROOT / "docs" / "cycle-history.md").read_text(encoding="utf-8")
-    ok, msgs = check_toc_anchors.check_anchors(text)
-    assert ok, msgs
+    """TARGETS 의 모든 실파일이 현재 초록이어야 한다.
+
+    예전 판은 `docs/cycle-history.md` 한 파일만 읽었다. 그 파일이 빠지면 이 단언이
+    FileNotFoundError 로 죽거나, TARGETS 를 다른 문서로 옮겨도 옛 경로를 계속 읽는다.
+    Every listed TARGET must exist and currently resolve; cycle-history is no longer the fixture.
+    """
+    assert check_toc_anchors.TARGETS, "TARGETS 가 비면 이 단언이 공허하다"
+    for rel in check_toc_anchors.TARGETS:
+        path = _ROOT / rel
+        assert path.is_file(), f"TARGETS 항목 부재: {rel.as_posix()}"
+        ok, msgs = check_toc_anchors.check_anchors(path.read_text(encoding="utf-8"))
+        assert ok, (rel.as_posix(), msgs)
+
+
+def test_toc_targets_exclude_retiring_ledgers():
+    """원장 두 파일은 이 가드의 대상이 아니다 — 묶여 있으면 삭제가 가드를 공허/영구 red 로 만든다."""
+    declared = {p.as_posix() for p in check_toc_anchors.TARGETS}
+    assert "docs/cycle-history.md" not in declared
+    assert "docs/backlog.md" not in declared
+
+
+def test_toc_targets_cover_live_toc_headings():
+    """디스크의 `## 목차` 문서(퇴역 예정·아카이브 제외) 와 TARGETS 가 같아야 한다.
+
+    새 TOC 문서가 생기면 여기가 red — 가드가 그 문서를 모르면 앵커가 끊겨도 초록이다.
+    cycle-history 는 원장 퇴역 대상이라 제외한다(파일이 아직 디스크에 있어도).
+    """
+    import subprocess  # nosec B404 — 리포 자신의 파일 목록만 읽는다
+
+    retiring = {"docs/cycle-history.md", "docs/backlog.md"}
+    listed = subprocess.run(  # nosec B603 B607
+        ["git", "ls-files", "-z", "*.md"], cwd=str(_ROOT),
+        capture_output=True, text=True, encoding="utf-8", errors="replace", check=True,
+    ).stdout.split("\0")
+    on_disk = set()
+    for rel in listed:
+        if not rel or "_archive" in rel or rel in retiring:
+            continue
+        path = _ROOT / rel
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8")
+        if re.search(r"^##\s+목차\s*$", text, re.M):
+            on_disk.add(rel)
+    declared = {p.as_posix() for p in check_toc_anchors.TARGETS}
+    missing = sorted(on_disk - declared)
+    extra = sorted(declared - on_disk)
+    assert not missing, f"## 목차 문서가 TARGETS 에 없다: {missing}"
+    assert not extra, f"TARGETS 항목이 디스크에 없거나 목차가 없다: {extra}"
+
+
+def test_main_fails_when_a_target_is_missing(monkeypatch, capsys):
+    """목록에 있는 파일이 없으면 exit 1 — 부재를 건너뛰면 스코프가 조용히 줄어든다."""
+    monkeypatch.setattr(check_toc_anchors, "TARGETS", (Path("nope/missing-toc.md"),))
+    assert check_toc_anchors.main() == 1
+    assert "없음" in capsys.readouterr().out
+
+
+def test_main_fails_when_targets_empty(monkeypatch, capsys):
+    """빈 TARGETS 는 성공이 아니다."""
+    monkeypatch.setattr(check_toc_anchors, "TARGETS", ())
+    assert check_toc_anchors.main() == 1
+    out = capsys.readouterr().out
+    assert "TARGETS" in out
 
 
 def test_toc_anchors_flags_broken():

@@ -239,5 +239,6 @@ HOLDS. 그리고 뮤테이션 대상은 seal 이 **보호한다고 주장하는 
   findings 계약 · 소유 금지(정책·backlog 저술 X) · P0/P1 부여 금지가 거기 있고, 이 문서의
   요약에는 없다.
 - 협업 정책 1~19: `CLAUDE.md` (default rule) + `.claude/policies/{active,history}.md` (detail).
-- 미결 검증 원장: `docs/runbooks/owed-verification.md`. 미해결 일감: `docs/backlog.md`.
+- 미결 검증 원장: `docs/runbooks/owed-verification.md`. 미해결 일감: **GitHub Issues**
+  (`docs/backlog.md` 는 2026-08-16 퇴역).
 - 현재 수치·상태: `docs/STATE.md`. 아키텍처·가드 배선: `docs/architecture.md`.

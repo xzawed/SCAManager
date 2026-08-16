@@ -258,7 +258,7 @@ dataclass · API 업데이트 body · 설정 폼 · 프리셋. 5곳을 다 고�
 | 분석기별 지원 언어 확인 | [`docs/reference/language-coverage.md`](docs/reference/language-coverage.md) |
 | 배포 · 운영 | [`docs/runbooks/`](docs/runbooks/) |
 | 현재 테스트 수 · 품질 수치 | [`docs/STATE.md`](docs/STATE.md) |
-| 미해결 일감 찾기 | [`docs/backlog.md`](docs/backlog.md) |
+| 미해결 일감 찾기 | [GitHub Issues](https://github.com/xzawed/SCAManager/issues) |
 
 리포 루트의 `CLAUDE.md` 와 `AGENTS.md` 는 이 프로젝트에 기여하는 AI 에이전트를 위한 작업 규약입니다.
 기여하려고 읽을 필요는 없지만, 여기 규약 일부가 유난히 엄격한 이유를 설명해 줍니다.

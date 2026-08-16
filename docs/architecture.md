@@ -163,8 +163,8 @@ scripts/
 │                                # docs count-sync — STATE totals/header ↔ README badges; blocks drift at pre-commit
 ├── check_state_ledger.py        # STATE 원장 하한 — §추적 이력 항목·문자 수 baseline + 수치 사슬 (repo-integrity, 단위 2)
 │                                # STATE ledger floor — item/char baselines + numeric chain (repo-integrity)
-├── check_toc_anchors.py         # cycle-history TOC 앵커 정합 — 목차 `](#anchor)` 링크 ↔ 실제 헤딩 slug (GitHub slug 모사, #958)
-│                                # cycle-history TOC anchor checker — TOC links ↔ heading slugs
+├── check_toc_anchors.py         # TOC 앵커 정합 — `## 목차` 활성 문서의 `](#anchor)` ↔ 헤딩 slug (GitHub slug 모사, #958)
+│                                # TOC anchor checker — live `## 목차` docs, not cycle-history
 ├── check_env_vars_sync.py       # env-vars 싱크 — src/config.py Settings 필드 ↔ env-vars.md 등재 정합 (사이클 82/119 반복 적발 차단)
 │                                # env-vars sync — Settings fields ↔ env-vars.md entries (AST)
 ├── check_config_5way_sync.py    # config 싱크 — RepoConfig ORM ↔ Data ↔ Update 3-레이어 필드 정합 (NULL 덮어쓰기 차단, api.md 5-way 규칙)
@@ -187,8 +187,6 @@ scripts/
 │                                # retro cadence counter — loud warn at ≥15 merged PRs since last formal retro
 ├── check_owed_verification.py   # owed 원장 미결 카운터 — 안전등급 ⏳ ≥1 시 loud 경고(SessionStart 훅, #1095)
 │                                # owed-ledger counter — loud warn on ≥1 safety-tier ⏳ (SessionStart hook)
-├── check_open_decisions.py      # backlog 🔴 결정 대기 카운터 — 사용자만 닫을 수 있는 행이 정체하면 loud 경고(SessionStart 훅, R92)
-│                                # open-decision counter — only the user can close 🔴 rows (SessionStart hook)
 ├── check_architecture_tree_sync.py # architecture 트리 싱크 가드 — 실제 src/ 트리 ↔ architecture.md `src/` 트리 항목 대조(6-step ⑥ drift 차단, pre-commit)
 │                                # architecture tree-sync guard — actual src/ tree ↔ architecture.md src/ listing
 ├── check_guard_fail_open.py     # 가드 fail-open floor(B8) — bare-substring 판정(문자열 존재만으로 통과) 구조적 가드 차단(guards.md 3-불변식, pre-commit)

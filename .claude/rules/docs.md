@@ -46,14 +46,9 @@ README 배지 · README.ko 배지). **N지점 동기화 의무는 N-1번의 실�
 
 ## 파생 집계는 손으로 유지하지 않는다
 
-`docs/backlog.md` 의 상태 요약(`🔴 N · 🟡 M · ✅ K`)은 표에서 파생되는 값인데 손으로 적혀 있고,
-`test_backlog_shape.py` 가 bijection 을 강제한다. 상태 하나를 바꾸면 **요약도 함께** 고쳐야 한다
-(실제로 이번 세션에 빠뜨려 red 가 났다). 요약을 고칠 때는 눈대중 대신:
-
-```bash
-py -3 -c "import re,pathlib,collections; c=collections.Counter(
- m.group(1) for m in re.finditer(r'^\| \*\*R\d+\*\* \| (.)', pathlib.Path('docs/backlog.md').read_text(encoding='utf-8'), re.M)); print(c)"
-```
+열린 일감은 GitHub Issues 다. `docs/backlog.md` 상태 요약 bijection
+(`test_backlog_shape.py`)은 그 원장과 함께 퇴역했다. 파생 숫자를 여러 곳에
+손으로 적는 규율은 `docs/STATE.md` 이력 꼬리 한 줄 + `check_docs_sync.py --fix` 가 남는다.
 
 ## 문서를 **옮기면** 관측자가 조용히 죽는다
 
@@ -63,7 +58,6 @@ py -3 -c "import re,pathlib,collections; c=collections.Counter(
 |---|---|
 | `docs/STATE.md` | `check_docs_sync.py` · `check_test_count_sync.py` · `doc_review_gate.py` |
 | `docs/architecture.md` | 아키텍처 트리 sync 가드 |
-| `docs/backlog.md` | `test_backlog_shape.py` |
 | `docs/runbooks/owed-verification.md` | SessionStart `check_owed_verification.py` |
 | `docs/runbooks/retro-cadence-deferrals.md` | SessionStart `check_retro_cadence.py` |
 | `docs/reference/env-vars.md` | env 인용 sync 가드 |

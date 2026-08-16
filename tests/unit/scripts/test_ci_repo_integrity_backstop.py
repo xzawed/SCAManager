@@ -1,7 +1,7 @@
 """repo-integrity CI 백스톱 배선 가드 (회고 2026-07-18 P2#36 — pre-commit 우회 봉인).
 repo-integrity CI backstop wiring guard (retro 2026-07-18 P2#36 — seals pre-commit bypass).
 
-4 whole-repo 상태 가드(docs↔README 배지·cycle-history TOC·config↔env-vars·RepoConfig 3-layer)는
+4 whole-repo 상태 가드(docs↔README 배지·TOC 앵커·config↔env-vars·RepoConfig 3-layer)는
 pre-commit-only 라 `--no-verify`·미설치 시 우회됐다. `ci.yml` `repo-integrity` job 이 서버측 백스톱으로
 이들을 실행한다 — 이 가드는 그 배선이 조용히 제거되지 않도록 잠근다(test_ci_dead_symbol_guard 선례).
 The 4 whole-repo guards were pre-commit-only (bypassable). This locks the CI backstop wiring.

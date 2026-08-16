@@ -393,7 +393,7 @@ git push -u origin <branch>
 |-----------|------------|---------|
 | Agent-1 | 핵심 정책 문서 | `CLAUDE.md` / `.claude/` (skills, rules 제외) |
 | Agent-2 | 활성 정책 + 이력 | `.claude/policies/active.md` / `.claude/policies/history.md` |
-| Agent-3 | 아키텍처 + 상태 | `docs/architecture.md` / `docs/STATE.md` / `docs/cycle-history.md` |
+| Agent-3 | 아키텍처 + 상태 | `docs/architecture.md` / `docs/STATE.md` |
 | Agent-4 | Path-scoped rules | `.claude/rules/*.md` (8 영역 전체) |
 | Agent-5 | 참조 + 운영 문서 | `docs/reference/*.md` / `docs/runbooks/*.md` / `docs/_archive/reports/` (최근 3건) |
 | Agent-6 (cross-verify) | 전체 합성 | 1~5 결과 종합 + false-positive 제거 + P0/P1/P2 정렬 |

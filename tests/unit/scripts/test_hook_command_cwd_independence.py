@@ -336,7 +336,13 @@ def test_every_hook_command_uses_project_dir_default_expansion():
     settings = json.loads(_SETTINGS.read_text(encoding="utf-8"))
     tokens = _collect_script_tokens(settings)
     assert tokens, "스크립트 토큰 0개 — 추출기 전제 붕괴"
-    assert len(tokens) >= 9, (
+    # 🔴 공허 방지 하한 — settings 가 비면 이 테스트가 통과해선 안 된다.
+    #    9 → 8 (2026-08-16): `check_open_decisions.py` SessionStart 훅을 **제거**했다.
+    #    열린 일감이 `docs/backlog.md` 원장에서 GitHub Issue 로 옮겨가 그 카운터가
+    #    읽을 원장 자체가 사라졌기 때문이다. 하한을 내리는 것은 **명시 결정**이고,
+    #    내리지 않으면 이 테스트가 영구 red 로 남아 아무도 안 돌리게 된다.
+    #    Floor lowered with the hook removal; an unexplained drop must still fail here.
+    assert len(tokens) >= 8, (
         f"스크립트 토큰이 {len(tokens)}개 — 전제 붕괴 (settings 가 비면 통과하면 안 된다)"
     )
 
