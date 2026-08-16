@@ -11,16 +11,20 @@
 - alembic.ini        : Alembic 설정
 
 [허용 조건]
-- pytest, fastapi, sqlalchemy 가 import 가능한 환경 (make test 실행 가능)
+- 후보 인터프리터 중 하나가 `import pytest, fastapi, sqlalchemy` 에 성공하면 허용.
+  탐지기는 **make 바이너리를 보지 않는다** — 이 개발 PC 처럼 `make` 가 없어도
+  pytest 스택이 있으면 통과한다 (CLAUDE.md 예외: 테스트 환경이 있으면 수정 허용).
+- Allowed when ANY candidate interpreter can `import pytest, fastapi, sqlalchemy`.
+  The probe does **not** look for `make` — a machine without make but with the
+  pytest stack (this dev PC) must pass (CLAUDE.md exception).
 
 [2026-05-02 fix — Phase 1+2 회고 P0 후속]
 기존: subprocess 검증 시 sys.executable 사용 → Claude Code 가 hook 을 시스템
 minimal python (/usr/bin/python3, pytest 미설치) 으로 호출 시 항상 차단. 그러나
-사용자의 `make test` 는 PATH 의 python (/usr/local/bin/python = pyenv/conda/venv,
-pytest 있음) 사용 → 환경 모순.
+사용자의 테스트 명령은 PATH 의 python (pyenv/conda/venv, pytest 있음) 사용 → 환경 모순.
 
 수정: shutil.which("python") → "python3" → sys.executable fallback. PATH 의 python
-(=`make test` 가 사용하는 동일 python) 우선 검증 → false positive 차단 해소.
+을 우선 검증 → false positive 차단 해소.
 
 [2026-08-02 리팩터 — backlog R31]
 (1) 행동 커버리지 0 시정: 모듈 레벨 실행 스크립트라 import 자체가 불가능해 차단 동작을
@@ -88,11 +92,12 @@ def can_run_tests() -> bool:
     기존: `shutil.which("python") or ... or sys.executable` 로 **첫 후보 1개만** 검증.
     harness 가 hook 을 PATH 상 패키지 없는 python (예: Windows Store WindowsApps 스텁)
     으로 호출하면 첫 후보에서 import 실패 → 나머지 capable 인터프리터를 시도하지 않고
-    차단 (false positive). `make test` 가 정상인 로컬 PC 에서도 settings.html 등
-    템플릿 수정이 막히는 사고 발생.
+    차단 (false positive). pytest 스택이 있는 로컬 PC 에서도 settings.html 등
+    템플릿 수정이 막히는 사고 발생. 탐지 대상은 import 가능 여부이지 make 유무가 아니다.
     Previously only the first existing candidate was probed; if the harness invoked the
     hook via a package-less python (e.g. the Windows Store stub on PATH), it denied
     without falling through to a capable interpreter. Now probe all candidates.
+    The detector checks imports, not the presence of `make`.
     """
     seen: set[str] = set()
     candidates = []
@@ -127,8 +132,10 @@ def _deny_output(file_path: str, reason: str) -> dict:
                 f"[모바일 환경 보호] 수정 차단: {file_path}\n\n"
                 f"사유: {reason}\n\n"
                 "이 파일은 자동화 테스트로 검증이 불가능한 고위험 영역입니다.\n"
-                "수정하려면 아래 환경 중 하나에서 작업하세요:\n"
-                "  - 로컬 PC: pip install -r requirements.txt → make test\n"
+                "수정하려면 pytest 스택이 있는 환경에서 작업하세요 "
+                "(탐지기: import pytest, fastapi, sqlalchemy — make 불필요):\n"
+                "  - 로컬 PC: pip install -r requirements.txt "
+                "→ py -3 -m pytest tests/unit\n"
                 "  - GitHub Codespaces: Code 버튼 → Codespaces → Create codespace"
             ),
         }

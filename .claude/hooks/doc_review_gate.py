@@ -1,6 +1,39 @@
 #!/usr/bin/env python3
 """문서 변경 다중 에이전트 심의 Hook — PreToolUse (Edit/Write/MultiEdit).
-Multi-agent review gate for document changes — PreToolUse hook."""
+Multi-agent review gate for document changes — PreToolUse hook.
+
+## 이 훅이 하는 일 / What this gate does
+세 에이전트(impact · consistency · quality)로 문서 편집을 심의하고, 비판을
+`additionalContext`(Claude) + `systemMessage`(사용자)로 **보고**한다.
+Reviews document edits with three agents and **reports** the critique via
+additionalContext (Claude) + systemMessage (user).
+
+## 이 훅이 하지 않는 일 / What this gate does NOT do
+**편집을 차단하지 않는다.** LLM 판정(`decision == "block"` 포함)은 기계 검증 불가
+판단이라 `permissionDecision: deny` 를 내지 않는다. 심의 결과는 전부 advisory.
+**Does not block edits.** LLM judgment (including `decision == "block"`) is not
+machine-verifiable, so this hook never emits `permissionDecision: deny`. All
+review outcomes are advisory.
+
+## 왜 차단을 제거했나 / Why blocking was removed (2026-08-16 사용자 지시)
+Issue #1386: 이 세션에서 의무 절차(6-step ⑤ STATE 수치 동기화)에 대해 **5회 deny**
+가 났고, 매번 우회됐다. 4회차 consistency-reviewer 는 6-step ⑤ 가 **의도한 중간
+상태**(이력 꼬리만 새 숫자, 파생 4지점은 아직 옛 값)를 정확히 기술한 뒤 그 규칙을
+"위반" 이라 불렀다. R80 프롬프트 수정(#1364) 후에도, STATE.md 전체가 예산 안일 때도
+같은 일이 났다. 기계가 검증할 수 없는 판정으로 의무 작업을 막으면 운영자는 게이트를
+끄는 법만 배운다 — 그게 진짜 손실이다(doc-consistency-reviewer.md · traps §A5).
+Five denies on a mandated procedure, all bypassed; a gate that is always bypassed is
+worse than an advisory one, because the bypass becomes habit.
+
+원칙: *가드는 기계 검증 가능한 결함만 차단한다. 판단에 의한 차단은 advisory 다.*
+Principle: a guard may block only when it can machine-verify the defect; judgment
+blocks must be advisory.
+
+🔴 `permissionDecision: "allow"` 도 붙이지 않는다 — `allow` 는 사용자 권한 확인을
+건너뛸 수 있다. `additionalContext` 는 권한 결정과 독립이다(guards.md).
+Never attach `permissionDecision: "allow"` either — it can skip the user's permission
+prompt. additionalContext is independent of the permission decision.
+"""
 import anthropic
 import asyncio
 import hashlib
@@ -972,10 +1005,18 @@ def split_context() -> tuple[str, str]:
 # Output formatting
 
 def _format_block(file_path: str, results: list[dict], reasons: list[str]) -> str:
-    """차단 시 표시할 메시지를 조립한다.
-    Assembles the block message shown when a change is denied."""
+    """block 판정 시 **advisory** 로 표시할 메시지를 조립한다 (편집은 막지 않음).
+    Assembles the advisory message for a block verdict (does not deny the edit).
+
+    2026-08-16: 이 문자열이 더 이상 permissionDecisionReason 이 아니다 — `_emit_advisory`
+    를 통해 additionalContext/systemMessage 로만 간다. 문구의 '차단 권고' 는 비판 등급이지
+    훅 deny 가 아니다.
+    Since 2026-08-16 this string is no longer a permissionDecisionReason; it only
+    travels via additionalContext/systemMessage. 'block-grade' is critique severity,
+    not a hook deny.
+    """
     lines = [
-        f"[문서 심의] {Path(file_path).name} — 차단",
+        f"[문서 심의] {Path(file_path).name} — 차단 등급 비판 (advisory · 편집은 진행됨)",
         "",
     ]
     for r in results:
@@ -986,10 +1027,14 @@ def _format_block(file_path: str, results: list[dict], reasons: list[str]) -> st
         else:
             icon = "[OK]"
         lines.append(f"  {icon} {_agent_label(r['agent'])}: {r['reason']}")
-    lines += ["", "차단 사유:"]
+    lines += ["", "심의 사유 (편집은 차단되지 않음):"]
     for reason in reasons:
         lines.append(f"  • {reason}")
-    lines += ["", "수정 방향을 조정한 후 다시 시도하세요."]
+    lines += [
+        "",
+        "이 고지는 참고용이다. 필요하면 수정 방향을 조정하세요.",
+        "(LLM 판정은 기계 검증 불가 — 2026-08-16 사용자 지시로 deny 경로 제거)",
+    ]
     return "\n".join(lines)
 
 
@@ -1207,19 +1252,13 @@ def main() -> None:
         _emit_advisory(_format_inoperative(file_path, results))
         sys.exit(0)
 
+    # 🔴 2026-08-16 사용자 지시 — LLM 판정은 기계 검증 불가이므로 block 도 deny 하지 않는다.
+    #    비판은 `_emit_advisory` 로 Claude(additionalContext) + 사용자(systemMessage)에만 전달.
+    #    `permissionDecision` 키를 싣지 않는다(`allow` 도 금지 — 권한 확인 우회 위험).
+    # 2026-08-16 user directive: LLM judgment is not machine-verifiable, so block is
+    # advisory too. Critique reaches Claude via additionalContext; no permissionDecision.
     if decision == "block":
-        hook_output = {
-            "hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
-                "permissionDecision": "deny",
-                "permissionDecisionReason": _format_block(file_path, results, reasons),
-            }
-        }
-        # 🔴 ensure_ascii=True 의무 — Windows cp949 stdout 에서 한글·em-dash 가 UnicodeEncodeError
-        # 로 훅을 죽인다(실측: '—' cp949 illegal multibyte). 형제 훅 check_edit_allowed.py:115
-        # 와 동일 관용구.
-        # 🔴 ensure_ascii=True is mandatory — non-ASCII crashes the hook on Windows cp949 stdout.
-        print(json.dumps(hook_output, ensure_ascii=True))
+        _emit_advisory(_format_block(file_path, results, reasons))
     elif decision == "warn":
         _emit_advisory(_format_warn(file_path, results, reasons))
 
