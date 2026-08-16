@@ -126,9 +126,9 @@ def test_detector_flags_bare_relative_scripts_path():
     """`$PY scripts/x.py` 는 오늘 깨진 바로 그 형태 — 탐지기가 잡아야 한다."""
     tokens = _script_tokens(
         "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); "
-        "$PY scripts/check_retro_cadence.py"
+        "$PY scripts/check_main_red.py"
     )
-    assert tokens == ["scripts/check_retro_cadence.py"]
+    assert tokens == ["scripts/check_main_red.py"]
     assert not _is_approved_script_token(tokens[0])
 
 
@@ -149,15 +149,15 @@ def test_detector_flags_absolute_var_without_default():
     Bare `$CLAUDE_PROJECT_DIR/…` expands to `/scripts/…` when unset — worse than today.
     """
     tokens = _script_tokens(
-        "$PY $CLAUDE_PROJECT_DIR/scripts/check_retro_cadence.py"
+        "$PY $CLAUDE_PROJECT_DIR/scripts/check_main_red.py"
     )
-    assert tokens == ["$CLAUDE_PROJECT_DIR/scripts/check_retro_cadence.py"]
+    assert tokens == ["$CLAUDE_PROJECT_DIR/scripts/check_main_red.py"]
     assert not _is_approved_script_token(tokens[0])
 
 
 def test_detector_accepts_default_expansion():
     """승인 형태는 통과해야 한다 — 거부하면 가드 자살."""
-    token = f"{_PREFIX}scripts/check_retro_cadence.py"
+    token = f"{_PREFIX}scripts/check_main_red.py"
     assert _script_tokens(f"$PY {token}") == [token]
     assert _is_approved_script_token(token)
     hook = f"{_PREFIX}.claude/hooks/block_credential_dump.py"
@@ -170,7 +170,7 @@ def test_detector_accepts_dot_slash_after_prefix():
     `${PREFIX}./scripts/x.py` 는 전개 후 `././scripts/x.py` 또는 `<abs>/./scripts/x.py`.
     After the prefix, `./` is cwd-equivalent and must be accepted.
     """
-    token = f"{_PREFIX}./scripts/check_retro_cadence.py"
+    token = f"{_PREFIX}./scripts/check_main_red.py"
     assert _script_tokens(f"$PY {token}") == [token]
     assert _is_approved_script_token(token)
 
@@ -339,10 +339,14 @@ def test_every_hook_command_uses_project_dir_default_expansion():
     # 🔴 공허 방지 하한 — settings 가 비면 이 테스트가 통과해선 안 된다.
     #    9 → 8 (2026-08-16): `check_open_decisions.py` SessionStart 훅을 **제거**했다.
     #    열린 일감이 `docs/backlog.md` 원장에서 GitHub Issue 로 옮겨가 그 카운터가
-    #    읽을 원장 자체가 사라졌기 때문이다. 하한을 내리는 것은 **명시 결정**이고,
-    #    내리지 않으면 이 테스트가 영구 red 로 남아 아무도 안 돌리게 된다.
+    #    읽을 원장 자체가 사라졌기 때문이다.
+    #    8 → 6 (2026-08-16): `check_owed_verification.py` · `check_retro_cadence.py`
+    #    SessionStart 훅을 **제거**했다. 미결 운영 검증·회고 이월은 GitHub Issue 가
+    #    정본이고, 그 두 원장 파일을 지운 뒤 카운터가 읽을 대상이 없다.
+    #    하한을 내리는 것은 **명시 결정**이고, 내리지 않으면 이 테스트가 영구 red 로
+    #    남아 아무도 안 돌리게 된다.
     #    Floor lowered with the hook removal; an unexplained drop must still fail here.
-    assert len(tokens) >= 8, (
+    assert len(tokens) >= 6, (
         f"스크립트 토큰이 {len(tokens)}개 — 전제 붕괴 (settings 가 비면 통과하면 안 된다)"
     )
 

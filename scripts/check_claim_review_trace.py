@@ -11,8 +11,7 @@
   그 두 주장을 **모두 BROKEN** 으로 판정했다(설정 파싱이 손실 투영이라 우회 4종 통과).
 
 🔴 **핵심**: 트리거 단어를 **자기가 타이핑하고도** 호출하지 않았다. 즉 "규칙을 못 찾음"(문서량)이
-아니라 **집행면이 없어 자기보고로 끝나는 구조**가 원인이다. 정책 8(회고 카덴스)·owed 원장은 이미
-같은 이유로 산문 → SessionStart 훅으로 승격됐다. 이 스크립트는 정책 19 의 같은 승격이다.
+아니라 **집행면이 없어 자기보고로 끝나는 구조**가 원인이다. 이 스크립트는 정책 19 의 집행면이다.
 
 ## 무엇을 강제하나
 
@@ -251,9 +250,7 @@ def missing_trace_fields(text: str) -> list[str]:
 #   · 새 기준에서 흔적도 면제도 없는 것 = **3건(10%)** — 오탐이 진탐을 넘지 않는다.
 # 그 3건은 e2e drift 30건 해소·CodeQL 수정 등 **실질 코드 변경**이라 red 가 옳다.
 #
-# 목록에 `docs/runbooks/owed-verification.md` 가 있는 이유: 그 파일은 R0-2 이후
-# **기계 판정 입력**이다. 행을 지우는 PR 이 '문서' 로 분류돼 무검증 통과하면 안 된다.
-# `tests/unit/{scripts,hooks}/` 는 가드가 저술되는 표면이라 같은 이유로 포함한다.
+# `tests/unit/{scripts,hooks}/` 는 가드가 저술되는 표면이라 코드 표면에 포함한다.
 #
 # The guard fired only on seal vocabulary while the policy applies to substantive work; that
 # gap is what the self-issued exemptions filled. Measured FP rate with this list: 3/30.
@@ -269,7 +266,6 @@ _CODE_SURFACES = (
     ".pre-commit-config.yaml",
     "tests/unit/scripts/",
     "tests/unit/hooks/",
-    "docs/runbooks/owed-verification.md",
 )
 
 
@@ -299,7 +295,6 @@ _GUARD_SURFACES = (
     ".pre-commit-config.yaml",
     "tests/unit/scripts/",
     "tests/unit/hooks/",
-    "docs/runbooks/owed-verification.md",
 )
 
 

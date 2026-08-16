@@ -7,7 +7,7 @@ Incident: a name-only lookup matched a value too, leaking a credential into the 
     railway variables --service SCAManager --kv | grep -iE "...|CRON"
 
 2차 회고(168 에이전트)가 P0 로 확정한 것은 유출 자체가 아니라 **재발 방지책이 산문뿐**이라는
-점이다 — owed 원장 표 셀 + 로컬 메모리. "credential 유출 벡터(Bash stdout)에 훅 커버리지 0",
+점이다 — 산문 메모만. "credential 유출 벡터(Bash stdout)에 훅 커버리지 0",
 "인지 의존 산문 5회차, 자기 진단 1커밋 후 재생산".
 The retro's P0 was not the leak but that the only mitigation was prose: zero hook coverage on the
 Bash-stdout exfiltration vector, the 5th consecutive cognition-dependent mitigation.

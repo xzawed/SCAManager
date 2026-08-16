@@ -1,9 +1,9 @@
 # 운영 endpoint smoke check Runbook
 
 **목적**: 정책 13 (운영 endpoint smoke check 의무) 의 default 실행 가이드.
-**기획 근거**: 2026-05-02 P0 OAuth 사고 후속 — 정책 13 정본은 [`.claude/policies/active.md`](../../.claude/policies/active.md) §정책 13.
+정본: [`.claude/policies/active.md`](../../.claude/policies/active.md) §정책 13.
 
-> 📋 **PR 별 미결 운영 검증 추적**: 코드로 증명 불가한 검증(cron 실행·외부 API 계약·이메일 실발송 등)을 남긴 PR 은 [`owed-verification.md`](owed-verification.md) 원장(append-only)에 등재된다 (회고 2026-07-18 P1#13).
+> 코드로 증명 불가한 운영 검증(cron 실행·외부 API 계약·이메일 실발송 등)은 GitHub Issue 로 남긴다.
 
 **정책 13 적용 시점**:
 - 매 사이클 종료 시 (또는 Phase 종료 시) — 최소 3-endpoint
@@ -23,7 +23,7 @@ curl -sf -o /dev/null -w "/health: HTTP %{http_code}\n" "$APP_URL/health"
 # 2) /auth/github → 302 + Location redirect_uri 정합성
 curl -s -L --max-redirs 0 -o /dev/null -w "/auth/github: %{redirect_url}\n" "$APP_URL/auth/github"
 
-# 3) /login → 301 /auth/github (사이클 117 — 로그인 페이지 제거, 북마크 하위호환 전용)
+# 3) /login → 301 /auth/github (로그인 페이지 없음 — 북마크 하위호환)
 #    🔴 로그인 상태와 무관하게 항상 301 — 200 이 나오면 오히려 회귀 신호다.
 curl -sf -o /dev/null -w "/login: HTTP %{http_code}\n" "$APP_URL/login"
 ```
@@ -67,7 +67,7 @@ curl -sf -o /dev/null -w "/webhooks/github: HTTP %{http_code}\n" \
 
 ## 3. GitHub OAuth App 설정 정합성 진단
 
-P0 OAuth 사고 (2026-05-02) 같은 mismatch 진단:
+OAuth callback URL mismatch 진단:
 
 ### 단계 1: SCAManager 가 보내는 redirect_uri 확인
 ```bash
@@ -123,7 +123,7 @@ Railway MCP 부재 시 사용자 의무:
 - ✅ /auth/callback 401 (state 검증 = 정상 거부)
 - ✅ /webhooks/github 401 (서명 누락 = 정상 거부)
 
-실행: 2026-05-02 (Phase 종료 시점) / Claude curl 자율 실행
+실행: <오늘 날짜> / curl
 ```
 
 ---
@@ -135,42 +135,21 @@ UI 변경 PR 외에도 **인증/외부 통합 변경 PR** 시 의무:
 ```markdown
 ## 🚨 인증 flow 종단간 검증 (정책 11 강화)
 
-- [ ] /login → 301 `/auth/github` (로그인 **페이지는 사이클 117 에 제거** — 버튼 표시는 확인 항목 아님)
+- [ ] /login → 301 `/auth/github` (로그인 페이지 없음 — 버튼 표시는 확인 항목 아님)
 - [ ] /auth/github 302 + GitHub 동의 화면 진입
 - [ ] GitHub 동의 후 /auth/callback → / redirect + 세션 생성
-- [ ] /auth/logout (**POST 전용**) → `/` (landing) redirect + 세션 제거 (🔴 `/login` 아님. HTMX 요청은 200 + `HX-Redirect: /` 로 전체 재로드 — `src/auth/github.py:136`). ⚠️ `curl` 로 GET 하면 **405** 이며 이는 정상이다 — 브라우저에서 로그아웃 버튼으로 확인할 것.
+- [ ] /auth/logout (**POST 전용**) → `/` (landing) redirect + 세션 제거 (`/login` 아님. HTMX 는 200 + `HX-Redirect: /` — `src/auth/github.py::logout`). `curl` GET 은 **405** 가 정상 — 브라우저 로그아웃 버튼으로 확인.
 
 (Claude 정적 검증 불가 — 사용자 직접 브라우저 검증 부탁드립니다)
 ```
 
 ---
 
-## 부록 — 본 사고 (2026-05-02) 진단 명령 복기
+## 8. 자동화 가드 — manual smoke 와 상호 보완
 
-```bash
-APP_URL="https://scamanager-production.up.railway.app"
+같은 기대를 코드가 재는 위치. e2e 초록 ≠ 정책 11 8조합 시각 검증.
 
-# 진단 1: SCAManager 정상 동작
-curl -sf -o /dev/null -w "/health: HTTP %{http_code} | size %{size_download}\n" "$APP_URL/health"
-# 결과: HTTP 200 | size 15
-
-# 진단 2: SCAManager 가 보내는 redirect_uri
-curl -s -L --max-redirs 0 -o /dev/null -w "%{redirect_url}\n" "$APP_URL/auth/github"
-# 결과: https://github.com/login/oauth/authorize?...&redirect_uri=https%3A%2F%2Fscamanager-production.up.railway.app%2Fauth%2Fcallback&...
-# = 정확함
-
-# → 결론: SCAManager 측 100% 정상. GitHub OAuth App callback URL mismatch.
-# → fix: 사용자가 GitHub OAuth App 설정에서 callback URL 정정 (30초)
-```
-
----
-
-## 8. 자동화 가드 (그룹 61 PR #208) — manual smoke 와 상호 보완
-
-본 runbook 의 manual smoke check 와 페어로 동작하는 자동화 회귀 가드.
-**CI / Railway 빌드 자동 실행 → 다음 OAuth/redirect_uri 같은 외부 변경 사고 즉시 발견**.
-
-### 8.1 통합 테스트 — `tests/integration/test_oauth_flow_smoke.py` (10건)
+### 8.1 통합 테스트 — `tests/integration/test_oauth_flow_smoke.py`
 - TestSmokeCheckMinimal (3): /health 200 + /auth/github 302 + /login **301** (`test_login_page_returns_redirect` 가 정확히 301 단언 — 실측 확인)
 - TestAuthFlowEndpoints (3): redirect_uri 정합성 + /auth/callback 거부 + webhook 서명 누락 401
 - TestInsightsRedirect (3): /insights, /insights/me 301 redirect + 쿼리 파라미터 보존
@@ -181,7 +160,7 @@ curl -s -L --max-redirs 0 -o /dev/null -w "%{redirect_url}\n" "$APP_URL/auth/git
 pytest tests/integration/test_oauth_flow_smoke.py -v
 ```
 
-### 8.2 E2E 테스트 — `e2e/test_dashboard.py` (14건)
+### 8.2 E2E 테스트 — `e2e/test_dashboard.py`
 - 페이지 로드 + 5xx 차단 (2)
 - KPI 5 카드 count + 5 라벨 노출 (2)
 - range toggle 4 링크 + default 7d active + 30d 클릭 navigate (3)
@@ -195,25 +174,17 @@ pytest tests/integration/test_oauth_flow_smoke.py -v
 make test-e2e
 ```
 
-### 8.3 통합 환경 의존성 격리 — `tests/integration/conftest.py` autouse fixture (그룹 61 PR #209)
-- `patch("src.webhook.providers.github.get_webhook_secret", return_value="test_secret")` 일괄 적용
-- 신규 webhook integration test 도 자동 격리 — devcontainer 등 환경의 `GITHUB_WEBHOOK_SECRET=dev_secret` export 영향 차단
-- 효과: pre-existing 24 fail → 0 fail
+### 8.3 통합 환경 의존성 격리 — `tests/integration/conftest.py` autouse
 
-### 8.4 정책 13 본문 (CLAUDE.md §정책 13) 자동화 가드 인용 정합
+`get_webhook_secret` 을 테스트 시크릿으로 patch. 셸에 `GITHUB_WEBHOOK_SECRET` 이 있어도
+integration webhook 테스트가 그 값을 쓰지 않는다.
 
-manual smoke (3-endpoint) ↔ 자동화 가드 (integration 10 + e2e 21 = test_dashboard 14 + test_theme_mobile_guards 7) 상호 보완 관계:
+### 8.4 manual ↔ 자동화
 
-> 🔴 **아래 표의 e2e 열은 2026-08-05 에 처음으로 실제 실행됐다** (`#1288` 배선 → `#1291` 수정).
-> 배선 직후엔 30건이 실패했고 — 원인은 환경이 아니라 **스위트가 앱과 14개월 drift** 였다 —
-> `#1291` 이 그중 29건을 해소해 현재 **119 통과 / 1 실패 / 1 skip** 이다.
-> 🔴 **남은 1건은 이 표와 직접 관련 있다**: `test_dashboard_no_js_runtime_errors` 가
-> **CSP 가 자기 폰트를 차단**하는 앱 결함을 잡고 있다(사용자 결정 대기 — backlog R52).
-> 🔴 **그럼에도 이 열을 *"자동으로 지켜진다"* 로 읽지 말 것**: e2e 는 `conftest` 가 인증을
-> 스텁하고 SQLite 를 쓰며 스크린샷 비교가 없다 — 정책 11 의 4테마 × 모바일/데스크탑 8조합
-> **시각 검증은 100% 사용자 의무로 남는다**. 초록 91건 자체의 신뢰도 감사도 미실시(**R53**).
+e2e 는 `conftest` 가 인증을 스텁하고 SQLite 를 쓰며 스크린샷 비교가 없다.
+정책 11 의 4테마 × 모바일/데스크탑 8조합 **시각 검증은 사용자 의무**.
 
-| 영역 | manual (정책 13 default) | 자동화 (PR #208 + #212) |
+| 영역 | manual (정책 13 default) | 자동화 |
 |------|----------------------|----------------|
 | /health | curl | TestSmokeCheckMinimal |
 | /auth/github redirect_uri | curl + decode | TestAuthFlowEndpoints |
@@ -226,8 +197,8 @@ manual smoke (3-endpoint) ↔ 자동화 가드 (integration 10 + e2e 21 = test_d
 | WCAG 2.5.5 모바일 클릭 영역 (.btn / .nav-hamburger) | iOS / 안드 실기 | e2e/test_theme_mobile_guards.py §B |
 | 외부 의존 (GitHub OAuth App callback URL) | **사용자만 가능** | (자동화 불가) |
 
-### 8.5 E2E 테마 + 모바일 회귀 가드 — `e2e/test_theme_mobile_guards.py` (7건, 사이클 62 PR #212)
-- **A. claude-dark 토큰 회귀 가드** (cleanup PR #169 사고 차단):
+### 8.5 E2E 테마 + 모바일 회귀 가드 — `e2e/test_theme_mobile_guards.py`
+- **A. claude-dark 토큰 회귀 가드**:
   - claude-dark settings 8 토큰 정의 (`--grad-gate/merge/notify/hook`, `--title-gradient`, `--save-btn-bg`, `--hint-bg`, `--hook-btn-bg`)
   - claude-dark dashboard body 비-투명 (—bg-page 미정의 회귀)
   - claude-dark 등급 alias (`--grade-a/b/c/d/f`) 정의
@@ -246,15 +217,15 @@ manual smoke (3-endpoint) ↔ 자동화 가드 (integration 10 + e2e 21 = test_d
 pytest e2e/test_theme_mobile_guards.py -v
 ```
 
-### 8.6 E2E Insight 모드 + caching + RLS 격리 회귀 가드 — Phase 3 PR 6 (#224, 사이클 64)
+### 8.6 E2E Insight 모드 + caching + RLS 격리
 
-**E2E** — `e2e/test_dashboard_insight.py` (7건):
+**E2E** — `e2e/test_dashboard_insight.py`:
 - **A. 페이지 로드 + status fallback** (4): `?mode=insight` 200 + `.dash-insight-status` (no_api_key) + 모드 토글 양쪽 링크 + `?mode=insight` active 상태 + canvas 미존재 (narrative only)
 - **B. localStorage persist + URL 우선순위** (3): 토글 클릭 → `localStorage.sca-dashboard-mode` 저장 + URL no mode + localStorage='insight' → 1회 redirect + URL 명시 우선 (insight redirect X)
 
-**Integration** — `tests/integration/test_insight_caching.py` (2건):
-- **C.1** `test_insight_narrative_calls_caching_helper` — `build_cached_system_param` 1회 호출 spy + Anthropic system 인자 list[dict] + cache_control ephemeral (PR 1+2 페어)
-- **C.2** `test_insight_narrative_user_id_isolation_in_claude_context` — 다중 사용자 seed (User A 점수 80~90 / User B 50~60) + `user_id=user_a.id` 호출 → prompt JSON 의 analysis_count == 3 (User A 만 노출, User B 6 합산 미노출 — PR 5 RLS 격리 회귀 가드)
+**Integration** — `tests/integration/test_insight_caching.py`:
+- **C.1** `test_insight_narrative_calls_caching_helper` — `build_cached_system_param` 호출 + cache_control ephemeral
+- **C.2** `test_insight_narrative_user_id_isolation_in_claude_context` — 호출자 `user_id` 의 분석만 prompt 에 들어간다
 
 ```bash
 # 로컬 실행 — e2e ↔ tests/integration 동시 실행 금지 (e2e/pytest.ini 의도적 asyncio_mode 미설정 — .claude/rules/testing.md §e2e 분리 참조)
@@ -262,22 +233,22 @@ pytest e2e/test_dashboard_insight.py -v
 pytest tests/integration/test_insight_caching.py -v
 ```
 
-### 8.7 자동화 가드 매트릭스 — manual smoke ↔ 자동화 페어 (Phase 3 100% 종료 시점 갱신)
+### 8.7 자동화 가드 매트릭스
 
-| 영역 | manual (정책 13 default) | 자동화 (Phase 3 누적) |
+| 영역 | manual (정책 13 default) | 자동화 |
 |------|----------------------|----------------|
 | /dashboard?mode=insight 페이지 | 사용자 시각 검증 | e2e/test_dashboard_insight.py §A |
 | 모드 토글 + localStorage persist | 사용자 시각 + DevTools | e2e/test_dashboard_insight.py §B |
 | Anthropic prompt caching 적용 | Railway 로그 `cache_*_tokens` 확인 | tests/integration/test_insight_caching.py C.1 |
 | user_id 격리 (Claude API context) | 다중 사용자 운영 검증 | tests/integration/test_insight_caching.py C.2 |
 | Supabase RLS policy 적용 | Supabase Dashboard `SELECT * FROM pg_policies` + role 분리 검증 SQL ([rls-role-separation.md §4](rls-role-separation.md)) | (자동화 미적용 — 운영 환경 별도 검증) |
-| RLS 운영 활성화 (`SET LOCAL app.user_id`) | ✅ 코드 구현 완료 — `src/middleware/rls_session.py` + `database.py::_set_rls_user_id_per_query`. ⚠️ 운영 실효는 **role 분리 선행 필요** (현재 `postgres` BYPASSRLS 접속으로 무력 — [rls-role-separation.md](rls-role-separation.md), 감사 #2) | tests/unit/middleware/test_rls_session.py + tests/unit/test_rls_event_listener.py |
+| RLS 운영 활성화 (`SET LOCAL app.user_id`) | `src/middleware/rls_session.py` + `database.py::_set_rls_user_id_per_query`. 실효는 비-BYPASSRLS app role — [rls-role-separation.md](rls-role-separation.md) | tests/unit/middleware/test_rls_session.py + tests/unit/test_rls_event_listener.py |
 
 ---
 
 ## 9. GitHub Security 탭 등록 알림 운영 체크 (정책 14)
 
-**기획 근거**: GitHub Security 탭 등록 Code Scanning Alert #324 (`'break'/'return' in finally`) + #325 (`Unused import`) 직접 확인 (사이클 62, 2026-05-03). 참조 메타 Issue #213/#214 는 단순 추적 수단 — Security 탭 자체가 단일 진실 소스. SCAManager 자체 lint (pylint / flake8 / bandit) 통과 ≠ Security 탭 0 alert. 두 영역 합집합 검토 의무.
+Security 탭이 정본이다. 자체 lint (pylint / bandit) 통과 ≠ Security 탭 0 alert.
 
 **정책 14 default 의무**:
 - 작업 시작 전 30초 체크리스트 (CLAUDE.md §작업 시작 전 필수 체크리스트) 에 GitHub Security 탭 open alert 카운트 1줄
@@ -306,7 +277,7 @@ curl -s -H "Authorization: token $GITHUB_PAT" \
 2. Filter: `is:open`
 3. open 카운트 + alert 제목 목록 Claude 에 공유
 
-> SCAManager 환경 default = 옵션 🅒 (CLAUDE.md L379 사용자 결정 PAT 발급 현행 유지). 환경 변경 시 자동 옵션 🅐/🅑 전환.
+> default = 옵션 🅒 (PAT 없이 웹). `gh` / PAT 가 있으면 🅐/🅑.
 
 ---
 
@@ -338,22 +309,13 @@ curl -s -H "Authorization: token $GITHUB_PAT" \
 
 ---
 
-### 9.4 사이클 62 사례 (2026-05-03 시점) — 본 정책 신설 트리거
+### 9.4 lint ↔ Security 탭
 
-- **GitHub Security 탭 등록 Alert #324** (`break/return in finally`): SCAManager src/ 코드 위반 0건 검증 완료 (`make lint` + AST scan). → (b) **false-positive 추정** — alert 본문 인증 차단으로 직접 확인 불가, 다음 사이클에 사용자 GitHub Security 탭 본문 공유 후 dismiss/suppress 결정
-- **GitHub Security 탭 등록 Alert #325** (`Unused import`): 동일 — flake8 F401 + pylint W0611 모두 0건. → (b) false-positive 추정
-- **참조 메타 Issue**: #213 / #214 는 단순 추적 수단 — Security 탭 alert 자체가 단일 진실 소스. 본 PR 머지 후에도 alert 자체 dismiss 처리되기 전까지 메타 Issue 보존 (alert dismiss 시 함께 close)
+| 검사 영역 | SCAManager 자체 | GitHub Security 탭 |
+|----------|----------------|---------------------|
+| Python 스타일/오류 | CI `lint-src` (pylint `--fail-under=9.90` + bandit) | CodeQL python |
+| 보안 정적분석 | bandit | CodeQL 보안 룰 |
+| Secret leak | TruffleHog 등 CI job | secret-scanning |
+| Dependency CVE | pip-audit | Dependabot |
 
----
-
-### 9.5 SCAManager 자체 lint ↔ GitHub Security 탭 등록 알림 상호 보완 매트릭스
-
-| 검사 영역 | SCAManager 자체 | GitHub Security 탭 등록 알림 | 사용자 의무 |
-|----------|----------------|---------------------|------------|
-| Python 스타일/오류 | pylint **10.00** + bandit **HIGH 0** (🔴 flake8 은 **baseline 15건** — E501 14 + E131 1, `make gate` 에서 의도적 제외) | CodeQL python 룰셋 | pylint 10.00 · bandit HIGH 0 · CodeQL 0 |
-| 보안 정적분석 | bandit HIGH 0 | CodeQL 보안 룰 | 양쪽 둘다 0 |
-| Secret leak | (자체 가드 X) | CodeQL secret-scanning | GitHub Security 탭 |
-| Dependency CVE | (자체 가드 X) | Dependabot alerts | GitHub Security 탭 |
-| 의존성 그래프 | (자체 가드 X) | CodeQL dataflow | GitHub Security 탭 |
-
-SCAManager 자체 lint + GitHub Security 탭 등록 알림 양쪽 모두 0 = 진정한 "Security A" 상태. **참조 Issue 추적 메타 의존 X — Security 탭이 단일 진실 소스.**
+양쪽을 따로 본다. 수치 스냅샷은 `docs/STATE.md`.

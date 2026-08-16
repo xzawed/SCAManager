@@ -66,26 +66,16 @@
 
 ---
 
-## Phase 12 이후 신규 서비스 모듈 (에이전트 없음, 직접 구현)
+## 에이전트가 없는 모듈 (직접 구현)
+
+`src/` 트리의 정본은 [architecture.md](architecture.md). 여기엔 에이전트 라우팅이 없는 진입점만 둔다.
 
 | 모듈 | 역할 |
 |------|------|
-| `src/services/merge_retry_service.py` | CI-aware Auto Merge 재시도 워커 (`process_pending_retries`) — **운영 PRIMARY 머지 메커니즘** (운영 DB 실측 native enable 0회·native auto-merge 부적합[branch protection 부재→PR UNSTABLE] → retry 큐 영구 유지). |
-| `src/gate/retry_policy.py` | 재시도 정책 순수 함수 (`should_retry`, `compute_next_retry_at`, `is_expired`) |
-| `src/models/merge_retry.py` | MergeRetryQueue ORM (append-only claim 패턴) |
-
----
-
-## Phase H+I 신규 함수/패턴 (2026-05-01)
-
-| 항목 | 위치 | 비고 |
-|------|------|------|
-| `find_by_full_name_with_owner` | `src/repositories/repository_repo.py` | opt-in joinedload — Phase H PR-3B 신규. 호출처 마이그레이션은 PR-3B-2 후속 (mock chain 70+ 갱신 필요). |
-| `_GRAPHQL_MAX_ATTEMPTS` + retry helper | `src/github_client/graphql.py` | GitHub GraphQL 5xx + network error 자동 재시도 (의존성 추가 0). 다른 채널 적용 시 `src/shared/retry_helper.py` 통합 검토. |
-| `TELEGRAM_RETRY_AFTER_MAX_SECONDS=30` | `src/notifier/telegram.py` | Telegram 429 retry-after cap (단일 재시도). |
-| 🔴 PARITY GUARD docstring 패턴 | `src/gate/engine.py::_get_ci_status_safe` + `src/services/merge_retry_service.py::_get_ci_status_safe` | 의도적 중복 코드 drift 방지 — 양쪽 동시 수정 의무. PR-5A-2 후속에서 실제 dedup 예정. |
-| 복합 인덱스 3종 (alembic 0023) | `src/models/analysis.py` + `src/models/merge_attempt.py` `__table_args__` | `ix_analyses_repo_id_created_at`, `ix_analyses_repo_id_author_login`, `ix_merge_attempts_attempted_at`. ORM `__table_args__` 와 alembic 양쪽 정의 의무. |
-| FK ondelete CASCADE 일관성 | `src/models/gate_decision.py` (alembic 0024) | child 모델 4종 모두 CASCADE — 신규 child 모델 추가 시 동일 정책 적용 권장. |
-
-> 최종 갱신: 2026-05-01 (Phase H+I 16 PR + 회고/문서 동기화 후)
-> 🔴 본 표는 **Phase H+I(2026-05-01) 시점 스냅샷**이다 — 이후 신규 모듈(verifier·config_manager·railway_client·shared/secure_compare 등)의 live 인덱스는 [architecture.md](architecture.md) `src/` 트리가 단일 출처. 신규 모듈은 본 스냅샷이 아닌 architecture.md 에 등재한다 (스냅샷에 후속 모듈 추가 시 phase 오귀속).
+| `src/services/merge_retry_service.py` | CI-aware Auto Merge 재시도 워커 (`process_pending_retries`) |
+| `src/gate/retry_policy.py` | `should_retry` · `compute_next_retry_at` · `is_expired` |
+| `src/models/merge_retry.py` | MergeRetryQueue ORM |
+| `src/repositories/repository_repo.py::find_by_full_name_with_owner` | opt-in joinedload |
+| `src/github_client/graphql.py` | GraphQL 5xx + network 재시도 |
+| `src/notifier/telegram.py` | `TELEGRAM_RETRY_AFTER_MAX_SECONDS` cap |
+| `src/gate/engine.py::_get_ci_status_safe` ↔ `merge_retry_service` 동명 | PARITY GUARD — 의도적 중복, 양쪽 동시 수정 |

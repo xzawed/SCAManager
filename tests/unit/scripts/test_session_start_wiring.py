@@ -1,10 +1,4 @@
-"""SessionStart 훅 배선 가드 — 카운터 2종이 기계적으로 실행되는지 (회고 2026-07-19 P0/P1).
-
-회고 확정: #1080 카덴스 카운터와 #1084 owed 원장이 **집행면에 배선되지 않아** 실행이 여전히
-인지 의존이었다. 기존 배선 테스트는 `assert "check_retro_cadence.py" in CLAUDE.md` 즉 **산문
-문자열 존재**만 단언해 그 문서-only 상태를 정답으로 고정하고 있었다("공허 단언" 확정 지적).
-Retro: the counters were wired to no enforcement surface, so execution stayed cognition-dependent.
-The prior guard asserted only that a prose string existed in CLAUDE.md, pinning the doc-only state.
+"""SessionStart 훅 배선 가드 — 남은 카운터가 기계적으로 실행되는지.
 
 🔴 이 가드는 산문이 아니라 **실행 기전**(.claude/settings.json 의 SessionStart 훅 엔트리)을 단언한다.
 
@@ -28,8 +22,8 @@ _SETTINGS = _ROOT / ".claude" / "settings.json"
 # 세션 시작 시 기계 실행돼야 하는 카운터 — 스크립트 경로로 식별.
 # Counters that must run mechanically at session start, identified by script path.
 _REQUIRED = (
-    "scripts/check_retro_cadence.py",
-    "scripts/check_owed_verification.py",
+    "scripts/check_main_red.py",
+    "scripts/check_precommit_installed.py",
 )
 
 
@@ -85,7 +79,7 @@ def test_counter_wired_to_session_start(script):
     """🔴 카운터가 SessionStart 훅에서 **실제로 실행**되는가 — 경로 문자열 존재가 아니라.
 
     🔴 2026-07-31 봉인: 이전 판은 `any(script in c for c in commands)` substring 이라,
-    command 를 `echo 'skipping scripts/check_retro_cadence.py'` 로 중성화해도 통과했다
+    command 를 `echo 'skipping scripts/check_main_red.py'` 로 중성화해도 통과했다
     (실측 뮤테이션 GROK-20260731-1 — 지정 경로 498건 전부 green, red 0). 즉 이 파일의
     docstring 이 주장한 "실행 기전 단언" 은 **CLAUDE.md 의 산문 grep 을 settings.json 의 산문
     grep 으로 옮긴 것**에 불과했다. 판정을 `_wiring_shape.any_invokes` 로 넘긴다.
