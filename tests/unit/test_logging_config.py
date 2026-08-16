@@ -7,7 +7,7 @@
 
 실측 영향 / Measured impact:
 - `retention sweep — purged expired_cache=N` 같은 운영 관측 라인이 한 번도 보이지 않았다
-- owed 원장의 검증 절차("Railway cron 로그에서 sweep 실행 확인")가 **물리적으로 불가능**했다
+- 스케줄러 기동 로그가 보이지 않아 배포 검증이 막혔다
 - 신규 인앱 스케줄러(#1099)의 `scheduler started — 5 jobs` 도 보이지 않아 배포 검증이 막혔다
 The app never configured logging, so every INFO log was dropped; only uvicorn/alembic were visible.
 """

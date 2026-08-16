@@ -19,11 +19,8 @@ completeness critic + **cross-verify=finding 강제**(모든 finding 이 verdict
    py -3 scripts/retro_scope.py --json      # → context/scope 에 그대로 넣는다
    ```
 
-   🔴 **디스패치 직전에 실행할 것.** 세션 시작 훅(`check_retro_cadence.py`)이 인쇄한 수치는
-   그 시점의 값이라 그 사이 머지분이 빠진다. 2026-08-08 회고가 정확히 이 함정을 밟았다 —
-   훅이 세션 초에 인쇄한 **17건**을 브리프에 굳혀 5 관점에 배포했고, 실제 범위는 **18건**
-   (`#1297`~`#1314`)이었다. 두 도구가 어긋난 게 아니라 **읽은 시점이 달랐다**.
-   `git log` 로 손 조립하던 이전 절차가 그 굳힘을 허용했다(회고 N-P0-5).
+   🔴 **디스패치 직전에 실행할 것.** 세션 초의 수치는 그 시점의 값이라 그 사이 머지분이
+   빠진다. `git log` 로 손 조립하지 않는다.
 2. 워크플로우 호출 — **`scriptPath` 절대경로 필수** (빌트인 아님 → `name` 해소 안 됨):
    `Workflow({ scriptPath: '<repo-abs>/.claude/workflows/retrospective.mjs', args: { scope, context, domains? } })`
 3. 반환 `{ scope, rounds, findings_total, verdict_coverage, confirmed[], unverified_findings[], roi }` 를

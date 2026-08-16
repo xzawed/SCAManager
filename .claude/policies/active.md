@@ -377,9 +377,8 @@ cleanup PR 자가 검토:
 
 **카덴스**: 직전 정식 회고 이후 **≥ 3 세션 또는 ≥ 15 PR** 이면 5+1 회고가 강제다.
 
-- 기계 신호: `scripts/check_retro_cadence.py` (`RETRO_PR_THRESHOLD = 15`, SessionStart, advisory exit 0)
 - 범위 산출: `scripts/retro_scope.py` (직전 회고 이후 머지 PR + 본 세션 산출물)
-- 이월: `docs/runbooks/retro-cadence-deferrals.md` 에 사용자 승인 인용 + 목표 세션. 빈 칸이 아닌 **행의 존재**가 승인이다 (`.claude/rules/docs.md`)
+- 이월: GitHub Issue 에 사용자 승인 인용 + 목표 세션. 빈 칸이 아닌 **이슈의 존재**가 승인이다
 - 자기회고 갈음은 사용자 **명시 승인** 만. "규모가 작아서"는 사유가 아니다
 - 감사/수정만 한 세션도 종료 시 회고 대상이다
 

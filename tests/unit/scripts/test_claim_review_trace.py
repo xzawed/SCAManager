@@ -647,12 +647,11 @@ def test_summary_write_failure_never_changes_the_verdict(monkeypatch):
 def test_surface_list_covers_the_machine_judgment_inputs():
     """🔴 기계 판정 입력이 '문서' 로 분류돼 무검증 통과하면 안 된다.
 
-    `owed-verification.md` 는 R0-2 이후 판정 입력이고, `tests/unit/{scripts,hooks}` 는
-    가드가 저술되는 표면이다. 리터럴로 못박는다 — 목록을 피검사 모듈에서 유도하면
-    비우는 순간 초록이 된다.
+    `tests/unit/{scripts,hooks}` 는 가드가 저술되는 표면이다. 리터럴로 못박는다 —
+    목록을 피검사 모듈에서 유도하면 비우는 순간 초록이 된다.
     """
     for required in ("src/", "scripts/", ".github/workflows/", ".claude/hooks/",
-                     "tests/unit/scripts/", "docs/runbooks/owed-verification.md"):
+                     "tests/unit/scripts/", "tests/unit/hooks/"):
         assert required in _CODE_SURFACES, f"표면 목록에서 빠졌다: {required}"
 
 

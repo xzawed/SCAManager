@@ -116,8 +116,8 @@ def test_no_sql_avg_of_score_survives_anywhere_in_src():
     pattern = re.compile(r"func\.avg\(\s*Analysis\.score\s*\)")
     # 🔴 **주석은 제외한다** — 이 축을 *설명하는* 문장(왜 SQL AVG 를 쓰지 않는가)이 스스로
     #    위반으로 잡힌다. 초판이 정확히 그랬다(실측 2건, 둘 다 해설 주석).
-    #    이 리포는 같은 형태를 세 번 밟았다: red-budget 의 코드 스팬 · owed 원장의 종결 글리프 ·
-    #    그리고 여기. 산문 가드는 양방향으로 틀린다(traps B5).
+    #    이 리포는 같은 형태를 반복했다: red-budget 의 코드 스팬 · 그리고 여기.
+    #    산문 가드는 양방향으로 틀린다(traps B5).
     #    Comments explaining *why* SQL AVG is banned must not count as violations.
     offenders = [
         f"{f.relative_to(root.parent).as_posix()}:{i}"

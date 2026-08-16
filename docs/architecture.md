@@ -181,17 +181,13 @@ scripts/
 │                                # PR-scoped dead-symbol guard — definition-module-scoped reference count
 ├── check_codeql_alerts.py       # 자초 CodeQL alert 게이트 — base 대비 신규 alert(note 포함) 차단, Dependabot 판정불가 exit 2 분리(#1137)
 │                                # self-inflicted CodeQL alert gate — new-vs-base, undecidable exit 2 for Dependabot
-├── check_retro_cadence.py       # 회고 카덴스 카운터 — 직전 정식 회고 이후 머지 PR ≥15 시 loud 경고(SessionStart 훅, #1084/#1133)
-│                                # retro cadence counter — loud warn at ≥15 merged PRs since last formal retro
-├── check_owed_verification.py   # owed 원장 미결 카운터 — 안전등급 ⏳ ≥1 시 loud 경고(SessionStart 훅, #1095)
-│                                # owed-ledger counter — loud warn on ≥1 safety-tier ⏳ (SessionStart hook)
 ├── check_architecture_tree_sync.py # architecture 트리 싱크 가드 — 실제 src/ 트리 ↔ architecture.md `src/` 트리 항목 대조(6-step ⑥ drift 차단, pre-commit)
 │                                # architecture tree-sync guard — actual src/ tree ↔ architecture.md src/ listing
 ├── check_guard_fail_open.py     # 가드 fail-open floor(B8) — bare-substring 판정(문자열 존재만으로 통과) 구조적 가드 차단(guards.md 3-불변식, pre-commit)
 │                                # guard fail-open floor (B8) — blocks bare-substring pass judgments
 ├── check_lint_js_nonvacuous.py  # lint-js 공허화 차단 — 템플릿 인라인 JS 검사 범위가 비면 fail, 위반은 advisory(ci.yml `lint-js-nonvacuous` + `make lint-js`, #1227)
 │                                # lint-js anti-vacuity — fails when nothing was linted; violations stay advisory
-├── retro_scope.py               # 회고 범위 기계 산출 — 직전 정식 회고 이후 머지 PR 범위(HEAD 실측, 정책 8 진화 5, #1133)
+├── retro_scope.py               # 회고 범위 기계 산출 — 직전 정식 회고 이후 머지 PR 범위(HEAD 실측)
 │                                # machine-computed retro scope — merged-PR range since last formal retro
 └── README.md                    # 사용자 실행 가이드 + 비용 안내
 ```

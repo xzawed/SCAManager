@@ -99,10 +99,10 @@ gh auth login          # 이후 gh auth status 로 scope 확인
 | 로컬 pre-commit 계층 | 세션 시작 시 SessionStart 훅 배너 | "pre-commit 계층 활성" 이 **출력됨** (내려가 있으면 loud 경고) |
 | CSS 번들 | `src/static/css/dist/tailwind.css` 존재 | 없으면 `base.html` 의 링크가 404 |
 | GitHub 인증 | `gh auth status` | `workflow` scope 포함 |
-| 회고/원장 카운터 | 세션 시작 시 SessionStart 훅 배너 | 카덴스·owed 원장 경고가 **출력됨** |
+| SessionStart 훅 | 세션 시작 시 배너 | `check_main_red.py` · `check_precommit_installed.py` 출력이 **보임** |
 
-> 마지막 항목이 중요하다 — 카덴스·owed 카운터는 **advisory(비차단)** 이라, 배선이 빠져도 세션은
-> 정상처럼 진행된다. 배너가 안 보이면 훅 배선을 먼저 의심한다.
+> SessionStart 카운터는 **advisory(비차단)** 이라, 배선이 빠져도 세션은 정상처럼 진행된다.
+> 배너가 안 보이면 훅 배선을 먼저 의심한다.
 
 ### 🔴 Windows `python` = Microsoft Store 스텁 (실측 사고 — 훅 6종 무동작)
 

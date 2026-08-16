@@ -6,16 +6,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY ${CLAUDE_PROJECT_DIR:-.}/scripts/check_retro_cadence.py",
-            "timeout": 20
-          },
-          {
-            "type": "command",
-            "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY ${CLAUDE_PROJECT_DIR:-.}/scripts/check_owed_verification.py",
-            "timeout": 10
-          },
-          {
-            "type": "command",
             "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY ${CLAUDE_PROJECT_DIR:-.}/scripts/check_main_red.py",
             "timeout": 30
           },

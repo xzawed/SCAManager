@@ -34,8 +34,7 @@ Workflow({ scriptPath: '<repo-abs>/.claude/workflows/retrospective.mjs',
 >
 > 🔴 이건 주의력 문제가 아니다. **범위를 적는 시점과 회고가 시작되는 시점이 다른 한 구조적으로
 > 반복**된다. `retro_scope.py` 는 호출 시점의 `HEAD` 를 보므로 그 창을 없앤다.
-> 경계 판정은 `check_retro_cadence.newest_retro` 를 **공유**한다 — 각자 구현하면 카운터와
-> 회고 범위가 서로 다른 회고를 최신으로 골라 어긋난다(실제로 같은 날 회고 tie-break 버그가 있었다).
+> 최신 회고 판정은 `scripts/retro_scope.py` 의 `newest_retro` 가 단일 출처다.
 - `domains`(선택): 부분 회고 시 `['process','code',...]` (생략 = 5 관점 전체).
 - `dryRun: true`: 에이전트 0 — 관점 resolve 만 확인하는 smoke.
 

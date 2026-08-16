@@ -124,7 +124,7 @@ HOLDS. 그리고 뮤테이션 대상은 seal 이 **보호한다고 주장하는 
 > 3. **write-time 규율** — `.claude/rules/guards.md`(paths 에 `tests/unit/scripts/**`·
 >    `.claude/hooks/**` 포함)가 **실제 실패 표면 편집 시 자동 로드**. 실측: 최다 재발 사고
 >    `#1136`·`#1156` 은 `check_*.py` 가 아니라 **test-as-guard**(`test_analyzer_provenance`·
->    `test_owed_ledger_consistency`)에 있었다 — 그 표면에서 3-불변식이 write-time 에 로드된다.
+>    `test_red_budget`)에 있었다 — 그 표면에서 3-불변식이 write-time 에 로드된다.
 >
 > **왜 "완전 탐지기" 를 안 만드는가** (Grok SURVIVES 판정): `X in file_text` 는 **마커·존재
 > 검사에 정당하게** 쓰인다(B8 자신도 `_ESCAPE in src`). 결정 표현식 substring 을 구문적으로
@@ -191,7 +191,7 @@ HOLDS. 그리고 뮤테이션 대상은 seal 이 **보호한다고 주장하는 
   `claim-review-not-required: <사유 16자+>` — 사용 시 `::notice` annotation 으로 계량된다.
   🔴 **면제 적용 범위 축소 (2026-08-08 사용자 결정 "필수로 승격" — 의도된 행동 변경)**.
   판정 규칙은 두 줄이다:
-  1. PR 이 **관측자를 저술하는 표면**(가드 스크립트·훅·워크플로·CI 설정·그 테스트·owed 원장)을
+  1. PR 이 **관측자를 저술하는 표면**(가드 스크립트·훅·워크플로·CI 설정·그 테스트)을
      건드리면 면제 **무효**. 정확한 경로 집합은 `scripts/check_claim_review_trace.py` 의
      `_GUARD_SURFACES` 가 집행하며, 그 값이 곧 판정이다(산문 사본을 두면 갈라진다 — R45 전례).
   2. seal 주장 + 코드 표면 변경도 면제 **무효**.
@@ -204,8 +204,8 @@ HOLDS. 그리고 뮤테이션 대상은 seal 이 **보호한다고 주장하는 
   본문 편집 재검증 = `claim-review-on-body-edit.yml`. 위조·의미 진위는 원리적으로 못 잡는다
   (가드 docstring §한계 — 그 잔여가 바로 이 문서의 claim-review 프로세스다).
 - **판정 착지 규약**: Grok 판정(HOLDS/BROKEN)은 외부 `.md` 기록 → Claude 1회 triage →
-  영향 계층 라우팅(`wrong-merge`·`secret`·`fail-open` → `owed-verification.md` 안전등급 /
-  `silent-disable` → `backlog.md`). 상세 = `ai-collaboration.md` §라우팅·§findings 스키마.
+  영향 계층 라우팅(`wrong-merge`·`secret`·`fail-open`·`silent-disable` → GitHub Issues).
+  상세 = `ai-collaboration.md` §라우팅·§findings 스키마.
 
 ## 규칙·정책 어디서 찾나 (grep 진입점)
 
@@ -239,6 +239,5 @@ HOLDS. 그리고 뮤테이션 대상은 seal 이 **보호한다고 주장하는 
   findings 계약 · 소유 금지(정책·backlog 저술 X) · P0/P1 부여 금지가 거기 있고, 이 문서의
   요약에는 없다.
 - 협업 정책 1~19: `CLAUDE.md` (default rule) + `.claude/policies/{active,history}.md` (detail).
-- 미결 검증 원장: `docs/runbooks/owed-verification.md`. 미해결 일감: **GitHub Issues**
-  (`docs/backlog.md` 는 2026-08-16 퇴역).
+- 미결 운영 검증·미해결 일감: **GitHub Issues**.
 - 현재 수치·상태: `docs/STATE.md`. 아키텍처·가드 배선: `docs/architecture.md`.

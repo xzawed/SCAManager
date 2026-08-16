@@ -12,8 +12,8 @@
 
 ## 이 파일이 잠그는 것
 
-`merged_prs` 가 **호출 시점의 HEAD** 를 본다는 것, 그리고 경계 판정이 카덴스 카운터와
-**같은 함수**를 쓴다는 것(두 곳이 다른 회고를 고르면 카운터와 회고 범위가 어긋난다).
+`merged_prs` 가 **호출 시점의 HEAD** 를 본다는 것, 그리고 `newest_retro` 가
+같은 날 회고를 순번으로 고른다는 것.
 """
 import subprocess
 import sys
@@ -68,17 +68,72 @@ def test_boundary_uses_add_commit_not_last_touch(monkeypatch):
     assert "--diff-filter=A" in seen["args"], "추가 커밋 필터가 빠졌다 — 경계가 뒤로 밀린다"
 
 
-def test_boundary_selection_shares_counter_logic():
-    """🔴 경계 판정이 카덴스 카운터와 **같은 함수**를 쓴다 — 각자 구현하면 서로 어긋난다.
+def test_newest_retro_picks_latest_date_excluding_non_retros():
+    """정식 회고만 대상으로 최신 날짜 선택 — review/audit 는 제외."""
+    files = [
+        "2026-06-23-retrospective.md",
+        "2026-07-03-retrospective.md",
+        "2026-07-17-grok-full-review.md",
+        "2026-06-16-session-retrospective.md",
+        "INDEX.md",
+    ]
+    assert retro_scope.newest_retro(files) == "2026-07-03-retrospective.md"
 
-    실제로 카운터의 tie-break 버그(같은 날 회고 2건 중 오래된 쪽 선택)가 있었고,
-    범위 산출이 별도 구현이었다면 그 버그가 두 배로 났을 것이다.
-    """
-    from check_retro_cadence import newest_retro as counter_newest
 
-    assert retro_scope.newest_retro is counter_newest, (
-        "retro_scope 가 자체 최신-회고 판정을 갖고 있다 — 카운터와 갈라진다"
+def test_newest_retro_none_when_no_retros():
+    """정식 회고가 없으면 None."""
+    assert retro_scope.newest_retro(["INDEX.md", "2026-07-17-grok-full-review.md"]) is None
+    assert retro_scope.newest_retro([]) is None
+
+
+def test_newest_retro_same_date_picks_higher_sequence():
+    """같은 날 회고 2건 — 파일명 사전순이 아니라 순번이 이긴다."""
+    files = [
+        "2026-07-19-retrospective.md",
+        "2026-07-19-retrospective-2.md",
+        "2026-07-18-retrospective.md",
+    ]
+    assert retro_scope.newest_retro(files) == "2026-07-19-retrospective-2.md"
+
+
+def test_newest_retro_same_date_order_independent():
+    """입력 순서가 결과를 바꾸면 안 된다."""
+    a = ["2026-07-19-retrospective.md", "2026-07-19-retrospective-2.md"]
+    assert (
+        retro_scope.newest_retro(a)
+        == retro_scope.newest_retro(list(reversed(a)))
+        == "2026-07-19-retrospective-2.md"
     )
+
+
+def test_newest_retro_same_date_sequence_is_numeric_not_lexical():
+    """순번은 숫자 비교 — 문자열이면 '10' < '2' 가 되어 10차가 밀린다."""
+    files = [
+        "2026-07-19-retrospective-2.md",
+        "2026-07-19-retrospective-10.md",
+    ]
+    assert retro_scope.newest_retro(files) == "2026-07-19-retrospective-10.md"
+
+
+def test_newest_retro_later_date_beats_higher_sequence():
+    """날짜가 순번보다 우선 — 어제의 10차보다 오늘의 1차가 최신이다."""
+    files = [
+        "2026-07-18-retrospective-10.md",
+        "2026-07-19-retrospective.md",
+    ]
+    assert retro_scope.newest_retro(files) == "2026-07-19-retrospective.md"
+
+
+def test_retro_date_extracts_from_retrospective_filename():
+    """정식 회고 파일명에서 YYYY-MM-DD 추출."""
+    assert retro_scope.retro_date("2026-07-03-retrospective.md") == "2026-07-03"
+    assert retro_scope.retro_date("2026-06-16-session-retrospective.md") == "2026-06-16"
+
+
+def test_retro_date_rejects_non_retrospective_reports():
+    """'retrospective' 없는 리포트는 None — 카덴스 경계 오인 차단."""
+    assert retro_scope.retro_date("2026-07-17-grok-full-review.md") is None
+    assert retro_scope.retro_date("INDEX.md") is None
 
 
 def test_compute_reports_failure_reason_instead_of_silent_empty(monkeypatch, tmp_path):
