@@ -109,8 +109,9 @@ py -3 scripts/pre_push_gate.py --full    # ← run this before pushing (guards +
 py -3 scripts/pre_push_gate.py           # ← guards only, when you just need the fast pass
 ```
 
-`pre_push_gate.py` runs the guards CI actually enforces — 9 repo-integrity checks plus 4 diff-scoped
-ones — without depending on `make`. It prints, on every run, the axes it *cannot* see (CodeQL,
+`pre_push_gate.py` runs the guards CI actually enforces — the lists in that file
+(`_INTEGRITY`, `_INTEGRITY_WITH_ARGS`, `_DIFF_SCOPED`) are the source of truth —
+without depending on `make`. It prints, on every run, the axes it *cannot* see (CodeQL,
 SonarCloud, Codecov, TruffleHog, pip-audit, lint-js, the Postgres job, integration tests), so a green
 run is never mistaken for a green CI.
 
@@ -121,8 +122,8 @@ as well — CI does.
 
 > ⚠️ **`make gate` is not the same bar as CI**, and `make` may not exist on your machine at all
 > (it does not on the primary dev PC). That target runs only the test suite,
-> `pylint --fail-under=9.90 src/` and `bandit -r src/` — none of the 13 guards above. Treat it as a
-> convenience, never as evidence. See backlog R29.
+> `pylint --fail-under=9.90 src/` and `bandit -r src/` — none of the guards above. Treat it as a
+> convenience, never as evidence.
 
 > ⚠️ **`make lint` is not a gate either.** It runs pylint, flake8, and bandit with `|| true` appended,
 > so it prints findings and always exits `0`. It is useful for *reading* violations; it proves nothing.
@@ -194,7 +195,7 @@ updated opportunistically: when you touch a file, bring the comments you edited 
 there is no requirement to convert a whole file you are only passing through.
 
 **This is a convention, not an enforced gate.** A pre-commit hook used to block on it and was
-deliberately disabled on 2026-07-29 — it was the only style rule able to fail a commit, and the friction
+deliberately disabled — it was the only style rule able to fail a commit, and the friction
 was not worth it. The checker still exists if you want it:
 
 ```bash

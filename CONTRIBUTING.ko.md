@@ -107,8 +107,9 @@ py -3 scripts/pre_push_gate.py --full    # ← push 전에 이걸 (가드 + pyli
 py -3 scripts/pre_push_gate.py           # ← 가드만 빠르게 볼 때
 ```
 
-`pre_push_gate.py` 는 CI 가 실제로 강제하는 가드 — repo-integrity 9종 + PR-diff 한정 4종 — 를
-`make` 없이 실행합니다. 그리고 **자기가 보지 못하는 축**(CodeQL · SonarCloud · Codecov ·
+`pre_push_gate.py` 는 CI 가 실제로 강제하는 가드를 `make` 없이 실행합니다.
+목록 정본 = 그 파일의 `_INTEGRITY` · `_INTEGRITY_WITH_ARGS` · `_DIFF_SCOPED`.
+그리고 **자기가 보지 못하는 축**(CodeQL · SonarCloud · Codecov ·
 TruffleHog · pip-audit · lint-js · Postgres job · 통합 테스트)을 매 실행 인쇄하므로, 여기서
 초록이 나와도 CI 초록으로 오해하지 않습니다.
 
@@ -118,7 +119,7 @@ TruffleHog · pip-audit · lint-js · Postgres job · 통합 테스트)을 매 �
 
 > ⚠️ **`make gate` 는 CI 와 동일 기준이 아닙니다**, 그리고 머신에 `make` 자체가 없을 수 있습니다
 > (주 개발 PC 에는 없습니다). 그 타깃은 테스트 + `pylint --fail-under=9.90 src/` + `bandit -r src/`
-> 뿐이라 위 13 가드를 **하나도** 돌리지 않습니다. 편의 도구로 쓰되 **근거로 쓰지 마세요**. backlog R29 참조.
+> 뿐이라 위 가드를 **하나도** 돌리지 않습니다. 편의 도구로 쓰되 **근거로 쓰지 마세요**.
 
 > ⚠️ **`make lint` 도 게이트가 아닙니다.** pylint · flake8 · bandit 를 `|| true` 를 붙여 실행하므로
 > 위반을 출력하고도 **항상 `0`으로 종료**합니다. 위반을 *읽는* 용도로는 유용하지만 아무것도 증명하지
@@ -190,7 +191,7 @@ test(scorer): AI 없이 89점 상한 커버
 맞추면 되고, 지나가는 파일 전체를 변환할 의무는 없습니다.
 
 🔴 **이건 규약이지 강제 게이트가 아닙니다.** 예전에는 pre-commit 훅이 이걸로 커밋을 막았지만
-2026-07-29 에 의도적으로 해제됐습니다 — 커밋을 실패시킬 수 있는 유일한 **스타일** 규칙이었고 마찰
+의도적으로 해제됐습니다 — 커밋을 실패시킬 수 있는 유일한 **스타일** 규칙이었고 마찰
 대비 기여가 불분명하다는 판단이었습니다. 검사 스크립트 자체는 남아 있으니 원하면 직접 돌리면 됩니다:
 
 ```bash
@@ -203,7 +204,7 @@ python scripts/check_bilingual_comments.py
 
 PR을 열면 [템플릿](.github/PULL_REQUEST_TEMPLATE.md)이 자동으로 채워집니다. ready 로 표시하기 전에:
 
-- [ ] 로컬에서 `py -3 scripts/pre_push_gate.py --full` 통과 (가드 13종 + pylint + bandit + 단위 테스트)
+- [ ] 로컬에서 `py -3 scripts/pre_push_gate.py --full` 통과 (가드 + pylint + bandit + 단위 테스트)
 - [ ] 파이프라인·분석기 변경이면 `py -3 -m pytest tests/integration` 도 — 두 게이트 형태 모두 이건 안 돕니다
 - [ ] 새 동작에 대해, 변경 없이는 실패하는 테스트가 있음
 - [ ] PR 본문에 **리뷰어가 손으로 확인해야 할 것**을 적었음 — "테스트 통과"만 적지 마세요. 시각적인

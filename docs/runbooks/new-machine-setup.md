@@ -54,8 +54,8 @@ py -3 scripts/check_memory_refs.py     # 첫 줄에 해소된 메모리 디렉�
 
 > 🔴 **이 문단 자체가 사고 이력이다.** 이전 판은 구 PC 슬러그(`d--Source-SCAManager`)를 **정본으로
 > 인쇄**하고 있었다 — PC 이전을 돕는 런북이 이전으로 깨진 경로를 3회차 왕복시킨 셈이다. 같은 값을
-> 하드코딩하던 `check_memory_refs.py` 는 그 때문에 이 머신에서 **한 번도 검사하지 않았다**(회고
-> 2026-07-31 P0-6). 이식 문서에 머신 고유값을 적으면 그 문서가 이식을 깨뜨린다.
+> 하드코딩하던 `check_memory_refs.py` 는 그 때문에 이 머신에서 **한 번도 검사하지 않았다**.
+> 이식 문서에 머신 고유값을 적으면 그 문서가 이식을 깨뜨린다.
 
 🔴 **이 리포는 PUBLIC 이므로 메모리를 리포에 등재하지 않는다.** 메모리 본문에는 운영 사고 경위·보안
 발견·내부 판단 서사가 들어 있고, 공개 게시는 **비가역**이다. 이식 경로는 둘 중 하나를 쓴다.
@@ -92,7 +92,7 @@ gh auth login          # 이후 gh auth status 로 scope 확인
 | 확인 | 명령 | 기대 |
 |---|---|---|
 | 단위 테스트 | `pytest tests/unit` | 전건 통과 (수치 원천 = 실행 결과) |
-| push 전 게이트 | `py -3 scripts/pre_push_gate.py` | 통과 — CI 강제 가드 **13종**(repo-integrity 9 + PR-diff 4). 🔴 **`make gate` 는 대체가 아니다**: pytest·pylint·bandit 3종뿐이라 그 13 가드를 하나도 안 돌리고, 애초에 이 머신에는 `make` 이 없다(backlog R29) |
+| push 전 게이트 | `py -3 scripts/pre_push_gate.py` | 통과 — 목록 정본 = 그 파일의 `_INTEGRITY` · `_INTEGRITY_WITH_ARGS` · `_DIFF_SCOPED`. 🔴 **`make gate` 는 대체가 아니다**: pytest·pylint·bandit 뿐이라 그 가드를 하나도 안 돌리고, `make` 이 없는 머신이 있다 |
 | 정적 린트 (CI `lint-src` 동일 기준) | `py -3 -m pylint --fail-under=9.90 src/` + `py -3 -m bandit -r src/ -q` | 통과 — 🔴 `make lint` 는 `\|\| true` advisory 라 근거 아님 |
 | 🔴 **인터프리터 생존** | `py -3 -c "print(1)"` 과 `python -c "print(1)"` **양쪽** | 둘 다 `1` 출력. `python` 이 **exit 49** 면 Windows Store 스텁이다 — 아래 참조 |
 | 가드 훅 등록 | `py -3 -m pre_commit run --all-files` | 훅이 **실행됨** (미등록 시 아무 일도 안 일어남 = 무보호) |
@@ -109,7 +109,7 @@ gh auth login          # 이후 gh auth status 로 scope 확인
 Windows 는 `python` 을 **아무것도 실행하지 않고 exit 49 를 내는 Store 스텁**으로 선점할 수 있다.
 그 상태에서 `.claude/settings.json` 이 `python <스크립트>` 로 훅을 부르면 **6종 전부가 조용히 죽는다** —
 `block_credential_dump`(크리덴셜 덤프 차단)와 `check_edit_allowed`(수정 금지 파일 보호)를 포함해서다.
-2026-07-30 실측에서 이 상태가 **얼마나 오래 지속됐는지 알 수 없었다** — 실패가 무음이라 흔적이 없다.
+실측에서 이 상태가 **얼마나 오래 지속됐는지 알 수 없었다** — 실패가 무음이라 흔적이 없다.
 
 **계약**: 이 리포의 훅·문서·명령은 모두 **`py -3` 를 기본**으로 쓰고, 셸 폴백이 필요한 자리에는
 `PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY <스크립트>` 형태를 쓴다.

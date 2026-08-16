@@ -31,7 +31,7 @@ python -m pytest tests/ -q
 
 ## 인자와 함께 호출 (`/test pipeline`, `/test webhook` 등)
 
-Phase 4 이후 테스트 파일은 `tests/unit/<영역>/test_<모듈>.py` 계층 구조. 인자 해석:
+테스트 파일은 `tests/unit/<영역>/test_<모듈>.py` 계층 구조. 인자 해석:
 
 ```bash
 # 영역 단위 — 모든 단위 테스트 실행

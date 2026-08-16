@@ -25,7 +25,7 @@ py -3 -m pytest tests/unit -q      # 🔴 예외 없음 — 문서 전용 PR 도
 py -3 scripts/pre_push_gate.py     # 게이트 전건
 ```
 
-**문서만 바꿨으니 생략해도 된다는 판단은 틀렸다** — 2026-08-13 에 그렇게 판단했고
+**문서만 바꿨으니 생략해도 된다는 판단은 틀렸다** — 그렇게 판단했고
 본문 수치 축이 red 로 반증했다. 6-step ② 에 예외가 없다고 적혀 있다.
 
 ---
@@ -73,7 +73,7 @@ py -3 scripts/check_claim_review_trace.py
 ### 4-c. 본문 편집은 required check 를 갱신하지 못한다
 
 `gh pr edit --body-file` 만으로는 CI 가 **옛 본문**을 읽는다.
-→ **빈 커밋을 하나 더 민다.** 실측 4회(backlog R34).
+→ **빈 커밋을 하나 더 민다.** 본문만 고치면 required check 가 옛 본문을 읽는다.
 
 ---
 
@@ -86,7 +86,7 @@ git merge-base --is-ancestor <sha> origin/main   # 내 커밋이 실제로 들�
 ```
 
 **머지된 브랜치에 커밋을 얹지 마라.** push 출력의 `* [new branch]` 는
-브랜치가 삭제됐다가 재생성됐다는 신호다 — 그 커밋은 고아가 된다(2026-08-13 실사고).
+브랜치가 삭제됐다가 재생성됐다는 신호다 — 그 커밋은 고아가 된다.
 
 **PR 컨텍스트에서 관측 불가한 축이 있다** — 이월 마커가 push 이벤트에서도 인식되는지는
 **머지 후에만** 확인된다.
@@ -108,4 +108,4 @@ git merge-base --is-ancestor <sha> origin/main   # 내 커밋이 실제로 들�
 
 - **CI 가 보지 못하는 축** — CodeQL·Sonar·Codecov·TruffleHog·pip-audit·lint-js·PG job·통합테스트.
   `pre_push_gate` 가 매 실행 인쇄한다.
-- **로컬 3.14 ↔ CI 3.12 이원** — 버전 의존 회귀는 로컬이 못 잡는다(backlog R30).
+- **로컬 3.14 ↔ CI 3.12 이원** — 버전 의존 회귀는 로컬이 못 잡는다. `pre_push_gate` 가 매 실행 인쇄한다.

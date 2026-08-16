@@ -1,9 +1,9 @@
 # 2nd-LLM 머지 검증자 활성화 Runbook
 
-> 2nd-LLM cross-vendor merge verifier (#859) 운영 활성화 가이드.
+> 2nd-LLM cross-vendor merge verifier 운영 활성화 가이드.
 > 2nd-LLM cross-vendor merge verifier activation guide.
 >
-> 출처: 2026-06-23 정밀 감사 세션 회고 P2 (DQ-3). 코드 단일 출처: [`src/gate/merge_verifier.py`](../../src/gate/merge_verifier.py) · 환경변수: [`docs/reference/env-vars.md`](../reference/env-vars.md#머지-검증자-2nd-llm-cross-vendor-opt-in).
+> 코드 단일 출처: [`src/gate/merge_verifier.py`](../../src/gate/merge_verifier.py) · 환경변수: [`docs/reference/env-vars.md`](../reference/env-vars.md#머지-검증자-2nd-llm-cross-vendor-opt-in).
 
 ## 개요 / Overview
 
@@ -26,7 +26,7 @@ diff 는 `<untrusted-data>...</untrusted-data>` 경계로 감싸 **데이터로�
 
 ## 언제 호출되나 / When it runs
 
-`should_verify` 3조건 **모두** 충족 시에만 호출 (`merge_verifier.py:66`):
+`should_verify` 3조건 **모두** 충족 시에만 호출 (`src/gate/merge_verifier.py::should_verify`):
 Invoked only when all three hold:
 
 | 조건 | 설명 |
@@ -35,7 +35,7 @@ Invoked only when all three hold:
 | 키 존재 | `OPENAI_API_KEY` 가 빈 문자열이 아님 |
 | 경계 밴드 | `merge_threshold <= score < merge_threshold + MERGE_VERIFIER_BAND` |
 
-고득점(`>= mt + band`)·머지 미달(`< mt`)은 **skip**(비용 절감). 검증 가드는 [`engine._run_auto_merge`](../../src/gate/engine.py) **단일 출처**에서 1회 — **자동**(`AutoMergeAction`)·**반자동**(Telegram `handle_gate_callback`) 양 경로 공유(#859 P1-1 parity). **재시도 경로**(`process_pending_retries`)는 재검증하지 않으나, `expected_sha` 바인딩(#962)+`sha_drift` 검사로 **검증자가 승인한 동일 SHA 만 머지**하므로 verdict 가 stale 될 수 없다(api.md §검증자 staleness 안전).
+고득점(`>= mt + band`)·머지 미달(`< mt`)은 **skip**(비용 절감). 검증 가드는 [`engine._run_auto_merge`](../../src/gate/engine.py) **단일 출처**에서 1회 — **자동**(`AutoMergeAction`)·**반자동**(Telegram `handle_gate_callback`) 양 경로 공유. **재시도 경로**(`process_pending_retries`)는 재검증하지 않으나, `expected_sha` 바인딩+`sha_drift` 검사로 **검증자가 승인한 동일 SHA 만 머지**하므로 verdict 가 stale 될 수 없다(api.md §검증자 staleness 안전).
 
 ## 활성화 — 비용 옵션 / Activation cost options
 
@@ -96,7 +96,7 @@ When an auto-merge for a borderline-band PR triggers:
 
 ## 알려진 한계 / Known limitations
 
-- **검증 가드 차단은 로그/코멘트로만 감사** — `merge_attempt` DB row 는 `engine` 단일 출처 규칙(api.md) 보존이라 가드 차단이 별도 DB row 를 남기지 않는다. (회고 P2 백로그: "verifier-blocked DB 기록" = 활성화 PR 재검토 항목.)
+- **검증 가드 차단은 로그/코멘트로만 감사** — `merge_attempt` DB row 는 `engine` 단일 출처 규칙(api.md) 보존이라 가드 차단이 별도 DB row 를 남기지 않는다. (활성화 시 "verifier-blocked DB 기록" 은 재검토 항목.)
 - 재시도 경로는 초기 머지 1회만 검증(위 §언제 호출되나 — SHA-bound 라 안전).
 
 ## 관련 / References
@@ -104,5 +104,5 @@ When an auto-merge for a borderline-band PR triggers:
 - 환경변수: [`docs/reference/env-vars.md` §머지 검증자](../reference/env-vars.md#머지-검증자-2nd-llm-cross-vendor-opt-in)
 - 코드: [`src/gate/merge_verifier.py`](../../src/gate/merge_verifier.py) · [`src/verifier/openai_client.py`](../../src/verifier/openai_client.py)
 - 게이트 가드 규칙: [`.claude/rules/api.md`](../../.claude/rules/api.md) §2nd-LLM 검증자 가드
-- 설계 문서는 2026-08-16 이력 퇴역으로 삭제됐다 — 필요하면 git 이력에서 연다
+- 설계 문서는 이력 퇴역으로 삭제됐다 — 필요하면 git 이력에서 연다
   (`git log --diff-filter=D -- docs/superpowers/specs/`). 현재 동작의 정본은 `src/gate/merge_verifier.py` 다.

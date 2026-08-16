@@ -176,7 +176,7 @@ scripts/
 ├── check_red_budget.py          # 🔴 마커에 집행 가드가 없으면 red
 ├── check_reverse_mutation.py    # PR 테스트가 그 PR 이 고친 결함을 관측하는지
 ├── check_test_count_sync.py     # `--collect-only` 실측 ↔ STATE.md 현재 불릿
-├── pre_push_gate.py             # push 전 로컬 게이트 — CI repo-integrity 9종 + PR-diff 4종 (`make` 비의존)
+├── pre_push_gate.py             # push 전 로컬 게이트 — 목록 정본 `_INTEGRITY`·`_INTEGRITY_WITH_ARGS`·`_DIFF_SCOPED` (`make` 비의존)
 ├── retro_scope.py               # 회고 범위 기계 산출 — 직전 정식 회고 이후 머지 PR
 └── README.md                    # 사용자 실행 가이드 + 비용 안내
 ```

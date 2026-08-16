@@ -4,7 +4,7 @@ description: 전체 정합성 감사 Workflow 실행 — read-only P0/P1/P2 리�
 ---
 
 `.claude/workflows/integrity-audit.mjs` 워크플로우를 실행하고 결과를 `docs/reports/` 리포트로 작성한다.
-사이클 104/109 의 수동 5+1 전수 감사를 결정론적으로 코드화한 read-only 감사다 (코드/문서 수정 없음).
+수동 5+1 전수 감사를 결정론적으로 코드화한 read-only 감사다 (코드/문서 수정 없음).
 
 ## 인자 해석
 

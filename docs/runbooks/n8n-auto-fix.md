@@ -29,9 +29,9 @@ PR open
         · Issue 자동 close (Closes #N)
 ```
 
-**토큰 릴레이 모델**: `notify_n8n_issue()`(`src/notifier/n8n.py`)가 GitHub 토큰을 envelope `data.repo_token`으로 릴레이한다 — **HMAC 서명 시크릿(`N8N_WEBHOOK_SECRET`)이 설정된 인증 채널로만 전송**(미설정 시 토큰 생략, `n8n.py:93-95` 방어 심화). 따라서 n8n 워크플로는 별도 GitHub credential 없이 이 payload 토큰을 `GH_TOKEN`으로 주입한다(아래 Node 6 참조).
+**토큰 릴레이 모델**: `notify_n8n_issue()`(`src/notifier/n8n.py`)가 GitHub 토큰을 envelope `data.repo_token`으로 릴레이한다 — **HMAC 서명 시크릿(`N8N_WEBHOOK_SECRET`)이 설정된 인증 채널로만 전송**(미설정 시 토큰 생략, `relayed_token` 방어). 따라서 n8n 워크플로는 별도 GitHub credential 없이 이 payload 토큰을 `GH_TOKEN`으로 주입한다(아래 Node 6 참조).
 
-> ⚠️ `repo_token` 파라미터 + 릴레이 로직은 SCAManager 측 코드(`notify_n8n_issue(repo_token=...)`)에 포함된 기능이다 — 본 가이드의 "코드 변경 없음"이라는 과거 서술은 부정확했다(2026-06-25 정정).
+> ⚠️ `repo_token` 파라미터 + 릴레이 로직은 SCAManager 측 코드(`notify_n8n_issue(repo_token=...)`)에 포함된 기능이다 — 본 가이드의 "코드 변경 없음"이라는 과거 서술은 부정확했다.
 
 ---
 

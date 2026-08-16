@@ -1,6 +1,6 @@
 # SCAManager 점수 체계
 
-> CLAUDE.md 분리본 (사이클 85 정리, 2026-05-06). 점수 영역 작업 시 reference.
+> CLAUDE.md 분리본. 점수 영역 작업 시 reference.
 
 ## 점수 배점 + 도구
 
