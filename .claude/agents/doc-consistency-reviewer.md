@@ -62,6 +62,7 @@ ORM `__table_args__` 의 `Index(...)` / `UniqueConstraint(...)` / FK `ondelete=`
 ### 🔴 이력 꼬리가 파생 4지점보다 새 숫자는 6-step ⑤ 의 정상 중간 상태다 (R80 — 2026-08-15)
 
 `docs/STATE.md` `## 테스트 수 추적 이력` 의 **맨 아래 불릿**이 테스트 수의 SSOT 다.
+이 절은 현재 불릿 하나다(과거 179개 항목은 git 이력).
 나머지 4지점(`**종합 수치**` 블록 · 추적셀 머리 · `README.md` 배지 · `README.ko.md` 배지)은
 `check_docs_sync.py --fix` 가 그 불릿에서 **파생**한다(정본 = `.claude/rules/docs.md`).
 

@@ -414,6 +414,17 @@ def test_apply_fix_hist_bytes_assertion_is_live():
     assert live, "orig_hist != new_hist 가 살아 있는 if 조건이 아니다"
 
 
+def test_formal_pairs_does_not_cross_assemble_a_decoy():
+    """한 줄에 쌍이 둘이면 각 쌍의 C 는 자기 구간에만 있다 — 첫 C + 첫 B 조립 금지."""
+    line = (
+        "(0000→**1000** 단위 = **1171** 수집) "
+        "(7230→**7250** 단위 = **7421** 수집)"
+    )
+    pairs = check_docs_sync.formal_pairs(line)
+    assert pairs == [(0, 1000, 1171), (7230, 7250, 7421)]
+    assert check_docs_sync.full_pairs(line) == [(0, 1000, 1171), (7230, 7250, 7421)]
+
+
 def test_history_tail_uses_full_pairs_not_independent_first():
     """읽기 규약 통일 — `_history_tail` 은 `full_pairs` 를 호출하고
     `_first(_STATE_HIST_*)` 로 독립 첫-매치하지 않는다.

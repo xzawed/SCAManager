@@ -43,7 +43,7 @@ paths:
 - **`.python-version` 이 Railway nixpacks Python 빌드 버전의 SSOT**(현재 `3.12`).
 - **FastAPI/starlette 핀은 dependabot 정기 bump 대상** — 현재 `fastapi==0.141.1` + `starlette==1.4.1`.
   🔴 **이 인용 리터럴은 장식이 아니라 검사 대상이다** — `check_dependency_pins` 가 `requirements.txt` 실핀과
-  대조하는 ground-truth 축이라, 지우면 *"검사 범위 붕괴"* 로 red 다(2026-08-12 압축 중 실제 발생).
+  대조하는 ground-truth 축이라, 지우면 *"검사 범위 붕괴"* 로 red 다.
   핀 변경 시 이 인용 + README FastAPI 배지 동시 갱신(가드: `scripts/check_docs_sync.py`).
 - **`requirements.txt`(프로덕션, Railway 자동 감지) ↔ `requirements-dev.txt`(`-r` 포함 + pytest/playwright) 분리.**
 - **slither 는 `solc` 바이너리가 별도 필요** — pip 설치만으로 부족(`solc-select install/use` 를 buildCommand 에).

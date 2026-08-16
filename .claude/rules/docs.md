@@ -10,48 +10,36 @@ paths:
 
 # 문서·원장 편집 규칙
 
-> 이 파일이 자동 로드된다 = 당신은 지금 **이 리포에서 가장 자주 편집되는 표면**을 만지고 있다
-> (실측: 최근 1개월 docs/README touch **388회** vs src **233회**). 그런데 2026-08-05 이전까지
-> 이 표면에는 **로드 시점 규칙이 하나도 없었다**(`.claude/rules` 56개 path 패턴 중 docs 매칭 0).
+> 이 파일이 자동 로드된다 = **처방 문서 표면**을 만지고 있다. `.claude/rules` path 패턴이 이 파일을 매칭한다.
 >
-> **먼저 열 것** (2026-08-13 3층 분리): 문서를 **압축·삭제·이동**한다면
-> [`docs/process/doc-compression.md`](../../docs/process/doc-compression.md) 가 순서 정본이고,
-> 실패 클래스는 [`.claude/traps.md`](../traps.md) §C 가 정본이다. 아래는 **이 표면의 세부 계약**이다.
+> 문서를 **압축·삭제·이동**한다면 [`docs/process/doc-compression.md`](../../docs/process/doc-compression.md) 가 순서 정본이고, 실패 클래스는 [`.claude/traps.md`](../traps.md) §C 다.
 >
-> **여기 적힌 것은 새 규범이 아니라 이미 사고로 확인된 것뿐이다.** 문서 감사가
-> *"규칙 파일을 늘리면 stale 문서가 하나 더 생긴다"*(backlog R43: rules sync 이행률 0%)고
-> 경고했으므로, 추측성 지침은 넣지 않는다. 새 항목은 **실제 사고 뒤에만** 추가한다.
+> 새 항목은 실제 사고 뒤에만 추가한다. 추측성 지침을 넣지 않는다.
 
-## 수치는 손으로 여러 곳에 적지 않는다 — SSOT 는 이력 꼬리 한 줄
+## 수치는 손으로 여러 곳에 적지 않는다 — SSOT 는 현재 불릿 한 줄
 
-테스트 수는 5지점에 복제돼 있었다(STATE 종합 · STATE 추적셀 머리 · 이력 꼬리 ·
-README 배지 · README.ko 배지). **N지점 동기화 의무는 N-1번의 실패 기회**다.
+테스트 수를 STATE 종합 · 추적셀 머리 · SSOT 불릿 · README 배지 · README.ko 배지에 복제하지 않는다. N지점 손동기화는 N-1번의 실패 기회다.
 
-- **손으로 고치는 곳**: `docs/STATE.md` §테스트 수 추적 이력 **맨 아래 한 줄**뿐.
-- **나머지 4지점**: `py -3 scripts/check_docs_sync.py --fix` 가 그 한 줄에서 **파생**한다.
-- 형식이 곧 계약: 항목은 `… (A→**B** 단위 … = **C** 수집)` 처럼 **단위와 누계를 모두** 담는다.
-  수치 없는 항목이 꼬리에 오면 가드가 **red** 다(형식 미준수 자체가 실패).
-- **표 셀에 다시 적지 말 것** — 이력이 표 셀 안에 있던 시절 그 줄은 **30,806자**였고,
-  머리와 꼬리가 30,752자 떨어져 있어 한쪽만 고치는 사고가 실제로 났다.
+- **손으로 고치는 곳**: `docs/STATE.md` §테스트 수 추적 이력 **현재 불릿 한 줄**뿐.
+  (절 제목은 가드가 키로 쓰므로 유지한다.)
+- **나머지 4지점**: `py -3 scripts/check_docs_sync.py --fix` 가 그 한 줄에서 파생한다.
+- 형식이 계약: `… (A→**B** 단위 … = **C** 수집)` 처럼 **단위와 누계를 모두** 담는다.
+  수치 없는 항목이 꼬리에 오면 가드가 red (`scripts/check_docs_sync.py` · `scripts/check_test_count_sync.py`).
+- **표 셀에 다시 적지 말 것** — 머리와 꼬리가 한 줄에서 수만 자 떨어진다.
 
-## 원장(ledger)에 "해당 없음" 을 적으면 기계가 "해당 있음" 으로 센다
+## 원장에 "해당 없음" 을 적으면 기계가 "해당 있음" 으로 센다
 
-`docs/runbooks/retro-cadence-deferrals.md` 에 *"승인 아님"* 이라고 **산문으로 적은 행**을
-넣었더니, 파서가 셀이 비어있지 않다는 이유로 **"이월 승인 기록됨"** 을 인쇄했다(2026-08-05).
+원장은 행의 **존재**로 판정한다. 부정·유보·주석은 **행을 만들지 말고** 산문 단락에 적는다. 산문이 부정해도 기계는 행만 본다.
 
-**계약**: 원장은 행의 **존재**로 판정된다. 부정·유보·주석은 **행을 만들지 말고** 산문 단락에
-적는다. 산문이 부정해도 기계는 행만 본다 — 이 리포가 반복해 온 observer-lie 의 원장 판이다.
-
-같은 규칙이 `docs/runbooks/owed-verification.md`(append-only, 행 삭제 금지)에도 적용된다.
+적용: `docs/runbooks/retro-cadence-deferrals.md` (`scripts/check_retro_cadence.py`) · `docs/runbooks/owed-verification.md` (append-only, 행 삭제 금지, `scripts/check_owed_verification.py`).
 
 ## 파생 집계는 손으로 유지하지 않는다
 
-열린 일감은 GitHub Issues 다. 파생 숫자를 여러 곳에 손으로 적는 규율은
-`docs/STATE.md` 이력 꼬리 한 줄 + `check_docs_sync.py --fix` 가 남는다.
+열린 일감은 GitHub Issues. 파생 숫자는 `docs/STATE.md` 현재 불릿 한 줄 + `check_docs_sync.py --fix` 만.
 
 ## 문서를 **옮기면** 관측자가 조용히 죽는다
 
-경로를 하드코딩한 소비자가 실재한다 — 이름 변경·이동 전에 반드시 grep 한다:
+경로를 하드코딩한 소비자가 있다 — 이름 변경·이동 전에 grep 한다:
 
 | 문서 | 소비자 |
 |---|---|
@@ -62,9 +50,8 @@ README 배지 · README.ko 배지). **N지점 동기화 의무는 N-1번의 실�
 | `docs/reference/env-vars.md` | env 인용 sync 가드 |
 | `CLAUDE.md` · `AGENTS.md` | `doc_review_gate` 컨텍스트 · `check_memory_refs` |
 
-**내용 재구조화는 해도 되지만 경로는 두는 것**이 기본값이다(2026-08-05 STATE 분해가 그 형태).
+내용 재구조화는 해도 **경로는 두는 것**이 기본값이다.
 
 ## 인용한 `file:line` 은 `grep -n` 실측값이어야 한다
 
-정책 6. 추정 라인은 자연 drift 로 조용히 거짓이 된다(실제 drift 5건 시정 이력).
-가능하면 커밋 해시를 병기한다 — `ai_review.py:89 (#218)` 형태.
+정책 6. 추정 라인은 drift 로 거짓이 된다. 가능하면 커밋 해시를 병기한다 (`ai_review.py:89` 형태). PR 번호는 근거가 아니다.

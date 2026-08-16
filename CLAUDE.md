@@ -99,25 +99,25 @@ GitHub Push/PR 이벤트 시 정적 분석 + AI 코드 리뷰를 자동 수행�
 모든 AI 에이전트(Claude Code 및 서브에이전트)는 SCAManager 작업 시 아래 규칙을 **반드시** 따른다.
 `.claude/` 디렉토리에 정의된 스킬과 에이전트는 선택이 아닌 의무적 도구다.
 
-> **📚 협업 정책**: 사용자가 합의한 협업 정책의 정본은 [`.claude/policies/active.md`](.claude/policies/active.md) 와 [`history.md`](.claude/policies/history.md) 다. 핵심 5건은 아래 "사용자 협업 정책 (2026-05-01 합의)" 섹션 명시.
+> **📚 협업 정책**: 사용자가 합의한 협업 정책의 정본은 [`.claude/policies/active.md`](.claude/policies/active.md) 다. 핵심 5건은 아래 "사용자 협업 정책 (2026-05-01 합의)" 섹션 명시.
 
 ### 사용자 협업 정책 (2026-05-01 합의)
 
 > **아래는 default rule 만이다.** 사용자 발화 인용 · 진화 이력 · 검증 사례 · Why/How 는
-> [`.claude/policies/active.md`](.claude/policies/active.md) 와
-> [`history.md`](.claude/policies/history.md) 가 정본이다(정책 17 원칙 2).
+> [`.claude/policies/active.md`](.claude/policies/active.md) 가 정본이다(정책 17 원칙 2).
+> 진화 이력 문서는 2026-08-16 에 삭제됐다 — 정책의 **현재 계약**만 남긴다.
 > 판단이 갈리거나 위반 회복이 필요하면 **그 파일을 열 것** — 여기 요약만 보고 결정하지 않는다.
 
 | # | default rule | detail |
 |---|---|---|
-| **1** | 옵션 제시 시 **장단점 표**(옵션·장점·단점·위험·권장시점) + ★ 권장 + "고려했으나 제시 안 한 안" 1줄. "전부다" 류 일괄 결정 **또는 다중 PR 빠른 진행 신호 ≥10회** 시 **검토 깊이 자가 보고 요청 의무**(누락 시 다음 응답에서 회복). 예외: 단순 머지 보고 + 옵션 표 결정 | [history](.claude/policies/history.md#정책-1-진화) |
+| **1** | 옵션 제시 시 **장단점 표**(옵션·장점·단점·위험·권장시점) + ★ 권장 + "고려했으나 제시 안 한 안" 1줄. "전부다" 류 일괄 결정 **또는 다중 PR 빠른 진행 신호 ≥10회** 시 **검토 깊이 자가 보고 요청 의무**(누락 시 다음 응답에서 회복). 예외: 단순 머지 보고 + 옵션 표 결정 | [active](.claude/policies/active.md) |
 | **2** | 모든 PR 본문에 §"🔍 사용자 검증 필요" — 시각/운영 확인 1~3개 명시. "tests pass" 만 적기 **금지** | [active](.claude/policies/active.md#정책-2) |
-| **3** | 위임받은 작업 중 **Claude 가 판단한 항목**은 PR 본문 또는 응답 끝에 명시 | — |
+| **3** | 위임받은 작업 중 **Claude 가 판단한 항목**은 PR 본문 또는 응답 끝에 명시 | [active](.claude/policies/active.md#정책-3) |
 | **4** | 단언과 회귀 가드를 **같은 PR** 에 묶는다. 가드 없는 단언은 사고 시 책임 귀속 불가 | — |
 | **5** | 사이클 끝마다 종료 신호 명시. 다중 단계 발화("A+B+C 진행") 후 일부만 하고 종료하면 **잔여 단계 진행 신호 회신 의무**. **Phase 종료 진입 시 정책 2/5/8/11 4 정책 cross-reference 자가 검토 의무**(한 정책만 적용하면 나머지 3 위반). **NEW-P0-N(운영 사고 차단)은 매 사이클 회신 의무** — 보류 default·정책 9 완화 **모두 미적용** | [active](.claude/policies/active.md#정책-5-phase-종료-cross-reference) |
 | **6** | 에이전트 프롬프트에 `line:span` 인용 강제. 정책·메모리 본문의 `file:line` 은 **`grep -n` 실측값**이어야 한다(추정 금지 — drift 실사고 5건) | — |
 | **8** | 회고는 **최소 4~5 에이전트 병렬 + 관점 분리 + cross-verify 1건(5+1)**. Claude 단독 회고 금지. 직전 정식 회고 이후 **≥3 세션 또는 ≥15 PR** 시 강제 트리거(SessionStart 훅이 경고) · 이월하려면 `docs/runbooks/retro-cadence-deferrals.md` 에 **사용자 승인 인용 + 목표 세션 기록 의무**. **회고 범위 = 직전 회고 이후 머지 PR + 본 세션 산출물 전체**(기계 산출 `scripts/retro_scope.py`) — 세션 산출물이 빠지면 **가장 검증 덜 된 코드가 회고를 피한다**. 자기회고 갈음은 **사용자 명시 승인 시에만** | [active](.claude/policies/active.md#정책-8-회고-카덴스) |
-| **9** | 회고 직후 **자유 발언 4 섹션**(바라는 점 / 자성 / 필요한 것 / 수정 제안). 완화: 회신 부재 시 자율 판단 보고로 대체 OK — 단 (a) 운영 사고 차단 (b) destructive (c) architecture/UX/데이터모델 은 **명시 회신 의무**. **Phase 종료 시** §"🔍 회고 질문(사용자 회신 의무)" 1줄 추가 | [active](.claude/policies/active.md) |
+| **9** | 회고 직후 **자유 발언 4 섹션**(바라는 점 / 자성 / 필요한 것 / 수정 제안). 완화: 회신 부재 시 자율 판단 보고로 대체 OK — 단 (a) 운영 사고 차단 (b) destructive (c) architecture/UX/데이터모델 은 **명시 회신 의무**. **Phase 종료 시** §"🔍 회고 질문(사용자 회신 의무)" 1줄 추가 | — (detail 섹션 없음 — 이 표 한 줄이 전부) |
 | **10** | PR 은 **직접 생성**(`gh pr create`) — URL 안내 금지. 본문은 **임시 파일 + `--body-file`** 로만(`@-`/stdin 금지 — 8건 본문 소실 사고) + 생성 직후 `gh pr view --json body` 길이 검증 | [active](.claude/policies/active.md#정책-10) |
 | **11** | `templates/**`·`static/**` 등 **시각 변경 PR** 은 본문 최상단에 **4테마 × 모바일/데스크탑 8조합** 체크리스트. "테스트 통과" 만 적기 금지 — 정적↔시각 비대칭 명시 의무 | [active](.claude/policies/active.md#정책-11) |
 | **12** | MCP: SELECT-only 자율 OK / **INSERT·UPDATE·DELETE·DROP·ALTER + PII·credential SELECT = 사전 승인 의무**. 호출 시 PR 본문에 결과 명시 | [active](.claude/policies/active.md#정책-12) |
@@ -157,7 +157,7 @@ Codex mutual 검증 폐기. **`codex exec` 실패 = 정상**(이상 징후로 �
   PR 은 `claim-review-not-required` 로 통과할 수 없다. 대상 목록·예외·근거는 AGENTS.md 가 정본.
   집행: `check_claim_review_trace.py` · `tests/unit/scripts/test_claim_review_mandatory_on_guards.py`.
 
-detail: [active](.claude/policies/active.md) · 진화 이력: [history](.claude/policies/history.md)
+detail: [active](.claude/policies/active.md)
 
 ### 작업 시작 전 (매 작업 30초)
 
@@ -187,7 +187,7 @@ Code Scanning open alert 확인(정책 14)은 GitHub Security 탭 또는
 - **TDD 우선**: 구현 코드 작성 전 반드시 `test-writer` 에이전트로 테스트를 먼저 작성한다.
 - **Hook = best-effort 조기 실패 탐지 (전체 게이트 아님)**: `src/` 파일 편집 후 PostToolUse Hook(`posttool_pytest_smoke.py`)이 **편집된 영역의 tests/unit 서브디렉토리만** 빠르게 실행(대응 없으면 collection 스모크)한다. ❌ 배너 시 즉시 조사. **전체 게이트는 push-time(6-step ②)로 위임** — 이 훅은 스코프 스모크라 통과가 전체 통과를 보장하지 않는다 (2026-07-18 P1 테마 C — 구 훅이 전체 5566 을 60s 타임아웃에 돌려 완주 불가·`|| true` 로 삼켜 false-green 이던 것을 봉인).
 - **Phase 완료 조건**: 테스트 전체 통과 + **CI `lint-src` job 통과**(pylint `--fail-under=9.90` + bandit) + (파이프라인 변경 시 `pipeline-reviewer` 승인) 세 조건이 모두 충족될 때만 Phase 완료를 선언한다. **로컬 `make lint` 통과는 근거가 아니다** — 그 타깃은 세 린터를 `|| true` 로 삼키는 advisory 점검이다. 검증 가능한 근거는 CI job 결과뿐이다. **로컬 사전 확인은 `py -3 scripts/pre_push_gate.py` 를 쓴다** — `make` 이 없는 머신에서도 돌고, CI 가 강제하는 **repo-integrity 9종 + PR-diff 한정 4종**을 실행하며, **자기가 못 보는 축(CodeQL·Sonar·Codecov·TruffleHog·pip-audit·lint-js·PG job·통합테스트)을 매번 인쇄**한다. `--full` 이면 pylint·bandit·`pytest tests/unit` 도 돈다. ⚠️ **`make gate` 는 "CI 와 동일 기준" 이 아니었다**(2026-08-01 정정) — 그 타깃은 pytest·pylint·bandit 뿐이라 위 13 가드를 **하나도** 돌리지 않고, 애초에 이 머신에는 `make` 자체가 없다(backlog R29). 이전에는 `lint-strict`(fail-under)가 CI·pre-commit 어디에도 배선되지 않아 **"lint 통과" 주장이 기계로 검증 불가**했다(회고 D13).
-- **완료 시 필수 6-step**: 작업이 완료되면 반드시 ① 커밋 → ② 🔴 **push 전 `pytest tests/unit` 전체 통과 실측** (영역 서브셋[`tests/unit/ui`+`i18n` 등]만 실행으로 대체 금지 — #1041 에서 i18n 키 제거가 타 영역 `test_i18n_settings._KEYS` parametrize 연쇄를 깨뜨렸으나 서브셋만 돌려 놓쳐 CI 6-fail. **인라인 cleanup·docs-only 예외 없음**. 🔴 **로컬 통과 ≠ CI 통과** — 로컬 인터프리터[3.14]와 CI[3.12]가 이원이라 버전 의존 회귀는 로컬이 못 잡는다. `pre_push_gate` 가 이 이원을 매 실행 인쇄한다 — backlog R30) → ③ `git push` → ④ PR 생성(`gh pr create`) → ⑤ `docs/STATE.md` 수치 갱신 (🔴 **손으로 고치는 곳은 §테스트 수 추적 이력 맨 아래 한 줄뿐** — 나머지 4지점[종합 수치·추적셀 머리·README 2배지]은 `py -3 scripts/check_docs_sync.py --fix` 가 그 한 줄에서 **파생**한다. 2026-08-05 문서 감사 P0-3: 같은 정수를 5곳에 손유지하던 것이 실제 drift 사고를 냈다 — N지점 동기화는 N-1번의 실패 기회다. 🔴 **`docs/cycle-history.md` 동기화 단계는 2026-08-16 에 삭제됐다** — 그 파일이 없다) → ⑥ **docs/architecture.md 동기화** (신규 파일 추가·삭제·이름 변경 시 `src/` 트리와 `### 핵심 데이터 흐름` 내 언급 갱신) 를 순서대로 수행한다. 예외 없음.
+- **완료 시 필수 6-step**: 작업이 완료되면 반드시 ① 커밋 → ② 🔴 **push 전 `pytest tests/unit` 전체 통과 실측** (영역 서브셋[`tests/unit/ui`+`i18n` 등]만 실행으로 대체 금지 — #1041 에서 i18n 키 제거가 타 영역 `test_i18n_settings._KEYS` parametrize 연쇄를 깨뜨렸으나 서브셋만 돌려 놓쳐 CI 6-fail. **인라인 cleanup·docs-only 예외 없음**. 🔴 **로컬 통과 ≠ CI 통과** — 로컬 인터프리터[3.14]와 CI[3.12]가 이원이라 버전 의존 회귀는 로컬이 못 잡는다. `pre_push_gate` 가 이 이원을 매 실행 인쇄한다 — backlog R30) → ③ `git push` → ④ PR 생성(`gh pr create`) → ⑤ `docs/STATE.md` 수치 갱신 (🔴 **손으로 고치는 곳은 §테스트 수 추적 이력의 현재 불릿 한 줄뿐** — 나머지 4지점[종합 수치·추적셀 머리·README 2배지]은 `py -3 scripts/check_docs_sync.py --fix` 가 그 한 줄에서 **파생**한다. 2026-08-05 문서 감사 P0-3: 같은 정수를 5곳에 손유지하던 것이 실제 drift 사고를 냈다 — N지점 동기화는 N-1번의 실패 기회다. 🔴 **`docs/cycle-history.md` 동기화 단계는 2026-08-16 에 삭제됐다** — 그 파일이 없다) → ⑥ **docs/architecture.md 동기화** (신규 파일 추가·삭제·이름 변경 시 `src/` 트리와 `### 핵심 데이터 흐름` 내 언급 갱신) 를 순서대로 수행한다. 예외 없음.
   - **⑤ 배치-PR 이월 분기 (2026-07-09 rank6 — 병렬 STATE/badge 충돌 자초 학습)**: 세션 내 **동일 파일(STATE.md 수치 라인·README 배지)을 건드리는 미머지 PR 이 1건 이상 in-flight** 이면, per-PR ⑤는 **commit body 에 카운트 delta 만 기록**하고 STATE/배지 실갱신은 **세션 종료 시 단일 trailing sync PR 로 이월**한다. 이유: 여러 PR 이 STATE 동일 라인을 연속 write 하면 git merge conflict 자초(본 세션 ⑤ #1048 이 ③ 머지 후 README 인접-라인 충돌 자초 → 사후 수습). PR 착수 전 `git log --oneline main..<open-branches>` 또는 `gh pr list` 로 동일 파일 touch 미머지 PR 존재 여부 1줄 확인 의무.
 - **README.md 배지 동기화**: 테스트 수·pylint·커버리지 수치가 바뀌면 `README.md` 21~25줄 배지도 함께 갱신한다. 수치 출처는 항상 `docs/STATE.md`.
 - **신규 파일 추가 시 동기화 의무** (전례 3건 — 누락 시 다음 Phase 착수 전 보완):

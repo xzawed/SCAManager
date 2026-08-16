@@ -14,48 +14,68 @@ paths:
 
 # 보안 규칙
 
-- **background/시스템 세션 라우팅 = `WorkerSessionLocal`** (본문 = [`db.md`](db.md) §WorkerSessionLocal):
-  이 영역에도 해당 소비자가 있다 — `src/auth/github.py`(hybrid — callback=worker / logout=bare). `from src.database import WorkerSessionLocal as SessionLocal`
-  **alias 의무**(웹 경로는 bare `SessionLocal` 유지, 혼용 금지). hybrid 모듈은 두 심볼을 **구분해**
-  쓴다(alias 금지). `db.md` 의 path 매칭은 이 영역을 포함하지 않아 **자동 로드되지 않으므로** 여기
-  포인터를 둔다(2026-08-01 Grok `019fbccf`·`019fbd1e`). 세부는 반드시 `db.md` 본문을 열 것.
+- **background/시스템 세션 라우팅 = `WorkerSessionLocal`** (본문 = [`db.md`](db.md) §WorkerSessionLocal).
+  이 영역 소비자: `src/auth/github.py` (hybrid — callback=`WorkerSessionLocal` / logout=bare `SessionLocal`).
+  웹 경로는 bare `SessionLocal`. hybrid 는 두 심볼을 **구분해** 쓴다 (alias 금지).
+  `db.md` path 매칭이 이 파일을 포함하지 않아 자동 로드되지 않는다 — 세부는 `db.md` 를 연다.
+  집행: `tests/unit/test_worker_session_routing.py`.
 
-- **hook_token 비교**: `!=` 연산자는 타이밍 공격에 취약. `src/shared/secure_compare.py::secure_str_compare(config.hook_token, token)` 단일출처 헬퍼 사용 필수 (내부 `hmac.compare_digest` + UTF-8 인코딩 — 비-ASCII 안전). 직접 `hmac.compare_digest` 재구현 금지 (정책 16 단일출처). 실측: `src/api/hook.py:147`.
-- **Telegram 게이트 콜백 HMAC 인증 (Phase H PR-5C 후 정정)**: 콜백 데이터 형식 `gate:{decision}:{id}:{token}` — token 은 `hmac(bot_token, f"gate:{analysis_id}", sha256).hexdigest()[:32]` (128-bit). 발신측 (`telegram_gate._make_callback_token(scope="gate", id)`) 과 수신측 (`webhook/providers/telegram._parse_gate_callback`) 모두 동일 msg 형식 (`f"gate:{id}"`) 사용 의무 — 한쪽만 수정 시 모든 semi-auto 콜백 401 거부 (PR-5C 직전 functional bug 사례). 신규 HMAC 토큰 도입 시 발신/수신 동일 msg 형식 + scope prefix 단위 테스트 강제.
-- 🔴 **`/health` 응답 내부 상태 미노출 (Phase H PR-5B)**: liveness probe 전용 — `active_db` / DB 연결 정보 등 내부 상태 추가 금지. `tests/unit/test_main.py::test_health_returns_status_ok` 가 회귀 차단. failover 모니터링은 logger 로그 (Railway) 경유. 인증된 운영 대시보드 필요 시 별도 엔드포인트 (`INTERNAL_CRON_API_KEY` 기반) 신설.
-- **GitHub Access Token 암호화**: `src/crypto.py`의 `encrypt_token()`/`decrypt_token()` — `TOKEN_ENCRYPTION_KEY` 미설정 시 평문 저장. `User.plaintext_token` property가 DB 읽기 시 자동 복호화. `user.github_access_token` 직접 사용 금지 — `user.plaintext_token` 사용.
-- **SESSION_SECRET 강도**: 프로덕션에서는 32자 이상 랜덤 문자열 필수. 🔴 실패 모드는 아래 **"SESSION_SECRET 3분기"** 항목이 정본이다(집행 = `tests/unit/test_config.py`) — 한 파일에서 두 번 서술하면 갈라진다(실제로 갈라져 있었다: 이 줄은 무조건 하드 실패라 적었고 아래 항목은 커스텀 값 조건을 달았다).
-- 🔴 **REST API 인증 fail-closed 기본 (감사 ① — 2026-06-23)**: `src/api/auth.py::_check_api_key` 는 `API_KEY` 미설정 시 **기본 503(fail-closed)** — `API_AUTH_DISABLED=1` 명시 opt-out 일 때만 무인증 통과(`logger.warning` 후). 이전엔 `app_base_url.startswith("https")` 휴리스틱으로 판정해 **오설정(prod 인데 APP_BASE_URL=http 또는 미설정)이면 `/api/repos`·`/api/stats`·`/api/.../report` 전체 무인증 노출**(cross-tenant). 무인증 노출 여부는 URL 휴리스틱이 아니라 명시 플래그(`settings.api_auth_disabled`)로만 결정. 🔴 **`API_AUTH_DISABLED` 운영 설정 금지** — 로컬 dev 전용. 테스트는 `tests/conftest.py` 가 `API_AUTH_DISABLED=1`(dev opt-out)로 keyless endpoint 테스트 보존 + `tests/unit/api/test_auth.py` 가 `api_auth_disabled=False` 로 fail-closed 기본 직접 검증.
-- **SAAS_MULTITENANT_DISABLED 반환 코드**: `require_admin` (`src/auth/session.py:87,99`) 에서 `HTTPException(status_code=503)` 반환 — **401이 아님**. env-vars.md 기재 값 참조 시 503 사용 (사이클 119 P0 정정). 함수명·라인 grep -n 실측 (2026-06-23 정정 — 이전 `require_saas_admin`/`82,94` drift).
-- **TOKEN_ENCRYPTION_KEY prod 감지**: lifespan startup(`_validate_startup_config`) 에서 `APP_BASE_URL` 이 https:// 로 시작하고 키가 비어있으면 WARNING 배너 출력. dev 환경(http 또는 빈 URL)에서는 침묵. 🔴 **비-empty 이나 형식이 잘못된 키도 검증 (P1-① 2026-06-29 감사)** — 잘못된 키는 `_get_fernet()` 의 `except` 분기로 `_fernet=None`→`encrypt_token` 평문 반환(silent 평문 fallback)을 유발하므로, startup 에서 `Fernet(key)` 생성 가능 여부를 검증해 **strict+prod 시 RuntimeError(fail-fast), 아니면 WARNING**. `STRICT_TOKEN_ENCRYPTION=true` 가 이제 미설정뿐 아니라 invalid 키도 차단(false assurance 제거). 회귀 가드: `tests/unit/test_main.py::test_lifespan_strict_mode_raises_when_key_invalid_in_prod`.
-- **Jinja2 autoescape**: `Jinja2Templates`는 `.html` 파일에 대해 autoescape=True(기본값). 템플릿 변수는 자동 이스케이프됨 — `| safe` 필터 사용 금지. notifier HTML 출력엔 `html.escape()` 직접 적용 필수.
-- **OAuth CSRF state**: Authlib `authorize_access_token()`이 session state 검증을 내부 처리. `/auth/github`를 거치지 않은 직접 콜백(`/auth/callback`) 접근은 `OAuthError` → `302 /?error=oauth_failed` 리다이렉트 (사이클 117 — 이전 500 에러에서 변경).
-- **시크릿-in-URL 로그 유출 방어 — `sanitize_for_log` 와 별개 계층 (2026-07-19 P0 2회)**: `sanitize_for_log` 는 **로그 인젝션(CR/LF) 전용**이며 **시크릿 리댁션 기능이 없다**(혼동 금지). 시크릿이 URL **경로**에 실리는 채널(Telegram `bot<TOKEN>` · Slack `services/<SECRET>` · Discord `webhooks/<id>/<TOKEN>`)은 URL 전문을 로깅하면 그 자체가 credential 유출이다. 3계층으로 방어한다:
-  - **계층 1 (근본)** — **호출처에서 URL 전문을 로깅하지 않는다.** `src/notifier/_http.py::url_host_for_log(url)` 로 **host 만** 남긴다(호출처 6곳 전부 경유). 신규 webhook 로깅 추가 시 이 헬퍼 우회 금지.
-  - **계층 1b (근본)** — **BackgroundTask 는 반드시 가드된 래퍼로.** 무가드 예외는 응답 송신 후 ASGI 밖으로 탈출해 **uvicorn 이 `exc_info` 트레이스백으로 로깅**하고, 그 트레이스백에 토큰 URL 이 실린다(`raise_for_status()` 메시지). `src/webhook/providers/telegram.py::_post_message_guarded` 패턴 — `except httpx.HTTPError` 후 **`type(exc).__name__` 만** 로깅(`str(exc)` 금지).
-  - **계층 2 (심층 방어)** — `src/logging_config.py::_RedactSecretsFilter` 가 `msg`·**`exc_text`(트레이스백)**·`stack_info` 3축을 마스킹. **필터는 root 핸들러 + uvicorn 계열 핸들러 양쪽에 부착 의무** — uvicorn 로거는 `propagate=False` + 자체 핸들러라 root 필터가 **구조적으로 도달 못 한다**(#1104 가 이 축을 놓쳐 "봉인" 이 거짓이었다). 신규 시크릿-in-URL 채널 추가 시 `_SECRET_URL_PATTERNS` 등재 의무.
-  - 🔴 **계층 2 가 구조적으로 못 덮는 채널이 있다 — n8n · custom webhook (2026-07-19 추가 발견)**: 리댁션 필터는 **정규식에 등재된 호스트만** 마스킹하는데(`api.telegram.org` · `hooks.slack.com` · `discord.com`), n8n·custom webhook 은 **사용자가 지정하는 임의 호스트**라 열거가 원리적으로 불가능하다. 이 두 채널에서는 **호출처가 유일한 통제**다. 실측 확인된 두 경로를 봉인했다:
-    - `src/worker/pipeline.py::_send_notifications` — `asyncio.gather(return_exceptions=True)` 결과를 `%s`(=`str(exc)`) + `exc_info` 트레이스백으로 찍고 있었다. httpx `raise_for_status()` 예외 메시지는 **URL 전문을 담는다**(`Client error '404 Not Found' for url '<...>'` — 실증). → `httpx.HTTPError` 는 **타입명 + status 만** 로깅, 그 외 예외는 트레이스백 보존(진단 가치 유지).
-    - `src/webhook/providers/github.py::_notify_n8n_issue_guarded` — issue 릴레이가 **무가드 BackgroundTask** 로 디스패치되고 있었다(계층 1b 명시 위반). Telegram `_post_message_guarded` 와 동일 패턴으로 감쌌다.
-    - 회귀 가드: `tests/unit/notifier/test_ssrf_log_redaction.py`(실패 집계 로그 + 가드 래퍼 + **배선** 3건 — 배선 테스트는 산문 grep 이 아니라 큐에 등록된 태스크를 **실제 실행**해 관측한다. 래퍼만 만들고 `add_task` 를 안 바꾸면 dead code 인데 스위트는 green 이기 때문).
-  - 🔴 **계층 2 를 근본 대책으로 착각 금지** — 필터가 트레이스백을 가려주면 **호출처 결함이 보이지 않게** 된다(테스트가 spurious-pass 한다). 계층 1/1b 가 본체, 계층 2 는 backstop.
-  - 회귀 가드: `tests/unit/test_logging_config.py`(exc_info·stack_info·uvicorn 축·멱등) · `tests/unit/notifier/test_ssrf_log_redaction.py`(호출처 5곳) · `tests/unit/webhook/test_telegram_provider.py`(가드 미전파).
-- **로그 인젝션 방어 (`sanitize_for_log`)**: `src/shared/log_safety.py`의 `sanitize_for_log(value, max_len=200)` 헬퍼로 user-controlled 입력을 logger 에 전달하기 전 반드시 경유. CR/LF/TAB/NUL 제거 + 길이 제한. `%r` 포맷만으로는 SonarCloud `pythonsecurity:S5145` taint analysis 를 통과 못 함 — 명시적 함수 호출 필요. 예: `logger.info("...%s...", sanitize_for_log(body.repo))`.
-- **URL Path 방어적 인코딩 (`_repo_path`)**: `src/github_client/repos.py::_repo_path(full_name)` 으로 `urllib.parse.quote(safe='/')` 적용. GitHub API URL 에 `repo_full_name`/path 변수 삽입 시 반드시 경유 — SonarCloud `pythonsecurity:S7044` 경고 회피 + 실질적 path injection 차단.
-- **webhook URL SSRF 검증 — send-time + storage-time 2계층 단일 출처**: (1) **send-time(실제 통제)** = 발신 직전 `src/notifier/_http.py::validate_external_url(url)` (DNS 해석 후 `is_dangerous_ip` 차단, discord/slack/n8n/custom 4채널 전부). (2) **storage-time(방어 심층·조기 UX)** = 저장 시 `src/shared/ssrf.py::is_safe_webhook_url(url)` (https-only + `_BLOCKED_WEBHOOK_HOSTS` + `is_dangerous_ip` 리터럴, 도메인명은 send-time 위임) — **settings 폼(`ui/routes/settings.py::_validate_webhook_urls`) + REST API(`api/repos.py::RepoConfigUpdate.validate_webhook_url` field_validator)** 양쪽 동일 helper 공유(단일 출처, 비대칭 금지). 신규 webhook URL 입력 경로 추가 시 `is_safe_webhook_url` 경유 의무. `is_dangerous_ip`/`is_safe_webhook_url` 단일 출처 = `src/shared/ssrf.py`.
-- **email To 헤더 인젝션 차단**: `src/notifier/email.py` 는 `recipients`(repo `email_recipients` 설정) 를 `msg["To"]` 에 넣기 전 CR/LF 제거(`replace("\r","").replace("\n","")`) — email 모듈이 raw string 헤더에 개행을 그대로 넣어 추가 헤더 주입을 허용하므로. 사용자 제어 값을 메일 헤더에 삽입 시 동일 처리 의무.
-- **FastAPI Annotated 패턴 강제**: `Depends(...)`/`Header(...)` 는 `Annotated[Type, Depends(require_login)]` / `Annotated[str | None, Header()] = None` 형식으로 작성. `python:S8410` 규칙. `default 있는 param 뒤에 Annotated (default 없음)` 오면 SyntaxError — 함수 시그니처에서 `Annotated` 를 앞으로 이동 필요.
-- **CSP 헤더 (사이클 142 Phase B S4 #674)**: `src/main.py` SecurityHeadersMiddleware 가 `Content-Security-Policy` 헤더를 모든 응답에 주입. `script-src 'unsafe-inline'` 허용은 HTMX + 인라인 IIFE 지원을 위한 의도적 trade-off (코드 주석 명시됨) — nonce 기반 strict CSP는 향후 개선 목표. CSP와 충돌하는 외부 CDN 링크(`<script src="...">`) 추가 금지 — `src/static/vendor/` 로컬 vendoring 우선.
-- **LimitBodySizeMiddleware (사이클 142 Phase C #675)**: `src/main.py:54-70` (2026-08-01 `grep -n` 실측 — 이전 `39-53` 은 drift) — `Content-Length > 10MB` 시 413 반환. **알려진 제약**: `Transfer-Encoding: chunked` 요청(Content-Length 헤더 없음)은 우회 가능 — DoS 위험은 낮음(GitHub Webhook 등 신뢰 소스가 chunked 미사용). 🔴 `int(content_length)` 변환은 이미 `try/except ValueError → 400 "Invalid Content-Length" 반환`으로 처리됨 (`main.py:65-68`, 2026-08-01 `grep -n` 실측 — 이전 `49-53` 은 drift. 2026-06-23 정정: 이전 'P1 미구현 TODO' 단언은 stale). 회귀 가드: `tests/unit/test_main.py`(413 축 + 비숫자 Content-Length 400 축). 🔴 이 이름은 2026-08-11 에 **명시**됐다 — 그 전까지 이 블록은 인접 항목의 가드 이름을 빌려 '집행자 동반' 으로 계수되고 있었고, 사이에 항목 하나가 들어오자 사라졌다(예산 게이트가 산문 인접성에 의존한다는 실측).
-- 🔴 **SESSION_SECRET 3분기 — 이 항목이 정본 (사이클 142 Phase B S2 #674 · 2026-08-11 3분기로 정정)**: 🔴 **운영 요구사항은 그대로다**(집행 = `tests/unit/test_config.py` · `tests/unit/test_main.py`) — 32자 이상 랜덤 시크릿 + `ENVIRONMENT=production` 또는 https `APP_BASE_URL` 중 **하나 이상** 설정 의무. 아래는 그 요구를 어겼을 때 코드가 실제로 하는 일이며, 규칙 완화가 아니라 **원래 동작의 기록**이다.
-  - **(1) 커스텀 값 ∧ 32자 미만** → **기동 차단 (변경 없음)**. 임포트 시점에 `field_validator` 가 거부한다. **예외 타입만** 바뀌었다 — `build_settings`(`config.py:565-577`)가 자격증명 인쇄를 막으려 `SettingsValidationError`(`config.py:464` — `ValueError` 하위)로 래핑한다(`#1327`). 문서에 `ValidationError` 라 적으면 운영자가 없는 예외를 찾는다.
-  - **(2) 기본값(`"dev-secret-change-in-production"`) 그대로** → `logger.warning` 후 `return v`(`config.py:248-254`) = **기동 성공**. dev 호환을 위한 의도적 설계다(이 분기는 처음부터 이랬고, 문서 3지점만 이를 빠뜨렸다).
-  - **(3) SESSION_SECRET 이 기본값 ∧ `is_production`(= `ENVIRONMENT=production` **또는** https `APP_BASE_URL`)** → `lifespan` 이 `RuntimeError` 로 기동 차단(`main.py:118,128-136`). 🔴 **APP_BASE_URL 단독이 아니다** — 집행 = `tests/unit/test_main.py`(배선) · `tests/unit/test_config.py`(2신호). 실측(`config.py:277-279`):
-    ```python
-    if self.environment.strip().lower() == "production":
-        return True
-    return self.app_base_url.startswith("https")
-    ```
-  - 🔴 **남는 구멍**(집행 = `tests/unit/test_config.py` 의 `is_production` 2신호 축): 두 신호가 **둘 다** 없으면 (2)에 머물러 공개된 기본 시크릿으로 기동한다. 위 운영 요구사항이 이 구멍을 막는 유일한 수단이다.
-  - 회귀 가드: `tests/unit/test_config.py`(3분기를 **실행**으로 단언 + 문서 3지점 단언 정합) · `tests/unit/test_main.py::test_lifespan_raises_when_default_session_secret_in_prod`.
-- **SonarCloud FP suppress 규약**: `sonar-project.properties` 의 `sonar.issue.ignore.multicriteria` 에 규칙별 예외 추가. 개별 라인 예외는 `# NOSONAR <ruleKey> — 이유` 주석. 커스텀 sanitizer 를 SonarCloud taint analysis 가 인식 못 할 때 NOSONAR 주석 + 이유 명시가 표준.
+- **hook_token 비교**: `!=` 금지. `src/shared/secure_compare.py::secure_str_compare` (`hmac.compare_digest` + UTF-8). 직접 `compare_digest` 재구현 금지. 호출: `src/api/hook.py:147` (verify), `src/api/hook.py:199` (result). 빈 토큰은 비교 전에 거부 (`src/api/hook.py:188-199`).
+
+- **Telegram 게이트 콜백 HMAC**: 콜백 `gate:{decision}:{id}:{token}`. token = `hmac(bot_token, f"{scope}:{id}", sha256).hexdigest()[:32]`.
+  발신 `src/gate/telegram_gate.py::_make_callback_token` (`msg = f"{scope}:{payload_id}"`, 12-32행).
+  수신 `src/webhook/providers/telegram.py::_parse_gate_callback` (`f"gate:{analysis_id}"`, 68-72행).
+  한쪽만 바꾸면 모든 semi-auto 콜백이 401. 신규 HMAC 은 발신/수신 동일 msg + scope prefix 단위 테스트.
+
+- 🔴 **`/health` 는 liveness 만** — `{"status": "ok"}` (`src/main.py:382`). `active_db` 등 내부 상태 금지. `tests/unit/test_main.py::test_health_returns_status_ok`. failover 는 logger. 운영 대시보드가 필요하면 `INTERNAL_CRON_API_KEY` 별도 엔드포인트.
+
+- **GitHub Access Token**: `src/crypto.py` `encrypt_token()` / `decrypt_token()`. `TOKEN_ENCRYPTION_KEY` 미설정 시 평문 저장. 읽을 때는 `User.plaintext_token`. `user.github_access_token` 직접 사용 금지.
+
+- **SESSION_SECRET 강도**: 운영은 32자 이상 랜덤 + `ENVIRONMENT=production` 또는 https `APP_BASE_URL` 중 하나 이상. 실패 모드 정본은 아래 **3분기**. 집행: `tests/unit/test_config.py`.
+
+- 🔴 **REST API 인증 기본 = 키 없으면 503** — `src/api/auth.py::_check_api_key` (13-36행). `API_KEY` 미설정 시 `API_AUTH_DISABLED=1` 명시 opt-out 만 무인증 (`logger.warning` 후). URL 휴리스틱(`app_base_url.startswith("https")`)으로 노출을 결정하지 않는다. 노출 여부는 `settings.api_auth_disabled` 만. **`API_AUTH_DISABLED` 는 로컬 dev 전용.** `tests/conftest.py` 가 테스트에서 `API_AUTH_DISABLED=1` 을 켜고, `tests/unit/api/test_auth.py` 가 `api_auth_disabled=False` 경로를 직접 검증한다.
+
+- **`SAAS_MULTITENANT_DISABLED` 반환 코드**: `require_admin` (`src/auth/session.py:87`, `src/auth/session.py:99`) 는 `HTTPException(status_code=503)`. 401 이 아니다. env-vars.md 인용 시 503.
+
+- 🔴 **TOKEN_ENCRYPTION_KEY**: `_validate_startup_config` (`src/main.py:112` 정의 · 빈 키 분기 `:148-170`) 가 https `APP_BASE_URL` + 빈 키면 WARNING. 비-empty 이나 형식이 틀린 키도 `Fernet(key)` 가능 여부를 본다 — `_get_fernet()` 의 except 가 `_fernet=None` → `encrypt_token` 평문 반환을 막기 위함. `STRICT_TOKEN_ENCRYPTION=true` + prod 는 RuntimeError, 아니면 WARNING. `tests/unit/test_main.py::test_lifespan_strict_mode_raises_when_key_invalid_in_prod`.
+
+- **Jinja2 autoescape**: `Jinja2Templates` 는 `.html` 에 autoescape=True. `| safe` 금지. notifier HTML 은 `html.escape()`.
+
+- **OAuth CSRF state**: Authlib `authorize_access_token()` 이 session state 를 검증. `/auth/github` 를 거치지 않은 `/auth/callback` 은 `OAuthError` → `302 /?error=oauth_failed` (`src/auth/github.py:124-128`).
+
+- **시크릿-in-URL 로그 — `sanitize_for_log` 와 별개**. `sanitize_for_log` 는 CR/LF 인젝션만 다룬다. URL 경로에 토큰이 실리는 채널(Telegram `bot<TOKEN>` · Slack `services/<SECRET>` · Discord `webhooks/<id>/<TOKEN>`)은 URL 전문 로깅이 credential 유출이다.
+
+  - **계층 1** — 호출처가 URL 전문을 찍지 않는다. `src/notifier/_http.py::url_host_for_log`.
+  - **계층 1b** — BackgroundTask 는 가드 래퍼. 무가드 예외는 ASGI 밖으로 나가 uvicorn 이 `exc_info` 에 URL 을 싣는다. 패턴: `src/webhook/providers/telegram.py::_post_message_guarded` — `except httpx.HTTPError` 후 `type(exc).__name__` 만 (`str(exc)` 금지).
+  - **계층 2** — `src/logging_config.py::_RedactSecretsFilter` 가 `msg` · `exc_text` · `stack_info`. **root 핸들러 + uvicorn 계열 양쪽**. uvicorn 은 `propagate=False` + 자체 핸들러라 root 필터가 도달하지 못한다. 신규 채널은 `_SECRET_URL_PATTERNS` 등재.
+  - 🔴 **계층 2 가 못 덮는 채널 — n8n · custom webhook**. 호스트가 사용자 지정이라 정규식 열거가 불가능하다. 호출처가 유일한 통제.
+    - `src/worker/pipeline.py::_send_notifications` — `httpx.HTTPError` 는 타입명 + status 만. 그 외는 트레이스백 유지.
+    - `src/webhook/providers/github.py::_notify_n8n_issue_guarded` — issue 릴레이 BackgroundTask 도 같은 래퍼.
+    - `tests/unit/notifier/test_ssrf_log_redaction.py` — 실패 집계 + 래퍼 + **큐에 올린 태스크를 실제로 실행**해 배선 관측.
+  - 🔴 **계층 2 를 본체로 쓰지 말 것** — 필터가 트레이스백을 가리면 호출처 결함이 안 보인다. 계층 1/1b 가 본체. 회귀: `tests/unit/test_logging_config.py` · `tests/unit/notifier/test_ssrf_log_redaction.py` · `tests/unit/webhook/test_telegram_provider.py`.
+
+- **로그 인젝션 (`sanitize_for_log`)**: `src/shared/log_safety.py::sanitize_for_log(value, max_len=200)`. user-controlled 입력은 logger 전에 경유. CR/LF/TAB/NUL 제거 + 길이. `%r` 만으로는 Sonar `pythonsecurity:S5145` 를 통과하지 못한다.
+
+- **URL path (`_repo_path`)**: `src/github_client/repos.py::_repo_path` — `urllib.parse.quote(safe='/')`. GitHub API URL 에 `repo_full_name`/path 를 넣을 때 경유.
+
+- **webhook URL SSRF — send-time + storage-time**:
+  (1) send-time = `src/notifier/_http.py::validate_external_url` (DNS 후 `is_dangerous_ip`, discord/slack/n8n/custom).
+  (2) storage-time = `src/shared/ssrf.py::is_safe_webhook_url` (https-only + `_BLOCKED_WEBHOOK_HOSTS` + 리터럴 IP). settings 폼 (`ui/routes/settings.py::_validate_webhook_urls`) 과 REST (`api/repos.py::RepoConfigUpdate.validate_webhook_url`) 가 같은 헬퍼. 신규 입력 경로도 `is_safe_webhook_url`. 단일 출처 = `src/shared/ssrf.py`.
+
+- **email To 헤더**: `src/notifier/email.py` 는 `recipients` 를 `msg["To"]` 에 넣기 전 CR/LF 제거.
+
+- **FastAPI Annotated**: `Depends`/`Header` 는 `Annotated[Type, Depends(...)]` / `Annotated[str | None, Header()] = None`. default 있는 param 뒤에 default 없는 Annotated 를 두면 SyntaxError.
+
+- **CSP**: `src/main.py` `SecurityHeadersMiddleware` (74-103행). `script-src 'unsafe-inline'` 은 HTMX + 인라인 스크립트용. 외부 CDN `<script src>` 금지 — `src/static/vendor/`.
+
+- 🔴 **`LimitBodySizeMiddleware` — 이 심볼명을 바꾸면 인접 규칙의 집행자 인용이 끊긴다** (`scripts/check_red_budget.py` 가 블록의 집행자 이름으로 센다). (`src/main.py:54-71`): `Content-Length > 10MB` → 413. 비숫자 → 400 (`src/main.py:65-68`). `Transfer-Encoding: chunked` (헤더 없음)은 이 미들웨어가 못 막는다. `tests/unit/test_main.py` (413 + 비숫자 400). 이 이름을 지우면 빨강 예산 게이트가 인접 항목의 가드 이름을 빌려 계수한다 — 항목 사이에 한 줄이 끼면 사라진다.
+
+- 🔴 **SESSION_SECRET 3분기 — 이 항목이 정본** (집행 = `tests/unit/test_config.py` · `tests/unit/test_main.py`). 운영 요구(32자 랜덤 + prod 신호 하나 이상)는 그대로다. 아래는 어겼을 때 코드가 **실제로** 하는 일.
+
+  - **(1) 커스텀 ∧ 32자 미만** → 임포트 시 `field_validator` 가 거부 (`src/config.py:255-260`). `build_settings` (`src/config.py:565-577`) 가 `SettingsValidationError` (`src/config.py:464`, `ValueError` 하위)로 감싼다. 문서에 `ValidationError` 라 적으면 운영자가 없는 예외를 찾는다.
+  - **(2) `SESSION_SECRET` 이 기본값 `"dev-secret-change-in-production"`** → `logger.warning` 후 `return v` (`src/config.py:248-254`) = **기동 성공**(차단 아님). dev 호환.
+  - **(3) `SESSION_SECRET` 이 기본값 ∧ `is_production`** → lifespan 이 `RuntimeError` 로 **기동 차단** (`src/main.py:128-136`). `is_production` (`src/config.py:277-279`) = `ENVIRONMENT=production` **또는** `APP_BASE_URL` 이 `https` 로 시작 — APP_BASE_URL 단독이 아니다. 배선 `tests/unit/test_main.py` · 2신호 `tests/unit/test_config.py`.
+  - 🔴 **남는 구멍** (`tests/unit/test_config.py` 의 `is_production` 2신호): 두 신호가 **둘 다** 없으면 (2)에 머물러 공개 기본 시크릿으로 기동한다. 위 운영 요구가 이 구멍을 막는 수단이다.
+  - 회귀: `tests/unit/test_config.py` (3분기 실행 + 문서 단언 정합) · `tests/unit/test_main.py::test_lifespan_raises_when_default_session_secret_in_prod`.
+
+- **SonarCloud FP suppress**: `sonar-project.properties` `sonar.issue.ignore.multicriteria`. 라인 예외는 `# NOSONAR <ruleKey> — 이유`.

@@ -91,13 +91,26 @@ from check_claim_review_trace import (  # noqa: E402  # pylint: disable=wrong-im
 # Remaining out-of-scope markers live on ledgers, not retired history trees.
 # This deletion does not shrink SURFACE_GLOBS.
 #
+# 🔴 **2026-08-16 정정 — `.claude/policies/*.md` 는 규칙 홈이 아닌 파일을 삼키고 있었다.**
+# 그 디렉토리에는 규칙을 저술하는 `active.md` 와, 정책이 어떻게 변해왔는지만 적는
+# `history.md`(이력)가 같이 살았다. glob 이 둘을 구별하지 못해 **이력 파일이 규칙 표면으로
+# 계수**됐고, 이력 퇴역 PR 에서 삭제 축이 발화했다 — 그런데 `history.md` 의 base 시점
+# 필수 마커는 **0건**이었다. 즉 그 파일이 사라져도 이 게이트의 분자·분모는 한 자리도
+# 움직이지 않는다. 규칙 홈을 **파일 단위로 명시**해 그 혼동을 끝낸다.
+#
+# 명시 목록의 대가는 "새 정책 파일이 조용히 빠질 수 있다" 인데, 그것은
+# `test_every_policies_file_is_a_declared_surface` 가 막는다 — `.claude/policies/` 안의
+# 모든 `.md` 는 이 목록에 있거나 테스트가 red 다. glob 이 주던 자동 포함을 **강제 결정**으로
+# 바꾼 것이지 범위를 줄인 것이 아니다.
+# Policy dir mixed a rule home with a pure changelog; name the rule homes per file instead.
+#
 # The denominator must cover every surface that *authors rules*; otherwise relocating a
 # rule out of scope is the cheapest way to score an improvement.
 SURFACE_GLOBS = (
     "CLAUDE.md",
     "AGENTS.md",
     ".claude/rules/*.md",
-    ".claude/policies/*.md",
+    ".claude/policies/active.md",   # 규칙 홈. 같은 디렉토리의 이력 파일은 표면이 아니다
     ".claude/traps.md",       # 2026-08-14 편입 — 실패 클래스 층(지시문)
     "docs/process/*.md",      # 2026-08-14 편입 — 프로세스 층(지시문)
 )
