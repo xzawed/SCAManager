@@ -1165,3 +1165,93 @@ def test_dispatcher_passes_none_when_chat_is_absent():
     assert r.status_code == 200
     mock_gate.assert_called_once()
     assert mock_gate.call_args.kwargs.get("chat_id") is None
+
+
+async def test_notice_does_not_claim_not_posted_when_the_review_did_land():
+    """🔴 리뷰 게시가 **성공한 뒤** auto-merge 가 터지면 «게시되지 않았습니다» 는 거짓이다.
+
+    ## 실측 사고 (`#1412` fcad25ca 가 그 상태로 머지됐다)
+
+    `post_github_review` 성공 → `_run_auto_merge` 예외 → 같은 broad except 로 낙하 →
+    `callback_failed`(«리뷰가 게시되지 않았습니다») 발신. 그런데 리뷰는 **GitHub 에 붙어 있다**.
+
+    그 거짓말의 대가:
+      (a) 사용자가 다시 누른다 → `already decided — skipping replay` 로 무시된다
+      (b) GitHub 에서 수동 승인한다 → **중복 리뷰**
+
+    게이트가 조용한 것보다 **틀린 말을 하는 것이 나쁘다** — 조용하면 확인하러 가지만,
+    틀린 말은 사용자를 잘못된 행동으로 이끈다.
+    A post-success + auto-merge-failure must not tell the user the review was not posted.
+    """
+    from src.webhook.router import handle_gate_callback  # pylint: disable=import-outside-toplevel
+
+    mock_db, config = _gate_callback_failure_mocks()
+    config.auto_merge = True  # auto-merge 경로를 태워야 그 예외가 난다
+    with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
+        with patch(
+            "src.webhook.providers.telegram.post_github_review", new_callable=AsyncMock
+        ) as mock_review:  # 🔴 성공한다
+            with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
+                with patch(
+                    "src.webhook.providers.telegram.resolve_notification_language",
+                    return_value="ko",
+                ):
+                    with patch(
+                        "src.webhook.providers.telegram.gate_decision_repo.claim_decision",
+                        return_value=True,
+                    ):
+                        with patch(
+                            "src.gate.engine._run_auto_merge",
+                            new_callable=AsyncMock,
+                            side_effect=RuntimeError("merge queue exploded"),
+                        ):
+                            with patch(
+                                "src.webhook.providers.telegram._post_message_guarded",
+                                new_callable=AsyncMock,
+                            ) as mock_post:
+                                await handle_gate_callback(
+                                    analysis_id=42,
+                                    decision="approve",
+                                    decided_by="john",
+                                    telegram_user_id="1",
+                                    chat_id="-100999",
+                                )
+
+    mock_review.assert_awaited_once(), "전제 붕괴 — 리뷰 게시가 호출되지 않았다"
+    mock_post.assert_called_once()
+    text = mock_post.call_args[0][2]["text"]
+    assert "미게시" not in text, (
+        f"리뷰가 실제로 게시됐는데 «미게시» 라고 알렸다 — 사용자가 중복 리뷰를 만든다:\n{text}"
+    )
+    assert "게시" in text, f"게시 사실을 언급하지 않는다: {text}"
+
+
+async def test_not_posted_notice_still_says_not_posted_when_the_review_failed():
+    """대칭 — 게시 자체가 실패했으면 «미게시» 가 맞다 (위 수정이 이 축을 끄지 않았는지)."""
+    from src.webhook.router import handle_gate_callback  # pylint: disable=import-outside-toplevel
+
+    mock_db, config = _gate_callback_failure_mocks()
+    with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
+        with patch(
+            "src.webhook.providers.telegram.post_github_review",
+            new_callable=AsyncMock,
+            side_effect=httpx.ConnectError("GitHub API down"),
+        ):
+            with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
+                with patch(
+                    "src.webhook.providers.telegram.resolve_notification_language",
+                    return_value="ko",
+                ):
+                    with patch(
+                        "src.webhook.providers.telegram.gate_decision_repo.claim_decision",
+                        return_value=True,
+                    ):
+                        with patch(
+                            "src.webhook.providers.telegram._post_message_guarded",
+                            new_callable=AsyncMock,
+                        ) as mock_post:
+                            await handle_gate_callback(
+                                analysis_id=42, decision="approve", decided_by="john",
+                                telegram_user_id="1", chat_id="-100999",
+                            )
+    assert "미게시" in mock_post.call_args[0][2]["text"]

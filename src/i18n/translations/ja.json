@@ -858,6 +858,7 @@
       "manual_reject_body": "❌ 却下 by @{decided_by}",
       "callback_head_moved": "⚠️ 分析後に head が移動したため、承認レビューは<b>投稿されませんでした</b>。",
       "callback_failed": "⚠️ 承認処理中にエラーが発生し、レビューは<b>投稿されませんでした</b>。",
+      "callback_posted_then_failed": "⚠️ GitHub レビューは投稿されましたが、その後の自動マージ処理でエラーが発生しました。レビューは残っていますので再度押さないでください — マージ状態は GitHub でご確認ください。",
       "tg_review_title": "🔍 *PRレビュー依頼*",
       "tg_repo_line": "リポ: `{repo}` — PR #{pr}",
       "tg_score_line": "スコア: *{score}点* ({grade})",
