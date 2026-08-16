@@ -11,14 +11,14 @@ paths:
 
 > 여기 남은 것은 규칙 · 왜 한 줄 · 가드 파일명이다. 서사가 짧아진 것이 규칙이 약해졌다는 뜻이 아니다.
 >
-> **먼저 열 것 2건** (2026-08-13 3층 분리): 순서 = [`docs/process/guard-authoring.md`](../../docs/process/guard-authoring.md) ·
+> **먼저 열 것 2건**: 순서 = [`docs/process/guard-authoring.md`](../../docs/process/guard-authoring.md) ·
 > 함정 = [`.claude/traps.md`](../traps.md). 아래는 **테스트 표면에만 있는 계약**이다.
 
 ## 3-불변식 (정본 SSOT = [`AGENTS.md`](../../AGENTS.md))
 
 새 가드/테스트/완전성 검사/kill-switch 저술 시 **예외 없이**:
 
-1. **fail-closed** — 통과 조건이 '문자열/echo/주석/advisory 존재' 면 안 된다. AST·실행 관측을 쓴다.
+1. **통과가 산문으로 충족되면 안 된다** — 조건이 '문자열/echo/주석/advisory 존재' 면 안 된다. AST·실행 관측을 쓴다.
 2. **실경로 뮤테이션** — 합성 픽스처 금지. 실파일/심볼을 깨뜨려 red 확인 + `assert mutated != orig`.
 3. **배선 테스트** — 정의≠배선, 순수함수 옳음≠진입점 도달. 산문 grep 이 아니라 실제 실행/호출 관측.
 
