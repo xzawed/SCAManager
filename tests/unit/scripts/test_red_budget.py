@@ -238,6 +238,14 @@ def test_surface_list_covers_every_rule_home():
     읽지 않았다 — 그 안에 무집행 마커 **27건**. *"무집행 0건 · 100%"* 는 그 27건을
     **뺀 값**이었다. 테스트 이름은 옳았고 내용이 이름을 따라가지 못했다.
 
+    ## 2026-08-16 정정 — `.claude/policies/*.md` → `.claude/policies/active.md`
+
+    그 glob 은 규칙 홈(`active.md`)과 **정책 변경 이력**(`history.md`)을 구별하지 못해
+    이력 파일을 규칙 표면으로 계수했다. 이력 퇴역 PR 에서 삭제 축이 발화했는데,
+    `history.md` 의 base 마커는 **0건**이라 분자·분모 어느 쪽도 움직이지 않는 오탐이었다.
+    파일 단위 명시로 바꾸고, 자동 포함이 사라진 자리는 아래
+    `test_every_policies_file_is_a_declared_surface` 가 메운다.
+
     The list is literal on purpose (deriving it would let an empty source pass), so it
     must be widened by hand whenever a new rule-authoring surface is created.
     """
@@ -245,11 +253,40 @@ def test_surface_list_covers_every_rule_home():
         "CLAUDE.md",
         "AGENTS.md",
         ".claude/rules/*.md",
-        ".claude/policies/*.md",
+        ".claude/policies/active.md",
         ".claude/traps.md",
         "docs/process/*.md",
     ):
         assert required in gate.SURFACE_GLOBS, f"표면 목록에서 빠졌다: {required}"
+
+
+def test_every_policies_file_is_a_declared_surface():
+    """`.claude/policies/` 의 모든 `.md` 는 표면 목록이 **덮거나** red 다.
+
+    glob 을 파일 명시로 바꾼 대가는 *"새 정책 파일이 조용히 계수 밖에 남는 것"* 이다.
+    그 구멍을 여기서 닫는다 — 디렉토리를 **실측 열거**해 목록과 대조하므로, 새 파일을
+    추가하면 이 테스트가 먼저 red 가 되고 «표면인가 아닌가» 가 리뷰 대상이 된다.
+
+    🔴 목록 쪽을 유도하지 않는다 — `SURFACE_GLOBS` 에서 policies 항목을 뽑아 그것으로
+    디렉토리를 필터링하면 목록이 비어도 공허참이 된다. 디렉토리가 원천, 목록이 피검사다.
+
+    ⚠️ 이 테스트가 **닫지 못하는 것**: 파일을 `.claude/policies/` 밖으로 옮겨 규칙을
+    적는 경로. 그 축은 `test_surface_list_covers_every_rule_home` 의 손유지 목록과
+    review-time 판단이 맡는다 — 여기서 봉인을 주장하지 않는다.
+    """
+    policies = sorted(p.name for p in (_ROOT / ".claude" / "policies").glob("*.md"))
+    assert policies, ".claude/policies/ 에 .md 가 0개 — 원천이 비면 이 대조는 공허하다"
+
+    covered = set()
+    for glob in gate.SURFACE_GLOBS:
+        if glob.startswith(".claude/policies/"):
+            covered.update(p.name for p in _ROOT.glob(glob))
+
+    missing = sorted(set(policies) - covered)
+    assert not missing, (
+        f"표면 목록이 덮지 않는 정책 파일: {missing} — "
+        "규칙 홈이면 SURFACE_GLOBS 에 추가하고, 이력이면 왜 표면이 아닌지 주석으로 남길 것"
+    )
 
 
 def test_new_layers_are_actually_counted(tmp_path):
