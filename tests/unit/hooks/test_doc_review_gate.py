@@ -717,7 +717,15 @@ class TestHookMain:
         assert exc.value.code == 0
         assert not mock_agents.called  # 에이전트 호출 없이 조기 종료 / exits before calling agents
 
-    def test_critical_impact_block_outputs_deny(self, capsys):
+    def test_critical_impact_block_outputs_advisory_not_deny(self, capsys):
+        """block 판정은 비판을 싣되 편집을 막지 않는다 (2026-08-16 사용자 지시).
+
+        이전 계약: `permissionDecision: deny`. Issue #1386 — 의무 절차(6-step ⑤)에
+        5회 deny 후 매번 우회. LLM 판정은 기계 검증 불가 → advisory 만.
+        🔴 이 테스트를 deny 로 "복구"하지 말 것 — 차단 경로 제거가 버그가 아니다.
+        Previous contract denied. User directive 2026-08-16: block is advisory only.
+        Do not restore deny as if it were a regression fix.
+        """
         from doc_review_gate import main
         payload = self._stdin_payload("CLAUDE.md", old="기존 규칙", new="삭제됨")
         decisions = {"impact": "block", "consistency": "approve", "quality": "approve"}
@@ -728,7 +736,19 @@ class TestHookMain:
                         main()
         output = capsys.readouterr().out
         parsed = json.loads(output)
-        assert parsed["hookSpecificOutput"]["permissionDecision"] == "deny"
+        # 비판은 Claude 채널에 도달해야 한다 — 침묵 advisory 는 차단보다 나쁘다.
+        # Critique must reach Claude; a silent advisory is worse than a block.
+        ctx = parsed["hookSpecificOutput"]["additionalContext"]
+        assert "[문서 심의]" in ctx
+        assert "impact" in ctx.lower() or "impact-analyzer" in ctx or "행동" in ctx or "impact" in ctx
+        # reason from mock is "impact 사유"
+        assert "impact" in ctx
+        assert parsed["hookSpecificOutput"]["hookEventName"] == "PreToolUse"
+        assert "permissionDecision" not in parsed["hookSpecificOutput"], (
+            "block 판정이 다시 deny 가 됐다 — 2026-08-16 사용자 지시 위반"
+        )
+        assert "permissionDecisionReason" not in parsed["hookSpecificOutput"]
+        assert "[문서 심의]" in parsed["systemMessage"], "사용자 채널에도 실려야 한다"
         mock_exit.assert_called_with(0)
 
     def test_all_approve_exits_zero_silently(self, capsys):
@@ -1226,7 +1246,16 @@ def test_no_advisory_path_uses_bare_print(path, grade):
     assert grade in ("critical", "important")   # 파라미터가 공허하지 않음을 표시
     assert "print(_NO_CREDENTIALS_BANNER)" not in source, "자격증명 배너가 bare print 로 회귀"
     assert "print(_format_warn(" not in source, "warn 경로가 bare print 로 회귀"
-    assert source.count("_emit_advisory(") >= 3, "정의 1 + 호출 2 이상이어야 한다"
+    assert "print(_format_block(" not in source, "block 경로가 bare print 로 회귀"
+    # 2026-08-16: block 도 _emit_advisory — deny JSON 을 직접 print 하면 안 된다.
+    # Block is advisory too; printing a deny JSON directly would restore the old contract.
+    assert '"permissionDecision": "deny"' not in source, (
+        "doc_review_gate 가 다시 permissionDecision deny 를 낸다 — "
+        "2026-08-16 사용자 지시(LLM 판정은 advisory) 위반"
+    )
+    assert source.count("_emit_advisory(") >= 4, (
+        "정의 1 + 호출 3 이상(자격증명/inoperative/block/warn 등)이어야 한다"
+    )
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1600,33 +1629,44 @@ def test_size_literals_are_not_hand_written_in_comments():
 
 
 def test_unable_to_verify_block_is_demoted_to_warn():
-    """🔴 근거를 못 봐서 낸 block 은 deny 가 아니라 warn 이다 (R37-b, GROK-5).
+    """🔴 근거를 못 봐서 낸 block 은 매트릭스상 warn 이다 (R37-b, GROK-5).
 
-    `critical` 등급에서 consistency 의 block 은 곧장 `deny` 로 간다 — `important` 경로에는
-    이미 강등이 있는데(`_agent_label` 아래 else 분기) `critical` 에만 없었다.
-    그 결과 6-step ⑤(STATE 수치 동기화)라는 **의무 절차**가 차단될 수 있다.
+    2026-08-16 이후 훅 출력은 block/warn 모두 advisory 이지만, 이 강등은 **유지**한다:
+    (a) 원장 `decision` 등급 (b) 메시지 포맷(_format_block vs _format_warn)
+    (c) "확인 불가 ≠ 결함" 의도 문서. 훅 deny 가 없어졌다고 강등 기계를 지우면
+    원장·문구 축이 다시 섞인다.
+    Hook output is advisory either way since 2026-08-16; demotion still ranks the
+    ledger decision and message format. Keep the machinery.
     """
     results = [{"agent": "consistency", "decision": "block",
                 "reason": "STATE.md 를 볼 수 없어 확인 불가", "unable_to_verify": True}]
     decision, reasons = apply_veto_matrix("critical", results)
-    assert decision == "warn", "확인 불가가 deny 로 승격됐다 — 의무 절차가 막힌다"
+    assert decision == "warn", "확인 불가가 block 등급으로 남았다"
     assert reasons, "강등해도 사유는 사용자에게 도달해야 한다"
 
 
 def test_unable_to_verify_does_not_soften_a_real_block():
-    """🔴 대조군 — 근거를 보고 낸 block 은 그대로 차단이다 (강등이 게이트를 죽이면 안 된다)."""
+    """🔴 대조군 — 근거를 보고 낸 block 은 매트릭스상 block 이다 (강등이 등급을 죽이지 않음).
+
+    2026-08-16: 훅은 block 도 deny 하지 않는다. 이 테스트는 **판정 등급 집계**만 본다.
+    Since 2026-08-16 the hook does not deny on block; this asserts veto ranking only.
+    """
     results = [{"agent": "consistency", "decision": "block",
                 "reason": "STATE 6607 인데 본문은 6600 — 실제 불일치"}]
     decision, _ = apply_veto_matrix("critical", results)
-    assert decision == "block", "실 불일치까지 강등되면 게이트가 무의미해진다"
+    assert decision == "block", "실 불일치까지 강등되면 비판 등급이 무의미해진다"
 
 
 def test_unable_to_verify_never_softens_impact_analyzer():
-    """🔴 impact-analyzer 의 block 은 모든 등급에서 차단이다 — 행동 변화 위험은 강등 대상이 아니다."""
+    """🔴 impact-analyzer 의 block 은 매트릭스상 모든 등급 block — 강등 대상 아님.
+
+    훅 출력은 2026-08-16 이후 advisory. 이 축은 집계 등급만 고정한다.
+    Hook output is advisory; this pins the veto-matrix grade only.
+    """
     results = [{"agent": "impact", "decision": "block",
                 "reason": "규칙 삭제", "unable_to_verify": True}]
     decision, _ = apply_veto_matrix("critical", results)
-    assert decision == "block", "impact 차단이 강등됐다 — 가드 자살"
+    assert decision == "block", "impact block 등급이 강등됐다"
 
 
 # ── R36-b — lone surrogate 가 게이트를 통째로 죽인다 / lone surrogates killed the gate ──
@@ -2015,11 +2055,14 @@ class TestLedger:
         self._assert_record_shape(rec)
         assert rec["file"] == "CLAUDE.md"
 
-    def test_ledger_record_raise_does_not_suppress_deny(
+    def test_ledger_record_raise_does_not_suppress_advisory(
             self, monkeypatch, capsys):
-        """P0 — `_ledger_record` 가 던져도 block 경로의 deny 는 나가야 한다.
+        """P0 — `_ledger_record` 가 던져도 block 경로의 **advisory 비판**은 나가야 한다.
 
-        Mutating `_ledger_record` to raise used to yield exit-uncaught + empty stdout.
+        2026-08-16: 옛 계약은 deny 였다. 차단 경로 제거 후에도 비판 소실은 안 된다
+        (침묵 advisory = traps §A5 공허 가드). 원장 예외가 심의 출력을 삼키면 red.
+        Previous contract denied; after 2026-08-16 the block path is advisory, but
+        the critique must still reach additionalContext even if the ledger raises.
         """
         def _boom(*_a, **_k):
             raise RuntimeError("record boom")
@@ -2030,14 +2073,19 @@ class TestLedger:
         )
         assert code == 0, "원장 조립 예외가 훅을 죽였다"
         out = capsys.readouterr().out
-        assert out.strip(), "deny 출력이 비었다 — 심의가 삼켜졌다"
+        assert out.strip(), "advisory 출력이 비었다 — 심의가 삼켜졌다"
         parsed = json.loads(out)
-        assert parsed["hookSpecificOutput"]["permissionDecision"] == "deny"
+        ctx = parsed["hookSpecificOutput"]["additionalContext"]
+        assert "[문서 심의]" in ctx
+        assert "permissionDecision" not in parsed["hookSpecificOutput"], (
+            "block 이 다시 deny 가 됐다 — 2026-08-16 사용자 지시 위반"
+        )
 
     def test_ledger_failure_does_not_kill_the_hook(
             self, tmp_path, monkeypatch, capsys):
-        """T1.4 — 쓰기 실패(경로=디렉터리)에도 deny 가 나간다.
+        """T1.4 — 쓰기 실패(경로=디렉터리)에도 **advisory 비판**이 나간다.
 
+        2026-08-16: 옛 계약은 deny. 지금은 additionalContext 에 비판이 실리는지가 축.
         Removing the try/except around ledger handling must kill this test.
         """
         bad = tmp_path / "ledger_is_a_dir"
@@ -2050,7 +2098,9 @@ class TestLedger:
         assert code == 0, "원장 쓰기가 실패했는데 훅이 죽었다 — 원장이 훅을 죽이면 안 된다"
         out = capsys.readouterr().out
         parsed = json.loads(out)
-        assert parsed["hookSpecificOutput"]["permissionDecision"] == "deny"
+        ctx = parsed["hookSpecificOutput"]["additionalContext"]
+        assert "[문서 심의]" in ctx
+        assert "permissionDecision" not in parsed["hookSpecificOutput"]
 
     def test_ledger_is_written_on_unreadable_payload(
             self, isolated_ledger, monkeypatch):

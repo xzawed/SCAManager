@@ -2,7 +2,7 @@
 
 > **대상**: SCAManager 의 `src/static/vendor/` 디렉토리에 호스팅된 외부 자바스크립트/CSS 라이브러리. 운영자/개발자 참조용.
 >
-> **도입 시점**: 2026-05-01, UI 감사 사이클 Step C (PR #166).
+> 외부 CDN 대신 `src/static/vendor/` 에 검증된 버전을 호스팅한다.
 
 ---
 
@@ -23,12 +23,12 @@
 
 | 파일 | 버전 | 크기 | 용도 |
 |------|------|------|------|
-| `src/static/vendor/chart.umd.min.js` | Chart.js 4.4.0 UMD min | 약 204 KB | `repo_detail`/`analysis_detail`/`dashboard` 페이지 차트 (`insights_me` 폐기 — 그룹 60 Phase 1 PR 2) |
+| `src/static/vendor/chart.umd.min.js` | Chart.js 4.4.0 UMD min | 약 204 KB | `repo_detail`/`analysis_detail`/`dashboard` 페이지 차트 (`insights_me` 폐기) |
 
 | `src/static/vendor/htmx.min.js` | htmx | 약 47 KB | `base.html` 전역 `hx-boost` |
 
 > **주의**: 폰트 자원 (Pretendard, Crimson Pro, Google Fonts) 은 현재 CDN 의존 유지. 후속 단계에서 vendoring 검토.
-> 🔴 이 표는 **vendoring 인벤토리 전량**이어야 한다 — htmx 가 2026-08-01 감사에서 누락으로 적발됐다.
+> 🔴 이 표는 **vendoring 인벤토리 전량**이어야 한다 — htmx 누락이 적발된 적이 있다.
 
 ---
 
@@ -60,7 +60,7 @@ if _STATIC_DIR.exists():
 ### 템플릿 참조
 
 ```html
-<!-- repo_detail.html / analysis_detail.html / dashboard.html (insights_me.html 폐기 — 그룹 60) -->
+<!-- repo_detail.html / analysis_detail.html / dashboard.html (insights_me.html 폐기) -->
 <script src="/static/vendor/chart.umd.min.js"></script>
 ```
 
@@ -78,7 +78,7 @@ curl -I https://your-app.railway.app/static/vendor/chart.umd.min.js
 
 ### 회귀 가드 (`tests/unit/test_main.py`)
 
-PR-4 (#173) 가 추가한 가드:
+회귀 가드:
 
 - `test_static_chartjs_returns_200`: 200 응답 + 100KB+ + Chart.js UMD 시그니처
 - `test_static_missing_file_returns_404`: graceful 404
@@ -119,7 +119,7 @@ src/
         └── <library>.min.js    # 신규 — 한 줄 description
 ```
 
-CLAUDE.md "신규 파일 추가 체크리스트" (L286~) 적용.
+`docs/architecture.md` `src/` 트리 동기화 의무 적용 (`scripts/check_architecture_tree_sync.py`).
 
 ### 4. 회귀 가드 추가 (`tests/unit/test_main.py`)
 
@@ -132,7 +132,7 @@ def test_static_<library>_returns_200(client):
 
 ### 5. STATE.md 갱신
 
-새 그룹 본문에 신규 vendor 자원 명시.
+STATE.md 최신 블록에 신규 vendor 자원 명시.
 
 ---
 
@@ -166,9 +166,9 @@ make test  # tests/unit/test_main.py::test_static_chartjs_returns_200
 
 `/repos/{owner}/{repo}` 데스크탑/모바일 양쪽에서 차트 정상 렌더링 확인. claude-dark 테마 전환 시 색 재빌드도 확인.
 
-### 5. 신규 그룹 + STATE 기록
+### 5. STATE 기록
 
-업그레이드는 STATE.md 그룹 본문에 "vendor 업그레이드" 명시 + 회귀 0 검증.
+업그레이드는 STATE.md 최신 블록에 "vendor 업그레이드" 명시.
 
 ---
 
@@ -186,8 +186,8 @@ make test  # tests/unit/test_main.py::test_static_chartjs_returns_200
 |------|----------|------|
 | 차트가 빈 박스로 표시 | StaticFiles mount 실패 | `curl -I /static/vendor/chart.umd.min.js` 확인. 404 시 `_STATIC_DIR.exists()` 검증 |
 | 200 응답이지만 차트 안 그려짐 | JS 파일 손상 (다운로드 실패) | 파일 크기 + UMD 시그니처 확인. `head -c 200 chart.umd.min.js` 에 "Chart.js v4" 포함되어야 |
-| claude-dark 테마 전환 후 차트 색 stale | `themechange` 이벤트 리스너 깨짐 | base.html `dispatchEvent` + 페이지 `addEventListener` 페어 확인. PR-D2 의 `test_themechange_event_listeners` 가드가 차단 |
-| 데스크탑에서 차트 빈약 (200px 짜리 작은 차트) | `chart-wrap-inner` clamp 회귀 | CSS 의 `height: clamp(200px, 30vw, 320px)` 확인. PR-D2 의 `test_chart_aspect_ratio_false` 가드가 차단 |
+| claude-dark 테마 전환 후 차트 색 stale | `themechange` 이벤트 리스너 깨짐 | base.html `dispatchEvent` + 페이지 `addEventListener` 페어 확인. `test_themechange_event_listeners` 가드가 차단 |
+| 데스크탑에서 차트 빈약 (200px 짜리 작은 차트) | `chart-wrap-inner` clamp 회귀 | CSS 의 `height: clamp(200px, 30vw, 320px)` 확인. `test_chart_aspect_ratio_false` 가드가 차단 |
 
 ---
 
@@ -202,5 +202,5 @@ make test  # tests/unit/test_main.py::test_static_chartjs_returns_200
 ## 관련 문서
 
 - `CLAUDE.md` UI/템플릿 카테고리 — Chart.js vendoring + StaticFiles mount 규칙
-- `docs/STATE.md` 그룹 57 — Chart.js vendoring 도입 (PR #166) 본문
+- `docs/STATE.md` — 수치·서사 정본 (배지 파생은 `check_docs_sync.py --fix`)
 - `tests/unit/test_main.py::test_static_*` — 회귀 가드

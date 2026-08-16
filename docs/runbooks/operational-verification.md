@@ -1,7 +1,7 @@
 # 운영 검증 가이드 — 분석 도구 배포 후 확인 절차
 
-> Phase B(Semgrep), Phase C(ESLint/ShellCheck) 배포 이후 도구가 정상 동작하는지
-> 검증하는 표준 절차. Phase D 도구 추가 시 동일 패턴으로 확장.
+> Semgrep·ESLint/ShellCheck 등 분석 도구 배포 이후 정상 동작하는지
+> 검증하는 표준 절차. 새 도구 추가 시 동일 패턴으로 확장.
 
 ## 1. 도구 설치 확인
 
@@ -73,7 +73,7 @@ func main() {
 
 ### 2.3 점수 회귀 검증
 
-Python 파일만 포함된 기존 PR을 재분석 시 점수가 Phase A 이전과 동일해야 함.
+Python 파일만 포함된 기존 PR을 재분석 시 점수가 도구 추가 전과 동일해야 함.
 
 **검증 방법**:
 ```bash
@@ -123,7 +123,7 @@ result = calculate_score(issues, ai_review=None)
 
 ## 5. Railway 배포 검증 체크리스트
 
-새 도구 추가(Phase D 등) 후 필수 확인:
+새 도구 추가 후 필수 확인:
 
 - [ ] `git push` → Railway 자동 빌드 시작
 - [ ] **Railway 대시보드 빌드 로그 직접 확인** (`push 성공 ≠ 빌드 성공`)

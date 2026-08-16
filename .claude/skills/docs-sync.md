@@ -22,7 +22,7 @@ PR 작업 완료/머지 시 테스트 수치·작업 서사를 STATE.md·README 
 
 ## 갱신 지점
 
-🔴 **2026-08-05 변경 — 손으로 고치는 곳은 이제 한 곳뿐이다.**
+🔴 **손으로 고치는 곳은 한 곳뿐이다.**
 같은 정수가 5지점에 손으로 복제돼 있었고(**N지점 동기화는 N-1번의 실패 기회**), 실제로
 그중 하나를 빠뜨려 가드가 red 를 냈다. 지금은 **§테스트 수 추적 이력의 현재 불릿 한 줄이 SSOT** 이고 나머지는 파생이다.
 (절은 이력이 아니다. 과거 항목은 git 에 있다. 새 줄을 덧붙이지 말고 그 한 줄을 고친다.)
@@ -55,7 +55,7 @@ py -3 -m pytest tests/integration --collect-only -q | tail -1  # 통합 (리터�
 ```bash
 python -c "import sys; sys.path.insert(0,'scripts'); import check_toc_anchors as t; print(t.github_slug('<헤더 텍스트>', {}))"
 ```
-em-dash(`—`)/`+`/`()`/`.` 가 더블하이픈·제거를 유발하므로 반드시 실측 (#958 사고 패턴).
+em-dash(`—`)/`+`/`()`/`.` 가 더블하이픈·제거를 유발하므로 반드시 실측.
 
 ## 검증 (커밋 전 의무)
 - `python scripts/check_docs_sync.py` → ✅ (4 지점 카운트 일치)

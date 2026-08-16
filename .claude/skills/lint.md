@@ -28,7 +28,7 @@ bandit -r src/ -ll
 | flake8 | X개 경고 | ... |
 | bandit | HIGH:X, MED:X | ... |
 
-SCAManager 자체 점수 체계 기준으로 환산 (Phase E 이후 — `src/constants.py` 단일 출처):
+SCAManager 자체 점수 체계 기준으로 환산 (`src/constants.py` 단일 출처):
 - pylint + flake8 (code_quality) → 25점 만점 (`CODE_QUALITY_MAX`). error -3, warning -1 (cap `CQ_WARNING_CAP=25`)
 - bandit + semgrep(security) → 20점 만점 (`SECURITY_MAX`). HIGH -7, LOW/MED -2
 - 합산 정적분석 만점: 45점 (총점 100 중)

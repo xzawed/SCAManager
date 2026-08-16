@@ -53,7 +53,7 @@ alembic history --verbose
 > **🔴 주의**: ORM 컬럼 추가 후 `make revision` 없이 배포하면 운영 500 에러 발생.
 > 단위 테스트는 in-memory SQLite(`Base.metadata.create_all`)로 ORM 정의 그대로 테이블을
 > 만들기 때문에 마이그레이션 파일이 없어도 테스트가 통과한다.
-> 전례: `leaderboard_opt_in` 컬럼 (PR #72·#74, 2026-04-26).
+> 전례: `leaderboard_opt_in` 컬럼.
 
 ---
 
@@ -233,8 +233,8 @@ alembic history --verbose
 | `0041_rls_force.py` | FORCE ROW LEVEL SECURITY 일괄 적용 (PG 전용, downgrade NO FORCE) |
 | `0042_*` ~ `0045_analysis_attempts.py` | 이후 마이그레이션 — 🔴 **정본은 `ls alembic/versions/`** 다 |
 
-> 🔴 **이 표는 요약이고 정본이 아니다.** 손유지 목록은 자연 drift 한다 — 2026-08-01 감사에서
-> 이 표가 `0041` 에서 끝나 head 를 오인하게 만들던 것이 적발됐다. head 확인은
+> 🔴 **이 표는 요약이고 정본이 아니다.** 손유지 목록은 자연 drift 한다 —
+> 이 표가 중간 revision 에서 끝나 head 를 오인하게 만들던 것이 적발됐다. head 확인은
 > `py -3 -m alembic heads` 또는 `ls alembic/versions/` 로 하라.
 
 ---
