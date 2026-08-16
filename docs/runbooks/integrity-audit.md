@@ -65,7 +65,7 @@
 ## 아키텍처 (B+C 결합)
 
 scope 인식 팬아웃(C)으로 감싼 loop-until-dry 도메인 탐색(B) + 다관점 adversarial verify(B) + completeness critic(C)
-+ `MAX_ROUNDS`·`budget` 비용 상한(C). 설계 상세: [docs/design/2026-06-05-integrity-audit-workflow-design.md](../design/2026-06-05-integrity-audit-workflow-design.md).
++ `MAX_ROUNDS`·`budget` 비용 상한(C). 운영 정본은 이 런북과 `.claude/workflows/integrity-audit.mjs` 다.
 
 ## 🔴 워크플로우 작성·운영 교훈 (동시성·회복력)
 

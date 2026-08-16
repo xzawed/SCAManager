@@ -1,29 +1,9 @@
-"""완료된 계획 문서가 **"지금 실행하라"** 로 읽히지 않는지 — 재구현 사고 차단.
+"""실행 지시 어휘를 담은 문서가 **"지금 실행하라"** 로 읽히지 않는지.
 
-## 사고 (2026-08-01 문서 감사, 91 에이전트 · 167 파일)
+끝난 계획·설계 트리는 디스크에 두지 않는다. 살아 있는 마크다운에 cue 가 있으면
+do-not-execute 표지 또는 인용 면제 마커가 있어야 한다.
 
-`docs/_archive/plans/` 9개 문서 중 **7개**가 최상단에 이런 배너를 갖고 있었다:
-
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement
-> this plan **task-by-task**. Steps use checkbox (`- [ ]`) syntax for tracking.
-
-그런데 그 계획들이 다루는 기능(Phase 1 MVP · AI 리뷰 · Gate 엔진 · 대시보드 · OAuth …)은
-**이미 전부 출시돼 운영 중**이다. 그리고 9 파일에 **미체크 스텝이 359개** 남아 있다 —
-완료 시점에 체크를 되돌려 적지 않았기 때문이다.
-
-🔴 **행동 영향**: 미래 세션이 `docs/_archive/plans/` 를 열면 "REQUIRED: task-by-task 로 구현하라"
-+ 미체크 359개를 보게 되고, **이미 있는 기능을 다시 만들기 시작할 수 있다.** 그리고 그 재구현은
-기존 코드와 충돌하기 전까지 아무 가드도 울리지 않는다.
-
-`docs/design/` 에도 같은 형태가 2건 있었다(미체크 53 · 32).
-
-## 이 파일이 강제하는 것
-
-미체크 체크박스가 많거나 실행 지시 어휘를 담은 계획 문서는 **완료 표지**를 최상단에 가져야 한다.
-표지 문구는 "실행하지 마라" 를 명시해야 한다 — 날짜만 적는 것으로는 부족하다.
-
-Completed plans must carry a do-not-execute banner; otherwise a future agent re-implements
-shipped features from their unchecked checkboxes.
+Completed-plan trees are gone. The remaining axis is the global cue scan.
 """
 import re
 import subprocess  # nosec B404
@@ -55,41 +35,24 @@ _UNCHECKED_THRESHOLD = 5
 _CUE_QUOTE_EXEMPT = re.compile(r"<!--\s*guard-cue-quote:\s*\S[^>]{10,}?-->")
 
 
+_RETIRED_PLAN_TREES = ("docs/_archive", "docs/design")
+
+
 def _plan_docs():
-    out = []
-    # 🔴 2026-08-13 이동: `.claude/plans/` → `docs/_archive/plans/`
-    #    (`.claude/` 를 **활성 설정만** 담는 공간으로 정리). 여기를 따라 옮기지 않으면
-    #    스캐너가 9→3 으로 줄어 이 가드가 조용히 좁아진다 — 실제로 red 로 잡혔다.
-    for base in ("docs/_archive/plans", "docs/design"):
-        for p in sorted((_ROOT / base).rglob("*.md")):
-            text = p.read_text(encoding="utf-8", errors="replace")
-            unchecked = len(re.findall(r"^\s*- \[ \]", text, re.MULTILINE))
-            if unchecked >= _UNCHECKED_THRESHOLD or _EXECUTION_CUE.search(text):
-                out.append(p.relative_to(_ROOT).as_posix())
-    return out
+    """퇴역한 계획 트리에 추적 마크다운이 남아 있으면 목록에 담는다.
 
-
-def test_the_scan_finds_plan_documents():
-    """🔴 대조군 — 스캐너가 아무것도 못 찾으면 아래 단언이 공허하다."""
-    docs = _plan_docs()
-    assert len(docs) >= 9, f"계획 문서를 {len(docs)}개만 찾았다 — 스캐너 확인: {docs}"
-
-
-@pytest.mark.parametrize("doc", _plan_docs())
-def test_plan_document_declares_it_is_not_executable(doc):
-    """🔴 실행 대상이 아니라면 **그렇게 적혀 있어야** 한다.
-
-    이 단언이 깨지면 두 경우다:
-      (a) 완료된 계획에 표지가 없다 → 표지를 추가하라.
-      (b) 진짜로 지금 실행할 계획이다 → 그 문서는 `.claude/plans`/`docs/design` 이 아니라
-          `docs/backlog.md`(할 일의 단일 출처)에 등재돼야 한다.
+    2026-08-16 이후 이 목록은 비어 있어야 한다. 다시 채워지면 이력 트리가 부활한 것이다.
     """
-    text = (_ROOT / doc).read_text(encoding="utf-8", errors="replace")
-    unchecked = len(re.findall(r"^\s*- \[ \]", text, re.MULTILINE))
-    assert _DONE_MARKER.search(text), (
-        f"{doc} 에 완료 표지가 없다 (미체크 {unchecked}개"
-        f"{', 실행 지시 어휘 포함' if _EXECUTION_CUE.search(text) else ''}).\n"
-        "→ 미래 세션이 이 문서를 실행 대상으로 오인해 **이미 있는 기능을 다시 만든다**."
+    tracked = _tracked_md() or []
+    return [rel for rel in tracked if rel.startswith(_RETIRED_PLAN_TREES)]
+
+
+def test_retired_plan_trees_are_gone():
+    """🔴 끝난 계획·설계 트리는 디스크에 두지 않는다 — 빈 분모를 채점하지 않기 위해."""
+    leftover = _plan_docs()
+    assert leftover == [], (
+        f"퇴역한 계획 트리가 남아 있다: {leftover}\n"
+        "→ 끝난 이력은 지우고, 이 목록을 다시 채점 대상으로 만들지 말 것."
     )
 
 
@@ -104,10 +67,7 @@ def test_done_marker_is_not_satisfied_by_a_date_alone():
 #
 # ## 왜 전역인가 (실측)
 #
-# 기존 스캐너는 `.claude/plans`·`docs/design` **2 배치만** 본다(`_plan_docs`). 그 안에서는
-# 12건을 찾고 위반 0 = green 이다. 그런데 같은 술어를 `docs/**`+`.claude/**` 로 넓히면
-# 후보 **36건**, 배너 없는 것 **24건**, 그중 실행 지시 어휘(cue)를 가진 것이 **14건**이다.
-# 즉 가드가 초록인 이유는 리포가 안전해서가 아니라 **보는 범위가 좁아서**였다.
+# 계획 배치는 2026-08-16 에 퇴역했다. 남은 축은 **전역 cue 스캔**이다.
 #
 # 🔴 실제 위험: 그 문서들은 최상단에 *"REQUIRED SUB-SKILL: Use superpowers:executing-plans
 # to implement this plan task-by-task"* 를 그대로 달고 있고, 미체크 박스가 최대 87개다.
@@ -122,10 +82,8 @@ def test_done_marker_is_not_satisfied_by_a_date_alone():
 #
 # ## 인용 면제
 #
-# `docs/cycle-history.md` 는 과거 사이클의 **작업 흐름을 서술**하며 어휘를 쓴다
-# (`brainstorming→writing-plans→subagent-driven-development 흐름`). 지시가 아니다.
 # 🔴 면제는 **명시 마커로만** 성립한다 — 산문 판정으로 예외를 만들면 다음 사람이
-# 아무 문서에나 어휘를 넣고 빠져나간다([[feedback-prose-guard-both-ways]]).
+# 아무 문서에나 어휘를 넣고 빠져나간다.
 
 
 
@@ -201,48 +159,30 @@ def test_cue_axis_is_global():
 def test_cue_scan_is_not_vacuous():
     """🔴 대조군 — 전역 스캔이 조용히 좁아지면 위 단언이 공허해진다.
 
-    실측(2026-08-11): **전 추적 마크다운**에서 cue 를 담은 문서 **23건**.
-    하한 **22** 는 실측 바로 아래다 — 초판의 20 은 3건이 사라져도 초록이라 여유가 과했다
-    (Grok claim-review `019ff074` 적발). 스캔이 좁아지거나 문서가 조용히 사라지면 red 다.
+    2026-08-16 이력 퇴역 후 실행 지시 어휘를 담던 문서가 디스크에서 사라졌다.
+    cue 건수 하한은 더 이상 분모가 아니다(0건이 현재 측정). 대신 **스캔 대상 수**를
+    고정한다 — 스캔이 docs/.claude 두 칸으로 줄면 red 다.
     """
-    scanned = [
-        rel for rel in _scan_targets()
-        if (_ROOT / rel).is_file()
-        and _EXECUTION_CUE.search((_ROOT / rel).read_text(encoding="utf-8", errors="replace"))
-    ]
-    assert len(scanned) >= 22, f"cue 문서를 {len(scanned)}개만 찾았다 — 스캔 범위 붕괴"
+    targets = [rel for rel in _scan_targets() if (_ROOT / rel).is_file()]
+    assert len(targets) >= 40, f"스캔 대상이 {len(targets)}개다 — 범위 붕괴"
 
 
 def test_quotation_is_exempt_only_with_marker():
-    """🔴 인용 면제는 **마커가 하중을 받는다** — 마커를 지우면 red 여야 한다 (뮤테이션).
+    """🔴 인용 면제는 **마커가 하중을 받는다** — 마커를 지우면 면제가 풀려야 한다.
 
-    실행 지시 어휘를 **인용**하는 실물 문서로 실증한다 — 그 면제가 산문 판정이 아니라
-    마커에 걸려 있음을 보인다.
-
-    🔴 **픽스처가 2026-08-13 에 이동했다**: 원래는 `docs/cycle-history.md` 였으나 그 파일이
-    320,800 → 81,416자로 압축되며 어휘를 담은 과거 사이클 143개가 아카이브로 접혔다.
-    픽스처는 **인용 면제만으로 서 있는** 실물이어야 한다 — `실행 대상이 아닙니다` 표지를
-    함께 든 문서는 면제가 중복이라 이 축을 증명하지 못한다(아래 `_DONE_MARKER` 단언).
-    실측(2026-08-13) 결과 그 조건을 만족하는 유일한 문서가 이 감사 보고서다.
+    이력 트리가 없어진 뒤로는 실물 픽스처를 쓰지 않는다. 인라인 문자열로
+    마커 유무만 가른다.
     """
-    src = _ROOT / "docs" / "_archive" / "reports" / "2026-08-10-docs-system-audit.md"
-    text = src.read_text(encoding="utf-8", errors="replace")
-    assert _EXECUTION_CUE.search(text), f"전제가 깨졌다 — {src.name} 에 어휘가 없다"
-    assert _CUE_QUOTE_EXEMPT.search(text), "인용 면제 마커가 없다"
-    # 마커를 제거한 사본은 위반으로 판정돼야 한다.
+    text = (
+        "<!-- guard-cue-quote: 아래는 실행 지시 어휘를 증거로 인용한다 -->\n"
+        "Use superpowers:executing-plans to implement this plan task-by-task.\n"
+    )
+    assert _EXECUTION_CUE.search(text)
+    assert _CUE_QUOTE_EXEMPT.search(text)
     mutated = _CUE_QUOTE_EXEMPT.sub("", text)
     assert mutated != text
-    assert not _CUE_QUOTE_EXEMPT.search(mutated), (
-        "마커를 지웠는데도 면제가 성립한다 — 면제가 마커에 걸려 있지 않다"
-    )
-    assert not _DONE_MARKER.search(mutated), (
-        "do-not-execute 표지가 따로 있다면 이 문서는 인용 면제가 필요 없다(면제가 공허)"
-    )
-    # 🔴 배선 — 정규식이 아니라 **실제 판정 경로**(`_cue_docs`)에서 면제가 작동하는지
-    #    (Grok 지적: 초판은 정규식만 검사해 판정 경로를 한 번도 지나지 않았다).
-    assert "docs/_archive/reports/2026-08-10-docs-system-audit.md" not in _cue_docs(), (
-        "인용 면제가 실제 판정 경로에서 작동하지 않는다"
-    )
+    assert not _CUE_QUOTE_EXEMPT.search(mutated)
+    assert not _DONE_MARKER.search(mutated)
 
 
 def test_cue_exemption_requires_a_real_reason():

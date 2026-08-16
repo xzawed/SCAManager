@@ -83,11 +83,13 @@ from check_claim_review_trace import (  # noqa: E402  # pylint: disable=wrong-im
 # 채점한다. `deleted_not_renamed()` 분모 축도 같은 glob 만 보므로 두 층을 통째로
 # 삭제해도 발화하지 않았다(뮤테이션 실증: 6파일 삭제 → EXIT 0).
 #
-# ⚠️ **이 확대로도 전수는 아니다.** 활성 문서 전체로 재면 계수 밖 마커가 여전히
-# 약 475건 남는다(`docs/backlog.md` 92 · `docs/STATE.md` 41 · `docs/runbooks/**` 등).
-# 그 표면들은 **원장·시점 기록**이라 규칙 층과 성격이 다르다 — 편입하면 이력 한 줄이
-# 규칙으로 둔갑한다. 그래서 넓힌 것은 *"이 세션이 지시문으로 저술한 두 층"* 까지이고,
-# 남은 범위 한계는 `CLAUDE.md` §3층 분리가 명시한다(숨기지 않는다).
+# ⚠️ **이 확대로도 전수는 아니다.** 계수 밖 마커는 `docs/STATE.md` · `docs/runbooks/**`
+# 같은 **원장·운영 기록**에 남아 있다. 편입하면 이력 한 줄이 규칙으로 둔갑한다.
+# 2026-08-16 이력 퇴역은 이 게이트의 `SURFACE_GLOBS` 분모를 **바꾸지 않는다** —
+# `_archive` · `design` · `reports` 는 원래 목록 밖이었다. 분모가 줄어든 것처럼
+# 보이면 다른 가드(글롭이 존재하는 파일만 세는 쪽)를 보라.
+# Remaining out-of-scope markers live on ledgers, not retired history trees.
+# This deletion does not shrink SURFACE_GLOBS.
 #
 # The denominator must cover every surface that *authors rules*; otherwise relocating a
 # rule out of scope is the cheapest way to score an improvement.

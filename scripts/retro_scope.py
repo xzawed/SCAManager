@@ -41,7 +41,7 @@ from check_retro_cadence import (  # noqa: E402  # pylint: disable=wrong-import-
 )
 
 _ROOT = Path(__file__).resolve().parents[1]
-_REPORTS = _ROOT / "docs" / "_archive" / "reports"
+_REPORTS = _ROOT / "docs" / "reports"
 
 
 def _make_stdout_safe():
@@ -72,7 +72,7 @@ def _git(args: list[str]) -> str:
 def boundary_commit(retro_filename: str) -> str | None:
     """회고 리포트가 **추가된** 커밋 = 범위 경계. 없으면 None.
     The commit that ADDED the retro report is the range boundary."""
-    path = f"docs/_archive/reports/{retro_filename}"
+    path = f"docs/reports/{retro_filename}"
     sha = _git(["log", "--diff-filter=A", "--format=%H", "-1", "--", path]).strip()
     return sha or None
 

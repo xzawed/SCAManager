@@ -42,29 +42,18 @@ grep -nE "잔여|미해결|미이행|TODO|GROK-[0-9]" <파일>
 
 ---
 
-## 2. 지우지 말고 옮긴다
+## 2. 끝난 이력은 옮기지 않고 지운다
 
-압축의 기본형은 **삭제가 아니라 이동**이다.
+끝난 작업의 서사·계획·회고·설계는 **그림자 트리를 만들지 않는다.** 열린 상태만
+살아 있는 원장(`docs/runbooks/owed-verification.md` · `retro-cadence-deferrals.md`)
+또는 GitHub Issues 에 남긴다.
 
-```
-본문  →  1줄 stub (핵심 + 잔여 + 아카이브 앵커)
-원문  →  docs/_archive/<주제>-<날짜>.md
-```
-
-아카이브 헤더에 넣을 것:
-
-- `<!-- guard-cue-quote: … -->` **또는** *"실행 대상이 아닙니다"* — **둘 중 하나만**
-  (둘 다 넣으면 인용 면제가 중복이라 그 축을 증명하는 테스트가 깨진다)
-- 무엇을 왜 접었는지 · 무엇이 **여기에만** 남았는지
-
-🔴 **`docs/_archive/**` 내부 참조는 고치지 않는다** — 시점 기록이라 재작성 금지
-(집행: `tests/unit/scripts/test_precommit_entry_interpreter.py` 의 `_PROTECTED`)
-([`docs.md`](../../.claude/rules/docs.md)). 그 대가로 아카이브 내부 링크가 깨진다. 수용하거나
-별도 결정으로 다룬다.
+지운 뒤에는 그 경로를 가리키던 가드·글롭·색인·헤더를 **같은 작업에서** 끊는다.
+빈 분모를 채점하는 글롭을 남기지 않는다.
 
 ---
 
-## 3. 이동은 전수 grep 후에
+## 3. 경로를 바꾸면 전수 grep 후에
 
 ```bash
 git ls-files | xargs grep -l "<옛 경로>" 2>/dev/null    # 전 추적 파일

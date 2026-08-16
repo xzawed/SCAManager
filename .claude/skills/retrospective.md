@@ -27,7 +27,7 @@ completeness critic + **cross-verify=finding 강제**(모든 finding 이 verdict
 2. 워크플로우 호출 — **`scriptPath` 절대경로 필수** (빌트인 아님 → `name` 해소 안 됨):
    `Workflow({ scriptPath: '<repo-abs>/.claude/workflows/retrospective.mjs', args: { scope, context, domains? } })`
 3. 반환 `{ scope, rounds, findings_total, verdict_coverage, confirmed[], unverified_findings[], roi }` 를
-   `docs/_archive/reports/YYYY-MM-DD-retrospective.md` 로 작성 (P0/P1/P2 + ROI + verdict_coverage 표).
+   `docs/reports/YYYY-MM-DD-retrospective.md` 로 작성 (P0/P1/P2 + ROI + verdict_coverage 표).
 4. ROI(P0/P1/P2 + fp_blocked + severity_adjusted) + verdict_coverage 보고.
    **fix 는 사용자 결정(정책 7 PR 단위 / 15 사전 사고) — 자동 수정 금지.**
 
