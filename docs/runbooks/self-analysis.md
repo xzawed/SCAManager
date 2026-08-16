@@ -28,7 +28,7 @@ bash .scamanager/install-hook.sh
 
 **허용 봇 (분석 진행)**: `github-actions[bot]`, `dependabot[bot]` (BOT_LOGIN_WHITELIST)
 
-> **🔴 PR #100 변경**: `is_whitelisted_bot()` 헬퍼가 화이트리스트 봇만 BotInteractionLimiter 적용. 사람 발신을 차단하려면 별도 GitHub Webhook 비활성화 또는 Layer 1 Kill-switch (`SCAMANAGER_SELF_ANALYSIS_DISABLED=1`) 사용 — Layer 3-b 만으로는 사람 트래픽 차단 불가능.
+> **🔴 화이트리스트 범위**: `is_whitelisted_bot()` 헬퍼가 화이트리스트 봇만 BotInteractionLimiter 적용. 사람 발신을 차단하려면 별도 GitHub Webhook 비활성화 또는 Layer 1 Kill-switch (`SCAMANAGER_SELF_ANALYSIS_DISABLED=1`) 사용 — Layer 3-b 만으로는 사람 트래픽 차단 불가능.
 
 ## Kill-Switch 즉시 차단
 

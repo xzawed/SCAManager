@@ -3,7 +3,7 @@
 > **본 디렉토리는 production 의존성 X** — 사용자 로컬에서 1회 실행하는 도구 모음.
 > Production code MUST NOT import from `src/scripts/`.
 
-## generate_illustrations.py — UI 일러스트 5장 생성 (사이클 93 Step 2)
+## generate_illustrations.py — UI 일러스트 5장 생성
 
 OpenAI DALL-E 3 API로 SCAManager UI 일러스트 5장 생성. 결과는 `src/static/illustrations/`에 commit하여 [base.html](../templates/base.html) 등에서 정적 자산으로 참조.
 

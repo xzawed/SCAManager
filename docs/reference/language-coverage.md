@@ -1,7 +1,7 @@
 # 언어 커버리지 레퍼런스
 
 > 각 파일이 어떤 분석을 받는지 한눈에 확인할 수 있는 단일 참조 문서.
-> 🔴 **도구 미설치의 결과는 3-way 다** (2026-08-01 `#1261` 이후 — 이전 "조용히 skip" 서술은 거짓):
+> 🔴 **도구 미설치의 결과는 3-way 다** (이전 "조용히 skip" 서술은 거짓):
 >
 > | 상황 | 결과 | auto-merge |
 > |---|---|---|
@@ -30,18 +30,18 @@
 
 ### Tier 1 — 상세 체크리스트 + 전용 도구
 
-| # | 언어 | 감지 확장자 | AI 가이드 | 정적분석 도구 | Phase D 후보 |
+| # | 언어 | 감지 확장자 | AI 가이드 | 정적분석 도구 | 미조달 후보 |
 |---|-----|----------|---------|------------|------------|
 | 1 | Python | `.py` `.pyi` | Full | pylint, flake8, bandit, semgrep | — (완전) |
 | 2 | JavaScript | `.js` `.mjs` `.cjs` `.jsx` | Full | eslint, semgrep | — (완전) |
 | 3 | TypeScript | `.ts` `.tsx` | Full | eslint, semgrep | — (완전) |
 | 4 | Java | `.java` | Full | semgrep | PMD 🔴 |
-| 5 | Go | `.go` | Full | semgrep, **golangci-lint** | — (Phase D.4 완료 2026-04-23) |
+| 5 | Go | `.go` | Full | semgrep, **golangci-lint** | — (조달됨) |
 | 6 | Rust | `.rs` | Full | semgrep (실험) | cargo clippy 🔴 |
-| 7 | C | `.c` `.h` | Full | semgrep, **cppcheck** | — (Phase D.1 완료) |
-| 8 | C++ | `.cpp` `.cc` `.cxx` `.hpp` `.hxx` | Full | semgrep, **cppcheck** | — (Phase D.1 완료) |
+| 7 | C | `.c` `.h` | Full | semgrep, **cppcheck** | — (조달됨) |
+| 8 | C++ | `.cpp` `.cc` `.cxx` `.hpp` `.hxx` | Full | semgrep, **cppcheck** | — (조달됨) |
 | 9 | C# | `.cs` | Full | semgrep | — |
-| 10 | Ruby | `.rb` `Rakefile` `Gemfile` | Full | semgrep, **RuboCop** | — (Phase D.3 완료 2026-04-23) |
+| 10 | Ruby | `.rb` `Rakefile` `Gemfile` | Full | semgrep, **RuboCop** | — (조달됨) |
 
 ### Tier 2 — 표준 체크리스트 + Semgrep (가능 시)
 
@@ -49,9 +49,9 @@
 |---|-----|----------|---------|------------|-----|
 | 11 | PHP | `.php` | Standard | semgrep | — |
 | 12 | Swift | `.swift` | Standard | semgrep (부분) | — |
-| 13 | Kotlin | `.kt` `.kts` | Standard | semgrep | detekt 🟠 Phase D |
+| 13 | Kotlin | `.kt` `.kts` | Standard | semgrep | detekt 후보 |
 | 14 | Scala | `.scala` `.sc` | Standard | semgrep | — |
-| 15 | Shell | `.sh` `.bash` `.zsh` / shebang | Standard | shellcheck, semgrep | Phase C 완료 |
+| 15 | Shell | `.sh` `.bash` `.zsh` / shebang | Standard | shellcheck, semgrep | — |
 | 16 | PowerShell | `.ps1` `.psm1` | Standard | — | 체크리스트만 |
 | 17 | SQL | `.sql` | Standard | semgrep (부분) | injection 주의 |
 | 18 | Dart | `.dart` | Standard | — | Flutter |
@@ -64,7 +64,7 @@
 | 25 | Groovy | `.groovy` `.gradle` | Standard | — | Gradle |
 | 26 | HTML | `.html` `.htm` | Standard | semgrep (XSS) | — |
 | 27 | CSS/SCSS | `.css` `.scss` `.sass` `.less` | Standard | — | — |
-| 28 | Solidity | `.sol` | Standard | semgrep, **slither** | — (Phase D.2 완료) |
+| 28 | Solidity | `.sol` | Standard | semgrep, **slither** | — (조달됨) |
 | 29 | Objective-C | `.m` `.mm` | Standard | — | — |
 | 30 | F# | `.fs` `.fsi` | Standard | — | .NET |
 
@@ -117,20 +117,20 @@
 4. Fallback: "unknown" → Generic 가이드 적용, 정적분석 skip
 ```
 
-감지 로직: [src/analyzer/pure/language.py](../../src/analyzer/language.py)
+감지 로직: [src/analyzer/pure/language.py](../../src/analyzer/pure/language.py)
 
 ---
 
-## Phase D 리스크 요약
+## 미조달 도구 리스크 요약
 
 | 리스크 | 도구 | 이미지 증가 |
 |-------|-----|----------|
-| 🟢 낮음 | ~~cppcheck (C/C++)~~ ✅ 완료, ~~slither (Solidity)~~ ✅ 완료 | +30~100MB |
-| 🟡 중간 | ~~golangci-lint (Go)~~ ✅ 완료 (2026-04-23), ~~RuboCop (Ruby)~~ ✅ 완료 (2026-04-23) | +80~200MB |
+| 🟢 낮음 | ~~cppcheck (C/C++)~~ ✅ 조달됨, ~~slither (Solidity)~~ ✅ 조달됨 | +30~100MB |
+| 🟡 중간 | ~~golangci-lint (Go)~~ ✅ 조달됨, ~~RuboCop (Ruby)~~ ✅ 조달됨 | +80~200MB |
 | 🟠 높음 | detekt (Kotlin), PHPStan (PHP) | +150~350MB |
 | 🔴 최상위 | PMD (Java) | +300~700MB, Docker 전환 필요 |
 
-> 🔴 **2026-08-01 정정**: `cargo clippy`(Rust)·`ktlint`(Kotlin)·`phpstan`(PHP) 은 **이미 등록됐다**
+> 🔴 **등록 ≠ 조달**: `cargo clippy`(Rust)·`ktlint`(Kotlin)·`phpstan`(PHP) 은 **이미 등록됐다**
 > (`src/analyzer/io/tools/`). 다만 clippy·phpstan 은 배포 이미지에 **조달되지 않아** 운영에서는
 > 실행되지 않고 `uncovered_language` 로 가시화된다 — 위 3-way 표 참조. Tier 표의 정본은
 > 레지스트리(`REGISTRY`)와 조달 계약이지 이 문서가 아니다.

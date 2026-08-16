@@ -1,7 +1,7 @@
 # 정합성 감사 Workflow 운영 가이드
 # Integrity Audit Workflow Runbook
 
-> 사이클 104/109 의 **수동 5+1 전수 감사**를 결정론적 `.claude/workflows/integrity-audit.mjs` Workflow 로
+> **수동 5+1 전수 감사**를 결정론적 `.claude/workflows/integrity-audit.mjs` Workflow 로
 > 코드화한 read-only 감사. P0/P1/P2 정합성 결함을 재현 가능하게 발견·검증·리포트한다.
 
 ## 목적
@@ -60,7 +60,7 @@
 |------|------|----------|
 | `args.dryRun=true` | ~0 (에이전트 0) | scope 해소·도메인 매핑 등 결정론 로직 |
 | `scope=area=gate` | 소 | 오케스트레이션 plumbing·loop·completeness·verify end-to-end |
-| `scope=full` 골든 | 대 | 사이클 109 수동 감사 재현율 (**사용자 사전 승인**) |
+| `scope=full` 골든 | 대 | 수동 전수 감사 재현율 (**사용자 사전 승인**) |
 
 ## 아키텍처 (B+C 결합)
 
@@ -71,7 +71,7 @@ scope 인식 팬아웃(C)으로 감싼 loop-until-dry 도메인 탐색(B) + 다�
 
 다중 에이전트 워크플로우(integrity-audit·retrospective·구조검토 등) 작성/실행 시 검증된 운영 제약:
 
-- **무거운 Opus 에이전트 동시 실행 ≤ 3 (웨이브 분할 의무)** — 무거운 리뷰/감사 에이전트 15개 동시 실행 시 서버 버스트 rate-limit("not your usage limit")로 전멸한 사고(2026-06-25). `chunk(items, 3)` + 웨이브별 `await parallel` 로 분할. verify 등 경량 단계는 무관.
-- **StructuredOutput placeholder 소실 위험** — 장시간(수 분)·고 tool-호출 에이전트가 schema 강제 최종 출력에서 placeholder(예: `"test summary"`)로 결과를 소실하는 사례(2026-06-29 구조검토 차원 5). 핵심 차원 결과가 placeholder 면 단일 Agent 재감사로 보완. finder/verify 는 `try { ... } catch { 재시도 }` 로 StructuredOutput flake 1회 재시도.
-- **completeness/gap 라운드 try/catch 격리 (C10)** — 마지막 best-effort 라운드의 일시 API 오류가 이미 confirmed 결함·Report 를 무효화하지 않도록 try/catch 로 격리. integrity-audit.mjs + retrospective.mjs 동일 패턴. 회귀 가드: `tests/unit/scripts/test_retrospective_resilience.py`.
-- **⛔ cross-vendor 교차 검증 (구 정책 18) — 2026-07-10 폐기·수행 불가** (Codex 구독 해지). 단일 vendor 다중에이전트 sweep 만으로는 P1 누락 가능하다는 근거는 유효: 2026-06-29 감사에서 **Codex 가 Claude 8-에이전트가 놓친 P1 2건**(crypto invalid-key 평문 fallback · STRICT_MIGRATION fail-open)을 발견했다. 현재 보완책 = **Claude 단독 2-layer**(5+1 관점 다양성 + `pipeline-reviewer`/opus whole-branch 적대 리뷰). 🔴 이 갭은 인지된 한계 — 대체 검증자 도입 시 위 근거를 참조.
+- **무거운 Opus 에이전트 동시 실행 ≤ 3 (웨이브 분할 의무)** — 무거운 리뷰/감사 에이전트 다수 동시 실행 시 서버 버스트 rate-limit("not your usage limit")로 전멸한 사고. `chunk(items, 3)` + 웨이브별 `await parallel` 로 분할. verify 등 경량 단계는 무관.
+- **StructuredOutput placeholder 소실 위험** — 장시간(수 분)·고 tool-호출 에이전트가 schema 강제 최종 출력에서 placeholder(예: `"test summary"`)로 결과를 소실하는 사례. 핵심 차원 결과가 placeholder 면 단일 Agent 재감사로 보완. finder/verify 는 `try { ... } catch { 재시도 }` 로 StructuredOutput flake 1회 재시도.
+- **completeness/gap 라운드 try/catch 격리** — 마지막 best-effort 라운드의 일시 API 오류가 이미 confirmed 결함·Report 를 무효화하지 않도록 try/catch 로 격리. integrity-audit.mjs + retrospective.mjs 동일 패턴. 회귀 가드: `tests/unit/scripts/test_retrospective_resilience.py`.
+- **⛔ cross-vendor 교차 검증 (구 정책 18) — 폐기·수행 불가** (Codex 구독 해지). 단일 vendor 다중에이전트 sweep 만으로는 P1 누락 가능하다는 근거는 유효: 과거 감사에서 **Codex 가 Claude 다중에이전트가 놓친 P1**(crypto invalid-key 평문 fallback · STRICT_MIGRATION 이 잘못된 키를 통과시키던 경로)을 발견했다. 현재 보완책 = **Claude 단독 2-layer**(5+1 관점 다양성 + `pipeline-reviewer`/opus whole-branch 적대 리뷰). 🔴 이 갭은 인지된 한계 — 대체 검증자 도입 시 위 근거를 참조.

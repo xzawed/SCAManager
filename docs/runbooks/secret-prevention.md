@@ -1,7 +1,7 @@
 # 시크릿 유출 방지 가이드 (3중 가드)
 # Secret Leak Prevention Guide (3-Layer Guard)
 
-> **작성 배경**: 2026-05-03 사이클 66 커밋 메시지 본문에 실제 Telegram Bot Token이 포함되어
+> **작성 배경**: 커밋 메시지 본문에 실제 Telegram Bot Token이 포함되어
 > GitHub 공개 커밋으로 노출된 사고(커밋 `7d0fa1fe`)에서 학습한 방지 체계.
 > 유출 경로: 커밋 **메시지 본문** → git log diff 스캔만으로는 탐지 불가.
 

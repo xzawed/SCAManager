@@ -30,7 +30,7 @@ STATE.md에 기록된 테스트 수, 커버리지, pylint 점수와 다른 값�
 동일 개념을 다른 이름으로 혼용
 예: `auto_approve_threshold` (구) vs `approve_threshold` (신) → `block`
 
-### ORM ↔ alembic 인덱스/제약 양방향 sync (Phase H PR-4A)
+### ORM ↔ alembic 인덱스/제약 양방향 sync
 ORM `__table_args__` 의 `Index(...)` / `UniqueConstraint(...)` / FK `ondelete=` 정의가 대응 alembic 마이그레이션 파일에 반영됐는지 검증. 한쪽에만 있으면 운영 영향 — ORM-only 는 단위 테스트(in-memory SQLite) 에서만 적용되고 운영 PG 미반영, alembic-only 는 신규 환경 부트스트랩 시 누락.
 예: `Analysis.__table_args__` 에 `Index("ix_analyses_repo_id_created_at", ...)` 있으나 `alembic/versions/0023_*.py` 에 `op.create_index(...)` 누락 → `block`
 예: `GateDecision.analysis_id` 에 `ondelete="CASCADE"` 있으나 alembic 0024 의 `op.create_foreign_key(..., ondelete="CASCADE")` 누락 → `block`
@@ -43,7 +43,7 @@ ORM `__table_args__` 의 `Index(...)` / `UniqueConstraint(...)` / FK `ondelete=`
 | `warn` | 잠재적 불일치가 있으나 의도적 변경일 가능성 있음. 확인 권장. |
 | `approve` | 기존 문서와 충돌 없음. 일관성 검증 통과. |
 
-### 🔴 "확인 불가" 는 차단 사유가 아니다 (R37 — 회고 2026-08-04)
+### 🔴 "확인 불가" 는 차단 사유가 아니다 (R37)
 
 대조에 필요한 근거가 **주어진 컨텍스트 안에 없으면**(원천이 잘렸거나 애초에 포함되지
 않았거나), 그것은 *불일치의 증거*가 아니라 *증거의 부재*다. 이때는 `block` 을 내되
@@ -59,7 +59,7 @@ ORM `__table_args__` 의 `Index(...)` / `UniqueConstraint(...)` / FK `ondelete=`
 ⚠️ 근거를 **보고** 내린 불일치 판정에는 이 플래그를 붙이지 마라. 붙이면 실제 결함이
 강등돼 게이트가 무의미해진다.
 
-### 🔴 이력 꼬리가 파생 4지점보다 새 숫자는 6-step ⑤ 의 정상 중간 상태다 (R80 — 2026-08-15)
+### 🔴 이력 꼬리가 파생 4지점보다 새 숫자는 6-step ⑤ 의 정상 중간 상태다 (R80)
 
 `docs/STATE.md` `## 테스트 수 추적 이력` 의 **맨 아래 불릿**이 테스트 수의 SSOT 다.
 이 절은 현재 불릿 하나다(과거 179개 항목은 git 이력).
@@ -74,7 +74,7 @@ ORM `__table_args__` 의 `Index(...)` / `UniqueConstraint(...)` / FK `ondelete=`
 
 **왜 중요한가**: CLAUDE.md 6-step ⑤ 는 꼬리를 먼저 고치고 `--fix` 로 파생 지점을
 맞추라고 강제한다. 그 중간 상태를 모순으로 읽으면 게이트가 **의무 절차를 막는다** —
-`#1357` 이 라이브 원장에서 그 차단을 기록했다.
+라이브 원장에서 그 차단이 기록된 적이 있다.
 
 🔴 **면제 범위는 꼬리→파생 방향만이다.** STATE 수치 일반을 무시하라는 면허가 아니다.
 다음이면 여전히 `block` 이다:
