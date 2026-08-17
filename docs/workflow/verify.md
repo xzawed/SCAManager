@@ -48,6 +48,11 @@
   dual-import · noqa 은닉 import · 미배선 dead code.
 - `repo-integrity` — stdlib 가드 전량(정본 = `pre_push_gate.py` `_INTEGRITY`).
 
+🔴 base 가 `main` 이 아닌 PR 은 CI 는 돌지만 **required check 가 적용되지 않는다** — 보호 대상이
+`main` 뿐이라 초록도 빨강도 머지를 막지 못한다(`repo-integrity` 가 배너로 알린다). 집행으로
+올릴 수 없다: 규칙을 전 브랜치로 넓히면 feature 브랜치 직접 push·삭제·force-push 가 막힌다.
+그 변경의 claim-review 는 base 가 `main` 으로 갈 때의 PR 이 통째로 짊어진다.
+
 ### 건수를 바꿀 때
 
 - e2e 증감 → 같은 PR 에서 `e2e/EXPECTED_COUNT` 갱신(감소도 필수).

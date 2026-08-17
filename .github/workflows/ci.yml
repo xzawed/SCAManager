@@ -195,6 +195,10 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # base **이름** — 판정에 쓰지 않고 고지에만 쓴다. base 가 main 이 아니면 이 PR 에는
+          # required check 가 적용되지 않는다(보호 대상은 main 뿐) → 저자에게 그 사실을 알린다.
+          # Advisory only: a non-main base means required checks do not gate that PR at all.
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
           # 저자 신원은 이벤트에서만 — 본문은 자기인증이라 못 믿는다.
           # 봇(Dependabot)은 흔적도 면제 마커도 쓸 수 없어 이 축이 없으면 영구 차단이다.
           # Author identity from the event only; bots can write neither a trace nor the marker.
