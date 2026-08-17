@@ -163,7 +163,7 @@ def main() -> int:
     # Separate axis: the pre-push gate can be absent even when pre-commit is healthy.
     if not pre_push_gate_installed(git_hooks_dir(_ROOT)):
         print(
-            "ℹ️ pre-push 게이트 훅이 없습니다 — push 전 13 가드가 **자동 실행되지 않습니다**.\n"
+            "ℹ️ pre-push 게이트 훅이 없습니다 — push 전 CI 가드가 **자동 실행되지 않습니다**.\n"
             "   No pre-push hook: the local CI-guard runner will not run automatically.\n"
             "   수동 / manual  : `py -3 scripts/pre_push_gate.py`\n"
             "   자동화 / automate: `.git/hooks/pre-push` 에 그 명령을 넣고 실행 권한 부여\n"
@@ -174,11 +174,18 @@ def main() -> int:
         print(f"✅ pre-commit 계층 활성 — 훅 타입 {', '.join(sorted(present))} 살아 있음")
         return 0
 
-    # 🔴 **부분 설치를 부분으로 보고한다.** `pre-commit install` 만 치면 `commit-msg` 타입이
-    #    빠지는데, 그러면 실제 토큰 유출 사고로 만들어진 `check-commit-msg-secrets` 만
-    #    조용히 죽고 나머지는 설치돼 겉보기에는 "완료" 다. 이전 판정은 그 상태를
+    # 🔴 **부분 설치를 부분으로 보고한다.** 예전에는 `pre-commit install` 만 치면 `commit-msg`
+    #    타입이 빠졌고, 그러면 실제 토큰 유출 사고로 만들어진 `check-commit-msg-secrets` 만
+    #    조용히 죽고 나머지는 설치돼 겉보기에는 "완료" 였다. 이전 판정은 그 상태를
     #    구별하지 못했다(pre-commit 타입만 봤다).
-    # Report partial installs as partial: `pre-commit install` alone silently omits commit-msg.
+    #
+    #    ⚠️ 2026-08-17 정정 — 위 문장이 현재형으로 적혀 있었으나 **지금은 그렇지 않다**:
+    #    `.pre-commit-config.yaml:22` 의 `default_install_hook_types: [pre-commit, commit-msg]`
+    #    가 맨 `install` 로 둘을 함께 설치한다(실측). 부분 설치가 여전히 가능한 경로는
+    #    **`--hook-type` 을 명시하는 경우**다 — 명시가 그 기본값을 덮어 한 타입만 남긴다.
+    #    그래서 이 부분 보고는 계속 필요하다. 바뀐 것은 원인이지 필요성이 아니다.
+    # Historical: plain `install` used to omit commit-msg. Since default_install_hook_types was
+    # added it installs both; partial installs now come from passing `--hook-type` explicitly.
     state = " · ".join(
         f"{t}={'✅' if t in present else '❌'}" for t in REQUIRED_HOOK_TYPES
     )

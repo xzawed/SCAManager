@@ -346,10 +346,11 @@ make css-build
 
 # 🔴 Local guard hooks — every hook in .pre-commit-config.yaml (secret scan, docs-number parity,
 #    architecture-tree sync, config-layer sync …) runs ONLY through pre-commit. Skip this and the
-#    guards are silently absent on the new machine; commits still succeed. Two hook types needed
-#    (commit-msg is a separate stage). Details: docs/runbooks/secret-prevention.md
+#    guards are silently absent on the new machine; commits still succeed. Plain `install` covers
+#    both hook types — do NOT pass `--hook-type`, it overrides the config default and drops the
+#    other type. Details: docs/runbooks/secret-prevention.md
 python -m pip install pre-commit
-python -m pre_commit install --hook-type pre-commit --hook-type commit-msg
+python -m pre_commit install
 
 # Python deps only (production image / no Node.js available)
 pip install -r requirements.txt      # runtime
@@ -434,8 +435,8 @@ make lint-strict        # pylint regression guard (fail if score < 9.90)
 make lint-js            # ESLint on src/templates/**/*.html inline scripts
 make css-build          # Build Tailwind v4 CSS (production minified)
 make css-dev            # Watch and rebuild Tailwind v4 CSS (dev mode)
-py -3 scripts/pre_push_gate.py --full   # push gate: 13 CI-enforced guards + pylint + bandit + unit tests
-make gate               # convenience only — pytest + pylint + bandit; runs none of the 13 guards
+py -3 scripts/pre_push_gate.py --full   # push gate: the CI-enforced guards + pylint + bandit + unit tests
+make gate               # convenience only — pytest + pylint + bandit; runs none of those guards
 make review             # CLI code review (HEAD~1)
 make run                # Development server (port 8000)
 make migrate            # Run DB migrations
@@ -680,7 +681,7 @@ Three things that trip up first-time contributors:
 | Gotcha | Why it matters |
 |--------|----------------|
 | `make css-build` after a fresh clone | The Tailwind bundle is a gitignored build artifact; skip it and `base.html` serves a 404 for its stylesheet |
-| `pre-commit install --hook-type pre-commit --hook-type commit-msg` | Every local guard (secret scan, docs-number parity, architecture-tree sync, config-layer sync) runs **only** through pre-commit. Skip it and commits still succeed — silently unguarded |
+| `pre-commit install` | Every local guard (secret scan, docs-number parity, architecture-tree sync, config-layer sync) runs **only** through pre-commit. Skip it and commits still succeed — silently unguarded. 🔴 Do not pass `--hook-type`: it overrides the config default and drops the other type |
 | Bilingual code comments | New comments are written in Korean followed by English on the next line. This is a convention, not an enforced hook. See [CONTRIBUTING.md § Code comments](CONTRIBUTING.md#code-comments-bilingual) |
 
 ---

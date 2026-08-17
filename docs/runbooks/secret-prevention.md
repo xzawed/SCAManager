@@ -58,13 +58,22 @@ Layer 1: pre-commit  →  Layer 2: CI Scan  →  Layer 3: Incident Response
 
 ```bash
 pip install pre-commit
-pre-commit install          # .git/hooks/pre-commit 등록
-pre-commit install --hook-type commit-msg   # 커밋 메시지도 스캔
+pre-commit install          # pre-commit + commit-msg 두 타입을 함께 등록한다
 ```
 
-검사 범위:
-- **코드 변경 (diff)** — 실제 시크릿 패턴 포함 여부
-- **커밋 메시지 본문** — 이번 사고 유형 차단
+🔴 **`--hook-type` 을 붙이지 말 것** (2026-08-17 정정 — 여기 `pre-commit install --hook-type
+commit-msg` 라는 둘째 줄이 있었다). `.pre-commit-config.yaml:22` 의
+`default_install_hook_types: [pre-commit, commit-msg]` 가 이미 둘을 설치하며,
+`--hook-type` 을 **명시하면 그 기본값을 덮는다**. 즉 그 줄만 따라 치면 `pre-commit` 타입이
+설치되지 않아 gitleaks 를 포함한 코드 시크릿 스캔이 통째로 빠진다.
+실측(빈 저장소 4종): 맨 `install` → 둘 다 · `--hook-type commit-msg` → **commit-msg 만** ·
+2종 명시 → 둘 다 · 설정 줄 제거 후 맨 `install` → **pre-commit 만**(그 줄이 하중을 진다는 증거).
+Do not pass `--hook-type`: it overrides `default_install_hook_types` and silently drops the other type.
+
+검사 범위 — **어느 훅이 무엇을 보는지 구별한다**(하나가 지워져도 알아채기 위해):
+- **코드 변경 (diff)** — `gitleaks`(`.pre-commit-config.yaml:30`) · `check-secrets-in-diff`(`:56`)
+- **커밋 메시지 본문** — `check-commit-msg-secrets`(`:38`, `stages: [commit-msg]`).
+  실제 토큰 유출 사고로 만들어진 훅이며, 커밋 메시지 축을 지키는 것은 gitleaks 가 아니라 이쪽이다.
 
 ### 1-B. 커밋 메시지 금지 패턴 체크리스트
 

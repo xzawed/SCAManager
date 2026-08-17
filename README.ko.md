@@ -405,10 +405,11 @@ make css-build
 
 # 🔴 로컬 가드 훅 — `.pre-commit-config.yaml` 의 훅 전체(시크릿 스캔 · docs 수치 정합 ·
 #    architecture 트리 싱크 · config 레이어 싱크 …)는 pre-commit 을 통해서만 실행된다. 이 단계를
-#    건너뛰면 새 PC 에서 가드가 조용히 사라진 상태로 커밋이 계속 성공한다. 훅 타입 2종 필요
-#    (commit-msg 는 별도 stage). 상세: docs/runbooks/secret-prevention.md
+#    건너뛰면 새 PC 에서 가드가 조용히 사라진 상태로 커밋이 계속 성공한다. 맨 `install` 이 훅
+#    타입 2종을 함께 설치한다 — `--hook-type` 을 붙이지 말 것(설정 기본값을 덮어 한 타입이
+#    빠진다). 상세: docs/runbooks/secret-prevention.md
 python -m pip install pre-commit
-python -m pre_commit install --hook-type pre-commit --hook-type commit-msg
+python -m pre_commit install
 
 # Python 의존성만 (프로덕션 이미지 / Node.js 없는 환경)
 pip install -r requirements.txt      # 런타임
@@ -492,8 +493,8 @@ make lint-strict        # pylint 회귀 가드 (score < 9.90 시 fail)
 make lint-js            # ESLint — src/templates/**/*.html 인라인 스크립트 검사
 make css-build          # Tailwind v4 CSS 빌드 (프로덕션 minified)
 make css-dev            # Tailwind v4 CSS 감시 빌드 (개발 watch 모드)
-py -3 scripts/pre_push_gate.py --full   # push 게이트: CI 강제 가드 13종 + pylint + bandit + 단위 테스트
-make gate               # 편의용 — pytest + pylint + bandit 뿐이고 13 가드는 안 돕니다
+py -3 scripts/pre_push_gate.py --full   # push 게이트: CI 강제 가드 전건 + pylint + bandit + 단위 테스트
+make gate               # 편의용 — pytest + pylint + bandit 뿐이고 그 가드는 하나도 안 돕니다
 make review             # CLI 코드리뷰 (HEAD~1 기준)
 make run                # 개발 서버 (port 8000)
 make migrate            # DB 마이그레이션 실행
@@ -740,7 +741,7 @@ Issue와 Pull Request 모두 환영합니다. **[CONTRIBUTING.ko.md](CONTRIBUTIN
 | 함정 | 왜 중요한가 |
 |------|------------|
 | fresh clone 후 `make css-build` | Tailwind 번들은 gitignore 된 빌드 산출물 — 건너뛰면 `base.html`이 참조하는 스타일시트가 404 |
-| `pre-commit install --hook-type pre-commit --hook-type commit-msg` | 로컬 가드(시크릿 스캔 · docs 수치 정합 · 아키텍처 트리 동기화 · config 레이어 동기화)는 **오직** pre-commit 을 통해서만 실행됩니다. 건너뛰어도 커밋은 성공하므로 **조용히 무방비** 상태가 됩니다 |
+| `pre-commit install` | 로컬 가드(시크릿 스캔 · docs 수치 정합 · 아키텍처 트리 동기화 · config 레이어 동기화)는 **오직** pre-commit 을 통해서만 실행됩니다. 건너뛰어도 커밋은 성공하므로 **조용히 무방비** 상태가 됩니다. 🔴 `--hook-type` 을 붙이지 마세요 — 설정 기본값을 덮어 한 타입이 빠집니다 |
 | 이중언어 코드 주석 | 새 주석은 한국어를 먼저 쓰고 바로 다음 줄에 영어를 씁니다. 규약이며 강제 훅은 아닙니다. [CONTRIBUTING.ko.md § 코드 주석](CONTRIBUTING.ko.md#코드-주석-이중-언어) 참조 |
 
 ---

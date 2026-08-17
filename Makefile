@@ -109,9 +109,16 @@ lint-js:
 # Phase completion gate — must actually be able to fail; the old version swallowed every linter.
 #
 # 🔴 **최종 강제면은 CI 의 `lint-src` job 이다** — 로컬 fail-closed 는 강제력이 아니라 마찰이고,
-# 여기서만 막으면 사람이 이 타깃을 안 쓰게 된다(Grok 적대 검토 2026-07-20). 이 타깃은
-# CI 와 **같은 기준**을 로컬에서 미리 보는 용도다.
-# The authoritative gate is CI's `lint-src` job; this mirrors it locally for early feedback.
+# 여기서만 막으면 사람이 이 타깃을 안 쓰게 된다(Grok 적대 검토 2026-07-20).
+#
+# 🔴 **이 타깃은 CI 와 같은 기준이 아니다** — 2026-08-17 정정. 여기까지 «CI 와 같은 기준을
+# 로컬에서 미리 보는 용도» 라고 적혀 있었으나 거짓이다: CI 는 하한을 README 배지에서 파생하고
+# (`ci.yml:278` → 실측 **9.985**) 이 타깃은 리터럴 **9.90** 을 쓴다. 즉 이쪽이 **더 느슨해서**
+# 여기서 초록인데 CI 가 red 일 수 있다 — `scripts/pre_push_gate.py:208-210` 이 경고하는 그 상태다.
+# 리터럴을 남기는 이유는 `make` 없는 머신이 있어(주 개발 PC 포함) 이 타깃이 정본이 될 수 없기
+# 때문이다. 정본 로컬 게이트는 `py -3 scripts/pre_push_gate.py --full`(하한을 배지에서 파생).
+# NOT the same bar as CI: CI derives the floor from the README badge (9.985); this literal 9.90 is
+# looser, so local green can hide CI red. The canonical local gate is pre_push_gate.py --full.
 gate:
 	python -m pytest tests/ -q
 	pylint --fail-under=9.90 src/

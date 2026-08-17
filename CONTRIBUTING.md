@@ -51,7 +51,7 @@ cp .env.example .env        # tests do not need real values in here
 make install                # pip + npm in one step
 make css-build              # REQUIRED — see below
 python -m pip install pre-commit
-python -m pre_commit install --hook-type pre-commit --hook-type commit-msg   # REQUIRED — both stages
+python -m pre_commit install   # REQUIRED — installs both stages (pre-commit + commit-msg)
 ```
 
 The last two steps are the ones people skip, and both fail quietly:
@@ -115,7 +115,9 @@ without depending on `make`. It prints, on every run, the axes it *cannot* see (
 SonarCloud, Codecov, TruffleHog, pip-audit, lint-js, the Postgres job, integration tests), so a green
 run is never mistaken for a green CI.
 
-`--full` additionally runs `pylint --fail-under=9.90 src/`, `bandit -r src/` and `pytest tests/unit`.
+`--full` additionally runs pylint, `bandit -r src/` and `pytest tests/unit`. 🔴 The pylint floor is
+**derived from the README badge**, exactly as CI does it (`pylint_floor()` in that file ↔
+`ci.yml`) — do not write the number here; a literal drifts the moment the badge moves.
 🔴 Note what neither form covers: **`tests/integration`**. If your change touches the pipeline,
 the analyzers, or anything that shells out, run `make test-slow` (or `py -3 -m pytest tests/integration`)
 as well — CI does.

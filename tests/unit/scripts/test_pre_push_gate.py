@@ -6,7 +6,10 @@
 
 1. 🔴 `make` 이 이 머신에 없다 — CLAUDE.md 가 처방하는 `make gate` 는 **실행 불가**다.
 2. 🔴 `make gate` 는 있었어도 부족하다 — 그 타깃은 pytest·pylint·bandit 뿐이라
-   CI 의 repo-integrity 7종 · PR-diff 한정 4종을 **하나도** 돌리지 않는다.
+   CI 의 repo-integrity 가드와 PR-diff 한정 가드를 **하나도** 돌리지 않는다.
+   (2026-08-17 정정 — 여기 «7종 · 4종» 이라 적혀 있었으나 실측은 13 · 4 였다.
+   개수는 `pre_push_gate` 의 `_INTEGRITY` · `_INTEGRITY_WITH_ARGS` · `_DIFF_SCOPED` 가 정본이고
+   손유지 숫자는 목록이 늘 때마다 조용히 거짓이 된다.)
 
 실제로 한 세션에서 `Block new dual-import` 에 **두 번** 걸렸고 두 번 다 로컬은 초록이었다.
 

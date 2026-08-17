@@ -51,7 +51,7 @@ cp .env.example .env        # 테스트만 돌릴 거라면 실제 값이 없어
 make install                # pip + npm 한 번에
 make css-build              # 🔴 필수 — 아래 설명 참조
 python -m pip install pre-commit
-python -m pre_commit install --hook-type pre-commit --hook-type commit-msg   # 🔴 필수 — 2종 모두
+python -m pre_commit install   # 🔴 필수 — pre-commit·commit-msg 2종을 함께 설치합니다
 ```
 
 마지막 두 단계가 사람들이 건너뛰는 지점이고, 둘 다 **조용히** 실패합니다:
@@ -113,7 +113,9 @@ py -3 scripts/pre_push_gate.py           # ← 가드만 빠르게 볼 때
 TruffleHog · pip-audit · lint-js · Postgres job · 통합 테스트)을 매 실행 인쇄하므로, 여기서
 초록이 나와도 CI 초록으로 오해하지 않습니다.
 
-`--full` 은 여기에 `pylint --fail-under=9.90 src/` · `bandit -r src/` · `pytest tests/unit` 를 더합니다.
+`--full` 은 여기에 pylint · `bandit -r src/` · `pytest tests/unit` 를 더합니다. 🔴 pylint 하한은
+**README 배지에서 파생**하며 CI 와 같은 규칙입니다(그 파일의 `pylint_floor()` ↔ `ci.yml`) —
+여기에 숫자를 적지 마세요. 리터럴은 배지가 움직이는 순간 낡습니다.
 🔴 **두 형태 모두 `tests/integration` 은 돌지 않습니다.** 파이프라인·분석기·subprocess 를 건드렸다면
 `py -3 -m pytest tests/integration` 도 돌리세요 — CI 는 돕니다.
 

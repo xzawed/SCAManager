@@ -313,7 +313,7 @@ curl -s -H "Authorization: token $GITHUB_PAT" \
 
 | 검사 영역 | SCAManager 자체 | GitHub Security 탭 |
 |----------|----------------|---------------------|
-| Python 스타일/오류 | CI `lint-src` (pylint `--fail-under=9.90` + bandit) | CodeQL python |
+| Python 스타일/오류 | CI `lint-src` (pylint + bandit — 하한은 README 배지 파생, `ci.yml:278`) | CodeQL python |
 | 보안 정적분석 | bandit | CodeQL 보안 룰 |
 | Secret leak | TruffleHog 등 CI job | secret-scanning |
 | Dependency CVE | pip-audit | Dependabot |
