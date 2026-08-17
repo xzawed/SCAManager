@@ -99,6 +99,13 @@ def test_all_binaries_present_never_marks_a_python_file_incomplete(path, no_subp
 
     이 단언이 없던 동안 `#1410` 이 모든 테스트 파일을 incomplete 로 만들었고, 테스트를
     건드리는 PR 전부의 auto-merge 가 막혔다.
+
+    ⚠️ **환경 의존 축이 섞여 있다** (Grok `01a0101a` 지적 — 정직 기준). `unavailable_tools`
+    는 `shutil.which` 실측이라, 이 단언은 (a) 정책이 `is_enabled` 로 되돌아가도 red 지만
+    (b) **바이너리가 없는 머신에서도** red 다. 후자는 로직 결함이 아니다.
+    CI 는 `requirements.txt` 로 셋을 설치하므로 그 자리에서는 (a) 만 남는다
+    (`test_static_incomplete.py` 가 이미 같은 함정을 적어 둔 축).
+    Mixed axis: this also reddens on a machine missing the binaries, which is not a logic defect.
     """
     result = analyze_file(path, _CODE)
     assert result.incomplete is False, (
@@ -131,8 +138,16 @@ def test_provisioned_absence_promotes_except_where_the_tool_does_not_apply(
         "shutil.which", lambda n, *a, **k: None if n == tool else real(n, *a, **k)
     )
 
-    # 🔴 기대값을 손으로 적지 않는다 — 「bandit 은 테스트 파일에 적용되지 않는다」는
-    #    프로덕션 규칙에서 파생한다. 규칙이 바뀌면 이 테스트가 함께 움직인다.
+    # 🔴 **이 한 줄은 의도적으로 손으로 적은 것이다 — `supports()` 를 호출하지 마라.**
+    #    (Grok claim-review `01a0101a` 정정: 초판 주석은 "프로덕션에서 파생한다" 고 적었는데
+    #     거짓이었고, 더 중요하게는 **파생하면 안 된다**.)
+    #    `applies = _BanditAnalyzer().supports(ctx)` 로 바꾸면 이 테스트는 프로덕션 규칙과
+    #    **함께 움직인다** — `supports` 에서 테스트 파일 제외를 지우는 순간 기대값도 같이
+    #    뒤집혀 뮤테이션이 **조용히 통과**한다. 그게 `#1411` 을 놓친 형태다.
+    #    여기서 손유지는 결함이 아니라 **독립 오라클**이다. 규칙을 바꾸려면 이 줄도
+    #    사람이 함께 고쳐야 하고, 그 강제가 이 테스트의 값어치다.
+    # Deliberately hand-written: deriving it from supports() would make the expectation move
+    # with the bug, which is exactly how #1411 slipped through. This is an independent oracle.
     applies = not (tool == "bandit" and _is_test(path))
     result = analyze_file(path, _CODE)
 
