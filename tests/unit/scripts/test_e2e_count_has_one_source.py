@@ -57,8 +57,12 @@ def test_baseline_is_sane():
     [
         ("docs/STATE.md", r"E2E \*\*(\d+)\*\* \(`#1291`", "STATE 종합 수치"),
         ("docs/STATE.md", r"\| E2E 테스트 \| \*\*(\d+)개\*\* \|", "STATE 테스트 유형 표"),
+        # 🔴 두 README 는 **같은 배지 마크업**을 쓴다 — 그래서 패턴도 같다. 예전에는
+        #    `_in_CI` / `_CI` 로 갈려 있었고, 그 표기 차이가 곧 두 문서가 따로 늙는다는 신호였다.
+        #    한쪽만 고치면 여기서 「패턴 미매치」로 깨진다(미매치는 통과가 아니다).
+        # Both READMEs carry identical badge markup, so the patterns are identical too.
         ("README.md", r"E2E-(\d+)_in_CI", "README.md 배지"),
-        ("README.ko.md", r"E2E-(\d+)_CI", "README.ko.md 배지"),
+        ("README.ko.md", r"E2E-(\d+)_in_CI", "README.ko.md 배지"),
     ],
 )
 def test_every_doc_copy_matches_the_baseline(doc: str, pattern: str, what: str):
