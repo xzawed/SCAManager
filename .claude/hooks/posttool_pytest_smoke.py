@@ -36,7 +36,11 @@ def _norm(path):
 #   🔴 `alembic/` 은 이번 사이클 최다 결함 영역(#1102 fileConfig 가 앱 로깅을 파괴)이고
 #      `scripts/` 는 최다 churn(가드 스크립트 다수)인데 둘 다 훅이 **아예 발동하지 않았다**.
 #      결함이 가장 많은 곳에 조기탐지가 0이었다.
-_WATCHED_ROOTS = ("src", "alembic", "scripts")
+#   🔴 `.claude/hooks` 추가 (#1441) — **훅 자신이 감시 밖이었다.** 훅은 모든 편집에 개입하는
+#      표면이라 여기서 깨지면 세션 전체가 영향을 받는데, 정작 그 파일만 조기탐지가 0이었다.
+#      바로 위 문단이 alembic·scripts 를 넣은 것과 같은 논리다 — 훅만 빠져 있었다.
+#      Hooks themselves were unwatched, though a broken hook affects every edit in the session.
+_WATCHED_ROOTS = ("src", "alembic", "scripts", ".claude/hooks")
 
 
 def is_watched_file(path):
@@ -112,6 +116,13 @@ def derive_test_target(path, repo=None):
     if root == "scripts":
         exact = f"tests/unit/scripts/test_{stem}.py"
         return exact if (repo / exact).is_file() else "tests/unit/scripts"
+
+    if root == ".claude/hooks":
+        # 🔴 대응 테스트가 없어도 **디렉토리로는** 겨냥한다 — `None` 은 「안 쟀음」이 된다.
+        #    실측(2026-08-18): `block_credential_dump.py` 는 대응 파일이 없다.
+        # Fall back to the directory: returning None would make that hook permanently unmeasured.
+        exact = f"tests/unit/hooks/test_{stem}.py"
+        return exact if (repo / exact).is_file() else "tests/unit/hooks"
 
     # root == "src"
     if len(parts) >= 2:

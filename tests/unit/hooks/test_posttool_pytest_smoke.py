@@ -17,7 +17,11 @@ from pathlib import Path
 # Import the hook file directly (outside src/) — same pattern as test_doc_review_gate.py.
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / ".claude" / "hooks"))
 
-from posttool_pytest_smoke import derive_test_target, is_src_file  # noqa: E402
+import pytest  # noqa: E402
+
+from posttool_pytest_smoke import (  # noqa: E402
+    derive_test_target, is_src_file, is_watched_file,
+)
 
 
 # ── 순수 함수: is_src_file ───────────────────────────────────────────────
@@ -75,3 +79,56 @@ def test_derive_test_target_none_for_non_src():
     """src 아닌 파일 → None."""
     assert derive_test_target("tests/unit/gate/test_engine.py") is None
     assert derive_test_target("README.md") is None
+
+
+# ── `.claude/hooks` 감시 (#1441) ──────────────────────────────────────────────
+#
+# 🔴 훅 자신이 감시 밖이었다. `_WATCHED_ROOTS` 는 `src`·`alembic`·`scripts` 였고,
+#    훅을 고쳐도 스모크가 **아예 안 돌았다**. 훅은 모든 편집에 개입하는 표면이라
+#    여기서 깨지면 세션 전체가 영향을 받는데, 정작 그 파일만 조기탐지가 0이었다.
+#    (같은 파일 :36-38 이 「결함이 가장 많은 곳에 조기탐지가 0이었다」며 alembic·scripts 를
+#     넣은 것과 같은 논리다 — 훅만 빠져 있었다.)
+
+
+class TestClaudeHooksAreWatched:
+    """훅 편집이 대응 테스트를 실제로 겨냥하는가."""
+
+    @pytest.mark.parametrize("path", [
+        ".claude/hooks/doc_review_gate.py",
+        "f:/repo/.claude/hooks/doc_review_gate.py",          # 절대경로
+        "f:\repo\.claude\hooks\doc_review_gate.py",      # Windows 구분자
+    ])
+    def test_hook_file_is_watched(self, path):
+        assert is_watched_file(path) is True, f"훅이 감시 밖이다: {path}"
+
+    def test_hook_maps_to_its_exact_test_file(self):
+        """정확 대응 파일이 있으면 그것을 겨냥한다 — 디렉토리로 강등하지 않는다."""
+        assert derive_test_target(".claude/hooks/doc_review_gate.py") == \
+            "tests/unit/hooks/test_doc_review_gate.py"
+
+    def test_hook_without_a_test_falls_back_to_the_directory(self):
+        """🔴 대응 테스트가 없는 훅도 **디렉토리**로는 겨냥한다 — None 이면 안 쟀음이 된다.
+
+        실측: `block_credential_dump.py` 는 대응 테스트 파일이 없다(2026-08-18).
+        None 을 돌려주면 그 훅 편집은 조기탐지가 영구 0 이다.
+        """
+        assert derive_test_target(".claude/hooks/block_credential_dump.py") == \
+            "tests/unit/hooks"
+
+    def test_non_python_hook_asset_is_not_watched(self):
+        """오탐 축 — `.json`·`.md` 는 이 스모크의 대상이 아니다."""
+        assert is_watched_file(".claude/settings.json") is False
+        assert is_watched_file(".claude/skills/retrospective/SKILL.md") is False
+
+    def test_every_hook_file_resolves_to_a_target(self):
+        """🔴 공허화 차단 — 리포의 실제 훅 전부가 겨냥 대상을 갖는다.
+
+        합성 경로만 단언하면 훅이 늘었을 때 이 축이 조용히 뒤처진다.
+        """
+        root = Path(__file__).resolve().parents[3]
+        hooks = sorted((root / ".claude" / "hooks").glob("*.py"))
+        assert hooks, ".claude/hooks 에 훅이 0개 — 이 테스트가 공허하다"
+        for hook in hooks:
+            rel = f".claude/hooks/{hook.name}"
+            assert is_watched_file(rel) is True, f"{rel} 감시 밖"
+            assert derive_test_target(rel) is not None, f"{rel} 겨냥 대상 없음"
