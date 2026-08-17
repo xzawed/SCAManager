@@ -1,5 +1,5 @@
-"""check_edit_allowed.py (모바일 환경 보호 훅) 행동 계약 테스트 — backlog R31 TDD 선행 (RED).
-Behaviour-contract tests for check_edit_allowed.py (mobile-env protection hook) — backlog R31, TDD-first (RED).
+"""check_edit_allowed.py (모바일 환경 보호 훅) 행동 계약 테스트 — backlog R31.
+Behaviour-contract tests for check_edit_allowed.py (mobile-env protection hook) — backlog R31.
 
 ## 왜 이 파일이 존재하나 (backlog R31)
 ## Why this file exists (backlog R31)
@@ -10,17 +10,21 @@ Behaviour-contract tests for check_edit_allowed.py (mobile-env protection hook) 
 - Silent fail-open on stdin parse failure: if the hook input contract drifts, protection
   silently disappears (the observer-lie class).
 
-## 구현될 계약 (리팩터 전 = 신규 테스트 대부분 RED 가 정상)
-## The contract to be implemented (pre-refactor, most new tests are expected RED)
+## 집행하는 계약 (2026-08-17 확인 — 전건 구현됨)
+## The contract this file enforces (verified 2026-08-17 — all implemented)
 - `protected_reason(file_path) -> str | None` — 보호 사유 (백슬래시 경로 정규화 포함).
 - `protected_reason(file_path) -> str | None` — reason string, with backslash normalization.
-- `can_run_tests() -> bool` — 후보 인터프리터 전수 probe (기존 동작 보존).
-- `can_run_tests() -> bool` — probe every candidate interpreter (behaviour preserved).
+- `can_run_tests() -> bool` — 후보 인터프리터 전수 probe.
+- `can_run_tests() -> bool` — probe every candidate interpreter.
 - `decide(payload) -> dict | None` — 훅 출력 JSON(dict) 또는 None(무출력 통과).
 - `decide(payload) -> dict | None` — hook output JSON (dict) or None (silent pass).
 - `main() -> int` — stdin → decide → print(json.dumps(..., ensure_ascii=True)) → 0.
-  `if __name__ == "__main__"` 가드로 이동 — 이것이 import 가능해지는 조건.
-  Moves execution under the `__main__` guard — the precondition for importability.
+
+⚠️ 이 절은 2026-08-17 까지 「구현될 계약 … 신규 테스트 대부분 **RED 가 정상**」이라 적혀 있었다.
+그 시점 실측은 4 심볼 전건 존재 · 이 파일 23 테스트 **전건 GREEN** 이었다 —
+산문이 집행자보다 낡아, 다음 사람이 red 를 **정상으로 오독**할 수 있는 상태였다.
+This block claimed the tests were expected-RED long after they all passed; kept as a
+tense correction rather than a deletion so the drift itself stays visible.
 
 ## 로드 전략
 ## Load strategy
@@ -28,10 +32,10 @@ Behaviour-contract tests for check_edit_allowed.py (mobile-env protection hook) 
   sys.path 패턴은 모듈 레벨 실행 스크립트에는 collection 자체를 죽이므로 쓸 수 없다).
 - Load directly via spec_from_file_location (not a package — the sys.path pattern used by
   test_doc_review_gate.py would kill collection for a module-level-executing script).
-- 리팩터 전에는 모듈 레벨 코드가 stdin 을 읽고 `sys.exit(0)` 하므로, stdin 을
+- **리팩터 이전**(2026-08 초)에는 모듈 레벨 코드가 stdin 을 읽고 `sys.exit(0)` 했으므로, stdin 을
   `io.StringIO("{}")` 로 방어하고 SystemExit 를 삼켜 **부분 로드**를 돌려준다 —
   함수 부재(AttributeError)로 각 테스트가 개별 RED 가 된다 (collection 전멸 방지).
-- Pre-refactor the module-level code reads stdin and exits; we feed "{}" and swallow
+- Pre-refactor (early 2026-08) the module-level code read stdin and exited; we feed "{}" and swallow
   SystemExit so each test turns RED individually via missing attributes.
 
 ## 단언 규율 (guards.md)

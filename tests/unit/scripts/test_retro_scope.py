@@ -19,8 +19,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
 
 import retro_scope  # noqa: E402
@@ -159,11 +157,27 @@ def test_script_runs_and_includes_recent_prs():
         [sys.executable, "scripts/retro_scope.py", "--json"],
         cwd=root, capture_output=True, text=True, encoding="utf-8", check=False,
     )
-    if r.returncode != 0:
-        pytest.skip(f"git 사용 불가 환경 — skip ({r.stdout[:80]})")
+    # 🔴 exit 1 은 고장이 아니라 **fail-closed 응답**이다 — 경계 커밋(직전 회고)을 못 찾으면
+    #    사유를 담은 JSON 을 stdout 에 싣고 1 로 끝난다. 형제 파일
+    #    `test_retro_scope_is_machine_derived.py:102-110` 이 이미 그 계약을 쓴다.
+    # 🔴 2026-08-17 정정: 이전 판은 `returncode != 0` 이면 «git 사용 불가 환경» 이라며
+    #    skip 했다. 실측 사유는 `{"ok": false, "reason": "정식 회고 리포트 없음"}` 이었고
+    #    (`docs/reports/` 가 비어 있다 — #1372), git 은 멀쩡했다. **거짓 사유로 조용히 skip**
+    #    하는 동안 아래 단언 4개가 통째로 미관측이었다.
+    # The old version skipped citing "git unavailable" while the real reason was a missing
+    # retro report; four assertions went unobserved behind a false skip reason.
+    assert r.returncode in (0, 1), (
+        f"예상 밖 종료(exit {r.returncode}) — git 실행 자체가 실패했을 수 있다: {r.stderr[-300:]}"
+    )
     import json
 
     data = json.loads(r.stdout)
+    if data.get("ok") is not True:
+        # 회고 리포트가 없는 것은 정당한 상태다. 그러나 **사유는 반드시 있어야** 한다 —
+        # 사유 없는 실패는 이 스크립트가 왜 못 세는지 아무도 모르게 만든다.
+        # A missing retro report is legitimate, but the refusal must carry a reason.
+        assert data.get("reason"), f"ok=false 인데 사유가 없다: {data}"
+        return
     assert data["ok"] is True
     # git 파싱 건강성 = boundary(직전 회고 커밋)·head 가 실제 해결됐고 pr_count 가 prs 와 일치하는가.
     # git-parsing health = boundary/head actually resolved and pr_count consistent with prs.

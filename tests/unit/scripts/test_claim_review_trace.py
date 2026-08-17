@@ -443,7 +443,7 @@ def test_seal_after_fenced_comment_marker_is_still_detected(monkeypatch):
     """🔴 F1 (fail-open) — 코드펜스 안의 미종결 `<!--` 는 이후 본문을 숨기지 못한다.
 
     GitHub 는 펜스 안 `<!--` 를 주석으로 렌더하지 않는다 — 펜스 내용은 리터럴 텍스트로
-    **가시**다. 그런데 현행 `_UNTERMINATED_COMMENT` 정규식은 마크다운 비인지라 그 지점부터
+    **가시**다. 그런데 **초판** 스트리퍼는 마크다운 비인지 정규식이라 그 지점부터
     끝까지 지워, 펜스 **뒤**의 가시 seal 주장이 탐지를 벗어나 exit 0 이 된다(재현 적발 F1).
     "가드가 보는 텍스트 = 리뷰어가 보는 텍스트" 계약이 펜스 한 줄로 무너지는 방향 —
     가시 seal 주장을 숨기는 쪽이라 fail-open 이다.
