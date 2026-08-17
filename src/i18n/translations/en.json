@@ -859,6 +859,7 @@
       "callback_head_moved": "⚠️ Head moved after analysis — the approval review was <b>not posted</b>.",
       "callback_failed": "⚠️ An error occurred while processing the approval — the review was <b>not posted</b>.",
       "callback_posted_then_failed": "⚠️ The GitHub review was posted, but an error occurred afterwards during auto-merge. The review is live — please do not press again; check the merge state on GitHub.",
+      "callback_already_decided": "ℹ️ This PR has <b>already been decided</b> — pressing again has no effect. If you do not see the review on GitHub, please approve it manually.",
       "tg_review_title": "🔍 *PR Review Request*",
       "tg_repo_line": "Repo: `{repo}` — PR #{pr}",
       "tg_score_line": "Score: *{score}* ({grade})",

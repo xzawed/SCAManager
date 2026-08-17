@@ -151,6 +151,17 @@ async def handle_gate_callback(  # pylint: disable=too-many-locals
                     "handle_gate_callback: analysis %d already decided — skipping replay",
                     analysis_id,
                 )
+                # 🔴 부수효과는 skip 하되 **무음이면 안 된다** (#1431). 이 분기에 도달하는 가장 흔한
+                #    경로는 동시 더블클릭이 아니라 «게시 실패 안내를 받고 다시 누른 사람» 이다.
+                #    그때 아무 응답이 없으면 사용자는 대기하고, DB 에는 승인이 남아 있고,
+                #    GitHub 에는 리뷰가 없다 — 세 상태가 서로 다른 말을 한다.
+                # 🔴 문구는 «미게시» 라고 단정하지 않는다. 리뷰가 이미 붙어 있을 수도 있어서
+                #    (첫 클릭이 게시까지 성공한 뒤 auto-merge 에서 터진 경우) 단정하면 거짓이 된다.
+                #    이것이 `#1414` 가 고친 것과 같은 클래스의 실수다.
+                # Skip side effects but do not stay silent: the usual caller here is a human who was
+                # told the review was not posted and pressed again. The wording must not assert
+                # "not posted" — the review may in fact be live.
+                await _notify_replay_blocked(db, chat_id, analysis_id)
                 return
             github_token = (
                 repo.owner.plaintext_token
@@ -272,6 +283,44 @@ async def handle_gate_callback(  # pylint: disable=too-many-locals
                     chat_id,
                     {"text": text, "parse_mode": "HTML"},
                 )
+
+
+async def _notify_replay_blocked(db, chat_id, analysis_id):
+    """리플레이(이미 결정됨)로 부수효과를 skip 했음을 누른 사람에게 알린다 (#1431).
+
+    Tell the clicker their press was a replay, so no side effect ran.
+
+    🔴 **자기 예외를 스스로 삼킨다.** 호출부는 `handle_gate_callback` 의 `try:` **본문 안**이라,
+    여기서 새는 예외는 형제 `except (…, KeyError, SQLAlchemyError)` 로 떨어진다. 그 분기는
+    `review_posted=False` 이므로 «리뷰가 게시되지 않았습니다» 를 보내는데 — 이건 리플레이다.
+    첫 클릭이 게시까지 성공한 뒤 auto-merge 에서 터졌을 수 있어 그 문구는 **거짓이 될 수 있다**.
+    `#1414` 가 고친 것과 정확히 같은 클래스이고, 이 함수가 없으면 그 결함이 재생산된다
+    (실측 재현: 로케일 키 누락 → `KeyError` → «미게시» 발신).
+    Swallows its own errors: the caller sits inside a try whose sibling except would otherwise
+    emit a false "not posted" notice for what is actually a replay.
+
+    🔴 문구도 «미게시» 라고 단정하지 않는다 — 같은 이유로 리뷰가 살아 있을 수 있다.
+    """
+    if chat_id is None:
+        return
+    try:
+        await _post_message_guarded(
+            settings.telegram_bot_token,
+            chat_id,
+            {
+                "text": get_text(
+                    "notifier.gate.callback_already_decided",
+                    resolve_notification_language(db, config=None),
+                ),
+                "parse_mode": "HTML",
+            },
+        )
+    except (httpx.HTTPError, KeyError, ValueError, RuntimeError, SQLAlchemyError):
+        # 🔴 예외 본문은 로깅하지 않는다 — 형제 발신 경로가 URL 에 봇 토큰을 싣는다.
+        # Type name only: sibling send paths embed the bot token in the URL.
+        logger.warning(
+            "handle_gate_callback: replay notice not delivered for analysis %s", analysis_id,
+        )
 
 
 async def _post_message_guarded(bot_token, chat_id, payload):
