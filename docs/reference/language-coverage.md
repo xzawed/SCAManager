@@ -134,7 +134,7 @@
 
 | 구분 | 도구 | 비고 |
 |-----|-----|-----|
-| 🟡 등록·미조달 9종 | clippy(Rust) · phpstan(PHP) · swiftlint(Swift) · dotnet_format(C#) · psscriptanalyzer(PowerShell) · dart_analyze(Dart) · stylelint(CSS/SCSS) · htmlhint(HTML) · buf_lint(Protobuf) | 조달 계약 **밖**이라 부재해도 차단하지 않는다 |
+| 🟡 등록·미조달 9종 | clippy(Rust) · phpstan(PHP) · swiftlint(Swift) · dotnet_format(C#) · psscriptanalyzer(PowerShell) · dart_analyze(Dart) · stylelint(CSS/SCSS) · htmlhint(HTML) · buf_lint(Protobuf) | 조달 계약 **밖**이라 부재해도 차단하지 않는다. 조달 판단이 남은 것의 이미지 증가 추정: phpstan · detekt(Kotlin) 각 **+150~350MB** |
 | 🔴 미등록 후보 | detekt(Kotlin) +150~350MB · PMD(Java) +300~700MB | Kotlin 은 **ktlint 조달됨** — detekt 우선순위 하향 · PMD 는 Docker 전환 필요 |
 
 > 🔴 **등록 ≠ 조달, 그리고 미조달 ≠ 가시화.**

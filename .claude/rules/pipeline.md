@@ -104,7 +104,9 @@ paths:
 ## Analyzer 등록
 
 - **신규 도구 3단계**: `tools/` 하위 클래스 + `register()` → `static.py` import → `SUPPORTED_LANGUAGES` 선언.
-  **+ `docs/architecture.md` 도구 목록 동기화 의무**(전체 목록 단일 출처).
+  **+ `docs/architecture.md` 도구 목록 동기화 의무**(전체 목록 단일 출처) · 언어별 Tier 표 =
+  [`docs/reference/language-coverage.md`](../../docs/reference/language-coverage.md) — 여기가 빠져
+  조달된 6종(tsc·ktlint·sqlfluff·hadolint·tflint·yamllint)이 자기 언어 행에 없던 적이 있다.
 - **`review_guides`**: `get_guide(lang, "full"|"compact")` — N≤3 전체 full, N≤6 Tier1 full+나머지 compact, N>10 상위 5 compact.
 - **AI 리뷰 JSON 파싱**: 설명 텍스트가 앞에 붙을 수 있어 `re.search` 로 코드블록 내 JSON 만 추출.
 - **다언어 감지** = 확장자·shebang·파일명 49종. 비-코드 파일만 변경 시 테스트 점수 면제.

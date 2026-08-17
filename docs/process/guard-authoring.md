@@ -95,3 +95,42 @@ assert surface_invokes(ci_yml, "scripts/check_x.py")   # substring 금지
 - **test-as-guard 의 fail-open 은 자동 탐지되지 않는다** — `X in text` 가 정당한 presence
   검사에도 흔해 확대 시 오탐>진탐(가드 자살). 이 표면은 이 흐름과 claim-review 로만 방어된다.
 - **의미적 fail-open** 은 정적으로 판정 불가다. 천장을 인정하는 편이 성급한 봉인보다 정직하다.
+
+---
+
+## 프롬프트 캐시 — 훅이 LLM 을 부를 때 (`doc_review_gate`)
+
+`cache_control` 마커만으로는 아무것도 보장하지 않는다. 캐시는 프리픽스 매칭이라 **가변 부분이 캐시 구간보다 앞이면** 매 요청이 새 항목을 쓰고 읽지 못한다.
+
+렌더 순서 = `tools → system → messages`. `cache_control` 은 그 블록까지 프리픽스 전체.
+
+현재 `doc_review_gate` 배치 (`.claude/hooks/doc_review_gate.py` — breakpoint 2개):
+
+| 블록 | 내용 | breakpoint |
+|---|---|---|
+| `system[0]` | CLAUDE.md + AGENTS.md (안정) | 있음 |
+| `system[1]` | docs/STATE.md (가변) | 있음 |
+| `system[2]` | 에이전트별 지시 | 없음 |
+
+- breakpoint 를 `system[0]` 에 거는 이유: 3 에이전트가 같은 안정 프리픽스를 공유한다. `system[1]` 에만 걸면 에이전트마다 항목이 갈린다.
+- 최소 캐시 길이는 모델마다 다르고 단조롭지 않다. `claude-haiku-4-5` 는 4096 토큰. 미달이면 오류 없이 `cache_creation_input_tokens=0`.
+- 🔴 **병렬 호출은 첫 편집에서 전부 miss** — 항목은 첫 응답이 스트리밍을 시작해야 읽을 수 있다. 이득은 2회차부터 (TTL 5분).
+- 반증: 마커가 아니라 `usage.cache_read_input_tokens` 가 2회차에 0이 아닌지. 구조 회귀 = `tests/unit/hooks/test_doc_review_gate.py::TestPromptCache`.
+- `usage` 에는 항목 식별자가 없다. "한 항목을 3번 읽음"과 "같은 크기 항목 3개"는 외부에서 구별되지 않는다. 공유는 설계(동일 프리픽스+모델)이지 관측된 사실이 아니다.
+- opt-out: `DISABLE_PROMPT_CACHE=1` (`docs/reference/env-vars.md`).
+
+**관측 지표를 mock 으로 주입하면 배선을 증명하지 않는다.** `_usage` 를 테스트가 넣으면 생산 경로의 부착을 지워도 초록이다. `test_usage_is_attached_by_the_call_site_not_only_by_mocks` 가 생산 경로를 본다.
+
+**고장 감지는 의도한 설정에서 켜지면 안 된다.** `DISABLE_PROMPT_CACHE=1` 이면 회계 0/0 이 정상이다.
+
+**가변 원천은 안정 프리픽스에서 분리한다.** STATE 는 trailing sync 마다 바뀌고 CLAUDE.md·AGENTS.md 는 거의 안 바뀐다. 한 블록에 섞으면 STATE 한 번이 안정 원천까지 무효화한다. STATE 를 컨텍스트에서 **빼지 않는다** — 심의자가 수치를 못 본다. breakpoint 는 요청당 최대 4개, 여기서는 2개.
+
+훅은 `PreToolUse` 라 **편집 적용 전** 디스크를 읽는다. STATE 를 고치는 편집 자체는 옛 내용으로 hit 하고, 새 내용은 **다음** 편집에 반영된다.
+
+회귀: `TestPromptCache::test_stable_block_is_unchanged_when_only_the_volatile_source_changes` · `test_split_context_keeps_state_out_of_the_stable_part` (경로 문자열이 아니라 섹션 헤더 `=== docs/STATE.md ` — CLAUDE.md 본문이 그 경로를 산문으로 언급함).
+
+**소스 일괄 치환**: `Path.write_text` 는 인코딩 전에 truncate 한다. lone surrogate 가 섞이면 파일이 0바이트가 된다. (a) 편집 전 `git add` 로 기준선 (b) 가능하면 Edit 툴 (c) 스크립트면 `s.encode("utf-8")` 를 먼저.
+
+> 이 절은 2026-08-17 `.claude/rules/guards.md` 에서 이관됐다(#1417). 그 파일은
+> `scripts/**` 편집마다 **전문이 자동 로드**되는데, 이 내용은 훅 하나의 설계론이라
+> 매 세션 실릴 이유가 없다. 규칙·가드명·금지는 한 줄도 옮기지 않고 그대로 두었다.

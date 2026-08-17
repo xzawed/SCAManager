@@ -202,7 +202,7 @@ HOLDS. 그리고 뮤테이션 대상은 seal 이 **보호한다고 주장하는 
 | `src/templates/**` · `src/static/**` · `src/ui/**` | `ui.md` |
 | `src/i18n/**` · `src/middleware/locale.py` · `src/notifier/_language.py` · `src/analyzer/pure/review_guides/**` | `i18n.md` |
 | `tests/**` · `e2e/**` · `**/conftest.py` · `pytest.ini` | `testing.md` |
-| `scripts/**` · `.claude/hooks/**` · `.claude/workflows/**` · `tests/unit/{scripts,hooks}/**` | `guards.md` + 이 문서 §3-불변식 |
+| `scripts/**` · `.claude/hooks/**` · `.claude/workflows/**` · `tests/unit/{scripts,hooks}/**` · `.pre-commit-config.yaml` | `guards.md` + 이 문서 §3-불변식 |
 | `docs/**` · `README.md` · `README.ko.md` · `CLAUDE.md` · `AGENTS.md` | `docs.md` |
 | `railway.toml` · `nixpacks.toml` · `requirements.txt` · `requirements-dev.txt` · `.env.example` · `.python-version` · `alembic.ini` · `sonar-project.properties` | `deploy.md` |
 

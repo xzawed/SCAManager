@@ -6,6 +6,7 @@ paths:
   - ".claude/workflows/**"
   - "tests/unit/scripts/**"
   - "tests/unit/hooks/**"
+  - ".pre-commit-config.yaml"
 ---
 
 # 가드·훅·워크플로 저술 규칙
@@ -57,36 +58,14 @@ paths:
 
 ## 훅이 LLM 을 부르면 캐시는 순서 문제다
 
-`cache_control` 마커만으로는 아무것도 보장하지 않는다. 캐시는 프리픽스 매칭이라 **가변 부분이 캐시 구간보다 앞이면** 매 요청이 새 항목을 쓰고 읽지 못한다.
+`cache_control` 마커만으로는 아무것도 보장하지 않는다 — 캐시는 프리픽스 매칭이라 **가변 부분이
+캐시 구간보다 앞이면** 매 요청이 새 항목을 쓰고 읽지 못한다. 가변 원천(STATE)을 안정 프리픽스
+(CLAUDE.md·AGENTS.md)에서 **분리**한다.
 
-렌더 순서 = `tools → system → messages`. `cache_control` 은 그 블록까지 프리픽스 전체.
-
-현재 `doc_review_gate` 배치 (`.claude/hooks/doc_review_gate.py` — breakpoint 2개):
-
-| 블록 | 내용 | breakpoint |
-|---|---|---|
-| `system[0]` | CLAUDE.md + AGENTS.md (안정) | 있음 |
-| `system[1]` | docs/STATE.md (가변) | 있음 |
-| `system[2]` | 에이전트별 지시 | 없음 |
-
-- breakpoint 를 `system[0]` 에 거는 이유: 3 에이전트가 같은 안정 프리픽스를 공유한다. `system[1]` 에만 걸면 에이전트마다 항목이 갈린다.
-- 최소 캐시 길이는 모델마다 다르고 단조롭지 않다. `claude-haiku-4-5` 는 4096 토큰. 미달이면 오류 없이 `cache_creation_input_tokens=0`.
-- 🔴 **병렬 호출은 첫 편집에서 전부 miss** — 항목은 첫 응답이 스트리밍을 시작해야 읽을 수 있다. 이득은 2회차부터 (TTL 5분).
-- 반증: 마커가 아니라 `usage.cache_read_input_tokens` 가 2회차에 0이 아닌지. 구조 회귀 = `tests/unit/hooks/test_doc_review_gate.py::TestPromptCache`.
-- `usage` 에는 항목 식별자가 없다. "한 항목을 3번 읽음"과 "같은 크기 항목 3개"는 외부에서 구별되지 않는다. 공유는 설계(동일 프리픽스+모델)이지 관측된 사실이 아니다.
-- opt-out: `DISABLE_PROMPT_CACHE=1` (`docs/reference/env-vars.md`).
-
-**관측 지표를 mock 으로 주입하면 배선을 증명하지 않는다.** `_usage` 를 테스트가 넣으면 생산 경로의 부착을 지워도 초록이다. `test_usage_is_attached_by_the_call_site_not_only_by_mocks` 가 생산 경로를 본다.
-
-**고장 감지는 의도한 설정에서 켜지면 안 된다.** `DISABLE_PROMPT_CACHE=1` 이면 회계 0/0 이 정상이다.
-
-**가변 원천은 안정 프리픽스에서 분리한다.** STATE 는 trailing sync 마다 바뀌고 CLAUDE.md·AGENTS.md 는 거의 안 바뀐다. 한 블록에 섞으면 STATE 한 번이 안정 원천까지 무효화한다. STATE 를 컨텍스트에서 **빼지 않는다** — 심의자가 수치를 못 본다. breakpoint 는 요청당 최대 4개, 여기서는 2개.
-
-훅은 `PreToolUse` 라 **편집 적용 전** 디스크를 읽는다. STATE 를 고치는 편집 자체는 옛 내용으로 hit 하고, 새 내용은 **다음** 편집에 반영된다.
-
-회귀: `TestPromptCache::test_stable_block_is_unchanged_when_only_the_volatile_source_changes` · `test_split_context_keeps_state_out_of_the_stable_part` (경로 문자열이 아니라 섹션 헤더 `=== docs/STATE.md ` — CLAUDE.md 본문이 그 경로를 산문으로 언급함).
-
-**소스 일괄 치환**: `Path.write_text` 는 인코딩 전에 truncate 한다. lone surrogate 가 섞이면 파일이 0바이트가 된다. (a) 편집 전 `git add` 로 기준선 (b) 가능하면 Edit 툴 (c) 스크립트면 `s.encode("utf-8")` 를 먼저.
+설계 전문(블록 배치표 · breakpoint 근거 · 반증 방법 · 관측 함정)은
+[`docs/process/guard-authoring.md`](../../docs/process/guard-authoring.md) §프롬프트 캐시 로 이관했다
+(2026-08-17, #1417) — `doc_review_gate` **한 훅**의 설계론이라 가드 저술 일반 규칙이 아니다.
+회귀 가드는 그대로다: `tests/unit/hooks/test_doc_review_gate.py::TestPromptCache`.
 
 ## lint-js 범위는 baseline 원장과 대조
 
@@ -117,6 +96,20 @@ CI 가 강제하는 repo-integrity 가드(`_INTEGRITY` + `_INTEGRITY_WITH_ARGS`)
 - 러너가 못 보는 축(CodeQL·Sonar·Codecov·TruffleHog·pip-audit·lint-js·PG job·통합테스트)을 **매 실행 인쇄**한다. "여기 초록 = CI 초록" 으로 읽히면 러너 자신이 거짓 관측이다.
 - advisory (`check_test_count_sync --advisory-drift`) 는 exit 0 + 경고이므로 출력을 항상 보여 준다.
 - 🔴 **`.pre-commit-config.yaml` 에 `stages: [pre-push]` 는 쓰지 않는다** — `pre-commit install --hook-type pre-push` 가 따로 필요하다. 미설치 머신에서는 한 번도 안 돈다. 대신 로컬 `.git/hooks/pre-push`(미추적) + `scripts/check_precommit_installed.py`(SessionStart, 관측만). 집행면은 CI.
+
+## `.pre-commit-config.yaml` — 가드 본문이 YAML 안에 사는 자리
+
+이 파일이 `paths:` 에 있는 이유: 시크릿 훅 3종(`check-commit-msg-secrets` · `check-env-not-staged` ·
+`check-secrets-in-diff`)은 `scripts/` 의 파이썬이 아니라 **이 YAML 안의 inline `pygrep` 정규식**이다.
+즉 훅 한 줄을 지우거나 정규식을 느슨하게 하는 편집에 다른 가드 규칙이 하나도 안 걸린다.
+
+- **`check-commit-msg-secrets`(`:38`) 는 실제 토큰 유출 사고로 만들어졌다** — 지우거나 완화하지 않는다.
+  사고 기록·복구 절차 = [`docs/runbooks/secret-prevention.md`](../../docs/runbooks/secret-prevention.md).
+- **`default_install_hook_types: [pre-commit, commit-msg]`(`:22`) 는 하중을 진다.** 그 줄을 지우면
+  맨 `pre-commit install` 이 `pre-commit` 타입만 설치해 commit-msg 훅이 조용히 죽는다(2026-08-17 실측).
+  같은 이유로 **문서에 `--hook-type` 을 처방하지 않는다** — 명시가 그 기본값을 덮는다.
+- 훅을 추가·제거하면 `scripts/check_precommit_installed.py` 의 `REQUIRED_HOOK_TYPES` 와
+  안내 문구가 같이 맞는지 본다 (`tests/unit/scripts/test_check_precommit_installed.py`).
 
 ## required status check 는 (SHA, 이름)
 

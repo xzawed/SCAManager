@@ -206,51 +206,6 @@ alembic history --verbose
 
 ## 마이그레이션 파일 확인 (`alembic/versions/`)
 
-| 파일명 | 내용 |
-|--------|------|
-| `3b8216565fed_create_repositories_and_analyses_tables.py` | 초기 테이블 생성 |
-| `0002_phase3_add_repo_config_gate_decision.py` | RepoConfig, GateDecision 테이블 |
-| `0003_drop_analysis_rules.py` | analysis_rules 컬럼 제거 |
-| `0004_add_auto_merge.py` | auto_merge 필드 추가 |
-| `0005_add_users_and_user_id.py` | User 모델, user_id FK |
-| `0006_phase8b_github_oauth.py` | GitHub OAuth 전환 |
-| `0007_add_notification_channels.py` | 알림 채널 설정 필드 |
-| `0008_add_commit_message.py` | commit_message 컬럼 |
-| `0009_add_hook_token.py` | hook_token 컬럼 |
-| `0010_pr_gate_three_options.py` | Gate 3-option 확장 |
-| `0011_add_commit_comment_and_create_issue.py` | commit comment, issue 생성 옵션 |
-| `0012_add_railway_fields.py` | Railway 배포 관련 필드 |
-| `0013_add_analysis_feedbacks.py` | AnalysisFeedback 테이블 |
-| `0014_add_merge_attempts.py` | MergeAttempt 테이블 |
-| `0015_add_auto_merge_issue_on_failure.py` | 실패 시 issue 자동 생성 옵션 |
-| `0016_add_unique_constraint_analyses_repo_sha.py` | analyses 유니크 제약 |
-| `0017_add_user_telegram_id.py` | telegram_id 컬럼 |
-| `0018_add_analysis_author.py` | author_login 컬럼 |
-| `0019_add_repo_config_leaderboard_opt_in.py` | leaderboard_opt_in 컬럼 |
-| `0020_add_merge_retry_queue.py` | MergeRetryQueue 테이블 |
-| `0021_add_analyses_created_at_index.py` | created_at 인덱스 |
-| `0022_add_merge_attempt_lifecycle.py` | MergeAttempt lifecycle 필드 |
-| `0023_add_composite_indexes.py` | 복합 인덱스 추가 |
-| `0024_gate_decisions_cascade.py` | GateDecision FK ondelete CASCADE |
-| `0025_drop_repo_config_leaderboard_opt_in.py` | leaderboard_opt_in 제거 |
-| `0026_supabase_rls_policies.py` | Supabase RLS 정책 (PG 전용) |
-| `0027_add_security_alert_process_log.py` | 보안 알림 처리 로그 |
-| `0028_add_insight_narrative_cache.py` | Insight narrative 캐시 |
-| `0029_rls_5_missing_tables.py` | RLS 누락 테이블 5개 추가 |
-| `0030_add_i18n_columns.py` | 다국어 지원 컬럼 |
-| `0031_repo_insights_cache.py` | Repo insights 캐시 |
-| `0032_add_review_model_and_tokens.py` | Review 모델 + 토큰 컬럼 |
-| `0033_insight_error_tracking.py` | InsightNarrativeCache 에러 추적 컬럼 3종 (last_error_at/error_count/last_error_type) |
-| `0034_gate_decisions_unique_analysis_id.py` | gate_decisions UNIQUE(analysis_id) — 결정 중복 INSERT 방지 |
-| `0035_issue_registrations.py` | IssueRegistration 테이블 (AI 분석 결과 GitHub Issue 등록) |
-| `0036_repo_config_disabled_tools.py` | repo_config disabled_tools 컬럼 (정적분석 도구 선택적 비활성) |
-| `0037_issue_registrations_rls.py` | issue_registrations RLS 정책 (PG 전용, repo_id→repositories.user_id 1-hop) |
-| `0038_analyses_repo_id_cascade.py` | analyses.repo_id FK ON DELETE CASCADE (PG 전용 round-trip CI) |
-| `0039_repositories_user_id_fk.py` | repositories.user_id FK (SET NULL + 고아 정리) |
-| `0040_rename_users_github_id_index.py` | users github_id 인덱스명 rename |
-| `0041_rls_force.py` | FORCE ROW LEVEL SECURITY 일괄 적용 (PG 전용, downgrade NO FORCE) |
-| `0042_*` ~ `0045_analysis_attempts.py` | 이후 마이그레이션 — 🔴 **정본은 `ls alembic/versions/`** 다 |
-
 ```bash
 # 현재 head revision
 py -3 -m alembic heads

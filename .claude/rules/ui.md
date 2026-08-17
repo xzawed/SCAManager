@@ -89,6 +89,7 @@ paths:
   가드: `tests/unit/ui/test_settings_save_feedback.py`
 - **KPI 카드 신설 시 시각 우선순위 = 사용자 가치 기준 결정 의무**(메인 36px = retry-aware 최종 성공률).
 - **신규 정적 자원은 `src/static/vendor/` 하위**(외부 CDN 차단 환경 호환).
+  추가·업그레이드 절차 · 500KB 한도 · 인벤토리 표 = [`docs/runbooks/static-assets.md`](../../docs/runbooks/static-assets.md).
 - **`user_id = NULL` 리포 재등록은 GitHub 멤버십 검증 후 이전** — 권한 없으면 403(IDOR-인접 차단).
 - **overview 등급 = `calculate_grade(avg_score)`**(최신 grade 아님) · `trend_data|length > 1` 일 때만 차트.
 - **`leaderboard_opt_in` 폐기**(alembic 0025) · **`/insights*` → 301 `/dashboard`**(쿼리 보존).

@@ -54,6 +54,11 @@ APP_BASE_URL=https://your-app.railway.app
 
 > `APP_BASE_URL` 미설정 시 OAuth redirect_uri와 Webhook URL이 `http://`로 등록되어 실패합니다. Railway 배포 시 반드시 설정하세요.
 
+> 위 4개는 **OAuth 연동에 필요한 것만**이다. 서비스 기동에 함께 필요한 알림·DB 변수
+> (`TELEGRAM_BOT_TOKEN` · `TELEGRAM_CHAT_ID` · `DATABASE_URL` · 선택 `DATABASE_URL_FALLBACK`)를
+> 포함한 전체 목록·제약은 [`docs/reference/env-vars.md`](../reference/env-vars.md) 가 정본이다
+> (여기 값을 복제하면 두 곳이 갈라진다).
+
 ### 2-2. 리포지토리 추가
 
 1. `https://your-app.railway.app/login` 접속 → **GitHub으로 로그인**
@@ -340,41 +345,3 @@ curl -H "Authorization: Bearer TOKEN" "https://your-domain/api/hook/verify?repo=
 ### AI 리뷰 결과가 없고 점수가 낮음
 
 `ANTHROPIC_API_KEY`가 설정되지 않으면 AI 항목(커밋 메시지·방향성·테스트)이 기본값으로 처리됩니다. AI 리뷰를 원하면 Anthropic Console에서 API 키를 발급하여 설정하세요.
-
----
-
-## 빠른 설정 체크리스트
-
-### 방법 A (권장)
-
-```
-□ 1. GitHub OAuth App 생성 → Client ID / Secret 발급
-□ 2. 서버 환경변수 설정
-     - GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, SESSION_SECRET
-     - APP_BASE_URL=https://your-domain  ← 리버스 프록시 필수
-     - TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
-     - DATABASE_URL
-     - (선택) DATABASE_URL_FALLBACK=...supabase.co...  ← DB Failover
-□ 3. 웹 UI에서 GitHub 로그인
-□ 4. 리포지토리 추가 → Webhook 자동 생성 확인
-□ 5. 테스트 Push → Telegram 알림 + 대시보드 확인
-□ 6. GET /health → {"status":"ok"} 확인 (active_db 등 내부 상태는 의도적 미노출 — 보안)
-□ 7. (선택) 로컬 클론에서 bash .scamanager/install-hook.sh 실행
-□ 8. (선택) 설정 탭에서 PR 리뷰 댓글 · Gate 모드 · Auto Merge 설정
-□ 9. (기존 리포) Webhook 재등록 → check_suite 이벤트 구독 확인 (Phase 12 check_suite 섹션 참조)
-```
-
-### 방법 B (레거시)
-
-```
-□ 1. Webhook Secret 생성
-□ 2. GitHub 리포 Settings → Webhooks 등록
-     - Payload URL: https://your-domain/webhooks/github
-     - Content type: application/json / Events: Pushes + Pull requests
-□ 3. GitHub PAT 발급 (repo scope)
-□ 4. 서버 환경변수 설정
-     - GITHUB_WEBHOOK_SECRET, GITHUB_TOKEN
-     - TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
-     - DATABASE_URL
-□ 5. 테스트 Push → Telegram 알림 확인
-```

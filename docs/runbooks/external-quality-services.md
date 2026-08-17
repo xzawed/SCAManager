@@ -137,6 +137,11 @@ SonarCloud 가 "워크플로 파일을 추가하세요" 라며 코드 블록을 
 > "방법 C — 더미 변경 + push" 가 병기돼 있었다. 그 두 절차는 정책 7 이 **명시적으로 금지한
 > 명령**을 런북이 지시한 것이다(`CLAUDE.md:126` 「**금지**: `git push origin main`」 ·
 > `.claude/policies/active.md:100`). 재트리거는 위 Re-run 하나로 충분하다.
+>
+> Actions UI 에 접근할 수 없다면(모바일 등) 정책 7 흐름을 그대로 쓴다 —
+> `git checkout -b chore/ci-retrigger` → `git commit --allow-empty -m "ci: retrigger"` →
+> `git push -u origin chore/ci-retrigger` → `gh pr create`. **금지된 것은 빈 커밋이 아니라
+> `main` 직접 push 다.**
 
 ---
 

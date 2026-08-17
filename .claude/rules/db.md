@@ -92,6 +92,8 @@ paths:
 
 - **`batch_alter_table` 금지** — SQLite 전용 패턴이라 PG 에서 lifespan 마이그레이션 실패 → Railway 헬스체크 실패.
   PG 는 `op.create_unique_constraint(...)` 직접 사용. **예외**: 이미 운영에 적용된 이력 마이그레이션(`0005`·`0006`).
+- **운영에 적용된 마이그레이션 파일은 수정하지 않는다(append-only)** — 되돌릴 일이 있으면 새 revision 으로 쓴다.
+  롤백·복원·Supabase↔온프레미스 전환 절차 = [`docs/runbooks/db-migration.md`](../../docs/runbooks/db-migration.md).
 - **dialect 분기는 `src/shared/alembic_dialect.py` 의 `is_postgresql(bind_or_conn)`** (duck typing, bind/context 양 호환).
 - **ORM 컬럼 추가 시 마이그레이션 필수 동반.**
   *왜*: 단위 테스트는 in-memory SQLite 에 ORM 정의로 테이블을 만들어서 **마이그레이션이 없어도 통과**한다 → 운영 500.

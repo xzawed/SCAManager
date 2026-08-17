@@ -4,6 +4,13 @@
 > (tutorial / how-to / reference / explanation) 으로 분류한 지도다. 폴더명은 안정성(참조·훅 의존)을
 > 위해 유지하고, 유형은 본 인덱스가 논리적으로 부여한다.
 
+> **독자는 사람이다 — 이것은 설계이지 결함이 아니다.** 이 파일은 어떤 자동 로드 경로에도 없다
+> (SessionStart 훅 · `doc_review_gate` 컨텍스트 · `.claude/rules` 의 `paths:` 매칭 전부 밖).
+> 68개 문서 중 유일하다. 대상은 **GitHub 에서 `docs/` 디렉토리를 열어 본 사람**이고,
+> 그 자리에서 렌더되는 것이 이 파일의 용도 전부다.
+> 에이전트(Claude)의 진입점은 여기가 아니라 [`CLAUDE.md`](../CLAUDE.md) §탐색이다 — 그쪽은 매 세션 로드된다.
+> Human-facing index for the GitHub directory view; agents enter through CLAUDE.md instead.
+
 ## 🧭 빠른 진입
 
 | 목적 | 시작 문서 |
@@ -49,7 +56,7 @@
 | [runbooks/secret-prevention.md](runbooks/secret-prevention.md) | 시크릿 유출 방지 |
 | [runbooks/branch-protection.md](runbooks/branch-protection.md) | main 브랜치 보호 — required check 정본 목록 + 승격/롤백 절차 + 관측의 한계 |
 | [runbooks/self-analysis.md](runbooks/self-analysis.md) | 자기 분석 루프 방지 |
-| [runbooks/static-assets.md](runbooks/static-assets.md) | 정적 자산(Tailwind 빌드) 관리 |
+| [runbooks/static-assets.md](runbooks/static-assets.md) | vendored JS/CSS (`src/static/vendor/`) 운영 — 추가·업그레이드·회귀 가드 |
 | [runbooks/integrity-audit.md](runbooks/integrity-audit.md) | 정합성 감사 워크플로우 운영 (`/integrity-audit`) |
 | [runbooks/retrospective.md](runbooks/retrospective.md) | 5+1 회고 워크플로우 운영 (`/retrospective`) |
 | [runbooks/merge-verifier.md](runbooks/merge-verifier.md) | 2nd-LLM 머지 검증자 활성화 (운영 안전) |
@@ -69,6 +76,7 @@
 | 문서 | 내용 |
 |------|------|
 | [architecture.md](architecture.md) | `src/` 트리 + 핵심 데이터 흐름 (Webhook → pipeline → notify → gate) — 구조 단일 출처 |
+| [project-story.md](project-story.md) | 왜 만들었나 · 운영하면서 부딪힌 것들 (2026-08-17 README.ko.md 에서 이관) — **당시 기록이며 현재 계약이 아니다** |
 
 ## 🎓 Tutorial — "처음부터 배우기" (학습)
 
