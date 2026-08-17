@@ -1,6 +1,5 @@
 # Security Policy
 
-🇰🇷 [한국어 문서](SECURITY.ko.md)
 
 SCAManager reads your source, holds a GitHub OAuth token per repository, and can merge pull requests.
 

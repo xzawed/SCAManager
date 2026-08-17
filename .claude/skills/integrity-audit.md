@@ -66,4 +66,4 @@ description: 전체 정합성 감사 Workflow 실행 — read-only P0/P1/P2 리�
   (Workflow 런타임은 git/파일시스템 접근 불가).
 - **스킬 미인식 시 인라인 대체**: `/integrity-audit` 가 스킬 목록에 안 뜨면 위 2단계 `Workflow({scriptPath, args})` 를 직접 호출하고 3~4단계를 수동 수행.
 
-상세 운영 가이드: [docs/runbooks/integrity-audit.md](../../docs/runbooks/integrity-audit.md)
+워크플로 본체: `.claude/workflows/integrity-audit.mjs`
