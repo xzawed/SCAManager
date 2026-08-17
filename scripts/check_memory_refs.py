@@ -193,8 +193,16 @@ def print_report(
         for slug in sorted(missing):
             refs = ", ".join(referenced[slug])
             print(f"  {slug}  ← {refs}")
+    elif not referenced:
+        # 🔴 분자가 0 이면 `missing` 은 필연적으로 공집합이다 — 그 위의 ✅ 는 «통과» 가 아니라
+        #    «안 쟀음» 이다. 2026-08-17 문서 개편이 슬러그를 인용하던 문서를 전부 지워
+        #    실제로 이 상태가 됐고, 그 EXIT 0 이 「기능 손실 0」의 근거로 인용됐다.
+        #    advisory 스크립트라 exit 는 0 으로 두되 **판정을 인쇄에서 분리**한다.
+        # A zero numerator makes `missing` empty by construction: that is "not measured", not "pass".
+        print("\n⚠️  이 축은 **아무것도 검증하지 않았다** — 스캔 범위에서 슬러그 인용 0건.")
+        print("    초록이 아니라 '안 쟀음' 이다. 참조를 되살리거나 이 축을 폐기할 것.")
     else:
-        print("\n✅ 모든 참조 슬러그에 실제 파일 존재")
+        print(f"\n✅ 참조 슬러그 {len(referenced)}개 전건에 실제 파일 존재")
 
     if stale:
         ok = False

@@ -50,3 +50,14 @@ py -3 -m pytest tests/unit/migrations tests/unit/test_migration_completeness.py 
 - 배포 — `railway.toml:21` `preDeployCommand`
 - 기동 — `src/main.py:225` lifespan 이 30초 타임아웃으로 실행. 실패해도 기본은 기동, `STRICT_MIGRATION=true` 면 기동 거부.
 - 대상 URL — `MIGRATION_DATABASE_URL` 우선, 없으면 `DATABASE_URL` (`src/config.py:308`).
+
+## 롤백
+
+```bash
+py -3 -m alembic downgrade -1          # 한 단계
+py -3 -m alembic downgrade <revision>  # 특정 revision
+```
+
+`alembic/versions/` 의 기존 파일은 수정하지 않는다 — 되돌릴 일은 **새 revision 으로 전진**한다.
+운영에서 pre-deploy 의 `alembic upgrade head` 가 실패하면 Railway 에서 **이전 배포를 재배포**해
+서비스를 되돌린 뒤 downgrade 를 판단한다(실패한 배포는 트래픽을 받지 않는다).

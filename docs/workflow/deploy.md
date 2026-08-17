@@ -32,3 +32,10 @@ replica 는 `[deploy.multiRegionConfig.us-east4-eqdc4a] numReplicas`(`railway.to
 ## 의존성
 
 `requirements.txt` 는 직접 의존성 전부 `==` 정확 핀(`fastapi==0.141.1` :5 · `starlette==1.6.0` :22). analyzer 바이너리를 추가하면 `tests/unit/scripts/test_analyzer_provenance.py` `_PROVENANCE` 에 (바이너리, 조달모드, 사유) 를 등재해야 CI 가 통과한다.
+
+## 배포 실패 시
+
+1. Railway 빌드 로그를 직접 본다 — push 성공은 빌드 성공이 아니다.
+2. 실패 구간 앞뒤 30줄로 원인을 특정한다. 로그 없이 추측 수정하지 않는다.
+3. 서비스를 먼저 되돌린다 — Railway 에서 **이전 배포 재배포**. 그다음 원인을 고친다.
+4. 마이그레이션 단계 실패면 [db.md](db.md) §롤백.

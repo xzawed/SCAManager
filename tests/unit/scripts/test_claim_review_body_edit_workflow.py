@@ -94,14 +94,43 @@ def test_thin_workflow_shares_the_required_check_name():
 
 
 def test_thin_workflow_runs_the_same_guard_set():
-    """🔴 step 이 부족하면 **같은 이름의 check 가 더 적은 것을 검증하고 초록**이 된다."""
+    """🔴 step 이 부족하면 **같은 이름의 check 가 더 적은 것을 검증하고 초록**이 된다.
+
+    🔴 **양방향으로 본다.** 초판은 `ci_guards - thin_guards` 한 방향뿐이었고, 그 사각으로
+    가드를 삭제한 PR 이 `ci.yml` 만 고치고 얇은 워크플로에 죽은 `run:` 2건을 남겼다 —
+    그 상태에서 PR 본문을 편집하면 required check 가 **없는 스크립트를 실행해** 머지가 막힌다.
+    Both directions: a deleted guard left dead `run:` lines here and broke body-edit reruns.
+    """
     ci_guards = ci_guard_scripts(_text(_CI))
     thin_guards = set(_GUARD_RUN.findall(_text(_THIN)))
-    missing = ci_guards - thin_guards
-    assert not missing, (
-        f"ci.yml 은 돌리는데 얇은 워크플로가 빠뜨린 가드: {sorted(missing)}\n"
+    assert not ci_guards - thin_guards, (
+        f"ci.yml 은 돌리는데 얇은 워크플로가 빠뜨린 가드: {sorted(ci_guards - thin_guards)}\n"
         "→ 같은 check 이름을 쓰므로 의미가 달라지면 안 된다."
     )
+    assert not thin_guards - ci_guards, (
+        f"얇은 워크플로에만 있는 가드: {sorted(thin_guards - ci_guards)}\n"
+        "→ ci.yml 에서 지운 가드가 여기 남았다. 두 파일을 같은 커밋에서 고칠 것."
+    )
+
+
+def test_every_guard_the_workflows_invoke_exists_on_disk():
+    """🔴 워크플로가 부르는 스크립트가 디스크에 있어야 한다.
+
+    문자열 패리티만 보면 **양쪽에서 같이 죽은** 가드를 잡지 못한다 — 두 파일이 일치하는데
+    둘 다 없는 파일을 부르는 상태가 성립한다. 실재를 따로 잰다.
+    A name-parity check alone passes when both workflows invoke the same missing script.
+    """
+    root = _CI.parents[2]
+    for label, path in (("ci.yml", _CI), ("thin", _THIN)):
+        found = sorted(set(_GUARD_RUN.findall(_text(path))))
+        assert found, f"{label} 에서 가드 호출을 하나도 못 찾았다 — 패턴 확인(공허)"
+        for script in found:
+            # `_GUARD_RUN` 은 `scripts/` 접두까지 캡처한다 — 다시 붙이면 경로가 두 겹이 된다.
+            # The pattern already captures the `scripts/` prefix; do not prepend it again.
+            assert (root / script).is_file(), (
+                f"{label} 이 `{script}` 를 실행하는데 파일이 없다 — "
+                "required check 가 즉시 실패한다."
+            )
 
 
 def test_thin_workflow_actually_invokes_the_claim_review_guard():
