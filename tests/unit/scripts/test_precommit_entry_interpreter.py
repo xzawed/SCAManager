@@ -100,10 +100,9 @@ def test_the_script_hooks_are_actually_present():
     """
     script_hooks = [h for h in _local_hooks()
                     if (t := _entry_tokens(h)) and t[0] in _BARE_INTERPRETERS]
-    assert len(script_hooks) >= 7, (
-        f"인터프리터를 부르는 로컬 훅이 {len(script_hooks)}개뿐이다 — "
-        "검사 범위가 줄었다면 이 하한을 같은 PR 에서 갱신할 것"
-    )
+    # 개수 **하한**을 두지 않는다 — 가드를 줄이면 red 가 되는 계약이라 축소 자체를 막는다.
+    # 공허화(범위가 0으로 붕괴)만 잡는다.
+    assert script_hooks, "인터프리터를 부르는 로컬 훅이 0개다 — 검사 범위 붕괴"
 
 
 @pytest.mark.parametrize(

@@ -9,8 +9,13 @@
    `make gate`·`make test`·`make lint` 는 **전부 실행 불가**다. 가드가 틀린 게 아니라
    **호출 명령이 존재하지 않는다**(backlog R29).
 2. 🔴 **`make gate` 는 있었어도 부족하다.** 그 타깃은 `pytest` + `pylint` + `bandit` 뿐이라
-   CI 의 **repo-integrity 7종 · PR-diff 한정 4종**을 하나도 돌리지 않는다. 실제로 이 세션은
+   CI 의 **repo-integrity 가드와 PR-diff 한정 가드**를 하나도 돌리지 않는다(목록 정본은
+   아래 `_INTEGRITY` · `_INTEGRITY_WITH_ARGS` · `_DIFF_SCOPED`). 실제로 이 세션은
    `Block new dual-import` 에 **두 번** 걸렸고, 두 번 다 로컬에서는 초록이었다.
+   ⚠️ 2026-08-17 정정 — 이 자리에 «repo-integrity 7종 · PR-diff 한정 4종» 이라 적혀 있었다.
+   :24 가 «개수를 여기 적지 않는다» 고 기록한 바로 그 docstring 이 두 문단 위에서 그것을
+   어기고 있었고, 그 «7종» 은 실측 13 과 어긋난 채였다.
+   The count was written here despite the rule three paragraphs below forbidding it.
 
 즉 "가드가 수행되지 않는" 가장 단순한 형태 — 가드는 옳은데 **로컬에서 부를 방법이 없었다.**
 
@@ -65,7 +70,6 @@ _INTEGRITY = (
     # Runs first: the badge autofixer can rewrite a line inside a conflict block.
     "check_conflict_markers.py",
     "check_docs_sync.py",
-    "check_toc_anchors.py",
     "check_architecture_tree_sync.py",
     "check_guard_fail_open.py",
     "check_env_vars_sync.py",
@@ -86,7 +90,6 @@ _INTEGRITY = (
     # P4 🔴-예산제 (2026-08-08). 로컬에서는 PR env 가 없어 **현황만 인쇄**하고 쉰다 —
     # 무집행 🔴 이 지금 몇 건인지 매 push 마다 눈에 들어오는 부수 효과가 있다.
     # Prints the current unenforced-🔴 count locally; the delta verdict is CI's job.
-    "check_red_budget.py",
 )
 
 # 인자가 필요한 whole-repo 가드 — CI 와 같은 형태로 부른다.

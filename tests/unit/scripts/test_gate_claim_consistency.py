@@ -229,8 +229,12 @@ def test_no_doc_claims_make_gate_runs_a_tool_it_does_not(doc):
 def test_no_doc_calls_make_gate_the_real_or_ci_equivalent_gate(doc):
     """🔴 `make gate` 를 "실제 게이트"·"CI 동일 기준" 이라 부르면 안 된다 — 둘 다 거짓이다.
 
-    그 타깃은 CI 가 강제하는 repo-integrity 9종 + PR-diff 4종을 **하나도** 돌리지 않고,
+    그 타깃은 CI 가 강제하는 repo-integrity 가드와 PR-diff 한정 가드를 **하나도** 돌리지 않고,
     이 개발 머신에는 `make` 자체가 없다(backlog R29).
+
+    2026-08-17 정정 — 여기 «9종 + 4종» 이라 적혀 있었다. 실측은 13 + 4 다
+    (`pre_push_gate._INTEGRITY` 12 + `_INTEGRITY_WITH_ARGS` 1 · `_DIFF_SCOPED` 3 + flake8).
+    같은 개수가 리포 8지점에 복사돼 7 · 9 · 13 세 값으로 갈려 있었다.
     """
     bad = ("실제 게이트", "CI 동일 기준", "CI 와 동일 기준")
     for lineno, line in _claim_lines(_ROOT / doc):
@@ -260,10 +264,10 @@ def test_no_doc_calls_make_gate_the_real_or_ci_equivalent_gate(doc):
 def test_the_canonical_gate_is_named_where_agents_enter():
     """🔴 진입 문서 3종이 **정본 게이트 이름**을 담아야 한다.
 
-    Grok 은 `AGENTS.md` 로 들어오고, Claude 는 `CLAUDE.md` 로, 기여자는 PR 템플릿으로 들어온다.
+    Claude 는 `CLAUDE.md` 로, 기여자는 PR 템플릿으로 들어온다.
     한 곳이라도 빠지면 그 경로로 들어온 행위자는 정본을 모른 채 작업한다.
     """
-    for entry in ("AGENTS.md", "CLAUDE.md", ".github/PULL_REQUEST_TEMPLATE.md"):
+    for entry in ("CLAUDE.md", ".github/PULL_REQUEST_TEMPLATE.md"):
         text = (_ROOT / entry).read_text(encoding="utf-8")
         assert _CANONICAL_GATE in text, (
             f"{entry} 에 정본 게이트 `{_CANONICAL_GATE}` 가 없다 — "

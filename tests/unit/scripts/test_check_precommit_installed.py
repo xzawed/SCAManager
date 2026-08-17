@@ -279,3 +279,44 @@ def test_present_pre_push_gate_is_silent(monkeypatch, capsys, tmp_path):
 
     assert mod.main() == 0
     assert "pre-push 게이트 훅이 없습니다" not in capsys.readouterr().out
+
+
+def test_config_installs_both_hook_types_by_default():
+    """🔴 `.pre-commit-config.yaml` 의 `default_install_hook_types` 가 두 타입을 모두 담는다.
+
+    ## 왜 이 단언이 필요한가 (2026-08-17 실측 · 정책 4)
+
+    `.claude/rules/guards.md` 와 `docs/runbooks/secret-prevention.md` 가
+    **「맨 `pre-commit install` 이 두 타입을 함께 설치한다」** 고 단언하고, 그 근거로
+    문서 8지점에서 `--hook-type` 처방을 걷어냈다. 그 단언이 참인 이유는 오직 이 키 하나다.
+
+    빈 저장소 4종 실측:
+
+    | 형태 | 결과 |
+    |---|---|
+    | `pre-commit install` | pre-commit + commit-msg |
+    | `--hook-type commit-msg` 단독 | **commit-msg 만** |
+    | `--hook-type` 2종 명시 | 둘 다 |
+    | **이 키를 제거한 뒤 맨 `install`** | **pre-commit 만** ← 뮤테이션 red |
+
+    즉 이 줄이 사라지면 문서 8지점이 조용히 거짓이 되고, 실제 토큰 유출 사고로 만들어진
+    `check-commit-msg-secrets` 가 새 머신에서 설치되지 않는다. 산문으로만 지키면 안 되는 자리다.
+
+    The docs stopped prescribing `--hook-type` because this key installs both; if it is
+    removed, that guidance silently becomes false and the commit-msg hook never installs.
+    """
+    text = (_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+    declared = [
+        line for line in text.splitlines()
+        if line.startswith("default_install_hook_types:")
+    ]
+    assert declared, (
+        "`.pre-commit-config.yaml` 에 `default_install_hook_types` 가 없다 — "
+        "맨 `pre-commit install` 은 pre-commit 타입만 설치하고, "
+        "guards.md·secret-prevention.md 의 「두 타입을 함께 설치한다」가 거짓이 된다."
+    )
+    for hook_type in mod.REQUIRED_HOOK_TYPES:
+        assert hook_type in declared[0], (
+            f"`default_install_hook_types` 에 {hook_type!r} 가 없다: {declared[0]!r}\n"
+            f"  REQUIRED_HOOK_TYPES = {mod.REQUIRED_HOOK_TYPES}"
+        )

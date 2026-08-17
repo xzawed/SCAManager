@@ -607,9 +607,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 # 실패 모드를 서술하는 **활성** 문서. 아카이브·계획 스냅샷은 시점 기록이라 제외한다.
 # Active docs describing the failure mode; archives/plan snapshots are point-in-time records.
 _SESSION_SECRET_DOC_POINTS = (
-    "CLAUDE.md",
+    "docs/workflow/security.md",
     "docs/reference/env-vars.md",
-    ".claude/rules/security.md",
 )
 
 # "기동" 을 언급하는 모든 서술. 🔴 어미("실패/오류/차단")로 좁히면 *"기동을 막는다"* 같은

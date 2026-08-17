@@ -58,14 +58,12 @@ from pathlib import Path
 # files all graded `skip` — the review gate was passing exactly the surfaces it exists to review.
 _CRITICAL = [
     r"^CLAUDE\.md$",
-    r"^AGENTS\.md$",
     r"^docs/STATE\.md$",
+    # docs/workflow/ 가 규칙 층을 대체한다 — 수행 절차 = 행동 지시문
+    r"^docs/workflow/[^/]+\.md$",
     r"^\.claude/settings\.json$",
     r"^\.claude/agents/[^/]+\.md$",
     r"^\.claude/skills/[^/]+\.md$",
-    # rules/ 는 편집 표면에 자동 로드되는 **행동 지시문**이라 critical (policies/ 는 detail → important)
-    # rules/ are behavioural directives auto-loaded at the edit surface; policies/ are detail.
-    r"^\.claude/rules/[^/]+\.md$",
 ]
 
 # 🔴 2026-08-01 2차 스코프 복구 (문서 감사 91 에이전트 + Grok 시스템 감사 `019fbccf`)
@@ -87,24 +85,19 @@ _CRITICAL = [
 # Removed three patterns whose trees were deleted; keeping them would grade an empty set.
 _IMPORTANT = [
     r"^README(\.[a-z]{2})?\.md$",     # README.ko.md 등 로케일 변형 포함
-    r"^\.claude/policies/[^/]+\.md$",
     # 아래는 2026-08-01 승격분 — 전부 에이전트가 따르는 지시문을 담는다.
     r"^docs/runbooks/[^/]+\.md$",
     r"^docs/architecture\.md$",
-    r"^docs/agents-index\.md$",
     r"^docs/reference/[^/]+\.md$",
     r"^CONTRIBUTING(\.[a-z]{2})?\.md$",
     r"^\.github/PULL_REQUEST_TEMPLATE\.md$",
     r"^SECURITY(\.[a-z]{2})?\.md$",   # 취약점 보고 절차 = 보안 지시문
     r"^scripts/i18n_comments/glossary\.md$",  # "번역 시 아래 용어를 반드시 사용" = 번역 계약
-    r"^src/scripts/README\.md$",     # "Production code MUST NOT import from src/scripts/" = 실제 지시문
     # 2026-08-13 승격분 — 3층 분리(프로세스·함정·규칙)로 신설된 지시 표면.
     # 🔴 `docs/process/**` 는 *어떻게 수행하는가* 를 단계로 규정한다 = 지시문이다.
     #    `.claude/traps.md` 는 서술 같지만 각 항목이 "→ 이렇게 하라" 로 끝난다.
     #    둘 다 등재하지 않으면 심의 게이트가 **지시 표면 자체의 편집을 통과**시킨다
     #    (2026-08-01 에 정확히 이 클래스로 25 파일이 false coverage 였다).
-    r"^docs/process/[^/]+\.md$",
-    r"^\.claude/traps\.md$",
 ]
 
 # 🔴 의도적으로 `skip` 으로 남긴 것 (판단 기록 — 다음 세션이 재검토를 반복하지 않도록):
@@ -915,12 +908,7 @@ async def call_agents_parallel(grade: str, diff: str, context: str,
 #    `f"(전문 {len(content)}자)"` 로 **파생**하므로 주석은 복제였을 뿐이다.
 #    Size literals in comments drifted from reality and silently justified a too-small budget.
 _CONTEXT_SOURCES: tuple[tuple[str, int], ...] = (
-    ("CLAUDE.md", 40000),     # 전문 (정책 1~19 가 여기 있다)
-    # 🔴 12000 → 16000 (2026-08-14 사용자 결정, 문서감사 PR-5 §6 결정 2 ★권장).
-    #    이전 예산에서 AGENTS.md 는 12,004/12,000 = **1.0003 로 이미 잘리고 있었다**.
-    #    이 파일은 가드 3-불변식 SSOT 이고 심의 에이전트가 그것으로 판정한다 —
-    #    부분 실명 상태로 "규칙과 어긋나면 block" 을 지시하는 것은 모순이다(R37-a 와 같은 형태).
-    ("AGENTS.md", 16000),     # 전문 (가드 3-불변식 SSOT)
+    ("CLAUDE.md", 40000),     # 전문 (작업 절차 + 영역 문서 라우팅)
     # 🔴 4000 → 16000 (R37-a, 회고 2026-08-04). 이전 예산은 STATE.md 의 **4%** 만 실어
     #    형식 `**종합 수치**` 블록(offset ~11.1k)과 pylint 값(~11.2k)이 통째로 잘렸다.
     #    그 상태로 consistency 에이전트에게 "STATE 수치와 다르면 block" 을 지시하는 것은

@@ -22,9 +22,10 @@ import pytest
 _ROOT = Path(__file__).resolve().parents[3]
 _CONSTANTS = _ROOT / "src" / "constants.py"
 
-# 임계값을 문장으로 적는 **살아 있는** 문서. 설계 브리프는 2026-08-16 에 퇴역했다.
+# 임계값을 표로 싣는 **살아 있는** 문서. 정본은 `src/constants.py::GRADE_THRESHOLDS` 다.
 _DOCS = (
-    "docs/reference/scoring.md",
+    "README.md",
+    "README.ko.md",
 )
 
 # `A(90+)` · `A (90+)` · `A 90` 형태를 모두 잡는다.
