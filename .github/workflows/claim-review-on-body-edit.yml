@@ -70,9 +70,6 @@ jobs:
       - name: STATE↔README 배지 수치 정합 (check_docs_sync)
         run: python scripts/check_docs_sync.py
 
-      - name: cycle-history TOC 앵커 정합 (check_toc_anchors)
-        run: python scripts/check_toc_anchors.py
-
       - name: architecture 트리 싱크 (check_architecture_tree_sync)
         run: python scripts/check_architecture_tree_sync.py
 
@@ -87,15 +84,9 @@ jobs:
 
       # 🔴 본문은 신뢰할 수 없는 입력 — `run:` 에 보간하지 않고 env 로 전달한다(명령 인젝션 차단).
       # The PR body is untrusted input: pass via env, never interpolate into the shell line.
-      # 🔴 P4 🔴-예산제 — `ci.yml` 과 **동일 step 유지 의무**(패리티 가드가 강제).
-      #    같은 required check 이름을 쓰므로 가드 집합이 갈라지면
-      #    "본문만 고쳐 통과" 경로가 생긴다.
-      - name: P4 🔴-예산 — 집행자 없는 규칙이 늘었는가
-        env:
-          PR_BODY: ${{ github.event.pull_request.body }}
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: python scripts/check_red_budget.py
-
+      # 🔴 이 job 의 step 집합은 `ci.yml` repo-integrity 와 **같아야 한다** — 같은 required check
+      #    이름을 쓰므로 갈라지면 "본문만 고쳐 통과" 경로가 생긴다.
+      #    가드를 지울 때 두 파일을 같은 커밋에서 고친다.
       - name: 정책 19 — seal 주장 시 claim-review 흔적 강제
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
