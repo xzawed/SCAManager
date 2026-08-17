@@ -295,12 +295,8 @@ def test_main_base_or_local_stays_quiet(monkeypatch, capsys, base_ref):
     assert "required check" not in out
 
 
-def test_base_ref_banner_does_not_change_the_verdict(monkeypatch, capsys):
-    """🔴 배너는 **집행하지 않는다** — 같은 입력의 exit code 가 base_ref 로 달라지면 안 된다.
-
-    못 막는 자리에 가드를 두면 거짓 집행자가 된다. 이 배너가 하는 일은 사실 고지뿐이다.
-    The banner must not change the verdict; a guard where it cannot enforce would be a lie.
-    """
+def test_base_ref_banner_does_not_change_a_passing_verdict(monkeypatch, capsys):
+    """배너가 초록을 빨강으로 바꾸지 않는다 — 오탐 축."""
     monkeypatch.setenv("PR_TITLE", "chore: 무해한 변경")
     monkeypatch.setenv("PR_BODY", "본문.")
     without = main()
@@ -310,4 +306,37 @@ def test_base_ref_banner_does_not_change_the_verdict(monkeypatch, capsys):
     with_banner = main()
     capsys.readouterr()
 
-    assert without == with_banner
+    assert without == with_banner == 0
+
+
+def test_base_ref_banner_never_launders_a_failing_verdict(tmp_path, monkeypatch, capsys):
+    """🔴 위험한 방향 — 배너가 **빨강을 초록으로** 세탁하면 안 된다.
+
+    Grok claim-review `01a00feb` 적발: 초판 테스트는 초록↔초록만 비교해서,
+    `if warn_if_base_is_unprotected(): return 0` 로 바꿔도 **통과**했다. 즉 fail-open 을
+    재지 못하는 테스트였다. 차단되어야 하는 입력으로 같은 불변식을 다시 건다.
+    The earlier test compared two green paths, so an early `return 0` would have passed it.
+    """
+    root, base, head = _repo_with(
+        tmp_path,
+        {"scripts/check_foo.py": "1\n"},
+        {"scripts/check_foo.py": "2\n"},
+    )
+    monkeypatch.chdir(root)
+    monkeypatch.setenv("PR_TITLE", "chore: 가드 손질")
+    monkeypatch.setenv("PR_BODY", "흔적 없음.")
+    monkeypatch.setenv("PR_BASE_SHA", base)
+    monkeypatch.setenv("PR_HEAD_SHA", head)
+
+    monkeypatch.delenv("PR_BASE_REF", raising=False)
+    blocked_on_main = main()
+    capsys.readouterr()
+    assert blocked_on_main == 1, "전제가 깨졌다 — 이 픽스처는 차단되어야 한다"
+
+    monkeypatch.setenv("PR_BASE_REF", "docs/stack")
+    blocked_on_stack = main()
+    out = capsys.readouterr().out
+    assert blocked_on_stack == 1, (
+        "🔴 배너가 차단 판정을 초록으로 세탁했다 — 고지가 게이트를 먹었다(fail-open)"
+    )
+    assert "required check" in out, "배너 자체는 떠야 한다 — 안 뜨면 이 테스트가 공허하다"

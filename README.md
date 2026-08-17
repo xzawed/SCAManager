@@ -5,7 +5,7 @@
 **Static analysis + Claude AI review on every GitHub push and PR — scored, notified, gated.**
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.141-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![Tests](https://img.shields.io/badge/Tests-7067%2B_total_(6896_unit_%2B_171_integration)-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-7068%2B_total_(6897_unit_%2B_171_integration)-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
 [![pylint](https://img.shields.io/badge/pylint-9.99%2F10-brightgreen?style=flat-square&logo=python&logoColor=white)](src/)
 [![E2E](https://img.shields.io/badge/E2E-121_in_CI_(120_pass_%2F_1_skip)-brightgreen?style=flat-square&logo=playwright&logoColor=white)](e2e/)
 
