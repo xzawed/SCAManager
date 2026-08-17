@@ -16,8 +16,10 @@
 
 </div>
 
-Self-hosted FastAPI service on Python 3.12. Nothing leaves the machine except calls to the
-Anthropic API and to the notification channels you switch on ([SECURITY.md](SECURITY.md)).
+Self-hosted FastAPI service on Python 3.12 — self-hosted, not airtight. The GitHub API and your
+`DATABASE_URL` unavoidably see files and scores; Anthropic gets the diff; enabled channels get the
+summary; some analyzers reach the network. Full table, and how to switch each off:
+[SECURITY.md](SECURITY.md#data-egress).
 
 ## Pipeline
 
@@ -30,9 +32,8 @@ POST /webhooks/github — HMAC-SHA256, per-repo secret · push, PR opened/synchr
     notify   channels are independent — one failing does not stop the rest
 ```
 
-Analyzer binaries that the deployment is contracted to install are treated as a deployment
-regression when missing: the run is marked incomplete and auto-merge is blocked, rather than
-scoring a clean 100 with nothing having run.
+If an analyzer the deployment is contracted to install is missing, the run is marked incomplete and
+auto-merge is blocked — rather than scoring a clean 100 with nothing having run.
 
 ## Scoring
 
@@ -40,39 +41,42 @@ Out of 100 — code quality 25 (error −3, warning −1) · security 20 (HIGH �
 commit message 15 · direction 25 · tests 15. The last three come from Claude as raw 0–20 / 0–20 /
 0–10 and are scaled. Grades: **A** 90+ · **B** 75+ · **C** 60+ · **D** 45+ · **F** below 45.
 
-Without `ANTHROPIC_API_KEY` those three rows fall back to 13 / 21 / 10, which caps a run at 89 —
-so a missing key can never look like an A. Source of truth: [`src/constants.py`](src/constants.py).
+When the AI review does not produce a result — no `ANTHROPIC_API_KEY`, an empty diff, or an API
+error — those three rows fall back to 13 / 21 / 10. That caps the run at 89, so a failed review can
+never look like an A. Source of truth: [`src/constants.py`](src/constants.py).
 
 ## Gate and delivery
 
 Approve at ≥75, request changes below 50, squash-merge at ≥75. `approve_mode=auto` acts on GitHub
-immediately; `semi-auto` asks first via Telegram buttons. Scores inside the borderline band above
-the merge threshold need a second-model pass and stay blocked if it cannot run. Merges held by
-in-flight CI are queued and retried.
+immediately; `semi-auto` asks first via Telegram buttons. Merges held by in-flight CI are queued
+and retried.
 
-Channels are configured per repository and fire independently: Telegram · GitHub (review, comment,
-issue) · Discord · Slack · Email · webhook · n8n. UI, notifications and prompts: **en · ko · ja**.
+A second-model verifier is **opt-in**: set `OPENAI_API_KEY` and every merge-eligible score is
+re-checked for prompt injection in the diff — deliberately with no upper bound, since injection
+aims at *high* scores. Unset, it never runs; its absence does not block merges.
+
+Notification channels are per repository and fire independently: Telegram · Discord · Slack ·
+Email · webhook · n8n · GitHub commit comment · GitHub issue. (Approving the PR itself is the gate
+acting on GitHub, not a notifier.) UI, notifications and prompts: **en · ko · ja**.
 
 ## Quick start
 
 ```bash
 git clone https://github.com/xzawed/SCAManager.git && cd SCAManager
-make install         # pip + npm
-make css-build       # Tailwind bundle — gitignored, pages 404 without it
+make install         # pip install -r requirements-dev.txt + npm install
+make css-build       # Tailwind bundle — gitignored; without it pages render unstyled
 cp .env.example .env
-make run             # uvicorn :8000, migrations at boot
+make run             # uvicorn :8000 --reload, migrations at boot
 ```
 
-No `make` on the machine? The targets are thin wrappers — see [Makefile](Makefile), or run
-`py -3 -m pip install -r requirements.txt -r requirements-dev.txt`, `npm ci && npm run build`,
-`py -3 -m uvicorn src.main:app --reload`.
+No `make`? Each target is one or two commands — read them off the [Makefile](Makefile).
 
 Boot requires `DATABASE_URL`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` — the only settings with no
-default. `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` and `SESSION_SECRET` (32+ random chars) ship
-with placeholders, so the process starts but OAuth login does not work until you replace them.
+default. `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `SESSION_SECRET` (32+ random chars) ship with
+placeholders: the process starts, OAuth login does not until you replace them.
 
-Then log in, choose **+ Add Repo**, and the webhook is created for you; the next push is analyzed.
-Without a server at all: `python -m src.cli review --base main`.
+Log in, choose **+ Add Repo** — the webhook is created and the next push is analyzed.
+No server at all: `python -m src.cli review --base main`.
 
 ## Deploy
 
@@ -88,8 +92,5 @@ both OAuth redirect and webhook delivery fail ([runbook](docs/runbooks/railway.m
 [Architecture](docs/architecture.md) · [Environment variables](docs/reference/env-vars.md) ·
 [Runbooks](docs/runbooks/) · [Contributing](CONTRIBUTING.md) · [Current numbers](docs/STATE.md)
 
-Found a vulnerability? Open a
-[private advisory](https://github.com/xzawed/SCAManager/security/advisories/new) — never a public
-issue ([SECURITY.md](SECURITY.md)).
-
-[MIT](LICENSE) © xzawed
+Vulnerabilities → [private advisory](https://github.com/xzawed/SCAManager/security/advisories/new),
+never a public issue. [MIT](LICENSE) © xzawed
