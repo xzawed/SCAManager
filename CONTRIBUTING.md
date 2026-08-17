@@ -21,7 +21,8 @@ pre-commit install   # never pass --hook-type; it drops a stage
 Docs included: branch off updated `main` (`feat/ fix/ chore/ docs/`), failing test first, PR.
 
 `python -m pytest tests/unit` is the loop; `tests/integration` = real linters
-(pipeline/analyzer); `e2e/ -p no:asyncio` = Playwright, local only, not in CI.
+(pipeline/analyzer); `e2e/ -p no:asyncio` = Playwright — run it in a **separate process** from
+`tests/` (different `asyncio_mode`). It also runs in CI as the required check `E2E (Playwright)`.
 
 Pre-push: `py -3 scripts/pre_push_gate.py --full` — guards (`_INTEGRITY*`,
 `_DIFF_SCOPED` there); `--full` adds pylint, bandit, `pytest tests/unit`. Prints what it

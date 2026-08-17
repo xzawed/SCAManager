@@ -202,7 +202,8 @@ def read_pr_body() -> str:
 
     이 모듈이 `strip_html_comments` 로 닫아 둔 축(backlog R20 결함 1 · Grok `019fbe32`)이
     **세 게이트에서 한꺼번에 재발**했다. `check_reverse_mutation` · `check_test_count_sync` ·
-    `check_red_budget` 이 면제 마커 관용구는 복제하면서 **하드닝은 복제하지 않아**,
+    `check_red_budget`(이후 퇴역 — 리포에 없다) 이 면제 마커 관용구는 복제하면서
+    **하드닝은 복제하지 않아**,
     `os.environ["PR_BODY"]` 원문을 정규식에 그대로 넘겼다. 결과는 리포가 이미 한 번
     값을 치른 fail-open 그대로다 — 멀티라인 `<!-- … -->` 안에 마커를 적으면
     **리뷰어에게는 안 보이는데 required check 는 통과**한다.

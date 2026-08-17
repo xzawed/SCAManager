@@ -591,8 +591,11 @@ jobs:
   #    더미 시크릿을 스스로 넣고 uvicorn 을 별도 스레드로 띄운다(`:103-111`, `:135-159`).
   # 🔴 `-p no:asyncio` 의무 — `e2e/pytest.ini` 는 `asyncio_mode` 를 의도적으로 생략한다.
   #    단위 스위트와 같은 프로세스에서 섞이면 이벤트 루프가 충돌한다(testing.md §E2E 격리).
-  # 🔴 required check 로 승격하지 않았다 — 실행 이력이 없어 flakiness 를 모른다.
-  #    안정성 데이터를 몇 사이클 모은 뒤 승격 여부를 판단한다(정책 17 안정성 우선).
+  # 🔴 required check 로 **승격됐다** (실측 2026-08-17: `gh api …/required_status_checks` 의
+  #    10종에 `E2E (Playwright)` 가 있다). 종전 주석은 «승격하지 않았다 — 안정성 데이터를
+  #    모은 뒤 판단한다» 로 남아 있었고, 승격 이후에도 갱신되지 않아 거짓이었다.
+  #    이름을 바꾸면 required check 가 영영 pending 이 된다 — `branch-protection.md` §이름 변경 4곳.
+  # Promoted to a required check; the old "not promoted yet" note outlived the promotion.
   e2e:
     # 잡 이름에 건수를 박지 않는다 — 스위트가 늘면 이름이 조용히 거짓이 된다.
     # No count in the job name: it silently goes stale as the suite grows.

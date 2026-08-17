@@ -381,6 +381,18 @@ class TestClassifyFileGrade:
     def test_skill_md_is_critical(self):
         assert classify_file_grade(".claude/skills/lint.md") == "critical"
 
+    def test_skill_dir_convention_is_critical(self):
+        """🔴 `<name>/SKILL.md` — 실제 스킬이 사는 형태다. 평문 한 겹은 **호출되지 않는다**.
+
+        실측(2026-08-18): 이 리포의 스킬 2종이 `.claude/skills/*.md` 평문이라 Claude Code 의
+        탐색 규약(`<name>/SKILL.md`) 밖이었고 **둘 다 호출 불가**였다. 규약대로 옮기는 순간
+        종전 패턴(`[^/]+\\.md$`, 한 겹)이 매칭을 잃어 심의 등급이 `skip` 으로 떨어졌다 —
+        즉 «규약을 지키면 게이트가 사라지는» 형태였다. 두 겹을 모두 본다.
+        Moving to the real convention must not drop the file out of the review gate.
+        """
+        assert classify_file_grade(".claude/skills/retrospective/SKILL.md") == "critical"
+        assert classify_file_grade(".claude/skills/integrity-audit/SKILL.md") == "critical"
+
     def test_retired_history_trees_are_not_graded(self):
         """끝난 이력 트리는 심의 등급이 없다 — 패턴을 남기면 빈 분모를 채점한다."""
         assert classify_file_grade("docs/design/2026-04-26-foo-design.md") == "skip"
