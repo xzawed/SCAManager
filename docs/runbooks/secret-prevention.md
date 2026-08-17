@@ -1,248 +1,51 @@
-# 시크릿 유출 방지 가이드 (3중 가드)
-# Secret Leak Prevention Guide (3-Layer Guard)
+# 시크릿 유출 방지 (3계층)
 
-> **작성 배경**: 커밋 메시지 본문에 실제 Telegram Bot Token이 포함되어
-> GitHub 공개 커밋으로 노출된 사고(커밋 `7d0fa1fe`)에서 학습한 방지 체계.
-> 유출 경로: 커밋 **메시지 본문** → git log diff 스캔만으로는 탐지 불가.
+로컬 훅(차단) → CI 스캔(탐지) → 유출 대응.
 
----
-
-## 사고 요약 (2026-05-03)
-
-| 항목 | 내용 |
-|------|------|
-| 유출 위치 | 커밋 메시지 본문 (코드 diff 아님) |
-| 유출 값 | `TELEGRAM_BOT_TOKEN=<실제값>` |
-| 커밋 SHA | `7d0fa1fe` (dangling — 어떤 브랜치도 미참조) |
-| main 이력 | squash commit `288b55a` — 이미 `***REMOVED***` 치환 완료 |
-| 탐지 실패 원인 | `git log --format="" -p` = 메시지 억제 / `-S` pickaxe = diff만 검색 |
-| 제거 방법 | GitHub Support 요청 (아래 §잔여 이력 제거 절차 참조) |
-
----
-
-## 잔여 이력 제거 절차 (dangling commit)
-
-dangling commit은 로컬 git 도구로 직접 삭제 불가. GitHub Support만 가능.
-
-1. https://support.github.com/contact 접속
-2. 카테고리: **"Data removal request"** 선택
-3. 제목: `Sensitive data removal — exposed token in commit message`
-4. 본문:
-   ```
-   Repository: https://github.com/xzawed/SCAManager
-   Commit SHA: 7d0fa1fe02a4fd36d80c5e58e3ac7c5d5166b0a4
-   Reason: Real Telegram Bot Token accidentally included in commit message body.
-   The token has been revoked. Please purge this commit from GitHub's cache.
-   ```
-5. 제출 후 24~72시간 내 처리 (긴급 표시 권장)
-
-> **참고**: 토큰을 이미 폐기했다면 노출된 값은 무효화됨.
-> GitHub Support 요청은 캐시/검색 인덱스 제거를 위해 권장.
-
----
-
-## 3중 가드 체계
-
-```
-[로컬 커밋 전]          [push / PR]              [유출 후 대응]
-Layer 1: pre-commit  →  Layer 2: CI Scan  →  Layer 3: Incident Response
-```
-
----
-
-## Layer 1 — Prevention (커밋 전 자동 차단)
-
-### 1-A. pre-commit 훅 (시크릿 관련 5훅)
-
-`.pre-commit-config.yaml` 설치 후 매 커밋 시 자동 실행:
+## 1) 로컬 훅 설치 — 새 머신 1회
 
 ```bash
 py -3 -m pip install pre-commit
-git config --unset-all core.hooksPath   # 설정돼 있으면 pre-commit 이 설치를 거부한다
-py -3 -m pre_commit install             # pre-commit + commit-msg 두 타입을 함께 등록한다
+git config --unset-all core.hooksPath   # 설정돼 있으면 설치가 거부된다
+py -3 -m pre_commit install             # 확인: py -3 scripts/check_precommit_installed.py
 ```
 
-🔴 **`--hook-type` 을 붙이지 말 것** (2026-08-17 정정 — 여기 `pre-commit install --hook-type
-commit-msg` 라는 둘째 줄이 있었다). `.pre-commit-config.yaml:22` 의
-`default_install_hook_types: [pre-commit, commit-msg]` 가 이미 둘을 설치하며,
-`--hook-type` 을 **명시하면 그 기본값을 덮는다**. 즉 그 줄만 따라 치면 `pre-commit` 타입이
-설치되지 않아 gitleaks 를 포함한 코드 시크릿 스캔이 통째로 빠진다.
-실측(빈 저장소 4종): 맨 `install` → 둘 다 · `--hook-type commit-msg` → **commit-msg 만** ·
-2종 명시 → 둘 다 · 설정 줄 제거 후 맨 `install` → **pre-commit 만**(그 줄이 하중을 진다는 증거).
-Do not pass `--hook-type`: it overrides `default_install_hook_types` and silently drops the other type.
+- `--hook-type` 을 붙이지 않는다. **맨 `install` 이 두 타입(pre-commit·commit-msg)을 함께 설치한다** —
+  근거는 `.pre-commit-config.yaml:22` 의 `default_install_hook_types` 이고, `--hook-type` 은 그 값을 덮어 한 타입만 남긴다.
+- `pre-push` 타입은 설치하지 않는다 — 리포 자체 push 게이트를 밀어낸다.
 
-검사 범위 — **어느 훅이 무엇을 보는지 구별한다**(하나가 지워져도 알아채기 위해):
-- **코드 변경 (diff)** — `gitleaks`(`.pre-commit-config.yaml:30`) · `check-secrets-in-diff`(`:56`)
-- **커밋 메시지 본문** — `check-commit-msg-secrets`(`:38`, `stages: [commit-msg]`).
-  실제 토큰 유출 사고로 만들어진 훅이며, 커밋 메시지 축을 지키는 것은 gitleaks 가 아니라 이쪽이다.
+담당 축(`.pre-commit-config.yaml`):
 
-### 1-B. 커밋 메시지 금지 패턴 체크리스트
+| 축 | 훅 |
+|---|---|
+| 코드 diff | `gitleaks`(:30) · `check-secrets-in-diff`(:56) |
+| 커밋 메시지 본문 | `check-commit-msg-secrets`(:38) — Telegram 토큰 형식 1종만 |
+| `.env` staged | `check-env-not-staged`(:48) |
 
-🔴 **기계 집행자는 `check-commit-msg-secrets`(`.pre-commit-config.yaml:38`) 하나뿐**이고,
-그것이 잡는 것은 Telegram 토큰 형식 `[0-9]{8,12}:[A-Za-z0-9_-]{35,}` **한 종류**다.
-아래 표의 나머지 행은 **산문 규율** — 사람이 지켜야만 막힌다. 지킴이가 있다고 읽지 말 것.
-Only the Telegram-token shape is machine-enforced; the rest of this table is human discipline.
+실제 값 대신 `<REDACTED>` 를 쓴다. 위 3축 밖(내부 URL+인증정보 등)은 기계가 못 막는다.
 
-커밋 메시지 본문에 아래 패턴 포함 금지:
+## 2) CI 탐지 — `.github/workflows/ci.yml` `secret-scan`
 
-| 금지 패턴 | 이유 |
-|-----------|------|
-| `TOKEN=<실제값>` | 토큰 직접 노출 |
-| `KEY=<실제값>` | API 키 직접 노출 |
-| 실제 IP/URL + 인증정보 | 내부 엔드포인트 노출 |
-| `.env` 내용 그대로 붙여넣기 | 모든 시크릿 일괄 노출 |
+PR 은 `base..head`(:48-49), push 는 `before..after`(:70-71) **diff 범위만** 스캔한다(`--only-verified --exclude-detectors=lob`, :59·:81). 첫 push·force-push 는 skip 되고 과거 커밋은 안 본다.
 
-**대안**: 실제 값 대신 `<REDACTED>` 또는 `***` 사용.
-
-```
-# 잘못된 예 (금지)
-TELEGRAM_BOT_TOKEN=8763957868:AAFef...
-
-# 올바른 예
-TELEGRAM_BOT_TOKEN=<REDACTED> (실제 운영 토큰 — .env 참조)
-```
-
-### 1-C. .gitignore 검증
-
-`.env` 가 staged 되는 것 자체는 `check-env-not-staged`(`.pre-commit-config.yaml:48`)가
-이미 막는다. 아래는 그 훅이 설치되지 **않은** 환경(새 PC · CI 컨테이너)에서의 수동 확인이다.
-
-커밋 전 반드시 확인:
+이력 전수·알림은 손으로 확인한다:
 
 ```bash
-git check-ignore -v .env        # .env가 ignore 목록인지 확인
-git status --short | grep "\.env"  # .env가 staged 여부 확인
-```
-
----
-
-## Layer 2 — Detection (CI/CD 자동 탐지)
-
-### 2-A. GitHub Secret Scanning (자동 활성화)
-
-- **위치**: GitHub 저장소 → Settings → Security → Secret scanning
-- **기능**: push 시 Telegram/GitHub/AWS 등 알려진 토큰 패턴 자동 탐지
-- **알림**: 등록된 이메일로 즉시 통보
-- **확인**: `gh api repos/xzawed/SCAManager/secret-scanning/alerts`
-
-### 2-B. CI TruffleHog 스캔 (`.github/workflows/ci.yml`)
-
-🔴 **diff 범위만** 스캔한다 — PR 은 `base..head`(`ci.yml:48-49`), push 는 `before..after`(`:70-71`). **커밋 이력 전체 스캔이 아니다**: 첫 push·force-push 는 범위가 성립하지 않아 사실상 skip 되고, 이미 머지된 과거 커밋의 시크릿은 영영 안 본다. 실인자는 `--only-verified --exclude-detectors=lob`(`:59`·`:81`) — **검증된 시크릿만** 잡고, `lob` 탐지기는 40자짜리 `test_` 테스트 함수명을 API 키로 오인해 required 체크를 red 로 만들기에 제외돼 있다. 이력 전수는 §2-C 로컬 명령 또는 아래 docker 전체 스캔이 유일 수단이다.
-
-```bash
-# 로컬에서 전체 이력 스캔 (커밋 메시지 포함)
-docker run --rm -v "$(pwd):/pwd" \
-  trufflesecurity/trufflehog:latest \
+docker run --rm -v "$(pwd):/pwd" trufflesecurity/trufflehog:latest \
   git file:///pwd --only-verified --exclude-detectors=lob
-```
-
-### 2-C. 올바른 시크릿 스캔 명령 (교훈 반영)
-
-이번 사고에서 실패한 명령 vs 올바른 명령:
-
-```bash
-# 실패 (메시지 제외) — 사용 금지
-git log --all -p --format="" | grep -oE "[0-9]{8,12}:[A-Za-z0-9_-]{30,}"
-
-# 올바른 방법 1: 메시지 + diff 동시 스캔
-git log --all --format="%H%n%B" -p \
-  | grep -oE "[0-9]{8,12}:[A-Za-z0-9_-]{30,}"
-
-# 올바른 방법 2: GitHub PR 브랜치 커밋 메시지까지 스캔 (squash 이전 커밋 포함)
-gh pr list --state closed --limit 500 --json number,headRefOid --jq '.[].headRefOid' \
-  | while read sha; do
-      gh api "repos/xzawed/SCAManager/commits/$sha" --jq '.commit.message' 2>/dev/null
-    done \
-  | grep -oE "[0-9]{8,12}:[A-Za-z0-9_-]{30,}"
-```
-
-> **핵심 교훈**: `git log --all`은 squash merge된 PR 브랜치의 원본 커밋을 포함하지 않는다.
-> 로컬 ref graph에서 도달 불가능한 커밋은 GitHub API로만 접근 가능.
-
----
-
-## Layer 3 — Incident Response (유출 발생 시)
-
-### 즉시 대응 (발견 후 10분 이내)
-
-```
-1. 토큰 즉시 폐기
-   - Telegram: @BotFather → /revoke → 봇 선택
-   - GitHub Token: Settings → Developer settings → Tokens → Revoke
-   - Anthropic API: console.anthropic.com → API Keys → Delete
-
-2. 새 토큰 발급 후 Railway 환경변수 즉시 교체
-
-3. 유출 범위 파악
-   - 어떤 커밋/파일/PR에 포함됐는지
-   - 언제부터 공개됐는지 (커밋 날짜)
-   - squash 이전 원본 커밋 vs main 이력 구분
-```
-
-### 이력 제거 절차
-
-| 상황 | 방법 |
-|------|------|
-| main 브랜치 이력에 포함 | `git filter-repo --message-callback` + force push + GitHub cache 무효화 요청 |
-| PR 브랜치 dangling commit | GitHub Support 요청 (§잔여 이력 제거 절차 참조) |
-| .env 파일이 커밋됨 | BFG Repo Cleaner + force push + GitHub Support |
-
-### git filter-repo 사용법 (main 이력 재작성 시)
-
-```bash
-pip install git-filter-repo
-
-# 커밋 메시지에서 실제 토큰 치환
-git filter-repo --message-callback '
-    import re
-    return re.sub(
-        b"실제토큰값",
-        b"***REMOVED***",
-        message
-    )
-'
-
-# force push (팀 전원 re-clone 필요)
-git push origin main --force-with-lease
-```
-
-> **주의**: force push 전 팀원 전원에게 공지 필수. 모든 로컬 clone 재설정 필요.
-
-### 사고 기록 의무
-
-유출 사고 발생 시 아래 정보를 `docs/reports/YYYY-MM-DD-secret-leak.md`로 기록:
-- 유출 토큰 종류 (실제값 X)
-- 발견 경위 및 시각
-- 폐기 완료 시각
-- 제거 완료 범위
-- 재발 방지 추가 조치
-
----
-
-## 점검 체크리스트 (매 사이클 종료 시)
-
-```bash
-# 1. .env gitignore 확인
-git check-ignore -v .env
-
-# 2. staged 파일에 민감 정보 없는지 확인
-git diff --staged | grep -iE "token|secret|password|key" | grep -vE "os\.getenv|environ|#|example|test"
-
-# 3. GitHub Secret Scanning alert 확인 (정책 14)
 gh api repos/xzawed/SCAManager/secret-scanning/alerts \
   --jq '[.[] | select(.state=="open")] | length'
-
-# 4. 커밋 메시지 본문 최근 10개 스캔
-git log --format="%H%n%B" -10 \
-  | grep -oE "[0-9]{8,12}:[A-Za-z0-9_-]{30,}" \
-  && echo "🚨 토큰 패턴 발견" || echo "✅ 메시지 스캔 이상 없음"
 ```
 
----
+## 3) 유출 발견 시
 
-## 관련 문서
+1. 토큰 폐기 — Telegram `@BotFather` → `/revoke` · GitHub Settings → Developer settings → Tokens · console.anthropic.com → API Keys.
+2. 재발급 후 Railway 환경변수 교체.
+3. 범위 확인 — 커밋 **메시지까지** 스캔:
+   `git log --all --format="%H%n%B" -p | grep -oE "[0-9]{8,12}:[A-Za-z0-9_-]{30,}"`
+   (`--format=""` 나 `-S` 는 메시지를 건너뛴다. squash 된 PR 원본 커밋은 로컬에 없으니 `gh api repos/xzawed/SCAManager/commits/<sha> --jq .commit.message` 로 본다.)
+4. 제거 — main 이력이면 `git filter-repo --message-callback` 으로 치환 후 `git push origin main --force-with-lease`(전원 재clone 공지). 도달 불가 커밋은 GitHub Support → "Data removal request" 에 저장소 URL·SHA·폐기 사실을 적어 요청한다.
 
-- [환경변수 목록](../reference/env-vars.md)
-- [Railway 운영 가이드](railway.md)
-- [운영 smoke check](operational-smoke-checks.md)
-- [작업 흐름 가이드](workflow.md)
+## 관련
+
+[env-vars.md](../reference/env-vars.md) · [railway.md](railway.md)
