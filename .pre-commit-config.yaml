@@ -97,20 +97,22 @@ repos:
         # 훅이 아예 발화하지 않는다(Grok claim-review 019fccd5 적발: 핀 축 신설 후 requirements.txt·
         # deploy.md 가 빠져 있었다). 회귀 가드 = test_repo_integrity_checks.py 의 배선 테스트.
         # files must cover every input the script reads; a narrow pattern silently skips the hook.
-        files: "^(docs/STATE\\.md|README\\.md|README\\.ko\\.md|requirements\\.txt|\\.claude/rules/deploy\\.md)$"
+        files: "^(docs/STATE\\.md|README\\.md|README\\.ko\\.md|requirements\\.txt)$"
         pass_filenames: false
         stages: [pre-commit]
-        description: STATE 종합·추적셀 ↔ README/README.ko Tests 배지 카운트 일치 + requirements.txt 실핀 ↔ deploy.md 인용·FastAPI 배지 일치 검사.
+        description: STATE 종합·추적셀 ↔ README/README.ko Tests 배지 카운트 일치 + requirements.txt 실핀 ↔ FastAPI 배지 일치 검사.
 
 
       - id: check-memory-refs
         name: "🧠 메모리 슬러그 참조 정합"
         language: python
         entry: python scripts/check_memory_refs.py
-        files: "^(CLAUDE\\.md|\\.claude/policies/.*\\.md)$"
+        # 🔴 스크립트의 `_DOC_GLOBS` 와 같아야 한다 — 갈라지면 그 문서를 고친 커밋에서
+        #    훅이 발화하지 않는다. `.claude/policies/` 는 삭제됐다.
+        files: "^(CLAUDE\\.md|docs/workflow/.*\\.md|docs/runbooks/.*\\.md)$"
         pass_filenames: false
         stages: [pre-commit]
-        description: CLAUDE.md/policies 의 메모리 슬러그 참조 ↔ 실제 메모리 파일 정합 (메모리 dir 부재 시 skip — CI/타 환경 안전).
+        description: CLAUDE.md/docs 의 메모리 슬러그 참조 ↔ 실제 메모리 파일 정합 (메모리 dir 부재 시 skip). 참조 0건이면 「안 쟀음」을 인쇄한다.
 
       - id: check-guard-fail-open
         name: "🛡️ 가드 fail-open floor (bare-substring 판정 차단, B8)"
