@@ -296,15 +296,17 @@ def test_new_layers_are_actually_counted(tmp_path):
     단언은 통과하는데 계수는 0이다(A4 자기참조 공허화의 사촌). 실제 파일에서
     마커 블록이 나오는지 실행으로 확인한다.
     """
+    # 🔴 특정 파일의 **존재**나 마커 **개수 하한**을 요구하지 않는다 — 문서를 줄이면 red 가 되는
+    #    계약이라 축소 자체를 막는다(2026-08-17 사용자 지시로 제거). 표면이 해소되고 계수 함수가
+    #    실제로 도는지만 본다. 표면이 통째로 비면 그것은 고장이다.
     names = {p.relative_to(_ROOT).as_posix() for p in gate.surfaces(_ROOT)}
-    assert ".claude/traps.md" in names, "traps.md 가 표면으로 해소되지 않는다"
-    assert any(n.startswith("docs/process/") for n in names), "docs/process/ 가 비었다"
+    assert names, "표면 glob 이 0개를 반환했다 — 계수가 공허하다"
 
     counted = sum(
         len(gate.rule_blocks((_ROOT / n).read_text(encoding="utf-8")))
-        for n in names if n.startswith("docs/process/") or n == ".claude/traps.md"
+        for n in names
     )
-    assert counted >= 3, f"신설 층에서 마커 블록을 {counted}개만 찾았다 — 계수가 공허하다"
+    assert counted > 0, "어떤 표면에서도 마커 블록을 못 찾았다 — 계수가 공허하다"
 
 
 def test_marker_inside_code_is_a_mention_not_a_rule():

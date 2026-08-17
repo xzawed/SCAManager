@@ -1297,7 +1297,9 @@ def test_directive_bearing_surfaces_are_reviewed():
     targets += sorted((root / "docs" / "reference").glob("*.md"))
     targets += sorted((root / ".claude" / "plans").glob("*.md"))
     targets += [root / rel for rel in _literal]
-    assert len(targets) > 25, f"대조 집합이 {len(targets)}개 — 스캐너 고장 또는 경로 변경"
+    # 🔴 문서 **개수 하한**을 두지 않는다 — 그것은 문서를 줄이면 red 가 되는 계약이라
+    #    문서 축소 자체를 막는다(2026-08-17 사용자 지시로 제거). 빈 집합만 고장으로 본다.
+    assert targets, "대조 집합이 비었다 — 스캐너 고장 또는 경로 변경"
 
     skipped = [
         t.relative_to(root).as_posix() for t in targets
