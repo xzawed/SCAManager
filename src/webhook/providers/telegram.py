@@ -151,6 +151,28 @@ async def handle_gate_callback(  # pylint: disable=too-many-locals
                     "handle_gate_callback: analysis %d already decided — skipping replay",
                     analysis_id,
                 )
+                # 🔴 부수효과는 skip 하되 **무음이면 안 된다** (#1431). 이 분기에 도달하는 가장 흔한
+                #    경로는 동시 더블클릭이 아니라 «게시 실패 안내를 받고 다시 누른 사람» 이다.
+                #    그때 아무 응답이 없으면 사용자는 대기하고, DB 에는 승인이 남아 있고,
+                #    GitHub 에는 리뷰가 없다 — 세 상태가 서로 다른 말을 한다.
+                # 🔴 문구는 «미게시» 라고 단정하지 않는다. 리뷰가 이미 붙어 있을 수도 있어서
+                #    (첫 클릭이 게시까지 성공한 뒤 auto-merge 에서 터진 경우) 단정하면 거짓이 된다.
+                #    이것이 `#1414` 가 고친 것과 같은 클래스의 실수다.
+                # Skip side effects but do not stay silent: the usual caller here is a human who was
+                # told the review was not posted and pressed again. The wording must not assert
+                # "not posted" — the review may in fact be live.
+                if chat_id is not None:
+                    await _post_message_guarded(
+                        settings.telegram_bot_token,
+                        chat_id,
+                        {
+                            "text": get_text(
+                                "notifier.gate.callback_already_decided",
+                                resolve_notification_language(db, config=None),
+                            ),
+                            "parse_mode": "HTML",
+                        },
+                    )
                 return
             github_token = (
                 repo.owner.plaintext_token

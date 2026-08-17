@@ -302,6 +302,86 @@ async def test_handle_gate_callback_replay_claim_lost_skips_side_effects():
     mock_am.assert_not_called()          # auto-merge 미재실행
 
 
+# --- 리플레이 **입력 클래스** — 부수효과 skip 은 옳지만 무음이면 안 된다 (#1431) ---
+# 🔴 위 테스트가 `chat_id` 를 주지 않아 이 조합을 0건 남겼다. `#1412`/`#1414` 는 「게시 성공 +
+#    후속 실패」를 고쳤을 뿐 **다시 누른 사람**은 여전히 아무 응답도 받지 못했다.
+#    Replay input class: skipping side effects is correct, staying silent is not.
+
+
+async def test_handle_gate_callback_replay_notifies_clicker():
+    """#1431: claim 패자(이미 결정됨) + chat_id 있음 → 「이미 결정됨」 안내 1회.
+
+    사용자 관점 시퀀스 — ✅ 를 눌렀는데 게시가 실패해 「미게시」를 받고, **다시 누른다**.
+    그때 claim 은 이미 있으므로 False 로 떨어지는데, 여기서 무음이면 사용자는 무한 대기하고
+    DB 에는 승인이 남아 있으며 GitHub 에는 리뷰가 없다.
+    The clicker presses again after a not-posted notice; silence leaves them waiting forever.
+    """
+    from src.webhook.router import handle_gate_callback  # pylint: disable=import-outside-toplevel
+
+    mock_db, config = _gate_callback_failure_mocks()
+    with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
+            with patch(
+                "src.webhook.providers.telegram.resolve_notification_language",
+                return_value="ko",
+            ):
+                with patch(
+                    "src.webhook.providers.telegram.gate_decision_repo.claim_decision",
+                    return_value=False,
+                ) as mock_claim:
+                    with patch(
+                        "src.webhook.providers.telegram.post_github_review",
+                        new_callable=AsyncMock,
+                    ) as mock_review:
+                        with patch(
+                            "src.webhook.providers.telegram._post_message_guarded",
+                            new_callable=AsyncMock,
+                        ) as mock_post:
+                            await handle_gate_callback(
+                                analysis_id=42,
+                                decision="approve",
+                                decided_by="john",
+                                telegram_user_id="1",
+                                chat_id="-100999",
+                            )
+    mock_claim.assert_called_once()
+    mock_review.assert_not_called()      # 부수효과는 여전히 skip — 리플레이 가드 불변
+    mock_post.assert_called_once()       # 🔴 그러나 무음이면 안 된다
+    _bot, _chat, payload = mock_post.call_args[0]
+    assert _chat == "-100999"
+    assert payload.get("parse_mode") == "HTML"
+    # 문구가 「미게시」 계열과 갈려야 한다 — 리뷰가 붙어 있을 수도 있으므로 단정하면 거짓이 된다.
+    # The wording must differ from the not-posted family: the review may in fact be live.
+    assert "이미" in payload["text"], "리플레이 안내가 「이미 결정됨」 의미를 담지 않는다"
+
+
+async def test_handle_gate_callback_replay_without_chat_id_stays_silent():
+    """#1431 새 입력 클래스: 리플레이 + `chat_id=None` → 발신 0건 (크래시 없이).
+
+    🔴 이 테스트가 없으면 위 수정이 `chat_id is None` 경로에서 터진다. 콜백은 BackgroundTask 라
+    예외가 나도 사용자에게 보이지 않고 조용히 사라진다 — 그래서 여기서 고정한다.
+    Newly reachable class: the notify branch must not fire (or crash) without a chat_id.
+    """
+    from src.webhook.router import handle_gate_callback  # pylint: disable=import-outside-toplevel
+
+    mock_db, config = _gate_callback_failure_mocks()
+    with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
+            with patch(
+                "src.webhook.providers.telegram.gate_decision_repo.claim_decision",
+                return_value=False,
+            ):
+                with patch(
+                    "src.webhook.providers.telegram._post_message_guarded",
+                    new_callable=AsyncMock,
+                ) as mock_post:
+                    await handle_gate_callback(
+                        analysis_id=42, decision="approve",
+                        decided_by="john", telegram_user_id="1",
+                    )
+    mock_post.assert_not_called()
+
+
 async def test_handle_gate_callback_first_decision_applies():
     """#11 정상 경로 회귀 가드: claim 성공(first-writer) → 최초 결정은 정상 적용."""
     from src.webhook.router import handle_gate_callback
