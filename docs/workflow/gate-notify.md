@@ -31,3 +31,11 @@
 
 ### 검증
 `py -3 -m pytest tests/unit/gate tests/unit/notifier tests/unit/webhook` → `py -3 scripts/pre_push_gate.py`
+
+채널을 추가하면 함께 고친다 — 빠뜨리면 parametrize 가 조용히 그 채널을 건너뛴다.
+
+- `tests/unit/notifier/test_ssrf_log_redaction.py:110` `_CASES`/`_IDS`
+- `tests/unit/notifier/test_score_reliability_disclosure_parity.py:28`
+  `_EXPECTED_REGISTRY_SCORE_CHANNELS` + 렌더러 dispatch
+- `docs/architecture.md:22` 의 `REGISTRY N` 개수·목록
+- 전역 크리덴셜(봇 토큰류)을 쓰면 [deploy.md](deploy.md) §환경변수 추가를 함께 밟는다

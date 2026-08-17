@@ -13,7 +13,11 @@ CSS 순서 = `base.html:34~41` — tokens → themes → illustrations → dist/
 3. `src/api/repos.py` `RepoConfigUpdate` — 같은 이름 필드. 1~3 불일치는 pre-commit `check-config-5way-sync` 가 red
 4. `src/ui/routes/settings.py:218` `upsert_repo_config(db, RepoConfigData(` 에 `<name>=form.get("<name>") == "on",`
 5. `src/templates/settings.html` `.toggle-row` 복제 (`{% if config.<name> %}checked{% endif %}`).
-   프리셋이 지배하면 `PRESETS` 3개·`labels`·`currentFormValues()` 에도 넣는다
+   프리셋 3버튼이 그 토글을 함께 바꿔야 하면 `settings.html:1253` `PRESETS` 3블록과
+   `applyPreset()`(`:1366`) 안의 적용 지점에도 넣는다 — 독립 토글이면 불필요하다
+   (선례: `ai_review_enabled` 는 프리셋 밖).
+   단순 모드에 노출하려면 `src/ui/routes/settings.py:98` `_SIMPLE_MODE_FIELDS` 에 등재한다 —
+   미등재 필드가 기본값과 다르면 화면이 고급 모드로 열린다.
 
 문구 키: 제목·설명은 `settings_page.<섹션>.<name>_title/_desc`, 프리셋 diff 라벨만 `settings.field_<name>` — `_KEYS` 대상은 후자뿐이다.
 

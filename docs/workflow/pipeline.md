@@ -27,13 +27,14 @@
 
 ## 분석기 추가 (25종)
 
-1. `src/analyzer/io/tools/<도구>.py` 작성 — `name`·`category` + `supports(ctx)`·`is_enabled(ctx)`(`shutil.which`)·`run(ctx)`. 본보기 `shellcheck.py`.
+1. `src/analyzer/io/tools/<도구>.py` 작성 — `name`·`category` + `supports(ctx)`·`is_enabled(ctx)`(`shutil.which`)·`run(ctx)`. 본보기 `eslint.py:170`(`shellcheck.py` 는 `[]` 를 반환하는 구식이라 따르지 않는다).
 2. `run` 은 `subprocess.run(..., timeout=STATIC_ANALYSIS_TIMEOUT, check=False)`. `TimeoutExpired` 는 `ctx.timed_out = True` 후 `[]` 반환(예외 금지). 비-JSON stdout 은 `RuntimeError`.
 3. 모듈 하단 `register(...)` + `static.py` 상단 import 1줄(로드 시 자동 등록).
 4. 조달한 바이너리는 `static.py:54` `PROVISIONED_ANALYZERS` 에 등재. 등재분 부재 = 배포 회귀 → `incomplete` 차단, 미등재분 부재 = 미제공 → 가시화만.
 5. 새 언어면 `src/analyzer/pure/language.py:15` 확장자 맵 + `review_guides/tier{N}/<lang>.py` + `review_guides/__init__.py:34` `_GUIDE_MAP` 1줄.
 6. `docs/architecture.md:23` 의 `tools/(N 어댑터)` 개수를 갱신한다.
-7. `tests/unit/scripts/test_analyzer_provenance.py` 의 `_PROVENANCE`(:48)에 `(바이너리, 조달모드, optional 사유)` 를 등재한다 — 미등재는 CI FAIL. 조달하지 않으면 `optional_absent_ok` + 사유.
+7. `tests/unit/scripts/test_analyzer_provenance.py` 의 `_PROVENANCE`(:48)에 `(바이너리, 조달모드, optional 사유)` 를 등재한다 — 미등재는 CI FAIL. 조달하지 않으면 `optional_absent_ok` + 사유. 바이너리 이름이 도구명과 다르면
+   `static.py:70` `_BINARY_OVERRIDES` 에 매핑한다 — 없으면 조달했는데 부재로 판정된다.
 
 ## 검증
 

@@ -55,6 +55,11 @@ py -3 -m pytest e2e/ -p no:asyncio  # E2E (tests/ 와 같이 돌리지 않는다
 `alembic/versions/` · `src/templates/*.html` · `railway.toml` · `alembic.ini` 은 테스트 불가
 환경에서 훅이 차단한다(로컬 PC·Codespaces 는 허용).
 
+## 코드 주석
+
+한국어를 먼저 쓰고 다음 줄에 영어를 붙인다. `# TODO`·`# type: ignore` 같은 표준 태그는 영어 단독.
+관행이지 게이트는 아니다 — `py -3 scripts/check_bilingual_comments.py` 가 보고만 한다.
+
 ## 문서 규칙
 
 🔴 **문서 총량은 늘리지 않는다.**
