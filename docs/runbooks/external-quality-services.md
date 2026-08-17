@@ -47,7 +47,7 @@ SonarCloud 는 "Organization" 단위로 프로젝트를 관리하며 GitHub 계�
 
 | 옵션 | 선택 | 이유 |
 |------|------|------|
-| Automatic Analysis | ❌ 금지 | SonarCloud 자체 스캔이 CI 의 `SonarSource/sonarcloud-github-action` 과 충돌 — 커버리지 리포트 누락 발생 |
+| Automatic Analysis | ❌ 금지 | SonarCloud 자체 스캔이 CI 의 **SonarCloud scan** step(`.github/workflows/ci.yml`) 과 충돌 — 커버리지 리포트 누락 발생 |
 | **With GitHub Actions** | ✅ | 본 저장소 `ci.yml` 과 호환 |
 
 만약 Automatic Analysis 가 켜진 상태라면: Project → **Administration** → **Analysis Method** → **Automatic Analysis OFF**.
@@ -116,7 +116,7 @@ SonarCloud 가 "워크플로 파일을 추가하세요" 라며 코드 블록을 
 
 본 저장소에 이미 포함:
 
-- 전체 커버리지 목표 **95%** (현재 96.2%)
+- 전체 커버리지 목표 **95%** (현재값 정본 = [`docs/STATE.md`](../STATE.md) — 이 자리에 굳어 있던 "96.2%" 는 STATE 실측과 어긋난 채 남아 있었다. 같은 값이 `codecov.yml:5-6` 주석에도 있으니 함께 고칠 것)
 - 2% 이상 하락 시 CI 실패
 - PR diff 커버리지 목표 80%
 
@@ -124,23 +124,19 @@ SonarCloud 가 "워크플로 파일을 추가하세요" 라며 코드 블록을 
 
 ---
 
-## 2-7. 토큰 등록 후 CI 재실행 (방법 3가지 — 택 1)
+## 2-7. 토큰 등록 후 CI 재실행
 
 토큰 등록만으로는 아직 분석이 돌지 않는다. CI 를 재트리거해야 한다.
 
-### 방법 A — 워크플로 수동 재실행 (1초)
 1. [Actions 페이지](https://github.com/xzawed/SCAManager/actions/workflows/ci.yml)
 2. 가장 최근 실행 클릭
 3. 우상단 **Re-run all jobs**
 
-### 방법 B — 빈 커밋 push
-```bash
-git commit --allow-empty -m "ci: trigger external services after secret registration"
-git push origin main
-```
-
-### 방법 C — 더미 변경 + push
-README 에 공백 1 줄 추가 후 커밋·푸시.
+> 🔴 **빈 커밋·더미 변경을 main 에 직접 push 하지 않는다.** 이 자리에는 2026-08-17 까지
+> "방법 B — 빈 커밋 push(`git commit --allow-empty` + `git push origin main`)" 와
+> "방법 C — 더미 변경 + push" 가 병기돼 있었다. 그 두 절차는 정책 7 이 **명시적으로 금지한
+> 명령**을 런북이 지시한 것이다(`CLAUDE.md:126` 「**금지**: `git push origin main`」 ·
+> `.claude/policies/active.md:100`). 재트리거는 위 Re-run 하나로 충분하다.
 
 ---
 
@@ -193,9 +189,9 @@ SonarCloud 기본 Quality Gate:
 
 | 조건 | 기준 | 현 프로젝트 상태 |
 |------|------|----------------|
-| New code coverage | ≥ 80% | ✅ 96.2% 유지 |
+| New code coverage | ≥ 80% | SonarCloud 대시보드에서 확인 (new code 전용 지표 — 전체 커버리지와 다른 값이다) |
 | New code duplicated lines | ≤ 3% | 확인 필요 |
-| Maintainability Rating on new code | A | pylint 10.00 유지 가정 |
+| Maintainability Rating on new code | A | pylint 점수 정본 = [`docs/STATE.md`](../STATE.md) (구 표기 "10.00 유지 가정" 은 실측 9.99 로 기각됐다) |
 | Reliability Rating on new code | A | bandit HIGH 0 |
 | Security Rating on new code | A | bandit HIGH 0 |
 | Security Hotspots Reviewed | 100% | SonarCloud UI 에서 검토 필요 |
@@ -239,7 +235,7 @@ Quality Gate 는 **new code (신규/변경 코드)** 에만 적용되므로 기�
 A. `sonar-project.properties` 의 `sonar.exclusions` 와 `sonar.test.inclusions` 확인. 본 저장소는 `tests/**/*.py` 를 테스트로 지정.
 
 ### Q8. CI 가 `.env` 부재로 실패
-A. CI 환경에는 `.env` 가 없어야 함. conftest.py 의 `os.environ.setdefault` 가 테스트 기본값 주입 + `ci.yml` 에 env 값 명시.
+A. CI 환경에는 `.env` 가 없어야 함. `tests/conftest.py` 가 `os.environ["…"] = …` **직접 대입**으로 테스트 기본값을 주입하고, `ci.yml` 의 pytest step `env:` 블록에도 동일 값을 명시한다. (`setdefault` 는 사이클 65 에서 버렸다 — 셸에 `.env` 가 export 된 환경에서 무시돼 운영 토큰이 settings 로 새고 5건이 깨졌다: `tests/conftest.py:5-11`)
 
 ### Q9. Token 이 노출됐어요
 A. 즉시 폐기:
@@ -268,7 +264,7 @@ A. 세 서비스 모두 유료 전환:
 
 ---
 
-## 7. 삭제·교체 시
+## 8. 삭제·교체 시
 
 ### SonarCloud 를 제거하려면
 1. `.github/workflows/ci.yml` 의 **SonarCloud scan** step 삭제

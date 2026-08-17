@@ -62,7 +62,7 @@ APP_BASE_URL=https://your-app.railway.app
 4. **Webhook 생성 + 리포 추가** 클릭
 
 자동으로 처리되는 항목:
-- GitHub Webhook 생성 (HTTPS URL, `application/json`, Pushes + Pull requests)
+- GitHub Webhook 생성 (HTTPS URL, `application/json`, 이벤트 4종 `push`·`pull_request`·`issues`·`check_suite` — 정본 `src/github_client/repos.py::WEBHOOK_EVENTS`)
 - Webhook Secret 자동 생성 및 RepoConfig에 저장
 - `.scamanager/config.json` + `install-hook.sh` Repo에 커밋 (CLI Hook용)
 
@@ -104,7 +104,8 @@ python -c "import secrets; print(secrets.token_hex(32))"
 | SSL verification | Enable (기본값 유지) |
 
 3. **Which events?** → `Let me select individual events` 선택
-   - **Pushes** ✅ / **Pull requests** ✅
+   - **Pushes** ✅ / **Pull requests** ✅ / **Issues** ✅ / **Check suites** ✅
+   - **4종 전부 필요하다.** `Issues` 를 빼면 n8n 자동 수정 릴레이가, `Check suites` 를 빼면 CI 완료 즉시 트리거가 조용히 죽는다(둘 다 오류 없이 무반응). 정본 `src/github_client/repos.py::WEBHOOK_EVENTS`
 4. **Active** 체크 후 **Add webhook** 클릭
 
 > 저장 후 GitHub이 ping 이벤트를 전송합니다. 초록색 체크 아이콘이 표시되면 정상 연결입니다.
@@ -282,10 +283,15 @@ Pull Request를 생성하면:
 
 | 응답 코드 | 원인 및 해결 |
 |-----------|-------------|
-| `403` | Webhook Secret 불일치 — 방법 A: 설정 페이지에서 Webhook 재등록 / 방법 B: `GITHUB_WEBHOOK_SECRET` 값 확인 |
-| `422` | 지원하지 않는 이벤트 타입 — Pushes + Pull requests 이벤트만 처리됨 |
+| `401` | Webhook Secret 미설정 또는 서명 불일치 (`src/webhook/providers/github.py:603,605`) — 방법 A: 설정 페이지에서 Webhook 재등록 / 방법 B: `GITHUB_WEBHOOK_SECRET` 값 확인 |
+| `202` 인데 무반응 | 이 라우트의 기본 응답이 **202** 다 (`@router.post("/webhooks/github", status_code=202)`). 미구독·미지원 이벤트는 `{"status": "ignored"}` 를 202 로 돌려주므로 **딜리버리는 초록 체크인데 아무 일도 일어나지 않는다** — 먼저 GitHub Webhook 설정에서 이벤트 4종(`push`·`pull_request`·`issues`·`check_suite`) 구독 여부를 확인한다 |
 | `5xx` | 서버 오류 — 서버 로그 확인 (`railway logs` 또는 `journalctl -u scamanager`) |
 | 연결 실패 | Payload URL 오타 또는 서비스 미기동 — `GET /health` 응답 확인 |
+
+> **2026-08-17 정정** — 이 표는 `403`(Secret 불일치) · `422`(미지원 이벤트)를 적고 있었다.
+> 실측은 `401` · `202` 이고 `src/webhook/` 전체에 403·422 는 0건이다
+> (`grep -rn "403\|422" src/webhook/`). 형제 런북 `docs/runbooks/operational-smoke-checks.md:63`
+> 은 같은 상황을 처음부터 401 로 적고 있어 두 런북이 서로 다른 진단을 주고 있었다.
 
 ### Webhook URL이 HTTP로 등록됨
 
@@ -321,7 +327,11 @@ command -v claude
 cat .git/hooks/pre-push
 
 # 서버 연결 확인
-curl https://your-domain/api/hook/verify?repo=owner/repo&token=TOKEN
+curl -H "Authorization: Bearer TOKEN" "https://your-domain/api/hook/verify?repo=owner/repo"
+# 200 {"status":"active"} = 등록됨 / 404 = 미등록·토큰 불일치 / 401 = 토큰 누락
+# URL 을 따옴표로 감싸지 않으면 셸이 `&` 를 백그라운드 실행으로 해석해
+# `token=TOKEN` 이 변수 대입이 되고 토큰이 통째로 빠진다(항상 401 이 뜬다).
+# `?token=` 쿼리도 아직 동작하지만 deprecated 다 — src/api/hook.py 독스트링 참조.
 ```
 
 - `claude` 미설치 → Claude Code CLI 설치 필요 (데스크탑 환경만 지원)

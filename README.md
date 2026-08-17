@@ -22,7 +22,7 @@
 [![E2E](https://img.shields.io/badge/E2E-121_in_CI_(120_pass_%2F_1_skip)-brightgreen?style=flat-square&logo=playwright&logoColor=white)](e2e/)
 [![pylint](https://img.shields.io/badge/pylint-9.99%2F10-brightgreen?style=flat-square&logo=python&logoColor=white)](src/)
 [![bandit](https://img.shields.io/badge/bandit-HIGH_0-brightgreen?style=flat-square&logo=security&logoColor=white)](src/)
-[![Coverage](https://img.shields.io/badge/Coverage-97%25-brightgreen?style=flat-square&logo=codecov&logoColor=white)](tests/)
+[![Coverage](https://img.shields.io/badge/Coverage-97%25-brightgreen?style=flat-square&logo=codecov&logoColor=white)](docs/STATE.md#현재-수치)
 
 [🇰🇷 한국어](README.ko.md)
 

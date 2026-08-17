@@ -32,7 +32,7 @@ PR 작업 완료/머지 시 테스트 수치·작업 서사를 STATE.md·README 
 #    형식이 곧 계약 — 단위와 누계를 **모두** 담아야 한다:
 #      - **현재** (A→**B** 단위; 통합 K = **C** 수집)
 #
-# ② 파생 3지점(STATE 종합·추적셀 머리·README 2배지)을 자동 갱신
+# ② 파생 4지점(STATE 종합·추적셀 머리·README 2배지)을 자동 갱신
 py -3 scripts/check_docs_sync.py --fix
 ```
 
@@ -43,8 +43,9 @@ py -3 -m pytest tests/unit --collect-only -q | tail -1      # 단위
 py -3 -m pytest tests/integration --collect-only -q | tail -1  # 통합 (리터럴로 적지 말 것)
 ```
 
-🔴 **통합 수를 문서에 리터럴로 적지 않는다** — 이 스킬 자신이 `154` 를 5곳에 박아 두었다가
-실제 값이 **171** 이 되도록 5주간 방치했다(문서 감사 적발). 항상 위 명령으로 실측한다.
+🔴 **통합 수를 문서에 리터럴로 적지 않는다** — 경위는 §입력 의 🔴 와 같다(이 스킬 자신이
+`154` 를 5곳에 박아 둔 채 실제 값이 늘어난 뒤 5주간 stale 이었다). 현재 값은 여기에 적지
+않고 위 명령으로 매번 실측한다.
 
 ### 손으로 갱신하는 나머지 (수치 아님 — 서사)
 
@@ -53,16 +54,16 @@ py -3 -m pytest tests/integration --collect-only -q | tail -1  # 통합 (리터�
 
 ## slug 계산 (TOC 앵커 — 추정 금지·함수 실측)
 ```bash
-python -c "import sys; sys.path.insert(0,'scripts'); import check_toc_anchors as t; print(t.github_slug('<헤더 텍스트>', {}))"
+py -3 -c "import sys; sys.path.insert(0,'scripts'); import check_toc_anchors as t; print(t.github_slug('<헤더 텍스트>', {}))"
 ```
 em-dash(`—`)/`+`/`()`/`.` 가 더블하이픈·제거를 유발하므로 반드시 실측.
 
 ## 검증 (커밋 전 의무)
-- `python scripts/check_docs_sync.py` → ✅ (4 지점 카운트 일치)
-- `python scripts/check_toc_anchors.py` → ✅ (TARGETS 의 `## 목차` 앵커 정합)
-- 카운트 실측 대조: `pytest tests/unit --collect-only -q | tail -1` 이 M 인지
+- `py -3 scripts/check_docs_sync.py` → ✅ (4 지점 카운트 일치)
+- `py -3 scripts/check_toc_anchors.py` → ✅ (TARGETS 의 `## 목차` 앵커 정합)
+- 카운트 실측 대조: `py -3 -m pytest tests/unit --collect-only -q | tail -1` 이 SSOT 불릿의 단위 수와 같은지
 
 ## 주의
-- README.md ↔ README.ko.md 배지 쌍 **동시 갱신 의무** (과거 Codex 적발 drift — `feedback-docs-sync-codeql-gotchas`).
+- README.md ↔ README.ko.md 배지 쌍 **동시 갱신 의무** (과거 Codex 적발 drift). 집행자는 `scripts/check_docs_sync.py` 의 `apply_fix` — 두 README 배지를 함께 쓰고, 한쪽이라도 Tests 배지 매치가 1개가 아니면 **아무것도 쓰지 않는다**.
 - **카운트 무변경 PR**(docs-only·`.mjs`·스킬)은 수치 불릿·배지 갱신 불필요, STATE.md 최신 블록만 교체.
 - 신규 `src/` 파일 추가 시 `docs/architecture.md` 동기화(6-step ⑥)는 본 스킬 범위 밖 — 별도 수행.

@@ -7,13 +7,23 @@ description: SCAManager 테스트 실행 — 전체 또는 특정 모듈
 
 ## 인자 없이 호출 (`/test`)
 
-환경변수 격리 + 전체 테스트 스위트 실행 (권장):
+**`make` 이 없는 머신이 있다** (이 개발 PC 포함 — `command -v make` 부재 실측). `make X` 실패는 환경 문제이지 리포 문제가 아니다(CLAUDE.md §핵심 명령). 그래서 기본 경로는 make 비의존이다:
+
+```bash
+py -3 -m pytest tests/unit
+```
+
+6-step ② 가 요구하는 게이트이자 아래 baseline 의 정의다. 가드까지 포함한 push 전 사전 점검은 `py -3 scripts/pre_push_gate.py` — 역시 make 비의존이며 자기가 못 보는 축(CodeQL·Sonar·통합테스트 등)을 매번 인쇄한다.
+
+`pytest tests/` **전량은 기본 경로가 아니다** — `tests/integration/` 이 pylint·flake8·bandit·semgrep 을 실제 subprocess 로 띄워 로컬 Windows 에서 리소스 과부하를 일으킨다. 수집 수치만 필요하면 `--collect-only` 를 쓴다.
+
+`make` 이 있는 머신이면 환경변수 격리 실행:
 
 ```bash
 make test-isolated
 ```
 
-`.env` 파일이 stash 되어 단위 테스트가 깨끗한 환경변수로 실행. 🔴 **신규 실패 판정 = 하드코딩 수치 아닌 baseline 실측 대비** — 로컬 환경/경로 차이로 false failure 가능하나, 판정 기준은 `pytest tests/unit` **baseline 출력의 실패집합**(현 main CI green = 0; 수치 출처 `docs/STATE.md` SSOT). 고정 카운트 인용 금지 — 자연 drift(정책 6).
+`.env` 를 stash 하고 자격증명 env 를 unset 해 깨끗한 환경에서 실행한다(`Makefile` 의 `test-isolated`). 단 본체가 `pytest tests/` 전량이라 위 주의가 그대로 적용된다.
 
 빠른 단위 테스트만 (통합 제외):
 
@@ -21,11 +31,7 @@ make test-isolated
 make test-fast
 ```
 
-또는 직접 pytest 호출:
-
-```bash
-python -m pytest tests/ -q
-```
+🔴 **신규 실패 판정 = 하드코딩 수치 아닌 baseline 실측 대비** — 로컬 환경/경로 차이로 false failure 가능하나, 판정 기준은 `py -3 -m pytest tests/unit` **baseline 출력의 실패집합**(현 main CI green = 0; 수치 출처 `docs/STATE.md` SSOT). 고정 카운트 인용 금지 — 자연 drift(정책 6).
 
 결과 요약을 출력하고, 실패한 테스트가 있으면 오류 내용과 수정 방향을 제시한다.
 

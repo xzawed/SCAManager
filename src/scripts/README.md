@@ -23,44 +23,46 @@ OpenAI DALL-E 3 API로 SCAManager UI 일러스트 5장 생성. 결과는 `src/st
 ### 사용법
 
 ```bash
-# Dry-run (API 호출 없이 5장 prompt 만 출력 — 검토용 default)
+# Dry-run (API 호출 없이 prompt 만 출력). `--dry-run` 은 argparse `store_true` 라
+# **기본값이 아니다** — 빼면 곧바로 과금 호출이 나간다.
 python -m src.scripts.generate_illustrations --all --dry-run
 
-# 단일 일러스트 (예: login_hero)
-python -m src.scripts.generate_illustrations --name login_hero
+# 단일 일러스트 (`--name` 은 PROMPTS 5종 이름만 허용)
+python -m src.scripts.generate_illustrations --name filter_empty
 
-# 전체 5장 생성 (~$0.40)
+# 전체 5장 생성 (비용은 아래 §비용)
 python -m src.scripts.generate_illustrations --all
 ```
 
 ### 5장 prompt 일람
 
-| 이름 | 배치 | 사이즈 | 품질 |
-|------|------|--------|------|
-| `login_hero` | login.html L40-60 form 상단 hero | 1024×1024 | hd |
-| `dashboard_empty` | dashboard.html L210/678/700 empty state | 1024×1024 | standard |
-| `overview_onboarding` | overview.html L154-193 3-step tutorial | 1792×1024 | hd |
-| `add_repo_hero` | add_repo.html form 상단 hero | 1792×1024 | standard |
-| `filter_empty` | repo_detail.html L168 filter-empty | 1024×1024 | standard |
+이름 · 배치 · 사이즈 · 품질의 정본은 [`illustration_prompts.py`](illustration_prompts.py) 의 `PROMPTS` 상수다.
+여기 있던 복제 표는 2026-08-17 감사에서 배치 좌표 4건이 **전부** 실측과 어긋나 있었다
+(`login.html L40-60` · `dashboard.html L210/678/700` · `overview.html L154-193` · `repo_detail.html L168`)
+— 파생 대신 포인터만 남긴다.
 
-상세 prompt 본문 = [`illustration_prompts.py`](illustration_prompts.py) `PROMPTS` 상수 참조.
+**`login_hero` 는 출하되지 않았다** — 대상이던 `login.html` 이 사이클 117(#578)에서 삭제돼
+`landing.html` 로 통합됐다. 커밋된 PNG 는 4장(`add_repo_hero` · `dashboard_empty` · `filter_empty`
+· `overview_onboarding`)이고 `PROMPTS` 는 5종을 유지한다 — 개수는 아래 §회귀 가드가 고정한다.
 
-### 비용 (2026-05 기준 OpenAI 가격)
+### 비용
 
-| 옵션 | 1장 | 5장 합계 |
-|------|------|----------|
-| standard 1024×1024 | $0.040 | — |
-| hd 1024×1024 | $0.080 | — |
-| hd 1792×1024 | $0.120 | — |
-| **본 5장 합계** | — | **~$0.40** |
+단가 정본 = [`generate_illustrations.py`](generate_illustrations.py) 모듈 docstring (2026-05 기준).
+여기 있던 복제 표에는 `standard 1792×1024` 행이 없어 `add_repo_hero` 가 빠져 있었다 —
+그 표만으로는 "~$0.40" 합계를 검산할 수 없다. 실행 전 현재 단가는 OpenAI 가격 페이지에서 재확인할 것.
 
 캐싱 X (DALL-E 3 idempotent 아님 — 동일 prompt도 매번 다른 결과). 한 번 만들고 commit 후 재실행 X.
 
-### 결과 적용 (Step 2-B 별도 PR)
+### 결과 적용 — 완료 (사이클 94 Step 2-B)
 
-본 PR (Step 2-A) = 스크립트 + prompt 만. 사용자 로컬 실행 후:
-1. `src/static/illustrations/*.png` 5장 commit
-2. 별도 PR (Step 2-B): 5 페이지 (login / dashboard / overview / add_repo / repo_detail)에 `<img src="/static/illustrations/...">` 마크업 추가 + 4-테마 호환 CSS
+이 절차는 이미 끝났다. **재실행하지 말 것.** PNG 4장이 `src/static/illustrations/` 에 커밋됐고
+마크업은 `add_repo.html` · `dashboard.html` · `overview.html` · `repo_detail.html` 에 들어갔다
+(공통 CSS = `src/static/css/illustrations.css`, `base.html` 에서 로드).
+현재 참조 지점은 아래로 재측정한다 — 줄 번호를 여기 적으면 다음 편집에서 곧바로 낡는다.
+
+```bash
+grep -rn "static/illustrations/" src/templates/ src/static/css/
+```
 
 ### 회귀 가드
 

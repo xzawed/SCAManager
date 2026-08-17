@@ -37,6 +37,10 @@ alembic current
 alembic history --verbose
 ```
 
+> **`make` 이 없는 머신** — 이 리포의 개발 PC 포함(`make --version` → `command not found` 실측).
+> `make migrate` = `alembic upgrade head` (`Makefile:126`) ·
+> `make revision m="설명"` = `alembic revision --autogenerate -m "설명"` (`Makefile:146`).
+
 ---
 
 ## 신규 스키마 변경 절차 (개발 흐름)
@@ -47,7 +51,8 @@ alembic history --verbose
    - PostgreSQL 전용 DDL(인덱스, RLS 등)은 `is_postgresql(op.get_bind())` 분기 추가 (`src/shared/alembic_dialect.py` 참조)
    - SQLite에서는 `batch_alter_table` 패턴 사용 금지 (신규 파일 기준) — 상세: `.claude/rules/db.md`
 4. `make migrate` — 로컬 DB에 적용
-5. `make test` — 전체 테스트 통과 확인
+5. `py -3 -m pytest tests/unit` — 단위 테스트 **전체** 통과 확인 (6-step ②).
+   `make test` 는 `python -m pytest tests/ -q` 라 `tests/integration` 까지 돈다 (`Makefile:26`).
 6. PR 머지 후 운영 환경 자동 적용 (아래 "Railway 운영 환경" 절 참조)
 
 > **🔴 주의**: ORM 컬럼 추가 후 `make revision` 없이 배포하면 운영 500 에러 발생.
@@ -59,10 +64,16 @@ alembic history --verbose
 
 ## Railway 운영 환경 마이그레이션
 
-Railway에서는 앱 시작 시 `src/main.py`의 `lifespan` 함수가 자동으로
-`_run_migrations()` → `alembic upgrade head`를 실행한다 (timeout: 30초).
+Railway 마이그레이션 게이트는 **2층**이다.
 
-**PR 머지 → Railway 자동 재배포 → lifespan 시작 → 마이그레이션 자동 적용** 흐름.
+1. **1차 = 실게이트** — `railway.toml` 의 `preDeployCommand = "alembic upgrade head"`.
+   새 컨테이너가 트래픽을 받기 전에 돌고 **실패하면 배포가 중단**된다(loud-fail).
+   🔴 Railway 대시보드 Settings→Deploy→Pre-deploy Command 는 **빈 값**으로 둔다
+   (단일 출처 = `railway.toml`. 사유와 2026-06-15 전례는 그 파일 `[deploy]` 주석).
+2. **2차 = 멱등 중복** — `src/main.py:221` 의 `lifespan` 이 `_run_migrations()` →
+   `alembic upgrade head` 를 실행한다 (`src/main.py:225` · timeout 30초).
+
+**PR 머지 → 자동 재배포 → pre-deploy 마이그레이션 → 컨테이너 기동 → lifespan 재확인** 흐름.
 
 수동 실행이 필요한 경우:
 
@@ -70,9 +81,12 @@ Railway에서는 앱 시작 시 `src/main.py`의 `lifespan` 함수가 자동으�
 railway run alembic upgrade head
 ```
 
-> **헬스체크**: `GET /health` → `{"status":"ok"}`. 마이그레이션 실패 시 앱은 시작되지만
-> Railway 로그에 오류가 기록된다. 배포 후 헬스체크가 200을 반환하더라도 Railway 빌드 로그에서
-> alembic 오류를 직접 확인할 것.
+> **헬스체크**: `GET /health` → `{"status":"ok"}` (`src/main.py:378`).
+> 🔴 **lifespan 마이그레이션 실패는 기본값에서 앱을 막지 않는다** — `STRICT_MIGRATION=false`(기본,
+> `src/config.py:87`)면 오류를 로그에 남기고 그대로 기동하고, `true` 면 실패·timeout 시 기동을
+> 거부한다 (`src/main.py:231` · `:243`). Railway 는 1차 pre-deploy 가 막아 주지만
+> **온프레미스·비-Railway 는 lifespan 이 유일 게이트**다 (`docs/reference/env-vars.md` §STRICT_MIGRATION).
+> 헬스체크가 200을 반환하더라도 배포 로그에서 alembic 오류를 직접 확인할 것.
 
 ---
 
@@ -80,6 +94,10 @@ railway run alembic upgrade head
 
 `src/database.py`와 `src/config.py`는 URL 기반 자동 분기로 두 환경을 모두 지원한다.
 아래 절차로 전환한다.
+
+> **주의**: 같은 이전을 [`onpremise-migration-guide.md`](onpremise-migration-guide.md) §4 가
+> `pg_dump --format=custom` + `pg_restore` 조합으로도 서술한다(이 문서는 plain SQL + `psql`).
+> **두 문서의 절차를 섞지 말고 한 쪽을 끝까지 따를 것.**
 
 ### 1. 신규 PostgreSQL DB 접속 확인
 
@@ -186,7 +204,7 @@ alembic history --verbose
 
 ---
 
-## 마이그레이션 파일 목록 (`alembic/versions/`)
+## 마이그레이션 파일 확인 (`alembic/versions/`)
 
 | 파일명 | 내용 |
 |--------|------|
@@ -233,9 +251,23 @@ alembic history --verbose
 | `0041_rls_force.py` | FORCE ROW LEVEL SECURITY 일괄 적용 (PG 전용, downgrade NO FORCE) |
 | `0042_*` ~ `0045_analysis_attempts.py` | 이후 마이그레이션 — 🔴 **정본은 `ls alembic/versions/`** 다 |
 
-> 🔴 **이 표는 요약이고 정본이 아니다.** 손유지 목록은 자연 drift 한다 —
-> 이 표가 중간 revision 에서 끝나 head 를 오인하게 만들던 것이 적발됐다. head 확인은
-> `py -3 -m alembic heads` 또는 `ls alembic/versions/` 로 하라.
+```bash
+# 현재 head revision
+py -3 -m alembic heads
+
+# 전체 파일 목록 (파일명 접두 숫자 = 적용 순서)
+ls alembic/versions/
+
+# 각 파일의 목적 — 파일 최상단 docstring 이 정본이다
+head -3 alembic/versions/0045_analysis_attempts.py
+```
+
+> 🔴 **여기에 손유지 목록을 두지 않는다.** 2026-05-17 ~ 2026-08-17 이 자리에는 41행짜리
+> `파일명 | 내용` 표가 있었다. 그 표가 중간 revision 에서 끝나 head 를 오인하게 만든 것이
+> 적발돼 「이 표는 정본이 아니다」라는 경고가 덧붙었고, 결국 표 자체를 퇴역시켰다.
+> 2026-08-17 실측: 표에 개별 등재된 41개 파일명은 디스크와 100% 일치했으나(45개 중 0042~0045 는
+> 이미 와일드카드 한 행으로 뭉뚱그려져 있었다), 각 행의 설명은 해당 파일 docstring 의 축약본이라
+> **고유 계약이 0** 이었다(45개 전 파일이 실질 docstring 첫 줄 보유). 손유지 표는 drift 표면만 남긴다.
 
 ---
 
@@ -243,14 +275,24 @@ alembic history --verbose
 
 | 증상 | 원인 | 해결 |
 |------|------|------|
-| 서버 시작 시 `OperationalError: no such column` | ORM 변경 후 마이그레이션 미실행 | `make migrate` |
-| `Target database is not up to date` | alembic revision 충돌 (브랜치 병합 등) | `alembic merge heads` 후 새 merge revision 생성 |
+| 서버 시작 시 `OperationalError: no such column` | ORM 변경 후 마이그레이션 미실행 | `alembic upgrade head` (= `make migrate`) |
+| `Target database is not up to date.` (`revision --autogenerate` 시) | DB 의 현재 revision 이 script head 와 다름 | `alembic upgrade head` 후 재실행 |
+| `Multiple head revisions are present` | 브랜치 병합으로 head 가 2개 이상 | `alembic merge heads` 로 merge revision 생성 |
 | `postgres://` URL 연결 실패 | 일부 라이브러리가 `postgres://` 미지원 | `src/config.py`가 자동 변환 — 직접 수정 불필요 |
-| Railway 배포 후 500 에러 | 마이그레이션 실패 (timeout 30초 초과 등) | Railway 빌드 로그에서 alembic 오류 확인 |
-| Supabase 연결 시 SSL 오류 | `sslmode=require` 미설정 | `src/config.py`가 자동 추가 — URL에 `supabase.co` 포함 확인 |
+| Railway 배포 후 500 에러 | pre-deploy 마이그레이션 실패 또는 lifespan timeout(30초) | Railway 배포 로그의 **pre-deploy 단계**부터 alembic 오류 확인 |
+| Supabase 연결 시 SSL 오류 | `sslmode=require` 미설정 | `src/config.py:212` 는 **hostname 이 `.supabase.co` / `.supabase.com`(pooler) 로 끝날 때만** 자동 부착한다 — 호스트명 확인. URL query 에 `sslmode` 가 이미 있으면 덮어쓰지 않는다 |
 | `batch_alter_table` 관련 오류 (PG) | SQLite 전용 패턴 잘못 사용 | 신규 마이그레이션에서 `op.create_unique_constraint(...)` 직접 사용 |
 | IPv6 연결 hang (Railway) | Railway 컨테이너 IPv6 아웃바운드 차단 | `.env`에 `DB_FORCE_IPV4=true` 설정 |
-| `SMTP_PORT=""` 설정 시 ValidationError | pydantic이 빈 문자열을 int로 변환 실패 | Railway Variables에서 SMTP_PORT 삭제 또는 숫자로 설정 |
+
+> **정정 (2026-08-17 실측)** — 이 표에 있던 두 행이 틀렸다.
+> ① `` `SMTP_PORT=""` 설정 시 ValidationError → Railway Variables 에서 삭제 `` 행을 제거했다.
+> 그 방어는 문서 신설(2026-05-17)보다 39일 앞선 `fccffd6c`(2026-04-08)에 이미 들어와 있었다 —
+> `src/config.py:283` `coerce_smtp_port` 가 빈 문자열을 587 로 대체한다
+> (`SMTP_PORT=""` 로 `Settings()` 기동 → `smtp_port == 587` 실측). **태어날 때부터 거짓이었다.**
+> ② `Target database is not up to date` 행은 원인·해결이 뒤바뀌어 있었다(원인 「revision 충돌」,
+> 해결 「`alembic merge heads`」). 그 문자열은 `alembic/autogenerate/api.py:591` 이
+> **autogenerate 경로에서만** 던지며 multiple-head 와 무관하다 — multiple-head 는
+> `alembic/script/base.py:270` 의 별개 메시지다. 두 증상을 각각 한 행으로 분리했다.
 
 ---
 
@@ -260,3 +302,5 @@ alembic history --verbose
 - [환경변수 전체 목록](../reference/env-vars.md)
 - [DB/마이그레이션 규칙](../../.claude/rules/db.md) — ORM 변경 시 체크리스트
 - [운영 smoke check](operational-smoke-checks.md)
+- [온프레미스 마이그레이션 가이드](onpremise-migration-guide.md) — §4 가 같은 Supabase→온프레미스
+  이전을 `pg_dump --format=custom` + `pg_restore` 로 서술한다(이 문서는 plain SQL + `psql`)

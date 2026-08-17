@@ -22,7 +22,7 @@
 [![E2E](https://img.shields.io/badge/E2E-121_CI_배선(120_통과_%2F_1_skip)-brightgreen?style=flat-square&logo=playwright&logoColor=white)](e2e/)
 [![pylint](https://img.shields.io/badge/pylint-9.99%2F10-brightgreen?style=flat-square&logo=python&logoColor=white)](src/)
 [![bandit](https://img.shields.io/badge/bandit-HIGH_0-brightgreen?style=flat-square&logo=security&logoColor=white)](src/)
-[![Coverage](https://img.shields.io/badge/Coverage-97%25-brightgreen?style=flat-square&logo=codecov&logoColor=white)](tests/)
+[![Coverage](https://img.shields.io/badge/Coverage-97%25-brightgreen?style=flat-square&logo=codecov&logoColor=white)](docs/STATE.md#현재-수치)
 
 [🇺🇸 English](README.md)
 
@@ -91,7 +91,7 @@ GitHub가 Webhook을 재전달하는 경우가 있었습니다. 응답이 조금
 
 CLI Hook 스크립트가 커밋 메시지를 명령줄 인자로 `claude -p "메시지"`에 넘기고 있었습니다. 커밋 메시지에 백틱이나 `$()` 같은 쉘 메타문자가 들어오면 그대로 실행될 수 있다는 걸 뒤늦게 깨달았고, 실제로 테스트해봤더니 정말 됐습니다(!).
 
-stdin으로 넘기는 방식으로 바꿨고 `echo "$msg" | claude -p` 형태로 처리하면 메시지가 명령줄을 거치지 않으므로 인젝션 자체가 성립하지 않았습니다. 스크립트 전체도 `set -euo pipefail`과 변수 쿼팅을 정비했습니다.
+당시 수정은 stdin 파이프(`echo "$msg" | claude -p`)였습니다 — 메시지가 명령줄을 거치지 않으므로 인젝션 자체가 성립하지 않았습니다. 스크립트 전체도 `set -euo pipefail`과 변수 쿼팅을 정비했습니다. (**지금은 그 기전이 아닙니다** — `claude -p` 경유 자체가 이후 폐지돼(`src/github_client/repos.py:201`), 현재 훅은 커밋 메시지·diff 를 환경변수로 `python3` 에 넘긴 뒤 Anthropic API 를 직접 부릅니다: 같은 파일 `:180`.)
 
 
 **알림 채널 URL을 검증하지 않으면 내부망으로 요청이 나갔다**
@@ -136,7 +136,7 @@ SCAManager 는 **3 언어** 를 사용자 facing 전 영역 (UI / 알림 / AI �
 - Anthropic prompt cache 는 언어별 자동 분리 (system text hash 차이 → cache key 자동 분리, 별도 설정 0)
 - Kill-switch: `I18N_DISABLED=1` 설정 시 기본 locale 만 사용 (운영 사고 응급 차단용)
 
-상세 환경변수: [docs/reference/env-vars.md](docs/reference/env-vars.md#%EB%8B%A4%EA%B5%AD%EC%96%B4-%EC%A7%80%EC%9B%90-phase-1-pr-1a-cycle-84)
+상세 환경변수: [docs/reference/env-vars.md](docs/reference/env-vars.md#다국어-지원)
 
 ---
 

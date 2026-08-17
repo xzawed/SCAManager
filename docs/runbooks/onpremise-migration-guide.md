@@ -328,7 +328,7 @@ Primary 장애 감지 (OperationalError)
   → probe thread가 30초마다 Primary 복구 확인
   → Primary 복구 감지 시 자동 복귀
   → /health → {"status":"ok"} (active 분기 무관 — 보안상 내부 DB 상태 미노출)
-  → 실제 failover 발생/복구는 logger.warning 로그로 추적 (Sentry/Railway logs)
+  → 실제 failover 발생/복구는 logger.warning 로그로 추적 (journalctl / docker compose logs)
 ```
 
 `DATABASE_URL_FALLBACK`이 비어 있으면 Failover 비활성 — 단일 엔진 모드로 동작합니다.
@@ -362,16 +362,33 @@ curl http://localhost:8000/health
 ```
 
 `/health` 는 liveness probe 전용 — DB failover 등 내부 상태는 보안상 노출하지
-않습니다 (정보 노출 방지). DB failover 발생/복구는 다음 경로로 추적합니다:
+않습니다 (정보 노출 방지). DB failover 발생/복구를 관측하는 경로는 **로그 하나뿐**입니다.
 
-1. **로그 모니터링** (권장) — `src/database.py::_probe_primary_loop` 가
-   `logger.warning("DB failover: primary → fallback")` / `logger.info(
-   "DB failover: fallback → primary recovered")` 로 기록.
-   Sentry / Railway / Loki 등 로그 수집기에서 위 패턴을 알림 규칙으로 설정.
-2. **Sentry 메트릭** — `init_sentry()` 가 동일 로그 메시지를 자동 캡처.
+**로그 패턴** — `src/database.py:159` 의 `logger.warning("DB failover: switched to %s", target)`
+**단 한 줄**이 양방향을 모두 남깁니다. 실제로 찍히는 줄은 두 가지입니다:
+
+| 실제 로그 줄 | 레벨 | 발화 지점 |
+|---|---|---|
+| `DB failover: switched to fallback` | WARNING | `FailoverSessionFactory.__call__` (`src/database.py:194-197`) |
+| `DB failover: switched to primary` | WARNING | `_probe_primary_loop` (`src/database.py:225`) |
+
+**복구도 WARNING 입니다** — 복구를 INFO 로 가정한 알림 규칙은 복귀를 놓칩니다.
+수집기(Loki·rsyslog 등)에는 `DB failover: switched to` 를 알림 패턴으로 등록하세요.
+
+```bash
+journalctl -u scamanager -f | grep "DB failover"   # systemd 배포
+docker compose logs -f app | grep "DB failover"    # Docker Compose 배포
+```
 
 > 인증된 운영자 대시보드에서 active_db 상태가 필요하면 별도 엔드포인트
 > 신설 권장 — `INTERNAL_CRON_API_KEY` 또는 admin key 기반.
+
+> **정정 이력 (2026-08-17)** — 이 절은 실재하지 않는 로그 문자열
+> `logger.warning("DB failover: primary → fallback")` / `logger.info("DB failover: fallback → primary recovered")`
+> 과 이미 제거된 `init_sentry()` 자동 캡처를 근거로 알림 규칙을 지시했다. 실측:
+> `grep -rn "primary → fallback" src/` = 0건 · `grep -rn "init_sentry" src/ --include=*.py` = 0건
+> (Sentry 통합은 #317 에서 전면 제거 — 정본 `docs/reference/env-vars.md:56` "Sentry SDK 는 없다").
+> 그대로 알림을 걸었다면 failover 경보는 **영원히 발화하지 않는다**.
 
 ### 동작 방식 상세
 
@@ -418,5 +435,5 @@ curl http://localhost:8000/health
 | `SESSION_SECRET` 경고 | `.env`에서 세션 시크릿 미설정 또는 기본값 사용 | `python -c "import secrets; print(secrets.token_hex(32))"` 로 새 값 생성 |
 | Webhook ping 실패 | nginx `X-Forwarded-Proto` 미설정 → HTTP URL 등록 | nginx 설정에 `proxy_set_header X-Forwarded-Proto $scheme` 추가 + `APP_BASE_URL` 확인 |
 | `DB_FORCE_IPV4=true` 오류 | Railway 전용 옵션이 온프레미스에서 DNS hang 유발 | `.env`에서 `DB_FORCE_IPV4=false` 로 변경 |
-| 로그에 `DB failover: primary → fallback` 지속 | Primary DB 연결 복구 안 됨 | `DATABASE_URL` 연결 확인 (포트 방화벽·PostgreSQL 기동 상태). `/health` 는 상태 노출 안 함 — Sentry/Railway 로그 모니터링 |
+| 로그에 `DB failover: switched to fallback` 이후 `switched to primary` 미발생 | Primary DB 연결 복구 안 됨 | `DATABASE_URL` 연결 확인 (포트 방화벽·PostgreSQL 기동 상태). `/health` 는 상태 노출 안 함 — `journalctl -u scamanager` 에서 `DB failover` 패턴 확인 |
 | Supabase Fallback 연결 실패 | SSL 설정 불일치 | `DATABASE_URL_FALLBACK`에 `?sslmode=require` 포함 확인 |

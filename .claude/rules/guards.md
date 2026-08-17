@@ -111,7 +111,7 @@ Windows `write_text` CRLF 왕복은 별개 — [[feedback-mutation-restore-crlf]
 
 ## push 전 로컬 게이트 = `py -3 scripts/pre_push_gate.py`
 
-CI 가 강제하는 repo-integrity 9종 + PR-diff 한정 4종을 `make` 없이 실행한다. `make gate` 는 pytest·pylint·bandit 뿐이라 이 13종을 돌리지 않는다. 이 개발 머신에는 `make` 자체가 없을 수 있다.
+CI 가 강제하는 repo-integrity 가드(`_INTEGRITY` + `_INTEGRITY_WITH_ARGS`)와 PR-diff 한정 가드(`_DIFF_SCOPED` + flake8 F401/F841)를 `make` 없이 실행한다. **개수는 여기 적지 않는다 — 목록 정본은 `scripts/pre_push_gate.py` 의 그 튜플들이다**(2026-08-17 정정: 이 줄은 「repo-integrity 9종 + PR-diff 한정 4종 … 이 13종」 이라 적혀 있었고 실측은 13 + 4 = 17 이었다 — CLAUDE.md 가 금지한 개수 복제를 여기서 하고 썩혔다). `make gate` 는 pytest·pylint·bandit 뿐이라 이 가드들을 돌리지 않는다. 이 개발 머신에는 `make` 자체가 없을 수 있다.
 
 - 🔴 **CI 에 가드를 추가하면 러너 목록도 갱신** — `tests/unit/scripts/test_pre_push_gate.py::test_runner_covers_every_ci_guard_script` 가 기대값을 `.github/workflows/ci.yml` 에서 파싱한다.
 - 러너가 못 보는 축(CodeQL·Sonar·Codecov·TruffleHog·pip-audit·lint-js·PG job·통합테스트)을 **매 실행 인쇄**한다. "여기 초록 = CI 초록" 으로 읽히면 러너 자신이 거짓 관측이다.
@@ -132,7 +132,7 @@ PR 본문만 고치고 CI 를 다시 돌리려면:
 | 요구 | 정규식 | 실패하는 표기 |
 |---|---|---|
 | 섹션 헤딩 | `^#{1,4}[^\n]*claim-?review` | `## Grok 2차 검토 …` (어휘 없음) |
-| 판정 라인 | `^[-*\|\s]*verdict\s*[:\|]\s*(SURVIVES\|BROKEN\|CONFIRMED\|REFUTED\|HOLDS)` | `verdict-1: HOLDS` |
+| 판정 라인 | `^[-*\|\s]*verdict\s*[:\|]\s*(SURVIVES\|WEAKENED\|BROKEN\|CONFIRMED\|REFUTED\|HOLDS)\b` | `verdict-1: HOLDS` · `verdict: WEAKENEDX` |
 
 로컬 검증:
 

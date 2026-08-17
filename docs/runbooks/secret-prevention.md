@@ -52,13 +52,14 @@ Layer 1: pre-commit  →  Layer 2: CI Scan  →  Layer 3: Incident Response
 
 ## Layer 1 — Prevention (커밋 전 자동 차단)
 
-### 1-A. pre-commit 훅 (gitleaks)
+### 1-A. pre-commit 훅 (시크릿 관련 5훅)
 
 `.pre-commit-config.yaml` 설치 후 매 커밋 시 자동 실행:
 
 ```bash
-pip install pre-commit
-pre-commit install          # pre-commit + commit-msg 두 타입을 함께 등록한다
+py -3 -m pip install pre-commit
+git config --unset-all core.hooksPath   # 설정돼 있으면 pre-commit 이 설치를 거부한다
+py -3 -m pre_commit install             # pre-commit + commit-msg 두 타입을 함께 등록한다
 ```
 
 🔴 **`--hook-type` 을 붙이지 말 것** (2026-08-17 정정 — 여기 `pre-commit install --hook-type
@@ -76,6 +77,11 @@ Do not pass `--hook-type`: it overrides `default_install_hook_types` and silentl
   실제 토큰 유출 사고로 만들어진 훅이며, 커밋 메시지 축을 지키는 것은 gitleaks 가 아니라 이쪽이다.
 
 ### 1-B. 커밋 메시지 금지 패턴 체크리스트
+
+🔴 **기계 집행자는 `check-commit-msg-secrets`(`.pre-commit-config.yaml:38`) 하나뿐**이고,
+그것이 잡는 것은 Telegram 토큰 형식 `[0-9]{8,12}:[A-Za-z0-9_-]{35,}` **한 종류**다.
+아래 표의 나머지 행은 **산문 규율** — 사람이 지켜야만 막힌다. 지킴이가 있다고 읽지 말 것.
+Only the Telegram-token shape is machine-enforced; the rest of this table is human discipline.
 
 커밋 메시지 본문에 아래 패턴 포함 금지:
 
@@ -98,6 +104,9 @@ TELEGRAM_BOT_TOKEN=<REDACTED> (실제 운영 토큰 — .env 참조)
 
 ### 1-C. .gitignore 검증
 
+`.env` 가 staged 되는 것 자체는 `check-env-not-staged`(`.pre-commit-config.yaml:48`)가
+이미 막는다. 아래는 그 훅이 설치되지 **않은** 환경(새 PC · CI 컨테이너)에서의 수동 확인이다.
+
 커밋 전 반드시 확인:
 
 ```bash
@@ -118,13 +127,13 @@ git status --short | grep "\.env"  # .env가 staged 여부 확인
 
 ### 2-B. CI TruffleHog 스캔 (`.github/workflows/ci.yml`)
 
-🔴 **diff 범위만** 스캔한다 — PR 은 `base..head`, push 는 `before..after`(`ci.yml` 의 `base:`/`head:` 인자). **커밋 이력 전체 스캔이 아니다**: 첫 push·force-push 는 범위가 성립하지 않아 사실상 skip 되고, 이미 머지된 과거 커밋의 시크릿은 영영 안 본다. `--only-verified` 라 **검증된 시크릿만** 잡는다. 이력 전수는 §2-C 로컬 명령 또는 아래 docker 전체 스캔이 유일 수단이다.
+🔴 **diff 범위만** 스캔한다 — PR 은 `base..head`(`ci.yml:48-49`), push 는 `before..after`(`:70-71`). **커밋 이력 전체 스캔이 아니다**: 첫 push·force-push 는 범위가 성립하지 않아 사실상 skip 되고, 이미 머지된 과거 커밋의 시크릿은 영영 안 본다. 실인자는 `--only-verified --exclude-detectors=lob`(`:59`·`:81`) — **검증된 시크릿만** 잡고, `lob` 탐지기는 40자짜리 `test_` 테스트 함수명을 API 키로 오인해 required 체크를 red 로 만들기에 제외돼 있다. 이력 전수는 §2-C 로컬 명령 또는 아래 docker 전체 스캔이 유일 수단이다.
 
 ```bash
 # 로컬에서 전체 이력 스캔 (커밋 메시지 포함)
 docker run --rm -v "$(pwd):/pwd" \
   trufflesecurity/trufflehog:latest \
-  git file:///pwd --only-verified
+  git file:///pwd --only-verified --exclude-detectors=lob
 ```
 
 ### 2-C. 올바른 시크릿 스캔 명령 (교훈 반영)
