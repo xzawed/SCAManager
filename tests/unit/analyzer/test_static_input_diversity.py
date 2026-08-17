@@ -56,8 +56,26 @@ _PATHS = [
 
 
 def _is_test(path: str) -> bool:
-    """기대값을 손으로 적지 않는다 — 프로덕션 판정기에서 파생한다."""
+    """경로 종류 판정 — 이 축은 프로덕션 판정기를 그대로 쓴다(분류기가 틀리면 양쪽이 함께 틀린다)."""
     return is_test_file(path, "python")
+
+
+def _tool_applies(tool: str, path: str) -> bool:
+    """이 도구가 이 파일에 **적용되는가** — 부재 시 incomplete 로 승격될 대상인가.
+
+    🔴 **의도적으로 손으로 적은 규칙이다 — `_BanditAnalyzer().supports()` 를 부르지 마라.**
+    (Grok claim-review `01a0101a` 정정: 초판 주석은 "프로덕션에서 파생한다" 고 적었는데
+     거짓이었고, 더 중요하게는 **파생하면 안 된다**.)
+
+    `supports()` 에서 파생하면 이 기대값은 프로덕션 규칙과 **함께 움직인다** — 누가
+    `supports` 의 테스트 파일 제외를 지우는 순간 기대값도 같이 뒤집혀 뮤테이션이 **조용히
+    통과**한다. 그게 `#1411` 을 놓친 형태다. 여기서 손유지는 결함이 아니라 **독립 오라클**이고,
+    규칙을 바꾸려면 사람이 이 함수도 함께 고쳐야 한다는 강제가 이 테스트의 값어치다.
+
+    Deliberately hand-written: deriving it from supports() would make the expectation move with
+    the bug, which is exactly how #1411 slipped through. This is an independent oracle.
+    """
+    return not (tool == "bandit" and _is_test(path))
 
 
 @pytest.fixture(name="no_subprocess")
@@ -138,25 +156,16 @@ def test_provisioned_absence_promotes_except_where_the_tool_does_not_apply(
         "shutil.which", lambda n, *a, **k: None if n == tool else real(n, *a, **k)
     )
 
-    # 🔴 **이 한 줄은 의도적으로 손으로 적은 것이다 — `supports()` 를 호출하지 마라.**
-    #    (Grok claim-review `01a0101a` 정정: 초판 주석은 "프로덕션에서 파생한다" 고 적었는데
-    #     거짓이었고, 더 중요하게는 **파생하면 안 된다**.)
-    #    `applies = _BanditAnalyzer().supports(ctx)` 로 바꾸면 이 테스트는 프로덕션 규칙과
-    #    **함께 움직인다** — `supports` 에서 테스트 파일 제외를 지우는 순간 기대값도 같이
-    #    뒤집혀 뮤테이션이 **조용히 통과**한다. 그게 `#1411` 을 놓친 형태다.
-    #    여기서 손유지는 결함이 아니라 **독립 오라클**이다. 규칙을 바꾸려면 이 줄도
-    #    사람이 함께 고쳐야 하고, 그 강제가 이 테스트의 값어치다.
-    # Deliberately hand-written: deriving it from supports() would make the expectation move
-    # with the bug, which is exactly how #1411 slipped through. This is an independent oracle.
-    applies = not (tool == "bandit" and _is_test(path))
+    # 기대값은 `_tool_applies` 가 갖는다 — 그 docstring 이 왜 손유지인지 적는다.
     result = analyze_file(path, _CODE)
 
-    assert (tool in result.unavailable_tools) is applies, (
+    assert (tool in result.unavailable_tools) is _tool_applies(tool, path), (
         f"{path} + {tool} 부재: unavailable_tools={result.unavailable_tools} "
-        f"(적용 대상={applies})"
+        f"(적용 대상={_tool_applies(tool, path)})"
     )
-    assert result.incomplete is applies, (
-        f"{path} + {tool} 부재 → incomplete={result.incomplete}, 기대={applies}. "
+    assert result.incomplete is _tool_applies(tool, path), (
+        f"{path} + {tool} 부재 → incomplete={result.incomplete}, "
+        f"기대={_tool_applies(tool, path)}. "
         "적용되지 않는 도구의 부재를 배포 회귀로 승격하면 그 경로 종류가 전부 막힌다."
     )
 
