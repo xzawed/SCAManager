@@ -256,3 +256,58 @@ def test_no_flag_behaves_exactly_like_main(monkeypatch):
     monkeypatch.setenv("PR_TITLE", "docs: 오타 수정")
     monkeypatch.setenv("PR_BODY", "오타 1건.")
     assert cli([]) == main() == 0
+
+
+# ── 축 4: 스택 PR 은 required check 가 적용되지 않는다는 사실을 알린다 (#1432 후속) ──
+#
+# 🔴 branch protection 과 ruleset PRIMARY 는 둘 다 `refs/heads/main` 만 대상이다(실측).
+#    base 가 feature 브랜치면 **required check 자체가 적용되지 않는다** — 초록도 빨강도
+#    머지를 막지 못한다. 그런데 PR 화면은 똑같이 보인다. 저자가 그것을 모르면
+#    「체크가 통과했으니 게이트를 지났다」로 읽는다 — observer-lie 의 교과서적 형태.
+#
+# 🔴 이 배너는 **집행하지 않는다.** exit code 를 바꾸지 않는다 — 못 막는 자리에 가드를
+#    두면 거짓 집행자가 된다. 여기서 하는 일은 「안 막힌다」를 말하는 것뿐이다.
+
+
+def _base_ref_env(monkeypatch, base_ref):
+    monkeypatch.setenv("PR_TITLE", "chore: 무해한 변경")
+    monkeypatch.setenv("PR_BODY", "본문.")
+    if base_ref is not None:
+        monkeypatch.setenv("PR_BASE_REF", base_ref)
+
+
+@pytest.mark.parametrize("base_ref", ["docs/final-cleanup", "feat/stack", "release/1.2"])
+def test_non_main_base_warns_that_checks_do_not_gate(monkeypatch, capsys, base_ref):
+    """base 가 main 이 아니면 「이 PR 은 required check 로 막히지 않는다」를 알린다."""
+    _base_ref_env(monkeypatch, base_ref)
+    main()
+    out = capsys.readouterr().out + capsys.readouterr().err
+    assert base_ref in out, "어떤 base 인지 알려주지 않는다"
+    assert "required check" in out, "required check 가 적용되지 않는다는 사실이 없다"
+
+
+@pytest.mark.parametrize("base_ref", ["main", None])
+def test_main_base_or_local_stays_quiet(monkeypatch, capsys, base_ref):
+    """base 가 main 이거나 로컬(env 없음)이면 배너를 내지 않는다 — 오탐 축."""
+    _base_ref_env(monkeypatch, base_ref)
+    main()
+    out = capsys.readouterr().out
+    assert "required check" not in out
+
+
+def test_base_ref_banner_does_not_change_the_verdict(monkeypatch, capsys):
+    """🔴 배너는 **집행하지 않는다** — 같은 입력의 exit code 가 base_ref 로 달라지면 안 된다.
+
+    못 막는 자리에 가드를 두면 거짓 집행자가 된다. 이 배너가 하는 일은 사실 고지뿐이다.
+    The banner must not change the verdict; a guard where it cannot enforce would be a lie.
+    """
+    monkeypatch.setenv("PR_TITLE", "chore: 무해한 변경")
+    monkeypatch.setenv("PR_BODY", "본문.")
+    without = main()
+    capsys.readouterr()
+
+    monkeypatch.setenv("PR_BASE_REF", "docs/stack")
+    with_banner = main()
+    capsys.readouterr()
+
+    assert without == with_banner

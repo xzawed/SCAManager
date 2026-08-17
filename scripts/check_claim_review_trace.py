@@ -409,6 +409,52 @@ def _make_stdout_safe():
 _AUTHOR_LOGIN_ENV = "PR_AUTHOR_LOGIN"
 _AUTHOR_TYPE_ENV = "PR_AUTHOR_TYPE"
 
+# PR 의 base 브랜치 이름. 판정에는 쓰지 않는다 — **고지 전용**.
+_BASE_REF_ENV = "PR_BASE_REF"
+_PROTECTED_BASE = "main"
+
+
+def warn_if_base_is_unprotected() -> bool:
+    """base 가 `main` 이 아니면 「이 PR 은 required check 로 막히지 않는다」를 알린다.
+
+    🔴 **집행하지 않는다 — exit code 를 바꾸지 않는다.** 못 막는 자리에 가드를 두면
+    거짓 집행자가 된다. 여기서 하는 일은 사실 고지뿐이다.
+
+    🔴 왜 필요한가 (2026-08-17 실측, #1432): branch protection 과 ruleset `PRIMARY` 는
+    둘 다 `refs/heads/main` 만 대상이라, base 가 feature 브랜치인 PR 은 **required check
+    자체가 적용되지 않는다.** 그런데 PR 화면은 똑같이 보이므로 저자는 초록을 「게이트를
+    지났다」로 읽는다. 실측으로 4건이 그렇게 머지됐다(#1389·#1398·#1399·#1402).
+
+    🔴 정직 기준 — **코드가 게이트 없이 main 에 도달한다는 뜻은 아니다.** 그 base 브랜치가
+    main 으로 갈 때는 full CI 를 받는다(위 4건의 부모 PR #1388·#1397·#1401 전 체크 pass).
+    잃는 것은 **PR 단위 판정**이다: 이 PR 의 본문에 대한 claim-review 는 아무도 강제하지 않고,
+    그 흔적은 나중 main-base PR 하나가 통째로 짊어지게 된다.
+
+    ⚠️ 집행으로 올릴 수 없다 — ruleset 을 전 브랜치로 넓히면 `pull_request`·`deletion`·
+    `non_fast_forward` 가 함께 걸려 feature 브랜치 직접 push·삭제·force-push 가 막힌다.
+    `required_status_checks` 만 담은 별도 ruleset 도 브랜치 **update** 를 게이트하므로
+    WIP push 가 막힌다. GitHub 의 제약이지 이 리포의 설정 누락이 아니다.
+
+    Advisory only: a non-main base means required checks do not gate this PR at all.
+    """
+    base_ref = (os.environ.get(_BASE_REF_ENV) or "").strip()
+    if not base_ref or base_ref == _PROTECTED_BASE:
+        return False
+    print(
+        f"::notice title=unprotected base::base={base_ref} — required check 가 이 PR 을 막지 않는다"
+    )
+    _append_step_summary(
+        f"- ⚠️ **required check 미적용** — base `{base_ref}` (보호 대상은 `{_PROTECTED_BASE}` 뿐)\n"
+    )
+    print(
+        f"⚠️  base 가 `{base_ref}` 다 — branch protection·ruleset 은 `{_PROTECTED_BASE}` 만\n"
+        "    대상이라 이 PR 에는 **required check 가 적용되지 않는다.** 아래 판정이 빨강이든\n"
+        "    초록이든 머지를 막지 못한다(초록을 「게이트를 지났다」로 읽지 말 것).\n"
+        f"    → 이 변경의 claim-review 는 이 base 가 `{_PROTECTED_BASE}` 로 갈 때의 PR 이\n"
+        "      통째로 짊어진다. 거기서 범위가 커지는 것을 감수할지 지금 판단할 것."
+    )
+    return True
+
 
 def is_bot_author() -> bool:
     """CI env 기준 봇 여부. 본문을 보지 않는다.
@@ -509,6 +555,8 @@ def main() -> int:
     #    plain text 로 렌더되므로 스트리핑하지 않는다(기존 동작 보존).
     # The body is judged after comment stripping; titles/commits render as plain text.
     body = read_pr_body()
+    # 🔴 고지 전용 — 반환값을 판정에 쓰지 않는다(못 막는 자리에 가드를 두지 않는다).
+    warn_if_base_is_unprotected()
     base_sha = os.environ.get("PR_BASE_SHA", "")
     head_sha = os.environ.get("PR_HEAD_SHA", "")
 
