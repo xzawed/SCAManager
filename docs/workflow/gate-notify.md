@@ -12,7 +12,7 @@
 ### 알림 채널 추가
 1. `alembic revision` 으로 `repo_configs` 컬럼 추가 → `src/models/repo_config.py` 에 `Column` 1줄
 2. `src/config_manager/manager.py:13` `RepoConfigData` 에 필드 1줄(기본 None)
-3. `src/notifier/<채널>.py` — `name` · `is_enabled(ctx)` · `async send(ctx)` 후 `register()` 호출
+3. `src/notifier/<채널>.py` — `name` · `is_enabled(ctx)` · `async send(ctx)` 후 `register()` — `send` 는 언어를 `resolve_notification_language(db, config=ctx.config)`(`src/notifier/_language.py:38`)로 풀고, 점수를 렌더하면 신뢰도 고지(`unreliable_score_warning_lines`)를 넣는다. **둘 다 빠져도 CI 는 초록이다.** 호출
 4. `src/notifier/__init__.py` 에 `import src.notifier.<채널>` 1줄 — 빠지면 REGISTRY 미등록으로 조용히 미발송
 5. `src/api/repos.py`(필드 + `:88` URL 검증 목록) · `src/ui/routes/settings.py:54,229` · `src/templates/settings.html` 폼
 6. 문구는 `src/i18n/translations/{ko,en,ja}.json` 3개 전부

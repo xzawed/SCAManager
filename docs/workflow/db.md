@@ -4,7 +4,11 @@
 2. 신규 모델 파일이면 `alembic/env.py:45` 의 import 목록에 추가한다. 빠지면 autogenerate 가 그 테이블에 `drop_table` 을 만든다.
 3. 초안을 만든다 — `alembic revision --autogenerate -m "설명"` (`make revision m="..."`).
 4. 생성 파일을 `alembic/versions/NNNN_<slug>.py` 로 옮기고 `revision = "NNNN"`, `down_revision` = 직전 번호로 고친다(현재 head `0045`).
-5. PG 전용 DDL 은 `if not is_postgresql(op.get_bind()): return` 뒤에 둔다 — SQLite 단위 테스트가 같은 파일을 실행한다.
+4-1. 기존 테이블에 `nullable=False` 컬럼을 넣으면 `server_default` 를 함께 준다 —
+   행이 있는 운영 테이블에서 pre-deploy 의 `alembic upgrade head` 가 실패한다.
+   SQLite 단위 테스트는 `create_all` 이라 `add_column` 을 안 돌리고 CI PG 는 빈 DB 라
+   **이 실패는 운영에서만 난다**.
+5. PG 전용 DDL 은 `if not is_postgresql(op.get_bind()): return` 뒤에 둔다 (`from src.shared.alembic_dialect import is_postgresql`) — SQLite 단위 테스트가 같은 파일을 실행한다.
 6. 신규 테이블이면 아래 RLS 3종을 같은 마이그레이션에 넣고 `src/services/saas_service.py:73` `_RLS_MATRIX` 에 등재한다.
 7. `downgrade()` 를 역순으로 쓴다 — 정책 DROP → 제약 → 인덱스 → 테이블.
 8. 신규 모델이면 모델 목록 개수 상수 2곳을 함께 올린다 — `tests/unit/test_migration_completeness.py:51,150` · `tests/unit/migrations/test_orm_alembic_parity.py:58,64`.
@@ -34,7 +38,11 @@ USING (repo_id IN (SELECT id FROM repositories
 py -3 -m pytest tests/unit/migrations tests/unit/test_migration_completeness.py tests/unit/test_rls_matrix_completeness.py
 ```
 
-실 PG upgrade→downgrade 왕복과 ORM↔스키마 대조는 CI `pg-concurrency` job 만 돈다. PG 전용 테스트를 추가하면 `.github/workflows/ci.yml:599` node-id 핀에 등재해야 수집된다. 로컬에서 돌리려면 `DATABASE_URL_TEST_POSTGRES` 를 설정한다(`DATABASE_URL` 은 conftest 가 sqlite 로 덮는다).
+`DATABASE_URL_FALLBACK` 이 설정돼 있으면 그 DB 에도 같은 `alembic upgrade head` 를
+손으로 돌린다 — pre-deploy 는 primary 만 올리는데 `FailoverSessionFactory` 가 장애 시
+그쪽으로 전환한다.
+
+실 PG upgrade→downgrade 왕복과 ORM↔스키마 대조는 CI `pg-concurrency` job 만 돈다. PG 전용 테스트를 추가하면 `.github/workflows/ci.yml:559` node-id 핀에 등재해야 수집된다. 로컬에서 돌리려면 `DATABASE_URL_TEST_POSTGRES` 를 설정한다(`DATABASE_URL` 은 conftest 가 sqlite 로 덮는다).
 
 ## 적용
 

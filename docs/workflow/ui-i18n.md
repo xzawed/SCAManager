@@ -4,6 +4,21 @@
 템플릿은 전부 `base.html` 상속. 예외는 `landing.html`(비로그인 전용, 독립 head).
 CSS 로드 순서 = `base.html:34~41` — tokens → themes → illustrations → dist/tailwind → components → pages.
 
+## 설정 토글을 추가한다
+
+체크박스 마크업만 넣으면 **저장되지 않고, 어떤 가드도 잡지 않는다**
+(`check_config_5way_sync.py` 는 `settings.html` 을 범위 밖에 둔다). 5곳을 같은 PR 에 넣는다.
+
+1. `src/models/repo_config.py` — `Column(Boolean, default=False, nullable=False)` + 마이그레이션([db.md](db.md))
+2. `src/config_manager/manager.py:13` `RepoConfigData` — 같은 이름 필드. 빠지면 저장할 때마다 기본값으로 덮인다
+3. `src/api/repos.py` `RepoConfigUpdate` — 같은 이름 필드. 1~3 불일치는 pre-commit `check-config-5way-sync` 가 red
+4. `src/ui/routes/settings.py:218` `upsert_repo_config(db, RepoConfigData(` 에 `<name>=form.get("<name>") == "on",`
+5. `src/templates/settings.html` `.toggle-row` 복제 (`{% if config.<name> %}checked{% endif %}`).
+   프리셋이 지배하면 `PRESETS` 3개·`labels`·`currentFormValues()` 에도 넣는다
+
+문구 키: 제목·설명은 `settings_page.<섹션>.<name>_title/_desc`, 프리셋 diff 라벨만 `settings.field_<name>`
+— `_KEYS` 대상은 후자뿐이다.
+
 ## 문구를 추가·변경한다
 
 1. `src/i18n/translations/` 의 `en.json` `ko.json` `ja.json` **3개에 동시** 추가한다. 키 집합이 어긋나면 `tests/unit/i18n/test_loader.py:143` 이 red.

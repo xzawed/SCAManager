@@ -32,7 +32,8 @@
 3. 모듈 하단 `register(...)` + `static.py` 상단 import 1줄(로드 시 자동 등록).
 4. 조달한 바이너리는 `static.py:54` `PROVISIONED_ANALYZERS` 에 등재. 등재분 부재 = 배포 회귀 → `incomplete` 차단, 미등재분 부재 = 미제공 → 가시화만.
 5. 새 언어면 `src/analyzer/pure/language.py:15` 확장자 맵 + `review_guides/tier{N}/<lang>.py` + `review_guides/__init__.py:34` `_GUIDE_MAP` 1줄.
-6. `docs/architecture.md:86` 의 도구 목록 한 줄을 갱신한다.
+6. `docs/architecture.md:23` 의 `tools/(N 어댑터)` 개수를 갱신한다.
+7. `tests/unit/scripts/test_analyzer_provenance.py` 의 `_PROVENANCE`(:48)에 `(바이너리, 조달모드, optional 사유)` 를 등재한다 — 미등재는 CI FAIL. 조달하지 않으면 `optional_absent_ok` + 사유.
 
 ## 검증
 

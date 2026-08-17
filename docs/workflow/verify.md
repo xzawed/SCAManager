@@ -4,7 +4,7 @@
 
 | 스위트 | 건수 | 실행 |
 |---|---|---|
-| `tests/unit` | 7113 | `py -3 -m pytest tests/unit -q` |
+| `tests/unit` | 6857 | `py -3 -m pytest tests/unit -q` |
 | `tests/integration` | 171 | `-m "slow"` (자동 마킹) |
 | `e2e/` | 121 | `py -3 -m pytest e2e/ -p no:asyncio -v` |
 
@@ -22,6 +22,23 @@
 5. `git push` → `gh pr create`
 6. PR 본문 **첫 매치 줄**에 2) 실측을 적는다 — `pytest tests/unit → N passed / M skipped`.
    없으면 CI 가 차단한다.
+
+7. 아래 표면을 건드렸으면 본문에 외부 검증 흔적을 넣는다 — 없으면 CI `repo-integrity` 가 차단한다.
+   대상: `src/` · `scripts/` · `alembic/` · `e2e/` · `.github/workflows/` ·
+   `.claude/{hooks,workflows,settings.json}` · `.pre-commit-config.yaml` · `tests/unit/{scripts,hooks}`
+
+   ```
+   ## Grok claim-review
+   - session: <sessionId 또는 워크플로 run id>
+   - claim: <검증한 주장 한 줄>
+   - verdict: SURVIVES | WEAKENED | BROKEN | CONFIRMED | REFUTED | HOLDS
+   ```
+
+   검증 대상이 아니면 `claim-review-not-required: <사유 16자 이상>` 한 줄로 대신한다.
+   단 `scripts/` · `.github/workflows/` · `.claude/{hooks,workflows,settings.json}` ·
+   `.pre-commit-config.yaml` · `tests/unit/{scripts,hooks}` 를 바꾸는 PR 은 **면제가 통하지 않는다**.
+   `pre_push_gate.py` 는 PR 환경변수가 없어 이 축을 건너뛴다 — 로컬 초록은 근거가 아니다.
+   볼드(`**WEAKENED**`)를 쓰면 정규식이 매칭하지 않는다.
 
 ### CI (`.github/workflows/ci.yml` — push:main / PR:main)
 

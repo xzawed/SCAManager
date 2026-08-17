@@ -46,7 +46,7 @@ py -3 -m pytest e2e/ -p no:asyncio     # E2E (tests/ 와 같이 돌리지 않는
 전체 타깃은 `Makefile` 이 정본이다.
 
 최초 설정: `cp .env.example .env` → `py -3 -m pip install -r requirements.txt requirements-dev.txt`
-→ `npm install && npm run build:css` → `py -3 -m pre_commit install` → `py -3 -m uvicorn src.main:app --reload`
+→ `npm install && npm run build` → `py -3 -m pre_commit install` → `py -3 -m uvicorn src.main:app --reload`
 
 ---
 
