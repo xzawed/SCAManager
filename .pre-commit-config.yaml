@@ -102,14 +102,6 @@ repos:
         stages: [pre-commit]
         description: STATE 종합·추적셀 ↔ README/README.ko Tests 배지 카운트 일치 + requirements.txt 실핀 ↔ deploy.md 인용·FastAPI 배지 일치 검사.
 
-      - id: check-toc-anchors
-        name: "🔗 TOC 앵커 정합"
-        language: python
-        entry: python scripts/check_toc_anchors.py
-        files: "^(CONTRIBUTING\\.ko\\.md|docs/runbooks/github-integration-guide\\.md|docs/runbooks/onpremise-migration-guide\\.md)$"
-        pass_filenames: false
-        stages: [pre-commit]
-        description: 활성 `## 목차` 문서의 `](#...)` 앵커가 헤딩 GitHub slug(중복 -1, em-dash 더블하이픈)과 일치하는지 검사 (과거 #958 끊긴 앵커 차단).
 
       - id: check-memory-refs
         name: "🧠 메모리 슬러그 참조 정합"

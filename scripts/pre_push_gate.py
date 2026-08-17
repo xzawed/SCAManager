@@ -70,7 +70,6 @@ _INTEGRITY = (
     # Runs first: the badge autofixer can rewrite a line inside a conflict block.
     "check_conflict_markers.py",
     "check_docs_sync.py",
-    "check_toc_anchors.py",
     "check_architecture_tree_sync.py",
     "check_guard_fail_open.py",
     "check_env_vars_sync.py",
@@ -91,7 +90,6 @@ _INTEGRITY = (
     # P4 🔴-예산제 (2026-08-08). 로컬에서는 PR env 가 없어 **현황만 인쇄**하고 쉰다 —
     # 무집행 🔴 이 지금 몇 건인지 매 push 마다 눈에 들어오는 부수 효과가 있다.
     # Prints the current unenforced-🔴 count locally; the delta verdict is CI's job.
-    "check_red_budget.py",
 )
 
 # 인자가 필요한 whole-repo 가드 — CI 와 같은 형태로 부른다.

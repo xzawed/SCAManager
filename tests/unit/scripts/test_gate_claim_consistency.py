@@ -264,10 +264,10 @@ def test_no_doc_calls_make_gate_the_real_or_ci_equivalent_gate(doc):
 def test_the_canonical_gate_is_named_where_agents_enter():
     """🔴 진입 문서 3종이 **정본 게이트 이름**을 담아야 한다.
 
-    Grok 은 `AGENTS.md` 로 들어오고, Claude 는 `CLAUDE.md` 로, 기여자는 PR 템플릿으로 들어온다.
+    Claude 는 `CLAUDE.md` 로, 기여자는 PR 템플릿으로 들어온다.
     한 곳이라도 빠지면 그 경로로 들어온 행위자는 정본을 모른 채 작업한다.
     """
-    for entry in ("AGENTS.md", "CLAUDE.md", ".github/PULL_REQUEST_TEMPLATE.md"):
+    for entry in ("CLAUDE.md", ".github/PULL_REQUEST_TEMPLATE.md"):
         text = (_ROOT / entry).read_text(encoding="utf-8")
         assert _CANONICAL_GATE in text, (
             f"{entry} 에 정본 게이트 `{_CANONICAL_GATE}` 가 없다 — "

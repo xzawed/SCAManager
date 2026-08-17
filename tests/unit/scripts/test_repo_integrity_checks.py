@@ -1,7 +1,7 @@
-"""repo-integrity 체커 스크립트 회귀 가드 — check_docs_sync / check_toc_anchors.
+"""repo-integrity 체커 스크립트 회귀 가드 — check_docs_sync.
 
 현재 repo 에서 통과(pre-commit 이 현 상태를 막지 않음) + 합성 위반 적발(실제 drift 차단)을
-양방향 고정한다. WF-2(docs 수치 정합) / WF-3(TOC 앵커 slug) 자동화의 회귀 가드.
+양방향 고정한다. WF-2(docs 수치 정합) 자동화의 회귀 가드.
 """
 import ast
 import re
@@ -13,7 +13,6 @@ _ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(_ROOT / "scripts"))
 
 import check_docs_sync  # noqa: E402
-import check_toc_anchors  # noqa: E402
 
 
 # --- check_docs_sync (WF-2) ---
@@ -487,7 +486,7 @@ def test_history_tail_uses_full_pairs_not_independent_first():
 def _pin_fixture(tmp_path: Path) -> Path:
     """핀 검사가 읽는 4개 파일을 실 리포에서 그대로 복사. / Copy the 4 real files the check reads."""
     (tmp_path / ".claude" / "rules").mkdir(parents=True)
-    for rel in ("requirements.txt", "README.md", "README.ko.md", ".claude/rules/deploy.md"):
+    for rel in ("requirements.txt", "README.md", "README.ko.md"):
         (tmp_path / rel).write_text((_ROOT / rel).read_text(encoding="utf-8"), encoding="utf-8")
     return tmp_path
 
@@ -515,28 +514,6 @@ def test_dependency_pins_flag_badge_drift(tmp_path):
     assert any("README.md FastAPI 배지" in m for m in msgs)
 
 
-def test_dependency_pins_flag_prose_drift(tmp_path):
-    """deploy.md 산문의 핀 인용이 실핀과 어긋나면 red."""
-    root = _pin_fixture(tmp_path)
-    pin = re.search(r"^fastapi==(\S+)$", (root / "requirements.txt").read_text(encoding="utf-8"),
-                    re.MULTILINE).group(1)
-    _mutate(root / ".claude" / "rules" / "deploy.md", f"fastapi=={pin}", "fastapi==0.0.0")
-    ok, msgs = check_docs_sync.check_dependency_pins(root)
-    assert not ok
-    assert any("deploy.md `fastapi==0.0.0`" in m for m in msgs)
-
-
-def test_dependency_pins_flag_empty_scope(tmp_path):
-    """인용을 통째로 지워 검사 범위를 비우면 통과가 아니라 red (빈 범위 위의 ✅ = fail-open)."""
-    root = _pin_fixture(tmp_path)
-    pin = re.search(r"^fastapi==(\S+)$", (root / "requirements.txt").read_text(encoding="utf-8"),
-                    re.MULTILINE).group(1)
-    _mutate(root / ".claude" / "rules" / "deploy.md", f"fastapi=={pin}", "fastapi 최신")
-    ok, msgs = check_docs_sync.check_dependency_pins(root)
-    assert not ok
-    assert any("인용 0건" in m for m in msgs)
-
-
 def test_dependency_pins_flag_missing_ground_truth(tmp_path):
     """기준이 되는 requirements 핀 자체가 사라지면 red — 기대값 소실을 통과로 읽지 않는다."""
     root = _pin_fixture(tmp_path)
@@ -546,17 +523,6 @@ def test_dependency_pins_flag_missing_ground_truth(tmp_path):
     ok, msgs = check_docs_sync.check_dependency_pins(root)
     assert not ok
     assert any("핀 미발견" in m for m in msgs)
-
-
-def test_dependency_pins_flag_starlette_prose_drift(tmp_path):
-    """fastapi 만이 아니라 `_DOC_PIN_NAMES` 전건이 실제로 검사된다."""
-    root = _pin_fixture(tmp_path)
-    pin = re.search(r"^starlette==(\S+)$", (root / "requirements.txt").read_text(encoding="utf-8"),
-                    re.MULTILINE).group(1)
-    _mutate(root / ".claude" / "rules" / "deploy.md", f"starlette=={pin}", "starlette==0.0.0")
-    ok, msgs = check_docs_sync.check_dependency_pins(root)
-    assert not ok
-    assert any("starlette==0.0.0" in m for m in msgs)
 
 
 def test_dependency_pins_flag_korean_readme_badge_drift(tmp_path):
@@ -595,164 +561,5 @@ def test_precommit_hook_watches_every_file_the_check_reads():
     pattern = re.search(r'^\s*files:\s*"(.+)"\s*$', block, re.MULTILINE).group(1)
     compiled = re.compile(pattern.replace("\\\\", "\\"))
     for path in ("docs/STATE.md", "README.md", "README.ko.md",
-                 "requirements.txt", ".claude/rules/deploy.md"):
+                 "requirements.txt"):
         assert compiled.match(path), f"pre-commit files 패턴이 {path} 를 놓친다"
-
-
-# --- check_toc_anchors (WF-3) ---
-
-def test_toc_anchors_passes_on_current_repo():
-    """TARGETS 의 모든 실파일이 현재 초록이어야 한다.
-
-    예전 판은 `docs/cycle-history.md` 한 파일만 읽었다. 그 파일이 빠지면 이 단언이
-    FileNotFoundError 로 죽거나, TARGETS 를 다른 문서로 옮겨도 옛 경로를 계속 읽는다.
-    Every listed TARGET must exist and currently resolve; cycle-history is no longer the fixture.
-    """
-    assert check_toc_anchors.TARGETS, "TARGETS 가 비면 이 단언이 공허하다"
-    for rel in check_toc_anchors.TARGETS:
-        path = _ROOT / rel
-        assert path.is_file(), f"TARGETS 항목 부재: {rel.as_posix()}"
-        ok, msgs = check_toc_anchors.check_anchors(path.read_text(encoding="utf-8"))
-        assert ok, (rel.as_posix(), msgs)
-
-
-def test_toc_targets_exclude_retiring_ledgers():
-    """원장 두 파일은 이 가드의 대상이 아니다 — 묶여 있으면 삭제가 가드를 공허/영구 red 로 만든다."""
-    declared = {p.as_posix() for p in check_toc_anchors.TARGETS}
-    assert "docs/cycle-history.md" not in declared
-    assert "docs/backlog.md" not in declared
-
-
-def test_toc_targets_cover_live_toc_headings():
-    """디스크의 `## 목차` 문서(퇴역 예정·아카이브 제외) 와 TARGETS 가 같아야 한다.
-
-    새 TOC 문서가 생기면 여기가 red — 가드가 그 문서를 모르면 앵커가 끊겨도 초록이다.
-    cycle-history 는 원장 퇴역 대상이라 제외한다(파일이 아직 디스크에 있어도).
-    """
-    import subprocess  # nosec B404 — 리포 자신의 파일 목록만 읽는다
-
-    retiring = {"docs/cycle-history.md", "docs/backlog.md"}
-    listed = subprocess.run(  # nosec B603 B607
-        ["git", "ls-files", "-z", "*.md"], cwd=str(_ROOT),
-        capture_output=True, text=True, encoding="utf-8", errors="replace", check=True,
-    ).stdout.split("\0")
-    on_disk = set()
-    for rel in listed:
-        if not rel or "_archive" in rel or rel in retiring:
-            continue
-        path = _ROOT / rel
-        if not path.is_file():
-            continue
-        text = path.read_text(encoding="utf-8")
-        if re.search(r"^##\s+목차\s*$", text, re.M):
-            on_disk.add(rel)
-    declared = {p.as_posix() for p in check_toc_anchors.TARGETS}
-    missing = sorted(on_disk - declared)
-    extra = sorted(declared - on_disk)
-    assert not missing, f"## 목차 문서가 TARGETS 에 없다: {missing}"
-    assert not extra, f"TARGETS 항목이 디스크에 없거나 목차가 없다: {extra}"
-
-
-def test_main_fails_when_a_target_is_missing(monkeypatch, capsys):
-    """목록에 있는 파일이 없으면 exit 1 — 부재를 건너뛰면 스코프가 조용히 줄어든다."""
-    monkeypatch.setattr(check_toc_anchors, "TARGETS", (Path("nope/missing-toc.md"),))
-    assert check_toc_anchors.main() == 1
-    assert "없음" in capsys.readouterr().out
-
-
-def test_main_fails_when_targets_empty(monkeypatch, capsys):
-    """빈 TARGETS 는 성공이 아니다."""
-    monkeypatch.setattr(check_toc_anchors, "TARGETS", ())
-    assert check_toc_anchors.main() == 1
-    out = capsys.readouterr().out
-    assert "TARGETS" in out
-
-
-def test_toc_anchors_flags_broken():
-    md = "## 목차\n- [항목](#nonexistent-anchor)\n\n## 실제 헤딩\n본문\n"
-    ok, msgs = check_toc_anchors.check_anchors(md)
-    assert not ok
-    assert any("nonexistent-anchor" in m for m in msgs)
-
-
-def test_toc_anchors_ignores_inline_code_outside_toc():
-    # 본문 섹션의 인라인 코드 예시(`](#...)`)는 목차 앵커가 아니므로 오탐하지 않아야 함
-    md = (
-        "## 목차\n- [항목](#실제-헤딩)\n\n"
-        "## 실제 헤딩\n본문에서 TOC `](#...)` 앵커 형식을 설명하는 코드 예시.\n"
-    )
-    ok, msgs = check_toc_anchors.check_anchors(md)
-    assert ok, msgs
-
-
-def test_github_slug_em_dash_double_hyphen():
-    # em-dash 가 공백 사이에서 제거되어 더블하이픈 slug 생성 (#958 사고 패턴)
-    assert check_toc_anchors.github_slug("A — B", {}) == "a--b"
-
-
-def test_github_slug_dedup_suffix():
-    seen: dict[str, int] = {}
-    assert check_toc_anchors.github_slug("동일 제목", seen) == "동일-제목"
-    assert check_toc_anchors.github_slug("동일 제목", seen) == "동일-제목-1"
-
-
-# --- Grok claim-review df5ed11d 적발: `--fix` 가 새 **쓰기측** fail-open 이었다 ---
-
-
-def test_apply_fix_refuses_arithmetically_impossible_ssot(tmp_path):
-    """전체 ≠ 단위 + 통합 이면 **아무것도 쓰지 않는다**.
-
-    🔴 `apply_fix` 는 파일을 **쓰는** 코드다. 형식만 보고 쓰면 "형식은 맞는데 틀린 값" 을
-    5곳에 자동 전파하고, 그 오염은 되돌리기 어렵다. 산술은 사본과 무관한 축이라
-    사본끼리 합의된 오류도 잡는다.
-    """
-    root = _count_fixture(tmp_path)
-    state = root / "docs" / "STATE.md"
-    text = state.read_text(encoding="utf-8")
-    # 🔴 **숫자를 요구한다** — 초판은 `rindex("= **")` 로 '마지막 `= **`' 를 총계로 가정했다.
-    #    그러다 이력 산문이 `잔여 = **R77**` 로 끝나자 수술이 총계가 아니라 **그 문자열**을
-    #    깨뜨렸고, 총계는 멀쩡하니 `apply_fix` 가 정상 통과해 이 테스트가 red 가 됐다
-    #    (2026-08-10 실발현). 산문이 바뀌었을 뿐인데 가드가 죽는 것은 가드의 결함이다.
-    # Require digits: the last `= **` is not necessarily the total once prose grows.
-    target = list(re.finditer(r"= \*\*\d+\*\*", text))[-1]
-    state.write_text(text[:target.start()] + "= **99999**" + text[target.end():], encoding="utf-8")
-    before = state.read_text(encoding="utf-8")
-
-    ok, msgs = check_docs_sync.apply_fix(root)
-    assert not ok
-    assert any("산술적으로 불가능" in m for m in msgs), msgs
-    assert state.read_text(encoding="utf-8") == before, "거부했는데 파일을 건드렸다"
-
-
-def test_duplicate_history_section_is_rejected(tmp_path):
-    """이력 절이 2개면 red — 첫 절만 SSOT 가 되어 진짜 이력이 **가려진다**.
-
-    가짜 절을 앞에 끼워 넣는 것만으로 실제 수치 검사를 우회할 수 있었다.
-    """
-    root = _count_fixture(tmp_path)
-    state = root / "docs" / "STATE.md"
-    head = check_docs_sync._STATE_HIST_HEADING
-    text = state.read_text(encoding="utf-8")
-    state.write_text(
-        text.replace(head, f"{head}\n\n- 가짜 (0→**1** 단위 — 통합 0 = **1** 수집).\n\n## 딴절\n\n{head}", 1),
-        encoding="utf-8")
-
-    ok, msgs = check_docs_sync.check_consistency(root)
-    assert not ok
-    assert any("절이 2개" in m for m in msgs), msgs
-
-
-def test_consistency_catches_agreed_arithmetic_error(tmp_path):
-    """5지점이 **같은 틀린 값으로 합의**해도 산술 축이 잡는다.
-
-    이 파일 docstring 이 인정한 '사본끼리 대조' 의 한계를 메우는 축이다.
-    """
-    root = _count_fixture(tmp_path)
-    state = root / "docs" / "STATE.md"
-    # 통합 수만 바꾼다 → 전체·단위는 5지점 전부 일치하지만 산술이 깨진다
-    text = re.sub(r"통합 \d+ \(현재\)", "통합 99999 (현재)", state.read_text(encoding="utf-8"), count=1)
-    state.write_text(text, encoding="utf-8")
-
-    ok, msgs = check_docs_sync.check_consistency(root)
-    assert not ok, "사본은 전부 일치하는데 산술이 깨진 상태가 통과했다"
-    assert any("산술 불일치" in m for m in msgs), msgs

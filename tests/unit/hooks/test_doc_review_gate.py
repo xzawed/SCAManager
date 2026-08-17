@@ -78,7 +78,7 @@ class TestPromptCache:
         #    `docs/STATE.md` 를 언급하므로 단순 부분문자열 검사는 오탐이다.
         assert "=== docs/STATE.md " in volatile, "STATE 가 가변 파트에 없다"
         assert "=== docs/STATE.md " not in stable, "STATE 가 안정 파트에 섞였다 — 매 sync 마다 캐시 파괴"
-        assert "=== CLAUDE.md " in stable and "=== AGENTS.md " in stable
+        assert "=== CLAUDE.md " in stable
         # 🔴 STATE 를 **빼는** 것이 아니라 나누는 것이다 (R37 이 되돌린 축)
         assert volatile.strip(), "STATE 를 통째로 제거하면 심의자가 수치 정합을 못 본다"
 
@@ -819,16 +819,16 @@ class TestGateKillSwitch:
 # ──────────────────────────────────────────────────────────────────────────────
 
 def test_behavioural_rule_docs_are_never_skipped():
-    """`AGENTS.md` · `.claude/rules/**` · `.claude/policies/**` 는 `skip` 이면 안 된다.
+    """`CLAUDE.md` · `docs/workflow/**` 는 `skip` 이면 안 된다.
 
     디스크를 스캔하므로 신규 rules/policies 파일이 추가돼도 자동으로 검사 대상이 된다.
     """
     root = Path(__file__).resolve().parents[3]
-    targets = [root / "AGENTS.md"]
-    targets += sorted((root / ".claude" / "rules").glob("*.md"))
-    targets += sorted((root / ".claude" / "policies").glob("*.md"))
+    targets = [root / "CLAUDE.md"]
+    targets += sorted((root / "docs" / "workflow").glob("*.md"))
 
-    assert len(targets) > 5, "대조 집합이 비었다 — 스캐너가 고장났거나 경로가 바뀌었다"
+    # 개수 하한을 두지 않는다 — 문서를 줄이면 red 가 되는 계약이라 축소를 막는다.
+    assert targets, "대조 집합이 비었다 — 스캐너가 고장났거나 경로가 바뀌었다"
 
     skipped = [
         p.relative_to(root).as_posix()
@@ -842,13 +842,13 @@ def test_behavioural_rule_docs_are_never_skipped():
 
 
 def test_rules_are_critical_and_policies_are_important():
-    """등급 구분 고정 — rules/ 는 편집 표면 자동 로드라 critical, policies/ 는 detail 이라 important.
+    """등급 구분 고정 — 수행 지시 표면은 critical, 참조 문서는 important.
 
     등급이 뒤바뀌면 consistency-reviewer 의 차단 범위가 달라진다(`apply_veto_matrix` 참조).
     """
-    assert classify_file_grade("AGENTS.md") == "critical"
-    assert classify_file_grade(".claude/rules/pipeline.md") == "critical"
-    assert classify_file_grade(".claude/policies/active.md") == "important"
+    assert classify_file_grade("CLAUDE.md") == "critical"
+    assert classify_file_grade("docs/workflow/pipeline.md") == "critical"
+    assert classify_file_grade("docs/architecture.md") == "important"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -866,15 +866,13 @@ def test_rules_are_critical_and_policies_are_important():
 #    루프가 그냥 안 돌아 초록이 된다(실측: AGENTS.md 원천 제거 뮤테이션 M-C 가 GREEN).
 #    가드가 자기 설정을 기대값으로 읽으면, 설정을 지우는 것이 곧 가드를 지우는 것이 된다.
 # Pinned here, NOT derived from the module: deriving makes source *removal* silently green.
-_REQUIRED_CONTEXT_SOURCES = ("CLAUDE.md", "AGENTS.md", "docs/STATE.md")
+_REQUIRED_CONTEXT_SOURCES = ("CLAUDE.md", "docs/STATE.md")
 
 # 각 원천에만 있는 문구 — 다른 원천에도 있는 문구를 쓰면 그 원천을 지워도 통과한다.
 # 실측: 초판은 "3-불변식" 을 썼는데 CLAUDE.md 에도 2회 나와 AGENTS.md 제거가 GREEN 이었다.
 _SOURCE_FINGERPRINTS = (
-    ("CLAUDE.md", "#### 정책 7", "PR 단위 의무 — 문서 변경 심의의 핵심 판정 근거"),
-    ("CLAUDE.md", "#### 정책 19", "Grok claim-review — 파일 끝쪽이라 절단에 가장 먼저 사라진다"),
-    ("AGENTS.md", "### 불변식 1 — fail-closed", "가드 저술 규율 — 별도 파일이라 통째로 빠져 있었다"),
-    ("AGENTS.md", "### 불변식 2 — 실경로 뮤테이션", "합성 픽스처 금지 규율"),
+    ("CLAUDE.md", "## 작업 절차", "작업 순서 — 심의가 판정 근거로 삼는 절"),
+    ("CLAUDE.md", "## 문서 규칙", "문서 규칙 — 파일 끝쪽이라 절단에 가장 먼저 사라진다"),
 )
 
 
@@ -1282,10 +1280,8 @@ def test_directive_bearing_surfaces_are_reviewed():
     # Globs only match existing files. A missing literal must fail, not shrink the set.
     _literal = (
         "docs/architecture.md",
-        "docs/agents-index.md",
         ".github/PULL_REQUEST_TEMPLATE.md",
         "CONTRIBUTING.md",
-        "CONTRIBUTING.ko.md",
         "SECURITY.md",
     )
     missing = [rel for rel in _literal if not (root / rel).is_file()]
@@ -1326,7 +1322,8 @@ def test_skip_set_is_small_and_deliberate():
         ).stdout.split()
         if "_archive" not in f and not f.startswith("docs/design/")
     ]
-    assert len(files) > 40, f"추적 문서를 {len(files)}개만 찾았다 — 스캐너 확인"
+    # 개수 하한을 두지 않는다 — 문서를 줄이면 red 가 되는 계약이라 축소를 막는다.
+    assert files, "추적 문서가 0개다 — 스캐너 고장"
     skipped = sorted(f for f in files if classify_file_grade(f) == "skip")
     assert len(skipped) <= 8, (
         f"skip 이 {len(skipped)}개로 늘었다 — false coverage 재발 위험:\n  {skipped}\n"
@@ -1544,7 +1541,7 @@ def test_whole_sources_actually_fit():
     """
     from doc_review_gate import _CONTEXT_SOURCES
 
-    whole = {"CLAUDE.md", "AGENTS.md"}          # 리터럴 고정 — 유도하면 비워도 초록이다
+    whole = {"CLAUDE.md"}                       # 리터럴 고정 — 유도하면 비워도 초록이다
     checked = 0
     for name, budget in _CONTEXT_SOURCES:
         if name not in whole:

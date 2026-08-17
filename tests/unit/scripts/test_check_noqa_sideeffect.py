@@ -163,8 +163,8 @@ def test_ci_noqa_guard_passes_pr_base_sha():
 
 
 def test_testing_md_documents_tuple_pattern():
-    """🔴 testing.md 가 side-effect-only import 에 튜플 패턴을 명시 — P1#10 안티패턴 권장 봉합."""
-    rules = (_ROOT / ".claude" / "rules" / "testing.md").read_text(encoding="utf-8")
+    """🔴 verify.md 가 side-effect-only import 에 튜플 패턴을 명시 — P1#10 안티패턴 권장 봉합."""
+    rules = (_ROOT / "docs" / "workflow" / "verify.md").read_text(encoding="utf-8")
     assert "_FK_TARGET_MODELS" in rules or "_SIDE_EFFECT_MODELS" in rules, (
-        "testing.md 가 side-effect-only import 튜플-참조 패턴 미문서화 — CodeQL py/unused-import 재발 근본"
+        "verify.md 가 side-effect-only import 튜플-참조 패턴 미문서화 — CodeQL py/unused-import 재발 근본"
     )

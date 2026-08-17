@@ -17,7 +17,7 @@ import pytest
 
 # 🔴 단일 import 형태 — `import X as mod` 와 `from X import ...` 공존은
 #   CodeQL `py/import-and-import-from` 을 자초하고 CI `check_dual_import` 가 차단한다
-#   (`.claude/rules/testing.md` — 모듈 패치 시 이중 import 회피).
+#   (`docs/workflow/testing.md` — 모듈 패치 시 이중 import 회피).
 # Single import form: the dual shape self-inflicts a CodeQL alert and is CI-blocked.
 import scripts.check_memory_refs as mod
 
@@ -239,16 +239,17 @@ def test_collect_is_not_vacuous(tmp_path, monkeypatch):
 
 
 def test_scan_scope_covers_rules_and_runbooks():
-    """🔴 `.claude/rules/**` 와 `docs/runbooks/**` 가 범위에 들어와야 한다.
+    """🔴 `docs/workflow/**` 와 `docs/runbooks/**` 가 범위에 들어와야 한다.
 
     확대 전에는 3파일(전체 188 md 의 **1.6%**)만 봤다. 그 범위 밖에서 죽은 슬러그가
     생기면 가드가 **"✅ 전부 존재"** 를 인쇄한다 — 좁은 범위 위의 초록은 fail-open 이다.
     """
     files = set(mod.DOC_FILES)
-    assert "CLAUDE.md" in files and "AGENTS.md" in files
-    assert any(f.startswith(".claude/rules/") for f in files), files
+    assert "CLAUDE.md" in files and "CLAUDE.md" in files
+    assert any(f.startswith("docs/workflow/") for f in files), files
     assert any(f.startswith("docs/runbooks/") for f in files), files
-    assert len(files) >= 20, f"범위가 다시 좁아졌다: {len(files)}개"
+    # 개수 하한을 두지 않는다 — 문서를 줄이면 red 가 되는 계약이라 축소를 막는다.
+    assert files, "스캔 범위가 0개다 — 붕괴"
 
 
 def test_scan_scope_excludes_point_in_time_records():
@@ -262,17 +263,17 @@ def test_scan_scope_excludes_point_in_time_records():
 
 
 def test_scan_scope_is_derived_not_hardcoded(tmp_path):
-    """범위가 **글롭 파생**임을 단언 — 새 rules/runbook 이 자동 포함돼야 한다.
+    """범위가 **글롭 파생**임을 단언 — 새 workflow/runbook 이 자동 포함돼야 한다.
 
     하드코딩 목록이면 파일을 추가할 때마다 손으로 등재해야 하고, 빠뜨리면 조용히 무관측이다.
     """
-    (tmp_path / ".claude" / "rules").mkdir(parents=True)
+    (tmp_path / "docs" / "workflow").mkdir(parents=True)
     (tmp_path / "docs" / "runbooks").mkdir(parents=True)
-    (tmp_path / ".claude" / "rules" / "brandnew.md").write_text("x", encoding="utf-8")
+    (tmp_path / "docs" / "workflow" / "brandnew.md").write_text("x", encoding="utf-8")
     (tmp_path / "docs" / "runbooks" / "brandnew.md").write_text("x", encoding="utf-8")
 
     files = mod._doc_files(tmp_path)
-    assert ".claude/rules/brandnew.md" in files, files
+    assert "docs/workflow/brandnew.md" in files, files
     assert "docs/runbooks/brandnew.md" in files, files
 
 

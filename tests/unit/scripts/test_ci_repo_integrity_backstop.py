@@ -19,7 +19,6 @@ _CI = _ROOT / ".github" / "workflows" / "ci.yml"
 # Whole-repo stdlib guards that must run as the server-side backstop (memory-refs/bilingual excluded).
 _BACKSTOP_GUARDS = (
     "check_docs_sync.py",
-    "check_toc_anchors.py",
     "check_env_vars_sync.py",
     "check_config_5way_sync.py",
 )

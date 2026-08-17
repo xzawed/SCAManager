@@ -33,8 +33,7 @@ PROJECTS_ROOT = Path.home() / ".claude" / "projects"
 # Scope = prescriptive docs only. Retired history trees are gone, so they are not
 # in the globs. The runbooks glob shrank when six campaign records were deleted.
 _DOC_GLOBS = (
-    ".claude/policies/*.md",
-    ".claude/rules/*.md",
+    "docs/workflow/*.md",
     "docs/runbooks/*.md",
 )
 # 🔴 리터럴은 `.is_file()` 로 걸러내지 않는다. 걸러내면 파일이 사라진 순간 스코프가
@@ -42,7 +41,7 @@ _DOC_GLOBS = (
 #    글롭은 존재하는 파일만 돌려주는 것이 글롭의 정의라 그대로 둔다.
 # Literals stay in the list even when missing so main() can fail loudly; globs only
 # match existing files (that is what a glob is).
-_DOC_LITERALS = ("CLAUDE.md", "AGENTS.md")
+_DOC_LITERALS = ("CLAUDE.md",)
 
 
 def _doc_files(project_root: Path) -> list[str]:

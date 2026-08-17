@@ -13,7 +13,6 @@
 |---|---|---|
 | `check_reverse_mutation` | `reverse-mutation-not-applicable:` | 🔴 통과 |
 | `check_test_count_sync` | `STATE-sync-deferred:` | 🔴 통과 |
-| `check_red_budget` | `red-budget-exempt:` | 🔴 통과 |
 
 🔴 **교훈은 "복제하지 말라" 가 아니다** — 관용구는 앞으로도 복제된다. 교훈은
 **"읽는 지점을 하나로 두라"** 다. 그래야 다음 하드닝도 자동으로 따라간다.
@@ -50,7 +49,6 @@ _SOLE_READER = "check_claim_review_trace.py"
 # 면제/이월 마커로 PR 본문을 판정하는 게이트 — 전부 단일 리더를 거쳐야 한다.
 _MARKER_GATES = {
     "check_reverse_mutation": ("_EXEMPT", "reverse-mutation-not-applicable"),
-    "check_red_budget": ("_EXEMPT", "red-budget-exempt"),
     "check_test_count_sync": ("_DEFERRED", "STATE-sync-deferred"),
 }
 

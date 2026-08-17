@@ -87,7 +87,6 @@ def _rev(ref: str) -> str:
         ".claude/settings.json",
         ".github/workflows/ci.yml",
         ".pre-commit-config.yaml",
-        "tests/unit/scripts/test_red_budget.py",
         "tests/unit/hooks/test_doc_review_gate.py",
     ],
 )

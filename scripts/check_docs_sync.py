@@ -56,8 +56,8 @@ _README_BADGE = re.compile(r"Tests-(\d+)%2B_total_\((\d+)_unit_%2B_\d+_integrati
 # README FastAPI 배지: "FastAPI-0.141-009688" — 관례상 핀의 major.minor 만 표기
 # README FastAPI badge — by convention it carries only the pin's major.minor
 _FASTAPI_BADGE = re.compile(r"FastAPI-(\d+\.\d+)-")
-# 산문이 인용하는 핀 이름 — `.claude/rules/deploy.md` 가 `name==X` 형태로 적는 것들
-# Dependency names quoted as `name==X` in .claude/rules/deploy.md
+# README FastAPI 배지가 파생되는 핀 이름
+# Pin names the README FastAPI badge derives from
 _DOC_PIN_NAMES = ("fastapi", "starlette")
 # 버전 문자열 (PEP 440 흔한 형태 — 숫자로 시작, 이후 숫자/문자/점/하이픈)
 _VERSION = r"[0-9][0-9A-Za-z.\-]*"
@@ -286,7 +286,6 @@ def check_dependency_pins(project_root: Path) -> tuple[bool, list[str]]:
     """
     msgs: list[str] = []
     reqs = (project_root / "requirements.txt").read_text(encoding="utf-8")
-    deploy = (project_root / ".claude" / "rules" / "deploy.md").read_text(encoding="utf-8")
 
     pins: dict[str, str | None] = {
         name: _first(re.compile(rf"^{name}==({_VERSION})$", re.MULTILINE), reqs)
@@ -295,14 +294,6 @@ def check_dependency_pins(project_root: Path) -> tuple[bool, list[str]]:
     for name, pin in pins.items():
         if pin is None:
             msgs.append(f"❌ requirements.txt 에 `{name}==` 핀 미발견 (핀 형식 변경됐는지 확인)")
-            continue
-        quoted = re.findall(rf"\b{name}==({_VERSION})", deploy)
-        if not quoted:
-            msgs.append(f"❌ .claude/rules/deploy.md 의 `{name}==` 인용 0건 — 검사 범위 붕괴")
-        msgs += [
-            f"❌ deploy.md `{name}=={got}` ↔ requirements.txt `{name}=={pin}` 불일치"
-            for got in dict.fromkeys(v for v in quoted if v != pin)
-        ]
 
     fastapi_pin = pins["fastapi"]
     if fastapi_pin is not None:
@@ -493,7 +484,7 @@ def main() -> int:
     if ok:
         print("✅ STATE 종합·추적셀 ↔ README.md ↔ README.ko.md 전체/단위 카운트 일치")
     if pin_ok:
-        print("✅ requirements.txt 핀 ↔ deploy.md 인용 ↔ README FastAPI 배지 일치")
+        print("✅ requirements.txt 핀 ↔ README FastAPI 배지 일치")
     if lint_ok:
         sites = lint_badge_sites(project_root)
         print(f"✅ pylint 값 5지점 일치 — {sites[0][1]}/10 (CI --fail-under 가 배지에서 파생)")
@@ -505,7 +496,7 @@ def main() -> int:
         "\n해결: (수치) 손으로 고칠 곳은 STATE.md §테스트 수 추적 이력 **현재 불릿 한 줄**뿐이다 —"
         " 그 줄을 실측값(`--collect-only`)으로 고친 뒤 `py -3 scripts/check_docs_sync.py --fix`"
         " 를 돌리면 나머지 4지점(종합 수치·추적셀 머리·README 2배지)이 파생된다."
-        " (핀) requirements.txt 실핀에 맞춰 .claude/rules/deploy.md 인용과 README/README.ko"
+        " (핀) requirements.txt 실핀에 맞춰 README/README.ko"
         " FastAPI 배지를 갱신."
     )
     return 1
