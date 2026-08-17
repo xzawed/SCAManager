@@ -829,6 +829,15 @@ def _explain_body(base_sha: str, head_sha: str) -> int:
 
     _explain_exemption(body, _EXEMPT.search(body), guarded, surfaces, claims)
 
+    # 🔴 정직 기준 (Grok claim-review `01a00fc9`): 위 사실표와 아래 판정은 **각각 따로**
+    #    계산된다 — `main()` 이 같은 값을 다시 구한다. 같은 SHA 면 같은 답이지만, 그 사이
+    #    작업트리가 바뀌면 표와 판정이 어긋날 수 있다. 판정의 정본은 **아래 EXIT** 다.
+    #    (이 축을 없애려면 `main()` 을 재구조화해야 하는데, 게이트 본체를 진단 편의를 위해
+    #     건드리는 쪽이 더 위험하다 — 그래서 적어 두고 남긴다.)
+    # 🔴 부수효과 고지: `main()` 은 `GITHUB_STEP_SUMMARY` 가 설정돼 있으면 거기에 append 한다.
+    #    CI 안에서 `--explain` 을 돌리면 정상 실행과 **같은** 요약 줄이 남는다(중복이 아니라
+    #    같은 실행이다 — 이 모드는 판정을 대신 수행한다).
+    # The fact table and the verdict are computed separately; the EXIT below is authoritative.
     print("── 이 입력으로 정상 실행하면 / actual run")
     code = main()
     print(
