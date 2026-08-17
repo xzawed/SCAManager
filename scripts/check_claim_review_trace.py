@@ -692,5 +692,171 @@ def main() -> int:
     return 1
 
 
+# ── 자기진단 모드 (#1433) ────────────────────────────────────────────────────
+#
+# 🔴 왜 (2026-08-17 회고 P0): 세 사고(`#1409`·`#1411`·`#1414`)가 같은 형태였다 — 저자가
+# 상상한 실패 모드만 뮤테이션으로 죽이고 red 를 확보한 뒤 「봉인」을 발행했고, 실제 회귀는
+# **테스트에 한 번도 준 적 없는 입력 클래스**에서 났다. `#1409` 는 실제 PR SHA 로 태우자
+# EXIT 1 이었고 **면제가 발화조차 못 했다** — 그런데 저자에게 그것을 볼 수단이 없었다.
+#
+# 🔴 이 모드는 **판정을 바꾸지 않는다.** exit code 는 정상 실행과 같다. 항상 0 을 돌려주면
+# 누군가 CI 에 배선하는 순간 게이트가 조용히 사라진다(fail-open). 출력만 는다.
+# A diagnostic that always exits 0 would become a fail-open gate the moment it is wired.
+_EXPLAIN_FLAG = "--explain"
+
+_USAGE = (
+    f"usage: check_claim_review_trace.py [{_EXPLAIN_FLAG} <base_sha> <head_sha>]\n"
+    "  (인자 없음) PR_* env 로 판정한다 — CI · pre_push_gate 경로.\n"
+    f"  {_EXPLAIN_FLAG}   같은 판정을 하되 **어떤 표면 분류로 어떤 분기를 탔는지** 인쇄한다.\n"
+    "             exit code 는 정상 실행과 동일하다(진단이 게이트를 약화하지 않는다).\n"
+)
+
+
+def _display_width(text: str) -> int:
+    """터미널 표시 폭 — 한글·CJK 는 2칸. `str.ljust` 는 문자 수로 세어 라벨이 어긋난다."""
+    import unicodedata  # pylint: disable=import-outside-toplevel
+    return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in text)
+
+
+def _explain_line(label: str, value: str) -> None:
+    print(f"  {label}{' ' * max(1, 16 - _display_width(label))}: {value}")
+
+
+def explain(base_sha: str, head_sha: str) -> int:  # pylint: disable=too-many-locals
+    """`base...head` 범위에 대해 판정 근거를 인쇄하고 **정상 실행과 같은 코드**를 돌려준다."""
+    _make_stdout_safe()
+    # 🔴 인자가 env 를 이긴다 — 진단 대상은 호출자가 정한다. main() 이 env 를 읽으므로 덮어쓴다.
+    # 🔴 그리고 **반드시 되돌린다.** 남기면 같은 프로세스의 뒤 코드가 남의 SHA 를 본다.
+    #    실측(#1433 작업 중): 되돌리지 않은 초판이 `test_deferral_marker_survives_merge` 를
+    #    깨뜨렸고 — 격리 실행에서는 통과하고 **전체 실행에서만** 났다.
+    # Must restore: a leaked PR_* env makes later code in this process read another range.
+    saved = {k: os.environ.get(k) for k in ("PR_BASE_SHA", "PR_HEAD_SHA")}
+    os.environ["PR_BASE_SHA"] = base_sha
+    os.environ["PR_HEAD_SHA"] = head_sha
+    try:
+        return _explain_body(base_sha, head_sha)
+    finally:
+        for key, prev in saved.items():
+            if prev is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = prev
+
+
+def _path_marker(path: str, guarded: list[str], surfaces: list[str] | None) -> str:
+    """진단 출력의 경로 앞 표식 — 어떤 분류로 읽혔는지."""
+    if path in guarded:
+        return "가드"
+    if path in (surfaces or []):
+        return "코드"
+    return "  · "
+
+
+def _explain_inputs(title: str, body: str, commits: str) -> None:
+    print("── 입력 / inputs")
+    _explain_line("PR_TITLE", f"{len(title)}자" if title else "빈 문자열")
+    _explain_line("PR_BODY", f"{len(body)}자 (HTML 주석 스트리핑 후)")
+    _explain_line("커밋 메시지", f"{len(commits)}자")
+    login = (os.environ.get(_AUTHOR_LOGIN_ENV) or "").strip() or "(미설정)"
+    _explain_line("저자", f"{login} · is_bot_author()={is_bot_author()}")
+    print()
+
+
+def _explain_surfaces(raw_paths, surfaces, guarded) -> None:
+    # 🔴 표면 분류를 seal 축보다 **먼저** 인쇄한다 — 「판정 불가」를 「0건」보다 앞에 두어야
+    #    읽는 사람이 0 을 먼저 보고 '변경 없음' 으로 오독하지 않는다.
+    print("── 표면 분류 / surface classification")
+    if raw_paths is None:
+        _explain_line("변경 경로", "🔴 **판정 불가** — git 이 범위를 내지 못했다")
+        print("                  → '변경 없음' 이 아니라 **모른다** 다. 이 상태에서는 코드 표면")
+        print("                    축이 쉬고 seal 축만 남는다(그 축은 그대로 흔적을 요구한다).")
+        print("                  → base/head SHA 와 저장소 히스토리(fetch-depth)를 확인할 것.")
+        print()
+        return
+    _explain_line("변경 경로", f"{len(raw_paths)}건")
+    for path in raw_paths[:20]:
+        print(f"      [{_path_marker(path, guarded, surfaces)}] {path}")
+    if len(raw_paths) > 20:
+        print(f"      … 외 {len(raw_paths) - 20}건")
+    _explain_line("코드 표면", f"{len(surfaces or [])}건 (_CODE_SURFACES 매칭)")
+    _explain_line("가드 표면", f"{len(guarded)}건 (_GUARD_SURFACES 또는 이름 규칙)")
+    print()
+
+
+def _explain_exemption(body, exemption, guarded, surfaces, claims) -> None:
+    print("── 면제 / exemption")
+    if exemption is None:
+        _explain_line("마커", "없음 (claim-review-not-required)")
+        print("                  ⚠️ 마커는 **줄 맨 앞**·백틱/따옴표 없이 써야 인정된다.")
+        print("                     `- \\`claim-review-not-required: …\\`` 형태는 매칭되지 않는다.")
+    else:
+        _explain_line("마커", _LINE_BREAKS.sub(" ", exemption.group(0).strip())[:120])
+        if bool(guarded) or bool(claims and surfaces):
+            why = (
+                f"가드 표면 {len(guarded)}개 파일 변경" if guarded
+                else f"seal 주장 {len(claims)}건 + 코드 표면 {len(surfaces or [])}개"
+            )
+            _explain_line("판정", f"🔴 **거부** — {why}")
+        else:
+            _explain_line("판정", "⏭️ 유효 — 이 마커로 통과한다")
+    missing = missing_trace_fields(body)
+    _explain_line("흔적 결손", f"{len(missing)}건" if missing else "없음 (3필드 모두 있음)")
+    for item in missing:
+        print(f"      - {item}")
+    print()
+
+
+def _explain_body(base_sha: str, head_sha: str) -> int:
+    """`explain` 의 본문 — env 복원은 호출자가 `finally` 로 보장한다."""
+    title = os.environ.get("PR_TITLE", "")
+    body = read_pr_body()
+    commits = commit_messages(base_sha, head_sha)
+    raw_paths = changed_paths(base_sha, head_sha)
+    surfaces = changed_code_surfaces(base_sha, head_sha)
+    guarded = guard_surfaces(raw_paths)
+    claims = find_seal_claims("\n".join([title, body, commits]))
+
+    print("=== claim-review 자기진단 / self-diagnosis (--explain) ===")
+    print(f"범위 / range: {base_sha[:12]}...{head_sha[:12]}  (인자 지정 — env 보다 우선)\n")
+    _explain_inputs(title, body, commits)
+    _explain_surfaces(raw_paths, surfaces, guarded)
+
+    print("── seal 주장 / seal claims")
+    _explain_line("탐지", f"{len(claims)}건 (제목 + 본문 + 커밋 메시지)")
+    for lineno, label, line in claims[:5]:
+        print(f"      [{label}] line {lineno}: {line[:90]}")
+    print()
+
+    _explain_exemption(body, _EXEMPT.search(body), guarded, surfaces, claims)
+
+    # 🔴 정직 기준 (Grok claim-review `01a00fc9`): 위 사실표와 아래 판정은 **각각 따로**
+    #    계산된다 — `main()` 이 같은 값을 다시 구한다. 같은 SHA 면 같은 답이지만, 그 사이
+    #    작업트리가 바뀌면 표와 판정이 어긋날 수 있다. 판정의 정본은 **아래 EXIT** 다.
+    #    (이 축을 없애려면 `main()` 을 재구조화해야 하는데, 게이트 본체를 진단 편의를 위해
+    #     건드리는 쪽이 더 위험하다 — 그래서 적어 두고 남긴다.)
+    # 🔴 부수효과 고지: `main()` 은 `GITHUB_STEP_SUMMARY` 가 설정돼 있으면 거기에 append 한다.
+    #    CI 안에서 `--explain` 을 돌리면 정상 실행과 **같은** 요약 줄이 남는다(중복이 아니라
+    #    같은 실행이다 — 이 모드는 판정을 대신 수행한다).
+    # The fact table and the verdict are computed separately; the EXIT below is authoritative.
+    print("── 이 입력으로 정상 실행하면 / actual run")
+    code = main()
+    print(
+        f"\n=== EXIT {code} — 위 판정이 정본이다. "
+        "--explain 은 출력만 더하고 판정을 바꾸지 않는다. ==="
+    )
+    return code
+
+
+def cli(argv: list[str] | None = None) -> int:
+    """진입점 — 인자 없으면 기존 동작 그대로, `--explain <base> <head>` 면 진단 모드."""
+    args = list(sys.argv[1:] if argv is None else argv)
+    if not args:
+        return main()
+    if args[0] != _EXPLAIN_FLAG or len(args) != 3:
+        print(_USAGE, file=sys.stderr)
+        return 2
+    return explain(args[1], args[2])
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(cli())
