@@ -379,13 +379,22 @@ class TestBanditSupports:
 
 
 class TestBanditIsEnabled:
-    """bandit 은 테스트 파일 제외 (프로덕션 코드만)."""
+    """bandit 은 테스트 파일 제외 (프로덕션 코드만) — 그 축은 `supports` 다.
 
-    def test_enabled_for_prod_files(self, py_ctx):
-        assert _BanditAnalyzer().is_enabled(py_ctx) is True
+    🔴 `is_enabled` 는 **바이너리만** 본다. 정책 제외를 거기 두면 `static.py` 가 그것을
+    「조달된 도구 부재」로 읽어 모든 테스트 파일을 배포 회귀로 승격한다(실제로 났다).
+    """
 
-    def test_disabled_for_test_files(self, py_test_ctx):
-        assert _BanditAnalyzer().is_enabled(py_test_ctx) is False
+    def test_supports_prod_files(self, py_ctx):
+        assert _BanditAnalyzer().supports(py_ctx) is True
+
+    def test_does_not_support_test_files(self, py_test_ctx):
+        assert _BanditAnalyzer().supports(py_test_ctx) is False
+
+    def test_is_enabled_ignores_file_kind(self, py_ctx, py_test_ctx):
+        """바이너리 축은 파일 종류에 반응하지 않는다 — 반응하면 축이 섞인 것이다."""
+        bandit = _BanditAnalyzer()
+        assert bandit.is_enabled(py_ctx) == bandit.is_enabled(py_test_ctx)
 
 
 class TestBanditRunSubprocessCall:

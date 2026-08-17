@@ -4,7 +4,7 @@
 나가는 것은 Anthropic API 와 켠 채널뿐. [🇺🇸 English](README.md)
 
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.141-009688)
-![Tests](https://img.shields.io/badge/Tests-7029%2B_total_(6858_unit_%2B_171_integration)-green)
+![Tests](https://img.shields.io/badge/Tests-7034%2B_total_(6863_unit_%2B_171_integration)-green)
 ![E2E](https://img.shields.io/badge/E2E-121_CI-green)
 ![pylint](https://img.shields.io/badge/pylint-9.99%2F10-green)
 
