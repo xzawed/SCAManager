@@ -29,8 +29,15 @@
    ```
 
    볼드(`**WEAKENED**`)는 미매칭. `pre_push_gate.py` 는 PR 환경변수가 없어 이 축을 건너뛴다.
+   왜 그 분기로 갔는지는 `py -3 scripts/check_claim_review_trace.py --explain <base> <head>`.
 
-### CI (`.github/workflows/ci.yml`, push/PR:main)
+7. **게이트 분기를 완화했으면** — 조건 제거 · 범위 확대 · `except` 통합 · 면제 추가.
+   본문에 `## 새로 도달 가능해진 입력 클래스` 를 두고 **클래스마다 테스트 1건**을 건다.
+   그리고 실제 PR SHA 로 스크립트를 태워 나온 EXIT 를 before/after 2줄로 적는다.
+   「뮤테이션 red + 전체 green」은 이 항목을 대체하지 못한다 — 그 둘은 저자가 이미 상상한
+   실패 모드만 잰다. 회귀는 **테스트에 한 번도 준 적 없는 입력**에서 난다.
+
+### CI (`.github/workflows/ci.yml` — push:main · PR:base 무관)
 
 - `test-and-analyze` — `pytest tests/` 전량 + coverage.xml → Codecov·SonarCloud. PR 은
   역-뮤테이션(되돌리면 red?) + 본문 수치 ↔ `--collect-only` 대조 추가.
