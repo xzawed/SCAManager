@@ -4,7 +4,8 @@
 
 정책 19("실질 작업마다 Grok CLAIM-REVIEW")는 **산문 의무뿐이었다.** 그 결과:
 
-- `docs/backlog.md` **R2**: 창 42 커밋 중 **26건이 "봉인/fail-closed" 주장인데 Grok 흔적 0**.
+- `docs/backlog.md` **R2**(2026-08-16 퇴역 — 원문은 그 삭제 커밋 이전 git 이력에): 창 42 커밋 중
+  **26건이 "봉인/fail-closed" 주장인데 Grok 흔적 0**.
   직전 회고 P1 의 즉시 재발.
 - 2026-07-29 세션: Claude 가 분석 단계에 claim-review 를 1회 돌린 뒤, **정작 자기가 만든 가드**를
   "봉인 · 양방향 강제 · 뮤테이션 8/8 red" 로 단언하며 PR 2건을 냈다. 뒤늦게 돌린 claim-review 가
@@ -74,7 +75,7 @@ _SEAL_PATTERNS: tuple[tuple[str, str], ...] = (
 # without substance. This raises the forgery cost; it does not prevent forgery.
 _TRACE_HEADING = re.compile(r"^#{1,4}[^\n]*claim-?review", re.IGNORECASE | re.MULTILINE)
 # 🔴 `WEAKENED` 추가 (2026-08-06) — Grok 이 실제로 내는 판정인데 합법 토큰이 아니었다.
-#    `docs/cycle-history.md:223` 이 이미 그 판정을 서사로 기록하고 있는데 가드는 거부했다.
+#    당시 `docs/cycle-history.md:223`(2026-08-16 퇴역)이 이미 그 판정을 서사로 기록했는데 가드는 거부했다.
 #    '부분적으로 성립' 을 표현할 수단이 없으면 저자는 SURVIVES 로 반올림하게 된다 —
 #    즉 어휘 부족이 **판정을 낙관 쪽으로 왜곡**한다.
 # Grok really emits WEAKENED; without it authors round up to SURVIVES.
