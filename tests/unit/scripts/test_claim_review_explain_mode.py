@@ -25,8 +25,6 @@ import pytest
 
 from scripts.check_claim_review_trace import cli, main
 
-_MOD = "scripts.check_claim_review_trace"
-
 _GOOD_TRACE = """## Grok claim-review
 
 - session: 019fadda-3609-7ab3-8d94-ebe23699008e
