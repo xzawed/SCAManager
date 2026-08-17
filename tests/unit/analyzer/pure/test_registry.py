@@ -351,9 +351,11 @@ class TestPythonAnalyzers:
         assert _BanditAnalyzer().is_enabled(py_ctx) is True
 
     def test_bandit_analyzer_is_disabled_for_test_file(self, py_test_file_ctx):
-        # _BanditAnalyzer.is_enabled()는 is_test=True 컨텍스트에서 False를 반환한다
+        # 🔴 테스트 파일 제외는 `supports` 축이다 — `is_enabled` 는 바이너리만 본다.
+        #    `is_enabled=False` 는 「부재」를 뜻하고 bandit 은 조달 계약 안이라,
+        #    거기 두면 모든 테스트 파일이 배포 회귀로 승격된다.
         from src.analyzer.io.tools.python import _BanditAnalyzer
-        assert _BanditAnalyzer().is_enabled(py_test_file_ctx) is False
+        assert _BanditAnalyzer().supports(py_test_file_ctx) is False
 
     def test_flake8_analyzer_category_is_code_quality(self):
         # _Flake8Analyzer.category는 "code_quality"이다

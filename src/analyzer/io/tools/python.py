@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 import subprocess  # nosec B404
 
 from src.analyzer.pure.registry import AnalyzeContext, AnalysisIssue, Category, Severity, register
@@ -23,8 +24,16 @@ class _PylintAnalyzer:
         return ctx.language == "python"
 
     def is_enabled(self, ctx: AnalyzeContext) -> bool:  # pylint: disable=unused-argument
-        """항상 활성화 (pylint는 pip 의존성으로 항상 설치됨)."""
-        return True
+        """pylint 바이너리 설치 여부 확인.
+
+        🔴 `shutil.which` 로 **바이너리를 관측**한다. `return True` 였을 때
+        `pylint` 은 부재해도 `unavailable_tools` 에 들어가지 않아 `static.py` 의
+        조달 회귀 승격이 도달하지 못했다 — 파이썬 파일이 분석기 없이 만점을 받고
+        auto-merge 됐다. `PROVISIONED_ANALYZERS` 안 도구이므로 부재는 배포 회귀다.
+        Observe the binary: returning True kept this tool out of `unavailable_tools`,
+        so the provisioned-regression promotion could never reach it.
+        """
+        return shutil.which("pylint") is not None
 
     def run(self, ctx: AnalyzeContext) -> list[AnalysisIssue]:
         """pylint JSON 출력을 파싱해 AnalysisIssue 목록 반환."""
@@ -76,8 +85,16 @@ class _Flake8Analyzer:
         return ctx.language == "python"
 
     def is_enabled(self, ctx: AnalyzeContext) -> bool:  # pylint: disable=unused-argument
-        """항상 활성화 (flake8는 pip 의존성으로 항상 설치됨)."""
-        return True
+        """flake8 바이너리 설치 여부 확인.
+
+        🔴 `shutil.which` 로 **바이너리를 관측**한다. `return True` 였을 때
+        `flake8` 은 부재해도 `unavailable_tools` 에 들어가지 않아 `static.py` 의
+        조달 회귀 승격이 도달하지 못했다 — 파이썬 파일이 분석기 없이 만점을 받고
+        auto-merge 됐다. `PROVISIONED_ANALYZERS` 안 도구이므로 부재는 배포 회귀다.
+        Observe the binary: returning True kept this tool out of `unavailable_tools`,
+        so the provisioned-regression promotion could never reach it.
+        """
+        return shutil.which("flake8") is not None
 
     def run(self, ctx: AnalyzeContext) -> list[AnalysisIssue]:
         """flake8 출력을 파싱해 AnalysisIssue 목록 반환."""
@@ -120,12 +137,30 @@ class _BanditAnalyzer:
     category = Category.SECURITY
 
     def supports(self, ctx: AnalyzeContext) -> bool:
-        """Python 파일 여부 확인."""
-        return ctx.language == "python"
+        """Python **생산** 파일 여부 — 테스트 파일은 애초에 대상이 아니다.
 
-    def is_enabled(self, ctx: AnalyzeContext) -> bool:
-        """테스트 파일 제외 (bandit은 프로덕션 코드에만 적용)."""
-        return not ctx.is_test
+        🔴 「이 파일엔 정책상 해당 없음」은 `supports` 이지 `is_enabled` 가 아니다.
+        `is_enabled` 가 False 면 `static.py` 가 그 도구를 `unavailable_tools` 에 넣고,
+        bandit 은 `PROVISIONED_ANALYZERS` 안이라 **모든 테스트 파일이 조달 회귀로 승격**된다
+        (테스트를 건드리는 PR 전부 auto-merge 차단 — 그 회귀가 실제로 났다).
+        `supports` 로 옮기면 그 파일에서 bandit 은 «지원 대상 아님» 이 되어 두 집합 어디에도
+        들어가지 않는다. `static.py:75-90` 이 이 구별을 계약으로 적어 두었다.
+        Policy non-applicability belongs in `supports`: `is_enabled=False` means "binary absent",
+        which promotes provisioned tools to a deployment regression.
+        """
+        return ctx.language == "python" and not ctx.is_test
+
+    def is_enabled(self, ctx: AnalyzeContext) -> bool:  # pylint: disable=unused-argument
+        """bandit 바이너리 설치 여부 확인.
+
+        🔴 `shutil.which` 로 **바이너리를 관측**한다. `not ctx.is_test` 만 보던 동안
+        `bandit` 은 부재해도 `unavailable_tools` 에 들어가지 않아 `static.py` 의
+        조달 회귀 승격이 도달하지 못했다 — 파이썬 파일이 분석기 없이 만점을 받고
+        auto-merge 됐다. `PROVISIONED_ANALYZERS` 안 도구이므로 부재는 배포 회귀다.
+        Observe the binary: the old predicate kept this tool out of `unavailable_tools`,
+        so the provisioned-regression promotion could never reach it.
+        """
+        return shutil.which("bandit") is not None
 
     def run(self, ctx: AnalyzeContext) -> list[AnalysisIssue]:
         """bandit JSON 출력을 파싱해 보안 이슈 목록 반환."""

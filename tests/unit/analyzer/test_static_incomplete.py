@@ -5,8 +5,11 @@ Static analysis tool subprocess-timeout → incomplete propagation tests (Task9 
 인플레이션되어 auto-merge fail-open 이 된다. analyze_file 이 StaticAnalysisResult.incomplete 로
 이를 신호하면 _run_static_with_timeout → static_analysis_incomplete 마커 → 게이트 차단.
 """
+import shutil
 import subprocess
 from unittest.mock import patch
+
+import pytest
 
 from src.analyzer.io.static import StaticAnalysisResult, analyze_file
 
@@ -244,13 +247,18 @@ def test_policy_disabled_provisioned_tool_does_not_block(monkeypatch):
 
     assert "bandit" in PROVISIONED_ANALYZERS, "전제 붕괴 — bandit 은 조달 대상이어야 한다"
     # 🔴 bandit 바이너리는 **있다고 본다** — 이 리포의 requirements.txt 가 설치한다.
-    #    `_binary_is_absent` 가 그것을 확인하므로 승격되면 안 된다.
     monkeypatch.setattr("src.analyzer.io.static.shutil.which", lambda _n: "/usr/bin/" + _n)
 
     result = analyze_file("tests/unit/test_foo.py", "def test_x():\n    assert True\n")
 
-    assert "bandit" in result.unavailable_tools, (
-        "전제 붕괴 — bandit 이 is_enabled False 로 unavailable_tools 에 들어가야 한다"
+    # 🔴 이제 bandit 은 `unavailable_tools` 에 **들어가지 않는다** — 테스트 파일 제외가
+    #    `is_enabled`(바이너리 축)에서 `supports`(대상 축)로 옮겨졌기 때문이다.
+    #    이전 판은 여기 들어온 뒤 `_binary_is_absent` 로 걸러졌고, 그 방어는 **우연**이었다:
+    #    바이너리가 실제로 사라진 순간 정책 제외와 조달 회귀가 구별 불가가 된다.
+    # bandit no longer lands in `unavailable_tools`: the test-file exclusion moved to `supports`.
+    assert "bandit" not in result.unavailable_tools, (
+        "테스트 파일에서 bandit 이 `unavailable_tools` 에 들어갔다 — 정책 제외가 "
+        "`supports` 가 아니라 바이너리 축에 남아 있다"
     )
     assert result.incomplete is False, (
         "정책상 미적용(테스트 파일의 bandit)을 배포 회귀로 승격했다 — "
@@ -275,4 +283,66 @@ def test_binary_absence_still_blocks_when_which_returns_none(monkeypatch):
     assert "shellcheck" in result.unavailable_tools
     assert result.incomplete is True, (
         "바이너리가 실제로 없는데 차단하지 않았다 — #1410 이 되돌려졌다"
+    )
+
+
+# ── 조달 계약이 파이썬 3종(pylint·flake8·bandit)에 도달하는가 ──────────────
+#
+# 🔴 세 어댑터는 `is_enabled` 가 `return True`(pylint·flake8) / `not ctx.is_test`(bandit) 라
+#    **바이너리를 관측하지 않았다**. 그래서 부재해도 `unavailable_tools` 에 들어가지 않고
+#    조달 회귀 승격이 원리적으로 도달하지 못했다 — 파이썬 파일은 분석기가 사라져도
+#    「깨끗함」 만점을 받고 auto-merge 됐다. 나머지 13종은 전부 `shutil.which` 를 본다.
+# The three Python adapters never observed their binaries, so the provisioned-regression
+# promotion could not reach them: a Python file scored clean with zero analyzers.
+
+
+@pytest.mark.parametrize("tool", ["pylint", "flake8", "bandit"])
+def test_python_tool_absence_promotes_to_incomplete(tool, monkeypatch):
+    """🔴 조달된 파이썬 도구가 없으면 `incomplete` — 만점 auto-merge 를 막는다."""
+    from src.analyzer.io.static import PROVISIONED_ANALYZERS, analyze_file
+
+    assert tool in PROVISIONED_ANALYZERS, f"{tool} 이 조달 계약에서 빠졌다 — 이 테스트가 공허하다"
+
+    real = shutil.which
+    monkeypatch.setattr(
+        "shutil.which", lambda n, *a, **k: None if n == tool else real(n, *a, **k)
+    )
+
+    result = analyze_file("src/app.py", "x=1\n")
+
+    assert tool in result.unavailable_tools, (
+        f"{tool} 바이너리가 없는데 `unavailable_tools` 에 들어가지 않았다 — "
+        "`is_enabled` 가 바이너리를 관측하지 않는다(승격이 도달 불가)"
+    )
+    assert result.incomplete is True, (
+        f"{tool} 부재가 `incomplete` 로 승격되지 않았다 — 파이썬 파일이 분석기 없이 "
+        "만점을 받고 auto-merge 된다"
+    )
+
+
+def test_bandit_policy_exclusion_lives_in_supports_not_is_enabled():
+    """🔴 「테스트 파일엔 bandit 미적용」은 `supports` 축이다 — `is_enabled` 로 두면 회귀한다.
+
+    `is_enabled=False` 는 **바이너리 부재**를 뜻하고, bandit 은 조달 계약 안이라
+    모든 테스트 파일이 배포 회귀로 승격된다(그 회귀가 실제로 났다).
+    """
+    from src.analyzer.io.tools.python import _BanditAnalyzer
+    from src.analyzer.pure.registry import AnalyzeContext
+
+    bandit = _BanditAnalyzer()
+    test_ctx = AnalyzeContext(
+        filename="tests/unit/test_foo.py", content="", tmp_path="", language="python", is_test=True,
+    )
+    prod_ctx = AnalyzeContext(
+        filename="src/app.py", content="", tmp_path="", language="python", is_test=False,
+    )
+
+    assert bandit.supports(test_ctx) is False, (
+        "테스트 파일 제외가 `supports` 에 없다 — `is_enabled` 로 두면 조달 회귀로 오승격된다"
+    )
+    assert bandit.supports(prod_ctx) is True
+
+    # `is_enabled` 는 **오직** 바이너리만 본다 — 파일 종류에 반응하면 축이 섞인 것이다.
+    assert bandit.is_enabled(test_ctx) == bandit.is_enabled(prod_ctx), (
+        "`is_enabled` 가 파일 종류에 따라 갈린다 — 바이너리 관측 축에 정책이 섞였다"
     )
