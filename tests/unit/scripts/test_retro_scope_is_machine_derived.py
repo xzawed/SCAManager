@@ -7,7 +7,7 @@
 
 > 🔴 회고 착수 **직전에** 다시 실행할 것 — 그 사이 머지분이 빠지는 것이 P0 의 기전이었다.
 
-그런데 진입점인 `.claude/skills/retrospective.md` 의 실행 절차 1단계는
+그런데 진입점인 `.claude/skills/retrospective/SKILL.md` 의 실행 절차 1단계는
 *"`git log --oneline <baseline>..HEAD` + 머지 PR 목록 → `context` 문자열"* 이라 적혀 있었다.
 **손 조립을 지시한 것이다.** 그래서 2026-08-08 회고는 세션 시작 훅
 세션 초에 인쇄한 **17건**을 브리프에 굳혀 5 관점에 배포했고,
@@ -42,7 +42,7 @@ from pathlib import Path
 from tests.unit.scripts._wiring_shape import surface_invokes
 
 _ROOT = Path(__file__).resolve().parents[3]
-_SKILL = _ROOT / ".claude" / "skills" / "retrospective.md"
+_SKILL = _ROOT / ".claude" / "skills" / "retrospective" / "SKILL.md"
 _ORACLE = "scripts/retro_scope.py"
 
 

@@ -45,7 +45,12 @@ except ImportError:
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 MANIFEST_PATH = BASE_DIR / "scripts" / "i18n_comments" / "manifest.json"
-GLOSSARY_PATH = BASE_DIR / "scripts" / "i18n_comments" / "glossary.md"
+# 🔴 `GLOSSARY_PATH` 를 두지 않는다 — 대입만 되고 읽는 곳이 0 이었다(죽은 상수).
+#    이 스크립트의 용어 계약은 아래 프롬프트의 `DOMAIN GLOSSARY` 블록에 **인라인**돼 있고,
+#    `glossary.md` 는 그것을 파일로도 적어 둔 참조 문서다. 둘은 기계로 대조되지 않는다 —
+#    지금 인라인 22항 ⊂ 파일 표(실측). 한쪽만 고치면 조용히 갈린다.
+# No GLOSSARY_PATH: it was assigned and never read. The term contract is inlined in the
+# DOMAIN GLOSSARY block below; glossary.md restates it as a reference and is not machine-compared.
 
 # 한글 유니코드 범위
 # Korean Unicode ranges

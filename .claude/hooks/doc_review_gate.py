@@ -63,7 +63,12 @@ _CRITICAL = [
     r"^docs/workflow/[^/]+\.md$",
     r"^\.claude/settings\.json$",
     r"^\.claude/agents/[^/]+\.md$",
-    r"^\.claude/skills/[^/]+\.md$",
+    # 🔴 두 겹을 모두 본다 — `<name>/SKILL.md` 가 **실제로 호출되는** 형태이고, 평문 한 겹은
+    #    Claude Code 탐색 규약 밖이라 죽은 파일이다. 종전 패턴은 한 겹만 봐서, 규약대로
+    #    옮기는 순간 등급이 `skip` 으로 떨어졌다(실측 2026-08-18) — 규약을 지키면 게이트가
+    #    사라지는 형태였다. 죽은 평문도 계속 본다: 누가 그렇게 만들면 그것도 지시 표면이다.
+    # Both shapes: `<name>/SKILL.md` is what actually loads; a flat .md is dead but still directive.
+    r"^\.claude/skills/[^/]+(?:/SKILL)?\.md$",
 ]
 
 # 🔴 2026-08-01 2차 스코프 복구 (문서 감사 91 에이전트 + Grok 시스템 감사 `019fbccf`)

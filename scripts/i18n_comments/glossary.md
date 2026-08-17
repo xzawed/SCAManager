@@ -1,6 +1,11 @@
 # SCAManager 도메인 용어 사전 (Bilingual Glossary)
-# Used as system prompt context for Claude API translation calls.
 # 번역 시 아래 용어를 반드시 사용한다. 임의 동의어 사용 금지.
+#
+# 🔴 이 파일은 **프롬프트에 주입되지 않는다.** 종전 헤더는 "Used as system prompt context for
+# Claude API translation calls" 라고 적었으나 읽는 코드가 0 이었다(실측). 실제로 API 에 가는
+# 것은 `scripts/i18n_comments/translate_comments.py` 의 `DOMAIN GLOSSARY` 인라인 블록이고,
+# 지금 그 블록은 이 표의 부분집합이다. 한쪽만 고치면 조용히 갈린다 — 용어를 바꾸면 **둘 다** 고칠 것.
+# This file is NOT injected into the prompt; translate_comments.py inlines its own subset.
 
 | 한국어 | English | 금지 표현 (Do NOT use) |
 |--------|---------|----------------------|
