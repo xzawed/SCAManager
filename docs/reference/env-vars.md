@@ -1,192 +1,113 @@
-# SCAManager 환경변수 레퍼런스
+# 환경변수
 
-## 필수 환경변수
+정본은 `src/config.py` 의 `Settings` 클래스다. 이 문서는 그 필드 전량 + 코드가 `os.environ` 에서
+직접 읽는 변수를 옮긴 표다.
 
-| 변수 | 설명 | 예시 |
-|------|------|------|
-| `DATABASE_URL` | PostgreSQL 연결 URL | `postgresql://user:pass@host/db` |
-| `TELEGRAM_BOT_TOKEN` | Telegram Bot API 토큰 | `123456:ABC-xxx` |
-| `TELEGRAM_CHAT_ID` | Telegram 알림 수신 Chat ID | `-100xxxxxxxxx` |
-| `GITHUB_CLIENT_ID` | GitHub OAuth 앱 클라이언트 ID | `Ov23li...` |
-| `GITHUB_CLIENT_SECRET` | GitHub OAuth 앱 클라이언트 시크릿 | `github_...` |
-| `SESSION_SECRET` | 세션 쿠키 서명 키 (**32자 이상 필수**. 커스텀 값이 32자 미만이면 `config.py` 가 `SettingsValidationError` 로 기동 차단 — 🔴 단 **기본값 그대로면 경고만 내고 기동**하며(집행 = `tests/unit/test_config.py`) 그때 막는 것은 `ENVIRONMENT=production` 또는 https `APP_BASE_URL` 뿐이다. 3분기 정본 = [`.claude/rules/security.md`](../../.claude/rules/security.md)) | `your-32-char-or-longer-secret-key-here` |
+**변수를 추가하는 절차** — ① `Settings` 에 필드 선언(또는 `is_disabled()` 사용) → ② 아래 표에
+`` | `ENV_NAME` | `` 행 추가 → ③ `.env.example` 갱신 → ④ `py -3 scripts/check_env_vars_sync.py`
+(등재 누락이면 exit 1).
 
-## 선택 환경변수
+🔴 **빈 값 ≠ 미설정** — pydantic-settings 는 `VAR=` 도 *설정된 값*으로 읽어 기본값을 빈 문자열로
+덮는다. 되돌리는 validator 가 붙은 것은 `CLAUDE_REVIEW_MODEL`·`CLAUDE_INSIGHT_MODEL`·`SMTP_PORT`
+셋뿐이다. **기본값** 이 필요하면 변수를 아예 지운다.
 
-| 변수 | 설명 | 예시 |
-|------|------|------|
-| `GITHUB_WEBHOOK_SECRET` | GitHub Webhook HMAC 서명 시크릿. 헤더 없거나 불일치·빈 시크릿이면 401 (`src/webhook/validator.py`) | `your-secret-here` |
-| `GITHUB_TOKEN` | GitHub API Personal Access Token (레거시 리포 fallback) | `your-github-token` |
-| `ANTHROPIC_API_KEY` | Claude AI 리뷰 API 키 (없으면 AI 항목 기본값 적용) | `your-anthropic-api-key` |
-| `API_KEY` | Dashboard REST API 인증 키. 미설정 + `API_AUTH_DISABLED` 아님 → 503 (`src/api/auth.py::_check_api_key`). `/api/repos`·`/api/stats`·`/api/.../report` 차단 | `any-secret-string` |
-| `API_AUTH_DISABLED` | `1` 이면 `API_KEY` 없어도 REST 무인증 통과 — **로컬 개발 전용**. 미설정(기본 `0`) + `API_KEY` 미설정 = 503. `*_DISABLED` kill-switch | `1` (로컬 dev) / 미설정 (운영) |
-| `APP_BASE_URL` | Railway 등 리버스 프록시에서 HTTPS redirect_uri 강제 + **CORS allow_origins**. 미설정 시 CORS 미등록 (`src/main.py` CORSMiddleware) | `https://your-app.railway.app` |
-| `ENVIRONMENT` | **프로덕션 하드닝 명시 신호** — `production` 이면 `APP_BASE_URL` 과 무관하게 HSTS·쿠키 Secure·/docs 비노출·시작 검증 (`settings.is_production`). 미설정 시 HTTPS 휴리스틱. 명시 신호는 하드닝을 **강제만** 하고 해제 못 함 — `development` 라도 HTTPS 배포면 prod 판정. startup 로그가 `production hardening = ON/OFF` | 빈 문자열 (기본) / `production` |
-| `TOKEN_ENCRYPTION_KEY` | GitHub Access Token 암호화 키 (미설정 시 평문 저장) | `32자 이상 랜덤` |
-| `STRICT_TOKEN_ENCRYPTION` | `true` 이면 `TOKEN_ENCRYPTION_KEY` 미설정 **또는 형식 오류**면 lifespan startup 차단 (기본 `false` = 평문 저장 + WARNING). 집행: `tests/unit/test_main.py` | `false` (기본) |
-| `STRICT_MIGRATION` | `true` 이면 lifespan DB 마이그레이션 실패/timeout 시 기동 차단. 기본 `false` = 로그 후 앱 기동 (`src/main.py::_run_migrations`). Railway 1차 게이트는 pre-deploy `alembic upgrade head`. 온프레미스/비-Railway 는 lifespan 이 유일 게이트 | `false` (기본) |
-| `CLAUDE_REVIEW_MODEL` | AI 코드리뷰에 사용할 Claude 모델 ID | `claude-sonnet-4-6` (기본) |
-| `CLAUDE_REVIEW_MAX_TOKENS` | AI 코드리뷰 응답 출력 토큰 상한 (`ge=1`). 저한도 모델(출력 4096)을 `CLAUDE_REVIEW_MODEL` 로 쓰면 이 값을 그 한도 이하로 낮춘다 — 8192 일괄이면 Anthropic 400 → `api_error` | `8192` (기본) |
-| `CLAUDE_INSIGHT_MODEL` | Insight narrative (`/dashboard?mode=insight`) 용 Claude 모델 ID — 코드리뷰보다 가벼운 task | `claude-haiku-4-5` (기본) |
-| `DISABLE_PROMPT_CACHE` | Anthropic prompt caching (5분 ephemeral) opt-out — `1` 시 비활성. 적용 2곳: 앱 (`src/shared/anthropic_caching.py` → AI 리뷰·인사이트)과 **로컬 문서 심의 훅**(`.claude/hooks/doc_review_gate.py`). 훅은 개발 PC 에서 돌므로 운영에서 이 값을 바꿔도 훅은 안 바뀐다 | `0` (기본) / `1` (비활성) |
-| `TELEGRAM_WEBHOOK_SECRET` | Telegram `setWebhook` 시크릿 토큰. **미설정 시 401**. 운영에서 필수 — 없으면 Telegram gate callback 전체 비활성 | 빈 문자열 (기본, **운영 시 반드시 설정**) |
-| `N8N_WEBHOOK_SECRET` | n8n 전송 HMAC 서명 시크릿 (미설정 시 서명 생략) | 빈 문자열 (기본) |
-| `N8N_RELAY_REPO_TOKEN` | n8n issue 릴레이에 GitHub repo OAuth 토큰 포함 여부 — 명시적 opt-in (자격증명 유출 차단). `1`/`true` 이고 `N8N_WEBHOOK_SECRET` 설정 시에만 토큰 전송 | `false` (기본) |
+## Settings 필드
 
-## 내부 인증 (cron · admin · loop guard)
+| 변수 | 기본값 | 무엇을 바꾸는가 |
+|---|---|---|
+| **DB** | | |
+| `DATABASE_URL` | **필수** | 앱 DB 연결. `postgres://`→`postgresql://` 정규화, Supabase 호스트면 `sslmode=require` 자동 추가 |
+| `DATABASE_URL_WORKER` | `""` | background(webhook·worker·gate·cron·CLI) 전용 연결. BYPASSRLS role 이어야 함. 빈 값=`DATABASE_URL` 재사용 |
+| `DATABASE_URL_FALLBACK` | `""` | primary 장애 시 전환할 보조 DB. 빈 값=failover 없음 |
+| `MIGRATION_DATABASE_URL` | `""` | alembic 전용(owner role). 빈 값이면 `DATABASE_URL` |
+| `DB_FAILOVER_PROBE_INTERVAL` | `30` | primary 복구 확인 주기(초, ge=1) |
+| `DB_SSLMODE` | `""` | 연결 SSL 모드(`require`·`verify-full`…) |
+| `DB_FORCE_IPV4` | `false` | Railway IPv4 강제 |
+| `DB_POOL_SIZE` | `5` | 풀 크기(ge=1) |
+| `DB_MAX_OVERFLOW` | `10` | 풀 초과 연결 수(`-1`=무제한) |
+| `DB_POOL_TIMEOUT` | `30` | 풀 대기 초(ge=1) |
+| `DB_POOL_RECYCLE` | `1800` | 연결 재활용 초(`-1`=비활성) |
+| **인증·하드닝** | | |
+| `SESSION_SECRET` | `dev-secret-change-in-production` | 세션 쿠키 서명. 커스텀 값이 32자 미만이면 기동 차단, 기본값 그대로면 경고만 |
+| `ENVIRONMENT` | `""` | `production` 이면 HSTS·쿠키 Secure·/docs 비노출 강제. 미설정 시 `APP_BASE_URL` 의 https 여부로 판정 |
+| `APP_BASE_URL` | `""` | OAuth redirect_uri https 강제 + CORS allow_origins |
+| `GITHUB_CLIENT_ID` | `""` | GitHub OAuth 로그인 |
+| `GITHUB_CLIENT_SECRET` | `""` | 위와 쌍 |
+| `GITHUB_WEBHOOK_SECRET` | `""` | 리포별 시크릿이 없을 때 쓰는 fallback HMAC. 헤더 없음·불일치·빈 시크릿이면 401 |
+| `GITHUB_TOKEN` | `""` | OAuth 토큰 없는 레거시 리포의 API fallback |
+| `TOKEN_ENCRYPTION_KEY` | `""` | GitHub 토큰 Fernet 암호화. 미설정 시 평문 저장 |
+| `STRICT_TOKEN_ENCRYPTION` | `false` | `true` 면 위 키 미설정·형식오류 시 startup 차단 |
+| `STRICT_MIGRATION` | `false` | `true` 면 startup 마이그레이션 실패·timeout 시 기동 차단 |
+| `API_KEY` | `""` | REST API `X-Api-Key` 인증. 미설정 + 아래 플래그 off = 503, 불일치 = 401 |
+| `API_AUTH_DISABLED` | `false` | `1` 이면 키 없이 REST 통과 — 로컬 전용 |
+| `INTERNAL_CRON_API_KEY` | `""` | `/api/internal/cron/*` 전용 키. 미설정 503 / 불일치 401. 인앱 스케줄러는 이 키 없이도 돈다 |
+| `SAAS_ADMIN_EMAILS` | `""` | admin 허용 email CSV. 미설정이면 `/admin/*` 503, 불일치 403 |
+| **AI** | | |
+| `ANTHROPIC_API_KEY` | `""` | Claude 리뷰·인사이트 키. 빈 값이면 AI 항목 기본값 |
+| `CLAUDE_REVIEW_MODEL` | `claude-sonnet-4-6` | 코드리뷰 모델 |
+| `CLAUDE_INSIGHT_MODEL` | `claude-haiku-4-5` | 인사이트 내러티브 모델 |
+| `CLAUDE_REVIEW_MAX_TOKENS` | `8192` | 리뷰 출력 상한(ge=1). 모델 출력 한도보다 크면 400 → `api_error` |
+| `DISABLE_PROMPT_CACHE` | `false` | Anthropic prompt cache opt-out |
+| **알림** | | |
+| `TELEGRAM_BOT_TOKEN` | **필수** | Telegram Bot API 토큰 |
+| `TELEGRAM_CHAT_ID` | **필수** | 알림 수신 chat |
+| `TELEGRAM_WEBHOOK_SECRET` | `""` | callback 헤더 검증. 미설정이면 401 = 버튼 게이트 전면 비활성 |
+| `N8N_WEBHOOK_SECRET` | `""` | n8n 전송 HMAC. 빈 값이면 서명 생략 |
+| `N8N_RELAY_REPO_TOKEN` | `false` | n8n issue 릴레이에 repo OAuth 토큰 동봉(위 시크릿 설정 시에만) |
+| `SMTP_HOST` | `""` | 메일 서버 |
+| `SMTP_PORT` | `587` | `465`=implicit TLS / 그 외=STARTTLS. 빈 문자열은 587로 보정 |
+| `SMTP_USER` | `""` | SMTP 인증 계정 |
+| `SMTP_PASS` | `""` | SMTP 인증 비밀번호 |
+| **자동 머지** | | |
+| `MERGE_RETRY_ENABLED` | `true` | CI 대기 재시도 큐. `false`=단일 시도 |
+| `MERGE_RETRY_MAX_ATTEMPTS` | `30` | 큐 행당 재시도 횟수(ge=1) |
+| `MERGE_RETRY_MAX_AGE_HOURS` | `24` | 큐 행 만료(ge=1) |
+| `MERGE_RETRY_INITIAL_BACKOFF_SECONDS` | `60` | 첫 백오프(ge=1) |
+| `MERGE_RETRY_MAX_BACKOFF_SECONDS` | `600` | 최대 백오프. initial 보다 작으면 startup 실패 |
+| `MERGE_RETRY_CHECK_SUITE_WEBHOOK_ENABLED` | `true` | `check_suite.completed` 즉시 트리거 |
+| `MERGE_RETRY_WORKER_BATCH_SIZE` | `50` | sweep 1회 처리 행 수(ge=1) |
+| `MERGE_UNKNOWN_RETRY_LIMIT` | `3` | `mergeable_state=unknown` 폴링 횟수 |
+| `MERGE_UNKNOWN_RETRY_DELAY` | `3.0` | 그 폴링 간격(초) |
+| **머지 검증자(2nd-LLM)** | | |
+| `OPENAI_API_KEY` | `""` | 검증자 키. 빈 값=검증자 완전 비활성(비용 0) |
+| `VERIFIER_BASE_URL` | `""` | OpenAI 호환 공급자 엔드포인트. 빈 값=OpenAI |
+| `OPENAI_VERIFIER_MODEL` | `gpt-5-mini` | 검증자 모델 |
+| `MERGE_VERIFIER_BAND` | `10` | `merge_threshold ~ +N` 점만 검증(ge=1) |
+| **i18n** | | |
+| `DEFAULT_LOCALE` | `en` | 신규 사용자 기본 언어. `SUPPORTED_LOCALES` 밖이면 startup 실패 |
+| `SUPPORTED_LOCALES` | `en,ko,ja` | 지원 코드 CSV(각 2~10자 영숫자/하이픈) |
+| `LOCALE_FALLBACK` | `en` | 감지·번역 실패 시 최종 언어. `SUPPORTED_LOCALES` 밖이면 startup 실패 |
+| `I18N_TRANSLATIONS_DIR` | `src/i18n/translations` | JSON 번역 파일 위치 |
+| `I18N_DISABLED` | `false` | LocaleMiddleware skip + 영문 고정 |
+| **주기 작업** | | |
+| `SCHEDULER_DISABLED` | `false` | 인앱 스케줄러 6종 job 중단. 스케줄러 자체가 운영 판정에서만 기동한다 |
+| `SCAMANAGER_SELF_ANALYSIS_DISABLED` | `false` | 모든 webhook 분석 즉시 skip(202) |
 
-| 변수 | 설명 | 예시 |
-|------|------|------|
-| `INTERNAL_CRON_API_KEY` | **`POST /api/internal/cron/*` 전용 인증 키** (admin key 와 분리). `hmac.compare_digest`. **미설정 시 503** — 엔드포인트 6종 (`weekly` · `trend` · `scan-security` · `retry-pending-merges` · `sweep-orphans` · `retention-sweep`). **주기 실행은 인앱 스케줄러(`src/scheduler.py`)가 서비스 함수를 직접 호출**하므로 이 키가 없어도 스케줄 작업은 돈다 — 이 키는 **수동/외부 트리거용**. `railway.toml [[deploy.cronJobs]]` 는 스키마에 없는 키라 무시된다. 긴급 차단은 `SECURITY_AUTO_PROCESS_DISABLED=1`. 엔드포인트↔job 파리티: `tests/unit/test_cron_scheduler_parity.py`. 미스케줄 예외는 `src/scheduler.py::UNSCHEDULED_CRON_PATHS` 에 사유와 함께 등재. | `cron-internal-key-xxx` |
-| `SCHEDULER_DISABLED` | 인앱 주기 작업 스케줄러 kill-switch — `1` 시 6종 job 미기동 (`retry-pending-merges` 1분 · `sweep-orphans` 10분 · `trend` 매일 03:00 UTC · `scan-security` 매일 04:00 UTC · `retention-sweep` 매일 20:00 UTC · `weekly-reports` 월 00:00 UTC). 🔴 스케줄러는 **운영(`is_production`)에서만 기동** — 비운영에서는 이 값과 무관하게 미기동. job 수 SSOT = `src/scheduler.py::JOBS`(파리티 가드 `tests/unit/test_cron_scheduler_parity.py`). 상세: `src/scheduler.py` | `0` (기본) |
-| `SAAS_ADMIN_EMAILS` | **SaaS admin 권한 allow-list** — `,` 분리 email. 일치 시 `/admin/{tenants,rls-audit,operations}` UI + `/api/admin/*`. 미설정 시 `require_admin` 이 **503** (`src/auth/session.py`, detail `SAAS_ADMIN_EMAILS unset` — 401 아님) | 빈 문자열 (기본) / `admin@example.com,owner@example.com` |
-| `SENSITIVE_PATH_GUARD_DISABLED` | **민감 경로 자동 머지 가드 kill-switch** — 미설정(기본 `0`) 시 PR 이 **인증/시크릿**(`*/auth/`·`crypto.py`·`secrets.*`·`credentials.*`)·**DB 마이그레이션**(`alembic/`·`migrations/`·`alembic.ini`)·**CI 워크플로 정의**(`.github/workflows/`·`Dockerfile`) 를 건드리면 점수와 무관하게 자동 머지를 보류하고 PR 코멘트로 사유를 남긴다. 변경 파일 목록 조회 실패 시에도 보류. 보류 태그 `SENSITIVE_PATH_HOLD` 는 `_RETRIABLE_TAGS` 밖이라 큐가 기다리지 않는다. `1` 이면 가드 꺼짐 — 점수만으로 인증 변경도 머지된다. 자동·반자동 공유 (`src/gate/engine.py::_run_auto_merge`) | `0` (기본) |
-| `SCAMANAGER_SELF_ANALYSIS_DISABLED` | **Loop Guard kill-switch** — `1` 이면 모든 webhook 분석 즉시 중단 (202 skipped) | `0` (기본) / `1` (긴급 중단) |
-| `SECURITY_AUTO_PROCESS_DISABLED` | **Code/Secret Scanning auto-process kill-switch** — `1` 이면 `security_scan_service` + `dashboard_service` security 영역 자동 처리 중단 | `0` (기본) / `1` (긴급 중단) |
-| `SAAS_MULTITENANT_DISABLED` | **SaaS 멀티테넌트 영역 kill-switch** — `1` 이면 admin 영역 **503** (`src/auth/session.py` — 401 아님) | `0` (기본) / `1` (긴급 중단) |
-| `OPERATIONS_DASHBOARD_DISABLED` | **운영 모니터링 대시보드 kill-switch** — `1` 이면 `/admin/operations` **503** | `0` (기본) / `1` (긴급 중단) |
+## `os.environ` 직접 read (kill-switch)
 
-> **운영 안전**: 위 kill-switch 는 사고 시 바로 쓰려면 Railway Variables 에 미리 둔다.
-> `INTERNAL_CRON_API_KEY` 미설정은 **수동/외부 HTTP 트리거(`/api/internal/cron/*`)만 503** —
-> 인앱 스케줄러 작업은 이 키 없이 돈다. `SAAS_ADMIN_EMAILS` 미설정은 admin 영역 **503**.
-> 신규 kill-switch 는 `src/shared/feature_kill_switch.py::is_disabled(feature)` 를 쓴다.
+`src/shared/feature_kill_switch.py::is_disabled("X")` → `X_DISABLED` 가 `1`/`true`/`yes` 면 참.
+`Settings` 필드가 아니라 재기동 없이 반영된다. 사고 대비로 Railway Variables 에 미리 만들어 둔다.
 
-## Observability (자동 로깅, env 설정 불필요)
+| 변수 | 기본값 | 무엇을 바꾸는가 |
+|---|---|---|
+| `AI_REVIEW_DISABLED` | `0` | AI 코드리뷰 전역 차단(정적분석·게이트는 그대로) |
+| `INSIGHT_DISABLED` | `0` | 대시보드·리포 인사이트 내러티브 차단 |
+| `MERGE_VERIFIER_DISABLED` | `0` | 2nd-LLM 검증 차단 |
+| `SENSITIVE_PATH_GUARD_DISABLED` | `0` | 인증·마이그레이션·CI 파일 변경 PR 의 자동머지 보류를 해제 |
+| `SECURITY_AUTO_PROCESS_DISABLED` | `0` | Code/Secret Scanning 자동 처리 중단 |
+| `SAAS_MULTITENANT_DISABLED` | `0` | admin 영역 503 |
+| `OPERATIONS_DASHBOARD_DISABLED` | `0` | `/admin/operations` 503 |
 
-Sentry SDK 는 없다. Railway 에 남은 `SENTRY_*` 는 `model_config = {"extra": "ignore"}` 로 무시된다.
-자동 로깅은 별도 환경변수 없이 동작:
+## 로컬 전용 (배포 env 아님)
 
-- `claude_api_call` 로그 — model / duration_ms / input_tokens / output_tokens / cost_usd / status
-- `pipeline_stage` 로그 — collect_files / analyze / score_and_save / notify / pipeline_total
-- Railway Logs 에서 grep / filter 로 조회 가능 (structured log shipper 미연동 상태)
+| 변수 | 기본값 | 무엇을 바꾸는가 |
+|---|---|---|
+| `DOC_REVIEW_GATE_DISABLED` | `0` | 문서 리뷰 훅의 Anthropic 호출 차단 |
+| `DOC_REVIEW_GATE_LEDGER` | ON | 훅 판정 원장 기록. `0`/`false`/`no` 만 끈다 |
+| `SKIP_MAIN_RED_CHECK` | 미설정 | SessionStart 의 main CI red 관측을 건너뛴다 |
+| `PERF_PROD_URL` | Railway 운영 URL | `scripts/perf_measure.py` 측정 대상 |
+| `PERF_API_KEY` | `""` | 그 측정의 `X-Api-Key` |
 
-## 다국어 지원
-
-`DEFAULT_LOCALE` / `SUPPORTED_LOCALES` / `LOCALE_FALLBACK` / `I18N_TRANSLATIONS_DIR` / `I18N_DISABLED` 로 제어한다 (Jinja2 + JSON dict, Babel 없음).
-`src/middleware/locale.py::_detect_locale` 은 Cookie `preferred_language` → Accept-Language q-weight → `settings.default_locale` → `settings.locale_fallback` **4단계**.
-`User.preferred_language` 는 이 미들웨어에 없다 (알림·AI 리뷰·hook 경로가 그 컬럼을 읽는다).
-
-| 변수 | 설명 | 기본값 | 예시 |
-|------|------|-------|------|
-| `DEFAULT_LOCALE` | 신규 사용자 기본 언어. **`SUPPORTED_LOCALES` 에 포함**돼야 함 — 아니면 startup ValidationError (`config.py` `_validate_locale_membership`) | `en` | `en` / `ko` / `ja` |
-| `SUPPORTED_LOCALES` | 지원 언어 목록 (쉼표 구분, 공백 제거 의무 — pydantic field_validator 검증) | `en,ko,ja` | `en,ko,ja` / `en,ko` |
-| `LOCALE_FALLBACK` | 극한 fallback (감지 실패·번역 파일 부재). **`SUPPORTED_LOCALES` 에 포함**돼야 함 (`config.py` `_validate_locale_membership`) | `en` | `en` |
-| `I18N_TRANSLATIONS_DIR` | JSON dict 번역 파일 위치 (en.json/ko.json/ja.json — 상대 또는 절대 경로) | `src/i18n/translations` | 개발: `src/i18n/translations` / 운영: `/app/src/i18n/translations` |
-| `I18N_DISABLED` | i18n 기능 kill-switch (1=비활성, 운영 사고 시 응급 차단용) | `0` | `0` (활성) / `1` (긴급 차단) |
-
-> `I18N_DISABLED` 는 번역 파일 손상 등 응급 차단용. `is_disabled("I18N")`.
->
-> 검증: `field_validator` 3건 + `model_validator(mode=after)` 멤버십 (`default_locale`·`locale_fallback` ∈ `supported_locales`). 단위 테스트 = `tests/unit/test_config.py`.
-
-## 알림 채널 (선택)
-
-| 변수 | 설명 |
-|------|------|
-| `SMTP_HOST` | SMTP 메일 서버 호스트 (예: `smtp.gmail.com`) |
-| `SMTP_PORT` | SMTP 포트 (기본 587) — `config.py` `coerce_smtp_port` 가 빈 문자열을 587로 변환 (크래시 없음). 숫자 권장. **TLS 모드는 포트가 결정**: `465` = implicit TLS / **그 외(587·25·2525…) = STARTTLS**. STARTTLS 미지원 서버는 평문 대신 예외. 별도 TLS 토글 env 없음 |
-| `SMTP_USER` | SMTP 인증 사용자 |
-| `SMTP_PASS` | SMTP 인증 비밀번호 |
-
-## 비용 제어 (AI 리뷰 / 인사이트 kill-switch)
-
-> Anthropic API(Claude) 호출 비용을 전역으로 즉시 차단하는 kill-switch 2종 — `src/shared/feature_kill_switch.py::is_disabled(feature)` 패턴(`SECURITY_AUTO_PROCESS_DISABLED` 등과 동일 helper, pydantic `Settings` 필드가 아니라 `os.environ` 직접 read). 리포별 세분화는 `RepoConfig.ai_review_enabled` DB 컬럼(기본 `True`, env 아님 — settings 페이지 PR 규칙 카드에서 토글)이 담당. 3-레이어 검증 절차 + gate 동작(disabled 리포 최대 89/B) + 로컬 키 경로(pre-push 훅 등): [`docs/runbooks/cost-controls.md`](../runbooks/cost-controls.md).
-
-| 변수 | 설명 | 기본값 |
-|------|------|--------|
-| `AI_REVIEW_DISABLED` | `1` 설정 시 AI 코드리뷰(Claude Sonnet) 전역 차단(웹훅 파이프라인 + CLI pre-push hook 공통). 정적분석·게이트·인사이트는 영향 없음 | `0` (기본) |
-| `INSIGHT_DISABLED` | `1` 설정 시 대시보드 인사이트 + 리포별 인사이트 내러티브(Claude Haiku) 전역 차단 | `0` (기본) |
-
-## 머지 검증자 (2nd-LLM cross-vendor, opt-in)
-
-> Claude 리뷰를 **다른 vendor 의 LLM** 이 독립 검증 — **경계 점수 자동머지 후보**(`merge_threshold ~ +N`)만. `OPENAI_API_KEY` 미설정 시 완전 비활성(비용 0). 불안전/조작/검증자 오류 시 자동머지 차단 + PR 코멘트.
->
-> 클라이언트는 **OpenAI-호환 엔드포인트**면 동작한다. 비구독 = `VERIFIER_BASE_URL` + 그 공급자 키 + 모델명. 구독 = `VERIFIER_BASE_URL` 빈 값 + 저가 모델. 공급자는 `chat/completions` + `response_format=json_object` 필요. rate-limit 으로 검증 실패 시 그 PR 자동머지 보류(수동 검토).
-
-| 변수 | 설명 | 기본값 |
-|------|------|--------|
-| `OPENAI_API_KEY` | 검증자 키 — **미설정 시 검증자 완전 비활성** (BYO key). OpenAI 키 또는 `VERIFIER_BASE_URL` 지정 시 해당 OpenAI-호환 공급자 키 | 빈 문자열 |
-| `VERIFIER_BASE_URL` | 검증자 엔드포인트 base_url — 빈 값=OpenAI 기본. OpenAI-호환 무료/저가 공급자(GitHub Models·Groq·OpenRouter) 전환용 (`{base_url}/chat/completions` 로 호출) | 빈 문자열 |
-| `OPENAI_VERIFIER_MODEL` | 검증자 모델 ID (저비용 소형 권장 / 공급자별 모델명) | `gpt-5-mini` |
-| `MERGE_VERIFIER_BAND` | 경계 밴드 폭(점) — `merge_threshold ~ +N` 만 검증 (고득점 skip = 비용 절감) | `10` |
-| `MERGE_VERIFIER_DISABLED` | kill-switch (`1` 시 비활성) | `0` |
-
-## DB 연결 고급 설정
-
-| 변수 | 설명 | 기본값 |
-|------|------|--------|
-| `DB_SSLMODE` | PostgreSQL SSL 모드 (`require`, `verify-full`, `disable` 등, 빈 값=미적용) | 빈 문자열 |
-| `DB_FORCE_IPV4` | Railway IPv4 강제 연결 (온프레미스에서는 `false`) | `false` |
-| `DB_POOL_SIZE` | SQLAlchemy 연결 풀 크기 (PostgreSQL 전용, **최소 1**) | `5` |
-| `DB_MAX_OVERFLOW` | 풀 초과 허용 연결 수 (`-1`=무제한 sentinel) | `10` |
-| `DB_POOL_TIMEOUT` | 풀 대기 타임아웃 (초, **최소 1**) | `30` |
-| `DB_POOL_RECYCLE` | 연결 재활용 주기 (초, `-1`=비활성 sentinel) | `1800` |
-
-## CI-aware Auto Merge 재시도
-
-`auto_merge=true` 설정 리포에서 CI 진행 중 머지 실패 시 자동 재시도 큐 동작을 제어한다.
-
-| 변수 | 설명 | 기본값 |
-|------|------|--------|
-| `MERGE_RETRY_ENABLED` | `false` 시 레거시 단일 시도 동작으로 fallback | `true` |
-| `MERGE_RETRY_MAX_ATTEMPTS` | 큐 행당 최대 재시도 횟수 (**>= 1** 제약 — `Field(ge=1)`) | `30` |
-| `MERGE_RETRY_MAX_AGE_HOURS` | 큐 행 만료 시간 (시간, **>= 1** 제약 — `Field(ge=1)`) | `24` |
-| `MERGE_RETRY_INITIAL_BACKOFF_SECONDS` | 첫 재시도 백오프 (초, **>= 1** 제약 — `Field(ge=1)`) | `60` |
-| `MERGE_RETRY_MAX_BACKOFF_SECONDS` | 최대 백오프 (초, **>= 1 AND >= INITIAL_BACKOFF** — `Field(ge=1)` + `model_validator` 경계 강제, max<initial 시 startup ValidationError) | `600` |
-| `MERGE_RETRY_CHECK_SUITE_WEBHOOK_ENABLED` | `check_suite.completed` 웹훅 즉각 트리거 활성화 | `true` |
-| `MERGE_RETRY_WORKER_BATCH_SIZE` | cron sweep 1회 처리 최대 행 수 (**>= 1** 제약 — `Field(ge=1)`) | `50` |
-| `MERGE_UNKNOWN_RETRY_LIMIT` | `mergeable_state=unknown` 상태 폴링 최대 재시도 횟수 (`config.py` `merge_unknown_retry_limit`) | `3` |
-| `MERGE_UNKNOWN_RETRY_DELAY` | `mergeable_state=unknown` 재시도 간격 (초, `config.py` `merge_unknown_retry_delay`) | `3.0` |
-
-> 기본값으로 운영 환경에 최적화되어 있어 별도 설정 없이 즉시 동작한다.
-> 운영 runbook: `docs/runbooks/merge-retry.md`
-
-## DB Failover (온프레미스 장애 시 Supabase 자동 전환)
-
-| 변수 | 설명 | 예시 |
-|------|------|------|
-| `DATABASE_URL_FALLBACK` | Failover용 보조 DB URL (빈 값이면 failover 비활성) | `postgresql://user:pass@supabase.co/db?sslmode=require` |
-| `DB_FAILOVER_PROBE_INTERVAL` | Primary DB 복구 확인 주기 (초, **최소 1** — 0 시 busy-loop) | `30` |
-| `DATABASE_URL_WORKER` | background(webhook/worker/gate/notifier/cron/CLI hook) 전용 DB URL. 빈 값이면 `DATABASE_URL` 팩토리 재사용. **BYPASSRLS** worker role(`scamanager_worker`) 이어야 한다 — 비-BYPASSRLS 면 background 가 RLS 에 막힌다. worker 경로는 failover 없음 + 연결 풀 2배. 절차: [rls-role-separation.md](../runbooks/rls-role-separation.md) | `postgresql://scamanager_worker:pass@host/db` |
-| `MIGRATION_DATABASE_URL` | alembic 전용 DB URL (**owner role**). `alembic/env.py` 가 `effective_migration_url`(= 이 값 또는 `DATABASE_URL`)을 `sqlalchemy.url` 로 쓴다. 빈 값이면 `DATABASE_URL` fallback — `DATABASE_URL` 이 app role 이면 `alembic_version` default-deny 에 막힌다. 런타임 `DATABASE_URL`/`DATABASE_URL_WORKER` 를 마이그레이션 credential 로 쓰지 않는다. 가드: `tests/unit/migrations/test_alembic_env_migration_url.py` | `postgresql://postgres:pass@host/db` |
-
-**주의:** `.env` 파일은 절대 git commit 하지 말 것 (`.gitignore`에 포함됨)
-
----
-
-## 성능 측정 스크립트 (scripts/perf_measure.py 전용)
-
-`make perf-report` 또는 `python scripts/perf_measure.py` 실행 시에만 참조. 운영 서버 배포 환경변수가 아님.
-
-| 변수 | 기본값 | 설명 |
-|------|--------|------|
-| `PERF_PROD_URL` | `https://scamanager-production.up.railway.app` | 운영 서버 측정 URL |
-| `PERF_API_KEY` | `""` | 운영 API 키 (`X-Api-Key` 헤더 — `/api/repos` 등 API 엔드포인트 TTFB 측정용, 없으면 401 예상) |
-
-## 로컬 개발 훅 env (Railway 배포 env 아님)
-
-Claude Code 로컬 훅(`.claude/hooks/`)에서만 읽는 env — 운영 서버(Railway/온프레미스)나 `config.py` `Settings` 와 무관하다. `.env` 가 아니라 로컬 셸에서만 설정.
-
-| 변수 | 설명 | 기본값 |
-|------|------|--------|
-| `DOC_REVIEW_GATE_DISABLED` | `1`/`true`/`yes` 설정 시 문서 리뷰 게이트(`.claude/hooks/doc_review_gate.py`) 비용 kill-switch — 로컬 Anthropic 호출 0. **로컬 훅 전용** (운영 파이프라인 무관). 3-레이어 비용 제어 맥락: [`docs/runbooks/cost-controls.md`](../runbooks/cost-controls.md) | `0` (기본) |
-| `DOC_REVIEW_GATE_LEDGER` | 문서 심의 훅 로컬 판정 원장. **기본 ON** — `0`/`false`/`no` 만 끈다. 기록 파일은 `.claude/hooks/.doc_review_ledger.jsonl`(gitignore). 본문·diff·발췌는 기록하지 않는다 — 경로·개수·판정·캐시 회계·해시만. 로컬 훅 전용(운영 무관). | 미설정 (기본=ON) / `0` (끔) |
-| `SKIP_MAIN_RED_CHECK` | 임의 값이면 SessionStart 의 `scripts/check_main_red.py` 가 main CI red 관측을 **건너뛴다**. 운영 서버 무관(로컬 훅 전용). 무음이 아니다 — 건너뛴다는 한 줄을 인쇄한다 | 미설정 (기본) / `1` (건너뜀) |
-
-## 내부 모듈 상수 (참고 — env var 아님)
-
-환경변수가 아닌 코드 내 모듈 상수지만, 운영 동작 가시성 / 튜닝 시 인지가 필요한 값. 변경은 코드 수정 (PR) 으로만 가능.
-
-| 상수 | 위치 | 값 | 의미 |
-|------|------|------|------|
-| `WEBHOOK_SECRET_CACHE_TTL` | `src/constants.py` | `300` (초) | 리포 시크릿 캐시 TTL — 변경 후 최대 5분간 구 시크릿으로 검증 |
-| `WEBHOOK_SECRET_CACHE_MAX` | `src/constants.py` | `2048` | pre-auth 시크릿 캐시 엔트리 상한 — forged `full_name` DoS 방어 |
-| `OPENAI_VERIFIER_TIMEOUT` | `src/constants.py` | `60.0` (초) | 2nd-LLM 머지 검증자 OpenAI 호출 타임아웃 — Claude review 60s 와 대칭 |
-| `VERIFIER_DIFF_CHAR_CAP` | `src/constants.py` | `60000` (문자) | 검증자 diff 상한 — 초과 시 OpenAI 미호출 + 자동머지 차단 (대형 PR 수동 머지) |
-| `VERIFIER_MAX_OUTPUT_TOKENS` | `src/constants.py` | `8192` | 검증자 OpenAI 응답 토큰 상한 (`max_completion_tokens`) |
-| `STATIC_ANALYSIS_TIMEOUT` | `src/constants.py` | `30` (초) | 정적 분석 도구 (slither 등) subprocess 타임아웃 |
-| `HTTP_CLIENT_TIMEOUT` | `src/constants.py` | `10.0` (초) | 신뢰 API HTTP 호출 타임아웃 (GitHub/Telegram/Railway/SMTP — Anthropic SDK 만 60s 별도) |
-| `TELEGRAM_RETRY_AFTER_MAX_SECONDS` | `src/notifier/telegram.py` | `30` | Telegram 429 응답의 retry_after 최대 sleep (cap) |
-| `_GRAPHQL_MAX_ATTEMPTS` | `src/github_client/graphql.py` | `3` | GitHub GraphQL 5xx + network error 최대 재시도 |
-| `_GRAPHQL_INITIAL_BACKOFF_SECONDS` | `src/github_client/graphql.py` | `1.0` | GraphQL 재시도 초기 backoff (지수: 1s → 2s) |
-| `_ORPHAN_SWEEP_THRESHOLD_MINUTES` | `src/services/cron_service.py` | `30` (분) | 분석 소실 판정 임계 — `sweep-orphans` 가 이 시간 초과 `analysis_attempts` 를 증발로 판정 |
-| `_MERGE_QUEUE_RETENTION_DAYS` | `src/services/cron_service.py` | `7` (일) | `retention-sweep` 의 `merge_retry_queue` 종결 행 보존 기간 (관측은 `MergeAttempt`) |
+Sentry 는 없다 — 남은 `SENTRY_*` 는 `extra: "ignore"` 로 버려진다. 관측은 `claude_api_call` ·
+`pipeline_stage` 구조화 로그이며 env 설정이 필요 없다. env 아닌 튜닝 상수는 `src/constants.py`.
+`.env` 는 커밋하지 않는다.

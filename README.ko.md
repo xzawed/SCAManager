@@ -2,27 +2,15 @@
 
 # 🛡️ SCAManager
 
-**GitHub Push / PR 이벤트 기반 자동 코드 품질 분석 · AI 리뷰 · Gate 서비스**
+**GitHub push · PR 마다 정적 분석 + Claude AI 리뷰 — 채점하고, 알리고, PR 을 게이트한다.**
 
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.141-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-SQLAlchemy_2-336791?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![Claude AI](https://img.shields.io/badge/Claude_AI-Sonnet_4.6_(default)-CC6600?style=flat-square&logo=anthropic&logoColor=white)](https://www.anthropic.com/)
-[![Railway](https://img.shields.io/badge/Deploy-Railway-0B0D0E?style=flat-square&logo=railway&logoColor=white)](https://railway.app/)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
-
 [![CI](https://github.com/xzawed/SCAManager/actions/workflows/ci.yml/badge.svg)](https://github.com/xzawed/SCAManager/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/xzawed/SCAManager/actions/workflows/codeql.yml/badge.svg)](https://github.com/xzawed/SCAManager/actions/workflows/codeql.yml)
-[![codecov](https://codecov.io/gh/xzawed/SCAManager/branch/main/graph/badge.svg)](https://codecov.io/gh/xzawed/SCAManager)
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=xzawed_SCAManager&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=xzawed_SCAManager)
-[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=xzawed_SCAManager&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=xzawed_SCAManager)
-[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=xzawed_SCAManager&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=xzawed_SCAManager)
-
 [![Tests](https://img.shields.io/badge/Tests-7284%2B_total_(7113_unit_%2B_171_integration)-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
-[![E2E](https://img.shields.io/badge/E2E-121_CI_배선(120_통과_%2F_1_skip)-brightgreen?style=flat-square&logo=playwright&logoColor=white)](e2e/)
+[![E2E](https://img.shields.io/badge/E2E-121_CI-brightgreen?style=flat-square&logo=playwright&logoColor=white)](e2e/)
 [![pylint](https://img.shields.io/badge/pylint-9.99%2F10-brightgreen?style=flat-square&logo=python&logoColor=white)](src/)
-[![bandit](https://img.shields.io/badge/bandit-HIGH_0-brightgreen?style=flat-square&logo=security&logoColor=white)](src/)
-[![Coverage](https://img.shields.io/badge/Coverage-97%25-brightgreen?style=flat-square&logo=codecov&logoColor=white)](docs/STATE.md#현재-수치)
 
 [🇺🇸 English](README.md)
 
@@ -30,669 +18,85 @@
 
 ---
 
-## 📖 개요
+셀프 호스팅 FastAPI 서비스. GitHub webhook 이 `push` 와 PR `opened` / `synchronize` / `reopened`
+에서 발화하면 파이프라인이 변경을 100점으로 채점해 기록하고, PR 을 게이트하고, 결과를 배달한다.
+전부 당신의 인프라에서 돈다 — 밖으로 나가는 것은 Anthropic API 와 당신이 켠 채널뿐이다
+([SECURITY.md](SECURITY.md)).
 
-**SCAManager**는 GitHub 리포지토리의 코드 품질을 자동으로 관리하는 서비스입니다.
-
-Push 또는 PR 이벤트가 발생하면 **정적 분석**(등록 분석기 25종 — pylint · flake8 · bandit · Semgrep · ESLint · ShellCheck · cppcheck · slither · RuboCop · golangci-lint 외 [15종](docs/reference/language-coverage.md))과 **Claude AI 리뷰**를 병렬로 실행하고, 100점 만점의 점수와 A~F 등급을 산출합니다.
-
-결과는 **Telegram · GitHub · Discord · Slack · Email · n8n** 등 다양한 채널로 즉시 전달되며, 점수에 따라 PR을 자동 Approve/Reject하고 squash merge까지 자동화할 수 있습니다.
-
-main 브랜치에 직접 push하는 팀을 위해 **커밋 댓글 자동 게시**와 **GitHub Issue 자동 생성**도 지원합니다.
-
----
-
-## 🗂️ 탄생 배경과 운영기
-
-왜 만들었는지, 운영하면서 무엇에 부딪혔는지(PR 무용지물화 · Webhook 중복 · `DetachedInstanceError` ·
-pre-push 훅 셸 인젝션 · 알림 URL SSRF · Railway 오인식 · E2E 디렉토리 충돌)는
-[docs/project-story.md](docs/project-story.md) 로 옮겼습니다.
-
----
-
-## 🌐 다국어 지원 (영어 / 한국어 / 日本語)
-
-SCAManager 는 **3 언어** 를 사용자 facing 전 영역 (UI / 알림 / AI 코드리뷰 프롬프트) 에 적용합니다. (사이클 84 — 18 PR 시리즈)
-
-| 영역 | 번역 범위 | 단일 진실 소스 |
-|------|----------|----------------|
-| **웹 UI** (login / dashboard / settings / admin) | 모든 라벨·버튼·힌트 | 헤더 dropdown 🌐 (상단 nav) |
-| **알림** (Telegram / Discord / Slack / Email / GitHub PR Comment / Commit Comment / Issue) | 모든 메시지 템플릿 | 3-layer fallback — 사용자 언어 → 리포 알림 언어 → 기본값 |
-| **AI 코드리뷰** (Claude — 49개 언어) | Tier1/Tier2/Tier3 + generic 가이드 | 2-layer fallback — 리포 소유자 언어 → 사용자 언어 → 기본값 |
-
-**언어 변경 방법**: 상단 헤더의 언어 dropdown 🌐 클릭. 즉시 적용되며 cookie 로 영구 저장됩니다.
-
-**참고**:
-- 언어 선호도는 User 계정에 저장됩니다 (헤더 dropdown 이 단일 진실 소스 — `/settings` 페이지에 별도 언어 설정 카드가 없습니다)
-- GitHub Issue 제목 + Email subject 의 prefix 는 영문 고정 (검색 호환 — `[SCAManager]`, `[Code Review]`)
-- Anthropic prompt cache 는 언어별 자동 분리 (system text hash 차이 → cache key 자동 분리, 별도 설정 0)
-- Kill-switch: `I18N_DISABLED=1` 설정 시 기본 locale 만 사용 (운영 사고 응급 차단용)
-
-상세 환경변수: [docs/reference/env-vars.md](docs/reference/env-vars.md#다국어-지원)
-
----
-
-## ✨ 주요 기능
-
-### 🔍 자동 코드 분석
-
-| 분석 항목 | 도구 | 대상 |
-|-----------|------|------|
-| 코드 품질 | pylint + flake8 + Semgrep + cppcheck + RuboCop + golangci-lint | `.py` + C/C++ + `.rb` (RuboCop) + `.go` (golangci-lint) + **22개 언어** (Semgrep — [semgrep.py](src/analyzer/io/tools/semgrep.py)의 `SUPPORTED_LANGUAGES`) |
-| 보안 취약점 | bandit + Semgrep + slither + RuboCop Security cops + gosec (golangci-lint) | `.py` + Solidity (slither) + Ruby / Go 보안 룰 |
-| JS/TS 품질 | ESLint (flat config) | `.js` `.mjs` `.ts` `.tsx` |
-| Shell 품질 | ShellCheck | `.sh` `.bash` 등 shell 스크립트 |
-| Solidity | slither | `.sol` — reentrancy · tx.origin · weak-prng |
-| Ruby | RuboCop | `.rb` — Security cop 자동 분류 |
-| Go | golangci-lint | `.go` — 메타 린터 (gosec / errcheck / staticcheck / unused, `go.mod` 자동생성) |
-| AI 리뷰 | Claude Sonnet 4.6 | **49개 언어** 언어별 체크리스트 적용 (default) |
-| 커밋 메시지 | Claude AI | Push/PR 메시지 |
-
-- Push(`push`) 및 PR(`opened` / `synchronize` / `reopened`) 이벤트 자동 처리
-- 정적 분석과 AI 리뷰를 `asyncio.gather()`로 **병렬 실행** — 대기 시간 최소화
-- `ANTHROPIC_API_KEY` 미설정 시 AI 항목은 중립 기본값 적용, **AI 없이도 최대 89점(B등급)** 가능
-
----
-
-### 🏆 점수 체계
-
-| 항목 | 배점 | 감점 규칙 |
-|------|------|-----------|
-| 🧹 코드 품질 | 25점 | error −3 · warning −1 (CQ_WARNING_CAP=25 통합 cap) |
-| 🔒 보안 | 20점 | HIGH −7 · LOW/MED −2 |
-| 📝 커밋 메시지 | 15점 | Claude AI 평가 (0→20 → 0→15 스케일링) |
-| 🧠 구현 방향성 | 25점 | Claude AI 평가 (0→20 → 0→25 스케일링) |
-| 🧪 테스트 코드 | 15점 | Claude AI 평가 (0→10 → 0→15 스케일링, 비코드 파일 면제) |
-| **합계** | **100점** | |
-
-**등급 기준**
-
-| 등급 | 점수 | 의미 |
-|------|------|------|
-| 🥇 A | 90점 이상 | 우수 |
-| 🥈 B | 75점 이상 | 양호 |
-| 🥉 C | 60점 이상 | 보통 |
-| ⚠️ D | 45점 이상 | 개선 필요 |
-| 🚨 F | 44점 이하 | 심각 |
-
----
-
-### 🔔 알림 채널
-
-| 채널 | 내용 | 설정 |
-|------|------|------|
-| 📱 Telegram | 점수 상세 · AI 요약 · 개선 제안 · 정적 이슈 (HTML 파싱) | 기본 |
-| 💬 GitHub PR Comment | 카테고리별·파일별 피드백 + 점수 테이블 | 리포별 설정 |
-| 📌 GitHub Commit Comment | Push 커밋에 AI 리뷰 댓글 게시 | 리포별 설정 |
-| 🐛 GitHub Issue | 점수 미달 또는 보안 HIGH 발견 시 자동 생성 | 리포별 설정 |
-| 🎮 Discord | Embed 형식 알림 | 리포별 설정 |
-| 💼 Slack | Attachment 형식 알림 | 리포별 설정 |
-| 📧 Email | SMTP HTML 이메일 | 리포별 설정 |
-| 🔗 Generic Webhook | 범용 JSON POST | 리포별 설정 |
-| 🔄 n8n | 외부 워크플로우 트리거 (Issue → Claude CLI → PR 자동화 포함) | 리포별 설정 |
-
-> **n8n 자동화**: Issue 등록 시 n8n + Claude CLI가 자동으로 코드를 수정하고 PR을 생성합니다. 구성 방법은 [docs/runbooks/n8n-auto-fix.md](docs/runbooks/n8n-auto-fix.md)를 참고하세요.
-
-모든 채널은 `asyncio.gather(return_exceptions=True)`로 **독립 실행** — 한 채널의 실패가 다른 채널에 영향을 주지 않습니다.
-
----
-
-### 📡 Telegram Insights
-
-실시간 Push/PR 알림 외에도, 정기 리포트·트렌드 감지·봇 명령을 제공합니다.
-
-#### 주간 리포트
-매주 월요일 09:00 KST에 리포별 Telegram 채팅으로 주간 요약을 전송합니다:
+## 변경 하나가 흐르는 길
 
 ```
-📊 Weekly Report — owner/myrepo
-Period: Apr 21 – Apr 27
-
-Analyses: 12  |  Avg score: 81.4 (B)
-High: 94 (A)  |  Low: 62 (C)
-
-Top issues this week:
-  · security: 8 occurrences
-  · code_quality: 14 occurrences
+POST /webhooks/github          HMAC-SHA256, 리포별 시크릿
+  └─ run_analysis_pipeline()   src/worker/pipeline.py
+       ├─ asyncio.gather ─┬─ 정적 분석기 25종 (pylint · bandit · semgrep · eslint · tsc ·
+       │                  │   shellcheck · cppcheck · slither · rubocop · golangci-lint · …)
+       │                  └─ Claude 리뷰, 49개 언어별 체크리스트
+       ├─ calculate_score() → 점수 + 등급 → DB
+       ├─ gate  (PR 이벤트)   approve · request changes · Telegram 버튼 · squash merge
+       └─ notify              채널은 독립 — 하나가 실패해도 나머지는 나간다
 ```
 
-#### 트렌드 알림
-매일 12:00 KST에 7일 이동 평균을 체크합니다. 직전 구간 대비 **10점 이상** 하락 시 (최소 5건 이상 분석 필요) 자동 알림을 전송합니다:
+## 점수
 
-```
-⚠️ Score trend alert — owner/myrepo
-7-day moving avg dropped: 83.2 → 71.5 (−11.7)
-Recent low-score analyses may need attention.
-```
+| 항목 | 배점 | 어떻게 움직이나 |
+|---|---|---|
+| 코드 품질 | 25 | error −3, warning −1 (warning 상한 25) |
+| 보안 | 20 | HIGH −7, LOW/MEDIUM −2 |
+| 커밋 메시지 | 15 | Claude 0–20, 스케일링 |
+| 구현 방향성 | 25 | Claude 0–20, 스케일링 |
+| 테스트 코드 | 15 | Claude 0–10, 스케일링 |
 
-#### 봇 명령
-Telegram 계정 연동 후 아래 명령을 봇에 전송할 수 있습니다:
+등급 A(90+) · B(75+) · C(60+) · D(45+) · 그 미만 F. `ANTHROPIC_API_KEY` 가 없으면 AI 3항목이
+중립 기본값(13 / 21 / 10)으로 채워져 한 번의 실행은 최대 89점이 된다.
+정본 [`src/constants.py`](src/constants.py).
 
-| 명령 | 설명 |
-|------|------|
-| `/stats <repo>` | 리포의 주간 평균 점수 · 분석 건수 · 주요 이슈 |
-| `/settings <repo>` | 현재 Gate 모드 · 임계값 · 알림 설정 |
-| `/connect <OTP>` | Telegram 계정을 SCAManager 프로필에 연동 |
+## 게이트와 전달
 
-#### Telegram 계정 연동 (`/connect` OTP 흐름)
+기본값 — 75 이상 approve, 50 미만 request changes, 75 이상 squash merge. `approve_mode=auto` 는
+GitHub 에 바로 쓰고 `semi-auto` 는 Telegram 인라인 버튼으로 사람에게 묻는다. 머지 임계 바로 위
+경계 밴드의 점수는 2차 모델 검증을 한 번 더 거치고, 그 검증이 돌지 못하면 막힌 채로 둔다.
+CI 가 아직 돌고 있어 실패한 머지는 큐에 넣고 재시도한다.
 
-1. **설정 페이지 → "알림 채널 (발신)" 카드 → Telegram 연결** → **"🔗 코드 발급"** 클릭
-2. 8자리 OTP 표시 (5분 유효)
-3. Telegram에서 SCAManager 봇으로 `/connect 12345678` 전송
-4. 봇이 "✅ Account linked" 회신 — 봇 명령 사용 가능
+채널(리포별) — Telegram · GitHub PR 댓글 · 커밋 댓글 · Issue · Discord · Slack · Email ·
+범용 webhook · n8n. UI · 알림 · 프롬프트는 한국어 / English / 日本語.
 
-> 새 OTP 발급 시 이전 OTP는 즉시 무효화됩니다. 연동은 리포 단위가 아닌 계정 단위입니다.
-
----
-
-### ⚡ PR Gate Engine
-
-점수 기반으로 PR을 자동으로 처리합니다.
-
-```
-PR 분석 완료
-    ├── [자동 모드]   점수 ≥ approve_threshold → GitHub APPROVE
-    │                점수 < reject_threshold  → GitHub REQUEST_CHANGES
-    │
-    ├── [반자동 모드] Telegram 인라인 버튼 전송 → 수동 승인/반려
-    │
-    └── [Auto Merge] 점수 ≥ merge_threshold   → squash merge 자동 실행
-                     (approve_mode와 완전 독립 동작)
-```
-
-| 설정 | 동작 |
-|------|------|
-| `approve_mode="auto"` | 임계값 기준 자동 Approve / Request Changes |
-| `approve_mode="semi-auto"` | Telegram 버튼으로 수동 결정 |
-| `auto_merge=true` | 임계값 통과 시 squash merge 자동 실행 |
-
-#### ♻️ CI-aware Auto Merge 재시도
-
-`auto_merge=true` 상태에서 CI가 실행 중(`mergeable_state=unstable` 또는 `unknown`)이어서 머지에 실패하면, 포기하는 대신 재시도 큐에 등록합니다:
-
-- 첫 큐 등록 시 Telegram "⏳ merge queued" 알림 (1회)
-- `check_suite.completed` Webhook 또는 1분 cron으로 최대 30회, 24시간 재시도
-- 최종 결과: Telegram 성공/실패 알림 (1회)
-
-> **기존 리포**는 `check_suite` 이벤트 구독을 위해 Webhook 재등록 필요 (설정 → "통합 & 인증 (수신)" 카드 → "Webhook 재등록")
-
----
-
-### 📊 Observability (관측)
-
-운영 중 문제 진단과 비용 관리를 위한 3단 계측 레이어.
-
-| 레이어 | 모듈 | 포착 내용 |
-|--------|------|-----------|
-| Claude API 비용 | `src/shared/claude_metrics.py` | 호출별 모델 · 입출력 토큰 · USD 비용 추정 · latency (구조화 로그) |
-| 파이프라인 타이밍 | `src/shared/stage_metrics.py` | `stage_timer` context manager — 단계별 `duration_ms` + `status` |
-| Auto-merge 시도 | `src/shared/merge_metrics.py` + `merge_attempts` 테이블 | 모든 auto-merge 시도(성공·실패) DB 기록 — `failure_reason` 정규 태그(`branch_protection_blocked`, `unstable_ci`, `permission_denied` 등) + 시도 시점 `score`/`threshold` 스냅샷 |
-
-세 레이어 모두 구조화 로그로 항상 emit — 어떤 로그 집계 시스템(Datadog, CloudWatch, Grafana Loki, Railway Logs)이든 파싱 가능합니다. 외부 SaaS 의존성 0.
-
----
-
-### 🖥️ 웹 대시보드
-
-GitHub OAuth로 로그인 후 브라우저에서 모든 기능을 사용할 수 있습니다.
-
-- **리포지토리 추가** — GitHub 드롭다운 선택만으로 Webhook 자동 생성
-- **점수 추이 차트** — Chart.js 기반 히스토리 시각화
-- **분석 상세** — AI 리뷰 · 카테고리별 피드백 · 정적 분석 이슈 목록
-- **설정 페이지** — 🚀 프리셋 원클릭 적용 · 6카드 Progressive Disclosure (빠른 설정 · PR 동작 규칙 · 이벤트 후 자동화 · 알림 채널(발신) · 통합 & 인증(수신) · 위험 구역) · 토글 연동 show/hide
-- **테마** — Dark / Light / Pastel / Catppuccin 4가지 테마 완전 지원
-
----
-
-### 💻 CLI 코드리뷰 도구
-
-터미널에서 즉시 실행하는 로컬 코드리뷰 도구입니다.
+## 빠른 시작
 
 ```bash
-# 최근 커밋과 비교 (기본)
-python -m src.cli review
-
-# 특정 브랜치 기준 비교
-python -m src.cli review --base main
-
-# 스테이징된 변경사항만 분석
-python -m src.cli review --staged
-
-# JSON 형식 출력
-python -m src.cli review --json
+git clone https://github.com/xzawed/SCAManager.git && cd SCAManager
+make install                        # pip + npm
+make css-build                      # Tailwind 번들 — gitignore 대상, 없으면 404
+python -m pip install pre-commit && python -m pre_commit install
+cp .env.example .env                # 값을 채운다
+make run                            # uvicorn :8000, 기동 시 마이그레이션 실행
 ```
 
-> `ANTHROPIC_API_KEY` 환경변수 필요 · GitHub Actions · Codespaces · 일반 터미널 모두 지원
+기동을 막는 것은 `DATABASE_URL` · `TELEGRAM_BOT_TOKEN` · `TELEGRAM_CHAT_ID` 3개다.
+`GITHUB_CLIENT_ID` · `GITHUB_CLIENT_SECRET` · `SESSION_SECRET`(32자 이상 랜덤)은 placeholder
+기본값이 있어 프로세스는 뜨지만 OAuth 로그인이 동작하지 않는다.
 
----
-
-### 🪝 CLI Hook (로컬 pre-push 자동 코드리뷰)
-
-`git push` 시 자동으로 코드리뷰가 실행되는 Git Hook입니다.
+GitHub 로 로그인해 **+ 리포 추가** 에서 리포를 고르면 webhook 이 만들어지고 다음 push 부터
+분석된다. 서버 없이 로컬에서 보려면:
 
 ```bash
-# 리포 등록 후 1회만 실행
-git pull
-bash .scamanager/install-hook.sh
-
-# 이후 git push 시 자동 실행
-git push origin main
-# → 터미널에 AI 리뷰 결과 출력
-# → SCAManager 대시보드에 자동 저장
+python -m src.cli review --base main    # ANTHROPIC_API_KEY 필요
 ```
 
-- **`ANTHROPIC_API_KEY` 필요** — 훅이 Anthropic Messages API를 직접 호출합니다. `claude -p` 경유 방식은 2025-06-15 Agent SDK 크레딧 분리 대응으로 폐지됐습니다
-- 비용 절감을 위해 기본 모델은 `claude-haiku-4-5` — `SCAMANAGER_REVIEW_MODEL`로 변경 가능
-- 결과는 터미널 출력 + 대시보드 동시 저장
-- push 차단 없음 — 훅은 항상 `exit 0`으로 정상 진행
+## 배포
 
-> **요구사항:** `bash` · `git` · `python3` · `curl` + 셸에 export 된 `ANTHROPIC_API_KEY`.
-> `.scamanager/config.json` 부재 · `python3` 부재 · 서버의 훅 토큰 검증 실패 · diff 없음 —
-> 이 경우들은 조용히 건너뜁니다(그래도 `exit 0`). `ANTHROPIC_API_KEY` 미설정 시에는
-> 경고 한 줄을 출력하고 리뷰를 건너뜁니다.
+**Railway** — 리포를 연결하고 PostgreSQL 플러그인을 추가한 뒤 위 변수 + `ANTHROPIC_API_KEY` ·
+`APP_BASE_URL` 을 넣는다. `APP_BASE_URL` 은 반드시 `https://` 주소로 — 없으면 OAuth redirect 와
+webhook 이 `http://` 로 등록돼 둘 다 실패한다 ([`docs/runbooks/railway.md`](docs/runbooks/railway.md)).
 
----
+**온프레미스** — `uvicorn src.main:app --host 0.0.0.0 --port 8000 --proxy-headers`.
+`DATABASE_URL_FALLBACK` 을 주면 보조 DB 로 자동 failover 한다.
 
-## 🛠️ 기술 스택
+## 문서
 
-| 분류 | 기술 |
-|------|------|
-| **언어** | Python 3.12 |
-| **웹 프레임워크** | FastAPI + Uvicorn |
-| **인증** | GitHub OAuth2 (authlib) + Starlette SessionMiddleware |
-| **데이터베이스** | PostgreSQL · SQLAlchemy 2 · Alembic · FailoverSessionFactory |
-| **AI (서버)** | Anthropic Claude API (claude-sonnet-4-6) |
-| **AI (로컬 Hook)** | Anthropic Messages API (기본 `claude-haiku-4-5`, `SCAMANAGER_REVIEW_MODEL`로 변경) |
-| **정적 분석** | **Tier1 25종** — pylint · flake8 · bandit (Python) + Semgrep (22개+) + ESLint + ShellCheck + cppcheck + slither + RuboCop + golangci-lint + 15종 추가 (hadolint · ktlint · tflint · tsc · sqlfluff · yamllint · phpstan · swiftlint · stylelint · htmlhint · buf_lint · dart_analyze · psscriptanalyzer · dotnet_format · clippy) — [docs/reference/language-coverage.md](docs/reference/language-coverage.md) 참조 |
-| **테스트** | pytest · pytest-asyncio · httpx TestClient |
-| **E2E 테스트** | Playwright (Chromium) |
-| **웹 UI** | Jinja2 · Chart.js · CSS Variables (4테마) |
-| **알림** | Telegram · GitHub · Discord · Slack · Email · n8n · Webhook |
-| **배포** | Railway / 온프레미스 (systemd · nginx · Docker Compose) |
+[`docs/architecture.md`](docs/architecture.md) 모듈 지도와 데이터 흐름 ·
+[`docs/workflow/`](docs/workflow/) 영역별 절차 ·
+[`docs/reference/env-vars.md`](docs/reference/env-vars.md) 전체 환경변수 ·
+[`docs/runbooks/`](docs/runbooks/) 운영 · [`docs/STATE.md`](docs/STATE.md) 현재 수치 ·
+[CONTRIBUTING.md](CONTRIBUTING.md)
 
----
-
-## 🚀 시작하기
-
-### 📋 요구사항
-
-- Python **3.12** 이상
-- PostgreSQL
-- GitHub OAuth App (Client ID / Client Secret)
-- (선택) Telegram Bot Token · SMTP 서버 · ANTHROPIC_API_KEY
-
-### ⬇️ 설치
-
-```bash
-git clone https://github.com/xzawed/SCAManager.git
-cd SCAManager
-
-# 개발 환경 — pip + npm 한 번에 (pytest · Tailwind 툴체인 포함)
-make install
-
-# 🔴 새 clone 마다 1회 필수: Tailwind 번들은 빌드 산출물이라 gitignore 대상인데
-#    base.html 이 /static/css/dist/tailwind.css 를 링크한다 — 건너뛰면 그 경로가 404.
-#    (Railway 에서는 railway.toml `buildCommand` 안에서 같은 빌드가 실행된다.)
-make css-build
-
-# 🔴 로컬 가드 훅 — `.pre-commit-config.yaml` 의 훅 전체(시크릿 스캔 · docs 수치 정합 ·
-#    architecture 트리 싱크 · config 레이어 싱크 …)는 pre-commit 을 통해서만 실행된다. 이 단계를
-#    건너뛰면 새 PC 에서 가드가 조용히 사라진 상태로 커밋이 계속 성공한다. 맨 `install` 이 훅
-#    타입 2종을 함께 설치한다 — `--hook-type` 을 붙이지 말 것(설정 기본값을 덮어 한 타입이
-#    빠진다). 상세: docs/runbooks/secret-prevention.md
-python -m pip install pre-commit
-python -m pre_commit install
-
-# Python 의존성만 (프로덕션 이미지 / Node.js 없는 환경)
-pip install -r requirements.txt      # 런타임
-pip install -r requirements-dev.txt  # + pytest · Playwright
-```
-
-> **다른 PC 로 옮기는 경우**: 위 절차는 리포가 실어 주는 것 전부다. 리포가 **실어 주지 않는 것**
-> (`.env` 값 · 에이전트 메모리 · MCP 설정 · `gh` 인증 scope)과 기계로 확인 가능한 검증 목록은
-> [`docs/runbooks/new-machine-setup.md`](docs/runbooks/new-machine-setup.md) 참조.
-
-### ⚙️ 환경변수 설정
-
-```bash
-cp .env.example .env
-```
-
-**필수 환경변수**
-
-| 변수 | 설명 |
-|------|------|
-| `DATABASE_URL` | PostgreSQL 연결 URL (`postgres://` → `postgresql://` 자동 변환) |
-| `TELEGRAM_BOT_TOKEN` | Telegram Bot API 토큰 |
-| `TELEGRAM_CHAT_ID` | 기본 알림 수신 Chat ID |
-| `GITHUB_CLIENT_ID` | GitHub OAuth App 클라이언트 ID |
-| `GITHUB_CLIENT_SECRET` | GitHub OAuth App 클라이언트 시크릿 |
-| `SESSION_SECRET` | 세션 쿠키 서명 키 (32자 이상 랜덤 문자열 **필수**) |
-
-> **여기서 "필수"의 의미**: 앱 기동을 막는 것은 `DATABASE_URL` · `TELEGRAM_BOT_TOKEN` ·
-> `TELEGRAM_CHAT_ID` 3개뿐입니다([src/config.py](src/config.py) — 나머지는 기본값 보유).
-> `GITHUB_CLIENT_*` · `SESSION_SECRET` 은 placeholder 기본값이 있어 프로세스는 뜨지만
-> GitHub OAuth 로그인이 동작하지 않고, placeholder 세션 키는 절대 운영에 올라가면 안 됩니다.
-
-**권장 환경변수**
-
-| 변수 | 설명 |
-|------|------|
-| `APP_BASE_URL` | 배포 URL (`https://your-app.railway.app`) — OAuth redirect_uri · Webhook URL에 자동 적용 |
-| `ANTHROPIC_API_KEY` | Claude AI 리뷰 키 (미설정 시 기본값 적용) |
-
-**선택 환경변수**
-
-| 변수 | 설명 |
-|------|------|
-| `API_KEY` | REST API 인증 키 (X-API-Key 헤더) |
-| `GITHUB_TOKEN` | 레거시 리포용 GitHub API 토큰 |
-| `GITHUB_WEBHOOK_SECRET` | 레거시 리포용 Webhook 시크릿 |
-| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` | Email 알림 SMTP 설정 |
-| `DATABASE_URL_FALLBACK` | Failover용 보조 DB URL (단일 엔진 모드 시 미설정) |
-| `DB_FAILOVER_PROBE_INTERVAL` | Primary DB 복구 확인 주기 초 (기본 30) |
-| `DATABASE_URL_WORKER` | RLS role 분리 Option A 용 백그라운드 전용 DB URL (미설정 시 `DATABASE_URL` 재사용 — BYPASSRLS worker role 자격증명이어야 함) |
-| `DB_SSLMODE` | PostgreSQL SSL 모드 (`require` / `disable`) |
-| `DB_FORCE_IPV4` | IPv4 강제 연결 (`true` — Railway 환경) |
-
-### ▶️ 실행
-
-```bash
-# 개발 서버 (DB 마이그레이션 자동 실행)
-uvicorn src.main:app --reload --port 8000
-
-# 또는 Make 명령
-make run
-```
-
----
-
-## 🧪 개발 명령
-
-```bash
-make install            # 의존성 설치 (pip + npm)
-make test               # 전체 테스트 (빠른 출력)
-make test-v             # 전체 테스트 (상세 출력)
-make test-fast          # 빠른 단위 테스트만 (tests/integration/ 제외, -m "not slow")
-make test-slow          # 통합 테스트만 (tests/integration/ — 실 subprocess 실행)
-make test-file f=tests/경로/test.py  # 특정 파일 테스트
-make test-local         # Windows 로컬용 — subprocess 제외, 짧은 traceback
-make test-perf          # 성능 마커 테스트 (e2e/ -m perf, test-e2e 와 별도)
-make test-isolated      # 격리 테스트 (.env stash, 자격증명 unset)
-make test-cov           # 테스트 + 커버리지 리포트
-make lint               # pylint + flake8 + bandit
-make lint-strict        # pylint 회귀 가드 (score < 9.90 시 fail)
-make lint-js            # ESLint — src/templates/**/*.html 인라인 스크립트 검사
-make css-build          # Tailwind v4 CSS 빌드 (프로덕션 minified)
-make css-dev            # Tailwind v4 CSS 감시 빌드 (개발 watch 모드)
-py -3 scripts/pre_push_gate.py --full   # push 게이트: CI 강제 가드 전건 + pylint + bandit + 단위 테스트
-make gate               # 편의용 — pytest + pylint + bandit 뿐이고 그 가드는 하나도 안 돕니다
-make review             # CLI 코드리뷰 (HEAD~1 기준)
-make run                # 개발 서버 (port 8000)
-make migrate            # DB 마이그레이션 실행
-make revision m="설명"  # 새 마이그레이션 파일 생성
-make install-playwright # Playwright + Chromium 설치
-make test-e2e           # E2E 테스트 (headless)
-make test-e2e-headed    # E2E 테스트 (브라우저 표시)
-make perf-report        # 성능 리포트 생성 (로컬 + 운영)
-```
-
----
-
-## 🌐 화면 구성
-
-```
-/login                              → 🔑 GitHub OAuth 로그인
-/repos/add                          → ➕ 리포지토리 추가
-/                                   → 📊 전체 리포 현황 대시보드
-/dashboard                          → 📈 KPI 대시보드 (평균 점수 / 보안 HIGH / auto-merge 성공률)
-/repos/{owner/repo}                 → 📈 점수 추이 차트 + 분석 이력
-/repos/{owner/repo}/analyses/{id}   → 🔍 분석 상세 (AI 리뷰 · 피드백)
-/repos/{owner/repo}/settings        → ⚙️  Gate · 알림 · Hook 설정
-```
-
-> 모든 UI 페이지는 로그인 필수 — 미로그인 시 랜딩 페이지(`/`) 표시 또는 `/auth/github` 로그인 리다이렉트
-
----
-
-## 📡 API 엔드포인트
-
-<details>
-<summary>전체 엔드포인트 목록 펼치기</summary>
-
-**인증 (OAuth)**
-```
-GET  /login                          301 리다이렉트 → /auth/github (하위 호환)
-GET  /auth/github                    GitHub OAuth 인증 시작
-GET  /auth/callback                  GitHub OAuth 콜백
-POST /auth/logout                    로그아웃
-```
-
-**웹 대시보드**
-```
-GET  /                               리포 현황 목록
-GET  /dashboard                      KPI 대시보드 (평균 점수 / 보안 HIGH / auto-merge 성공률)
-GET  /repos/add                      리포 추가 페이지
-GET  /repos/{repo}                   리포 상세 (차트 + 이력)
-GET  /repos/{repo}/analyses/{id}     분석 상세
-GET  /repos/{repo}/settings          설정 페이지
-GET  /insights                       301 → /dashboard (폐기, 사이클 60)
-GET  /insights/me                    301 → /dashboard (폐기, 사이클 60)
-POST /repos/add                      리포 등록 + Webhook + Hook 파일 자동 생성
-POST /repos/{repo}/settings          설정 저장
-POST /repos/{repo}/reinstall-hook    CLI Hook 파일 재커밋
-POST /repos/{repo}/reinstall-webhook Webhook 재등록
-POST /repos/{repo}/delete            리포 삭제 (Webhook + 이력 포함)
-```
-
-**Webhook 수신**
-```
-POST /webhooks/github                GitHub Webhook (HMAC-SHA256 서명 검증)
-POST /api/webhook/telegram           Telegram Gate 콜백 (HMAC 인증)
-POST /webhooks/railway/{token}       Railway 배포 이벤트 (token 인증)
-```
-
-**REST API** (X-API-Key 헤더 인증 — fail-closed: `API_KEY` 미설정 시 모든 요청이 `503`. 로컬 개발에서만 `API_AUTH_DISABLED=1`로 우회)
-```
-GET    /api/repos                    리포지토리 목록
-GET    /api/repos/{repo}/analyses    분석 이력 (skip · limit 페이지네이션)
-PUT    /api/repos/{repo}/config      리포 설정 변경
-DELETE /api/repos/{repo}             리포 삭제 (API 모드 — Webhook 수동 삭제)
-GET    /api/repos/{repo}/stats       점수 통계 · 추이
-GET    /api/analyses/{id}            분석 상세 조회
-```
-
-**CLI Hook** (hook_token 인증)
-```
-GET  /api/hook/verify                Hook 등록 확인
-POST /api/hook/result                코드리뷰 결과 저장
-```
-
-**사용자 API** (OAuth 세션 필요)
-```
-POST /api/users/me/telegram-otp      Telegram /connect 연동용 8자리 OTP 발급
-```
-
-**내부 Cron** (INTERNAL_CRON_API_KEY 필요)
-```
-POST /api/internal/cron/weekly                주간 Telegram 요약 리포트 트리거
-POST /api/internal/cron/trend                 트렌드 알림 체크 트리거 (7일 이동 평균)
-POST /api/internal/cron/scan-security         GitHub Code/Secret Scanning 알림 폴링 트리거
-POST /api/internal/cron/retry-pending-merges  CI 인지 auto-merge 재시도 큐 처리 트리거
-POST /api/internal/cron/sweep-orphans         소실된 analysis_attempts 표면화·정리 (소실 탐지)
-POST /api/internal/cron/retention-sweep       만료 인사이트 캐시 + 종결 머지-재시도 행 GC
-```
-
-**헬스체크**
-```
-GET  /health                         {"status":"ok"}
-```
-
-</details>
-
----
-
-## 🏗️ 아키텍처
-
-```
-GitHub Push/PR
-  └─ POST /webhooks/github  (HMAC-SHA256 서명 검증, per-repo secret TTL 캐시 5분)
-       └─ BackgroundTask: run_analysis_pipeline()
-            ├─ Repository DB 등록 · SHA 중복 체크 (멱등성 보장)
-            ├─ get_pr_files / get_push_files
-            │
-            ├─ asyncio.gather() ── 병렬 실행
-            │    ├─ analyze_file() × N  (pylint · flake8 · bandit · semgrep · eslint · shellcheck · cppcheck · slither · rubocop · golangci-lint)
-            │    └─ review_code()       (Claude AI — 49개 언어 체크리스트, 토큰 예산 8000)
-            │
-            ├─ calculate_score()  →  점수 · 등급
-            ├─ Analysis DB 저장
-            │
-            ├─ run_gate_check()   [PR 이벤트만]
-            │    ├─ pr_review_comment → GitHub PR 댓글
-            │    ├─ approve_mode=auto → GitHub APPROVE / REQUEST_CHANGES
-            │    ├─ approve_mode=semi → Telegram 인라인 키보드
-            │    └─ auto_merge        → squash merge
-            │
-            └─ asyncio.gather(return_exceptions=True)  ── 독립 알림
-                 ├─ Telegram
-                 ├─ GitHub Commit Comment  [Push + commit_comment=on]
-                 ├─ GitHub Issue           [score < threshold or bandit HIGH]
-                 ├─ Discord
-                 ├─ Slack
-                 ├─ Generic Webhook
-                 ├─ Email
-                 └─ n8n
-```
-
----
-
-## ☁️ 배포
-
-### 🚂 Railway 배포
-
-1. Railway 프로젝트 생성 후 이 리포지토리 연결
-2. **PostgreSQL 플러그인** 추가 (`DATABASE_URL` 자동 생성)
-3. **Variables** 탭에서 환경변수 설정
-
-```
-TELEGRAM_BOT_TOKEN    = <your-token>
-TELEGRAM_CHAT_ID      = <your-chat-id>
-GITHUB_CLIENT_ID      = <oauth-client-id>
-GITHUB_CLIENT_SECRET  = <oauth-client-secret>
-SESSION_SECRET        = <random-32-chars>
-APP_BASE_URL          = https://your-app.up.railway.app  ← 필수!
-ANTHROPIC_API_KEY     = sk-ant-...                       ← 권장
-```
-
-4. 배포 완료 — DB 마이그레이션 자동 실행 (앱 lifespan)
-
-> ⚠️ `APP_BASE_URL` 미설정 시 OAuth redirect_uri와 Webhook URL이 `http://`로 등록되어 인증 실패
-
-### 🖥️ 온프레미스 배포
-
-```bash
-# 기본 시작 명령 (--proxy-headers: 리버스 프록시 IP 신뢰)
-uvicorn src.main:app --host 0.0.0.0 --port 8000 --proxy-headers
-```
-
-**DB Failover 설정** — `DATABASE_URL_FALLBACK`에 보조 DB URL을 설정하면 Primary 장애 시 자동 전환됩니다.
-상태 확인: `GET /health` → `{"status":"ok"}` (primary/fallback 어느 DB 가 active 든 동일 응답 — 내부 상태 미노출 보안 강화 / Phase H PR-5B)
-
-자세한 내용은 [온프레미스 마이그레이션 가이드](docs/runbooks/onpremise-migration-guide.md)를 참고하세요.
-
----
-
-## 🔧 GitHub OAuth App 설정
-
-1. **GitHub → Settings → Developer settings → OAuth Apps → New OAuth App**
-2. 항목 입력:
-
-| 항목 | 값 |
-|------|----|
-| Application name | SCAManager |
-| Homepage URL | `https://your-domain` |
-| Authorization callback URL | `https://your-domain/auth/callback` |
-
-3. **Client ID**와 **Client Secret**을 환경변수에 설정
-
-> 로컬 개발 시 callback URL을 `http://localhost:8000/auth/callback`으로 추가 등록하거나, 별도 OAuth App을 생성하세요.
-
----
-
-## ➕ 리포지토리 등록 방법
-
-1. 로그인 후 대시보드 → **+ 리포 추가** 클릭
-2. GitHub 드롭다운에서 리포지토리 선택
-3. **Webhook 생성 + 리포 추가** 클릭
-   - GitHub Webhook 자동 생성 (HMAC 시크릿 포함)
-   - `.scamanager/config.json` · `install-hook.sh` 자동 커밋
-4. Push 또는 PR 이벤트 발생 시 분석 자동 시작 ✅
-
-### Webhook URL 변경 시 (배포 URL 이전 등)
-
-**설정 탭 → CLI Hook 카드 → 🔗 Webhook 재등록** 버튼 클릭
-현재 `APP_BASE_URL` 기준으로 Webhook이 재생성됩니다.
-
-### CLI Hook 설치 (로컬 pre-push)
-
-```bash
-git pull
-bash .scamanager/install-hook.sh
-# 이후 git push 시마다 자동 코드리뷰 실행
-```
-
----
-
-## 💻 GitHub Codespaces
-
-```bash
-# 컨테이너 시작 후 즉시 사용 가능 (.env 불필요 — SQLite 인메모리)
-make test    # 전체 테스트
-make lint    # 코드 품질 검사
-make run     # 개발 서버 (포트 8000 자동 포워딩)
-
-# CLI 코드리뷰 (ANTHROPIC_API_KEY 필요)
-ANTHROPIC_API_KEY=sk-ant-... python -m src.cli review
-```
-
-> CLI Hook은 `bash` · `python3` · `curl` 과 export 된 `ANTHROPIC_API_KEY` 가 있으면 Codespaces에서도
-> 동작합니다 — 단 리포에 `.scamanager/config.json`(리포 등록 시 생성)이 이미 있어야 합니다.
-> 없으면 훅이 조용히 종료하므로 `python -m src.cli review` 명령을 사용하세요.
-
----
-
-## 🤝 기여하기
-
-Issue와 Pull Request 모두 환영합니다. **[CONTRIBUTING.ko.md](CONTRIBUTING.ko.md)** ([English](CONTRIBUTING.md))부터
-읽어주세요 — 이 리포가 실제로 요구하는 로컬 셋업(Tailwind 빌드와 pre-commit 훅 2종은 놓치기 쉽습니다),
-테스트 실행 방법, 브랜치·커밋 규약, PR 체크리스트를 담고 있습니다.
-
-처음 기여할 때 자주 걸리는 3가지:
-
-| 함정 | 왜 중요한가 |
-|------|------------|
-| fresh clone 후 `make css-build` | Tailwind 번들은 gitignore 된 빌드 산출물 — 건너뛰면 `base.html`이 참조하는 스타일시트가 404 |
-| `pre-commit install` | 로컬 가드(시크릿 스캔 · docs 수치 정합 · 아키텍처 트리 동기화 · config 레이어 동기화)는 **오직** pre-commit 을 통해서만 실행됩니다. 건너뛰어도 커밋은 성공하므로 **조용히 무방비** 상태가 됩니다. 🔴 `--hook-type` 을 붙이지 마세요 — 설정 기본값을 덮어 한 타입이 빠집니다 |
-| 이중언어 코드 주석 | 새 주석은 한국어를 먼저 쓰고 바로 다음 줄에 영어를 씁니다. 규약이며 강제 훅은 아닙니다. [CONTRIBUTING.ko.md § 코드 주석](CONTRIBUTING.ko.md#코드-주석-이중-언어) 참조 |
-
----
-
-## 🔐 보안
-
-보안 취약점은 **공개 Issue로 올리지 마세요.** 대신
-[GitHub 비공개 취약점 신고](https://github.com/xzawed/SCAManager/security/advisories/new)를 이용해 주세요.
-지원 버전 · 신고 범위 · 응답 목표 시간 · 배포본에서 외부로 나가는 데이터 전체 목록은
-**[SECURITY.ko.md](SECURITY.ko.md)** ([English](SECURITY.md))에 있습니다.
-
-SCAManager는 여러분의 소스 코드를 다루므로 데이터 유출 경로를 명확히 밝혀 둡니다. 셀프 호스팅하면
-파이프라인 · DB · 대시보드는 여러분 인프라에 남지만, **AI 리뷰는 diff 를 Anthropic API 로 전송**하고
-활성화한 알림 채널마다 분석 결과가 해당 채널 사업자에게 전송됩니다.
-[SECURITY.ko.md § 코드가 어디로 가는가](SECURITY.ko.md#코드가-어디로-가는가)에 목적지별 목록과
-비활성화 방법을 정리했습니다.
-
----
-
-## 📄 라이선스
-
-[MIT License](LICENSE) © 2026 xzawed
+취약점은 공개 Issue 가 아니라 [비공개 신고](https://github.com/xzawed/SCAManager/security/advisories/new)로. [MIT License](LICENSE) © xzawed
