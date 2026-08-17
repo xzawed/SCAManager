@@ -3,8 +3,10 @@ name: CodeQL
 on:
   push:
     branches: [main]
+  # base 필터 없음 — `Analyze (python)` 은 required check 이고, base 가 feature 브랜치인 PR 이
+  # 발화조차 못 하면 그 PR 은 CodeQL 을 한 번도 통과하지 않고 main 계열로 흘러든다 (#1432).
+  # No base filter: `Analyze (python)` is a required check and must not silently skip stacked PRs.
   pull_request:
-    branches: [main]
   schedule:
     # 매주 월요일 09:00 UTC 주기 스캔 (의존성 CVE 감지 목적)
     # Weekly scan every Monday at 09:00 UTC (for dependency CVE detection).

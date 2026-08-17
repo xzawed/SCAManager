@@ -3,8 +3,14 @@ name: CI
 on:
   push:
     branches: [main]
+  # 🔴 base 필터를 두지 않는다 (#1432). `branches: [main]` 이던 시절, base 를 다른 feature
+  # 브랜치로 잡은 PR 은 워크플로가 **발화조차 하지 않아** CI 0건으로 머지됐다 — 2026-08-17
+  # 실측으로 #1389·#1398·#1399·#1402 4건이 "no checks reported" 상태로 들어갔다.
+  # ⚠️ 이것은 **관측**만 되살린다. 머지를 막는 branch protection·ruleset 은 `refs/heads/main`
+  # 만 대상이라, base 가 feature 브랜치면 required check 자체가 적용되지 않는다.
+  # No base filter: with `branches: [main]` a PR stacked onto another feature branch never
+  # triggered CI at all. This restores visibility only — protection still targets main.
   pull_request:
-    branches: [main]
 
 # 최소 권한 원칙 — GITHUB_TOKEN 을 읽기 전용으로 제한 (회고 P2 공급망 하드닝).
 # 모든 job(secret-scan/lint-changed-tests/test-and-analyze/pg-concurrency)이 read 만 필요 — write 필요 step 없음.

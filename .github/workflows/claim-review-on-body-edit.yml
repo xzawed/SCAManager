@@ -31,7 +31,11 @@ name: Claim-review on PR body edit
 
 on:
   pull_request:
-    branches: [main]
+    # base 필터 없음 — `ci.yml` 과 같은 이유 (#1432). 이 워크플로는 `ci.yml` 의 repo-integrity
+    # check 를 **같은 이름으로 갱신**하므로, 한쪽만 발화 범위를 좁히면 본문을 고쳐도 재평가되지
+    # 않는 base 가 생긴다. 두 파일의 발화 범위는 함께 움직여야 한다.
+    # No base filter, mirroring ci.yml: this workflow refreshes the *same* check name, so the
+    # two must fire on the same set of PRs or body edits stop re-evaluating on some bases.
     types: [edited]
 
 # 최소 권한 — 이 워크플로는 읽기만 한다 (ci.yml 과 동일 원칙).
