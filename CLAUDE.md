@@ -25,7 +25,10 @@ GitHub Push/PR → 정적 분석 + AI 리뷰 → 점수·등급 → 알림(Teleg
 | `railway.toml` · `nixpacks.toml` · `src/config.py` · `.env.example` | [deploy.md](docs/workflow/deploy.md) |
 | `tests/**` · `e2e/**` · `.github/workflows/ci.yml` | [verify.md](docs/workflow/verify.md) |
 | `src/templates/**` · `src/static/**` · `src/ui/**` · `src/i18n/**` | [ui-i18n.md](docs/workflow/ui-i18n.md) |
-| `src/auth/**` · `src/crypto.py` · `src/shared/ssrf.py` · `.pre-commit-config.yaml` | [security.md](docs/workflow/security.md) |
+| `src/auth/**` · `src/crypto.py` · `src/shared/**` · `.pre-commit-config.yaml` | [security.md](docs/workflow/security.md) |
+| `src/api/**` · `src/config_manager/**` · `src/services/**` | [gate-notify.md](docs/workflow/gate-notify.md) + [db.md](docs/workflow/db.md) |
+| `src/main.py` · `src/config.py` · `src/constants.py` · `src/database.py` · `src/scheduler.py` · `src/logging_config.py` · `src/middleware/**` | [deploy.md](docs/workflow/deploy.md) |
+| `src/github_client/**` · `src/railway_client/**` · `src/verifier/**` · `src/mcp/**` · `src/cli/**` | [gate-notify.md](docs/workflow/gate-notify.md) |
 
 ## 명령
 
