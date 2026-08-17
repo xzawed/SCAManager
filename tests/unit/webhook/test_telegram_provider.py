@@ -382,6 +382,52 @@ async def test_handle_gate_callback_replay_without_chat_id_stays_silent():
     mock_post.assert_not_called()
 
 
+async def test_handle_gate_callback_replay_notice_failure_does_not_lie():
+    """#1431 자기결함 가드: 리플레이 안내 자체가 실패해도 「미게시」를 발신하면 안 된다.
+
+    🔴 이 수정이 재생산할 뻔한 결함이다. 새 발신은 `try:` **본문 안**에 있어, 거기서 새는
+    예외는 형제 `except (…, KeyError, …)` 로 떨어진다. 그 분기는 `review_posted=False` 라
+    «리뷰가 게시되지 않았습니다» 를 보내는데 — 이건 **리플레이**다. 첫 클릭이 게시까지
+    성공했을 수 있으므로 그 문구는 거짓이 될 수 있다. `#1414` 가 고친 것과 같은 클래스다.
+
+    재현 입력: i18n 키 누락(로케일 갱신 빠뜨림) → `get_text` KeyError.
+    The replay notice lives inside the try body, so its own failure must not fall through to
+    the sibling except and emit a "not posted" claim about what is actually a replay.
+    """
+    from src.webhook.router import handle_gate_callback  # pylint: disable=import-outside-toplevel
+
+    def _get_text_missing_new_key(key, _lang=None, **_kw):
+        if key == "notifier.gate.callback_already_decided":
+            raise KeyError(key)          # 로케일 3종 중 하나라도 빠지면 나는 실제 예외
+        return f"MSG:{key}"
+
+    mock_db, config = _gate_callback_failure_mocks()
+    with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
+            with patch(
+                "src.webhook.providers.telegram.resolve_notification_language",
+                return_value="ko",
+            ):
+                with patch("src.webhook.providers.telegram.get_text",
+                           side_effect=_get_text_missing_new_key):
+                    with patch(
+                        "src.webhook.providers.telegram.gate_decision_repo.claim_decision",
+                        return_value=False,
+                    ):
+                        with patch(
+                            "src.webhook.providers.telegram._post_message_guarded",
+                            new_callable=AsyncMock,
+                        ) as mock_post:
+                            await handle_gate_callback(
+                                analysis_id=42, decision="approve", decided_by="john",
+                                telegram_user_id="1", chat_id="-100999",
+                            )
+    sent = [c[0][2].get("text", "") for c in mock_post.call_args_list]
+    assert not any("callback_failed" in t or "callback_head_moved" in t for t in sent), (
+        f"리플레이인데 「미게시」 계열 문구를 발신했다 — 거짓 알림: {sent}"
+    )
+
+
 async def test_handle_gate_callback_first_decision_applies():
     """#11 정상 경로 회귀 가드: claim 성공(first-writer) → 최초 결정은 정상 적용."""
     from src.webhook.router import handle_gate_callback
