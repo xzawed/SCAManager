@@ -41,9 +41,9 @@ Out of 100 — code quality 25 (error −3, warning −1) · security 20 (HIGH �
 commit message 15 · direction 25 · tests 15. The last three come from Claude as raw 0–20 / 0–20 /
 0–10 and are scaled. Grades: **A** 90+ · **B** 75+ · **C** 60+ · **D** 45+ · **F** below 45.
 
-When the AI review does not produce a result — no `ANTHROPIC_API_KEY`, an empty diff, or an API
-error — those three rows fall back to 13 / 21 / 10. That caps the run at 89, so a failed review can
-never look like an A. Source of truth: [`src/constants.py`](src/constants.py).
+Whenever the AI review returns no usable result — missing key, disabled, empty diff, API or parse
+error — those three rows fall back to 13 / 21 / 10. That caps the run at 89, so a review that did
+not happen can never look like an A. Source of truth: [`src/constants.py`](src/constants.py).
 
 ## Gate and delivery
 
@@ -64,12 +64,13 @@ acting on GitHub, not a notifier.) UI, notifications and prompts: **en · ko · 
 ```bash
 git clone https://github.com/xzawed/SCAManager.git && cd SCAManager
 make install         # pip install -r requirements-dev.txt + npm install
-make css-build       # Tailwind bundle — gitignored; without it pages render unstyled
+make css-build       # Tailwind bundle — gitignored; the utility layer templates rely on
 cp .env.example .env
 make run             # uvicorn :8000 --reload, migrations at boot
 ```
 
-No `make`? Each target is one or two commands — read them off the [Makefile](Makefile).
+No `make`? These three targets are one or two commands each — read them off the
+[Makefile](Makefile).
 
 Boot requires `DATABASE_URL`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` — the only settings with no
 default. `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `SESSION_SECRET` (32+ random chars) ship with

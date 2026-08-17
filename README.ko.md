@@ -40,8 +40,8 @@ POST /webhooks/github — HMAC-SHA256 · 리포별 시크릿 · push, PR opened/
 커밋 메시지 15 · 구현 방향성 25 · 테스트 코드 15. 뒤 3항은 Claude 가 raw 0–20 / 0–20 / 0–10 으로
 주고 스케일링한다. 등급 **A** 90+ · **B** 75+ · **C** 60+ · **D** 45+ · 미만 **F**.
 
-AI 리뷰가 결과를 못 내면 — `ANTHROPIC_API_KEY` 부재 · 빈 diff · API 오류 — 그 3항이 중립값
-13 / 21 / 10 으로 떨어져 **상한이 89점**이 된다. 리뷰가 실패했는데 A 로 보이는 일은 없다.
+AI 리뷰가 쓸 수 있는 결과를 못 내면 — 키 부재 · 비활성 · 빈 diff · API/파싱 오류 — 그 3항이
+중립값 13 / 21 / 10 으로 떨어져 **상한이 89점**이 된다. 돌지도 않은 리뷰가 A 로 보이는 일은 없다.
 정본은 [`src/constants.py`](src/constants.py).
 
 ## 게이트·전달
@@ -63,12 +63,12 @@ n8n · GitHub 커밋 댓글 · GitHub Issue. (PR 을 approve 하는 것은 게�
 ```bash
 git clone https://github.com/xzawed/SCAManager.git && cd SCAManager
 make install         # pip install -r requirements-dev.txt + npm install
-make css-build       # Tailwind 번들 — gitignore 대상이라 없으면 스타일 없이 렌더된다
+make css-build       # Tailwind 번들 — gitignore 대상. 템플릿이 기대는 유틸리티 레이어다
 cp .env.example .env
 make run             # uvicorn :8000 --reload + 부팅 시 마이그레이션
 ```
 
-`make` 이 없으면 각 타깃은 명령 한두 줄이니 [Makefile](Makefile) 에서 그대로 읽어 쓴다.
+`make` 이 없으면 위 세 타깃은 각각 명령 한두 줄이니 [Makefile](Makefile) 에서 그대로 읽어 쓴다.
 
 기동 필수는 `DATABASE_URL` · `TELEGRAM_BOT_TOKEN` · `TELEGRAM_CHAT_ID` — 기본값 없는 설정은 이
 셋뿐이다. `GITHUB_CLIENT_ID` · `GITHUB_CLIENT_SECRET` · `SESSION_SECRET`(32자 이상 랜덤)은
