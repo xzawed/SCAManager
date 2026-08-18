@@ -451,6 +451,12 @@ def check_body_claim(body: str, unit: int, *, advisory: bool = False) -> int:
     # 🔴 **실행 증거 축** (#1442) — junit 산출물이 있으면 수집값이 아니라 **실제 실행 결과**와
     #    대조한다. `--collect-only` 는 「테스트가 몇 개 있는가」만 보므로, 돌지 않았거나
     #    실패한 스위트도 같은 수를 낸다. CI 는 이미 이 산출물을 만든다(오라클이 이미 있었다).
+    # 🔴 **총계만 대조한다 — skip 분해는 안 본다** (CI 실측 2026-08-18).
+    #    본문 수치는 저자가 **로컬에서** 잰다(6-step ②). 그런데 환경 조건부 skip 이 있어
+    #    로컬 9 skipped ↔ CI 5 skipped 처럼 정당하게 갈린다(openai SDK 는 CI 에만 설치).
+    #    분해까지 요구하면 이 축은 **원리적으로 만족 불가**가 된다 — 초판이 그랬고 CI 가 잡았다.
+    #    총계는 환경 무관이고, 「돌렸는가」는 아래 `ran_failed` 와 산출물 존재가 책임진다.
+    # Compare totals only: environment-conditional skips legitimately differ local↔CI.
     run = junit_unit_counts()
     if run is not None:
         ran_passed, ran_skipped, ran_failed = run
@@ -462,17 +468,19 @@ def check_body_claim(body: str, unit: int, *, advisory: bool = False) -> int:
                 file=sys.stderr,
             )
             return 1
-        if (passed, skipped) != (ran_passed, ran_skipped):
+        if (passed + skipped) != (ran_passed + ran_skipped):
             print(
-                f"🔴 본문 수치가 **실행 결과**와 다르다 — 본문 {passed} passed / "
-                f"{skipped} skipped vs junit 실측 {ran_passed} passed / {ran_skipped} skipped. "
+                f"🔴 본문 수치가 **실행 결과**와 다르다 — 본문 {passed}+{skipped}="
+                f"{passed + skipped} vs junit 실측 {ran_passed}+{ran_skipped}="
+                f"{ran_passed + ran_skipped}. "
                 "→ 수집값이 아니라 실제로 돌린 출력에서 옮길 것.",
                 file=sys.stderr,
             )
             return 1
         print(
-            f"✅ 본문 수치 축 일치 (**실행 증거**) — 본문 {passed} passed / "
-            f"{skipped} skipped == junit 실측"
+            f"✅ 본문 수치 축 일치 (**실행 증거**) — 본문 {passed}+{skipped} == junit 실측 "
+            f"{ran_passed}+{ran_skipped} (실패 0). "
+            "skip 분해는 대조하지 않는다 — 환경 조건부 skip 이 로컬↔CI 에서 갈린다."
         )
         return 0
 

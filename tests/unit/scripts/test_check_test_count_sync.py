@@ -545,8 +545,8 @@ def test_body_claim_is_checked_against_the_actual_run_when_junit_exists(tmp_path
     """
     p = _junit(tmp_path, [("tests.unit.a.test_x", "pass")] * 5 + [("tests.unit.a.test_y", "skip")])
     monkeypatch.setattr(mod, "_JUNIT", p)
-    # 수집값(unit)은 6 으로 맞지만 본문이 실행 결과(5 passed / 1 skipped)와 어긋난다
-    assert mod.check_body_claim(_claim(6, 0), unit=6) == 1
+    # 실행 총계는 6 인데 본문이 8 을 주장한다 → 실행 결과와 어긋난다
+    assert mod.check_body_claim(_claim(8, 0), unit=6) == 1
     assert "실행" in capsys.readouterr().err
 
 
@@ -554,6 +554,23 @@ def test_body_claim_matching_the_actual_run_passes(tmp_path, monkeypatch, capsys
     p = _junit(tmp_path, [("tests.unit.a.test_x", "pass")] * 5 + [("tests.unit.a.test_y", "skip")])
     monkeypatch.setattr(mod, "_JUNIT", p)
     assert mod.check_body_claim(_claim(5, 1), unit=6) == 0
+    assert "실행 증거" in capsys.readouterr().out
+
+
+def test_skip_split_may_differ_between_local_and_ci(tmp_path, monkeypatch, capsys):
+    """🔴 skip **분해**는 대조하지 않는다 — 총계만 본다.
+
+    본문 수치는 저자가 로컬에서 잰다(6-step ②). 환경 조건부 skip 때문에 로컬과 CI 의
+    skip 수가 정당하게 갈린다 — 실측(2026-08-18): 로컬 `9 skipped` ↔ CI `5 skipped`
+    (openai SDK 가 CI 에만 설치돼 5건이 CI 에서는 실행된다).
+
+    초판은 `(passed, skipped)` 튜플을 그대로 비교해 **원리적으로 만족 불가**였고 CI 가 잡았다.
+    Totals only: environment-conditional skips legitimately differ between local and CI.
+    """
+    p = _junit(tmp_path, [("tests.unit.a.test_x", "pass")] * 6 + [("tests.unit.a.test_y", "skip")])
+    monkeypatch.setattr(mod, "_JUNIT", p)
+    # 본문(로컬) 5 passed / 2 skipped · 실행(CI) 6 passed / 1 skipped — 총계 7 로 같다
+    assert mod.check_body_claim(_claim(5, 2), unit=7) == 0
     assert "실행 증거" in capsys.readouterr().out
 
 
