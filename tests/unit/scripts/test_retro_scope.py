@@ -184,3 +184,51 @@ def test_script_runs_and_includes_recent_prs():
     assert data["boundary"] and data["head"], "boundary/head 커밋 미해결 — git 파싱 깨짐 가능"
     assert data["pr_count"] == len(data["prs"]), "pr_count 와 prs 길이 불일치 — 파싱 손상"
     assert data["prs"] == sorted(data["prs"]), "정렬되지 않음"
+
+
+# ── 명시 경계 (--since) — 리포트가 없어도 기계가 범위를 낸다 (#1443 a) ──────────
+#
+# 🔴 실측(2026-08-18): `docs/reports/` 의 회고 리포트는 2026-05-25(#643)에 아카이브됐고
+#    그 뒤 이 도구는 **3개월째 `ok:false`** 였다. 그 사이 회고는 계속 돌았다 —
+#    즉 스킬 1단계(「범위는 기계에서 얻는다 · 손 조립 금지」)가 원리적으로 불가능했다.
+#
+# 🔴 리포트가 없을 때 **경계를 지어내지 않는다.** 모르는 것은 모른다고 하되,
+#    호출자가 경계를 주면 그때부터는 기계가 나머지를 계산한다 — 손 조립은 여전히 막힌다.
+
+
+class TestExplicitBoundary:
+    def test_since_sha_yields_a_range_without_any_report(self, monkeypatch, tmp_path):
+        """리포트가 0건이어도 `--since` 가 있으면 범위가 나온다."""
+        monkeypatch.setattr(retro_scope, "_REPORTS", tmp_path)  # 빈 디렉토리
+        head = retro_scope._git(["rev-parse", "HEAD"]).strip()
+        r = retro_scope.compute(since=head)
+        assert r["ok"] is True
+        assert r["anchor"] == "explicit"
+        assert r["prev_retro"] is None
+
+    def test_report_anchor_wins_over_since(self, monkeypatch, tmp_path):
+        """리포트가 있으면 그것이 정본 — `--since` 는 폴백이지 우회가 아니다."""
+        (tmp_path / "2026-08-01-retrospective.md").write_text("x", encoding="utf-8")
+        monkeypatch.setattr(retro_scope, "_REPORTS", tmp_path)
+        monkeypatch.setattr(retro_scope, "boundary_commit", lambda _f: "deadbee")
+        monkeypatch.setattr(retro_scope, "merged_prs", lambda _b: [1, 2])
+        r = retro_scope.compute(since="HEAD")
+        assert r["anchor"] == "report"
+        assert r["prev_retro"] == "2026-08-01-retrospective.md"
+
+    def test_no_report_and_no_since_stays_not_ok_but_actionable(self, monkeypatch, tmp_path):
+        """🔴 경계를 **지어내지 않는다** — 다만 사유가 실행 가능해야 한다.
+
+        종전 사유는 「정식 회고 리포트 없음」 한 줄이라 다음 행동이 없었다.
+        """
+        monkeypatch.setattr(retro_scope, "_REPORTS", tmp_path)
+        r = retro_scope.compute()
+        assert r["ok"] is False
+        assert "--since" in r["reason"], "다음 행동이 사유에 없다"
+
+    def test_bad_since_is_rejected_not_silently_ignored(self, monkeypatch, tmp_path):
+        """존재하지 않는 ref 를 주면 red — 조용히 전체 이력을 세면 안 된다."""
+        monkeypatch.setattr(retro_scope, "_REPORTS", tmp_path)
+        r = retro_scope.compute(since="no-such-ref-xyz")
+        assert r["ok"] is False
+        assert "no-such-ref-xyz" in r["reason"]
