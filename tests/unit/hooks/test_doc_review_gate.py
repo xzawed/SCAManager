@@ -13,6 +13,10 @@ _ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(_ROOT / ".claude" / "hooks"))
 
 from doc_review_gate import (
+    _DIFF_BUDGET,
+    _agent_row,
+    _diff_sha8,
+    _reason_sha8,
     classify_file_grade,
     apply_veto_matrix,
     read_payload,
@@ -1861,9 +1865,9 @@ _LEDGER_BODY_SENTINEL = "LEDGER_BODY_LEAK_SENTINEL_x7f3a9c2e"
 _LEDGER_ALLOWED_KEYS = frozenset({
     "ts", "file", "grade", "decision", "agents",
     "cache_write", "cache_read", "prefix_sha8",
-    "diff_chars", "diff_truncated", "src", "unbacked_citations",
+    "diff_chars", "diff_truncated", "diff_sha8", "src", "unbacked_citations",
 })
-_LEDGER_AGENT_KEYS = frozenset({"a", "d", "uv", "inop", "stop"})
+_LEDGER_AGENT_KEYS = frozenset({"a", "d", "uv", "inop", "stop", "r8"})
 _LEDGER_DECISIONS = frozenset({"approve", "warn", "block", "inoperative"})
 _LEDGER_GRADES = frozenset({"critical", "important", "low_risk", "skip"})
 _LEDGER_MAX_PATH = 4096
@@ -2295,3 +2299,58 @@ class TestLedger:
         ]
         assert len(lines) == 5, f"캡이 적용되지 않았다: {len(lines)}줄"
         assert [json.loads(ln)["n"] for ln in lines] == [3, 4, 5, 6, 7]
+
+# ── 비결정성 재현 축: diff · 사유 지문 (#1445) ────────────────────────────────
+#
+# 🔴 사고(2026-08-15 실측): 같은 입력 4회에 **판정 라벨은 4/4 동일**했는데 **사유 문장은
+#    4회 모두 달랐고 그중 하나는 거짓**이었다. 원장은 라벨만 남기므로 그 사실을 사후에
+#    확인할 수 없었다 — Issue 가 처방한 「3판정 dump」로도 못 잡는다(라벨이 같았으니까).
+#
+# 🔴 남기는 것은 **지문**이지 본문이 아니다. 사유 문장을 저장하면 그 문장이 문서 본문을
+#    인용할 수 있어 시크릿·PII 표면이 된다. 해시는 「같았는가 달랐는가」만 답한다 —
+#    거짓이 무엇이었는지는 복구하지 못한다(그것이 이 설계의 금지선이다).
+
+
+class TestNondeterminismFingerprints:
+    """같은 입력의 재실행을 원장만으로 비교할 수 있는가."""
+
+    def test_diff_fingerprint_is_recorded(self):
+        """`diff_chars` 만으로는 **같은 입력**을 식별할 수 없다 — 길이가 같은 다른 diff 가 있다."""
+
+        a = _diff_sha8("hello world")
+        b = _diff_sha8("world hello")   # 같은 길이, 다른 내용
+        assert a and b and a != b, "길이가 같은 다른 diff 가 같은 지문을 낸다"
+        assert len(a) == 8 and all(c in "0123456789abcdef" for c in a)
+
+    def test_diff_fingerprint_hashes_what_the_model_received(self):
+        """🔴 모델에게 실제 보낸 것(`diff[:_DIFF_BUDGET]`)을 해시한다 — 원본 전체가 아니다.
+
+        절단 뒤가 다른 두 diff 는 모델 입장에서 **같은 입력**이다. 원본을 해시하면
+        「입력이 달랐다」로 보여 재현 비교가 어긋난다.
+        """
+
+        head = "x" * _DIFF_BUDGET
+        assert _diff_sha8(head + "AAA") == _diff_sha8(head + "BBB")
+
+    def test_reason_fingerprint_separates_pair(self):
+        """`sha256(reason + SEP + detail)` — SEP 없으면 ("AB","C") 와 ("A","BC") 가 같아진다."""
+
+        assert _reason_sha8("AB", "C") != _reason_sha8("A", "BC")
+
+    def test_same_label_different_reason_is_visible(self):
+        """🔴 이 사고의 형태 — 라벨은 같고 사유만 다른 두 실행이 원장에서 **구별된다**."""
+
+        run1 = _agent_row({"agent": "quality", "decision": "warn",
+                               "reason": "판독 불가", "detail": "d1"})
+        run2 = _agent_row({"agent": "quality", "decision": "warn",
+                               "reason": "코드와 불일치", "detail": "d1"})
+        assert run1["d"] == run2["d"] == "warn", "전제: 라벨은 같다"
+        assert run1["r8"] != run2["r8"], "사유가 달랐는데 원장에서 구별되지 않는다"
+
+    def test_fingerprints_carry_no_body(self):
+        """🔴 지문만 남긴다 — 사유·diff 본문이 원장 줄에 실리면 안 된다."""
+
+        row = _agent_row({"agent": "quality", "decision": "warn",
+                              "reason": _LEDGER_BODY_SENTINEL, "detail": "x"})
+        assert _LEDGER_BODY_SENTINEL not in json.dumps(row, ensure_ascii=True)
+        assert set(row) <= _LEDGER_AGENT_KEYS, f"에이전트 키 계약 위반: {sorted(set(row))}"

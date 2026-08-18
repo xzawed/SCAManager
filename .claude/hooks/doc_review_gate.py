@@ -643,6 +643,56 @@ def _is_cold_write(record: dict) -> bool:
         return False
 
 
+def _diff_sha8(diff: str) -> str | None:
+    """모델에게 **실제 보낸** diff 의 지문 — 본문은 남기지 않는다.
+
+    🔴 `diff[:_DIFF_BUDGET]` 를 해시한다. 원본 전체가 아니다 — 절단 뒤가 다른 두 diff 는
+    모델 입장에서 **같은 입력**이고, 원본을 해시하면 「입력이 달랐다」로 보여 재현 비교가
+    어긋난다(Grok claim-review `01a016fa` 지적).
+
+    🔴 왜 `diff_chars` 로 부족한가: 길이가 같은 다른 diff 가 있다. 같은 입력을 재실행했는지
+    원장만으로 판별하려면 내용 지문이 필요하다.
+    Hash of what the model actually received (diff[:_DIFF_BUDGET]); never the body.
+    """
+    if not diff:
+        return None
+    return hashlib.sha256(diff[:_DIFF_BUDGET].encode("utf-8", "replace")).hexdigest()[:8]
+
+
+def _reason_sha8(reason: str | None, detail: str | None) -> str | None:
+    """에이전트 사유의 지문 — `sha256(reason + SEP + detail)[:8]`.
+
+    🔴 SEP(`\x00`) 는 `_prefix_sha8` 과 같은 규칙이다. 없으면 ("AB","C") 와 ("A","BC") 가
+    같은 해시가 된다 — 해시는 **쌍** 위여야지 연결 바이트 위가 아니다.
+
+    🔴 **왜 라벨만으로 부족한가 (이 필드의 존재 이유)**: 2026-08-15 실측에서 같은 입력 4회에
+    판정 라벨은 4/4 동일했고 **사유 문장만 4회 모두 달랐으며 그중 하나가 거짓**이었다.
+    라벨만 남기면 그 사실이 원장에 남지 않는다 — Issue #1445 가 처방한 「3판정 dump」로도
+    못 잡는다.
+
+    🔴 지문이지 본문이 아니다. 사유는 문서 본문을 인용할 수 있어 저장하면 시크릿·PII 표면이
+    된다. 이 해시는 「같았는가 달랐는가」만 답하고 **무엇이 거짓이었는지는 복구하지 못한다** —
+    그것이 이 설계의 금지선이다.
+    Fingerprint of the agent's reasoning; answers "same or different", never "what".
+    """
+    if not reason and not detail:
+        return None
+    raw = f"{reason or ''}\x00{detail or ''}"
+    return hashlib.sha256(raw.encode("utf-8", "replace")).hexdigest()[:8]
+
+
+def _agent_row(result: dict) -> dict:
+    """원장의 에이전트 1행 — 라벨 + 사유 **지문**. 본문 키는 넣지 않는다."""
+    return {
+        "a": result.get("agent"),
+        "d": result.get("decision"),
+        "uv": result.get("unable_to_verify"),
+        "inop": bool(result.get("inoperative")),
+        "stop": result.get("stop") or result.get("stop_reason"),
+        "r8": _reason_sha8(result.get("reason"), result.get("detail")),
+    }
+
+
 def _prefix_sha8(system_blocks: list[dict]) -> str | None:
     """캐시 프리픽스 지문 — 본문은 남기지 않고 해시만.
     Cache-prefix fingerprint; hash only, never the body.
@@ -735,21 +785,13 @@ def _ledger_record(*, file_path: str, grade: str | None, decision: str,
         "file": file_path,
         "grade": grade,
         "decision": decision,
-        "agents": [
-            {
-                "a": r.get("agent"),
-                "d": r.get("decision"),
-                "uv": r.get("unable_to_verify"),
-                "inop": bool(r.get("inoperative")),
-                "stop": r.get("stop") or r.get("stop_reason"),
-            }
-            for r in results
-        ],
+        "agents": [_agent_row(r) for r in results],
         "cache_write": usage.get("write") or 0,
         "cache_read": usage.get("read") or 0,
         "prefix_sha8": _prefix_sha8(_cache_prefix_blocks(stable, volatile)),
         "diff_chars": len(diff),
         "diff_truncated": len(diff) > _DIFF_BUDGET,
+        "diff_sha8": _diff_sha8(diff),
         "src": None,  # PR-2 가 채운다 / filled by PR-2
         "unbacked_citations": [],
     }
