@@ -197,30 +197,39 @@ def test_script_runs_and_includes_recent_prs():
 
 
 class TestExplicitBoundary:
-    def test_since_sha_yields_a_range_without_any_report(self, monkeypatch, tmp_path):
-        """리포트가 0건이어도 `--since` 가 있으면 범위가 나온다."""
+    def test_since_sha_yields_a_nonempty_range_without_any_report(self, monkeypatch, tmp_path):
+        """리포트가 0건이어도 `--since` 가 있으면 **실제 범위**가 나온다.
+
+        🔴 Grok `01a01536` 적발: 초판은 `since=HEAD` 를 써서 `pr_count: 0` · `range: "(없음)"`
+        이어도 통과했다 — 「범위가 나온다」를 단언하지 못했다. 경계를 뒤로 물려 실측한다.
+        """
         monkeypatch.setattr(retro_scope, "_REPORTS", tmp_path)  # 빈 디렉토리
-        head = retro_scope._git(["rev-parse", "HEAD"]).strip()
-        r = retro_scope.compute(since=head)
+        base = retro_scope._git(["rev-list", "--max-count=40", "HEAD"]).split()[-1]
+        r = retro_scope.compute(since=base)
         assert r["ok"] is True
         assert r["anchor"] == "explicit"
         assert r["prev_retro"] is None
+        assert r["pr_count"] > 0, f"경계를 뒤로 물렸는데 범위가 비었다: {r}"
+        assert r["range"] != "(없음)"
+        assert r["boundary"] == base[:7]
 
-    def test_report_anchor_wins_over_since(self, monkeypatch, tmp_path):
-        """리포트가 있으면 그것이 정본 — `--since` 는 폴백이지 우회가 아니다."""
+    def test_report_anchor_uses_the_report_commit_not_since(self, monkeypatch, tmp_path):
+        """리포트가 있으면 경계는 **리포트 커밋**이다 — 라벨만 맞고 SHA 가 `--since` 면 버그다.
+
+        🔴 Grok `01a01536` 적발: 초판은 `anchor == "report"` 만 봐서, `--since` 의 SHA 를
+        쓰면서 라벨만 report 로 다는 구현도 통과했다.
+        """
         (tmp_path / "2026-08-01-retrospective.md").write_text("x", encoding="utf-8")
         monkeypatch.setattr(retro_scope, "_REPORTS", tmp_path)
-        monkeypatch.setattr(retro_scope, "boundary_commit", lambda _f: "deadbee")
+        monkeypatch.setattr(retro_scope, "boundary_commit", lambda _f: "deadbeefcafe")
         monkeypatch.setattr(retro_scope, "merged_prs", lambda _b: [1, 2])
         r = retro_scope.compute(since="HEAD")
         assert r["anchor"] == "report"
         assert r["prev_retro"] == "2026-08-01-retrospective.md"
+        assert r["boundary"] == "deadbee", "경계가 리포트 커밋이 아니다 — --since 가 이겼다"
 
     def test_no_report_and_no_since_stays_not_ok_but_actionable(self, monkeypatch, tmp_path):
-        """🔴 경계를 **지어내지 않는다** — 다만 사유가 실행 가능해야 한다.
-
-        종전 사유는 「정식 회고 리포트 없음」 한 줄이라 다음 행동이 없었다.
-        """
+        """🔴 경계를 **지어내지 않는다** — 다만 사유가 실행 가능해야 한다."""
         monkeypatch.setattr(retro_scope, "_REPORTS", tmp_path)
         r = retro_scope.compute()
         assert r["ok"] is False
@@ -232,3 +241,13 @@ class TestExplicitBoundary:
         r = retro_scope.compute(since="no-such-ref-xyz")
         assert r["ok"] is False
         assert "no-such-ref-xyz" in r["reason"]
+
+    def test_skill_tells_the_operator_about_the_fallback(self):
+        """🔴 소비자가 `--since` 를 모르면 이 API 는 없는 것과 같다 (Grok `01a01536`).
+
+        스킬 1단계가 실사용 진입점이다. 거기에 폴백이 없으면 리포트가 빈 동안
+        「범위 산출 실패」에서 멈춘다 — 이 PR 이 고치려던 상태 그대로다.
+        """
+        skill = (Path(__file__).resolve().parents[3]
+                 / ".claude" / "skills" / "retrospective" / "SKILL.md").read_text(encoding="utf-8")
+        assert "--since" in skill, "스킬이 폴백 경로를 알려주지 않는다"
