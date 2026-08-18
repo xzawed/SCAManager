@@ -49,6 +49,7 @@ import os
 import re
 import subprocess  # nosec B404
 import sys
+import xml.etree.ElementTree as ET  # nosec B405 — 자체 CI 산출물만 파싱
 from pathlib import Path
 
 # Windows cp949 stdout 에서 한글/이모지 크래시 방지 (guards.md 관용구)
@@ -87,6 +88,47 @@ def parse_collected(output: str) -> int | None:
     Last match of the collected-count line; None when absent (caller must fail closed)."""
     matches = _COLLECTED.findall(output)
     return int(matches[-1]) if matches else None
+
+
+# CI 가 `pytest tests/` 와 함께 만드는 junit 산출물 — **실행 증거**의 유일한 기계 출처.
+# The junit artifact CI already produces; the only machine source of execution evidence.
+_JUNIT = _ROOT / "pytest-results.xml"
+
+
+def junit_unit_counts(path: Path | None = None) -> tuple[int, int, int] | None:
+    """junit XML 에서 **단위 테스트만** `(passed, skipped, failed)`. 없거나 못 읽으면 None.
+
+    🔴 왜 `classname` 으로 거르는가: CI 는 `pytest tests/`(단위 + 통합)를 돌리므로
+    `<testsuite tests=…>` 총계는 본문의 **단위** 수치와 맞지 않는다. junit 의 `classname` 은
+    `tests.unit.gate.test_engine` 처럼 점 경로라 여기서 갈라진다(산출물 형태 실측 확인).
+
+    🔴 **None 과 `(0,0,0)` 을 구별한다.** 산출물이 없으면 「안 쟀음」이지 「0건」이 아니다 —
+    이 구별을 잃으면 호출부가 빈 값 위에 ✅ 를 찍는다(이 리포가 반복해 온 fail-open).
+
+    🔴 `collect_count` 와 무엇이 다른가: 수집은 「테스트가 몇 개 있는가」를, 이쪽은 「몇 개가
+    실제로 돌아 어떤 결과였는가」를 본다. **실패 수를 센다**는 것이 그 차이의 핵심이다.
+    Unit-only (passed, skipped, failed) from the junit artifact; None when absent/unparsable.
+    """
+    target = path or _JUNIT
+    if not target.is_file():
+        return None
+    try:
+        root = ET.parse(target).getroot()  # nosec B314 — 자체 CI 산출물
+    except (ET.ParseError, OSError):
+        return None
+    suites = [root] if root.tag == "testsuite" else root.findall("testsuite")
+    passed = skipped = failed = 0
+    for suite in suites:
+        for case in suite.iter("testcase"):
+            if not (case.get("classname") or "").startswith("tests.unit"):
+                continue
+            if case.find("skipped") is not None:
+                skipped += 1
+            elif case.find("failure") is not None or case.find("error") is not None:
+                failed += 1
+            else:
+                passed += 1
+    return passed, skipped, failed
 
 
 def collect_count(test_path: str) -> int:
@@ -365,22 +407,25 @@ def check_body_claim(body: str, unit: int, *, advisory: bool = False) -> int:
     검증하지 않은 것이므로 *"미실행"* 을 명시 출력한다. 빈 범위 위의 ✅ 는 이 리포가
     반복해 온 fail-open 이다(`check_lint_js_nonvacuous` 가 같은 이유로 범위 붕괴를 red 로 본다).
 
-    🔴 **이 축이 무엇을 재는지 정확히 (적대 감사 `wf_9a4878aa-eab` 이 초판 주장을 BROKEN 판정)**:
-    재는 것은 *"전체 스위트를 돌렸는가"* 가 **아니다**. 재는 것은 *"본문 수치가 현재 트리의
-    수집값과 일치하는가"* — 즉 **낡거나 파생되지 않은 수치의 탐지**다. 감사 실측: 이 가드가
-    쓰는 `--collect-only` 는 **11초**인데 실제 스위트는 208~247초라, 저자는 19배 싼 경로로
-    같은 숫자를 만들 수 있다. 게다가 불일치 메시지가 정답(`vs 실측 수집 N`)을 알려 준다.
-    그러므로 6-step ② 가 기계 검증된다고 말하면 **거짓**이다. 실제 사고 3건
-    (#1305·#1310·#1312)이 전부 *낡은 수치* 형태였기에 이 축이 유효했던 것이다.
-    이 축을 진짜 실행 증거로 올리려면 `--junitxml` 산출물을 대조해야 한다(backlog R76).
+    🔴 **이 축이 무엇을 재는지 정확히 — 2026-08-18 부터 두 모드다**:
+
+    - **junit 산출물이 있으면(CI)**: 본문 수치를 `pytest-results.xml` 의 **실제 실행 결과**와
+      대조한다. 실패가 1건이라도 있으면 본문이 무엇이든 red — `--collect-only` 가 원리적으로
+      못 보던 축이다. CI 는 `pytest tests/` 를 이 가드보다 **먼저** 돌리므로 산출물이 있다.
+    - **없으면(로컬·push)**: 종전대로 수집값 대조로 강등되고, 배너가 「실행 증거 아님」을
+      명시한다. 이 경우 재는 것은 *"낡거나 파생되지 않은 수치의 탐지"* 뿐이다.
+
+    종전 서술(적대 감사 `wf_9a4878aa-eab` 이 초판 주장을 BROKEN 판정): 이 가드가 쓰는
+    `--collect-only` 는 11초인데 실제 스위트는 208~247초라 저자가 19배 싼 경로로 같은 숫자를
+    만들 수 있었다. 그 지적이 위 junit 모드의 근거다(구 backlog R76 · Issue #1442).
 
     🔴 **닫힌 것 / 닫히지 않은 것 (2026-08-15 사용자 결정 — 공허 통과 차단)**:
     - 닫힘: 비봇 PR 에 수치 라인이 없으면 red. (#1272 가 자기 면제한 바로 그 구멍.
       저자 신원은 CI env 에서만 읽는다 — 본문 마커는 자기인증이다.)
     - 닫히지 않음: 봇 PR. 무조건 의무화하면 dependabot 본문이 전부 red 다.
-    - 닫히지 않음: 이 축은 수치의 *신선도* 만 잰다. 스위트를 돌렸다는 증거가 아니다
-      (`--collect-only` 11s vs 실스위트 208-247s — 위 단락과 backlog R76).
-    Measures freshness of the claimed number, not that the suite ran; see R76.
+    - **닫힘 (2026-08-18, #1442)**: junit 산출물이 있는 CI 에서는 실행 결과와 대조한다.
+      로컬·push 에서는 여전히 수집값 대조이고, 배너가 그 사실을 인쇄한다.
+    Two modes: execution evidence when the junit artifact exists, collection freshness otherwise.
     """
     claim = parse_body_claim(body)
     if claim is None:
@@ -402,10 +447,49 @@ def check_body_claim(body: str, unit: int, *, advisory: bool = False) -> int:
         )
         return 1
     passed, skipped = claim
+
+    # 🔴 **실행 증거 축** (#1442) — junit 산출물이 있으면 수집값이 아니라 **실제 실행 결과**와
+    #    대조한다. `--collect-only` 는 「테스트가 몇 개 있는가」만 보므로, 돌지 않았거나
+    #    실패한 스위트도 같은 수를 낸다. CI 는 이미 이 산출물을 만든다(오라클이 이미 있었다).
+    # 🔴 **총계만 대조한다 — skip 분해는 안 본다** (CI 실측 2026-08-18).
+    #    본문 수치는 저자가 **로컬에서** 잰다(6-step ②). 그런데 환경 조건부 skip 이 있어
+    #    로컬 9 skipped ↔ CI 5 skipped 처럼 정당하게 갈린다(openai SDK 는 CI 에만 설치).
+    #    분해까지 요구하면 이 축은 **원리적으로 만족 불가**가 된다 — 초판이 그랬고 CI 가 잡았다.
+    #    총계는 환경 무관이고, 「돌렸는가」는 아래 `ran_failed` 와 산출물 존재가 책임진다.
+    # Compare totals only: environment-conditional skips legitimately differ local↔CI.
+    run = junit_unit_counts()
+    if run is not None:
+        ran_passed, ran_skipped, ran_failed = run
+        if ran_failed:
+            print(
+                f"🔴 단위 테스트 {ran_failed}건이 **실패**했다 — 본문 수치가 무엇이든 이 PR 의 "
+                f"스위트는 초록이 아니다. junit 실측: {ran_passed} passed / "
+                f"{ran_skipped} skipped / {ran_failed} failed",
+                file=sys.stderr,
+            )
+            return 1
+        if (passed + skipped) != (ran_passed + ran_skipped):
+            print(
+                f"🔴 본문 수치가 **실행 결과**와 다르다 — 본문 {passed}+{skipped}="
+                f"{passed + skipped} vs junit 실측 {ran_passed}+{ran_skipped}="
+                f"{ran_passed + ran_skipped}. "
+                "→ 수집값이 아니라 실제로 돌린 출력에서 옮길 것.",
+                file=sys.stderr,
+            )
+            return 1
+        print(
+            f"✅ 본문 수치 축 일치 (**실행 증거**) — 본문 {passed}+{skipped} == junit 실측 "
+            f"{ran_passed}+{ran_skipped} (실패 0). "
+            "skip 분해는 대조하지 않는다 — 환경 조건부 skip 이 로컬↔CI 에서 갈린다."
+        )
+        return 0
+
     if passed + skipped == unit:
+        # 🔴 junit 부재 — 수집값 대조로 강등된다. 「신선한가」는 재지만 「돌렸는가」는 못 잰다.
         print(
             f"✅ 본문 수치 축 일치 — 본문 {passed}+{skipped}={passed + skipped} "
-            f"== 실측 단위 {unit}"
+            f"== 실측 **수집** {unit}. "
+            "⚠️ junit 산출물 부재 — 이 대조는 수치의 신선도이지 **실행 증거 아님**."
         )
         return 0
     print(
