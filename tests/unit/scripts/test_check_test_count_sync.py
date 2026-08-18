@@ -471,3 +471,106 @@ def test_body_claim_axis_reads_the_single_hardened_reader(monkeypatch, tmp_path)
     assert mod.main([]) == 0          # PR 컨텍스트 없음 → 미실행
     _patch_body(monkeypatch, _REAL_MISMATCH)
     assert mod.main([]) == 1          # 같은 리더로 본문이 오면 red
+
+
+# ── 실행 증거 축: junit XML 대조 (#1442 b) ────────────────────────────────────
+#
+# 🔴 이 축이 왜 필요한가: `collect_count()` 는 `--collect-only`(약 11초)라 「수치가 신선한가」만
+#    잰다. 실스위트는 250~340초다. 즉 저자는 19배 싼 경로로 같은 숫자를 만들 수 있고,
+#    **테스트가 실패해도** 수집 수는 그대로다. CI 는 이미 `--junitxml=pytest-results.xml` 을
+#    만든다 — 오라클이 이미 있는데 쓰지 않고 있었다.
+#
+# 🔴 CI 는 `pytest tests/`(단위+통합)를 돌리므로 junit 총계 != 본문의 단위 수치다.
+#    `classname`(`tests.unit.…`)으로 단위만 골라낸다 — 실측으로 확인한 산출물 형태다.
+
+
+def _junit(tmp_path, cases, suite_attrs=None):
+    """junit XML 픽스처 — `cases` = [(classname, outcome), …]. outcome: pass|skip|fail."""
+    attrs = suite_attrs or {}
+    body = []
+    for cn, outcome in cases:
+        inner = {"pass": "", "skip": "<skipped/>", "fail": "<failure/>"}[outcome]
+        body.append(f'<testcase classname="{cn}" name="t">{inner}</testcase>')
+    xml = (
+        '<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite name="pytest" '
+        + " ".join(f'{k}="{v}"' for k, v in attrs.items())
+        + ">" + "".join(body) + "</testsuite></testsuites>"
+    )
+    p = tmp_path / "pytest-results.xml"
+    p.write_text(xml, encoding="utf-8")
+    return p
+
+
+def test_junit_counts_only_unit_tests(tmp_path):
+    """🔴 단위만 센다 — CI 는 `tests/` 전체를 돌리므로 통합이 섞이면 본문과 못 맞춘다."""
+    p = _junit(tmp_path, [
+        ("tests.unit.gate.test_engine", "pass"),
+        ("tests.unit.gate.test_engine", "pass"),
+        ("tests.unit.api.test_routes", "skip"),
+        ("tests.integration.test_static_analyzer", "pass"),
+        ("tests.integration.test_eslint_analyzer", "skip"),
+    ])
+    assert mod.junit_unit_counts(p) == (2, 1, 0)
+
+
+def test_junit_counts_report_failures(tmp_path):
+    """🔴 실패를 센다 — 이것이 `--collect-only` 가 원리적으로 못 보는 축이다."""
+    p = _junit(tmp_path, [
+        ("tests.unit.a.test_x", "pass"),
+        ("tests.unit.a.test_y", "fail"),
+    ])
+    assert mod.junit_unit_counts(p) == (1, 0, 1)
+
+
+def test_junit_absent_is_none_not_zero(tmp_path):
+    """🔴 산출물이 없으면 `None` — `(0,0,0)` 을 돌려주면 「안 쟀음」이 「0건」이 된다."""
+    assert mod.junit_unit_counts(tmp_path / "nope.xml") is None
+
+
+def test_junit_unparsable_is_none_not_a_crash(tmp_path):
+    """깨진 XML 은 예외가 아니라 None — 가드가 인프라 사고로 죽으면 안 된다."""
+    p = tmp_path / "pytest-results.xml"
+    p.write_text("<testsuites><broken", encoding="utf-8")
+    assert mod.junit_unit_counts(p) is None
+
+
+def _claim(passed, skipped):
+    return f"pytest tests/unit → {passed} passed / {skipped} skipped"
+
+
+def test_body_claim_is_checked_against_the_actual_run_when_junit_exists(tmp_path, monkeypatch, capsys):
+    """🔴 junit 이 있으면 **실행 결과**와 대조한다 — 수집값이 아니라.
+
+    수집 수가 맞아도 실제로 돌지 않았거나 실패했으면 그 본문은 거짓이다.
+    """
+    p = _junit(tmp_path, [("tests.unit.a.test_x", "pass")] * 5 + [("tests.unit.a.test_y", "skip")])
+    monkeypatch.setattr(mod, "_JUNIT", p)
+    # 수집값(unit)은 6 으로 맞지만 본문이 실행 결과(5 passed / 1 skipped)와 어긋난다
+    assert mod.check_body_claim(_claim(6, 0), unit=6) == 1
+    assert "실행" in capsys.readouterr().err
+
+
+def test_body_claim_matching_the_actual_run_passes(tmp_path, monkeypatch, capsys):
+    p = _junit(tmp_path, [("tests.unit.a.test_x", "pass")] * 5 + [("tests.unit.a.test_y", "skip")])
+    monkeypatch.setattr(mod, "_JUNIT", p)
+    assert mod.check_body_claim(_claim(5, 1), unit=6) == 0
+    assert "실행 증거" in capsys.readouterr().out
+
+
+def test_failed_tests_make_the_claim_red_even_when_counts_add_up(tmp_path, monkeypatch, capsys):
+    """🔴 `--collect-only` 가 원리적으로 못 보는 축 — 실패가 있으면 red.
+
+    수집 6건 · 본문 「5 passed / 1 skipped」 로 합이 맞아도, 실제로는 1건이 **실패**했다.
+    """
+    p = _junit(tmp_path, [("tests.unit.a.test_x", "pass")] * 5 + [("tests.unit.a.test_y", "fail")])
+    monkeypatch.setattr(mod, "_JUNIT", p)
+    assert mod.check_body_claim(_claim(5, 1), unit=6) == 1
+    assert "실패" in capsys.readouterr().err
+
+
+def test_without_junit_it_falls_back_to_collection_and_says_so(tmp_path, monkeypatch, capsys):
+    """산출물이 없으면 기존 수집 대조로 — 다만 **무엇을 못 쟀는지** 인쇄한다."""
+    monkeypatch.setattr(mod, "_JUNIT", tmp_path / "absent.xml")
+    assert mod.check_body_claim(_claim(6, 0), unit=6) == 0
+    out = capsys.readouterr().out
+    assert "수집" in out and "실행 증거 아님" in out
