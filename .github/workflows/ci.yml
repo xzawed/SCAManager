@@ -381,6 +381,33 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y shellcheck cppcheck
 
+      - name: Install Node.js (eslint)
+        uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+
+      - name: Install global eslint
+        run: npm install -g eslint@9 @typescript-eslint/parser @typescript-eslint/eslint-plugin
+
+      # 🔴 `npm ci` 필수 — eslint 분석기의 flat config(`src/analyzer/configs/*.mjs`)가
+      # `@typescript-eslint/parser` 를 **리포 로컬**에서 import 한다. 전역 설치본은 설정 파일
+      # 위치 기준 해석에 걸리지 않아 `ERR_MODULE_NOT_FOUND` 로 죽는다(#1226 CI 실측).
+      # 운영(railway.toml)은 buildCommand 끝에서 이미 `npm ci` 를 돌리므로 이 step 이 CI 를
+      # 운영과 일치시킨다. `--ignore-scripts` = 공급망 hardening(빌드 산출물 미사용).
+      # 🔴 `npm ci` is required: the analyzer's flat config imports @typescript-eslint/parser from
+      # the repo-local node_modules; a global install is not resolvable from the config's location.
+      # Railway already runs `npm ci`, so this aligns CI with production.
+      - name: Install npm dependencies (analyzer eslint flat config)
+        run: npm ci --ignore-scripts
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --retries 5 --timeout 60 -r requirements-dev.txt
+
+      # 🔴 **pip 설치 뒤에 둔다** — `slither`·`solc-select` 는 requirements 로 오므로
+      #    이 step 이 앞에 있으면 `command -v slither` 가 실패한다(CI 실측 2026-08-18).
+      # Must run after pip: slither/solc-select arrive via requirements.
       # 🔴 조달 계약(`PROVISIONED_ANALYZERS`) 전량을 CI 에서도 설치한다 (#1444).
       #
       # 실측(2026-08-18): 계약 16종 중 CI 가 설치하는 것은 10종이었다. 빠진 6종
@@ -431,30 +458,6 @@ jobs:
             command -v "$t" >/dev/null || { echo "🔴 조달 실패: $t"; exit 1; }
           done
           echo "✅ 조달 계약 전량 확인 — 위 for 루프가 실제 실행 가능성을 본다"
-
-      - name: Install Node.js (eslint)
-        uses: actions/setup-node@v7
-        with:
-          node-version: "20"
-
-      - name: Install global eslint
-        run: npm install -g eslint@9 @typescript-eslint/parser @typescript-eslint/eslint-plugin
-
-      # 🔴 `npm ci` 필수 — eslint 분석기의 flat config(`src/analyzer/configs/*.mjs`)가
-      # `@typescript-eslint/parser` 를 **리포 로컬**에서 import 한다. 전역 설치본은 설정 파일
-      # 위치 기준 해석에 걸리지 않아 `ERR_MODULE_NOT_FOUND` 로 죽는다(#1226 CI 실측).
-      # 운영(railway.toml)은 buildCommand 끝에서 이미 `npm ci` 를 돌리므로 이 step 이 CI 를
-      # 운영과 일치시킨다. `--ignore-scripts` = 공급망 hardening(빌드 산출물 미사용).
-      # 🔴 `npm ci` is required: the analyzer's flat config imports @typescript-eslint/parser from
-      # the repo-local node_modules; a global install is not resolvable from the config's location.
-      # Railway already runs `npm ci`, so this aligns CI with production.
-      - name: Install npm dependencies (analyzer eslint flat config)
-        run: npm ci --ignore-scripts
-
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install --retries 5 --timeout 60 -r requirements-dev.txt
 
       - name: Run pytest with coverage (XML for Codecov + SonarCloud)
         env:
