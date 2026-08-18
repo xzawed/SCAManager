@@ -95,8 +95,8 @@ class TestClaudeHooksAreWatched:
 
     @pytest.mark.parametrize("path", [
         ".claude/hooks/doc_review_gate.py",
-        "f:/repo/.claude/hooks/doc_review_gate.py",          # 절대경로
-        "f:\repo\.claude\hooks\doc_review_gate.py",      # Windows 구분자
+        "f:/repo/.claude/hooks/doc_review_gate.py",              # 절대경로
+        r"f:\repo\.claude\hooks\doc_review_gate.py",             # Windows 구분자 (raw 필수)
     ])
     def test_hook_file_is_watched(self, path):
         assert is_watched_file(path) is True, f"훅이 감시 밖이다: {path}"
@@ -106,14 +106,25 @@ class TestClaudeHooksAreWatched:
         assert derive_test_target(".claude/hooks/doc_review_gate.py") == \
             "tests/unit/hooks/test_doc_review_gate.py"
 
-    def test_hook_without_a_test_falls_back_to_the_directory(self):
-        """🔴 대응 테스트가 없는 훅도 **디렉토리**로는 겨냥한다 — None 이면 안 쟀음이 된다.
+    def test_hook_without_a_test_is_not_reported_as_passing(self):
+        """🔴 대응 테스트가 없으면 **None** — 디렉토리로 강등하면 거짓 초록이 된다.
 
-        실측: `block_credential_dump.py` 는 대응 테스트 파일이 없다(2026-08-18).
-        None 을 돌려주면 그 훅 편집은 조기탐지가 영구 0 이다.
+        Grok claim-review `01a0121f` 적발: 초판은 `tests/unit/hooks` 를 겨냥했다. 그러면
+        그 훅을 **검증하지 않는 남의 테스트 240여 개**가 돌고 배너가 `✅ 스모크 통과` 를
+        찍는다 — 이 훅이 없애려고 만들어진 바로 그 false-green 이다(파일 머리 docstring).
+        `None` 이면 수집 스모크 + 「단언 0건 — 대응 테스트 없음」 배너가 나간다.
         """
-        assert derive_test_target(".claude/hooks/block_credential_dump.py") == \
-            "tests/unit/hooks"
+        assert derive_test_target(".claude/hooks/nonexistent_hook.py") is None
+
+    def test_nested_hook_path_resolves_to_the_hook_root(self):
+        """🔴 다중 세그먼트 루트가 짧은 루트에 먼저 잡히면 안 된다 (Grok `01a0121f`).
+
+        선언 순서로 순회하면 `src/.claude/hooks/x.py` 가 루트 `src` 로 잡혀
+        `tests/unit/.claude` 라는 존재하지 않는 대상이 나왔다. 긴 루트 먼저 본다.
+        """
+        assert derive_test_target("src/.claude/hooks/doc_review_gate.py") == (
+            "tests/unit/hooks/test_doc_review_gate.py"
+        )
 
     def test_non_python_hook_asset_is_not_watched(self):
         """오탐 축 — `.json`·`.md` 는 이 스모크의 대상이 아니다."""
@@ -131,4 +142,8 @@ class TestClaudeHooksAreWatched:
         for hook in hooks:
             rel = f".claude/hooks/{hook.name}"
             assert is_watched_file(rel) is True, f"{rel} 감시 밖"
-            assert derive_test_target(rel) is not None, f"{rel} 겨냥 대상 없음"
+            target = derive_test_target(rel)
+            assert target == f"tests/unit/hooks/test_{hook.stem}.py", (
+                f"{rel} → {target}. 훅은 **자기 것을 검증하는** 테스트를 겨냥해야 한다 — "
+                "남의 스위트를 돌려 ✅ 를 찍으면 이 훅이 없애려던 false-green 이다."
+            )

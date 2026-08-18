@@ -11,7 +11,7 @@ PreToolUse 의 비정상 종료는 차단이라 세션이 자력 복구 불가�
 
 🔴 **이 파일이 단언하는 것 / 단언하지 않는 것.**
    이 파일은 **경로 계약**만 본다. 명령이 실제로 인터프리터를 호출하는지는
-   배선 스위트(`test_session_start_wiring` · `test_credential_dump_hook` ·
+   배선 스위트(`test_session_start_wiring` · `test_block_credential_dump` ·
    `test_check_edit_allowed` · `test_wiring_shape` 등)가 단언한다. `echo` 로
    인터프리터만 중성화한 채 접두를 남기면 이 파일은 초록이고 배선 스위트가
    붉다 — 관심사 분리이며, 그 분리를 여기에 적는다.
