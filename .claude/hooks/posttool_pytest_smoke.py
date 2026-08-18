@@ -72,7 +72,12 @@ def _after_src(path):
 def _root_and_rest(path):
     """감시 루트와 그 이후 상대 경로 — (`"src"`, `"gate/engine.py"`) 형태."""
     p = _norm(path)
-    for root in _WATCHED_ROOTS:
+    # 🔴 **긴 루트 먼저** (Grok claim-review `01a0121f`) — 다중 세그먼트 루트(`.claude/hooks`)가
+    #    선언 순서 때문에 짧은 루트에 먼저 잡히면 엉뚱한 대상이 나온다. 실측: 선언 순서로는
+    #    `src/.claude/hooks/x.py` → 루트 `src` → `tests/unit/.claude`(존재하지 않는 경로).
+    #    존재하지 않는 대상은 수집 스모크로 안전하게 강등되지만, 애초에 그 분기를 만들지 않는다.
+    # Longest root first: a multi-segment root must not lose to a shorter prefix.
+    for root in sorted(_WATCHED_ROOTS, key=len, reverse=True):
         if f"/{root}/" in p:
             return root, p.split(f"/{root}/", 1)[1]
         if p.startswith(f"{root}/"):
@@ -118,11 +123,15 @@ def derive_test_target(path, repo=None):
         return exact if (repo / exact).is_file() else "tests/unit/scripts"
 
     if root == ".claude/hooks":
-        # 🔴 대응 테스트가 없어도 **디렉토리로는** 겨냥한다 — `None` 은 「안 쟀음」이 된다.
-        #    실측(2026-08-18): `block_credential_dump.py` 는 대응 파일이 없다.
-        # Fall back to the directory: returning None would make that hook permanently unmeasured.
+        # 🔴 디렉토리 폴백을 **두지 않는다** (Grok claim-review `01a0121f` 적발).
+        #    초판은 대응 파일이 없으면 `tests/unit/hooks` 를 겨냥했는데, 그러면 그 훅을
+        #    **검증하지 않는 남의 테스트 197개**가 돌고 배너가 `✅ 스모크 통과` 를 찍는다.
+        #    이 훅이 없애려고 만들어진 바로 그 false-green 이다(파일 머리 docstring).
+        #    `None` 이면 수집 스모크 + 「단언 0건 — 대응 테스트 없음」 배너가 나간다 — 정직하다.
+        # No directory fallback: it would run 197 unrelated tests and print ✅ for a hook that
+        # nothing verified — the exact false-green this hook exists to prevent.
         exact = f"tests/unit/hooks/test_{stem}.py"
-        return exact if (repo / exact).is_file() else "tests/unit/hooks"
+        return exact if (repo / exact).is_file() else None
 
     # root == "src"
     if len(parts) >= 2:
