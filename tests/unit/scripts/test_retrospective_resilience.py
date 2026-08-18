@@ -138,3 +138,22 @@ def test_false_positive_payload_carries_the_reason():
     block = block[:block.index("scope_drift_during_run")] if "scope_drift_during_run" in block else block
     for field in ("title", "reason", "claim", "domain"):
         assert f"{field}:" in block, f"FP payload 에 `{field}` 가 없다"
+
+
+def test_false_positive_fields_are_coalesced_so_keys_never_vanish():
+    """🔴 FP payload 의 **모든** 필드가 `?? null` 이다 — 코얼레스가 없으면 키가 사라진다.
+
+    Grok claim-review `01a01536` 적발: `domain`·`title`·`claim`·`reason` 이 코얼레스되지
+    않으면, StructuredOutput 이 우회된 경우 그 값이 `undefined` 가 되고 `JSON.stringify` 가
+    **키를 통째로 드롭**한다. 그러면 payload 가 채워진 것처럼 보이면서 비어 있다 —
+    다음 회고는 「FP 목록이 있다」고 읽고 그 안에서 아무것도 못 찾는다.
+    Every FP field must be coalesced; an uncoalesced undefined is dropped by JSON.stringify,
+    leaving a payload that looks populated but is empty.
+    """
+    code = _strip_comments(_RETRO.read_text(encoding="utf-8"))
+    block = code[code.index("false_positives:"):]
+    block = block[:block.index("scope_drift_during_run")]
+    for field in ("domain", "severity", "title", "file", "line", "claim", "reason", "verdict"):
+        assert f"{field}: f.{field} ?? null" in block, (
+            f"FP payload 의 `{field}` 가 코얼레스되지 않았다 — undefined 면 키가 사라진다"
+        )
