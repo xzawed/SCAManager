@@ -381,6 +381,46 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y shellcheck cppcheck
 
+      # 🔴 조달 계약(`PROVISIONED_ANALYZERS`) 전량을 CI 에서도 설치한다 (#1444).
+      #
+      # 실측(2026-08-18): 계약 16종 중 CI 가 설치하는 것은 10종이었다. 빠진 6종
+      # (golangci-lint · hadolint · ktlint · rubocop · tflint · tsc)은 **CI 에서 한 번도
+      # 실행된 적이 없다.** 그래서 그 도구들의 테스트가 전량 mock 이고 `tests/integration/`
+      # 에 실바이너리 테스트가 0건이었다 — 조달되지 않으니 쓸 수가 없었다.
+      # 계약의 뜻은 「이 도구가 사라지면 배포 회귀다」인데, 그 주장을 아무도 확인한 적이 없었다.
+      #
+      # 🔴 `|| echo WARNING` 으로 삼키지 않는다. `railway.toml` 은 배포 가용성을 위해 삼키고
+      # 그 부재는 런타임이 `incomplete` 로 잡는다(#1410). CI 는 반대다 — **여기가 조달이
+      # 실제로 되는지 확인하는 유일한 자리**이므로 실패는 red 여야 한다. 일시적 네트워크
+      # 실패는 `gh run rerun --failed` 로 처리한다(인프라 실패는 재실행, 재발은 롤백).
+      #
+      # 🔴 버전은 `railway.toml` 과 맞춘다 — CI 가 운영과 다른 버전을 검증하면 그 초록은
+      # 운영에 대해 아무 말도 하지 않는다.
+      # Provision the whole contract in CI; failures are red here (unlike Railway, which
+      # degrades gracefully because runtime detection catches absence).
+      - name: Install contracted analyzers (조달 계약 전량 — railway.toml 과 동일 버전)
+        run: |
+          set -euo pipefail
+          gem install rubocop-ast -v 1.36.2 --no-document --bindir /usr/bin
+          gem install rubocop -v 1.57.2 --no-document --bindir /usr/bin
+          curl -sSfL --retry 3 https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh \
+            | sh -s -- -b /usr/bin v1.55.2
+          curl -sSfL --retry 3 https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64 \
+            -o /usr/bin/hadolint && chmod +x /usr/bin/hadolint
+          curl -sSfL --retry 3 https://github.com/pinterest/ktlint/releases/latest/download/ktlint \
+            -o /usr/bin/ktlint && chmod +x /usr/bin/ktlint
+          curl -sSfL --retry 3 https://github.com/terraform-linters/tflint/releases/latest/download/tflint_linux_amd64.zip \
+            -o /tmp/tflint.zip && unzip -o /tmp/tflint.zip -d /usr/bin/ && chmod +x /usr/bin/tflint
+          npm install -g 'typescript@>=6.0.3 <6.1.0'
+          # slither 는 pip(requirements.txt)로 오지만 Solidity 를 실제로 분석하려면 solc 가 필요하다.
+          # slither ships via pip, but analyzing Solidity needs a solc binary.
+          solc-select install 0.8.20
+          solc-select use 0.8.20
+          for t in rubocop golangci-lint hadolint ktlint tflint tsc slither; do
+            command -v "$t" >/dev/null || { echo "🔴 조달 실패: $t"; exit 1; }
+          done
+          echo "✅ 조달 계약 전량 확인 — 위 for 루프가 실제 실행 가능성을 본다"
+
       - name: Install Node.js (eslint)
         uses: actions/setup-node@v7
         with:
