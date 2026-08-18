@@ -14,7 +14,17 @@
    `N passed / M skipped` 보관.
 2. `py -3 scripts/pre_push_gate.py`(`--full` = pylint·bandit·unit 추가)
 3. 출력 끝 "보지 못하는 축"·인터프리터 줄 확인(로컬 초록 ≠ CI).
-4. `git push` → `gh pr create`
+4. `git push` → `gh pr create` → **도달 확인**. `git push` 의 exit 만으로는 부족하다:
+
+   ```bash
+   git ls-remote origin refs/heads/<branch> | cut -f1        # == git rev-parse HEAD
+   gh api repos/xzawed/SCAManager/pulls/<n> -q '.head.sha, .commits'
+   ```
+
+   실측 사고(2026-08-18): GitHub 이 503/429 를 내던 구간에서 push 가 원격에 닿지 못했는데
+   출력은 `remote:` 한 줄만 남겼다. PR 은 **낡은 head**(`commits=1`)를 든 채 CI 초록을 냈고,
+   그대로 머지돼 커밋 하나가 통째로 유실됐다. 머지 **전에** 두 SHA 가 같은지 본다.
+   ⚠️ `mergeStateStatus=UNKNOWN` 이 지속되면 「계산 중」이 아니라 이 상태를 의심한다.
 5. PR 본문 **첫 매치 줄**에 `pytest tests/unit → N passed / M skipped`. 없으면 CI 차단.
 6. 아래 표면은 본문에 claim-review 흔적 필수 — 없으면 `repo-integrity` 차단.
    - 면제 가능: `src/` · `alembic/` · `e2e/` → `claim-review-not-required: <사유 16자 이상>`
