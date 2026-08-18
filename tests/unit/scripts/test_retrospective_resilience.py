@@ -111,3 +111,30 @@ def test_coverage_boost_guard_rejects_comment_only():
         "phase('Report')\n"
     )
     assert not _has_coverage_boost(_strip_comments(fake))
+
+
+# ── FP 객체 환류 (#1443 b) ────────────────────────────────────────────────────
+#
+# 🔴 종전에는 `roi.fp_blocked` **개수만** 반환했다. 개수는 「몇 건을 걸렀나」는 말하지만
+#    **무엇이 왜 FP 였는지**는 말하지 않는다. 그래서 다음 회고가 같은 오탐을 처음부터
+#    다시 판정한다 — loop-until-dry 가 매번 같은 바닥을 다시 긁는 이유다.
+
+
+def test_false_positive_objects_are_returned_not_just_counted():
+    """🔴 반환 JSON 에 `false_positives[]` 가 있고 **사유**를 담는다."""
+    code = _strip_comments(_RETRO.read_text(encoding="utf-8"))
+    assert "false_positives:" in code, (
+        "FP 객체가 반환되지 않는다 — `roi.fp_blocked` 개수만으로는 다음 회고가 "
+        "같은 오탐을 다시 판정한다"
+    )
+    # 개수 축은 그대로 남아야 한다(ROI 표가 쓴다) — 대체가 아니라 추가다.
+    assert "fp_blocked: falsePositives.length" in code, "ROI 개수 축이 사라졌다"
+
+
+def test_false_positive_payload_carries_the_reason():
+    """🔴 `reason` 이 핵심 — 무엇을 근거로 기각했는가가 없으면 재판정을 못 막는다."""
+    code = _strip_comments(_RETRO.read_text(encoding="utf-8"))
+    block = code[code.index("false_positives:"):]
+    block = block[:block.index("scope_drift_during_run")] if "scope_drift_during_run" in block else block
+    for field in ("title", "reason", "claim", "domain"):
+        assert f"{field}:" in block, f"FP payload 에 `{field}` 가 없다"

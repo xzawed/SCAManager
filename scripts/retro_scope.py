@@ -117,20 +117,64 @@ def merged_prs(boundary: str) -> list[int]:
     return sorted(set(nums))
 
 
-def compute() -> dict:
-    """범위 산출 결과 dict — 리포트 부재 등 실패도 사유와 함께 담는다."""
-    if not _REPORTS.is_dir():
-        return {"ok": False, "reason": "reports dir 없음 / no reports dir"}
-    newest = newest_retro([p.name for p in _REPORTS.glob("*.md") if _RETRO_NAME.match(p.name)])
-    if not newest:
-        return {"ok": False, "reason": "정식 회고 리포트 없음 / no formal retro report"}
-    boundary = boundary_commit(newest)
-    if not boundary:
-        return {"ok": False, "reason": f"경계 커밋 판정 실패 / no add-commit for {newest}"}
+def resolve_ref(ref: str) -> str | None:
+    """ref 를 커밋 SHA 로 해석 — 존재하지 않으면 None (조용히 넘기지 않는다)."""
+    sha = _git(["rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"]).strip()
+    return sha or None
+
+
+def compute(since: str | None = None) -> dict:
+    """범위 산출 결과 dict — 실패도 사유와 함께 담는다.
+
+    앵커는 두 가지이고 **리포트가 정본**이다:
+
+    - `anchor="report"` : `docs/reports/` 의 최신 정식 회고 → 그 파일을 **추가한** 커밋이 경계.
+    - `anchor="explicit"`: 리포트가 없을 때 호출자가 준 `since` 가 경계.
+
+    🔴 **경계를 지어내지 않는다.** 리포트도 `since` 도 없으면 `ok:false` 다 —
+    다만 사유에 다음 행동(`--since`)을 담는다. 종전 사유는 「정식 회고 리포트 없음」 한 줄이라
+    거기서 할 수 있는 것이 없었고, 그 상태로 **3개월**이 지났다(리포트는 2026-05-25 `#643`
+    에서 아카이브됐다). 그 사이 회고는 계속 돌았으므로 스킬 1단계 「범위는 기계에서 얻는다 ·
+    손 조립 금지」가 원리적으로 불가능했다 — 이 함수가 그 구멍이었다.
+
+    🔴 `since` 는 **우회가 아니다**. 경계 하나만 사람이 주고 PR 목록은 여전히 기계가 센다.
+    Two anchors; the report wins. Never invents a boundary — an absent one stays ok:false,
+    but the reason now carries the next action.
+    """
+    newest = None
+    if _REPORTS.is_dir():
+        newest = newest_retro(
+            [p.name for p in _REPORTS.glob("*.md") if _RETRO_NAME.match(p.name)]
+        )
+
+    if newest:
+        boundary = boundary_commit(newest)
+        if not boundary:
+            return {"ok": False, "reason": f"경계 커밋 판정 실패 / no add-commit for {newest}"}
+        anchor = "report"
+    elif since:
+        boundary = resolve_ref(since)
+        if not boundary:
+            return {
+                "ok": False,
+                "reason": f"--since 해석 실패: {since!r} 는 이 저장소의 커밋이 아니다",
+            }
+        anchor = "explicit"
+    else:
+        return {
+            "ok": False,
+            "reason": (
+                "정식 회고 리포트 없음 — `docs/reports/*-retrospective.md` 가 0건이다. "
+                "직전 회고 경계를 알면 `--since <sha|tag>` 로 주면 그 뒤는 기계가 센다. "
+                "새 회고를 마쳤다면 스킬 3단계대로 리포트를 써서 다음부터 자동 앵커가 되게 할 것."
+            ),
+        }
+
     prs = merged_prs(boundary)
     head = _git(["rev-parse", "--short", "HEAD"]).strip()
     return {
         "ok": True,
+        "anchor": anchor,
         "prev_retro": newest,
         "boundary": boundary[:7],
         "head": head,
@@ -145,9 +189,13 @@ def main() -> int:
     _make_stdout_safe()
     ap = argparse.ArgumentParser(description="회고 범위 기계 산출 / compute retro scope")
     ap.add_argument("--json", action="store_true", help="JSON 출력 (워크플로 args 용)")
+    ap.add_argument(
+        "--since", metavar="REF",
+        help="리포트가 없을 때의 경계 커밋/태그. 리포트가 있으면 그쪽이 정본이다.",
+    )
     args = ap.parse_args()
 
-    r = compute()
+    r = compute(since=args.since)
     if args.json:
         print(json.dumps(r, ensure_ascii=False))
         return 0 if r["ok"] else 1
@@ -156,12 +204,19 @@ def main() -> int:
         print(f"❌ 범위 산출 실패: {r['reason']}")
         return 1
     print("회고 범위 (기계 산출 — 손으로 적지 말 것)")
-    print(f"  직전 정식 회고 : {r['prev_retro']}")
+    if r["anchor"] == "report":
+        print(f"  직전 정식 회고 : {r['prev_retro']}")
+    else:
+        # 🔴 어떤 앵커였는지 숨기지 않는다 — 명시 경계는 사람이 준 값이라 신뢰 등급이 다르다.
+        print("  직전 정식 회고 : (없음) — `--since` 로 준 명시 경계를 썼다")
     print(f"  경계 커밋      : {r['boundary']}  → HEAD {r['head']}")
     print(f"  머지 PR        : {r['pr_count']}건  {r['range']}")
     print(f"  전체           : {', '.join('#' + str(n) for n in r['prs'])}")
     print()
     print("🔴 회고 착수 **직전에** 다시 실행할 것 — 그 사이 머지분이 빠지는 것이 P0 의 기전이었다.")
+    if r["anchor"] == "explicit":
+        print("🔴 이번 범위의 경계는 **사람이 준 값**이다. 회고를 마치면 스킬 3단계대로")
+        print("   `docs/reports/YYYY-MM-DD-retrospective.md` 를 써서 다음부터 자동 앵커가 되게 할 것.")
     return 0
 
 

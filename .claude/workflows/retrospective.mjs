@@ -425,6 +425,17 @@ return {
     recommendation: f.recommendation ?? null, verdict: f.verdict, reason: f.reason,
   })),
   unverified_findings: unverified.map((f) => ({ domain: f.domain, severity: f.severity, title: f.title })),
+  // 🔴 **FP 객체를 싣는다** (#1443 b) — 종전에는 `roi.fp_blocked` **개수만** 나갔다.
+  //    개수는 「이번에 몇 건을 걸렀나」는 말해 주지만 **무엇이 왜 FP 였는지**는 말하지 않는다.
+  //    그래서 다음 회고가 같은 오탐을 처음부터 다시 판정한다 — loop-until-dry 가 매번
+  //    같은 바닥을 다시 긁는 이유다. `reason` 이 핵심이다(무엇을 근거로 기각했는가).
+  // Carry the FP objects, not just the count: the next run needs to know WHAT was rejected and WHY,
+  // otherwise it re-adjudicates the same false positives from scratch every time.
+  false_positives: falsePositives.map((f) => ({
+    domain: f.domain, severity: f.severity, title: f.title,
+    file: f.file ?? null, line: f.line ?? null, claim: f.claim,
+    reason: f.reason, verdict: f.verdict,
+  })),
   // 🔴 회고가 도는 동안 머지된 분 — 이 회고는 그것을 보지 못했다. 다음 회고 하한이다.
   //    null 이면 드리프트 없음 또는 재확인 실패(로그에 사유가 남는다).
   // PRs merged *during* this run — outside this retrospective's evidence base.
