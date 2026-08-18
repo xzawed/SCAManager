@@ -18,8 +18,13 @@
 
    ```bash
    git ls-remote origin refs/heads/<branch> | cut -f1        # == git rev-parse HEAD
-   gh api repos/xzawed/SCAManager/pulls/<n> -q '.head.sha, .commits'
+   gh api repos/xzawed/SCAManager/pulls/<n> -q '.head.sha, .commits'   # 🔴 머지 **직전에도**
    ```
+
+   🔴 **두 확인은 서로를 대신하지 못한다.** `ls-remote` 는 ref 가 갔는지만 본다 — ref 가 갔는데도
+   **PR 객체가 그 커밋을 집지 않는** 경우가 실측으로 2회 있었다(#1447 · #1452, 둘 다 GitHub 이
+   503/429 를 내던 구간). 그때 CI 는 **옛 커밋**을 초록으로 통과시키고 머지는 그 옛 커밋만 담는다.
+   따라서 `head.sha == git rev-parse HEAD` 를 **머지를 누르기 직전에** 다시 본다.
 
    실측 사고(2026-08-18): GitHub 이 503/429 를 내던 구간에서 push 가 원격에 닿지 못했는데
    출력은 `remote:` 한 줄만 남겼다. PR 은 **낡은 head**(`commits=1`)를 든 채 CI 초록을 냈고,

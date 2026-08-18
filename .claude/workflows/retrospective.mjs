@@ -432,9 +432,11 @@ return {
   // Carry the FP objects, not just the count: the next run needs to know WHAT was rejected and WHY,
   // otherwise it re-adjudicates the same false positives from scratch every time.
   false_positives: falsePositives.map((f) => ({
-    domain: f.domain, severity: f.severity, title: f.title,
-    file: f.file ?? null, line: f.line ?? null, claim: f.claim,
-    reason: f.reason, verdict: f.verdict,
+    // 🔴 전부 `?? null` — 코얼레스가 없으면 undefined 키가 JSON.stringify 에서 **사라져**
+    //    payload 가 채워진 것처럼 보이면서 비어 있다 (Grok `01a01536` 적발).
+    domain: f.domain ?? null, severity: f.severity ?? null, title: f.title ?? null,
+    file: f.file ?? null, line: f.line ?? null, claim: f.claim ?? null,
+    reason: f.reason ?? null, verdict: f.verdict ?? null,
   })),
   // 🔴 회고가 도는 동안 머지된 분 — 이 회고는 그것을 보지 못했다. 다음 회고 하한이다.
   //    null 이면 드리프트 없음 또는 재확인 실패(로그에 사유가 남는다).
