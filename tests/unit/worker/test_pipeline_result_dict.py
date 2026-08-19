@@ -42,6 +42,8 @@ def _make_ai_review() -> SimpleNamespace:
     """AiReviewResult 형 더블 — pipeline 함수가 attribute 만 사용하므로 SimpleNamespace 충분."""
     return SimpleNamespace(
         status="success",
+        error_type=None,
+        error_status_code=None,
         summary="ok",
         suggestions=[],
         commit_message_feedback="commit ok",
@@ -158,3 +160,61 @@ def test_result_dict_truncated_defaults_false_when_attr_absent() -> None:
         source="pr",
     )
     assert result["ai_review_truncated"] is False
+
+
+# ─── 실패 원인이 result dict 까지 간다 (#1446) ──────────────────────────────
+#
+# 🔴 `AiReviewResult` 에 필드를 넣는 것만으로는 아무것도 관측되지 않는다.
+#    분석 행에 남는 것은 이 dict 뿐이고(`analyses.result`), 여기 실리지 않으면
+#    사후 분류는 여전히 불가능하다 — 이슈가 요구한 것이 바로 이 축이다.
+
+
+class TestErrorCauseReachesTheStoredDict:
+    """원인 필드가 저장 dict 에 실리는가."""
+
+    def test_error_fields_are_emitted(self) -> None:
+        ai = _make_ai_review()
+        ai.status = "api_error"
+        ai.error_type = "OverloadedError"
+        ai.error_status_code = 529
+
+        result = build_analysis_result_dict(
+            ai_review=ai, score_result=_make_score_result(),
+            analysis_results=[], source="pr",
+        )
+
+        assert result["ai_review_error_type"] == "OverloadedError"
+        assert result["ai_review_error_status_code"] == 529
+
+    def test_success_emits_the_keys_as_none_not_absent(self) -> None:
+        """🔴 키는 **항상** 나온다 — 성공 시에도 `None` 으로.
+
+        조건부로 넣으면 「키 없음」이 두 가지를 뜻하게 된다: 실패가 아니었거나,
+        이 필드가 생기기 전의 낡은 행이거나. 운영 DB 에 이미 그 모호함이 있다
+        (2026-04-12 이전 129행은 `ai_review_status` 키 자체가 없다). 같은 모호함을
+        새로 만들지 않는다.
+        """
+        result = build_analysis_result_dict(
+            ai_review=_make_ai_review(), score_result=_make_score_result(),
+            analysis_results=[], source="pr",
+        )
+
+        assert "ai_review_error_type" in result
+        assert "ai_review_error_status_code" in result
+        assert result["ai_review_error_type"] is None
+        assert result["ai_review_error_status_code"] is None
+
+    def test_the_dict_fields_exist_on_the_real_dataclass(self) -> None:
+        """🔴 더블 표류 차단 — 위 두 테스트는 `SimpleNamespace` 더블을 쓴다.
+
+        더블에만 필드를 붙이고 실제 `AiReviewResult` 에는 안 붙여도 통과한다.
+        진짜 dataclass 를 직접 확인해 그 구멍을 막는다.
+        """
+        from dataclasses import fields  # pylint: disable=import-outside-toplevel
+
+        from src.analyzer.io.ai_review import AiReviewResult  # pylint: disable=import-outside-toplevel
+
+        names = {f.name for f in fields(AiReviewResult)}
+        assert {"error_type", "error_status_code"} <= names, (
+            f"AiReviewResult 에 원인 필드가 없다 — 더블만 앞서 있다: {sorted(names)}"
+        )

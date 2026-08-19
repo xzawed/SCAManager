@@ -76,6 +76,7 @@ def test_result_dict_aggregates_uncovered_languages():
     results = [analyze_file("stats.r", "x <- 1\n"), analyze_file("init.lua", "local x = 1\n")]
     ai = SimpleNamespace(
         status="success", truncated=False, summary="", suggestions=[],
+        error_type=None, error_status_code=None,
         commit_message_feedback="", code_quality_feedback="", security_feedback="",
         direction_feedback="", test_feedback="", file_feedbacks=[],
     )
