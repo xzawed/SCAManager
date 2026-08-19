@@ -30,6 +30,11 @@
    출력은 `remote:` 한 줄만 남겼다. PR 은 **낡은 head**(`commits=1`)를 든 채 CI 초록을 냈고,
    그대로 머지돼 커밋 하나가 통째로 유실됐다. 머지 **전에** 두 SHA 가 같은지 본다.
    ⚠️ `mergeStateStatus=UNKNOWN` 이 지속되면 「계산 중」이 아니라 이 상태를 의심한다.
+   🔴 **본문만 고쳐서는 못 되살린다.** CI 는 `github.event.pull_request.body`(이벤트 페이로드
+   고정본)를 읽으므로 `gh run rerun` 은 낡은 본문을 재생한다. `claim-review-on-body-edit.yml`
+   이 같은 이름으로 초록을 내지만 그 초록이 머지를 푼 사례는 실측 0건이다 — 복구는
+   `git commit --amend --no-edit && git push --force-with-lease`(새 SHA)뿐이다.
+
 5. PR 본문 **첫 매치 줄**에 `pytest tests/unit → N passed / M skipped`. 없으면 CI 차단.
 6. 아래 표면은 본문에 claim-review 흔적 필수 — 없으면 `repo-integrity` 차단.
    - 면제 가능: `src/` · `alembic/` · `e2e/` → `claim-review-not-required: <사유 16자 이상>`
@@ -49,6 +54,9 @@
 7. **게이트 분기를 완화했으면** — 조건 제거 · 범위 확대 · `except` 통합 · 면제 추가.
    본문에 `## 새로 도달 가능해진 입력 클래스` 를 두고 **클래스마다 테스트 1건**을 건다.
    그리고 실제 PR SHA 로 스크립트를 태워 나온 EXIT 를 before/after 2줄로 적는다.
+   ⚠️ 이 항목은 **아직 한 번도 발화한 적이 없다**(2026-08-19 실측: 이후 8 PR 중 0건 —
+   그 창에 완화 PR 자체가 없었다). 문턱은 「PR N건」이 아니라 **실제 완화 PR N건**을
+   세어 조정한다 — 분모가 다르면 0/N 은 「트리거가 죽었다」가 아니라 「안 재봤다」다.
    「뮤테이션 red + 전체 green」은 이 항목을 대체하지 못한다 — 그 둘은 저자가 이미 상상한
    실패 모드만 잰다. 회귀는 **테스트에 한 번도 준 적 없는 입력**에서 난다.
 
