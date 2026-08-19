@@ -102,9 +102,15 @@ def _patch_counts(monkeypatch, unit: int, integration: int):
 def _patch_state(monkeypatch, tmp_path, total: int, unit: int):
     docs = tmp_path / "docs"
     docs.mkdir(exist_ok=True)
-    (docs / "STATE.md").write_text(
-        f"**종합 수치**: 전체 **{total}** 수집 (단위 **{unit}** + 통합 x)\n", encoding="utf-8",
+    # 🔴 통합 수는 **파생**한다 — 구판은 리터럴 `통합 x` 를 썼다. 숫자가 아닌 것을 두면
+    #    fixture 로 통합 축을 검사할 수 없고, `_STATE_TOTAL` 이 그 그룹을 캡처하게 되자
+    #    이 fixture 를 쓰는 7건이 통째로 미매치로 떨어졌다. fixture 는 모델과 따로 늙는다.
+    # Derive it: a non-numeric stand-in makes the axis untestable and breaks on capture.
+    headline = (
+        f"**종합 수치**: 전체 **{total}** 수집 "
+        f"(단위 **{unit}** + 통합 {total - unit})"
     )
+    (docs / "STATE.md").write_text(headline + "\n", encoding="utf-8")
     monkeypatch.setattr(mod, "_ROOT", tmp_path)
 
 
