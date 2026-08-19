@@ -20,6 +20,7 @@ CI 는 조달 계약 전량을 설치하므로(`ci.yml` §Install contracted ana
 그 경우에도 조용히 통과하지 않고 「안 쟀음」을 인쇄한다.
 Absence is a procurement regression in CI, not an environment difference: fail loudly.
 """
+import json
 import os
 import shutil
 import subprocess  # nosec B404 — 로컬 분석기 실행
@@ -135,3 +136,104 @@ def test_slither_has_a_solc_and_parses_a_contract(tmp_path):
     assert '"success"' in proc.stdout or "Compilation warnings" in combined or proc.returncode in (0, 255), (
         f"slither 가 계약을 파싱하지 못했다: {combined[-400:]}"
     )
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 계약 3종 추가 — hadolint · ktlint · tflint (2026-08-19)
+#
+# 🔴 이 셋만 `latest` 로 설치되고 있었다. 같은 블록의 형제는 전부 핀이다
+#    (rubocop 1.57.2 · rubocop-ast 1.36.2 · golangci-lint v1.55.2 · typescript 6.0.x).
+#    상류가 출력 형식을 바꾸면 파서가 깨지고 → `incomplete` → auto-merge 차단이
+#    **리포 변경 0줄로** 일어난다. 게다가 CI 와 Railway 가 `latest` 를 서로 다른
+#    시점에 해석하므로 둘이 조용히 갈린다.
+#
+# 🔴 핀만 걸면 절반이다 (Grok claim-review `01a01a4e` R3): 셋 다 실바이너리 테스트가
+#    **0건**이라 핀을 건 그 버전이 우리 파서와 맞는지 아무도 확인하지 않는다.
+#    핀을 안전하게 만드는 것이 이 테스트들이고, 다음 버전 올림도 여기서 검증된다.
+#
+# 🔴 **접두 계약을 함께 못박는다.** 세 어댑터 모두 `raw.startswith("[")`/`("{")` 가
+#    거짓이면 **조용히 `[]` 를 반환**한다(`tools/ktlint.py:57` · `tools/tflint.py:59`).
+#    즉 상류가 배너 한 줄을 앞에 붙이기만 해도 분석이 0건이 되고 아무도 모른다.
+#    필드 존재만 보는 테스트는 그 경로를 통과시킨다.
+# ══════════════════════════════════════════════════════════════════════════
+
+
+def test_hadolint_emits_the_fields_the_adapter_reads(tmp_path):
+    """실 hadolint 가 `level`·`code`·`message`·`line` 을 낸다 (`tools/hadolint.py:59-65`)."""
+    _require("hadolint")
+    src = tmp_path / "Dockerfile"
+    # latest 태그 + apt-get upgrade → DL3006/DL3005 계열이 확정적으로 난다.
+    src.write_text("FROM debian:latest\nRUN apt-get update && apt-get upgrade -y\n",
+                   encoding="utf-8")
+
+    proc = _run(["hadolint", "--format=json", str(src)], tmp_path)
+    raw = proc.stdout.strip()
+
+    assert raw, f"hadolint 이 출력을 내지 않았다: {proc.stderr[-300:]}"
+    issues = json.loads(raw)
+    assert isinstance(issues, list) and issues, (
+        f"이슈 0건 — 더러운 Dockerfile 인데: {raw[:300]}"
+    )
+    first = issues[0]
+    for key in ("level", "code", "message", "line"):
+        assert key in first, f"어댑터가 읽는 키 `{key}` 가 없다: {sorted(first)}"
+    assert str(first["code"]).startswith("DL"), f"규칙 코드 형식이 아니다: {first['code']}"
+
+
+def test_ktlint_output_starts_with_a_bracket_and_carries_errors(tmp_path):
+    """실 ktlint 가 **`[` 로 시작하는** 배열을 내고 `errors[].rule/message/line` 을 담는다.
+
+    🔴 접두가 어긋나면 `tools/ktlint.py:57` 이 조용히 `[]` 를 돌려준다 — 분석 0건이
+    「깨끗함」으로 보인다. 필드 검사만으로는 그 경로가 안 잡힌다.
+    """
+    _require("ktlint")
+    src = tmp_path / "Dirty.kt"
+    src.write_text("fun  main( ) {\n      println(\"x\") ;\n}\n", encoding="utf-8")
+
+    proc = _run(["ktlint", "--reporter=json", str(src)], tmp_path)
+    raw = proc.stdout.strip()
+
+    assert raw, f"ktlint 이 stdout 을 내지 않았다: {(proc.stderr or '')[-300:]}"
+    assert raw.startswith("["), (
+        f"어댑터의 접두 계약 위반 — `[` 로 시작하지 않으면 조용히 0건이 된다: {raw[:120]}"
+    )
+    data = json.loads(raw)
+    assert data, f"이슈 0건 — 더러운 Kotlin 인데: {raw[:300]}"
+    errors = data[0].get("errors")
+    assert errors, f"어댑터가 읽는 `errors` 가 비었다: {sorted(data[0])}"
+    for key in ("rule", "message", "line"):
+        assert key in errors[0], f"어댑터가 읽는 키 `{key}` 가 없다: {sorted(errors[0])}"
+
+
+def test_tflint_output_starts_with_a_brace_and_carries_the_issues_envelope(tmp_path):
+    """실 tflint 가 **`{` 로 시작하는** 객체와 `issues` 봉투를 낸다.
+
+    🔴 이슈 **건수**는 요구하지 않는다. tflint 의 내장 룰셋은 provider 플러그인 없이
+    거의 발화하지 않고, 그것은 상류 정책이라 버전마다 바뀐다. 없는 계약을 단언하면
+    버전을 올릴 때마다 이 테스트가 **거짓 red** 를 낸다. 어댑터가 실제로 의존하는 것은
+    접두와 봉투 구조다(`tools/tflint.py:59-67`).
+    이슈가 실제로 나오면 그때는 중첩 경로까지 확인한다 — 있는 것만 잰다.
+    """
+    _require("tflint")
+    (tmp_path / "main.tf").write_text(
+        'variable "unused" {\n  type = string\n}\n'
+        'resource "aws_instance" "x" {\n  instance_type = "t2.micro"\n}\n',
+        encoding="utf-8")
+
+    proc = _run(["tflint", "--format=json", "--chdir", str(tmp_path)], tmp_path)
+    raw = proc.stdout.strip()
+
+    assert raw, f"tflint 이 stdout 을 내지 않았다: {(proc.stderr or '')[-300:]}"
+    assert raw.startswith("{"), (
+        f"어댑터의 접두 계약 위반 — `{{` 로 시작하지 않으면 조용히 0건이 된다: {raw[:120]}"
+    )
+    payload = json.loads(raw)
+    assert "issues" in payload and isinstance(payload["issues"], list), (
+        f"어댑터가 읽는 `issues` 배열이 없다: {sorted(payload)}"
+    )
+    for issue in payload["issues"]:
+        assert "message" in issue, f"이슈에 `message` 가 없다: {sorted(issue)}"
+        assert isinstance(issue.get("rule"), dict), "`rule` 이 객체가 아니다 — severity 경로가 깨진다"
+        assert isinstance(issue.get("range", {}).get("start"), dict), (
+            "`range.start` 가 객체가 아니다 — line 경로가 깨진다"
+        )

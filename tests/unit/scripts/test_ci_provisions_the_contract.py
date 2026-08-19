@@ -117,3 +117,53 @@ def test_the_extractor_is_not_vacuous():
 def test_the_three_tools_this_issue_names_are_provisioned(tool):
     """이 Issue 가 지목한 3종을 개별로 못박는다 — 회귀 시 어느 것인지 즉시 보이게."""
     assert tool in ci_provisioned(), f"{tool} 이 CI 에서 조달되지 않는다"
+
+
+# ── 조달 버전이 고정돼 있고 두 환경이 같은 것을 쓴다 (2026-08-19) ─────────
+#
+# 🔴 hadolint·ktlint·tflint 세 도구만 `releases/latest/download/` 였다. 형제는 전부 핀이다
+#    (rubocop 1.57.2 · rubocop-ast 1.36.2 · golangci-lint v1.55.2 · typescript 6.0.x).
+#    계약 도구는 부재·오작동이 `incomplete` 로 승격해 auto-merge 를 막으므로,
+#    상류 릴리스 하나가 **리포 변경 0줄로** 파이프라인을 세울 수 있었다.
+#    그리고 CI 와 Railway 가 `latest` 를 **서로 다른 시점에** 해석하므로 둘이 조용히 갈렸다.
+
+_RAILWAY = _ROOT / "railway.toml"
+_PINNED_TOOLS = ("hadolint", "ktlint", "tflint")
+_RELEASE_PIN = re.compile(
+    r"(hadolint|ktlint|tflint)/releases/download/([^/]+)/"
+)
+
+
+def _release_pins(text: str) -> dict:
+    """`<tool>/releases/download/<ver>/` 에서 (도구 → 버전)."""
+    return {tool: ver for tool, ver in _RELEASE_PIN.findall(text)}
+
+
+def test_no_procurement_installs_from_the_latest_tag():
+    """🔴 `releases/latest` 재발 차단 — 두 파일 모두.
+
+    이 문자열이 하나라도 살아나면 그 도구는 다시 상류 시점에 묶인다.
+    """
+    for path in (_CI, _RAILWAY):
+        text = path.read_text(encoding="utf-8")
+        assert text.strip(), f"{path.name} 이 비었다 — 이 검사가 공허하다"
+        assert "releases/latest" not in text, (
+            f"{path.name} 이 `releases/latest` 로 설치한다 — 버전을 고정할 것. "
+            "고정 후 tests/integration/test_contracted_analyzers_real_binary.py 로 파서를 다시 잰다."
+        )
+
+
+def test_ci_and_railway_pin_the_same_versions():
+    """🔴 두 환경이 **같은 바이너리**를 쓴다 — 갈리면 CI 초록이 운영을 보증하지 못한다."""
+    ci = _release_pins(_CI.read_text(encoding="utf-8"))
+    railway = _release_pins(_RAILWAY.read_text(encoding="utf-8"))
+
+    assert ci, "ci.yml 에서 버전 핀을 하나도 못 읽었다 — 이 테스트가 공허하다"
+    assert railway, "railway.toml 에서 버전 핀을 하나도 못 읽었다 — 이 테스트가 공허하다"
+    for tool in _PINNED_TOOLS:
+        assert tool in ci, f"ci.yml 에 `{tool}` 핀이 없다"
+        assert tool in railway, f"railway.toml 에 `{tool}` 핀이 없다"
+        assert ci[tool] == railway[tool], (
+            f"`{tool}` 버전이 갈렸다 — CI {ci[tool]} vs Railway {railway[tool]}. "
+            "두 파일을 같은 커밋에서 고칠 것."
+        )

@@ -435,13 +435,18 @@ jobs:
           sudo gem install rubocop -v 1.57.2 --no-document --bindir /usr/bin
           curl -sSfL --retry 3 https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh \
             | sudo sh -s -- -b /usr/bin v1.55.2
-          sudo curl -sSfL --retry 3 https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64 \
+          # 🔴 이 3종은 `latest` 였다 (2026-08-19 정정). 형제는 전부 핀인데 여기만 상류 릴리스가
+          #    리포 변경 0줄로 파이프라인을 바꿀 수 있었고, CI 와 Railway 가 `latest` 를 **다른
+          #    시점에** 해석해 조용히 갈렸다. 버전을 올릴 때는
+          #    `tests/integration/test_contracted_analyzers_real_binary.py` 가 새 바이너리의
+          #    출력으로 파서 계약을 다시 잰다 — 핀만 바꾸고 그 테스트를 안 돌리면 의미가 없다.
+          sudo curl -sSfL --retry 3 https://github.com/hadolint/hadolint/releases/download/v2.15.1/hadolint-Linux-x86_64 \
             -o /usr/bin/hadolint
           sudo chmod +x /usr/bin/hadolint
-          sudo curl -sSfL --retry 3 https://github.com/pinterest/ktlint/releases/latest/download/ktlint \
+          sudo curl -sSfL --retry 3 https://github.com/pinterest/ktlint/releases/download/1.8.0/ktlint \
             -o /usr/bin/ktlint
           sudo chmod +x /usr/bin/ktlint
-          curl -sSfL --retry 3 https://github.com/terraform-linters/tflint/releases/latest/download/tflint_linux_amd64.zip \
+          curl -sSfL --retry 3 https://github.com/terraform-linters/tflint/releases/download/v0.64.0/tflint_linux_amd64.zip \
             -o /tmp/tflint.zip
           sudo unzip -o /tmp/tflint.zip -d /usr/bin/
           sudo chmod +x /usr/bin/tflint
