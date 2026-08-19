@@ -19,6 +19,36 @@ from src.constants import STATIC_ANALYSIS_TIMEOUT
 logger = logging.getLogger(__name__)
 
 
+def json_array_payload(raw: str) -> str:
+    """ktlint stdout 에서 **JSON 배열 부분만** 꺼낸다. 없으면 빈 문자열.
+
+    🔴 왜 `startswith("[")` 로는 안 되는가 (2026-08-19 CI 실측, ktlint 1.8.0):
+    ktlint 는 JSON 리포터를 써도 **stdout 앞에 로그 줄을 붙인다** —
+
+        14:16:17.124 [main] WARN com.pinterest.ktlint.cli...KtlintCommandLine -- Lint has
+        found errors than can be autocorrected...
+        [
+            { ... "rule": "standard:no-semi" ... }
+        ]
+
+    구판은 `raw.startswith("[")` 가 거짓이면 조용히 `[]` 를 반환했다. 즉 **자동수정
+    가능한 위반이 있는 모든 Kotlin 파일에서 분석 결과가 0건**이었고, 그것이 「깨끗함」
+    으로 보였다. 계약 도구가 살아 있는데 죽은 것과 같았다.
+
+    🔴 `raw.index("[")` 도 안 된다 — 로그 줄 안의 `[main]` 이 먼저 잡힌다.
+    JSON 리포터는 배열을 **줄 맨 앞**에서 연다. 그 줄부터 취한다.
+
+    Strip ktlint's log preamble: the JSON reporter still writes WARN lines to stdout, and
+    `raw.index("[")` would match `[main]` inside the log. Cut from the first line that
+    *starts* with `[`.
+    """
+    lines = raw.split("\n")
+    for i, line in enumerate(lines):
+        if line.startswith("["):
+            return "\n".join(lines[i:]).strip()
+    return ""
+
+
 class _KtlintAnalyzer:
     """ktlint Kotlin 분석기 — JSON 출력 파싱.
     ktlint Kotlin analyzer — parses JSON output.
@@ -50,12 +80,13 @@ class _KtlintAnalyzer:
                 capture_output=True, text=True,
                 timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
             )
-            raw = r.stdout.strip()
-            # JSON 배열이 아닌 경우(빈 출력 또는 에러 텍스트) 빈 목록 반환
-            # Return empty list for non-JSON-array output (empty or error text)
-            if not raw or not raw.startswith("["):
+            # 🔴 로그 프리앰블을 걷어낸다 — `startswith("[")` 는 ktlint 1.8.0 에서
+            #    자동수정 가능한 위반이 있을 때마다 분석을 0건으로 만들었다
+            #    (CI 실측 2026-08-19, `json_array_payload` docstring 참조).
+            payload = json_array_payload(r.stdout.strip())
+            if not payload:
                 return []
-            data = json.loads(raw)
+            data = json.loads(payload)
             issues = []
             for file_result in data:
                 for err in file_result.get("errors", []):

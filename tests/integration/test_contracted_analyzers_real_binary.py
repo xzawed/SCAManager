@@ -29,6 +29,8 @@ import textwrap
 
 import pytest
 
+from src.analyzer.io.tools.ktlint import json_array_payload
+
 _OPTIONAL = os.environ.get("CONTRACTED_ANALYZER_TESTS", "").lower() == "optional"
 
 
@@ -180,24 +182,37 @@ def test_hadolint_emits_the_fields_the_adapter_reads(tmp_path):
     assert str(first["code"]).startswith("DL"), f"규칙 코드 형식이 아니다: {first['code']}"
 
 
-def test_ktlint_output_starts_with_a_bracket_and_carries_errors(tmp_path):
-    """실 ktlint 가 **`[` 로 시작하는** 배열을 내고 `errors[].rule/message/line` 을 담는다.
+def test_ktlint_output_needs_preamble_stripping_and_the_adapter_does_it(tmp_path):
+    """🔴 실 ktlint 는 JSON **앞에 로그 줄을 붙인다** — 이 테스트가 그걸 잡아냈다.
 
-    🔴 접두가 어긋나면 `tools/ktlint.py:57` 이 조용히 `[]` 를 돌려준다 — 분석 0건이
-    「깨끗함」으로 보인다. 필드 검사만으로는 그 경로가 안 잡힌다.
+    초판은 `raw.startswith("[")` 를 단언했다. CI 실측(ktlint 1.8.0)이 그것을 반증했다:
+
+        14:16:17.124 [main] WARN com.pinterest.ktlint.cli...KtlintCommandLine -- Lint has
+        found errors than can be autocorrected...
+        [ ... ]
+
+    그리고 `tools/ktlint.py` 구판이 정확히 그 `startswith` 로 걸러내고 있었다 —
+    **자동수정 가능한 위반이 있는 모든 Kotlin 파일에서 분석이 0건**이었다.
+    계약 도구가 설치돼 있는데 아무것도 보고하지 않았고, 그게 「깨끗함」으로 보였다.
+
+    그래서 이 테스트는 원 출력의 접두를 단언하지 않는다(거짓이다). 대신
+    **어댑터의 추출기가 실제 출력을 다룰 수 있는지**를 잰다 — 그것이 진짜 계약이다.
     """
     _require("ktlint")
     src = tmp_path / "Dirty.kt"
     src.write_text("fun  main( ) {\n      println(\"x\") ;\n}\n", encoding="utf-8")
 
     proc = _run(["ktlint", "--reporter=json", str(src)], tmp_path)
-    raw = proc.stdout.strip()
+    raw = (proc.stdout or "").strip()
 
     assert raw, f"ktlint 이 stdout 을 내지 않았다: {(proc.stderr or '')[-300:]}"
-    assert raw.startswith("["), (
-        f"어댑터의 접두 계약 위반 — `[` 로 시작하지 않으면 조용히 0건이 된다: {raw[:120]}"
+
+    payload = json_array_payload(raw)
+    assert payload, (
+        "어댑터의 추출기가 JSON 배열을 못 찾았다 — 분석이 조용히 0건이 된다.\n"
+        f"실 출력 앞부분: {raw[:200]}"
     )
-    data = json.loads(raw)
+    data = json.loads(payload)
     assert data, f"이슈 0건 — 더러운 Kotlin 인데: {raw[:300]}"
     errors = data[0].get("errors")
     assert errors, f"어댑터가 읽는 `errors` 가 비었다: {sorted(data[0])}"
