@@ -78,6 +78,18 @@ def build_analysis_result_dict(
         # C22: diff-truncation marker — blocks auto-merge/approve (mirrors static_analysis_incomplete).
         # getattr default False keeps legacy records/doubles without the field safe.
         "ai_review_truncated": bool(getattr(ai_review, "truncated", False)),
+        # 🔴 폴백 원인 — `ai_review_status=="api_error"` 안쪽을 가른다 (#1446).
+        # 실측(운영 DB 6,466행): `ai_review_status` 는 6,337행에 이미 있어 「왜 폴백했나」의
+        # 6분류는 답이 나온다. 답이 없던 것은 `api_error` 안쪽뿐이고, 그 클래스는 벤더 실패와
+        # **우리 코드 버그**를 같은 라벨로 덮는다(`src/shared/anthropic_caching.py:62-71`).
+        # 143건 중 117건이 2026-05-19 하루인데 그날이 장애였는지 배포 버그였는지 구별 불가였다.
+        # 🔴 성공 경로에서도 **키를 낸다**(값 None). 조건부로 넣으면 「키 없음」이
+        # "실패가 아니었다" 와 "이 필드 이전의 낡은 행이다" 두 가지를 뜻하게 된다 —
+        # 이 컬럼에는 이미 그 모호함이 있다(2026-04-12 이전 129행은 status 키 자체가 없다).
+        # Always emit both keys (None on non-failure): a conditional key would make "absent"
+        # mean two different things, an ambiguity this column already carries.
+        "ai_review_error_type": ai_review.error_type,
+        "ai_review_error_status_code": ai_review.error_status_code,
         # 🔴 정적분석 미커버 언어 — **차단 마커가 아니다**(가시화 전용, 사용자 결정).
         # 지원 분석기가 등록조차 안 된 언어(lua·perl·haskell·r 등 21종)는 정적 45/45 만점을 받는데
         # 그건 "깨끗함" 이 아니라 "검사 안 함" 이다. 게이트는 건드리지 않고 사람에게만 알린다.

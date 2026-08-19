@@ -58,6 +58,20 @@ class AiReviewResult:  # pylint: disable=too-many-instance-attributes
     # 실제 사용된 모델명 — None = 전역 기본값 사용
     # Actual model used — None means global default was used
     used_model: str | None = None
+    # 🔴 폴백 원인 — `status=="api_error"` 안쪽을 가른다 (#1446).
+    # `api_error` 는 벤더 실패와 **우리 코드 버그**를 같은 라벨로 덮는다
+    # (`src/shared/anthropic_caching.py:62-71` — 호출부 4곳이 `except Exception`
+    # 안이라 `AttributeError` 가 조용히 삼켜진다). 클래스명이 그 둘을 가른다.
+    # 상태코드를 **함께** 두는 이유: 클래스명은 SDK 소유 어휘라 버전에 종속된다
+    # (0.94.0 은 529→OverloadedError, 구버전은 InternalServerError). 코드가 안정 축이다.
+    # 🔴 예외 **본문**(`str(exc)`)은 담지 않는다 — anthropic 오류 본문은 요청 내용을
+    # 되비추므로 diff 조각·자격증명이 `analyses.result` 로 새고, 그 JSON 은 대시보드와
+    # 알림으로 그대로 흐른다. 담는 것은 「무엇이 실패했나」이지 「무엇이 들어 있었나」가 아니다.
+    # Fallback cause, splitting the inside of `api_error` (#1446): the class name separates a
+    # vendor failure from our own bug; the status code is the SDK-version-stable axis.
+    # Never store str(exc) — anthropic error bodies echo request content.
+    error_type: str | None = None
+    error_status_code: int | None = None
     # C22: diff 가 MAX_DIFF_CHARS 로 잘렸는지 — 잘린 부분 미검토로 점수가 인플레될 수 있어
     # auto-merge/auto-approve 차단 마커(ai_review_truncated)로 전파된다(static_analysis_incomplete 대칭).
     # C22: whether the diff was truncated at MAX_DIFF_CHARS — the unseen part may inflate the score,
@@ -208,7 +222,25 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
         _log.update(status="error", error_type=type(exc).__name__)
         _log.setdefault("duration_ms", (time.perf_counter() - start) * 1000)
         logger.exception("AI review failed, using default scores")
-        return _default_result("api_error")
+        # 🔴 SDK 는 `max_retries=2` 로 5xx/연결/타임아웃을 내부 재시도하고 **마지막**
+        #    예외만 올린다. 그래서 여기 남는 것은 마지막 시도의 원인이다 — 그것이
+        #    「이 분석이 왜 폴백했나」의 정답이다(재시도로 회복된 529 는 애초에
+        #    여기 오지 않는다). 시도 횟수는 남기지 않는다.
+        # The SDK retries internally and raises only the last exception; that is the
+        # correct answer to "why did this analysis fall back".
+        return _default_result(
+            "api_error",
+            error_type=type(exc).__name__,
+            # 🔴 `getattr(exc, "status_code", None)` 이 아니다 (Grok claim-review 01a01997).
+            #    덕타이핑이면 `.status_code` 를 가진 **아무 예외**나 값을 채운다 —
+            #    Starlette `HTTPException` 같은 우리 쪽 오류가 벤더 401/429 로 위장하고,
+            #    코드만 보는 관측자는 벤더 탓을 한다. 상태코드는 **벤더 HTTP 응답**이
+            #    있었다는 뜻이어야 한다. 그 밖은 None 이고 클래스명이 답을 준다.
+            # Not duck-typed: any exception carrying .status_code would forge a vendor code.
+            error_status_code=(
+                exc.status_code if isinstance(exc, anthropic.APIStatusError) else None
+            ),
+        )
     finally:
         # 🔴 비용 로그는 **여기서 한 번만** — 성공·실패 어느 경로든 호출당 1행 (R63).
         # 🔴 `duration_ms` 는 **명시 인자**로 넘긴다 — `**_log` 안에 숨기면 필수 keyword-only
@@ -352,8 +384,18 @@ def _parse_response(text: str) -> AiReviewResult:
     return result
 
 
-def _default_result(reason: str = "no_api_key") -> AiReviewResult:
-    """API key 없음, 빈 diff, 또는 오류 시 반환하는 중립적 기본값."""
+def _default_result(
+    reason: str = "no_api_key",
+    *,
+    error_type: str | None = None,
+    error_status_code: int | None = None,
+) -> AiReviewResult:
+    """API key 없음, 빈 diff, 또는 오류 시 반환하는 중립적 기본값.
+
+    `error_type`/`error_status_code` 는 **실패 경로에서만** 채운다 — disabled·
+    no_api_key·empty_diff 는 실패가 아니라 의도된 건너뜀이므로 `None` 으로 남는다
+    (keyword-only: 위치 인자로 `reason` 자리에 잘못 넣는 사고를 막는다).
+    """
     # summary 는 빈 문자열 — 발신 시 status 기반으로 notifier 가 현지화 메시지 대체
     # (notifier._common.resolve_ai_summary). 대시보드는 ai_review_status 로 별도 i18n 배너 렌더.
     # summary stays empty — notifiers localize via status (resolve_ai_summary);
@@ -367,4 +409,6 @@ def _default_result(reason: str = "no_api_key") -> AiReviewResult:
         summary="",
         suggestions=[],
         status=reason,
+        error_type=error_type,
+        error_status_code=error_status_code,
     )

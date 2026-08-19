@@ -26,6 +26,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
+from types import SimpleNamespace
 
 from src.analyzer.io.ai_review import (
     _coerce_score,
@@ -758,4 +759,221 @@ def test_log_call_passes_duration_ms_explicitly():
         assert "duration_ms" in names, (
             "duration_ms 가 명시 키워드로 전달되지 않는다 — `**_log` 안에 숨으면 필수 인자가 "
             "정적으로 보이지 않아 pylint E1125 가 재발한다"
+        )
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# api_error 안쪽을 구별한다 (#1446)
+#
+# 🔴 이슈는 「실패 원인이 분석 행에 없다」고 했으나 실측은 그것을 정정했다:
+#    `ai_review_status` 는 6337/6466 행에 이미 있다(운영 DB). 남은 공백은
+#    **`api_error` 안쪽이 무엇인가** 뿐이다 — 그리고 그 클래스는
+#    `src/shared/anthropic_caching.py:62-71` 이 적어 둔 대로 **벤더 실패와
+#    우리 코드 버그를 같은 라벨로 덮는다**. 실측 뒷받침: 리뷰 경로의
+#    `claude_api_calls.error_type` 에 `JSONDecodeError` 3건이 있는데, 이는
+#    파싱 실패가 `_parse_response` 가드를 빠져나가 `api_error` 로 **오분류된**
+#    것이다. 143건 중 117건(82%)이 2026-05-19 하루인데 그날이 장애였는지
+#    배포 버그였는지 지금은 구별할 수 없다.
+#
+# 🔴 이 PR 은 **기록만** 한다. status **값** 재분류는 하지 않는다 —
+#    값 소비자가 6곳이고 그중 하나가 i18n 배너(analysis_detail.html:589-591)라
+#    사람이 눈으로 봐야 하는 축이다. 별도 이슈로 분리했다.
+# ══════════════════════════════════════════════════════════════════════════
+
+
+def _vendor_error(message, status_code):
+    """🔴 **실제** anthropic 예외를 만든다 — 더블이 아니다 (Grok claim-review `01a01997`).
+
+    구현이 `isinstance(exc, anthropic.APIStatusError)` 로 좁혀졌으므로, `.status_code`
+    만 가진 더블은 (의도대로) 코드를 못 채운다. 완료 판정을 진짜로 재려면 SDK 가
+    400/529 에 실제로 매핑하는 클래스를 써야 한다 — SDK 를 올려 매핑이 바뀌면
+    이 테스트가 red 가 된다. 그것이 여기서 원하는 신호다.
+    """
+    # 🔴 top-level 미노출 — `anthropic.OverloadedError` 는 없다(0.94.0 실측).
+    #    `_exceptions` 경유가 유일한 경로다.
+    from anthropic import _exceptions  # pylint: disable=import-outside-toplevel
+
+    cls = {
+        400: _exceptions.BadRequestError,
+        401: _exceptions.AuthenticationError,
+        529: _exceptions.OverloadedError,
+    }[status_code]
+    response = httpx.Response(
+        status_code,
+        request=httpx.Request("POST", "https://api.anthropic.com/v1/messages"),
+    )
+    return cls(message, response=response, body=None)
+
+
+async def _review_raising(exc):
+    """주어진 예외를 던지는 클라이언트로 review_code 를 돌린다."""
+    fake_client = MagicMock()
+    fake_client.messages.create = AsyncMock(side_effect=exc)
+    with patch("src.analyzer.io.ai_review.anthropic.AsyncAnthropic", return_value=fake_client):
+        return await review_code("sk-test", "feat: test", [("app.py", "+ x = 1")])
+
+
+class TestApiErrorCarriesItsCause:
+    """`api_error` 로 폴백한 이유가 결과에 남는가."""
+
+    async def test_exception_class_name_is_recorded(self):
+        """예외 클래스명이 남는다 — 이것이 「벤더인가 우리 코드인가」의 축이다."""
+        result = await _review_raising(httpx.ConnectError("DNS lookup failed"))
+        assert result.status == "api_error"
+        assert result.error_type == "ConnectError"
+
+    async def test_attribute_error_is_recorded_as_itself_not_as_a_vendor_failure(self):
+        """🔴 코드 버그가 벤더 실패와 구별된다 — 이 PR 의 존재 이유.
+
+        `anthropic_caching.py:62-71` 이 명시한 실패 모드: 응답 블록 배열의 첫
+        블록이 text 가 아니면 `AttributeError` 가 나고 4곳 전부 `except Exception`
+        안이라 **조용히 `api_error` 로 삼켜진다**. status 는 여전히 `api_error`
+        이지만(이 PR 은 재분류하지 않는다) 이제 원인이 남는다.
+        """
+        result = await _review_raising(AttributeError("'ThinkingBlock' object has no attribute 'text'"))
+        assert result.status == "api_error"
+        assert result.error_type == "AttributeError"
+
+    async def test_400_and_529_land_as_different_values(self):
+        """🔴 이슈 #1446 의 완료 판정 그 자체.
+
+        anthropic 0.94.0 `_make_status_error`: 400→BadRequestError,
+        529→OverloadedError. 클래스명과 상태코드 **둘 다** 달라야 한다.
+        """
+        bad = await _review_raising(_vendor_error("bad request", 400))
+        overloaded = await _review_raising(_vendor_error("overloaded", 529))
+
+        assert bad.error_status_code == 400
+        assert overloaded.error_status_code == 529
+        assert bad.error_status_code != overloaded.error_status_code
+
+    async def test_timeout_has_no_status_code_but_still_names_its_class(self):
+        """상태코드가 없는 실패 모드 — 클래스명 축은 살아 있어야 한다.
+
+        타임아웃·연결오류는 HTTP 응답이 없어 `status_code` 가 없다. 그때
+        `None` 으로 조용히 비는 것이 아니라 **클래스명이 답을 준다**.
+        """
+        result = await _review_raising(httpx.TimeoutException("read timeout"))
+        assert result.error_type == "TimeoutException"
+        assert result.error_status_code is None
+
+    async def test_a_foreign_exception_cannot_forge_a_vendor_status_code(self):
+        """🔴 우리 쪽 오류가 벤더 상태코드로 위장하지 못한다 (Grok claim-review `01a01997`).
+
+        초판은 `getattr(exc, "status_code", None)` 이었다. 그러면 `.status_code` 를
+        가진 **아무 예외**나 값을 채운다 — Starlette `HTTPException`, 사내 HTTP 래퍼,
+        커스텀 오류 전부. 코드만 보는 관측자(대시보드·집계)는 우리 버그를 벤더 429 로
+        읽는다. 이 PR 의 목적이 「벤더인가 우리 코드인가」를 가르는 것인데 정확히
+        그 축을 거짓말하게 만든다.
+
+        🔴 이 테스트가 없으면 `isinstance` 를 `getattr` 로 되돌려도 스위트가 전부
+        초록이다(실측: 뮤테이션 M5 생존). 좁힌 것을 아무도 안 재고 있었다.
+        """
+        class _ForeignHttpError(Exception):
+            """벤더가 아닌 오류인데 `.status_code` 를 갖는다 (Starlette HTTPException 형)."""
+
+            status_code = 429
+
+        result = await _review_raising(_ForeignHttpError("our own wrapper blew up"))
+
+        assert result.status == "api_error"
+        assert result.error_type == "_ForeignHttpError", "클래스명 축은 살아 있어야 한다"
+        assert result.error_status_code is None, (
+            "벤더가 아닌 예외가 상태코드를 채웠다 — 우리 버그가 벤더 429 로 위장한다"
+        )
+
+    async def test_exception_message_is_never_stored(self):
+        """🔴 금지선 — 예외 **본문**은 저장하지 않는다.
+
+        anthropic 오류 본문은 요청 내용을 되비춘다. diff 조각·자격증명이
+        `analyses.result` 로 새면 그 JSON 은 대시보드·알림으로 그대로 흐른다.
+        클래스명과 상태코드는 「무엇이 실패했나」를 답하고 본문은 답하지 않는다.
+        (#1445 의 「지문이지 본문이 아니다」와 같은 선.)
+        """
+        secret = "sk-ant-api03-LEAKED-SECRET-VALUE"
+        result = await _review_raising(_vendor_error(f"auth failed for {secret}", 401))
+
+        for name, value in vars(result).items():
+            assert secret not in str(value), f"필드 {name} 에 예외 본문이 새어 나왔다"
+
+
+
+    async def test_exception_message_never_reaches_the_stored_dict(self):
+        """🔴 시크릿 검사를 **저장되는 것**까지 넓힌다 (Grok claim-review `01a01997`).
+
+        위 테스트는 `vars(result)` 만 훑는다 — 결과 객체는 깨끗한데 직렬화 단계가
+        본문을 실으면 못 잡는다. DB 로 가는 것은 `build_analysis_result_dict` 의
+        반환값(`analyses.result`)이므로 **그것**을 훑어야 관측이 닫힌다.
+        """
+        from src.worker.pipeline import (  # pylint: disable=import-outside-toplevel
+            build_analysis_result_dict,
+        )
+
+        secret = "sk-ant-api03-LEAKED-SECRET-VALUE"
+        result = await _review_raising(_vendor_error(f"auth failed for {secret}", 401))
+
+        stored = build_analysis_result_dict(
+            ai_review=result,
+            score_result=SimpleNamespace(total=44, grade="D", breakdown={}),
+            analysis_results=[],
+            source="push",
+        )
+        assert secret not in json.dumps(stored, default=str), (
+            "예외 본문이 analyses.result 로 새어 나왔다 — 대시보드·알림까지 그대로 흐른다"
+        )
+        # 대조군 — 이 경로가 실제로 실패를 담고 있어야 위 단언이 공허하지 않다.
+        assert stored["ai_review_error_type"] == "AuthenticationError"
+        assert stored["ai_review_error_status_code"] == 401
+
+
+class TestNonErrorPathsCarryNoCause:
+    """🔴 대조군 — 실패가 아닌 폴백에는 원인 필드가 붙지 않는다.
+
+    이 축이 없으면 「모든 경로에 상수를 채우는」 구현이 위 테스트를 전부
+    통과시킨다. 그러면 `error_type` 이 있다는 사실이 아무것도 뜻하지 않는다.
+    """
+
+    async def test_success_has_no_error_fields(self):
+        payload = json.dumps({
+            "commit_message_score": 18, "direction_score": 19, "test_score": 8,
+            "summary": "ok", "suggestions": [],
+        })
+        result = _parse_response(payload)
+        assert result.status == "success"
+        assert result.error_type is None
+        assert result.error_status_code is None
+
+    async def test_disabled_has_no_error_fields(self):
+        result = await review_code("sk-test", "m", [("a.py", "+1")], enabled=False)
+        assert result.status == "disabled"
+        assert result.error_type is None
+        assert result.error_status_code is None
+
+    async def test_empty_diff_has_no_error_fields(self):
+        result = await review_code("sk-test", "m", [])
+        assert result.status == "empty_diff"
+        assert result.error_type is None
+        assert result.error_status_code is None
+
+
+class TestTheGapIsDeliberate:
+    """🔴 `None` 은 「AI 실패가 없었다」를 뜻하지 **않는다** (Grok claim-review `01a01997`).
+
+    `ai_review_error_type` 이라는 이름과 「항상 나오는 키」는 다음 독자에게
+    *"이것이 AI 오류 분류기"* 라고 가르친다. 그러나 `parse_error` 는 실패인데도
+    `None` 이다 — 이 PR 이 `api_error` 안쪽만 겨냥했기 때문이다.
+
+    다음 독자는 이 구멍을 「버그」로 읽고 모든 경로를 채우려 할 것이다.
+    그 순간 이 테스트가 red 가 되고, 왜 비워 뒀는지를 읽게 된다:
+    **status 값 소비자가 6곳**이고 그중 하나가 i18n 배너
+    (`src/templates/analysis_detail.html:589-591`)라 사람이 눈으로 봐야 한다.
+    분류 자체는 별도 이슈다.
+    """
+
+    async def test_parse_error_carries_no_cause_by_design(self):
+        result = _parse_response("this is not json at all")
+        assert result.status == "parse_error"
+        assert result.error_type is None, (
+            "parse_error 에 원인을 채웠다면 그것은 이 PR 의 범위가 아니다 — "
+            "status 값 재분류는 소비자 6곳(i18n 배너 포함)을 건드린다. 별도 이슈로 낼 것."
         )
