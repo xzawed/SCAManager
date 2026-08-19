@@ -31,7 +31,14 @@ _UNIT_OPEN = re.compile(r"\((\d+)\s*→\s*\*\*(\d+)\*\*\s*단위")
 _FULL_TOTAL = re.compile(r"=\s*\*\*(\d+)\*\*\s*수집")
 
 # STATE 종합 수치: "전체 **5196** 수집 (단위 **5042** + 통합 154)"
-_STATE_TOTAL = re.compile(r"전체 \*\*(\d+)\*\* 수집 \(단위 \*\*(\d+)\*\*")
+# 🔴 **통합 수까지 캡처한다** (2026-08-19 실측). 초판은 `단위 \*\*(\d+)\*\*` 에서 끊겼고
+#    아래 치환 문자열도 거기서 끝났다 — 그래서 `+ 통합 N)` 은 도입 이래 **한 번도 갱신된
+#    적이 없다**. 같은 줄의 전체·단위가 12커밋 이상 갱신되는 동안 통합만 `171` 로 얼어
+#    있었고(참값 174), 그동안 이 스크립트는 「✅ 테스트 수치 일치」를 냈다.
+#    다시 쓰는 줄의 숫자를 **전부** 소유하지 않으면, 안 만지는 숫자가 조용히 언다.
+# Capture the integration count too: the replacement string must own every number on the
+# line it rewrites, or the untouched one freezes while the guard reports agreement.
+_STATE_TOTAL = re.compile(r"전체 \*\*(\d+)\*\* 수집 \(단위 \*\*(\d+)\*\* \+ 통합 (\d+)\)")
 # STATE 추적셀 시작 헤더: "**5196 수집** ... 단위 5042 + 통합 154 (현재)"
 _STATE_CELL_TOTAL = re.compile(r"\*\*(\d+) 수집\*\*")
 _STATE_CELL_UNIT = re.compile(r"단위 (\d+) \+ 통합 \d+ \(현재\)")
@@ -216,6 +223,25 @@ def check_consistency(project_root: Path) -> tuple[bool, list[str]]:
         return False, region_errs
 
     state_total = _first(_STATE_TOTAL, current, 2)         # (전체, 단위) — 종합 수치
+    # 🔴 종합 수치 줄의 **통합 수**도 본다 (Grok claim-review `01a019f1` G4 = BROKEN).
+    #    정규식과 치환만 넓히면 `--fix` 는 그 값을 소유하지만 **검사 모드는 여전히 안 본다** —
+    #    손으로 틀린 값을 넣고 `--fix` 를 안 돌리면 그대로 「✅ 수치 일치」가 나간다.
+    #    실측: 이 블록을 빼고 `통합 999` 를 심으면 EXIT=0 에 초록 3줄이 나온다.
+    #    그 절반짜리 상태가 정확히 이 사고의 원형이다 — 통합이 12커밋 이상 얼어 있는 동안
+    #    이 스크립트는 내내 초록을 냈다. 쓰는 쪽과 **읽는 쪽을 같이** 넓혀야 닫힌다.
+    # Widening the writer alone leaves the reader blind: a hand-edited wrong value still
+    # prints agreement (measured: EXIT=0 with a deliberately wrong count).
+    _HEAD_INTEG = re.compile(r"전체 \*\*\d+\*\* 수집 \(단위 \*\*\d+\*\* \+ 통합 (\d+)\)")
+    _CELL_INTEG = re.compile(r"단위 \d+ \+ 통합 (\d+) \(현재\)")
+    head_integ = _first(_HEAD_INTEG, current)
+    cell_integ = _first(_CELL_INTEG, current)
+    if head_integ is None:
+        msgs.append("❌ STATE 종합 수치 줄에서 통합 수를 못 읽었다 — `+ 통합 N)` 형식 확인")
+    elif cell_integ is not None and head_integ != cell_integ:
+        msgs.append(
+            f"❌ 통합 수 불일치 — 종합 수치 {head_integ} vs 추적셀 {cell_integ}. "
+            "종합 쪽이 파생되지 않은 상태다 (`--fix` 로 갱신할 것)."
+        )
     cell_total = _first(_STATE_CELL_TOTAL, current)         # 추적셀 시작 전체
     cell_unit = _first(_STATE_CELL_UNIT, current)           # 추적셀 시작 단위
     md_badge, md_n = _exactly_one(_README_BADGE, readme, 2)   # (전체, 단위)
@@ -357,7 +383,9 @@ def apply_fix(project_root: Path) -> tuple[bool, list[str]]:
     changed: list[str] = []
     # 🔴 치환은 현재 영역만. 전역 sub 는 원장 `**5365 수집**` 을 덮는다 (단위 2 재현).
     # Substitutions stay in the current region. A global sub rewrites a ledger item.
-    new_current = _STATE_TOTAL.sub(f"전체 **{total}** 수집 (단위 **{unit}**", current, count=1)
+    new_current = _STATE_TOTAL.sub(
+        f"전체 **{total}** 수집 (단위 **{unit}** + 통합 {integ})", current, count=1
+    )
     new_current = _STATE_CELL_TOTAL.sub(f"**{total} 수집**", new_current, count=1)
     new_current = _STATE_CELL_UNIT.sub(
         f"단위 {unit} + 통합 {integ} (현재)", new_current, count=1

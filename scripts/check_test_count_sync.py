@@ -76,7 +76,7 @@ from check_claim_review_trace import (  # noqa: E402  # pylint: disable=wrong-im
 # 🔴 check_docs_sync._STATE_TOTAL 과 **동일 패턴 유지 의무** (PARITY GUARD — testing.md 패턴).
 #   runtime import 결합 대신 사본 + 동등성 테스트(test_check_test_count_sync.py)로 drift 차단.
 # Must stay identical to check_docs_sync._STATE_TOTAL; parity is test-enforced, not import-coupled.
-_STATE_TOTAL = re.compile(r"전체 \*\*(\d+)\*\* 수집 \(단위 \*\*(\d+)\*\*")
+_STATE_TOTAL = re.compile(r"전체 \*\*(\d+)\*\* 수집 \(단위 \*\*(\d+)\*\* \+ 통합 (\d+)\)")
 
 # 마지막 매치 사용 + 단수형 허용 ("1 test collected") — Grok 계약.
 # Use the LAST match; tolerate the singular form.
