@@ -38,7 +38,7 @@ def upgrade() -> None:
     if not is_postgresql(bind):
         return
 
-    # 🔴 멱등성 + end-state 보장 (Codex mutual) — 시작 상태와 무관하게 종료 시 항상
+    # 🔴 멱등성 + end-state 보장 — 시작 상태와 무관하게 종료 시 항상
     # `ix_users_github_id`(UNIQUE) 존재 + `ix_users_google_id` 부재가 되도록 3단계 구성.
     # github_id 는 ORM `unique=True` (0005 도 unique 인덱스) — CREATE UNIQUE 정합.
     #   (1) 정상(google 존재·github 부재): 이름만 stale 한 인덱스를 rename — 인덱스 정의 보존.

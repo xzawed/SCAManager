@@ -420,7 +420,7 @@ def test_claim_decision_concurrent_first_writer_wins_invariant():
     직렬화되든 겹치든 항상 성립해야 하는 invariant**(정확히 1 승자)이다. **직렬화 지점은 DB 의
     UNIQUE(analysis_id) 인덱스** — 제약이 사라지면(2 행) 또는 IntegrityError 흡수가 깨지면(crash) 본
     테스트가 fail 한다. 순차 SQLite 단위 테스트와 달리 실 PG + 동시 스레드 + 실제 IntegrityError 타입을
-    탄다 (사이클 165 회고 testing P1-1 / Codex mutual: 'in-flight 결정론 증명' 과장 표현 정직화).
+    탄다.
     What this guards is the INVARIANT (exactly one winner) that must hold whether timing serializes or
     overlaps; the UNIQUE(analysis_id) index is the serialization point. A dropped constraint (2 rows) or a
     broken IntegrityError absorb (crash) fails this — on real PG with the real IntegrityError type.

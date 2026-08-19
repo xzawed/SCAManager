@@ -98,9 +98,8 @@ def diff_exceeds_cap(patches: list[tuple[str, str]]) -> bool:
     """조립된 diff 가 VERIFIER_DIFF_CHAR_CAP 초과 여부 — 초과 시 검증 호출 없이 fail-closed 차단.
     Whether the assembled diff exceeds VERIFIER_DIFF_CHAR_CAP — over cap → block without calling the verifier.
 
-    절단 후 잘린 위험 hunk 를 모델이 safe 로 오판하는 비결정론 경로를 결정론적으로 봉인
-    (#859 회고 P1-4, Codex mutual NG Option A). 대형 PR 은 자동머지 대신 수동 검토.
-    Deterministically seals the truncated-diff → false-safe path (#859 retro P1-4, Codex mutual NG Option A).
+    절단 후 잘린 위험 hunk 를 모델이 safe 로 오판하는 비결정론 경로를 결정론적으로 봉인. 대형 PR 은 자동머지 대신 수동 검토.
+    Deterministically seals the truncated-diff → false-safe path.
     Large PRs go to manual review instead of auto-merge.
     """
     return len(_assemble_diff_text(patches)) > VERIFIER_DIFF_CHAR_CAP
@@ -143,7 +142,7 @@ def interpret_verdict(raw: object) -> VerifierVerdict:
         return VerifierVerdict(False, False, ("verifier returned non-object",), VERIFIER_PARSE_ERROR)
     if "safe" not in raw or "manipulation_detected" not in raw:
         return VerifierVerdict(False, False, ("verifier response missing keys",), VERIFIER_PARSE_ERROR)
-    # reasons 최대 3개로 제한 — 비-리스트(int/None 등)면 빈 튜플로 안전 처리(interpret_verdict 무예외 보장, Codex 검증 반영)
+    # reasons 최대 3개로 제한 — 비-리스트(int/None 등)면 빈 튜플로 안전 처리
     # Limit reasons to 3 — non-list (int/None etc.) → empty tuple (interpret_verdict never raises)
     reasons_raw = raw.get("reasons")
     reasons = tuple(str(r) for r in reasons_raw[:3]) if isinstance(reasons_raw, list) else ()
@@ -171,7 +170,7 @@ async def verify_merge_safety(ctx) -> VerifierVerdict:
     3) Call OpenAI  4) Interpret verdict. Any step failure → block verdict.
     """
     # 🔴 최외곽 try/except — settings import·interpret_verdict 등 모든 예외를 차단 verdict 로 귀결
-    #    (Codex round2 CHECK1c 반영: fail-closed 를 구조적으로 보장, 향후 변경에도 예외 누출 0).
+    #.
     # Outermost try/except routes ALL errors (incl. settings import / interpret) to a block verdict —
     # structural fail-closed guarantee, robust to future changes.
     try:
@@ -184,9 +183,9 @@ async def verify_merge_safety(ctx) -> VerifierVerdict:
             changed = await asyncio.to_thread(
                 get_pr_files, ctx.github_token, ctx.repo_name, ctx.pr_number)
             patches = [(cf.filename, getattr(cf, "patch", "") or "") for cf in changed]
-            # cap 초과 diff = OpenAI 미호출 + fail-closed 차단 (Codex mutual Option A) — 비용 0 + 결정론적.
+            # cap 초과 diff = OpenAI 미호출 + fail-closed 차단 — 비용 0 + 결정론적.
             #   safe=False + status=OK → 게이트가 VERIFIER_BLOCKED(정상 차단 결정)로 매핑 (api error 아님).
-            # Oversized diff = skip OpenAI + fail-closed block (Codex mutual Option A) — zero cost + deterministic.
+            # Oversized diff = skip OpenAI + fail-closed block — zero cost + deterministic.
             #   safe=False + status=OK → gate maps to VERIFIER_BLOCKED (a decided block, not an api error).
             if diff_exceeds_cap(patches):
                 logger.warning(

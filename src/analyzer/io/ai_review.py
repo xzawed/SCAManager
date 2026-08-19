@@ -142,7 +142,7 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
     # max_retries=2 — explicit so SDK upgrades cannot silently change retry behavior.
     client = anthropic.AsyncAnthropic(api_key=api_key, timeout=60.0, max_retries=2)
     model = model or settings.claude_review_model
-    # 출력 토큰 상한 — settings 경유 configurable (저한도 모델 override 대응, Codex P2).
+    # 출력 토큰 상한 — settings 경유 configurable.
     # 구값 1500 은 한국어 리뷰 JSON(~2660 토큰)을 잘라 stop_reason=max_tokens → parse_error 로
     # 출시 이래 ~80% 실패 (운영 DB + 실제 API 재현, 2026-06-18). default 8192.
     # Output-token cap via settings — configurable for low-output-limit model overrides.

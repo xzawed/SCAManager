@@ -254,7 +254,7 @@ def test_build_comment_shows_incomplete_warning_when_marked():
     body = _build_comment_from_result(_make_result(score=45, static_analysis_incomplete=True))
     assert _has_incomplete_warning(body), "incomplete 경고 배너가 없습니다"
     assert "⚠️" in body
-    # 배너는 점수 위에 위치해야 한다 — 사람이 점수를 읽기 전 신뢰 불가를 먼저 인지 (Codex 제안)
+    # 배너는 점수 위에 위치해야 한다 — 사람이 점수를 읽기 전 신뢰 불가를 먼저 인지
     assert body.index("⚠️") < body.index("45/100"), "경고 배너가 점수보다 아래에 있습니다"
 
 

@@ -33,7 +33,7 @@ import re
 _TARGET_DIRS = ["src/notifier", "src/gate", "src/webhook/providers"]
 # upstream 데이터 출처 — notifier 로 흐르는 필드(AiReviewResult.summary 등)를 만드는 모듈.
 # ai_review.py 의 AI 프롬프트는 review_prompt.py/review_guides 에 분리돼 있어 본 파일은
-# summary 외 사용자 노출 한국어 없음 (사이클 155 회고 — Codex 검증이 발신 경로 누락 식별).
+# summary 외 사용자 노출 한국어 없음.
 # Upstream data-origin modules: where notifier-bound fields originate. ai_review.py's
 # AI prompts live in separate files, so it carries no user-facing Korean besides summary.
 _TARGET_FILES = [

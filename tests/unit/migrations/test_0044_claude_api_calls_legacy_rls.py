@@ -2,7 +2,7 @@
 
 0044 regression guard — the claude_api_calls RLS policy includes legacy repos (user_id IS NULL),
 matching the 0026 analyses/merge convention (paired with the app-layer _owned_repo_ids_subquery fix).
-Found by Codex mutual review: the 0043 policy filtered legacy-repo cost rows under Phase 4 app-role RLS,
+The 0043 policy filtered legacy-repo cost rows under Phase 4 app-role RLS,
 so the monthly-cost KPI still omitted legacy cost despite the app-layer fix.
 """
 import pathlib

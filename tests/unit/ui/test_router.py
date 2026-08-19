@@ -1812,7 +1812,7 @@ def test_overview_parse_error_only_repo_shows_no_grade_not_f():
 
     count_map 은 parse_error 분석을 포함(count=1)하지만 avg_map 은 func.avg(NULL 제외)로 avg=None.
     grade 를 count 가 아닌 avg_raw(실제 평균 존재) 기준으로 판정 → calculate_grade(0)=F 미발생.
-    Codex mutual 검토가 적발한 #25 NULL 저장 회귀(overview avg_grade=F 오분류) 봉인.
+    #25 NULL 저장 회귀(overview avg_grade=F 오분류) 봉인.
     """
     mock_db = MagicMock()
     mock_repo = MagicMock(id=1, full_name="owner/repo", user_id=1, created_at="2026-01-01")

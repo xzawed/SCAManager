@@ -123,7 +123,7 @@ def test_overview_score_survives_repo_to_overview_nav(seeded_page: Page, base_ur
 def test_overview_score_survives_double_init(seeded_page: Page, base_url: str):
     """hx-boost 이중 init(즉시 IIFE 재실행 + afterSettle) 후에도 below-fold count-up 이 복구돼야 한다.
 
-    🔴 회귀(Codex 3R NG P1): effects.js 는 <body> 외부 스크립트라 hx-boost body swap 마다
+    🔴 회귀: effects.js 는 <body> 외부 스크립트라 hx-boost body swap 마다
     IIFE 가 재실행(즉시 init) 되고 htmx:afterSettle 로 init 이 한 번 더 호출된다(nav 당 init 2~3회).
     2번째 init 의 `while(_disposers) dispose` 가 1번째 init 의 onceInView 안전망(observer +
     scroll/resize 리스너)을 해제하는데, 같은 closure 의 `freshOnly(seen)` 이 EMPTY 를 반환해

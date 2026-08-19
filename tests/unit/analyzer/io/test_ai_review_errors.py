@@ -560,8 +560,7 @@ async def test_review_code_passes_sufficient_max_tokens_to_create(monkeypatch):
 
     max_tokens=1500 은 한국어 리뷰 JSON(~2660 토큰)을 잘라 stop_reason=max_tokens →
     불완전 JSON → parse_error 로 출시 이래 ~80% 실패. 기본값으로 복귀하면 본 테스트 fail.
-    🔴 ambient CLAUDE_REVIEW_MAX_TOKENS(ge=1 허용)에 독립적이도록 의도된 기본값으로 고정 (Codex P3 —
-    환경변수가 낮게 설정된 배포 환경에서 suite 가 실패하지 않도록).
+    🔴 ambient CLAUDE_REVIEW_MAX_TOKENS(ge=1 허용)에 독립적이도록 의도된 기본값으로 고정.
     Regression guard: pin the intended default so a valid low env override cannot fail the suite.
     """
     monkeypatch.setattr("src.analyzer.io.ai_review.settings.claude_review_max_tokens", 8192)
@@ -617,7 +616,7 @@ async def test_review_code_no_truncation_marker_on_normal_stop():
 
 
 async def test_review_code_max_tokens_configurable_via_settings(monkeypatch):
-    """🔴 max_tokens 는 settings.claude_review_max_tokens 에서 가져옴 (Codex P2 — 저한도 모델 대응).
+    """🔴 max_tokens 는 settings.claude_review_max_tokens 에서 가져옴.
 
     claude-3-haiku/opus(출력 한도 4096)를 CLAUDE_REVIEW_MODEL/repo override 로 선택하면 8192 일괄
     적용 시 Anthropic 이 400 거부 → api_error(1500 일 땐 작동하던 모델 회귀). env 로 낮춰 대응.

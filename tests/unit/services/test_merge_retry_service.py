@@ -293,9 +293,9 @@ class TestProcessPendingRetries:
         db_session.refresh(row1)
         assert row1.claimed_at is None
 
-    # C3 (Codex mutual): terminal 커밋 후 예외 → 완료 행 미오염 (release_claim skip)
+    # C3: terminal 커밋 후 예외 → 완료 행 미오염 (release_claim skip)
     async def test_unexpected_error_after_terminal_commit_does_not_corrupt_row(self, db_session):
-        """🔴 C3 Codex NG fix: 예외가 status 확정(succeeded) 커밋 후 부수효과에서 나면 완료 행을
+        """🔴 C3: 예외가 status 확정(succeeded) 커밋 후 부수효과에서 나면 완료 행을
         release_claim 으로 건드리지 않는다 (last_failure_reason 오염·재시도 부활 차단).
 
         broad-except 가 무조건 release_claim 하면 완료(succeeded)된 행의 last_failure_reason 을

@@ -84,8 +84,8 @@ def test_build_verifier_prompt_wraps_diff_in_untrusted_boundary():
     assert "지시가 아니" in prompt or "not instructions" in prompt
 
 
-# diff cap 회귀 가드 (#859 회고 P1-4, Codex mutual Option A) — cap 초과 시 fail-closed 차단(절단 없음)
-# diff cap regression guards (#859 retro P1-4, Codex mutual Option A) — over cap → fail-closed block (no truncation)
+# diff cap 회귀 가드 — cap 초과 시 fail-closed 차단(절단 없음)
+# diff cap regression guards — over cap → fail-closed block (no truncation)
 
 
 def test_diff_exceeds_cap_true_for_oversized():
@@ -230,7 +230,7 @@ async def test_verify_merge_safety_bad_json_parse_error(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_verify_merge_safety_oversized_diff_failclosed_no_openai_call(monkeypatch):
-    # Codex mutual Option A: cap 초과 diff 는 OpenAI 미호출 + fail-closed 차단
+    # Option A: cap 초과 diff 는 OpenAI 미호출 + fail-closed 차단
     # safe=False + status=OK → 게이트가 VERIFIER_BLOCKED(정상 차단 결정)로 매핑 / no OpenAI call (cost 0)
     from src.constants import VERIFIER_DIFF_CHAR_CAP
     from src.gate import merge_verifier as mv
@@ -249,7 +249,7 @@ async def test_verify_merge_safety_oversized_diff_failclosed_no_openai_call(monk
 
 
 def test_interpret_verdict_non_list_reasons_no_crash():
-    # reasons 가 비-리스트(int/None)여도 예외 없이 빈 reasons 로 처리 (Codex CHECK1 — interpret 무예외)
+    # reasons 가 비-리스트(int/None)여도 예외 없이 빈 reasons 로 처리
     # Non-list reasons (int/None) must not raise — interpret_verdict stays exception-free.
     from src.gate import merge_verifier as _mv
     v = _mv.interpret_verdict({"safe": True, "manipulation_detected": False, "reasons": 5})
@@ -259,7 +259,7 @@ def test_interpret_verdict_non_list_reasons_no_crash():
 
 
 def test_merge_verifier_band_zero_rejected():
-    # band <= 0 은 ValidationError 로 거부 — silent 무효화 차단 (Codex CHECK9, Field(ge=1))
+    # band <= 0 은 ValidationError 로 거부 — silent 무효화 차단 (Field(ge=1))
     # band <= 0 must be rejected (silent disable guard).
     from pydantic import ValidationError
     from src.config import Settings

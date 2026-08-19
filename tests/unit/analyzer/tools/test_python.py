@@ -516,7 +516,7 @@ class TestC10DefensiveParsing:
         assert issues[0].severity == Severity.ERROR  # HIGH 보존
 
     def test_bandit_missing_severity_and_line_keys_does_not_crash(self, py_ctx):
-        # issue_severity·line_number 둘 다 누락 — 직접 subscript 재도입 시 KeyError 회귀 봉인(Codex NG fix).
+        # issue_severity·line_number 둘 다 누락 — 직접 subscript 재도입 시 KeyError 회귀 봉인.
         payload = '{"results": [{"issue_text": "found"}]}'
         with patch("subprocess.run", return_value=_mock_proc(payload)):
             issues = _BanditAnalyzer().run(py_ctx)
@@ -534,7 +534,7 @@ class TestC10DefensiveParsing:
         assert issues[0].severity == Severity.WARNING
 
     def test_pylint_none_message_and_line_values_safe(self, py_ctx):
-        # message/line 값이 None — `or` 폴백이 None 을 ""/0 으로 정규화하는지 봉인(Codex NG fix).
+        # message/line 값이 None — `or` 폴백이 None 을 ""/0 으로 정규화하는지 봉인.
         payload = '[{"type": "warning", "message": null, "line": null}]'
         with patch("subprocess.run", return_value=_mock_proc(payload)):
             issues = _PylintAnalyzer().run(py_ctx)

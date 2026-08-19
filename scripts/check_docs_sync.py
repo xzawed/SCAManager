@@ -4,7 +4,7 @@ docs 수치 정합 점검 — STATE.md 종합 수치 ↔ STATE 추적셀 시작 
 docs count-sync checker — STATE.md totals ↔ STATE tracking-cell header ↔ README/README.ko badges.
 
 STATE.md 갱신 시 다지점(헤더 종합 수치 + 추적셀 시작 헤더) 및 README.md/README.ko.md Tests 배지가
-서로 어긋나는 drift(과거 #931/#933 Codex 적발)를 turn-0(pre-commit)에서 차단한다. repo 내부 파일만
+서로 어긋나는 drift를 turn-0(pre-commit)에서 차단한다. repo 내부 파일만
 읽어 CI-safe. 단위/전체 카운트가 4 지점에서 모두 일치하면 exit 0.
 
 NOTE: 절대 카운트(pytest --collect-only)와의 대조는 비포함 — 본 체커는 '문서 간 일치'만 검증
