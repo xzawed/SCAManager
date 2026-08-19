@@ -11,12 +11,33 @@
 # 그러면 본문 오타 한 번에 **8 job 전체**(CodeQL·pytest·PG 서비스 포함)가 다시 돈다. `edited` 는
 # 제목·본문·base 변경 모두에서 발화하므로 제목 손질에도 전체가 돈다.
 #
+# 🔴 **이 워크플로는 머지를 풀지 못한다 — 2026-08-19 실측.**
+# 아래 원문 설계는 「같은 job 이름이면 이전 실행의 빨간 required check 를 갱신한다」고 단언했다.
+# 실측은 반대다. body-edit success 를 받은 고유 SHA 18개 중, **같은 SHA 에 빨강이 먼저 있던**
+# 6건은 **그 SHA 로 머지된 적이 없다**. 그중 다른 필수 체크가 전부 초록이라 same-name 만이
+# 유일한 차단 요인이었던 깨끗한 사례는 `1cbc371b`(#1439) 1건이고, PR #1455 의 실시간 관측
+# (같은 이름 초록이 있는 채 `mergeStateStatus=BLOCKED` 20회 연속)이 두 번째다. 반례는 0건.
+# 그리고 과거 세션들은 이미 새 SHA 로 우회하고 있었다 — #1434 의 마지막 커밋은
+# "본문 수치 축 재발화용 빈 커밋", #1387 은 "본문 갱신 재트리거" 다.
+#
+# 🔴 **그래도 지우지 않는다.** 이 워크플로는 편집된 본문을 **다시 검증**한다. 머지를 못 푼다는
+# 것과 쓸모없다는 것은 다르다 — 지우면 그 재검증이 사라진다(Grok claim-review `01a01a1b`).
+# 복구 절차는 `docs/workflow/verify.md` 4번: 새 SHA 다.
+#
+# 남은 미확정: GitHub 이 **끝내** 수렴하지 않는지, 아니면 관측창이 매번 짧았는지.
+# 동일 이름 check-run 이 여럿일 때 branch protection 이 최신 하나를 쓰는지 전부를 요구하는지도
+# 문서에 없다(공식 문서는 status context 기준으로만 「최신」을 말한다).
+#
+# It does NOT clear the earlier red: measured 6/6 non-merges at the same SHA (1 clean case),
+# zero counterexamples. Kept because it still re-validates the edited body. Recovery = a new SHA.
+#
 # 🔴 왜 job 이름이 `ci.yml` 과 **같아야** 하는가 (Grok claim-review `019fbc8e` 의 검증자 적발)
 # required status check 는 **(SHA, check 이름)** 으로 식별된다. 다른 이름의 얇은 워크플로가
 # 초록이 돼도 이전 실행의 빨간 `Repo integrity guards (stdlib backstop)` 은 **그대로 남아**
 # 머지가 계속 막힌다. 반대로 같은 워크플로에서 다른 job 들을 `if` 로 **skip** 시키면, skip 이
 # 성공으로 취급돼 **직전에 실패한 required check 를 세탁**할 수 있다(fail-open). 그래서
 # 별도 워크플로 + **동일 job 이름** + 다른 check 는 손대지 않음 이 유일하게 안전한 형태다.
+# 🔴 위 문단은 **설계 의도**이지 관측이 아니다 — 실측은 이 형태로도 머지가 풀리지 않았다(맨 위).
 #
 # 🔴 step 목록을 `ci.yml` 의 repo-integrity 와 **동일하게** 유지하는 이유
 # 같은 이름의 check 를 갱신하므로, 여기서만 일부 step 을 돌리면 그 check 가 **자기 의미보다
