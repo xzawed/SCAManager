@@ -83,8 +83,21 @@ class _KtlintAnalyzer:
             # 🔴 로그 프리앰블을 걷어낸다 — `startswith("[")` 는 ktlint 1.8.0 에서
             #    자동수정 가능한 위반이 있을 때마다 분석을 0건으로 만들었다
             #    (CI 실측 2026-08-19, `json_array_payload` docstring 참조).
-            payload = json_array_payload(r.stdout.strip())
+            raw = r.stdout.strip()
+            payload = json_array_payload(raw)
             if not payload:
+                # 🔴 **빈 출력과 「못 읽은 출력」을 가른다** (Grok claim-review `01a01fb3` K2).
+                #    둘 다 `[]` 로 떨어지면 관측자에게 **이 버그와 똑같이 보인다** —
+                #    분석기가 죽었는지 정말 깨끗한지 구별되지 않는다. 계약 도구가
+                #    무언가를 뱉었는데 우리가 못 읽었다면 그건 조용히 넘길 일이 아니다.
+                #    (빈 출력은 정상 clean 경로라 로그하지 않는다.)
+                # Distinguish empty stdout (genuinely clean) from unparseable stdout:
+                # collapsing both to [] reproduces the very silence this fix removed.
+                if raw:
+                    logger.warning(
+                        "ktlint produced output but no JSON array — parser contract broken: %s",
+                        raw[:200],
+                    )
                 return []
             data = json.loads(payload)
             issues = []
