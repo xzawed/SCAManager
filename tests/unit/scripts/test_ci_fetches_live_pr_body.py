@@ -138,3 +138,36 @@ def test_the_single_reader_invariant_is_untouched():
 
     assert "PR_BODY:" in step, "스텝이 `PR_BODY` 를 여전히 export 해야 한다"
     assert "check_test_count_sync.py" in step, "스텝이 수치 가드를 실행해야 한다"
+
+
+# ── 하니스 상한 ↔ 서브프로세스 허용치 (2026-08-21 CI 실측) ────────────────
+#
+# 🔴 `pytest.ini` 의 `--timeout=30` 이 실바이너리 테스트의 `timeout=180` 보다 **작아서**
+#    180초 허용이 처음부터 도달 불가였다. `golangci-lint` 가 콜드 캐시에서 30초를
+#    넘기며 `Failed: Timeout (>30.0s)` 로 죽었다 — 그전까지는 우연히 안에 들어왔을 뿐이다.
+#    두 값이 따로 늙으면 같은 사고가 조용히 돌아온다.
+
+
+def test_real_binary_tests_raise_the_harness_timeout_above_the_subprocess_allowance():
+    """🔴 실바이너리 파일이 하니스 상한을 서브프로세스 허용치까지 올려 두는가."""
+    target = _ROOT / "tests" / "integration" / "test_contracted_analyzers_real_binary.py"
+    text = target.read_text(encoding="utf-8")
+    ini = (_ROOT / "pytest.ini").read_text(encoding="utf-8")
+
+    m = re.search(r"--timeout=(\d+)", ini)
+    assert m, "pytest.ini 에서 전역 timeout 을 못 읽었다"
+    harness = int(m.group(1))
+
+    assert "pytestmark = pytest.mark.timeout(" in text, (
+        f"실바이너리 파일에 `pytestmark` 상한 상향이 없다 — 전역 {harness}s 가 그대로 적용돼 "
+        "네트워크·컴파일을 포함하는 실행이 그 안에 못 들어온다."
+    )
+    n = re.search(r"_REAL_BINARY_TIMEOUT\s*=\s*(\d+)", text)
+    assert n, "`_REAL_BINARY_TIMEOUT` 상수가 없다 — 두 값이 리터럴로 갈린다"
+    assert int(n.group(1)) > harness, (
+        f"서브프로세스 허용 {n.group(1)}s 가 하니스 상한 {harness}s 보다 크지 않다 — "
+        "허용치가 도달 불가다."
+    )
+    assert "timeout=_REAL_BINARY_TIMEOUT" in text, (
+        "`_run` 이 상수를 쓰지 않는다 — 리터럴이면 두 값이 따로 늙는다."
+    )

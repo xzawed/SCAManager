@@ -31,6 +31,19 @@ import pytest
 
 from src.analyzer.io.tools.ktlint import json_array_payload
 
+# 🔴 하니스 상한과 서브프로세스 허용치를 맞춘다 (2026-08-21 CI 실측).
+#    `pytest.ini` 의 `--timeout=30` 이 이 파일의 `_run(..., timeout=180)` 보다 **작아서**,
+#    180초 허용은 처음부터 도달 불가였다 — 실바이너리가 30초를 넘기는 순간
+#    `Failed: Timeout (>30.0s)` 로 죽는다. 실제로 `golangci-lint` 가 그렇게 죽었다
+#    (콜드 캐시에서 Go 모듈을 받고 컴파일한다). 그전까지는 **우연히 30초 안에 끝났을 뿐**이다.
+#    실바이너리는 네트워크·컴파일을 포함하므로 단위 테스트 상한이 애초에 맞지 않는다.
+# Align the harness cap with the subprocess allowance: --timeout=30 made the 180s
+# allowance unreachable, so a cold-cache real binary died at 30s.
+_REAL_BINARY_TIMEOUT = 180
+
+pytestmark = pytest.mark.timeout(_REAL_BINARY_TIMEOUT)
+
+
 _OPTIONAL = os.environ.get("CONTRACTED_ANALYZER_TESTS", "").lower() == "optional"
 
 
@@ -70,7 +83,7 @@ def _run(cmd: list[str], cwd) -> subprocess.CompletedProcess:
     try:
         return subprocess.run(  # nosec B603
             cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
-            cwd=str(cwd), timeout=180, check=False,
+            cwd=str(cwd), timeout=_REAL_BINARY_TIMEOUT, check=False,
         )
     except OSError as exc:
         if os.name == "nt":
