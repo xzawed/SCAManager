@@ -180,7 +180,7 @@ async def test_review_code_marks_truncated_when_diff_exceeds_limit():
 
 
 async def test_review_code_truncated_false_when_parse_error_on_large_diff():
-    """🔴 C22 NG-1 fix (Codex mutual): 큰 diff 라도 응답 파싱 실패(parse_error)면
+    """🔴 C22 NG-1 fix: 큰 diff 라도 응답 파싱 실패(parse_error)면
     truncated=False 유지 — success 경로 한정 불변식 (차단은 ai_review_failed 담당).
     A large diff with a parse_error must NOT set truncated (success-path-only invariant).
     """

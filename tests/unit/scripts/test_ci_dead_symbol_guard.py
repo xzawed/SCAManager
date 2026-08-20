@@ -4,14 +4,14 @@ CI dead-symbol guard integrity (retro C1 — root fix for the self-inflicted Cod
 tests/ 미사용 import(F401)·변수(F841)가 pre-merge 에서 안 잡혀 main full-scan CodeQL 에 사후
 포착 → 별도 fix PR(#516/#517/#520/#521/#522) 을 반복 유발한 cascade 를 차단한다(A2: PR diff 한정).
 
-🔴 불변식 검증 3중 봉인 (Codex mutual R1~R3 적발 반영):
+🔴 불변식 검증 3중 봉인:
   (R1) lint-changed-tests job 영역에만 한정 — ci.yml 전체 검색은 다른 job(secret-scan base.sha)
        토큰으로 false-pass.
   (R2) flake8 가 변경 파일 변수 `$changed` 에 실행됨을 긍정 단언 — `tests/\b` 부정 정규식은
        `/`가 비단어문자라 \b 미매칭 = 무력.
   (R3) run: 스크립트의 셸 주석 제거 후 매칭 — 정답 명령을 주석 decoy 로 넣고 실제론 full-scan 하는
        comment false-pass 봉인 (#936 학습 — _strip_comments 동일 패턴).
-Three-layer sealing from Codex mutual R1-R3: scope to the lint job, assert flake8 runs on $changed,
+Three-layer sealing: scope to the lint job, assert flake8 runs on $changed,
 and strip shell comments before matching (so a decoy command in a comment can't false-pass).
 """
 import re
@@ -64,7 +64,7 @@ def test_lint_job_is_pr_diff_scoped():
     assert "git diff" in code and "tests/" in code, "lint job 이 변경 파일 diff 미산출"
     # 🔴 flake8 인자는 변경 파일 변수($changed) 단독이어야 함 — 뒤에 리터럴 경로(`$changed tests/`)
     #    덧붙이기 = 전체 스캔 차단 (R4: $changed 가 마지막/유일 인자임을 `\s*$`(MULTILINE)로 강제).
-    #    flake8 arg must be the lone $changed — forbids appending a literal path that re-enables full-scan (Codex R4).
+    #    flake8 arg must be the lone $changed — forbids appending a literal path that re-enables full-scan.
     assert re.search(r"--select=F401,F841\s+\$changed\s*$", code, re.MULTILINE), \
         "flake8 인자가 $changed(변경 파일) 단독이 아님 — 리터럴 경로 덧붙이기 = 전체 스캔 위험"
     # find 기반 전체 스캔 금지 (diff 우회 변조 차단 — R1 적발 케이스)

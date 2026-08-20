@@ -80,19 +80,19 @@ _WEB_API_MODULES = [
 # repos/stats/repo_report 는 cross-tenant 전체 데이터를 반환하는 시스템/관리 엔드포인트라
 # Phase 4 비-BYPASSRLS app role 전환 시 `app.user_id=''` 로 RLS 가 owned 행을 은닉/차단한다.
 # 따라서 background 모듈과 동일하게 `WorkerSessionLocal as SessionLocal`(BYPASSRLS) 경유 의무 —
-# 현 BYPASSRLS postgres 의 cross-tenant 동작을 Phase 4 후에도 보존 (Codex mutual #2 Phase 4 갭).
+# 현 BYPASSRLS postgres 의 cross-tenant 동작을 Phase 4 후에도 보존.
 # System-context API modules — authenticated by the global `require_api_key`, no user session.
 # repos/stats/repo_report are system/admin endpoints returning cross-tenant data; after the Phase 4
 # non-BYPASSRLS app-role switch (`app.user_id=''`) RLS would hide/block owned rows. They must route
 # through `WorkerSessionLocal as SessionLocal` (BYPASSRLS) like background modules, preserving the
-# current cross-tenant behavior through Phase 4 (Codex mutual #2 Phase 4 gap).
+# current cross-tenant behavior through Phase 4.
 _SYSTEM_API_MODULES = [
     "src/api/repos.py",
     "src/api/stats.py",
     "src/api/repo_report.py",
 ]
 
-# bare SessionLocal import 허용 웹 모듈 전수 allowlist (16 파일 — Codex R1 강화 가드).
+# bare SessionLocal import 허용 웹 모듈 전수 allowlist.
 # 신규 src 모듈이 SessionLocal 계열을 import 하면 BACKGROUND/WEB 중 한쪽에 분류 의무 —
 # 미등재 시 inventory 테스트가 자동 fail (db.md WorkerSessionLocal 라우팅 규칙 페어).
 # Exhaustive allowlist of web modules permitted to import bare SessionLocal (16 files).
@@ -434,7 +434,7 @@ class TestWebModulesDoNotUseWorkerSession:
 # ---------------------------------------------------------------------------
 # 테스트 7: 전수 inventory 가드 — src 전체 SessionLocal 계열 import 분류 강제
 # Test 7: exhaustive inventory guard — every src import of the SessionLocal family
-#         must be classified (Codex R1 강화 — 신규 모듈 누락 자동 fail)
+#         must be classified
 # ---------------------------------------------------------------------------
 
 def _iter_src_py() -> list:
@@ -522,8 +522,8 @@ class TestSessionFactoryInventory:
 
 
 # ---------------------------------------------------------------------------
-# 테스트 8: 재바인딩 금지 가드 — alias 우회 차단 (Codex R1 강화)
-# Test 8: rebinding ban guard — blocks alias bypass via reassignment (Codex R1)
+# 테스트 8: 재바인딩 금지 가드 — alias 우회 차단
+# Test 8: rebinding ban guard — blocks alias bypass via reassignment
 # ---------------------------------------------------------------------------
 
 class TestNoSessionFactoryRebinding:
@@ -576,8 +576,8 @@ class TestNoSessionFactoryRebinding:
 
 
 # ---------------------------------------------------------------------------
-# 테스트 9: 모듈 객체 import 금지 가드 — `import src.database` 우회 차단 (Codex R2)
-# Test 9: module-object import ban — blocks the `import src.database` bypass (Codex R2)
+# 테스트 9: 모듈 객체 import 금지 가드 — `import src.database` 우회 차단
+# Test 9: module-object import ban — blocks the `import src.database` bypass
 # ---------------------------------------------------------------------------
 
 class TestNoDatabaseModuleObjectImport:

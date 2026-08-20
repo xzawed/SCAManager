@@ -6,14 +6,12 @@ Revision ID: 0044
 Revises: 0043
 
 0043 정책의 repo 서브쿼리가 `WHERE user_id = app.user_id` 만이라, Phase 4(app-role, 비-BYPASSRLS)
-대시보드 읽기에서 legacy repo(user_id IS NULL) 비용 행이 RLS 로 필터링돼 월비용 KPI 에서 누락됐다
-(Codex mutual 적발). analyses/merge_attempts 정책(0026)은 이미 `WHERE user_id IS NULL OR
+대시보드 읽기에서 legacy repo(user_id IS NULL) 비용 행이 RLS 로 필터링돼 월비용 KPI 에서 누락됐다. analyses/merge_attempts 정책(0026)은 이미 `WHERE user_id IS NULL OR
 user_id = app.user_id` 로 legacy 를 포함하므로, 동일 대시보드 owner 시맨틱 정합을 위해
 claude_api_calls 정책의 repo 서브쿼리에도 `user_id IS NULL` 을 추가한다
 (app-layer `claude_api_cost_repo._owned_repo_ids_subquery` legacy 포함 수정과 페어).
 The 0043 repo subquery only allowed `WHERE user_id = app.user_id`, so under Phase 4 app-role RLS,
-legacy-repo (user_id IS NULL) cost rows were filtered out of the monthly-cost KPI (found by Codex
-mutual review). The analyses/merge_attempts policies (0026) already include `user_id IS NULL`, so we
+legacy-repo (user_id IS NULL) cost rows were filtered out of the monthly-cost KPI. The analyses/merge_attempts policies (0026) already include `user_id IS NULL`, so we
 align the claude_api_calls repo subquery to the same convention (pairs with the app-layer fix).
 """
 from alembic import op

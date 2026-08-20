@@ -261,7 +261,7 @@ def test_magnetic_hover_registers_on_overlapping_cards(seeded_page, base_url):
     """effects.js setupMagnetic 이 .repo-card 에 mousemove 핸들러를 등록해야 한다.
     setupMagnetic registers a mousemove handler on .repo-card.
 
-    회귀 가드 (U2 Codex mutual): `.repo-card` 는 setupEntryAnimations 와 setupMagnetic 가
+    회귀 가드: `.repo-card` 는 setupEntryAnimations 와 setupMagnetic 가
     모두 대상으로 삼는 셀렉터다. effect 간 멱등 추적이 공유되면(단일 seen 집합) entry 가
     먼저 노드를 소비해 magnetic 이 freshOnly 에서 전부 skip → magnetic hover 가 초기 로드·
     hx-boost swap 양쪽에서 등록되지 않는다. effect 별 독립 추적이어야 mousemove 가 발화한다.

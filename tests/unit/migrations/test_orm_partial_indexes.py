@@ -32,7 +32,7 @@ def _where_str(ix, dialect):
     """Index 의 방언별 부분 WHERE 술어 문자열 반환 (미설정 시 None).
 
     text() 로 선언한 WHERE 는 str() 가 원문 술어를 그대로 반환 — 술어 정확 비교로
-    술어 뒤바뀜/오타(예: global↔repo NULL 술어 swap)를 차단 (Codex mutual 강화).
+    술어 뒤바뀜/오타(예: global↔repo NULL 술어 swap)를 차단.
     """
     where = ix.dialect_options[dialect].get("where")
     return None if where is None else str(where)
@@ -55,7 +55,7 @@ def test_insight_cache_partial_unique_indexes_declared():
     repo = _index(tbl, "uq_insight_cache_repo")
     assert glob is not None and repo is not None, "부분 유니크 인덱스 ORM 미선언 (#18 drift ④' 회귀)"
     # 유니크 + 부분 WHERE 술어 정확 비교 — 전역(repo_id IS NULL) / 리포별(repo_id IS NOT NULL).
-    # 술어 정확 비교로 global↔repo NULL 술어 뒤바뀜 차단 (Codex mutual 강화).
+    # 술어 정확 비교로 global↔repo NULL 술어 뒤바뀜 차단.
     assert glob.unique and repo.unique, "부분 인덱스가 unique 가 아님 — 캐시 키 무결성 위반"
     assert [c.name for c in glob.columns] == ["user_id", "days", "language"]
     assert [c.name for c in repo.columns] == ["user_id", "days", "language", "repo_id"]

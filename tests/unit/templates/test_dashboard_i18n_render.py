@@ -487,7 +487,7 @@ def test_dashboard_locale_none_defaults_to_ko():
 # 🔴 repos 모드 점수추이 차트(repoTrendChart) 공백 회귀 봉인 (#921 후속, 2026-06-17).
 # vendor `chart.umd.min.js` <script> 로드 조건이 overview `trend` 만 검사하던 탓에 repos 모드는
 # Chart.js 가 로드조차 안 돼(scriptCount=0) 차트가 영구 공백이었다. E2E 는 CI 미실행이라
-# 이 렌더 단위 테스트가 fast-CI 의 1차 봉인이다 (Codex mutual 검증 보강 제안).
+# 이 렌더 단위 테스트가 fast-CI 의 1차 봉인이다.
 
 
 def _repos_context(score_trend):

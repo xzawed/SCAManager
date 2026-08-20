@@ -47,7 +47,7 @@ def test_0027_policy_has_owner_isolation():
     """0027 정책은 owner 격리(repo_id → repositories.user_id = current app user) 구조를 포함한다.
 
     구조 단언으로 격리 골격을 잠근다 — `current_setting`·정책명만 확인하면 `repo_id IN` /
-    `SELECT id FROM repositories` / `WHERE user_id =` 가 제거돼도 통과(가드 무력화). (Codex mutual NG fix)
+    `SELECT id FROM repositories` / `WHERE user_id =` 가 제거돼도 통과(가드 무력화).
     """
     module = _load_0027()
     sql = module._RLS_SECURITY_ALERT_LOGS  # pylint: disable=protected-access

@@ -3,7 +3,7 @@
 env-vars 싱크 점검 — src/config.py Settings 필드 ↔ docs/reference/env-vars.md 등재 정합.
 env-vars sync checker — Settings env fields ↔ env-vars.md table entries.
 
-신규 환경변수 env-vars.md 미등재(사이클 82/119 Codex 반복 적발)를 turn-0 차단.
+신규 환경변수 env-vars.md 미등재를 turn-0 차단.
 내부 전용/파생 필드는 _INTERNAL_FIELDS allowlist 제외. stdlib 전용. 미등재 0건이면 exit 0.
 Block newly added env vars missing from env-vars.md (cycle 82/119 repeated findings).
 Internal/derived-only fields are excluded via _INTERNAL_FIELDS allowlist. stdlib only. Exit 0 if none missing.

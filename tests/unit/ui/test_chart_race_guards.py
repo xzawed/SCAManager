@@ -134,11 +134,11 @@ def test_repo_detail_i18n_accessible_to_buildchart():
         "격리 시 buildChart 의 I18N 참조가 ReferenceError (운영 scoreChart 미표시 사고)"
     )
     # 🔴 범용 window.I18N 전역 회귀 차단 — 다른 페이지(add_repo 의 var I18N 등)와 충돌해 hx-boost
-    # 왕복 시 덮어써져 차트 재빌드가 깨진다(Codex P2). repo 고유 네임스페이스만 허용.
+    # 왕복 시 덮어써져 차트 재빌드가 깨진다. repo 고유 네임스페이스만 허용.
     # `window.I18N = {` 할당 패턴만 검사(주석의 'window.I18N' 언급은 허용)
     assert "window.I18N = {" not in src, (
         "repo_detail.html: 범용 window.I18N 전역 할당 회귀 → 다른 페이지 var I18N(add_repo.html:201)과 "
-        "충돌(hx-boost 왕복 시 덮어쓰기, Codex P2). window._repoChartI18N 고유 네임스페이스 사용"
+        "충돌. window._repoChartI18N 고유 네임스페이스 사용"
     )
     # (2) buildChart 가 고유 전역을 지역 참조 + onload race graceful (미정의 시 return)
     assert "var I18N = window._repoChartI18N" in src, (

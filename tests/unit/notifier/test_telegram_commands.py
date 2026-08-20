@@ -365,7 +365,7 @@ def test_handle_connect_success_resets_failure_counter(db):
 
 
 def test_handle_connect_already_linked_preserves_failure_counter(db):
-    """🔴 C12 NG fix (Codex mutual): 유효 OTP 를 맞췄으나 set 이 already_linked
+    """🔴 C12 NG fix: 유효 OTP 를 맞췄으나 set 이 already_linked
     (ValueError)로 실패하면 연결 실패이므로 실패 카운터를 초기화하지 않는다.
     A valid OTP that fails at set (already linked) must NOT reset the counter —
     clear() runs only after set_telegram_user_id succeeds.

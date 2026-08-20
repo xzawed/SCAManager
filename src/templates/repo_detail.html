@@ -732,7 +732,7 @@
     if (!canvasEl) return;
     /* Chart.js 비동기 로드 미완료 시 안전 종료 / Guard against async Chart.js load race */
     if (typeof Chart === 'undefined') return;
-    /* I18N 은 repo 고유 전역(window._repoChartI18N) — 다른 페이지 var I18N 전역 충돌 회피(Codex P2).
+    /* I18N 은 repo 고유 전역(window._repoChartI18N) — 다른 페이지 var I18N 전역 충돌 회피.
        지역 var 로 참조 + 미정의 시 graceful return(onload race: vendor chart.umd.min.js 캐시 즉시
        로드로 onload→_repoChartReady→buildChart 가 I18N block 정의 전 호출 → 이후 applyFilters→
        buildChart 가 재렌더). ReferenceError/TypeError throw 방지.
@@ -873,7 +873,7 @@ const _i18nCard = document.querySelector('.history-card');
 // IIFE-격리 const 면 `ReferenceError: I18N is not defined` 로 차트 throw(운영 scoreChart 미표시
 // 사고, 2026-06-18 F12). 🔴 범용 window.I18N 은 다른 페이지(add_repo 의 var I18N 등)와 전역
 // 네임스페이스 충돌 → hx-boost 왕복(repo_detail→/repos/add→Back) 시 덮어써져 차트 재빌드가
-// 깨짐(Codex P2) → repo 고유명 사용. const I18N 은 이 block 내부 참조용으로 유지.
+// 깨짐 → repo 고유명 사용. const I18N 은 이 block 내부 참조용으로 유지.
 // Repo-scoped global so buildChart (separate block) can reference it WITHOUT clobbering other
 // pages' global `I18N` (add_repo's var I18N) across hx-boost back-nav. const I18N stays for block-local use.
 const I18N = window._repoChartI18N = {
