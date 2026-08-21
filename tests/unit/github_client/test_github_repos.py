@@ -210,7 +210,10 @@ async def test_commit_scamanager_files_creates_new():
     # GET to check file existence → 404 (file not found).
     mock_get_resp = MagicMock()
     mock_get_resp.status_code = 404
-    mock_get_resp.json.return_value = {}
+    # 🔴 `private` 포함 — 2026-08-21 부터 `commit_scamanager_files` 가 커밋 전에
+    #    `GET /repos/{full}` 로 공개 여부를 본다(공개 리포에 hook_token 을 넣지 않음).
+    #    이 더블은 GET 하나를 모든 호출에 재사용하므로 그 응답이 두 역할을 겸한다.
+    mock_get_resp.json.return_value = {"private": True}
 
     # PUT 성공 응답
     # PUT success response.
@@ -248,7 +251,10 @@ async def test_commit_scamanager_files_updates_existing():
 
     mock_get_resp = MagicMock()
     mock_get_resp.status_code = 200
-    mock_get_resp.json.return_value = {"sha": existing_sha}
+    # 🔴 `private` 포함 — 2026-08-21 부터 `commit_scamanager_files` 가 커밋 전에
+    #    `GET /repos/{full}` 로 공개 여부를 본다(공개 리포에 hook_token 을 넣지 않음).
+    #    이 더블은 GET 하나를 모든 호출에 재사용하므로 그 응답이 두 역할을 겸한다.
+    mock_get_resp.json.return_value = {"sha": existing_sha, "private": True}
 
     mock_put_resp = MagicMock()
     mock_put_resp.status_code = 200
@@ -281,7 +287,10 @@ async def test_commit_scamanager_files_returns_true_on_success():
 
     mock_get_resp = MagicMock()
     mock_get_resp.status_code = 404
-    mock_get_resp.json.return_value = {}
+    # 🔴 `private` 포함 — 2026-08-21 부터 `commit_scamanager_files` 가 커밋 전에
+    #    `GET /repos/{full}` 로 공개 여부를 본다(공개 리포에 hook_token 을 넣지 않음).
+    #    이 더블은 GET 하나를 모든 호출에 재사용하므로 그 응답이 두 역할을 겸한다.
+    mock_get_resp.json.return_value = {"private": True}
 
     mock_put_resp = MagicMock()
     mock_put_resp.status_code = 201
@@ -310,7 +319,10 @@ async def test_commit_scamanager_files_returns_false_on_error():
 
     mock_get_resp = MagicMock()
     mock_get_resp.status_code = 404
-    mock_get_resp.json.return_value = {}
+    # 🔴 `private` 포함 — 2026-08-21 부터 `commit_scamanager_files` 가 커밋 전에
+    #    `GET /repos/{full}` 로 공개 여부를 본다(공개 리포에 hook_token 을 넣지 않음).
+    #    이 더블은 GET 하나를 모든 호출에 재사용하므로 그 응답이 두 역할을 겸한다.
+    mock_get_resp.json.return_value = {"private": True}
 
     with patch("src.github_client.repos.get_http_client") as mock_get:
         mock_client = AsyncMock()

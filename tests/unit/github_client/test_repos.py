@@ -29,10 +29,30 @@ def _mock_response(status_code: int, sha: str | None = None) -> MagicMock:
     return resp
 
 
+def _private_repo_response() -> MagicMock:
+    """`GET /repos/{full}` 의 비공개 응답 — visibility 가드가 먼저 소비한다.
+
+    🔴 2026-08-21: `commit_scamanager_files` 가 커밋 **전에** 리포 공개 여부를 조회한다
+    (공개 리포에 `hook_token` 을 넣지 않기 위해). 그래서 GET 순서 리스트의 **첫 응답**은
+    이제 파일 sha 가 아니라 리포 메타데이터다. 이 헬퍼가 없으면 sha 응답이 visibility 로
+    해석돼 `private` 없음 → 공개 간주 → 커밋 거부가 되고, 아래 테스트들이 전부 red 가 된다.
+    The visibility lookup now consumes the first GET; these tests exercise the private path.
+    """
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.json.return_value = {"private": True}
+    resp.raise_for_status = MagicMock()
+    return resp
+
+
 def _make_client(get_responses: list, put_responses: list) -> AsyncMock:
-    """GET과 PUT 각각 순서대로 응답을 반환하는 AsyncMock 클라이언트."""
+    """GET과 PUT 각각 순서대로 응답을 반환하는 AsyncMock 클라이언트.
+
+    GET 리스트 앞에 **비공개 리포 응답**을 자동으로 붙인다 — 호출부 6곳이 전부
+    비공개 경로를 검사하므로 각 테스트가 그 사실을 반복해 적지 않게 한다.
+    """
     mock_client = AsyncMock()
-    mock_client.get = AsyncMock(side_effect=get_responses)
+    mock_client.get = AsyncMock(side_effect=[_private_repo_response(), *get_responses])
     mock_client.put = AsyncMock(side_effect=put_responses)
     return mock_client
 
