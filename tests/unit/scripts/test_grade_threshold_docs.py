@@ -3,13 +3,17 @@
 ## 사고 (2026-08-01 문서 감사)
 
 살아 있는 점수 문서가 등급 임계값을 정본과 다르게 적으면 대시보드 문구가 어긋난다.
-정본 = `src/constants.py::GRADE_THRESHOLDS`. 문서는 `docs/reference/scoring.md` 한 곳이다.
+정본 = `src/constants.py::GRADE_THRESHOLDS`.
+
+🔴 이 파일은 원래 `docs/reference/scoring.md` 를 「문서 한 곳」으로 지목했으나
+   **그 파일은 존재하지 않는다**(2026-08-21 전수 감사). 그래서 이 가드는 특정 문서가
+   아니라 **수치를 적은 모든 문서**를 훑는다 — 아래 스캔 범위가 그 구현이다.
 
 ## 이 파일이 강제하는 것
 
 기대값을 손으로 적지 않고 **`src/constants.py` 에서 파싱**한다. 임계값이 바뀌면 문서도
 따라와야 하고, 안 따라오면 여기서 깨진다. 🔴 문서에 수치를 박는 것 자체가 drift 원인이므로,
-새 문서는 가급적 `scoring.md` 를 링크하고 수치를 복제하지 않는 편이 낫다.
+새 문서는 가급적 수치를 복제하지 말고 `src/constants.py::GRADE_THRESHOLDS` 를 가리킨다.
 
 Cross-checks grade thresholds written in docs against the single source in constants.py.
 """
@@ -68,7 +72,7 @@ def test_doc_thresholds_match_constants(doc):
     assert not wrong, (
         "문서의 등급 임계값이 `src/constants.py::GRADE_THRESHOLDS` 와 다르다:\n  "
         + "\n  ".join(wrong)
-        + "\n→ 문서를 고치거나, 아예 수치를 빼고 `docs/reference/scoring.md` 를 링크할 것."
+        + "\n→ 문서를 고치거나, 아예 수치를 빼고 `src/constants.py::GRADE_THRESHOLDS` 를 가리킬 것."
     )
 
 

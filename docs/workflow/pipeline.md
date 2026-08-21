@@ -2,14 +2,14 @@
 
 진입 = `src/webhook/providers/github.py:426` (BackgroundTask). 이하 좌표는 `src/worker/pipeline.py`.
 
-1. 메타 추출(`:365`). sha 가 비었거나 all-zeros 면 즉시 반환(`:386`).
-2. repo 등록 + sha 중복 판정(`:459`). 중복이면 PR 만 gate 재실행. CLI 훅 행(`source=="cli"`)은 중복이 아니라 교체 대상(`:665`).
-3. `_begin_attempt`(`:940`) 는 비싼 작업 **앞**. `_finish_attempt` 는 정상 종료 3곳(`:959`·`:1046`·`:1056`)에서만.
-4. 파일 수집(`:950`) — 동기 I/O 는 `asyncio.to_thread` offload.
-5. 병렬 실행(`:990`) — `_run_static_with_timeout` + `review_code` gather.
+1. 메타 추출(`:377`). sha 가 비었거나 all-zeros 면 즉시 반환(`:398`).
+2. repo 등록 + sha 중복 판정(`:471`). 중복이면 PR 만 gate 재실행. CLI 훅 행(`source=="cli"`)은 중복이 아니라 교체 대상(`:677`).
+3. `_begin_attempt`(`:952`) 는 비싼 작업 **앞**. `_finish_attempt` 는 정상 종료 3곳(`:971`·`:1058`·`:1068`)에서만.
+4. 파일 수집(`:962`) — 동기 I/O 는 `asyncio.to_thread` offload.
+5. 병렬 실행(`:1002`) — `_run_static_with_timeout` + `review_code` gather.
    - 정적: 파일별 순차, deadline 60초(`:33`), 도구당 30초(`src/constants.py:107`). 초과 시 완료분 보존 + `incomplete`.
    - AI: `src/analyzer/io/ai_review.py:68`. diff 16000자 절단(`review_prompt.py:31`), 모델 기본 `claude-sonnet-4-6`(`src/config.py:41`).
-6. 채점(`:1007`) → 저장·게이트(`:729`, PR 만 `run_gate_check`) → 알림(`:1058`).
+6. 채점(`:1019`) → 저장·게이트(`:741`, PR 만 `run_gate_check`) → 알림(`:1070`).
 
 ## 점수
 
@@ -20,9 +20,9 @@
 
 미분석이 만점으로 머지되지 않게 `result` 에 실어 게이트로 넘긴다.
 
-- `static_analysis_incomplete`(`:759`) — deadline 초과 · 전량 실패 · 도구 타임아웃 · fetch 실패.
+- `static_analysis_incomplete`(`:771`) — deadline 초과 · 전량 실패 · 도구 타임아웃 · fetch 실패.
 - `ai_review_truncated`(`:80`) — 입출력 절단. 점수는 유지한다.
-- `static_uncovered_languages`(`:86`) — 지원 분석기 없음. 차단하지 않고 가시화만.
+- `static_uncovered_languages`(`:98`) — 지원 분석기 없음. 차단하지 않고 가시화만.
 - 신뢰도 판정 = `src/scorer/reliability.py` — `should_null_persist_score`(AI 실패만 컬럼 NULL) / `score_is_unreliable`(그 외는 집계만 제외).
 
 ## 분석기 추가 (25종)
