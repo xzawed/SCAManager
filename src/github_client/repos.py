@@ -9,7 +9,7 @@ import httpx
 from src.constants import GITHUB_API
 from src.github_client.helpers import repo_path as _repo_path
 from src.shared.http_client import get_http_client
-from src.shared.log_safety import sanitize_for_log
+from src.shared.log_safety import safe_repo_full_name, sanitize_for_log
 
 logger = logging.getLogger(__name__)
 
@@ -274,6 +274,48 @@ echo "✅ SCAManager pre-push 훅 설치 완료: ${ROOT}/${HOOK}"
 """
 
 
+async def is_public_repo(token: str, repo_full_name: str) -> bool | None:
+    """리포가 **공개**면 True, 비공개면 False, 판정 불가면 None.
+
+    🔴 `None` 은 "공개가 아니다" 가 아니라 **"모른다"** 다 — 호출부는 모를 때
+    쓰지 않아야 한다(fail-closed). 두 값을 섞으면 GitHub 이 흔들릴 때마다
+    시크릿이 나간다.
+    Returns True=public, False=private, None=unknown. None must fail closed.
+    """
+    # 🔴 형태 검증 — URL 경로 **끝**이 사용자 값이면 CodeQL py/partial-ssrf 다
+    #    (형제 함수들은 `/hooks` 처럼 고정 접미가 붙어 걸리지 않는다).
+    #    「접근 가능 목록에 있는가」는 의미 검증이라 sanitizer 로 인식되지 않는다.
+    safe_name = safe_repo_full_name(repo_full_name)
+    if safe_name is None:
+        logger.warning("repo 이름 형태 거부 (%s)", sanitize_for_log(repo_full_name))
+        return None
+    try:
+        client = get_http_client()
+        resp = await client.get(
+            f"{GITHUB_API}/repos/{_repo_path(safe_name)}",
+            headers=_auth_headers(token),
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+    except (httpx.HTTPError, OSError, ValueError) as exc:
+        # 🔴 사용자 제어 값은 `sanitize_for_log` 경유 — 원문 보간은 py/log-injection.
+        logger.warning(
+            "repo visibility 조회 실패 (%s): %s", sanitize_for_log(repo_full_name), exc,
+        )
+        return None
+    private = payload.get("private")
+    if not isinstance(private, bool):
+        # 🔴 필드가 없거나 형이 다르면 **공개로 간주**한다. 모호할 때 안전한 쪽은
+        #    "쓰지 않는다" 이지 "쓴다" 가 아니다.
+        # An absent/malformed `private` is treated as public: the safe side of ambiguity.
+        logger.warning(
+            "repo visibility 응답에 private 없음 (%s) — 공개로 간주",
+            sanitize_for_log(repo_full_name),
+        )
+        return True
+    return private is False
+
+
 async def commit_scamanager_files(
     token: str,
     repo_full_name: str,
@@ -282,6 +324,30 @@ async def commit_scamanager_files(
 ) -> bool:
     """`.scamanager/config.json`과 `.scamanager/install-hook.sh`를 Repo에 커밋.
     이미 파일이 있으면 sha를 포함해 업데이트. 성공 시 True, 실패 시 False 반환."""
+    # 🔴 **공개 리포에는 쓰지 않는다** (2026-08-21 전수 감사).
+    #    아래 `config.json` 은 살아 있는 `hook_token` 을 평문으로 담고 사용자 리포에
+    #    커밋된다. 공개 리포면 그 토큰이 공개되고, 그 토큰은 `POST /api/hook/result` 를
+    #    **X-API-Key 없이** 인증하므로(`src/api/hook.py:147`) 누구나 그 리포의
+    #    `score`/`grade` 행을 써 넣을 수 있다 — 게이팅 제품의 1차 산출물에 대한 무인증 쓰기다.
+    #    (완화: `hook.py:285` 가 `static_analysis_incomplete` 를 무조건 세워 auto-merge 는 막는다.
+    #     그래서 강제 머지는 불가하고 점수·대시보드 오염이 가능하다.)
+    #
+    # 🔴 「토큰만 빼고 쓰기」가 아니라 「쓰지 않기」인 이유 (Grok claim-review `01a024b5`):
+    #    커밋되는 훅 스크립트는 토큰을 config.json 에서만 읽고 **env 폴백이 없다**.
+    #    토큰을 빼면 설치된 것처럼 보이고 첫 실행에서 조용히 죽는다. 그리고 그 스크립트는
+    #    사용자 리포에 커밋되는 **분산 계약**이라, 폴백을 추가해도 이미 옛 스크립트를
+    #    가진 클론은 고쳐지지 않는다. 쓰는 쪽에서 막는 것이 완결된 차단이다.
+    # Never commit the token to a public repo; refuse instead of writing a token-less config,
+    # because the committed hook reads the token only from config.json (no env fallback).
+    public = await is_public_repo(token, repo_full_name)
+    if public is not False:
+        reason = "공개 리포" if public else "visibility 판정 불가"
+        logger.warning(
+            "hook 파일 커밋 중단 (%s) — %s. hook_token 을 리포에 넣지 않는다.",
+            sanitize_for_log(repo_full_name), reason,
+        )
+        return False
+
     config_content = json.dumps({
         "server": server_url.rstrip("/"),
         "repo": repo_full_name,

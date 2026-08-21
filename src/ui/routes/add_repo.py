@@ -5,6 +5,8 @@ import secrets
 import time
 from typing import Annotated
 
+from urllib.parse import quote
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
@@ -182,15 +184,36 @@ async def add_repo(  # pylint: disable=too-many-locals
             config.hook_token = hook_token
         db.commit()
 
+        # 🔴 리다이렉트에 쓸 이름은 **DB 에서 읽는다** — 폼 값을 그대로 넣으면
+        #    CodeQL py/url-redirection 이다. `fullmatch` 형태 검증만으로는 taint 가
+        #    끊기지 않았다(실측: sanitizer 추가 후에도 재발). `settings.py:299` 가
+        #    같은 이유로 `repo.full_name` 을 쓴다.
+        # Read the name back from the DB: a regex check did not clear the taint.
+        persisted_repo_name = repo.full_name
+
     server_url = webhook_base_url(request)
-    await commit_scamanager_files(
+    # 🔴 반환값을 **무시하지 않는다** (2026-08-21 전수 감사 · Grok claim-review `01a024b5` K2).
+    #    구판은 결과와 무관하게 `?hook_installed=1` 로 보내, 커밋이 거부된 경우에도
+    #    「설치됨」 배너를 띄웠다. 공개 리포는 이제 의도적으로 거부되므로
+    #    (`commit_scamanager_files` 가 hook_token 을 공개 리포에 넣지 않는다),
+    #    그 거부가 성공으로 보이면 사용자는 훅이 도는 줄 알고 기다린다.
+    # Do not ignore the result: a refused commit used to still render "installed".
+    hook_committed = await commit_scamanager_files(
         current_user.plaintext_token or "",
         repo_full_name,
         server_url,
         hook_token,
     )
 
+    # 성공했을 때만 설치 배너를 띄운다. 실패 사유(공개 리포/조회 실패)는 서버 로그에
+    # 남고, 사용자는 설정 화면에서 다시 시도할 수 있다 — 새 i18n 문자열을 만들지 않는다.
+    # 🔴 `quote(..., safe="")` — 원문 보간은 CodeQL py/url-redirection.
+    #    `settings.py:299` 가 같은 이유로 같은 관용구를 쓴다.
+    suffix = "?hook_installed=1" if hook_committed else ""
+    # 🔴 형태 검증 후 인코딩 — `quote` 만으로는 CodeQL taint 가 끊기지 않는다.
+    #    위 `:150` 의 접근가능 목록 검사는 **의미** 검증이라 sanitizer 로 인식되지 않는다.
+    safe_repo_name = quote(persisted_repo_name, safe="")
     return RedirectResponse(
-        url=f"/repos/{repo_full_name}?hook_installed=1",
+        url=f"/repos/{safe_repo_name}{suffix}",
         status_code=303,
     )

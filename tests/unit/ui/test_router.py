@@ -665,7 +665,9 @@ def test_add_repo_post_creates_repo_and_webhook():
                 )
 
     assert r.status_code == 303
-    assert "/repos/owner/new-repo" in r.headers["location"]
+    # 🔴 `quote(..., safe="")` 로 인코딩된다 — 원문 보간은 CodeQL py/url-redirection.
+    #    `settings.py:299` 가 같은 이유로 같은 관용구를 쓴다.
+    assert "/repos/owner%2Fnew-repo" in r.headers["location"]
     assert mock_db.add.called
     assert mock_db.commit.called
 
