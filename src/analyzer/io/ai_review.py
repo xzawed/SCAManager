@@ -131,16 +131,30 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
     # as build_review_prompt). If so, the review scored only a partial diff → propagate as a marker.
     was_truncated = len(diff_text) > MAX_DIFF_CHARS
 
-    # Anthropic SDK 기본 timeout=600s 는 BackgroundTask 슬롯을 10분 점유 위험.
-    # HTTP_CLIENT_TIMEOUT 보다 여유 두고 60s 로 설정 — 평균 응답 5-15s 대비 충분.
-    # max_retries=2 — SDK 기본값 명시화. 5xx / connection error / timeout 시 SDK 가
-    # exponential backoff 으로 자동 재시도. SDK 업그레이드로 기본값 변경되면
-    # 운영 영향 — 명시적 인자로 면역. tests/unit/analyzer/io/test_ai_review_errors.py
-    # ::test_review_code_passes_explicit_max_retries_to_anthropic_client 회귀 가드.
-    # Default SDK timeout (600s) can occupy a BackgroundTask slot for 10 min.
-    # Set 60s — well above typical 5-15s response, far below SDK default.
-    # max_retries=2 — explicit so SDK upgrades cannot silently change retry behavior.
-    client = anthropic.AsyncAnthropic(api_key=api_key, timeout=60.0, max_retries=2)
+    # 🔴 **운영 실측으로 정한 값** (2026-08-21, claude_api_calls 847 시도).
+    #
+    #   단일 시도로 끝난 790건: p50 **38.7s** · p95 **55.5s** · max **59.7s**
+    #   → max 가 59.7s 인 것은 여유가 아니라 **분포가 상한에서 잘렸다**는 뜻이다.
+    #
+    #   60s 상한에 걸린 것: **48 / 847 (5.7%)**
+    #     - 36건(4.4%)은 SDK 재시도로 살아났다 — 그 대가가 p50 **117s**, max 182s.
+    #     - 12건(1.4%)은 **3회를 전부 소진하고 실패**했다(전부 ~180s 실측).
+    #
+    #   지연은 **출력 토큰에 거의 선형**이다: <1500 out → p50 21.5s / 3000+ out → p50 56.8s.
+    #   즉 상한에 걸리는 것은 「느린 네트워크」가 아니라 **길게 쓰는 리뷰**다.
+    #
+    # 90s 인 이유: 3000+ 출력 구간의 p50 이 56.8s 라, 잘리지 않으면 대개 50~70s 에 끝난다.
+    # 120s 이상으로 올리면 실패 건이 슬롯을 6분 이상 점유해 Railway SIGTERM 창이 넓어진다.
+    #
+    # 🔴 `max_retries=1` — 재시도는 **생성을 처음부터 다시 시작**한다. 긴 출력이 원인일 때
+    #    재시도는 해법이 아니라 같은 벽에 다시 부딪히는 것이다(위 12건이 그 증거다).
+    #    일시적 5xx·연결 오류에는 1회로 충분하다. 2회를 유지하면 90s × 3 = 4.5분이 된다.
+    #    (2번째 재시도까지 간 건은 실측 7 / 847.)
+    #
+    # Measured in production: the 60s cap truncated the distribution (single-attempt max 59.7s).
+    # Latency is near-linear in OUTPUT tokens, so retries restart the same long generation.
+    # 90s covers the p50 of the slowest output bucket; retries drop to 1.
+    client = anthropic.AsyncAnthropic(api_key=api_key, timeout=90.0, max_retries=1)
     model = model or settings.claude_review_model
     # 출력 토큰 상한 — settings 경유 configurable.
     # 구값 1500 은 한국어 리뷰 JSON(~2660 토큰)을 잘라 stop_reason=max_tokens → parse_error 로

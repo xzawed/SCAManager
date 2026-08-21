@@ -976,3 +976,88 @@ class TestTheGapIsDeliberate:
             "parse_error 에 원인을 채웠다면 그것은 이 PR 의 범위가 아니다 — "
             "status 값 재분류는 소비자 6곳(i18n 배너 포함)을 건드린다. 별도 이슈로 낼 것."
         )
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 타임아웃·재시도 값은 **운영 실측**에서 나왔다 (2026-08-21)
+#
+# 기존 가드 두 개는 「인자가 존재하는가」와 「범위 안인가」만 본다. 그래서 60 → 90
+# 이든 90 → 15 든 통과한다. 아래는 **값 자체**를 실측 근거와 함께 못박는다.
+#
+# 실측(claude_api_calls 847 시도):
+#   · 단일 시도 790건 — p50 38.7s · p95 55.7s · **max 59.7s**
+#     max 가 상한 바로 아래인 것은 여유가 아니라 **분포가 잘렸다**는 뜻이다.
+#   · 60s 상한에 걸린 것 48 / 847 (5.7%) — 36건은 재시도로 회복(p50 117s),
+#     **12건은 3회를 전부 소진하고 실패**(전부 ~180s).
+#   · 지연은 **출력 토큰에 거의 선형** — <1500 out p50 21.5s / 3000+ out p50 56.8s.
+#
+# 🔴 그래서 재시도를 늘리는 것은 해법이 아니다 — 재시도는 **긴 생성을 처음부터
+#    다시** 시작하므로 같은 벽에 다시 부딪힌다. 12건이 그 증거다.
+# ══════════════════════════════════════════════════════════════════════════
+
+
+async def _capture_client_kwargs() -> dict:
+    """`AsyncAnthropic(...)` 에 실제로 넘어간 kwargs."""
+    response_obj = MagicMock()
+    response_obj.content = [MagicMock(text='{"summary": "ok"}')]
+    response_obj.usage = MagicMock(input_tokens=10, output_tokens=20)
+    fake_client = MagicMock()
+    fake_client.messages.create = AsyncMock(return_value=response_obj)
+    captured: dict = {}
+
+    def _init(*_args, **kwargs):
+        captured.update(kwargs)
+        return fake_client
+
+    with patch("src.analyzer.io.ai_review.anthropic.AsyncAnthropic", side_effect=_init):
+        await review_code("sk-test", "feat: x", [("a.py", "+ x = 1")])
+    return captured
+
+
+class TestTimeoutIsSetFromMeasuredLatency:
+    """상한이 실측 분포를 덮는가."""
+
+    async def test_timeout_exceeds_the_slowest_measured_single_attempt(self):
+        """🔴 단일 시도 max 가 **59.7s** 였다 — 60s 는 그 위에 여유가 없었다.
+
+        3000+ 출력 구간의 p50 이 56.8s 이므로, 잘리지 않으면 그 구간도 대개
+        50~70s 에 끝난다. 상한은 그것을 덮어야 한다.
+        """
+        timeout = (await _capture_client_kwargs())["timeout"]
+
+        assert timeout >= 75, (
+            f"timeout={timeout}s — 실측 단일시도 max 59.7s · 3000+ 출력 p50 56.8s 를 "
+            "덮지 못한다. 상한에 걸린 48/847(5.7%) 이 그대로 남는다."
+        )
+
+    async def test_timeout_is_not_so_large_that_a_stuck_call_holds_the_slot(self):
+        """🔴 반대 방향 — 너무 크면 실패 건이 슬롯을 오래 점유한다.
+
+        이 파이프라인은 in-process BackgroundTask 이고 Railway 재배포가 SIGTERM 을
+        보낸다. 실패 1건이 차지하는 최악 시간 = timeout × (max_retries + 1).
+        """
+        kw = await _capture_client_kwargs()
+        worst_case = kw["timeout"] * (kw["max_retries"] + 1)
+
+        assert worst_case <= 240, (
+            f"최악 {worst_case}s — 실패 1건이 슬롯을 4분 넘게 점유한다. "
+            "SIGTERM 창이 넓어져 분석이 조용히 증발한다(analysis_attempts 가 그 탐지 수단)."
+        )
+
+
+class TestRetriesDoNotRestartLongGenerations:
+    """재시도가 긴 생성 문제의 해법이 아니라는 판단을 고정한다."""
+
+    async def test_retries_are_minimal(self):
+        """🔴 실측: 3회를 전부 소진하고 실패한 것이 12건, 2번째 재시도까지 간 것이 7건.
+
+        지연 원인이 **출력 길이**이므로 재시도는 같은 벽에 다시 부딪힌다.
+        일시적 5xx·연결 오류에는 1회면 충분하다.
+        """
+        retries = (await _capture_client_kwargs())["max_retries"]
+
+        assert retries <= 1, (
+            f"max_retries={retries} — 재시도는 생성을 처음부터 다시 시작한다. "
+            "긴 출력이 원인일 때 횟수를 늘리면 대기만 길어진다(실측 12건이 ~180s 소진)."
+        )
+        assert retries >= 1, "0 이면 일시적 5xx·연결 오류에 회복 기회가 없다"
