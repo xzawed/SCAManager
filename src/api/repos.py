@@ -23,7 +23,12 @@ from src.models.repository import Repository
 from src.models.analysis import Analysis
 from src.models.gate_decision import GateDecision
 from src.repositories import repo_config_repo
-from src.config_manager.manager import upsert_repo_config, RepoConfigData
+from src.config_manager.manager import (
+    RepoConfigData,
+    _config_field_names,
+    get_repo_config,
+    upsert_repo_config,
+)
 
 router = APIRouter(prefix="/api", dependencies=[require_api_key])
 
@@ -156,13 +161,43 @@ def list_repo_analyses(
 @router.put("/repos/{repo_name:path}/config")
 @limiter.limit(RATE_LIMIT_HEAVY)
 def update_repo_config(request: Request, repo_name: str, body: RepoConfigUpdate):  # pylint: disable=unused-argument
-    """리포지토리 Gate·알림 설정을 업데이트한다."""
+    """리포지토리 Gate·알림 설정을 업데이트한다 — **보낸 필드만** 반영한다.
+
+    🔴 **보내지 않은 필드를 기본값으로 덮지 않는다** (2026-08-21 실측).
+
+    구판은 `**body.model_dump()` 로 통째로 upsert 했다. Pydantic 은 보내지 않은 필드를
+    **기본값으로 채우므로**, 필드 하나만 바꾸는 PUT 이 나머지 16개를 공장 기본값으로
+    되돌렸다. 실행 확인: `RepoConfigUpdate(approve_mode="auto").ai_review_enabled` 는
+    **True** 다 — 즉 승인 모드만 바꾸는 호출이 AI 리뷰를 **켠다**.
+
+    가설이 아니라 이 엔드포인트가 공표한 사용 계약이다: 테스트 호출 15건이 전부
+    부분 바디(17+ 필드 중 1~6개)이고 `ai_review_enabled` 를 포함한 것은 0건이다.
+
+    비용: 2026-08 실측에서 repo 하나가 켜진 채 남아 월 Anthropic 할당량의 **99.96%**
+    ($27.31/$27.32 · 510/512 호출)를 쓰고 HTTP 400(소진)으로 멈췄다.
+
+    🔴 `Optional` 로 바꾸지 않았다 — `check_config_5way_sync.py` 가 ORM ↔ RepoConfigData
+    ↔ RepoConfigUpdate 의 **필드 집합**을 대조하므로 선언은 그대로 두고, `model_fields_set`
+    이 알려주는 **보낸 필드만** 기존 설정 위에 얹는다. 422(불완전 바디 거부)는 위 15건이
+    공표한 부분 PUT 계약을 깨뜨리므로 택하지 않았다 (Grok claim-review `01a02424` G3·G4).
+
+    Merge only the fields actually sent: Pydantic fills unsent fields with factory defaults,
+    so a one-field PUT used to reset the other sixteen — including turning AI review back on.
+    """
+    sent = body.model_dump(exclude_unset=True)
     with SessionLocal() as db:
+        # 기존 값을 바탕으로 삼는다. 행이 없으면 `get_repo_config` 가 기본값을 준다 —
+        # 그 경우에만 기본값이 정당하다(생성이지 덮어쓰기가 아니다).
+        current = get_repo_config(db, repo_name)
+        merged = {name: getattr(current, name) for name in _config_field_names()}
+        merged.update(sent)
         record = upsert_repo_config(db, RepoConfigData(
             repo_full_name=repo_name,
-            **body.model_dump(),
+            **merged,
         ))
-        return {"repo_full_name": record.repo_full_name, **body.model_dump()}
+        # 🔴 응답은 **저장된 것**을 돌려준다 — 요청 에코가 아니다. 구판은 보내지 않은
+        #    필드까지 기본값으로 에코해 호출자에게 거짓 상태를 보여줬다.
+        return {"repo_full_name": record.repo_full_name, **merged}
 
 
 @router.delete("/repos/{repo_name:path}")

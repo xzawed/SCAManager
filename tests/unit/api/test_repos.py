@@ -94,23 +94,39 @@ def test_put_repo_config_with_auto_merge_true():
     assert r.json()["auto_merge"] is True
 
 
-def test_put_repo_config_auto_merge_defaults_false():
-    with patch("src.api.repos.SessionLocal") as mock_cls:
-        with patch("src.api.repos.upsert_repo_config") as mock_upsert:
-            mock_db = MagicMock()
-            mock_cls.return_value = _make_session_mock(mock_db)
-            mock_upsert.return_value = MagicMock(
-                repo_full_name="owner/repo", approve_mode="disabled",
-                approve_threshold=75, reject_threshold=50,
-                pr_review_comment=True, merge_threshold=75,
-                notify_chat_id=None, n8n_webhook_url=None,
-                auto_merge=False,
-            )
-            r = client.put("/api/repos/owner%2Frepo/config", json={
-                "approve_mode": "disabled",
-            })
+def test_put_repo_config_preserves_unsent_auto_merge():
+    """🔴 구판은 **결함을 계약으로 못박고 있었다** (2026-08-21 정정).
+
+    이 테스트의 이름은 `..._auto_merge_defaults_false` 였고, `approve_mode` 만 보낸
+    PUT 의 응답에서 `auto_merge is False` 를 단언했다. 즉 **보내지 않은 필드가
+    공장 기본값으로 채워지는 것**을 정상으로 기술하고 있었다.
+
+    그 기전이 `ai_review_enabled`(기본 True)에서는 값비싼 사고가 된다 — 승인 모드만
+    바꾸는 호출이 AI 리뷰를 **켠다**. 2026-08 실측: repo 하나가 켜진 채 남아 월
+    Anthropic 할당량의 99.96%를 썼다.
+
+    새 계약: 보내지 않은 필드는 **저장된 값을 유지**한다. 그러므로 저장값이 True 면
+    응답도 True 여야 한다 — 기본값 False 가 아니다.
+
+    🔴 실 DB 축은 `test_partial_put_preserves_unsent_fields.py` 가 담당한다.
+    여기(mock 파일)에서는 **병합 입력이 기존 설정에서 온다**는 배선만 고정한다.
+    """
+    from src.config_manager.manager import RepoConfigData  # pylint: disable=import-outside-toplevel
+
+    stored = RepoConfigData(repo_full_name="owner/repo", auto_merge=True)
+    with patch("src.api.repos.SessionLocal") as mock_cls,          patch("src.api.repos.get_repo_config", return_value=stored),          patch("src.api.repos.upsert_repo_config") as mock_upsert:
+        mock_db = MagicMock()
+        mock_cls.return_value = _make_session_mock(mock_db)
+        mock_upsert.return_value = MagicMock(repo_full_name="owner/repo")
+        r = client.put("/api/repos/owner%2Frepo/config", json={
+            "approve_mode": "disabled",
+        })
+
     assert r.status_code == 200
-    assert r.json()["auto_merge"] is False
+    assert r.json()["auto_merge"] is True, (
+        "보내지 않은 `auto_merge` 가 기본값 False 로 덮였다 — 저장값을 유지해야 한다"
+    )
+    assert r.json()["approve_mode"] == "disabled", "보낸 값은 반영돼야 한다"
 
 
 # --- 누락 필드 버그 수정 테스트 (discord/slack/webhook/email) ---
