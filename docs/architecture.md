@@ -50,7 +50,7 @@ POST /webhooks/github (webhook/providers/github.py)
 run_analysis_pipeline() (worker/pipeline.py)
   blank·중복 SHA → 조기 return · gather(정적, review_code()) 타임아웃 → static_incomplete 마커
   AI off(AI_REVIEW_DISABLED·RepoConfig.ai_review_enabled) → disabled, 정적은 계속
-  배점 = docs/reference/scoring.md → find_by_sha() 재확인(중복이면 notify skip)
+  배점 = scorer/calculator.py:30 · 등급 = constants.py:38 → find_by_sha() 재확인(중복이면 notify skip)
   save_new() first-writer-wins · AI 실패 시 score/grade NULL · pr_number 면 run_gate_check()
   알림 = REGISTRY send() gather
 run_gate_check() PR 만 (gate/engine.py)
