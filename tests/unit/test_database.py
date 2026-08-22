@@ -189,3 +189,53 @@ class TestEnginePoolSettings:
         assert db_mod.engine.pool._max_overflow == 12
         assert db_mod.engine.pool._timeout == 20
         assert db_mod.engine.pool._recycle == 900
+
+
+# ─── 🔴 PostgreSQL 세션 타임존을 UTC 로 고정한다 ──────────────────────────────
+#
+# 이 저장소의 DateTime 컬럼은 전부 naive(`TIMESTAMP WITHOUT TIME ZONE`)이고,
+# 모델 default 18곳(`default=` 15 + `onupdate=` 3)은 aware `datetime.now(timezone.utc)` 를
+# 그 컬럼에 넣는다. psycopg2 는 aware 값을 timestamptz 로 보내고, PostgreSQL 은 그것을
+# `timestamp` 로 캐스팅할 때 **세션 TimeZone** 을 쓴다. 세션이 UTC 가 아니면 저장값이
+# 오프셋만큼 이동하고, 그 뒤의 모든 naive 비교(윈도우 경계·만료·보존 sweep)가 함께 어긋난다.
+#
+# `_build_connect_args` 에는 그 타임존을 고정하는 것이 없었다 — 서버/역할 기본값에 의존했다.
+# SQLite 단위 테스트는 tzinfo 를 벗겨 이 축을 통째로 숨긴다.
+#
+# 값을 바꾸는 대신 **해석의 기준**을 고정한다: 기존에 저장된 행의 의미가 바뀌지 않는다.
+# Pin the session TimeZone instead of rewriting 18 column defaults: existing rows keep meaning.
+
+def test_postgres_connect_args_pin_the_session_timezone_to_utc(monkeypatch):
+    """PostgreSQL URL 이면 `options` 로 세션 TimeZone 을 UTC 로 고정해야 한다."""
+    _, db_mod = _reload_with_settings(monkeypatch)
+    args = db_mod._build_connect_args("postgresql://u:p@localhost/db")
+
+    options = args.get("options", "")
+    assert "timezone" in options.lower(), (
+        f"connect_args 에 세션 타임존 고정이 없다: {args!r} — 서버 기본값에 의존하면 "
+        "aware default 18곳이 naive 컬럼에 오프셋만큼 이동해 저장된다."
+    )
+    assert "utc" in options.lower(), f"타임존이 UTC 가 아니다: {options!r}"
+
+
+def test_sqlite_gets_no_libpq_options(monkeypatch):
+    """대조축 — SQLite 는 libpq 인수를 받지 않는다. 넣으면 연결 자체가 깨진다."""
+    _, db_mod = _reload_with_settings(monkeypatch)
+    assert db_mod._build_connect_args("sqlite:///:memory:") == {}
+
+
+def test_explicit_url_options_are_not_clobbered(monkeypatch):
+    """URL query 가 이미 `options` 를 지정했으면 덮어쓰지 않는다.
+
+    `sslmode` 와 같은 규칙이다(`_build_connect_args` docstring) — 운영자가 URL 에 적은
+    값이 코드의 기본값에 조용히 지워지면, 그 사람은 자기가 설정한 것이 왜 안 먹는지
+    알 수 없다. libpq 는 URL 의 `options` 와 connect_args 의 `options` 가 겹치면
+    connect_args 를 쓴다.
+    """
+    _, db_mod = _reload_with_settings(monkeypatch)
+    args = db_mod._build_connect_args(
+        "postgresql://u:p@localhost/db?options=-c%20statement_timeout%3D5000"
+    )
+    assert "options" not in args, (
+        f"URL 이 지정한 options 를 코드가 덮어쓴다: {args!r}"
+    )
