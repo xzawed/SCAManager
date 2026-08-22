@@ -8,6 +8,7 @@ import random
 from datetime import datetime, timedelta
 
 from src.gate.merge_reasons import BRANCH_PROTECTION_BLOCKED, UNKNOWN_STATE_TIMEOUT, UNSTABLE_CI, is_retriable_tag
+from src.shared.time_utils import to_naive_utc
 
 
 def parse_reason_tag(reason: str | None) -> str:
@@ -161,6 +162,6 @@ def is_expired(row, *, now: datetime, max_age_hours: int = 24) -> bool:
     """
     # timezone-aware now를 naive UTC로 변환 후 비교
     # Convert timezone-aware now to naive UTC for comparison with naive created_at
-    now_naive = now.replace(tzinfo=None)
+    now_naive = to_naive_utc(now)
     expiry = row.created_at + timedelta(hours=max_age_hours)
     return now_naive >= expiry

@@ -267,3 +267,65 @@ def test_is_expired_custom_max_age_within_limit():
     created = datetime(2026, 4, 26, 10, 0, 0)  # 2 hours ago (naive)
     row = _FakeRow(created_at=created)
     assert is_expired(row, now=now, max_age_hours=3) is False
+
+
+# ─── 🔴 만료 판정은 **순간**에 달려야 한다 — 그 순간을 어느 시간대로 표현했든 ────────
+#
+# 위 `test_is_expired_*` 는 전부 `now` 를 UTC 로 넘긴다. 그래서 `is_expired` 가 tzinfo 를
+# **변환 없이 벗기는** 것(`now.replace(tzinfo=None)`)이 드러나지 않았다. UTC 를 벗기면
+# 우연히 맞는 값이 나오기 때문이다.
+#
+# 이 저장소는 이 클래스를 이미 한 번 겪었다 — `src/shared/time_utils.py` 머리말:
+# "#1197 이 3곳만 고쳐(정책 16 grep 전수 위반) 회고 P1-B 로 재적발됨". 그래서 만들어 둔
+# 것이 `to_naive_utc`(먼저 UTC 로 변환하고 벗긴다)인데, 정작 이 함수가 그것을 쓰지 않았다.
+#
+# Every existing test passes a UTC `now`, so stripping tzinfo without converting looks correct.
+# The verdict must depend on the instant, not on how the caller spelled it.
+
+def _same_instant_in(offset_hours: int, utc_dt: datetime) -> datetime:
+    """같은 순간을 다른 UTC 오프셋으로 표현한 값."""
+    return utc_dt.astimezone(timezone(timedelta(hours=offset_hours)))
+
+
+def test_is_expired_is_independent_of_the_callers_timezone():
+    """같은 순간이면 표현 시간대와 무관하게 같은 판정이어야 한다.
+
+    🔴 실패 시 무엇이 깨지는가: `now` 가 KST(+9)로 들어오면 만료가 **9시간 일찍** 선언된다.
+    재시도 큐 행이 아직 유효한데 expired 로 종결돼 **PR 이 자동 머지되지 않는다**.
+    반대 부호(-05:00)면 만료가 늦게 와서 `max_age` 상한이 사실상 느슨해진다 —
+    무한 재시도를 막으려고 둔 두 상한 중 하나가 거짓이 된다.
+    """
+    now_utc = datetime(2026, 4, 26, 12, 0, 0, tzinfo=timezone.utc)
+    created = datetime(2026, 4, 25, 13, 0, 0)  # 23시간 전 (naive UTC) → 아직 유효
+    row = _FakeRow(created_at=created)
+
+    baseline = is_expired(row, now=now_utc)
+    assert baseline is False, "기준 케이스 자체가 틀렸다 — 픽스처 점검 필요"
+
+    for offset in (9, 5, -5, -8):
+        shifted = _same_instant_in(offset, now_utc)
+        assert shifted == now_utc, "같은 순간이 아니다 — 테스트 구성 오류"
+        assert is_expired(row, now=shifted) is baseline, (
+            f"UTC{offset:+d} 로 표현했더니 판정이 뒤집혔다 — tzinfo 를 변환 없이 벗기고 있다. "
+            f"`to_naive_utc(now)` 를 경유할 것 (src/shared/time_utils.py)."
+        )
+
+
+def test_is_expired_is_independent_of_timezone_on_the_expired_side():
+    """대조축 — 만료된 행에서도 같아야 한다. 한쪽 방향만 보면 절반만 고쳐도 통과한다."""
+    now_utc = datetime(2026, 4, 26, 12, 0, 0, tzinfo=timezone.utc)
+    created = datetime(2026, 4, 25, 11, 0, 0)  # 25시간 전 → 만료
+    row = _FakeRow(created_at=created)
+
+    assert is_expired(row, now=now_utc) is True, "기준 케이스 점검 필요"
+    for offset in (9, -8):
+        assert is_expired(row, now=_same_instant_in(offset, now_utc)) is True, (
+            f"UTC{offset:+d} 에서 만료된 행이 유효로 판정됐다 — 재시도가 상한 없이 계속된다"
+        )
+
+
+def test_naive_now_still_works_unchanged():
+    """회귀 방지 — naive `now` 는 그대로 통과해야 한다(`to_naive_utc` 의 통과 분기)."""
+    created = datetime(2026, 4, 25, 11, 0, 0)
+    row = _FakeRow(created_at=created)
+    assert is_expired(row, now=datetime(2026, 4, 26, 12, 0, 0)) is True

@@ -23,6 +23,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.models.merge_retry import MergeRetryQueue
+from src.shared.time_utils import now_naive_utc, to_naive_utc
 
 # 비종료 상태 — 이 상태의 행만 get_by_sha 에서 반환한다
 # Non-terminal statuses — get_by_sha only returns rows with these statuses.
@@ -140,8 +141,7 @@ def purge_terminal(db: Session, *, older_than_days: int, now: datetime | None = 
     # updated_at 은 naive(ORM 규약) — now 가 aware 여도 naive 로 정규화해 비교 정합 보장
     # updated_at is naive; normalize now to naive so the comparison is dialect-consistent
     _now = (now or _now_naive())
-    if _now.tzinfo is not None:
-        _now = _now.replace(tzinfo=None)
+    _now = to_naive_utc(_now)
     cutoff = _now - timedelta(days=older_than_days)
     deleted = (
         db.query(MergeRetryQueue)
@@ -165,7 +165,7 @@ def _now_naive() -> datetime:
     """현재 UTC 시각 — naive datetime (ORM 규약, tzinfo=None).
     Current UTC time as a naive datetime (ORM convention, tzinfo=None).
     """
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return now_naive_utc()
 
 
 @dataclass

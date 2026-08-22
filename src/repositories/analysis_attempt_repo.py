@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.models.analysis_attempt import AnalysisAttempt
+from src.shared.time_utils import now_naive_utc
 
 
 def _now_naive() -> datetime:
@@ -22,7 +23,7 @@ def _now_naive() -> datetime:
     started_at is a naive DateTime column; comparing it against an aware value diverges on PG
     (TIMESTAMP WITHOUT TIME ZONE), while SQLite silently drops tzinfo and passes — untestable drift.
     """
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return now_naive_utc()
 
 
 def begin_attempt(

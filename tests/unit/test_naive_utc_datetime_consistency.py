@@ -16,6 +16,7 @@ os.environ.setdefault("GITHUB_WEBHOOK_SECRET", "test-secret")
 
 # pylint: disable=wrong-import-position
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import src.repositories.claude_api_cost_repo as cost_repo
@@ -138,4 +139,67 @@ def test_operations_merge_kpi_uses_naive_bound():
     assert dt_params, "MergeAttempt WHERE 경계 datetime 바인드 없음"
     assert all(v.tzinfo is None for v in dt_params), (
         f"_merge_kpi since 경계가 aware: {[p for p in dt_params if p.tzinfo]!r}"
+    )
+
+
+# ─── 🔴 전수 쓸이 — 헬퍼를 우회하는 생 tzinfo 벗기기 금지 ──────────────────────
+#
+# `to_naive_utc` 는 **먼저 UTC 로 변환하고** tzinfo 를 벗긴다. 생 `.replace(tzinfo=None)` 은
+# 변환 없이 벗겨서, 값이 UTC 가 아니면 오프셋만큼 조용히 어긋난다.
+#
+# 이 저장소는 같은 클래스를 두 번 겪었다 — 이 파일이 존재하는 이유(#1197)이고,
+# `src/shared/time_utils.py` 머리말이 "#1197 이 3곳만 고쳐(정책 16 grep 전수 위반)
+# 회고 P1-B 로 재적발됨" 이라고 적어 두었다. **개별 지점을 고치는 것으로는 끝나지 않는다.**
+# 실측(2026-08-22): 헬퍼 도입 후에도 10곳이 생 표기로 남아 있었고, 그중 8곳은 자기가
+# 만들지 않은 값(호출자가 준 `now`, 계산된 `next_retry_at`)에서 tzinfo 를 벗기고 있었다.
+#
+# Fixing individual sites does not close this class; only a repo-wide sweep does.
+
+def test_no_raw_tzinfo_stripping_outside_the_helper():
+    """`src/` 어디에도 생 `.replace(tzinfo=None)` 이 없어야 한다 — `time_utils.py` 제외.
+
+    🔴 왜 지점별 테스트로 부족한가: `is_expired` 를 고쳐도 `merge_retry_service` 의 4곳,
+    `insight_narrative_cache_repo` 의 1곳은 그대로였다. 각 지점마다 시간대 불변식 테스트를
+    쓰는 것은 현실적이지 않고, 새로 추가되는 지점은 어차피 아무도 안 본다.
+    """
+    root = Path(__file__).resolve().parents[2]
+    allowed = {"time_utils.py"}  # 헬퍼 본체 — 여기가 유일하게 정당한 사용처
+    offenders = []
+
+    for path in sorted((root / "src").rglob("*.py")):
+        if path.name in allowed:
+            continue
+        text = path.read_text(encoding="utf-8")
+        for lineno, line in enumerate(text.splitlines(), 1):
+            if "replace(tzinfo=None)" in line:
+                rel = path.relative_to(root).as_posix()
+                offenders.append(f"{rel}:{lineno}  {line.strip()}")
+
+    assert not offenders, (
+        "생 tzinfo 벗기기가 헬퍼를 우회한다 — 값이 UTC 가 아니면 오프셋만큼 어긋난다:\n  "
+        + "\n  ".join(offenders)
+        + "\n\n→ `to_naive_utc(dt)` (변환 후 벗김) 또는 `now_naive_utc()` (현재 시각) 를 쓸 것."
+    )
+
+
+def test_the_sweep_actually_scans_files():
+    """🔴 공허화 차단 — 스캔 범위가 비면 위 검사는 무조건 통과한다."""
+    root = Path(__file__).resolve().parents[2]
+    scanned = [p for p in (root / "src").rglob("*.py") if p.name != "time_utils.py"]
+    assert len(scanned) > 100, f"src/ 스캔 대상이 {len(scanned)}개 — 범위 붕괴"
+
+
+def test_the_helper_itself_converts_before_stripping():
+    """대조축 — 위 쓸이는 *표기*를 강제한다. 헬퍼가 실제로 옳은지는 따로 단언한다.
+
+    표기만 통일하고 헬퍼가 생 벗기기와 같은 동작이면 아무것도 고쳐지지 않는다.
+    """
+    kst = timezone(timedelta(hours=9))
+    aware = datetime(2026, 4, 26, 21, 0, 0, tzinfo=kst)
+
+    assert to_naive_utc(aware) == datetime(2026, 4, 26, 12, 0, 0), (
+        "to_naive_utc 가 UTC 변환 없이 벗기고 있다 — 헬퍼 자신이 결함이면 쓸이는 무의미하다"
+    )
+    assert aware.replace(tzinfo=None) == datetime(2026, 4, 26, 21, 0, 0), (
+        "대조 실패 — 생 벗기기가 다른 값을 준다는 전제가 깨졌다"
     )

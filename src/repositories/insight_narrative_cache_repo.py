@@ -14,6 +14,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from src.models.insight_narrative_cache import InsightNarrativeCache
+from src.shared.time_utils import to_naive_utc
 
 # Phase 2-B sub-option default — TTL 1시간 (cross-verify 권장 보수적 default)
 # Phase 2-B sub-option default — TTL 1 hour (cross-verify recommended conservative default).
@@ -136,7 +137,7 @@ def purge_expired(db: Session, *, now: datetime | None = None) -> int:
     🔴 get_fresh only returns None for expired rows without deleting them, so stale rows pile up
     forever. This purges `expires_at < now`; they are already past TTL so nothing useful is lost.
     """
-    _now = (now or datetime.now(timezone.utc)).replace(tzinfo=None)
+    _now = to_naive_utc(now or datetime.now(timezone.utc))
     deleted = (
         db.query(InsightNarrativeCache)
         .filter(InsightNarrativeCache.expires_at < _now)
