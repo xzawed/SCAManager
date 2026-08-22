@@ -101,9 +101,11 @@ def _pr_payload(repo: str, sha: str, pr_number: int, action: str = "opened") -> 
     }
 
 
-def _post_webhook(client: TestClient, event: str, payload: dict) -> None:
+def _post_webhook(client: TestClient, event: str, payload: dict):
+    """서명된 웹훅 1건 전송 후 응답을 돌려준다(재전송 시나리오가 상태코드를 본다).
+    Send one signed webhook and return the response (the redelivery scenario asserts on it)."""
     payload_bytes = json.dumps(payload).encode("utf-8")
-    client.post(
+    return client.post(
         "/webhooks/github",
         content=payload_bytes,
         headers={
@@ -286,3 +288,105 @@ def test_gate_block_triggers_notifier(integration_db, mock_deps):
     _, kw = notify_mock.call_args
     assert kw["repo_name"] == repo
     assert kw["pr_number"] == pr_num
+
+
+# ---------------------------------------------------------------------------
+# 시나리오 6: **동일 페이로드 재전송** — GitHub "Redeliver" / 202 이후 지연 재시도
+# Scenario 6: identical redelivery — GitHub's "Redeliver" button / a late retry after 202.
+#
+# 🔴 왜 이 축이 따로 필요한가
+#
+# 위 5개 시나리오는 전부 **서로 다른 이벤트**를 보낸다(push→PR, 새 PR, 잘못된 서명,
+# synchronize=새 SHA, 알림). 같은 서명 페이로드를 **두 번** 보내는 축은 없었다.
+# 그런데 재전송은 예외 상황이 아니라 **운영자가 누르는 버튼**이고 GitHub 플랫폼이
+# 지연 재시도로도 만든다 — 즉 상시 입력이다.
+#
+# 재전송을 막는 것은 `pipeline.py` `_regate_pr_if_needed` 의 이른 반환:
+#     if existing is None or existing.pr_number == pr_number:
+#         return
+# 이 한 줄이 단순화되면 같은 SHA 에 대해 게이트가 다시 돌아 **리뷰 코멘트 2회 ·
+# auto-merge 2회 · Telegram 승인 프롬프트 2회**가 나간다. SHA 유니크 제약과
+# `claim_decision` 은 이 경로를 덮지 않는다 — 자동 승인은 `approve.py` 의 upsert 라
+# 재기록될 수 있다.
+#
+# The five scenarios above all send *different* events; none sends the same signed payload
+# twice. Redelivery is a normal, operator-generated input, and the only thing stopping a
+# double gate is one early-return in `_regate_pr_if_needed`.
+# ---------------------------------------------------------------------------
+
+def test_identical_pr_webhook_redelivery_does_not_regate(integration_db, mock_deps):
+    """동일 (repo, sha, pr_number) 이벤트 2회 → 분석 1건 · 게이트 1회 · 알림 1회.
+
+    Identical redelivery must not produce a second Analysis, gate run, or notification.
+    """
+    repo = "owner/repo-redelivery"
+    sha = "sha_redeliver_0001"
+    pr_num = 21
+
+    client = TestClient(app)
+    notify_mock = MagicMock(return_value=([], []))
+    payload = _pr_payload(repo, sha, pr_num)
+
+    with patch("src.worker.pipeline.build_notification_tasks", notify_mock):
+        first = _post_webhook(client, "pull_request", payload)
+        second = _post_webhook(client, "pull_request", payload)  # 🔴 완전히 동일한 재전송
+
+    # ① 재전송은 인증 실패가 아니다 — 서명은 여전히 유효하므로 202 로 받아야 한다.
+    #    (401/500 을 돌려주면 GitHub 배달 로그가 빨개져 운영자가 진짜 장애와 구별 못 한다.)
+    #    A replay is not an auth failure; the signature is still valid, so it must be accepted.
+    assert first.status_code == 202, f"1차 전송이 202 가 아니다: {first.status_code}"
+    assert second.status_code == 202, f"재전송이 202 가 아니다: {second.status_code}"
+
+    # ② 분석 행은 1건, pr_number 는 그대로.
+    session = integration_db()
+    try:
+        db_repo = session.query(Repository).filter_by(full_name=repo).first()
+        assert db_repo is not None, "재전송 처리 중 리포 행이 사라졌다"
+        analyses = session.query(Analysis).filter_by(repo_id=db_repo.id).all()
+        assert len(analyses) == 1, (
+            f"재전송이 Analysis 를 {len(analyses)}건 만들었다 — 동일 SHA 는 1건이어야 한다"
+        )
+        assert analyses[0].pr_number == pr_num, "재전송이 pr_number 를 바꿨다"
+    finally:
+        session.close()
+
+    # ③ 게이트는 1회 — 2회면 리뷰 코멘트·auto-merge·승인 프롬프트가 중복 발사된다.
+    assert mock_deps.call_count == 1, (
+        f"재전송이 run_gate_check 를 {mock_deps.call_count}회 호출했다 — "
+        "중복 리뷰 코멘트·중복 auto-merge·중복 Telegram 승인 프롬프트가 나간다"
+    )
+
+    # ④ 알림도 1회 — ③ 이 막혀도 알림 경로가 따로 새면 사용자에겐 2회로 보인다.
+    assert notify_mock.call_count == 1, (
+        f"재전송이 알림 빌드를 {notify_mock.call_count}회 호출했다 — 사용자에게 중복 통지"
+    )
+
+
+def test_same_sha_different_pr_does_not_steal_the_gate(integration_db, mock_deps):
+    """대조군 — 같은 SHA 라도 **다른 PR#** 는 first-writer-wins 로 게이트를 뺏지 못한다.
+
+    ⓷ 이 "2회 호출을 무조건 막는" 것으로 오해되면 안 된다. 막는 근거는 *동일성*이지
+    *2회라는 횟수*가 아니다. 이 대조군이 없으면 `_regate_pr_if_needed` 를 통째로
+    `return` 으로 바꿔도 위 테스트가 통과한다 — 그건 재전송 방어가 아니라 기능 삭제다.
+
+    Control axis: the guard's basis is *identity*, not *call count*. Without this, stubbing
+    the whole function to `return` would satisfy the test above.
+    """
+    repo = "owner/repo-same-sha-two-prs"
+    sha = "sha_two_prs_0001"
+
+    client = TestClient(app)
+    _post_webhook(client, "pull_request", _pr_payload(repo, sha, 31))
+    _post_webhook(client, "pull_request", _pr_payload(repo, sha, 32))  # 같은 SHA, 다른 PR#
+
+    session = integration_db()
+    try:
+        db_repo = session.query(Repository).filter_by(full_name=repo).first()
+        analyses = session.query(Analysis).filter_by(repo_id=db_repo.id).all()
+        assert len(analyses) == 1, "동일 SHA 는 유니크 — 2건이면 제약이 깨진 것"
+        assert analyses[0].pr_number == 31, (
+            f"두번째 PR #32 가 게이트를 뺏었다(pr_number={analyses[0].pr_number}) — "
+            "first-writer-wins 위반, 잘못된 PR 에 게이트 액션이 적용된다"
+        )
+    finally:
+        session.close()

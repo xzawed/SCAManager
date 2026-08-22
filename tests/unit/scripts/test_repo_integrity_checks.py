@@ -563,3 +563,69 @@ def test_precommit_hook_watches_every_file_the_check_reads():
     for path in ("docs/STATE.md", "README.md", "README.ko.md",
                  "requirements.txt"):
         assert compiled.match(path), f"pre-commit files 패턴이 {path} 를 놓친다"
+
+
+def test_apply_fix_accepts_a_changed_integration_count_from_the_ssot_alone(tmp_path):
+    """🔴 통합 수가 바뀌어도 **이력 꼬리 한 줄만** 고치면 `--fix` 가 통과한다.
+
+    ## 이 축이 없어서 무엇이 깨져 있었나 (실측 2026-08-22)
+
+    `apply_fix` 는 전체·단위를 SSOT 불릿에서 읽으면서 **통합만** 자기가 곧 덮어쓸
+    추적셀(`통합 N (현재)`)에서 읽었다. 그래서 통합 수가 바뀐 커밋에서는 SSOT 불릿을
+    아무리 정확히 적어도 산술 검사가 **옛 통합값**과 대조돼 항상 거부됐다:
+
+        ❌ 이력 SSOT 가 산술적으로 불가능하다 — 전체 7244 ≠ 단위 7060 + 통합 182
+
+    즉 `apply_fix` docstring 이 약속한 *"작성자는 이력에 항목 한 줄만 적고 이걸 돌린다"*
+    가 통합 축에서만 **원리적으로 불가능**했고, 통합만 손으로 먼저 고쳐야 통과했다 —
+    이 스크립트가 없애려던 손 동기화가 바로 그 자리에 남아 있었다.
+
+    기존 `test_apply_fix_derives_every_sink_from_the_history_tail` 은 통합 수를
+    **바꾸지 않은 채** 파생만 훼손하므로 이 경로를 지나가지 않는다.
+
+    The fix path read the integration count from the sink it was about to overwrite, so any
+    commit that changed it could never satisfy the arithmetic check. The existing sink test
+    never varies that number, so it does not cover this path.
+    """
+    root = _count_fixture(tmp_path)
+    state = root / "docs" / "STATE.md"
+    text = state.read_text(encoding="utf-8")
+
+    tail, errs = check_docs_sync._history_tail_bullet(text)  # pylint: disable=protected-access
+    assert not errs and tail, errs
+
+    unit = int(re.search(r"→\s*\*\*(\d+)\*\*\s*단위", tail).group(1))
+    integ = int(re.search(r"통합 (\d+)", tail).group(1))
+    total = int(re.search(r"=\s*\*\*(\d+)\*\*\s*수집", tail).group(1))
+    assert total == unit + integ, f"픽스처 SSOT 가 이미 산술 불일치: {tail!r}"
+
+    # 통합 테스트 2건이 늘었다고 가정 — **이력 불릿만** 고친다(파생은 손대지 않는다).
+    new_integ, new_total = integ + 2, total + 2
+    new_tail = (
+        tail.replace(f"통합 {integ}", f"통합 {new_integ}")
+        .replace(f"= **{total}** 수집", f"= **{new_total}** 수집")
+    )
+    assert new_tail != tail, "불릿 치환이 적용되지 않았다 — 형식이 바뀌었으면 이 테스트도 갱신할 것"
+    state.write_text(text.replace(tail, new_tail, 1), encoding="utf-8")
+
+    ok, msgs = check_docs_sync.apply_fix(root)
+    assert ok, (
+        "통합 수만 바뀌었는데 --fix 가 거부했다 — 통합을 파생 셀에서 읽고 있다는 신호:\n"
+        + "\n".join(msgs)
+    )
+
+    # 새 통합값이 **파생 지점까지** 전파돼야 한다 — 거부하지 않은 것만으로는 부족하다.
+    after = state.read_text(encoding="utf-8")
+    assert f"통합 {new_integ} (현재)" in after, (
+        f"추적셀이 옛 통합값을 유지한다 — 전파 실패: {re.findall(r'통합 [0-9]+ [(]현재[)]', after)}"
+    )
+    assert f"전체 **{new_total}** 수집 (단위 **{unit}** + 통합 {new_integ})" in after, (
+        "종합 수치 줄이 새 값을 담지 않았다"
+    )
+    for name in ("README.md", "README.ko.md"):
+        badge = (root / name).read_text(encoding="utf-8")
+        assert f"{new_total}%2B_total_({unit}_unit_%2B_{new_integ}_integration)" in badge, (
+            f"{name} 배지가 갱신되지 않았다"
+        )
+
+    assert check_docs_sync.check_consistency(root)[0], "전파 후에도 정합 검사가 red"
