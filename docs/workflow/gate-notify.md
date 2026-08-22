@@ -6,7 +6,7 @@
 `GATE_ACTIONS`(`src/gate/actions/__init__.py:68`)를 `is_applicable(config)` 로 거른 뒤 `asyncio.gather`. 각 액션은 자기 `SessionLocal()` 을 연다.
 
 - review_comment — `pr_review_comment` 참이면 PR 리뷰 댓글
-- approve — auto 면 `score >= approve_threshold` APPROVE / `< reject_threshold` REQUEST_CHANGES / 사이는 skip, semi-auto 면 Telegram 인라인 버튼(`src/gate/actions/approve.py:87`)
+- approve — auto 면 `score >= approve_threshold` APPROVE / `< reject_threshold` REQUEST_CHANGES / 사이는 skip, semi-auto 면 Telegram 인라인 버튼(`src/gate/actions/approve.py:_run_semi_auto`)
 - auto_merge — `score >= merge_threshold` 면 squash merge
 
 ### 알림 채널 추가
@@ -14,7 +14,7 @@
 2. `src/config_manager/manager.py:13` `RepoConfigData` 에 필드 1줄(기본 None)
 3. `src/notifier/<채널>.py` — `name` · `is_enabled(ctx)` · `async send(ctx)` 후 `register()` — `send` 는 언어를 `resolve_notification_language(db, config=ctx.config)`(`src/notifier/_language.py:38`)로 풀고, 점수를 렌더하면 신뢰도 고지(`unreliable_score_warning_lines`)를 넣는다. **둘 다 빠져도 CI 는 초록이다.** 호출
 4. `src/notifier/__init__.py` 에 `import src.notifier.<채널>` 1줄 — 빠지면 REGISTRY 미등록으로 조용히 미발송
-5. `src/api/repos.py`(필드 + `:88` URL 검증 목록) · `src/ui/routes/settings.py:54,229` · `src/templates/settings.html` 폼
+5. `src/api/repos.py`(필드 + `:93` URL 검증 목록) · `src/ui/routes/settings.py:54,229` · `src/templates/settings.html` 폼
 6. 문구는 `src/i18n/translations/{ko,en,ja}.json` 3개 전부
 7. 외부 HTTP 는 `src/notifier/_http.py` 의 `validate_external_url` + `build_safe_client` 만(https·redirect 금지), 로깅은 `url_host_for_log`
 
