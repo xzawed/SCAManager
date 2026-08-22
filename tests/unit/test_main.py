@@ -755,3 +755,71 @@ def test_limit_body_size_passes_normal_content_length(client):
     assert response.status_code == 200, (
         f"정상 Content-Length(1024) 요청이 200 을 반환해야 하는데 {response.status_code} 반환"
     )
+
+
+# ─── 🔴 세션 쿠키 수명 ───────────────────────────────────────────────────────
+#
+# CORS 등록 순서(outermost)는 위에서 핀돼 있는데, **세션 쿠키의 수명은 아무 데도 없었다**.
+# `SessionMiddleware` 는 `max_age` 를 주지 않으면 브라우저 세션 쿠키가 아니라
+# **만료 없는 서명 쿠키**를 발급한다 — 탈취된 쿠키가 영구히 유효해진다.
+# 그 한 줄이 사라져도 기존 테스트는 전부 초록이다.
+#
+# Without max_age, SessionMiddleware issues a signed cookie that never expires; a stolen
+# cookie stays valid forever. No existing test would go red if that line disappeared.
+
+def _session_middleware_kwargs():
+    """등록된 SessionMiddleware 의 실제 인자 — 소스 문자열이 아니라 살아 있는 스택에서 읽는다.
+
+    Read the live middleware stack, not the source text.
+    """
+    from starlette.middleware.sessions import (  # pylint: disable=import-outside-toplevel
+        SessionMiddleware,
+    )
+
+    from src.main import app  # pylint: disable=import-outside-toplevel
+
+    for mw in app.user_middleware:
+        if mw.cls is SessionMiddleware:
+            # Starlette 판마다 kwargs/options 로 갈린다 — 둘 다 본다.
+            return getattr(mw, "kwargs", None) or getattr(mw, "options", None) or {}
+    raise AssertionError("SessionMiddleware 가 등록돼 있지 않다 — 세션 인증 자체가 없다")
+
+
+def test_session_cookie_has_an_expiry():
+    """🔴 `max_age` 가 설정돼 있어야 한다 — 없으면 세션 쿠키가 영구화된다."""
+    kwargs = _session_middleware_kwargs()
+
+    assert kwargs.get("max_age") is not None, (
+        "SessionMiddleware 에 max_age 가 없다 — 만료 없는 세션 쿠키가 발급된다. "
+        "탈취된 쿠키가 영구히 유효해진다."
+    )
+
+
+def test_session_cookie_expiry_is_within_a_sane_bound():
+    """대조축 — 존재만 보면 `max_age=10**9` 도 통과한다. 상·하한을 함께 본다.
+
+    Control axis: presence alone would accept an effectively-immortal value.
+    """
+    max_age = _session_middleware_kwargs()["max_age"]
+
+    assert isinstance(max_age, int), f"max_age 가 정수가 아니다: {max_age!r}"
+    assert 60 * 60 <= max_age <= 60 * 60 * 24 * 30, (
+        f"max_age={max_age}초 — 1시간~30일 범위를 벗어났다. "
+        "너무 짧으면 로그인이 상시 끊기고, 너무 길면 탈취 쿠키 수명이 그만큼 길어진다."
+    )
+
+
+def test_session_cookie_is_hardened_against_csrf_and_plaintext():
+    """`same_site` 와 `https_only` 도 같은 호출에 있다 — 함께 지켜야 의미가 있다.
+
+    max_age 만 지키고 same_site 를 잃으면 CSRF 가 열리고, 운영에서 https_only 를 잃으면
+    쿠키가 평문으로 흐른다. 셋은 한 덩어리다.
+    """
+    kwargs = _session_middleware_kwargs()
+
+    assert kwargs.get("same_site") in ("lax", "strict"), (
+        f"same_site={kwargs.get('same_site')!r} — CSRF 방어가 약해졌다"
+    )
+    assert "https_only" in kwargs, (
+        "https_only 인자가 사라졌다 — 운영에서 세션 쿠키가 평문 HTTP 로 전송될 수 있다"
+    )

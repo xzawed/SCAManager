@@ -166,3 +166,85 @@ def test_rate_limiter_storage_is_in_memory():
     assert "memory" in storage_uri.lower() or storage_uri == "", (
         f"Rate limiter should use memory storage, got: {storage_uri}"
     )
+
+
+# ─── 🔴 실제 라우트에서 정말 429 가 나는가 ──────────────────────────────────
+#
+# 위 검사들은 상수·장난감 `FastAPI()`·`app.state.limiter` 존재·서명 형태를 본다.
+# 그중 어느 것도 **실제 API 라우트가 한도를 넘었을 때 429 를 돌려주는지** 확인하지 않는다.
+# 데코레이터 한 줄이 사라져도 위 축은 전부 초록이다 — 그러면 무제한 호출이 열린다.
+#
+# None of the checks above prove a real route actually returns 429; losing one decorator
+# leaves them all green while the endpoint becomes unbounded.
+
+def test_real_route_returns_429_when_limit_exceeded():
+    """실제 app 의 제한 라우트를 한도 초과로 두드리면 429 가 나온다.
+
+    `/api/hook/verify` 를 쓰는 이유 — 인증 의존성이 없어 429 가 401 에 가려지지 않는다
+    (limiter 는 미들웨어가 아니라 엔드포인트 데코레이터라 의존성 해결 뒤에 동작한다).
+    Uses /api/hook/verify because it has no auth dependency, so the 429 is not masked by a 401.
+    """
+    from src.main import app  # pylint: disable=import-outside-toplevel
+    from src.middleware.rate_limiter import (  # pylint: disable=import-outside-toplevel
+        RATE_LIMIT_API, limiter,
+    )
+
+    budget = int(RATE_LIMIT_API.split("/")[0])
+    client = TestClient(app, raise_server_exceptions=False)
+
+    # 🔴 memory:// 스토리지는 프로세스 전역 — 앞선 테스트의 잔여 카운트를 지우고 시작하고,
+    #    끝나고도 지운다. 안 그러면 이 테스트가 남의 테스트를 429 로 떨어뜨린다.
+    # The memory:// store is process-global; reset before and after so this test neither
+    # inherits nor leaks counter state.
+    limiter.reset()
+    try:
+        statuses = [
+            client.get("/api/hook/verify", params={"repo": "o/r", "token": "t"}).status_code
+            for _ in range(budget + 1)
+        ]
+    finally:
+        limiter.reset()
+
+    assert statuses[-1] == 429, (
+        f"한도({RATE_LIMIT_API})를 {budget + 1}회로 넘겼는데 마지막 응답이 {statuses[-1]} — "
+        "429 가 아니다. 이 라우트는 사실상 무제한이다."
+    )
+    assert 429 not in statuses[:budget], (
+        f"한도 안({budget}회)에서 이미 429 — 제한이 과도하게 좁다: {statuses[:budget]}"
+    )
+
+
+def test_critical_mutating_routes_are_registered_with_the_limiter():
+    """🔴 제한이 붙어야 하는 라우트가 레지스트리에 실재하는가.
+
+    위 429 테스트는 라우트 **하나**를 증명한다. 나머지가 데코레이터를 잃어도 조용하다.
+    slowapi 는 제한을 `limiter._route_limits` 에 `모듈.함수` 키로 기록하므로, 그 살아 있는
+    레지스트리와 대조한다 — 소스 문자열(`"@limiter.limit" in src`) 검사가 아니다.
+
+    Checks the live slowapi registry, not a source-string match.
+    """
+    from src.main import app  # pylint: disable=import-outside-toplevel
+    from src.middleware.rate_limiter import limiter  # pylint: disable=import-outside-toplevel
+
+    # app 을 실제로 참조한다 — 라우터 등록이 일어나야 레지스트리가 채워진다.
+    # (side-effect import 를 noqa 로 숨기면 CodeQL py/unused-import 를 자초한다.)
+    assert app.routes, "라우트가 0개 — 앱이 조립되지 않았다"
+
+    registered = set(limiter._route_limits)  # pylint: disable=protected-access
+    assert registered, "제한이 등록된 라우트가 0개 — 레지스트리가 비었다(이 검사가 공허하다)"
+
+    # 돈·권한·외부 발신이 걸린 경로 — 무제한이 되면 비용/DoS 로 직결된다.
+    # Routes tied to spend, permissions, or outbound calls.
+    must_be_limited = {
+        "src.api.repos.list_repos",
+        "src.api.repos.update_repo_config",
+        "src.api.repos.delete_repo_api",
+        "src.api.hook.verify_hook",
+        "src.api.stats.get_repo_stats",
+        "src.api.issue_registration.register",
+    }
+    missing = sorted(must_be_limited - registered)
+    assert not missing, (
+        f"제한이 사라진 라우트: {missing}\n"
+        f"→ 해당 엔드포인트에 @limiter.limit 를 되돌릴 것. 현재 등록됨={sorted(registered)}"
+    )

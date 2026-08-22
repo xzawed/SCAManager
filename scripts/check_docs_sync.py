@@ -147,6 +147,58 @@ def _region_before_history(state: str) -> tuple[str | None, list[str]]:
     return state.split(_STATE_HIST_HEADING, 1)[0], []
 
 
+def _history_tail_bullet(state: str) -> tuple[str | None, list[str]]:
+    """§테스트 수 추적 이력의 **마지막 불릿 원문**을 준다 (fail-closed 1·2층).
+
+    Return the raw last bullet of the history section.
+
+    🔴 `_history_tail` 과 `_history_tail_integ` 가 **같은 줄**을 보게 만드는 것이 요점이다.
+    각자 절을 다시 찾으면 한쪽만 고쳐졌을 때 두 값이 서로 다른 줄에서 나온다.
+    Both readers must anchor on the same line; re-deriving separately lets them drift.
+    """
+    occurrences = state.count(_STATE_HIST_HEADING)
+    if occurrences == 0:
+        return None, [f"❌ STATE.md 에 `{_STATE_HIST_HEADING}` 절이 없다 — 이력 꼬리 검사 불가"]
+    if occurrences > 1:
+        return None, [
+            f"❌ `{_STATE_HIST_HEADING}` 절이 {occurrences}개다 — 이력 SSOT 는 **하나**여야 한다"
+        ]
+    section = state.split(_STATE_HIST_HEADING, 1)[1].split("\n## ", 1)[0]
+    bullets = [ln for ln in section.splitlines() if ln.startswith("- ")]
+    if not bullets:
+        return None, ["❌ 이력 절에 항목(`- `)이 하나도 없다 — 검사 범위 붕괴"]
+    return bullets[-1], []
+
+
+def _history_tail_integ(state: str) -> tuple[str | None, list[str]]:
+    """이력 마지막 항목의 **통합 수** — SSOT 불릿에서 읽는다.
+
+    Read the integration count from the SSOT bullet, not from a derived sink.
+
+    🔴 왜 파생 셀에서 읽으면 안 되는가 (실측 2026-08-22): `apply_fix` 는 전체·단위를
+    SSOT 불릿에서 읽으면서 통합만 **자기가 곧 덮어쓸 추적셀**(`통합 N (현재)`)에서 읽었다.
+    그래서 통합 수가 바뀐 커밋에서는 SSOT 불릿을 맞게 적어도 산술 검사가 옛 통합값과
+    대조돼 항상 red 였고, `apply_fix` docstring 이 약속한 *"이력에 한 줄만 적고 이걸
+    돌린다"* 가 **원리적으로 불가능**했다 — 통합만 손으로 먼저 고쳐야 통과했다.
+    즉 이 스크립트가 없애려던 손 동기화가 통합 축에만 남아 있었다.
+
+    쓰는 쪽은 자기가 다시 쓰는 줄의 숫자를 전부 소유했는데(:34-40), 읽는 쪽이 그중 하나를
+    **곧 덮어쓸 자리**에서 가져오고 있었다.
+    The writer owned every number on the line it rewrites, but this reader still sourced one
+    of them from the sink it was about to overwrite.
+    """
+    tail, errs = _history_tail_bullet(state)
+    if errs:
+        return None, errs
+    found = re.findall(r"통합 (\d+)", tail)
+    if len(found) != 1:
+        return None, [
+            f"❌ 이력 마지막 항목의 통합 수가 {len(found)}개다 — "
+            f"`통합 N` 이 정확히 하나여야 한다. 실제: {tail[:90]!r}"
+        ]
+    return found[0], []
+
+
 def _history_tail(state: str) -> tuple[str | None, str | None, list[str]]:
     """§테스트 수 추적 이력의 **마지막 항목**에서 (누계, 단위) 를 뽑는다.
 
@@ -169,22 +221,9 @@ def _history_tail(state: str) -> tuple[str | None, str | None, list[str]]:
     Returns (total, unit, errors). 형식 계약이 곧 append 계약이다.
     """
     errs: list[str] = []
-    occurrences = state.count(_STATE_HIST_HEADING)
-    if occurrences == 0:
-        return None, None, [f"❌ STATE.md 에 `{_STATE_HIST_HEADING}` 절이 없다 — 이력 꼬리 검사 불가"]
-    if occurrences > 1:
-        # 🔴 절이 둘이면 `split(...)[1]` 이 **첫 절**만 SSOT 로 삼는다 — 두 번째 절에 무엇을
-        # 적어도 무시되고, 반대로 가짜 첫 절을 끼워 넣으면 진짜 이력을 우회할 수 있다.
-        # (Grok claim-review df5ed11d 적발 — 초판은 이 경로가 조용히 통과했다.)
-        # Two sections would silently make the first one the SSOT and shadow the real history.
-        return None, None, [
-            f"❌ `{_STATE_HIST_HEADING}` 절이 {occurrences}개다 — 이력 SSOT 는 **하나**여야 한다"
-        ]
-    section = state.split(_STATE_HIST_HEADING, 1)[1].split("\n## ", 1)[0]
-    bullets = [ln for ln in section.splitlines() if ln.startswith("- ")]
-    if not bullets:
-        return None, None, ["❌ 이력 절에 항목(`- `)이 하나도 없다 — 검사 범위 붕괴"]
-    tail = bullets[-1]
+    tail, bullet_errs = _history_tail_bullet(state)
+    if bullet_errs:
+        return None, None, bullet_errs
     # 🔴 불릿 *안* 첫 매치가 아니다. full pair `(A→**B** 단위 … = **C** 수집)` 가
     #    이 불릿에 정확히 1개여야 SSOT 다. 0 이면 형식 붕괴, 2+ 이면 어느 C 를
     #    쓸지 모호하므로 쓰지 않는다 (decoy 를 앞에 붙이면 1171 이 4지점에 퍼졌다).
@@ -363,9 +402,11 @@ def apply_fix(project_root: Path) -> tuple[bool, list[str]]:
     if errs:
         return False, errs + ["→ 이력 마지막 항목을 먼저 올바른 형식으로 적을 것 (그것이 SSOT 다)"]
 
-    integ = _first(re.compile(r"통합 (\d+) \(현재\)"), current)
-    if integ is None:
-        return False, ["❌ 추적셀에서 통합 수를 못 읽었다 — `단위 N + 통합 M (현재)` 형식 확인"]
+    # 🔴 통합 수도 **SSOT 불릿**에서 읽는다 — 곧 덮어쓸 추적셀이 아니라.
+    #    (`_history_tail_integ` docstring: 파생 셀에서 읽으면 통합이 바뀐 커밋마다 red 였다.)
+    integ, integ_errs = _history_tail_integ(state)
+    if integ_errs:
+        return False, integ_errs + ["→ 이력 마지막 항목에 `통합 N` 을 정확히 하나 적을 것"]
 
     # 🔴 **산술 타당성** — 형식만 보고 쓰면 "형식은 맞는데 틀린 값" 을 5곳에 자동 전파한다.
     # 이 함수는 파일을 **쓰는** 코드라 그 오염이 되돌리기 어렵다. 전체 = 단위 + 통합 이
