@@ -35,6 +35,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import yaml
+
 _ROOT = Path(__file__).resolve().parents[3]
 _CI = _ROOT / ".github" / "workflows" / "ci.yml"
 _STEP = "테스트 수치 ↔ 실측 대조 (PR — 차단)"
@@ -170,4 +172,77 @@ def test_real_binary_tests_raise_the_harness_timeout_above_the_subprocess_allowa
     )
     assert "timeout=_REAL_BINARY_TIMEOUT" in text, (
         "`_run` 이 상수를 쓰지 않는다 — 리터럴이면 두 값이 따로 늙는다."
+    )
+
+
+# ─── 🔴 소비자가 하나뿐이라고 가정하지 않는다 ────────────────────────────────
+#
+# 위 축들은 전부 **수치 스텝 하나**를 본다("PR 수치 스텝이 …", "count step"). 그래서
+# 같은 본문을 읽는 다른 스텝이 고정 페이로드를 계속 봐도 전부 초록이었다.
+#
+# 실측(2026-08-22): `PR_BODY` 소비자는 **셋**이었는데 라이브 조회로 바뀐 것은 하나뿐이었다.
+# 정책 19(claim-review)와 역-뮤테이션 두 스텝은 `github.event.pull_request.body` 를
+# 그대로 읽었고, 그래서 본문을 고치고 `gh run rerun` 을 해도 그 둘은 낡은 값을 다시 읽어
+# **빨강이 지워지지 않았다** — 이 파일이 없애려던 바로 그 상태가 두 스텝에 그대로 남아 있었다.
+#
+# 고친 축만 검사하면, 안 고친 축은 검사 대상이 아니게 된다.
+# Scoping the guard to the one step that was fixed leaves every other consumer unobserved.
+
+def test_no_step_anywhere_reads_the_frozen_event_body():
+    """🔴 `ci.yml` 어느 스텝도 `github.event.pull_request.body` 를 **값으로** 쓰지 않는다.
+
+    Not one step may consume the frozen payload — the count step is not special.
+
+    🔴 원문 문자열 탐색이 아니라 **파싱된 env 값**만 본다. 초판은 스텝 블록 전체를 훑어서,
+    *"고정본을 쓰지 말라"* 고 설명하는 **주석**을 소비로 세고 오탐했다 — 금지 대상을
+    설명하는 문장이 금지 위반으로 잡히는 형태다(가드가 자기 근거 문서를 막는다).
+    Parse the env values; scanning raw text flags the comment that explains the rule.
+    """
+    ci = yaml.safe_load(_ci_text())
+    offenders = []
+
+    for job_name, job in ci["jobs"].items():
+        for i, step in enumerate(job.get("steps") or []):
+            for key, value in (step.get("env") or {}).items():
+                if "github.event.pull_request.body" in str(value):
+                    offenders.append(f"{job_name}[{i}] {step.get('name')} — {key}")
+
+    assert not offenders, (
+        "아직 고정 페이로드를 값으로 읽는 스텝이 있다 — 본문을 고치고 rerun 해도 "
+        "이 스텝은 낡은 값을 다시 읽어 빨강이 지워지지 않는다. "
+        "→ `PR_BODY: ${{ steps.prbody.outputs.body }}` 로 바꾸고 조회 스텝을 앞에 둘 것: "
+        + "; ".join(offenders)
+    )
+
+
+def test_every_body_consumer_is_preceded_by_a_fetch_in_its_own_job():
+    """🔴 `steps.prbody` 는 **같은 job 안에서 앞선 스텝**만 참조할 수 있다.
+
+    job 이 다르면 outputs 가 보이지 않아 빈 문자열이 되고, fail-closed 설계가 무너져
+    「본문이 없다」 경로로 조용히 흘러간다. 순서까지 봐야 배선이 실재한다.
+    """
+    ci = yaml.safe_load(_ci_text())
+    consumers = 0
+
+    for job_name, job in ci["jobs"].items():
+        steps = job.get("steps") or []
+        fetch_at = [
+            i for i, s in enumerate(steps)
+            if isinstance(s.get("run"), str) and "gh api" in s["run"] and "/pulls/" in s["run"]
+        ]
+        for i, step in enumerate(steps):
+            env = step.get("env") or {}
+            if "PR_BODY" not in env:
+                continue
+            consumers += 1
+            assert "steps.prbody.outputs.body" in str(env["PR_BODY"]), (
+                f"{job_name}[{i}] `{step.get('name')}` 가 라이브 본문을 쓰지 않는다"
+            )
+            assert any(f < i for f in fetch_at), (
+                f"{job_name}[{i}] `{step.get('name')}` 앞에 조회 스텝이 없다 — "
+                f"`steps.prbody.outputs.body` 가 빈 문자열이 된다 (조회 위치 {fetch_at})"
+            )
+
+    assert consumers >= 2, (
+        f"본문 소비 스텝이 {consumers}개 — 이 검사가 공허하다(범위 붕괴 또는 파서 회귀)"
     )

@@ -191,11 +191,33 @@ jobs:
 
       - name: RepoConfig 3-layer 싱크 (check_config_5way_sync)
         run: python scripts/check_config_5way_sync.py
+      # 🔴 **이 조회는 본문을 읽는 모든 스텝 앞에 있어야 한다** (2026-08-22 실측).
+      #    최초 도입(#1464)은 「테스트 수치」 스텝 하나만 이 값으로 바꿨고, 같은 본문을 읽는
+      #    정책 19(claim-review)·역-뮤테이션 두 스텝은 `github.event.pull_request.body`
+      #    를 그대로 봤다. 그래서 본문을 고치고 rerun 해도 그 둘은 **낡은 값**을 다시 읽어
+      #    빨강이 지워지지 않았다 — 고친 축만 낫고 나머지는 그대로인 부분 적용이었다.
+      #    The original fix rewired only one consumer; the other two kept reading the frozen
+      #    payload, so a body edit + rerun still could not clear them.
+      - name: PR 본문 조회 (살아 있는 값 — 고정 페이로드 아님)
+        id: prbody
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          body="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" -q '.body // ""')"
+          {
+            echo "body<<__PR_BODY_EOF__"
+            printf '%s\n' "$body"
+            echo "__PR_BODY_EOF__"
+          } >> "$GITHUB_OUTPUT"
+
       - name: 정책 19 — seal 주장 시 claim-review 흔적 강제
         if: github.event_name == 'pull_request'
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_BODY: ${{ steps.prbody.outputs.body }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           # base **이름** — 판정에 쓰지 않고 고지에만 쓴다. base 가 main 이 아니면 이 PR 에는
@@ -503,10 +525,25 @@ jobs:
       # 판정 불가(범위 산출 실패·baseline 이미 red·되돌림 no-op)는 **전부 실패**다.
       # 판정할 수 없는 변경은 `reverse-mutation-not-applicable:` 로 명시 면제(계수됨).
       # Reverse-mutation gate: revert the PR's production diff, re-run only its tests, require red.
+      - name: PR 본문 조회 (살아 있는 값 — 고정 페이로드 아님)
+        id: prbody
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          body="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" -q '.body // ""')"
+          {
+            echo "body<<__PR_BODY_EOF__"
+            printf '%s\n' "$body"
+            echo "__PR_BODY_EOF__"
+          } >> "$GITHUB_OUTPUT"
+
       - name: P1 역-뮤테이션 — 이 PR 의 테스트가 이 PR 의 변경을 관측하는가
         if: github.event_name == 'pull_request'
         env:
-          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_BODY: ${{ steps.prbody.outputs.body }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: python scripts/check_reverse_mutation.py
@@ -543,21 +580,6 @@ jobs:
       #    수치를 커밋 메시지로 옮기는 안은 기각했다(Grok claim-review `01a02149` P4):
       #    실패 4건은 본문에 수치가 **이미 있었고** 고정본이라 낡았을 뿐이라,
       #    「본문에 없을 때만 커밋을 본다」는 폴백은 그중 하나도 막지 못한다.
-      - name: PR 본문 조회 (살아 있는 값 — 고정 페이로드 아님)
-        id: prbody
-        if: github.event_name == 'pull_request'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          body="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" -q '.body // ""')"
-          {
-            echo "body<<__PR_BODY_EOF__"
-            printf '%s\n' "$body"
-            echo "__PR_BODY_EOF__"
-          } >> "$GITHUB_OUTPUT"
-
       - name: 테스트 수치 ↔ 실측 대조 (PR — 차단)
         if: github.event_name == 'pull_request'
         env:
