@@ -5,7 +5,7 @@ AnalysisAttemptRepo — single source for AnalysisAttempt queries.
 용도: 파이프라인 소실 탐지. 배경·설계 이유는 `src/models/analysis_attempt.py` docstring 참조.
 Purpose: pipeline loss detection. See `src/models/analysis_attempt.py` for background/design.
 """
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session

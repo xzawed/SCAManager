@@ -27,7 +27,6 @@ expensive work and deleted on normal completion, so a surviving stale row means 
 in `_ensure_repo`/`_save_and_gate` match the row we just wrote and skip persisting the result.
 A separate table leaves the first-writer-wins invariants (#794/#780) untouched.
 """
-from datetime import datetime, timezone
 
 from sqlalchemy import (
     Column, Integer, String, DateTime, ForeignKey, UniqueConstraint, text,
