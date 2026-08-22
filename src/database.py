@@ -58,13 +58,15 @@ def _build_connect_args(url: str) -> dict:
     - db_force_ipv4=True: Railway IPv4 강제 (Supabase/Railway 환경)
     - db_sslmode: SSL 모드 명시 설정 (온프레미스 PostgreSQL 등)
     - URL query에 sslmode가 이미 포함된 경우 connect_args에 중복 설정하지 않음
-    SQLite URL은 hostaddr/sslmode 모두 미적용.
+    - options: 세션 TimeZone 을 UTC 로 고정 (URL 의 options 가 있으면 **이어 붙인다**)
+    SQLite URL은 어느 것도 미적용.
 
     Builds connection arguments from environment variables.
     - db_force_ipv4=True: Force IPv4 on Railway/Supabase environments.
     - db_sslmode: Explicit SSL mode for on-premises PostgreSQL etc.
     - Skips adding sslmode to connect_args if the URL query already contains it.
-    SQLite URLs: neither hostaddr nor sslmode is applied.
+    - options: pins the session TimeZone to UTC, appended to any URL-provided options.
+    SQLite URLs: none of these are applied.
     """
     args: dict = {}
     parsed = urlparse(url)
@@ -78,23 +80,29 @@ def _build_connect_args(url: str) -> dict:
     if settings.db_sslmode and not url_sslmode:
         args["sslmode"] = settings.db_sslmode
     # 🔴 세션 TimeZone 을 UTC 로 고정한다 — 값을 바꾸는 게 아니라 **해석의 기준**을 고정한다.
-    #    이 저장소의 DateTime 컬럼은 전부 naive(`TIMESTAMP WITHOUT TIME ZONE`)인데, 모델
-    #    default 18곳(`default=` 15 + `onupdate=` 3)은 aware `datetime.now(timezone.utc)` 를
-    #    그 컬럼에 넣는다. psycopg2 는 aware 값을 timestamptz 로 보내고 PostgreSQL 은
+    #    이 저장소의 DateTime 컬럼은 **거의 전부** naive(`TIMESTAMP WITHOUT TIME ZONE`)이고
+    #    (예외 1개 = `User.telegram_otp_expires_at`, `user.py:36` 은 timestamptz),
+    #    모델 default 18곳(`default=` 15 + `onupdate=` 3)은 aware `datetime.now(timezone.utc)` 를
+    #    그 naive 컬럼에 넣는다. psycopg2 는 aware 값을 timestamptz 로 보내고 PostgreSQL 은
     #    `timestamp` 로 캐스팅할 때 세션 TimeZone 을 쓴다 — 세션이 UTC 가 아니면 저장값이
     #    오프셋만큼 이동하고, 그 뒤의 naive 비교(윈도우 경계·만료·보존 sweep)가 전부 어긋난다.
-    #    지금까지는 서버/역할 기본값에 의존했고 고정하는 곳이 없었다.
-    #    18개 default 를 naive 로 바꾸는 안 대신 이쪽을 택한 이유: 기존에 저장된 행의
-    #    의미가 바뀌지 않는다(마이그레이션 불필요).
-    # 🔴 URL query 가 이미 `options` 를 지정했으면 손대지 않는다 — `sslmode` 와 같은 규칙.
-    #    libpq 는 둘이 겹치면 connect_args 를 쓰므로, 덮어쓰면 운영자가 URL 에 적은 값이
-    #    조용히 사라진다.
-    # Pin the session TimeZone to UTC: aware defaults land in naive columns, and PostgreSQL
-    # casts timestamptz -> timestamp using the session TimeZone. Pinning the frame of
-    # reference (rather than rewriting 18 defaults) leaves already-stored rows unchanged.
-    # An explicit `options` in the URL wins, mirroring the sslmode rule.
-    if "options" not in query:
-        args["options"] = "-c timezone=utc"
+    #    실측(DB 기본 TimeZone=Asia/Seoul): UTC 정오가 `21:00:00` 으로 9시간 이동해 저장됐다.
+    #    18개 default 를 naive 로 바꾸는 안 대신 이쪽을 택한 이유: 기존 행의 의미가 바뀌지
+    #    않는다(마이그레이션 불필요). 다만 **과거에 비-UTC 세션으로 쓰인 행은 복구되지 않는다.**
+    #
+    # 🔴 URL 의 `options` 를 **덮어쓰지도, 그것 때문에 포기하지도 않는다 — 이어 붙인다.**
+    #    libpq 의 `options` 는 문자열 하나뿐이고 connect_args 가 URL/DSN 값을 **대체**한다.
+    #    그래서 `sslmode` 규칙(URL 에 있으면 손대지 않는다)을 그대로 가져오면,
+    #    `?options=-c statement_timeout=5000` 을 쓴 운영자는 timeout 은 얻고 **타임존 핀은
+    #    조용히 잃는다**(Grok claim-review `01a02a03` 적발 — 초판이 그 동작이었고 테스트가
+    #    그것을 정답으로 못박고 있었다). 두 값을 합치되 `timezone` 을 **뒤에** 둔다:
+    #    같은 GUC 가 반복되면 마지막이 이기므로, URL 이 `-c timezone=Asia/Seoul` 을 주더라도
+    #    데이터 정합(UTC)이 최종값이 된다.
+    # libpq has a single `options` string and connect_args REPLACE the DSN value, so skipping on
+    # a URL-provided `options` would silently drop the pin. Merge instead, timezone last: the
+    # last occurrence of a GUC wins, so data integrity is not negotiable by URL.
+    url_options = (query.get("options") or [""])[0]
+    args["options"] = f"{url_options} -c timezone=utc".strip()
     return args
 
 

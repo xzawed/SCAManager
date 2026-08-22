@@ -5,7 +5,8 @@ reference for every naive DateTime column in this repo.
 
 ## 무엇이 걸려 있나 (실측 2026-08-22)
 
-이 저장소의 DateTime 컬럼은 전부 naive(`TIMESTAMP WITHOUT TIME ZONE`)인데, 모델 default
+이 저장소의 DateTime 컬럼은 **거의 전부** naive(`TIMESTAMP WITHOUT TIME ZONE`)이고
+(예외 1개 = `User.telegram_otp_expires_at`, `src/models/user.py:36`), 모델 default
 18곳(`default=` 15 + `onupdate=` 3)은 aware `datetime.now(timezone.utc)` 를 그 컬럼에 넣는다.
 psycopg2 는 aware 값을 timestamptz 로 보내고, PostgreSQL 은 `timestamp` 로 캐스팅할 때
 **세션 TimeZone** 을 쓴다.
