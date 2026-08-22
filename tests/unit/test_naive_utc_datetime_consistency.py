@@ -150,10 +150,14 @@ def test_operations_merge_kpi_uses_naive_bound():
 # 이 저장소는 같은 클래스를 두 번 겪었다 — 이 파일이 존재하는 이유(#1197)이고,
 # `src/shared/time_utils.py` 머리말이 "#1197 이 3곳만 고쳐(정책 16 grep 전수 위반)
 # 회고 P1-B 로 재적발됨" 이라고 적어 두었다. **개별 지점을 고치는 것으로는 끝나지 않는다.**
-# 실측(2026-08-22): 헬퍼 도입 후에도 10곳이 생 표기로 남아 있었고, 그중 8곳은 자기가
+# 실측(2026-08-22): 헬퍼 도입 후에도 11곳이 생 표기로 남아 있었고, 그중 8곳은 자기가
 # 만들지 않은 값(호출자가 준 `now`, 계산된 `next_retry_at`)에서 tzinfo 를 벗기고 있었다.
 #
-# Fixing individual sites does not close this class; only a repo-wide sweep does.
+# 🔴 다만 이것은 **표기 트립와이어**이지 클래스 봉인이 아니다 (Grok claim-review 01a02994).
+#    `.replace(**{'tzinfo': None})` · `datetime(dt.year, …)` 같은 동치 표기는 문자열로 안 잡힌다.
+#    실측상 그런 표기는 현재 `src/` 에 0건이고, 잡으려는 것은 #1197 이후 살아남은 **바로 그
+#    복사-붙여넣기 형태**다. 「전수 검사했으니 이 클래스는 끝났다」로 읽지 말 것.
+# A spelling tripwire for the exact copy-paste that survived #1197 — not proof the class is closed.
 
 def test_no_raw_tzinfo_stripping_outside_the_helper():
     """`src/` 어디에도 생 `.replace(tzinfo=None)` 이 없어야 한다 — `time_utils.py` 제외.
@@ -161,6 +165,10 @@ def test_no_raw_tzinfo_stripping_outside_the_helper():
     🔴 왜 지점별 테스트로 부족한가: `is_expired` 를 고쳐도 `merge_retry_service` 의 4곳,
     `insight_narrative_cache_repo` 의 1곳은 그대로였다. 각 지점마다 시간대 불변식 테스트를
     쓰는 것은 현실적이지 않고, 새로 추가되는 지점은 어차피 아무도 안 본다.
+
+    🔴 **이 검사가 보증하지 않는 것**: 문자열 일치라서 동치 표기(`replace(**{...})`,
+    `datetime(dt.year, …)`)는 통과한다. 초록은 "이 표기가 없다" 이지 "변환 없는 벗기기가
+    없다" 가 아니다.
     """
     root = Path(__file__).resolve().parents[2]
     allowed = {"time_utils.py"}  # 헬퍼 본체 — 여기가 유일하게 정당한 사용처
