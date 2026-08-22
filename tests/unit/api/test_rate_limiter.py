@@ -223,8 +223,12 @@ def test_critical_mutating_routes_are_registered_with_the_limiter():
 
     Checks the live slowapi registry, not a source-string match.
     """
+    from src.main import app  # pylint: disable=import-outside-toplevel
     from src.middleware.rate_limiter import limiter  # pylint: disable=import-outside-toplevel
-    import src.main  # noqa: F401  # pylint: disable=import-outside-toplevel,unused-import
+
+    # app 을 실제로 참조한다 — 라우터 등록이 일어나야 레지스트리가 채워진다.
+    # (side-effect import 를 noqa 로 숨기면 CodeQL py/unused-import 를 자초한다.)
+    assert app.routes, "라우트가 0개 — 앱이 조립되지 않았다"
 
     registered = set(limiter._route_limits)  # pylint: disable=protected-access
     assert registered, "제한이 등록된 라우트가 0개 — 레지스트리가 비었다(이 검사가 공허하다)"

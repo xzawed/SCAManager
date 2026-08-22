@@ -35,38 +35,106 @@ _ENV = "DATABASE_URL_TEST_POSTGRES"
 _JOB = "pg-concurrency"
 
 
+def _pg_alias_names(src: str, tree: ast.Module) -> set[str]:
+    """PG 부재 시 skip 을 유발하는 **모듈 수준 이름**을 모은다.
+
+    Collect module-level names that carry the PG skip.
+
+    두 종류를 받는다 — 마크 별칭(`_requires_postgres = pytest.mark.skipif(not _PG_URL, …)`)과
+    그 별칭이 파생된 값(`_PG_URL = os.environ.get(ENV, "")`). 별칭은 연쇄하므로
+    더 이상 늘지 않을 때까지 반복한다(선언 순서에 의존하지 않는다).
+    또 **본문에서 env 를 읽는 모듈 수준 헬퍼 함수**(`def _skip_without_pg(): …`)도 이름으로 받는다 —
+    테스트가 그 헬퍼를 호출하는 형태면 본문에 env 문자열이 나타나지 않기 때문이다.
+    Includes helper functions whose body reads the env var, since a test calling such a helper
+    never mentions the env string itself.
+    """
+    names: set[str] = set()
+    for _ in range(8):  # 연쇄 별칭 수렴 — 실측상 2단계면 충분하나 여유를 둔다
+        grew = False
+        for node in tree.body:
+            targets: list[str] = []
+            if isinstance(node, ast.Assign):
+                targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                targets = [node.target.id]
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                targets = [node.name]
+            if not targets:
+                continue
+            seg = ast.get_source_segment(src, node) or ""
+            if _ENV in seg or any(a in seg for a in names):
+                new = set(targets) - names
+                if new:
+                    names.update(new)
+                    grew = True
+        if not grew:
+            break
+    return names
+
+
+def _module_is_wholly_pg_gated(src: str, tree: ast.Module, aliases: set[str]) -> bool:
+    """모듈 전체를 skip 시키는 `pytestmark` 가 PG 게이트인가.
+
+    Whether a module-level `pytestmark` gates the entire file on PostgreSQL.
+    """
+    for node in tree.body:
+        targets = []
+        if isinstance(node, ast.Assign):
+            targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            targets = [node.target.id]
+        if "pytestmark" not in targets:
+            continue
+        seg = ast.get_source_segment(src, node) or ""
+        if _ENV in seg or any(a in seg for a in aliases):
+            return True
+    return False
+
+
 def _pg_gated_tests(path: Path) -> list[str]:
     """파일 안에서 **PG 가 없으면 skip 되는** 테스트 함수명을 뽑는다.
 
     Collect test functions that skip when PostgreSQL is absent.
 
-    두 표기를 모두 인식한다 — 본문에서 직접 env 를 읽는 형태와, 모듈 상단의
-    `_requires_postgres = pytest.mark.skipif(not _PG_URL, …)` 별칭 데코레이터.
-    별칭은 연쇄한다(`_PG_URL` → `_requires_postgres`)므로 선언 순서대로 누적한다.
+    인식하는 표기 — 본문에서 직접 env 를 읽는 형태, 모듈 수준 별칭 데코레이터,
+    **클래스 레벨** 데코레이터(그 클래스의 모든 테스트에 상속), 모듈 `pytestmark`,
+    그리고 env 를 읽는 모듈 수준 헬퍼 호출.
+    `test_unrecognised_skip_styles_do_not_slip_through` 가 이 목록의 공백을 감시한다.
     """
     src = path.read_text(encoding="utf-8")
     tree = ast.parse(src)
+    aliases = _pg_alias_names(src, tree)
 
-    aliases: set[str] = set()
-    for node in tree.body:
-        if not isinstance(node, ast.Assign):
-            continue
-        seg = ast.get_source_segment(src, node) or ""
-        if _ENV in seg or any(a in seg for a in aliases):
-            aliases.update(t.id for t in node.targets if isinstance(t, ast.Name))
-
-    found: list[str] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        if not node.name.startswith("test_"):
-            continue
-        body = ast.get_source_segment(src, node) or ""
-        decorators = " ".join(
+    def _gated_by_decorators(node) -> bool:
+        text = " ".join(
             ast.get_source_segment(src, d) or "" for d in node.decorator_list
         )
-        if _ENV in body or any(a in decorators for a in aliases):
-            found.append(node.name)
+        return _ENV in text or any(a in text for a in aliases)
+
+    if _module_is_wholly_pg_gated(src, tree, aliases):
+        return _all_tests(path)
+
+    found: list[str] = []
+
+    def _visit(container, inherited: bool) -> None:
+        for node in container.body:
+            if isinstance(node, ast.ClassDef):
+                _visit(node, inherited or _gated_by_decorators(node))
+                continue
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if not node.name.startswith("test_"):
+                continue
+            body = ast.get_source_segment(src, node) or ""
+            if (
+                inherited
+                or _gated_by_decorators(node)
+                or _ENV in body
+                or any(a in body for a in aliases)
+            ):
+                found.append(node.name)
+
+    _visit(tree, False)
     return found
 
 
@@ -77,9 +145,17 @@ def _job_runs() -> str:
 
 
 def _pg_gated_files() -> list[Path]:
+    """`DATABASE_URL_TEST_POSTGRES` 를 참조하는 테스트 파일들.
+
+    🔴 **이 파일 자신은 제외한다** — 여기는 env 이름을 *언급*할 뿐 그것으로 skip 되지 않는다.
+    넓힌 분류기는 모듈 수준 `_ENV = "..."` 를 별칭으로 잡으므로, 제외하지 않으면 이 가드가
+    자기 자신을 "PG 전용인데 미배선" 으로 신고한다(자기참조). 메타 가드는 PG 없이 돌아야 한다.
+    Excludes itself: this module only *names* the env var; it is not gated by it.
+    """
+    here = Path(__file__).resolve()
     return sorted(
         p for p in _ROOT.joinpath("tests").rglob("test_*.py")
-        if _ENV in p.read_text(encoding="utf-8")
+        if p.resolve() != here and _ENV in p.read_text(encoding="utf-8")
     )
 
 
@@ -150,3 +226,114 @@ def _all_tests(path: Path) -> list[str]:
         n.name for n in ast.walk(tree)
         if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name.startswith("test_")
     ]
+
+
+# ── 분류기 자신의 회귀 가드 ──────────────────────────────────────────────────
+#
+# 🔴 초판 분류기는 두 표기만 봤다 — 본문의 env 문자열, 모듈 수준 `ast.Assign` 별칭 데코레이터.
+#    Grok claim-review `01a0296e` 가 적발: 클래스 레벨 skipif · 모듈 `pytestmark` ·
+#    env 를 읽는 헬퍼 호출로 쓴 PG 테스트는 **분류되지 않아** 배선 검사를 통째로 지나갔다.
+#    분류에서 빠지면 위 검사는 그 테스트에 대해 아무 말도 하지 않는다 — 못 재는 자리에
+#    초록을 내는 거짓 집행자다. 아래가 그 표기들을 고정한다.
+#
+# The first classifier recognized only two styles; three others slipped through silently,
+# which made the wiring check a false enforcer for anything written that way.
+
+_STYLES = {
+    "본문에서 직접 env 를 읽는다": '''
+import os
+import pytest
+
+
+def test_body_reads_env():
+    if not os.environ.get("DATABASE_URL_TEST_POSTGRES"):
+        pytest.skip("pg")
+''',
+    "모듈 수준 별칭 데코레이터": '''
+import os
+import pytest
+
+_PG = os.environ.get("DATABASE_URL_TEST_POSTGRES", "")
+_requires_pg = pytest.mark.skipif(not _PG, reason="pg")
+
+
+@_requires_pg
+def test_body_reads_env():
+    pass
+''',
+    "클래스 레벨 데코레이터 (상속)": '''
+import os
+import pytest
+
+_PG = os.environ.get("DATABASE_URL_TEST_POSTGRES", "")
+_requires_pg = pytest.mark.skipif(not _PG, reason="pg")
+
+
+@_requires_pg
+class TestGrouped:
+    def test_body_reads_env(self):
+        pass
+''',
+    "모듈 pytestmark (파일 전체)": '''
+import os
+import pytest
+
+_PG = os.environ.get("DATABASE_URL_TEST_POSTGRES", "")
+pytestmark = pytest.mark.skipif(not _PG, reason="pg")
+
+
+def test_body_reads_env():
+    pass
+''',
+    "env 를 읽는 헬퍼 호출": '''
+import os
+import pytest
+
+
+def _skip_without_pg():
+    if not os.environ.get("DATABASE_URL_TEST_POSTGRES"):
+        pytest.skip("pg")
+
+
+def test_body_reads_env():
+    _skip_without_pg()
+''',
+    "타입 주석 별칭 (AnnAssign)": '''
+import os
+import pytest
+
+_PG: str = os.environ.get("DATABASE_URL_TEST_POSTGRES", "")
+_requires_pg = pytest.mark.skipif(not _PG, reason="pg")
+
+
+@_requires_pg
+def test_body_reads_env():
+    pass
+''',
+}
+
+
+@pytest.mark.parametrize("style", sorted(_STYLES))
+def test_unrecognised_skip_styles_do_not_slip_through(tmp_path, style):
+    """PG skip 을 거는 **모든 표기**가 분류돼야 한다 — 하나라도 놓치면 그 축은 무집행이다."""
+    probe = tmp_path / "test_probe.py"
+    probe.write_text(_STYLES[style], encoding="utf-8")
+
+    assert _pg_gated_tests(probe) == ["test_body_reads_env"], (
+        f"표기 「{style}」 를 PG 게이트로 분류하지 못했다 — 이 표기로 쓴 테스트는 "
+        "배선 검사를 그냥 지나간다(어디서도 실행되지 않으면서 초록)."
+    )
+
+
+def test_a_test_without_any_pg_gate_is_not_classified():
+    """대조축 — 전부 PG 로 보면 순수 테스트까지 배선을 요구해 가드가 거짓 red 를 낸다.
+
+    Control axis: classifying everything as PG-gated would demand wiring for pure tests.
+    """
+    probe = _ROOT / "tests" / "unit" / "migrations" / "test_orm_alembic_parity.py"
+    gated = _pg_gated_tests(probe)
+
+    assert "test_orm_metadata_matches_migrations" in gated, "실제 PG 테스트를 놓쳤다"
+    assert "test_structural_diffs_filter_logic" not in gated, (
+        f"순수 로직 테스트를 PG 로 오분류했다 — 불필요한 배선을 강요한다: {gated}"
+    )
