@@ -65,9 +65,28 @@ def _fetch_step(text: str) -> str:
     걸쳐 있다: 조회 스텝이 값을 만들고, 수치 스텝이 그것을 `PR_BODY` 로 받는다.
     (초판 테스트는 수치 스텝 안에서 `gh api` 를 찾아 구현이 옳은데도 red 였다.)
     """
-    i = text.index(f"- name: {_FETCH_STEP}")
-    nxt = text.find("      - name:", i + 10)
-    return text[i:nxt if nxt > 0 else len(text)]
+    blocks = _fetch_steps(text)
+    assert blocks, "조회 스텝을 찾지 못했다"
+    return blocks[0]
+
+
+def _fetch_steps(text: str) -> list[str]:
+    """조회 스텝 블록 **전부**.
+
+    🔴 job 마다 하나씩 있으므로 복수다. 첫 개만 검사하면 두 번째 사본이
+    `|| true` 를 달아도 초록이다 — 사본이 늘어난 순간 단수 접근은 fail-open 이 된다.
+    (Grok claim-review `01a029c8` 적발: 조회가 2곳이 된 뒤에도 이 헬퍼는 첫 개만 봤다.)
+    Every fetch block: checking only the first goes fail-open once a copy exists.
+    """
+    out, i = [], 0
+    marker = f"- name: {_FETCH_STEP}"
+    while True:
+        i = text.find(marker, i)
+        if i < 0:
+            return out
+        nxt = text.find("      - name:", i + 10)
+        out.append(text[i:nxt if nxt > 0 else len(text)])
+        i += 10
 
 
 def test_the_body_is_fetched_from_the_api_and_wired_into_the_count_step():
@@ -106,14 +125,16 @@ def test_the_fetch_fails_closed():
     (봇·advisory 배려). 조회가 조용히 실패하면 그 경로로 떨어져 **초록**이 된다 —
     이 리포가 반복해 온 fail-open 이다.
     """
-    step = _fetch_step(_ci_text())
+    steps = _fetch_steps(_ci_text())
+    assert steps, "조회 스텝이 0개 — 이 검사가 공허하다"
 
-    assert "set -euo pipefail" in step, (
-        "fetch 스텝에 `set -euo pipefail` 이 없다 — `gh api` 실패가 빈 문자열로 흘러간다."
-    )
-    assert not re.search(r"\|\|\s*(true|echo|:)", step), (
-        "실패를 삼키는 관용구(`|| true` 류)가 있다 — 조회 실패는 red 여야 한다."
-    )
+    for n, step in enumerate(steps):
+        assert "set -euo pipefail" in step, (
+            f"조회 스텝 {n} 에 `set -euo pipefail` 이 없다 — `gh api` 실패가 빈 문자열로 흘러간다."
+        )
+        assert not re.search(r"\|\|\s*(true|echo|:)", step), (
+            f"조회 스텝 {n} 에 실패를 삼키는 관용구(`|| true` 류)가 있다 — 조회 실패는 red 여야 한다."
+        )
 
 
 def test_the_workflow_declares_pull_requests_read():
@@ -188,31 +209,74 @@ def test_real_binary_tests_raise_the_harness_timeout_above_the_subprocess_allowa
 # 고친 축만 검사하면, 안 고친 축은 검사 대상이 아니게 된다.
 # Scoping the guard to the one step that was fixed leaves every other consumer unobserved.
 
+def _all_expressions(step: dict):
+    """스텝이 값으로 평가하는 모든 문자열 — `env`·`run`·`with`·`if`·`uses`.
+
+    🔴 `env` 만 보면 `run:` 안에서 `${{ github.event.pull_request.body }}` 를 직접
+    보간하는 형태를 놓친다(Grok claim-review `01a029c8`). 못 재는 자리를 남긴 채
+    「전수 검사」라고 부르면 그게 거짓 집행자다.
+    Scanning only `env` misses direct interpolation in `run`/`with`/`if`.
+    """
+    for key in ("run", "if", "uses"):
+        value = step.get(key)
+        if isinstance(value, str):
+            yield key, value
+    for key in ("env", "with"):
+        for name, value in (step.get(key) or {}).items():
+            yield f"{key}.{name}", str(value)
+
+
+_FROZEN_FORMS = (
+    "github.event.pull_request.body",
+    "github.event['pull_request']['body']",
+    'github.event["pull_request"]["body"]',
+    "GITHUB_EVENT_PATH",
+)
+
+
 def test_no_step_anywhere_reads_the_frozen_event_body():
-    """🔴 `ci.yml` 어느 스텝도 `github.event.pull_request.body` 를 **값으로** 쓰지 않는다.
+    """🔴 `ci.yml` 어느 스텝도 고정 이벤트 본문을 **어떤 경로로도** 쓰지 않는다.
 
     Not one step may consume the frozen payload — the count step is not special.
 
-    🔴 원문 문자열 탐색이 아니라 **파싱된 env 값**만 본다. 초판은 스텝 블록 전체를 훑어서,
+    🔴 원문 문자열 탐색이 아니라 **파싱된 값**만 본다. 초판은 스텝 블록 전체를 훑어서,
     *"고정본을 쓰지 말라"* 고 설명하는 **주석**을 소비로 세고 오탐했다 — 금지 대상을
     설명하는 문장이 금지 위반으로 잡히는 형태다(가드가 자기 근거 문서를 막는다).
-    Parse the env values; scanning raw text flags the comment that explains the rule.
+    그렇다고 `env` 만 보면 `run:` 보간을 놓치므로, 평가되는 키를 전부 본다.
     """
     ci = yaml.safe_load(_ci_text())
     offenders = []
 
     for job_name, job in ci["jobs"].items():
         for i, step in enumerate(job.get("steps") or []):
-            for key, value in (step.get("env") or {}).items():
-                if "github.event.pull_request.body" in str(value):
-                    offenders.append(f"{job_name}[{i}] {step.get('name')} — {key}")
+            for key, value in _all_expressions(step):
+                if any(form in value for form in _FROZEN_FORMS):
+                    offenders.append(f"{job_name}[{i}] {step.get('name')} :: {key}")
 
     assert not offenders, (
-        "아직 고정 페이로드를 값으로 읽는 스텝이 있다 — 본문을 고치고 rerun 해도 "
-        "이 스텝은 낡은 값을 다시 읽어 빨강이 지워지지 않는다. "
-        "→ `PR_BODY: ${{ steps.prbody.outputs.body }}` 로 바꾸고 조회 스텝을 앞에 둘 것: "
+        "고정 이벤트 본문을 읽는 자리가 있다 — 본문을 고치고 rerun 해도 낡은 값을 "
+        "다시 읽어 빨강이 지워지지 않는다. "
+        "→ `steps.prbody.outputs.body` 로 바꾸고 조회 스텝을 앞에 둘 것: "
         + "; ".join(offenders)
     )
+
+
+def _scripts_reading_the_pr_body() -> set[str]:
+    """`read_pr_body()` 를 쓰는 가드 스크립트 파일명 — **기대 소비자 집합의 출처**.
+
+    🔴 `len(consumers) >= 2` 같은 하한은 공허하다(Grok `01a029c8`: 실제 3인데 하나를
+    잃어도 통과한다). 기대값을 상수로 적지 않고 **코드에서 파생**한다 —
+    본문을 읽는 스크립트가 늘면 배선 요구도 자동으로 늘어난다.
+    Derive the expected consumer set from the code instead of hard-coding a floor.
+    """
+    found = set()
+    for path in sorted((_ROOT / "scripts").glob("*.py")):
+        text = path.read_text(encoding="utf-8")
+        if "read_pr_body" in text and "def read_pr_body" not in text:
+            found.add(path.name)
+        elif "def read_pr_body" in text:
+            found.add(path.name)  # 리더 본체도 그 값을 쓰는 가드다
+    return found
 
 
 def test_every_body_consumer_is_preceded_by_a_fetch_in_its_own_job():
@@ -227,8 +291,8 @@ def test_every_body_consumer_is_preceded_by_a_fetch_in_its_own_job():
     for job_name, job in ci["jobs"].items():
         steps = job.get("steps") or []
         fetch_at = [
-            i for i, s in enumerate(steps)
-            if isinstance(s.get("run"), str) and "gh api" in s["run"] and "/pulls/" in s["run"]
+            i for i, st in enumerate(steps)
+            if isinstance(st.get("run"), str) and "gh api" in st["run"] and "/pulls/" in st["run"]
         ]
         for i, step in enumerate(steps):
             env = step.get("env") or {}
@@ -243,6 +307,37 @@ def test_every_body_consumer_is_preceded_by_a_fetch_in_its_own_job():
                 f"`steps.prbody.outputs.body` 가 빈 문자열이 된다 (조회 위치 {fetch_at})"
             )
 
-    assert consumers >= 2, (
-        f"본문 소비 스텝이 {consumers}개 — 이 검사가 공허하다(범위 붕괴 또는 파서 회귀)"
+    assert consumers, "본문 소비 스텝이 0개 — 이 검사가 공허하다(범위 붕괴 또는 파서 회귀)"
+
+
+def test_every_script_that_reads_the_body_is_actually_wired_to_a_live_step():
+    """🔴 본문을 읽는 **스크립트마다** 그것을 라이브 값으로 부르는 스텝이 있어야 한다.
+
+    Every guard script that reads the body must be invoked by a live-body step.
+
+    소비 스텝만 세면 「스텝은 다 라이브인데 정작 그 가드가 CI 에서 안 돌아간다」를
+    못 본다. 기대 집합을 코드에서 파생해 양방향으로 맞춘다.
+    """
+    ci = yaml.safe_load(_ci_text())
+    wired = set()
+
+    for job in ci["jobs"].values():
+        for step in job.get("steps") or []:
+            env = step.get("env") or {}
+            run = step.get("run")
+            if "PR_BODY" not in env or not isinstance(run, str):
+                continue
+            if "steps.prbody.outputs.body" not in str(env["PR_BODY"]):
+                continue
+            for name in _scripts_reading_the_pr_body():
+                if name in run:
+                    wired.add(name)
+
+    expected = _scripts_reading_the_pr_body()
+    assert expected, "본문을 읽는 스크립트가 0개 — 파서 회귀(이 검사가 공허하다)"
+    missing = sorted(expected - wired)
+    assert not missing, (
+        "PR 본문을 읽는데 라이브 본문 스텝에서 실행되지 않는 가드: "
+        + ", ".join(missing)
+        + " — CI 에서 낡은 값을 보거나 아예 실행되지 않는다."
     )
