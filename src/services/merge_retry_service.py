@@ -38,6 +38,7 @@ from src.notifier.telegram import telegram_post_message
 from src.repositories import merge_retry_repo, repository_repo, user_repo
 from src.shared.http_client import get_http_client
 from src.shared.merge_metrics import log_merge_attempt
+from src.shared.time_utils import to_naive_utc
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +69,7 @@ async def process_pending_retries(
     # Atomically claim processable rows (includes attempts_count += 1)
     claimed = merge_retry_repo.claim_batch(
         db,
-        now=now.replace(tzinfo=None),
+        now=to_naive_utc(now),
         limit=limit,
         stale_after_seconds=300,
         only_ids=only_ids,
@@ -156,7 +157,7 @@ def _recover_and_release(db: Session, row, now: datetime, counts: dict[str, int]
             released = merge_retry_repo.release_claim(
                 db,
                 row.id,
-                next_retry_at=now.replace(tzinfo=None) + timedelta(seconds=30),
+                next_retry_at=to_naive_utc(now) + timedelta(seconds=30),
                 last_failure_reason=reason,
                 last_detail_message=str(exc)[:200],
                 expected_claim_token=expected_claim_token,
@@ -233,7 +234,7 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
     if token is None:
         # 토큰 없음 — 30초 후 재시도 대기로 복귀 (위 a-0 cap 이 무한루프를 종결시킨다)
         # No token — release back to retry queue after 30s (the a-0 cap above bounds the loop)
-        _now_naive = now.replace(tzinfo=None) + timedelta(seconds=30)
+        _now_naive = to_naive_utc(now) + timedelta(seconds=30)
         merge_retry_repo.release_claim(
             db, row.id, next_retry_at=_now_naive, last_failure_reason="no_token",
             expected_claim_token=_claim_tok,
@@ -265,7 +266,7 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
     # ── c. PR 사전 검사 (D7) ──────────────────────────────────────
     pr_data = await _get_pr_data(token, row.repo_full_name, row.pr_number)
     if pr_data is None:
-        _now_naive = now.replace(tzinfo=None) + timedelta(seconds=30)
+        _now_naive = to_naive_utc(now) + timedelta(seconds=30)
         merge_retry_repo.release_claim(
             db, row.id, next_retry_at=_now_naive, last_failure_reason="pr_fetch_failed",
             expected_claim_token=_claim_tok,
@@ -409,7 +410,7 @@ async def _handle_merge_failure(  # pylint: disable=too-many-arguments,too-many-
     )
     merge_retry_repo.release_claim(
         db, row.id,
-        next_retry_at=next_retry_at.replace(tzinfo=None),  # naive UTC for DB
+        next_retry_at=to_naive_utc(next_retry_at),  # naive UTC for DB
         last_failure_reason=reason_tag, last_detail_message=reason,
         expected_claim_token=expected_claim_token,
     )

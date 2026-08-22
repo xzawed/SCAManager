@@ -189,3 +189,84 @@ class TestEnginePoolSettings:
         assert db_mod.engine.pool._max_overflow == 12
         assert db_mod.engine.pool._timeout == 20
         assert db_mod.engine.pool._recycle == 900
+
+
+# ─── 🔴 PostgreSQL 세션 타임존을 UTC 로 고정한다 ──────────────────────────────
+#
+# 이 저장소의 DateTime 컬럼은 **거의 전부** naive(`TIMESTAMP WITHOUT TIME ZONE`)이고
+# (예외 1개 = `User.telegram_otp_expires_at`, `src/models/user.py:36` 은 timestamptz),
+# 모델 default 18곳(`default=` 15 + `onupdate=` 3)은 aware `datetime.now(timezone.utc)` 를
+# 그 컬럼에 넣는다. psycopg2 는 aware 값을 timestamptz 로 보내고, PostgreSQL 은 그것을
+# `timestamp` 로 캐스팅할 때 **세션 TimeZone** 을 쓴다. 세션이 UTC 가 아니면 저장값이
+# 오프셋만큼 이동하고, 그 뒤의 모든 naive 비교(윈도우 경계·만료·보존 sweep)가 함께 어긋난다.
+#
+# `_build_connect_args` 에는 그 타임존을 고정하는 것이 없었다 — 서버/역할 기본값에 의존했다.
+# SQLite 단위 테스트는 tzinfo 를 벗겨 이 축을 통째로 숨긴다.
+#
+# 값을 바꾸는 대신 **해석의 기준**을 고정한다: 기존에 저장된 행의 의미가 바뀌지 않는다.
+# Pin the session TimeZone instead of rewriting 18 column defaults: existing rows keep meaning.
+
+def test_postgres_connect_args_pin_the_session_timezone_to_utc(monkeypatch):
+    """PostgreSQL URL 이면 `options` 로 세션 TimeZone 을 UTC 로 고정해야 한다."""
+    _, db_mod = _reload_with_settings(monkeypatch)
+    args = db_mod._build_connect_args("postgresql://u:p@localhost/db")
+
+    options = args.get("options", "")
+    assert "timezone" in options.lower(), (
+        f"connect_args 에 세션 타임존 고정이 없다: {args!r} — 서버 기본값에 의존하면 "
+        "aware default 18곳이 naive 컬럼에 오프셋만큼 이동해 저장된다."
+    )
+    assert "utc" in options.lower(), f"타임존이 UTC 가 아니다: {options!r}"
+
+
+def test_sqlite_gets_no_libpq_options(monkeypatch):
+    """대조축 — SQLite 는 libpq 인수를 받지 않는다. 넣으면 연결 자체가 깨진다."""
+    _, db_mod = _reload_with_settings(monkeypatch)
+    assert db_mod._build_connect_args("sqlite:///:memory:") == {}
+
+
+def test_url_options_are_merged_not_replaced_and_timezone_wins(monkeypatch):
+    """URL 이 `options` 를 지정해도 **둘 다 살아야** 한다 — 타임존이 마지막이다.
+
+    🔴 이 테스트의 초판은 결함을 정답으로 못박고 있었다 (Grok claim-review `01a02a03`).
+    초판은 *"URL 에 options 가 있으면 손대지 않는다"* 를 `sslmode` 규칙에서 그대로
+    가져와 단언했다. 그런데 두 축은 결이 다르다 — URL 의 `?sslmode=` 는 **sslmode 를
+    설정한다**. 반면 libpq 의 `options` 는 문자열 하나뿐이고 connect_args 가 DSN 값을
+    **대체**하므로, `?options=-c statement_timeout=5000` 을 쓴 운영자는 timeout 은 얻고
+    **타임존 핀은 조용히 잃는다**. 초판 테스트가 정확히 그 손실을 초록으로 보증했다.
+
+    타임존을 **뒤에** 두는 이유: 같은 GUC 가 반복되면 마지막이 이긴다. URL 이
+    `-c timezone=Asia/Seoul` 을 주더라도 데이터 정합(UTC)이 최종값이 된다 —
+    저장값의 기준은 URL 로 협상되지 않는다.
+    """
+    _, db_mod = _reload_with_settings(monkeypatch)
+    args = db_mod._build_connect_args(
+        "postgresql://u:p@localhost/db?options=-c%20statement_timeout%3D5000"
+    )
+
+    options = args.get("options", "")
+    assert "statement_timeout=5000" in options, (
+        f"운영자가 URL 에 적은 options 가 사라졌다: {options!r}"
+    )
+    assert "timezone=utc" in options.lower(), (
+        f"URL 이 options 를 줬다고 타임존 핀을 포기했다: {options!r}"
+    )
+    assert options.lower().rindex("timezone=utc") > options.index("statement_timeout"), (
+        f"타임존이 마지막이 아니다 — URL 의 timezone 지정에 밀릴 수 있다: {options!r}"
+    )
+
+
+def test_url_timezone_is_overridden_by_the_pin(monkeypatch):
+    """대조축 — URL 이 비-UTC 타임존을 주면 **핀이 이긴다**.
+
+    Control: a URL-provided timezone must not win; storage frame is not negotiable.
+    """
+    _, db_mod = _reload_with_settings(monkeypatch)
+    args = db_mod._build_connect_args(
+        "postgresql://u:p@localhost/db?options=-c%20timezone%3DAsia/Seoul"
+    )
+
+    options = args["options"].lower()
+    assert options.rindex("timezone=utc") > options.index("timezone=asia/seoul"), (
+        f"URL 의 비-UTC 타임존이 뒤에 온다 — 그것이 최종값이 된다: {options!r}"
+    )
