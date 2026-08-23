@@ -259,22 +259,29 @@ async def update_repo_settings(
     #    사용자는 새로고침 후 실값이 담긴 폼으로 저장한다.
     #    A form rendered while unclaimed carries blank credential fields; if ownership is
     #    acquired between GET and POST it would pass require_write and wipe them.
-    if form.get("rendered_unclaimed"):
-        # 🔴 409 가 아니라 **303 리다이렉트**다 (2026-08-24).
-        #    409 는 데이터를 지켰지만 사용자에게 **아무것도 보이지 않았다** — htmx 는
-        #    `200 <= status < 400` 만 swap 하고 이 리포에는 `htmx:responseError` 핸들러가
-        #    0건이라(실측), 저장 버튼을 눌러도 화면이 그대로였다. 사용자는 저장됐다고 믿는다.
-        #    리다이렉트는 (a) hx-boost 가 새 본문을 swap 하고 (b) 토스트가 보이며
-        #    (c) 그 화면에 소유권 확보 후의 **실값**이 있어 바로 다시 저장할 수 있다.
-        #    `?saved=1`·`?save_error=1` 과 같은 관용구다.
-        #    A 409 was silent under hx-boost; redirect so the toast is actually seen.
-        return RedirectResponse(
-            url=f"/repos/{repo_name}/settings?stale_form=1", status_code=303
-        )
     with SessionLocal() as db:
-        get_accessible_repo(
+        repo = get_accessible_repo(
             db, repo_name, current_user, require_write=True, locale=get_locale(request),
         )
+        # 🔴 소유자 미등록 상태에서 렌더된 폼은 자격증명 칸이 **비어 있다**. GET 이후 다른
+        #    탭에서 소유권을 확보하면 위 `require_write` 를 통과하므로, 그 낡은 폼이 저장된
+        #    webhook·chat_id·수신자를 전부 빈값으로 덮어쓴다. 저장 **전에** 되돌린다.
+        #
+        # 🔴 409 가 아니라 303 이다 (2026-08-24): htmx 는 `200 <= status < 400` 만 swap 하고
+        #    이 리포에는 `htmx:responseError` 핸들러가 0건이라(실측), 409 는 화면에 아무것도
+        #    남기지 않았다 — 사용자는 저장됐다고 믿는다. 리다이렉트는 배너를 보여주고,
+        #    그 화면에는 소유권 확보 후의 **실값**이 있어 바로 다시 저장할 수 있다.
+        #
+        # 🔴 URL 은 **DB 가 돌려준 이름**을 `quote` 해서 만든다 — 경로 인자를 그대로 끼우면
+        #    검증 전 사용자 입력이 리다이렉트에 실린다(CodeQL py/url-redirection).
+        #    같은 파일의 다른 리다이렉트와 동일한 관용구다.
+        # Redirect (not 409) so the banner is actually seen; build the URL from the DB-validated
+        # name, never the raw path parameter.
+        if form.get("rendered_unclaimed"):
+            safe_name = quote(repo.full_name, safe="")
+            return RedirectResponse(
+                url=f"/repos/{safe_name}/settings?stale_form=1", status_code=303
+            )
         try:
             upsert_repo_config(db, RepoConfigData(
                 repo_full_name=repo_name,

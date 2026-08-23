@@ -156,7 +156,6 @@ def test_no_password_input_renders_config_directly():
 
     연결 상태 점(`conn-dot`)의 `{% if config.x %}` 는 input 태그 밖이라 걸리지 않는다.
     """
-    import re  # pylint: disable=import-outside-toplevel
     from pathlib import Path  # pylint: disable=import-outside-toplevel
 
     tpl = (Path(__file__).resolve().parents[3] / "src" / "templates" / "settings.html")
@@ -366,3 +365,72 @@ def test_a_normal_settings_page_has_no_stale_banner():
     assert lang, "렌더된 로케일을 읽을 수 없다"
     fragment = get_text("errors.stale_unclaimed_form", lang.group(1)).split(".")[0][:24]
     assert fragment not in body, "정상 화면에 낡은 폼 배너가 떴다"
+
+
+def test_the_stale_redirect_precedes_every_write():
+    """🔴 순서 불변식 — 리다이렉트가 **모든 쓰기보다 앞**이어야 한다.
+
+    이 분기의 존재 이유는 「낡은 폼이 자격증명을 빈값으로 덮어쓰지 못하게」다. 한 줄만
+    아래로 내려가도 그 목적이 사라지는데, 값은 그대로라 어떤 테스트도 안 깨진다.
+    AST 로 줄 순서를 직접 잰다.
+    """
+    import ast  # pylint: disable=import-outside-toplevel
+    from pathlib import Path  # pylint: disable=import-outside-toplevel
+
+    root = Path(__file__).resolve().parents[3]
+    tree = ast.parse((root / "src" / "ui" / "routes" / "settings.py").read_text(encoding="utf-8"))
+    fn = next(
+        n for n in ast.walk(tree)
+        if isinstance(n, ast.AsyncFunctionDef) and n.name == "update_repo_settings"
+    )
+    redirects = [
+        n.lineno for n in ast.walk(fn)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+        and n.func.id == "RedirectResponse"
+    ]
+    writes = [
+        n.lineno for n in ast.walk(fn)
+        if isinstance(n, ast.Call)
+        and (getattr(n.func, "id", None) in ("upsert_repo_config", "encrypt_token")
+             or getattr(n.func, "attr", None) == "commit")
+    ]
+    assert redirects, "리다이렉트를 못 찾았다 — 이 가드가 공허하다"
+    assert writes, "쓰기 호출을 못 찾았다 — 이 가드가 공허하다"
+    assert min(redirects) < min(writes), (
+        f"낡은 폼 리다이렉트({min(redirects)}행)가 첫 쓰기({min(writes)}행)보다 뒤에 있다 — "
+        "그 사이에서 자격증명이 빈값으로 덮어써진다."
+    )
+
+
+def test_the_redirect_url_is_built_from_the_validated_repo_not_the_path_param():
+    """🔴 리다이렉트 URL 은 **DB 가 돌려준 이름**으로 만든다 (CodeQL py/url-redirection).
+
+    경로 인자를 그대로 끼우면 검증 전 사용자 입력이 리다이렉트 URL 에 실린다.
+    같은 파일의 다른 리다이렉트들이 이미 `quote(repo.full_name, safe="")` 를 쓴다 —
+    이 분기만 예외로 두지 않는다.
+    """
+    import ast  # pylint: disable=import-outside-toplevel
+    from pathlib import Path  # pylint: disable=import-outside-toplevel
+
+    root = Path(__file__).resolve().parents[3]
+    src = (root / "src" / "ui" / "routes" / "settings.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    fn = next(
+        n for n in ast.walk(tree)
+        if isinstance(n, ast.AsyncFunctionDef) and n.name == "update_repo_settings"
+    )
+    # stale 분기의 f-string 이 `repo_name` 을 직접 쓰지 않는지 — 이름으로 확인한다.
+    stale = [
+        n for n in ast.walk(fn)
+        if isinstance(n, ast.If) and any(
+            isinstance(c, ast.Constant) and c.value == "rendered_unclaimed"
+            for c in ast.walk(n.test)
+        )
+    ]
+    assert len(stale) == 1, f"낡은 폼 분기를 찾지 못했다 ({len(stale)}개)"
+    names = {n.id for n in ast.walk(stale[0]) if isinstance(n, ast.Name)}
+    assert "safe_name" in names, "검증·인코딩된 이름을 쓰지 않는다"
+    assert "repo_name" not in names, (
+        "리다이렉트가 경로 인자 `repo_name` 을 직접 쓴다 — "
+        '`quote(repo.full_name, safe="")` 로 만들 것.'
+    )
