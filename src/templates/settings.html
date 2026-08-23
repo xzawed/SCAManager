@@ -490,6 +490,16 @@
   <form id="settingsForm" method="post" action="/repos/{{ repo_name }}/settings"
         hx-indicator="#saveBtn" hx-disabled-elt="#saveBtn">
     <input type="hidden" name="approve_mode" id="approveModeValue" value="{{ config.approve_mode }}">
+    {# 🔴 이 화면이 **소유자 미등록 상태에서 렌더됐다**는 표식.
+       자격증명 값을 비워 렌더하므로, 이 폼이 그대로 제출되면 저장된 값을 빈값으로
+       덮어쓴다. 지금은 require_write 가 403 이라 도달하지 않지만, GET 이후 다른 탭에서
+       소유권을 확보하면(문서화된 복구 경로) 그 낡은 폼이 통과해 여섯 채널을 지운다.
+       서버가 이 표식을 보고 거절한다 — 사용자는 새로고침 후 실값으로 저장한다.
+       Marks a form rendered while unclaimed: its blank credential fields must never be
+       persisted if ownership is acquired between GET and POST. #}
+    {% if notify_secrets_hidden %}
+    <input type="hidden" name="rendered_unclaimed" value="1">
+    {% endif %}
 
     {% if onboarding_needed %}
     <!-- 온보딩 배너 — 알림 채널 미설정 + Telegram 미연결 시 표시 (P0-4: 빠른 설정 카드와 색/아이콘 분리) -->
@@ -1081,10 +1091,14 @@
     </div><!-- /settings-grid -->
 
     <div class="save-bar">
+      {# 소유자 미등록이면 저장은 어차피 403 이다 — 버튼을 감추는 것이 정직한 화면이다. #}
+      {# Saving is 403 for unclaimed repos anyway; hiding the button states that honestly. #}
+      {% if not notify_secrets_hidden %}
       <button type="submit" class="btn btn--primary" id="saveBtn" form="settingsForm">
         <span class="save-label">{{ 'settings_page.save' | i18n_args(locale | default('ko')) }}</span>
         <span class="save-spinner" aria-hidden="true">{{ 'settings_page.saving' | i18n_args(locale | default('ko')) }}</span>
       </button>
+      {% endif %}
     </div>
 
   </form>

@@ -232,3 +232,61 @@ def test_every_config_field_is_classified_public_or_secret():
     assert not stale, (
         f"RepoConfigData 에 없는데 분류 목록에 남은 필드: {sorted(stale)} — 목록이 낡았다"
     )
+
+
+# ── 🔴 Grok claim-review `01a02eaf` Q3 — 이 패치가 만든 데이터 유실 경로 ──────────
+#
+# 패치 **전**: 미소유 화면이 실값을 담았으므로, 소유권 확보 후 그 폼을 저장해도 값이 보존됐다.
+# 패치 **후**: 빈값을 담으므로 같은 저장이 여섯 채널을 **지운다**.
+#
+# 도달 경로: 인증 사용자가 미소유 리포의 설정을 연다 → 다른 탭에서 `/repos/add` 로
+# 소유권 확보(문서화된 복구 절차) → 낡은 탭에서 저장 → `require_write` 통과 → 전멸.
+# hx-boost(`base.html`) 히스토리 복원도 같은 스냅샷을 되살린다.
+#
+# 보안 수정이 **가용성 결함을 만들면 안 된다** — 화면이 값을 못 보여주면 그 폼은
+# 저장 자격도 없다. 서버가 표식으로 거절한다.
+
+
+def _post(user_id, extra=None):
+    """settings POST — user_id 소유 상태에서 폼을 제출한다."""
+    db = MagicMock()
+    repo = MagicMock(id=1, full_name="owner/repo", user_id=user_id, webhook_id=None)
+    db.query.return_value.filter.return_value.first.return_value = repo
+    form = {"approve_mode": "disabled", "approve_threshold": "75",
+            "reject_threshold": "50", "merge_threshold": "75", **(extra or {})}
+    with (
+        patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(db)),
+        patch("src.ui.routes.settings.upsert_repo_config") as upsert,
+        patch("src.ui.routes.settings.repo_config_repo.find_by_full_name",
+              return_value=MagicMock(railway_webhook_token="t", railway_api_token=None)),
+    ):
+        resp = client.post("/repos/owner%2Frepo/settings", data=form, follow_redirects=False)
+    return resp, upsert
+
+
+def test_stale_unclaimed_form_is_rejected_even_after_the_repo_is_claimed():
+    """🔴 미소유 시점에 렌더된 폼은 소유권을 얻어도 저장되지 않는다 — 값이 지워진다."""
+    resp, upsert = _post(user_id=1, extra={"rendered_unclaimed": "1"})
+    assert resp.status_code == 409, f"낡은 폼이 통과했다 (status={resp.status_code})"
+    upsert.assert_not_called()
+
+
+def test_a_normal_form_still_saves():
+    """🔴 과잉 차단 대조군 — 표식이 없으면 정상 저장된다."""
+    resp, upsert = _post(user_id=1)
+    assert resp.status_code in (200, 303), f"정상 저장이 막혔다 (status={resp.status_code})"
+    upsert.assert_called_once()
+
+
+def test_unclaimed_page_hides_the_save_button_and_marks_itself():
+    """미소유 화면은 저장 버튼을 감추고, 그래도 표식을 담는다(버튼 없이 제출될 수 있다)."""
+    body = _render(user_id=None).text
+    assert 'name="rendered_unclaimed"' in body, "표식이 없다 — 서버가 낡은 폼을 구별 못 한다"
+    assert 'id="saveBtn"' not in body, "저장이 403 인데 버튼이 보인다"
+
+
+def test_owner_page_has_the_save_button_and_no_marker():
+    """대조군 — 소유자 화면은 그대로다."""
+    body = _render(user_id=1).text
+    assert 'id="saveBtn"' in body, "소유자 화면에서 저장 버튼이 사라졌다"
+    assert 'name="rendered_unclaimed"' not in body, "소유자 폼에 표식이 붙었다 — 저장이 막힌다"

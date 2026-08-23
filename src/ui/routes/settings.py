@@ -250,6 +250,17 @@ async def update_repo_settings(
     # SSRF 방어: webhook URL 사전 검증 — 내부 네트워크 요청 차단
     # SSRF defence: validate webhook URLs before saving — blocks internal network requests.
     _validate_webhook_urls(form, get_locale(request))
+    # 🔴 소유자 미등록 상태에서 렌더된 폼은 자격증명 칸이 **비어 있다**(renderable_secrets).
+    #    GET 이후 다른 탭에서 소유권을 확보하면 `require_write` 를 통과하므로, 그 낡은 폼이
+    #    저장된 webhook·chat_id·수신자를 전부 빈값으로 덮어쓴다. 표식을 보고 거절한다 —
+    #    사용자는 새로고침 후 실값이 담긴 폼으로 저장한다.
+    #    A form rendered while unclaimed carries blank credential fields; if ownership is
+    #    acquired between GET and POST it would pass require_write and wipe them.
+    if form.get("rendered_unclaimed"):
+        raise HTTPException(
+            status_code=409,
+            detail=get_text("errors.stale_unclaimed_form", get_locale(request)),
+        )
     with SessionLocal() as db:
         get_accessible_repo(
             db, repo_name, current_user, require_write=True, locale=get_locale(request),
