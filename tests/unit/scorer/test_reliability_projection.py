@@ -300,3 +300,20 @@ def test_boolean_values_never_diverge_on_either_backend():
         for sqlite in (True, False):
             got = score_is_unreliable(result_from_projection(_project(case, sqlite=sqlite)))
             assert got == expected, f"{stored!r} sqlite={sqlite}: {got} != {expected}"
+
+
+def test_overview_route_is_actually_wired_to_the_projection():
+    """🔴 배선 축 — 헬퍼가 있어도 라우트가 안 부르면 전부 무의미하다.
+
+    이 단언은 파일 꼬리 편집 중 **한 번 유실됐다가** 게이트의 미사용 import 경고로
+    드러나 복원됐다. 가드 자신이 사라지는 것을 가드는 못 잡는다.
+    """
+    from src.ui.routes import overview  # pylint: disable=import-outside-toplevel
+
+    src = inspect.getsource(overview)
+    assert "_RELIABILITY_COLUMNS" in src, "투영 컬럼이 쿼리에 배선되지 않았다"
+    assert "result_from_projection" in src, "투영값 복원이 호출되지 않았다"
+    # `Analysis.result` 는 `_json_path(...)` 안에서만 등장해야 한다.
+    assert "Analysis.result)" not in src.replace("_json_path(Analysis.result, path)", ""), (
+        "쿼리가 아직 Analysis.result 전체를 select 한다"
+    )
