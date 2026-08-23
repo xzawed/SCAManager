@@ -298,6 +298,7 @@ def _settings_ctx(**overrides) -> dict:
         "hook_fail": False,
         "saved": False,
         "save_error": False,
+        "stale_form": False,
         "railway_webhook_url": None,
         # 🔴 아래 둘은 위 가드가 실측으로 찾아낸 **기존 드리프트**다 — 템플릿이 아직
         #    `{% if %}` 로만 써서 Undefined 가 falsy 로 통과하고 있었을 뿐이다.

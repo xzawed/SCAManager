@@ -166,6 +166,7 @@ async def repo_settings(  # pylint: disable=too-many-positional-arguments,too-ma
     hook_fail: int = 0,
     saved: int = 0,
     save_error: int = 0,
+    stale_form: int = 0,
 ):
     """리포 Gate·알림 설정 페이지를 렌더링한다."""
     with SessionLocal() as db:
@@ -224,6 +225,8 @@ async def repo_settings(  # pylint: disable=too-many-positional-arguments,too-ma
         "notify_secrets_hidden": not repo_is_claimed,
         "hook_ok": bool(hook_ok), "hook_fail": bool(hook_fail),
         "saved": bool(saved), "save_error": bool(save_error),
+        # 낡은 폼(소유권 확보 전 렌더)이 거절된 뒤의 안내 — 위 POST 분기 참조.
+        "stale_form": bool(stale_form),
         "current_user": current_user,
         "railway_webhook_url": railway_webhook_url,
         "railway_webhook_unclaimed": railway_webhook_unclaimed,
@@ -257,9 +260,16 @@ async def update_repo_settings(
     #    A form rendered while unclaimed carries blank credential fields; if ownership is
     #    acquired between GET and POST it would pass require_write and wipe them.
     if form.get("rendered_unclaimed"):
-        raise HTTPException(
-            status_code=409,
-            detail=get_text("errors.stale_unclaimed_form", get_locale(request)),
+        # 🔴 409 가 아니라 **303 리다이렉트**다 (2026-08-24).
+        #    409 는 데이터를 지켰지만 사용자에게 **아무것도 보이지 않았다** — htmx 는
+        #    `200 <= status < 400` 만 swap 하고 이 리포에는 `htmx:responseError` 핸들러가
+        #    0건이라(실측), 저장 버튼을 눌러도 화면이 그대로였다. 사용자는 저장됐다고 믿는다.
+        #    리다이렉트는 (a) hx-boost 가 새 본문을 swap 하고 (b) 토스트가 보이며
+        #    (c) 그 화면에 소유권 확보 후의 **실값**이 있어 바로 다시 저장할 수 있다.
+        #    `?saved=1`·`?save_error=1` 과 같은 관용구다.
+        #    A 409 was silent under hx-boost; redirect so the toast is actually seen.
+        return RedirectResponse(
+            url=f"/repos/{repo_name}/settings?stale_form=1", status_code=303
         )
     with SessionLocal() as db:
         get_accessible_repo(

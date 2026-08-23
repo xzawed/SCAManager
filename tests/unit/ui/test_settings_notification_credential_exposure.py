@@ -32,6 +32,7 @@ webhook URL 획득 → 피해자의 Discord·Slack 채널에 임의 게시.
 가능한 것이다(POST 가 `'****'` 를 "변경 없음" 으로 해석). 알림 URL 은 소유자가 화면에서
 읽고 고치는 값이라, 전 사용자에게 마스킹하면 편집 흐름이 깨진다.
 """
+import re
 from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
@@ -264,10 +265,14 @@ def _post(user_id, extra=None):
     return resp, upsert
 
 
-def test_stale_unclaimed_form_is_rejected_even_after_the_repo_is_claimed():
-    """🔴 미소유 시점에 렌더된 폼은 소유권을 얻어도 저장되지 않는다 — 값이 지워진다."""
-    resp, upsert = _post(user_id=1, extra={"rendered_unclaimed": "1"})
-    assert resp.status_code == 409, f"낡은 폼이 통과했다 (status={resp.status_code})"
+def test_stale_unclaimed_form_is_not_saved_even_after_the_repo_is_claimed():
+    """🔴 미소유 시점에 렌더된 폼은 소유권을 얻어도 **저장되지 않는다** — 값이 지워진다.
+
+    이 축은 「저장이 막히는가」만 본다. 「사용자가 그것을 아는가」는 아래
+    `test_stale_form_redirects_with_a_visible_marker_instead_of_a_silent_409` 가 본다 —
+    #1477 은 전자만 닫고 후자를 열어 뒀다(409 는 hx-boost 에서 조용하다).
+    """
+    _resp, upsert = _post(user_id=1, extra={"rendered_unclaimed": "1"})
     upsert.assert_not_called()
 
 
@@ -290,3 +295,74 @@ def test_owner_page_has_the_save_button_and_no_marker():
     body = _render(user_id=1).text
     assert 'id="saveBtn"' in body, "소유자 화면에서 저장 버튼이 사라졌다"
     assert 'name="rendered_unclaimed"' not in body, "소유자 폼에 표식이 붙었다 — 저장이 막힌다"
+
+
+# ── 🔴 409 는 hx-boost 에서 **조용하다** (Grok claim-review `01a02ecb` F1(d) 잔여) ────
+#
+# #1477 은 낡은 폼을 409 로 막았다. 데이터는 안전하지만 **사용자에게 아무것도 안 보인다**:
+# htmx 1.9.12 는 `200 <= status < 400` 만 swap 하고, 이 리포에는 `htmx:responseError`
+# 핸들러가 **0건**이다(실측). 그래서 저장 버튼을 눌러도 화면이 그대로다 — 사용자는
+# 저장이 됐다고 믿는다. 「조용한 실패」는 이 리포가 반복해서 닫아 온 형태다.
+#
+# 이 리포의 사용자 피드백 관용구는 **303 리다이렉트 + 쿼리 파라미터 배너**다
+# (`?saved=1` · `?save_error=1`, `settings.html` 의 `save-toast`). 같은 길로 보낸다:
+# 저장하지 않고 리다이렉트하면 (a) hx-boost 가 새 본문을 swap 하고 (b) 토스트가 보이며
+# (c) 그 화면에는 **소유권 확보 후의 실값**이 들어 있어 바로 다시 저장할 수 있다.
+
+
+def test_stale_form_redirects_with_a_visible_marker_instead_of_a_silent_409():
+    """🔴 낡은 폼 제출은 **보이는** 피드백으로 끝난다 — 조용한 409 가 아니다."""
+    resp, upsert = _post(user_id=1, extra={"rendered_unclaimed": "1"})
+    assert resp.status_code == 303, (
+        f"303 리다이렉트가 아니다 (status={resp.status_code}). "
+        "409 는 hx-boost 가 swap 하지 않아 사용자에게 아무것도 보이지 않는다."
+    )
+    location = resp.headers.get("location", "")
+    assert "stale_form=1" in location, f"리다이렉트에 표식이 없다: {location!r}"
+    upsert.assert_not_called()
+
+
+def test_the_stale_banner_actually_renders_and_is_translated():
+    """🔴 파라미터만 붙이고 배너가 없으면 여전히 조용하다."""
+    from src.i18n.loader import get_text  # pylint: disable=import-outside-toplevel
+
+    db = MagicMock()
+    repo = MagicMock(id=1, full_name="owner/repo", user_id=1, webhook_id=None)
+    db.query.return_value.filter.return_value.first.return_value = repo
+    config = RepoConfigData(repo_full_name="owner/repo", **_SECRETS)
+    with (
+        patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(db)),
+        patch("src.ui.routes.settings.get_repo_config", return_value=config),
+        patch("src.ui.routes.settings.repo_config_repo.find_by_full_name",
+              return_value=MagicMock(railway_webhook_token=None, railway_api_token=None)),
+        patch("src.ui.routes.settings._detect_stale_webhook", return_value=False),
+    ):
+        body = client.get("/repos/owner%2Frepo/settings?stale_form=1").text
+
+    assert "stale_unclaimed_form" not in body, "i18n 키 원문이 노출됐다 (3 로케일 미등재)"
+    # 🔴 로케일을 **렌더 결과에서 파생**한다 — 한국어로 못박으면 기본 로케일이 en 인
+    #    테스트 클라이언트에서 오탐이 난다(실측). 페이지가 무엇으로 그려졌는지 물어본다.
+    lang = re.search(r'<html lang="([a-z-]+)"', body)
+    assert lang, "렌더된 로케일을 읽을 수 없다"
+    expected = get_text("errors.stale_unclaimed_form", lang.group(1))
+    fragment = expected.split(".")[0][:24]
+    assert fragment in body, (
+        f"낡은 폼 안내가 렌더되지 않았다 (로케일={lang.group(1)}, 조각={fragment!r})"
+    )
+    # 🔴 **토스트가 아니라 배너**여야 한다. `save-toast` 는 3초 뒤 사라지는데
+    #    이 문구는 조치 안내 3문장이라 그 안에 안 읽힌다(실측: 캡처에 안 잡혔다).
+    assert 'id="staleFormBanner"' in body, "지속 배너가 아니다 — 토스트는 3초 뒤 사라진다"
+    assert 'role="alert"' in body, "스크린리더에 알림으로 전달되지 않는다"
+    for loc in ("ko", "en", "ja"):
+        text = get_text("errors.stale_unclaimed_form", loc)
+        assert text and "stale_unclaimed_form" not in text, f"{loc} 번역 누락"
+
+
+def test_a_normal_settings_page_has_no_stale_banner():
+    """대조군 — 파라미터가 없으면 배너도 없다(항상 뜨면 문구가 무의미해진다)."""
+    body = _render(user_id=1).text
+    from src.i18n.loader import get_text  # pylint: disable=import-outside-toplevel
+    lang = re.search(r'<html lang="([a-z-]+)"', body)
+    assert lang, "렌더된 로케일을 읽을 수 없다"
+    fragment = get_text("errors.stale_unclaimed_form", lang.group(1)).split(".")[0][:24]
+    assert fragment not in body, "정상 화면에 낡은 폼 배너가 떴다"
