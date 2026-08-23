@@ -18,7 +18,11 @@ from src.models.analysis import Analysis
 from src.models.repository import Repository
 from src.repositories import analysis_feedback_repo
 from src.scorer.calculator import calculate_grade
-from src.scorer.reliability import score_is_unreliable
+from src.scorer.reliability import (
+    RELIABILITY_RESULT_PATHS,
+    result_from_projection,
+    score_is_unreliable,
+)
 from src.ui._helpers import get_locale, templates
 
 router = APIRouter()
@@ -27,6 +31,25 @@ router = APIRouter()
 # 허용된 error 파라미터 값 — 미등록 값은 None 으로 치환해 임의 문자열 렌더링 방지
 # Allowlisted error param values — unrecognised values replaced with None to prevent arbitrary string rendering
 _ALLOWED_ERRORS = {"oauth_failed", "auth_failed"}
+
+
+def _json_path(column, path: tuple[str, ...]):
+    """`column["a"]["b"]` 형태의 JSON 경로 접근식을 만든다.
+
+    SQLAlchemy 의 JSON 인덱싱은 SQLite(`JSON_EXTRACT`)·PostgreSQL(`#>`) 양쪽으로
+    컴파일된다 — 방언 분기를 코드에 두지 않는다.
+    """
+    expr = column
+    for key in path:
+        expr = expr[key]
+    return expr
+
+
+# 신뢰도 판정이 읽는 경로만 투영한다 — `Analysis.result` 전체를 select 하지 않는다.
+# 순서는 `RELIABILITY_RESULT_PATHS` 와 같아야 하며 `result_from_projection` 이 그것을 가정한다.
+_RELIABILITY_COLUMNS = tuple(
+    _json_path(Analysis.result, path) for path in RELIABILITY_RESULT_PATHS
+)
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -73,13 +96,19 @@ def overview(
             #    신뢰도는 `result` JSON 안에 있어 SQL 로 판정할 수 없으므로 Python 으로 접는다.
             #    Dashboard KPI already excludes unreliable rows; keeping SQL AVG here would make
             #    two averages on the same product disagree.
+            #    🔴 그렇다고 `result` 블롭을 통째로 가져오지도 않는다. 판정이 읽는 것은
+            #    `RELIABILITY_RESULT_PATHS` 5경로뿐인데 전량을 파싱하고 있었다 —
+            #    실측(운영 DB 2026-08-23): 5,157행 · 전송 30 MB · 필요분 80 kB(약 384배),
+            #    월 1.5~1.9 MB 씩 선형 증가. 경로만 투영하면 **같은 판정을 같은 값으로**
+            #    내면서 블롭을 읽지 않는다(판정 함수는 하나 그대로다).
+            #    Project only the paths the predicate reads instead of parsing every blob.
             _sums: dict[int, list[int]] = {}
-            for repo_id, score, result in (
-                db.query(Analysis.repo_id, Analysis.score, Analysis.result)
+            for repo_id, score, *markers in (
+                db.query(Analysis.repo_id, Analysis.score, *_RELIABILITY_COLUMNS)
                 .filter(Analysis.repo_id.in_(repo_ids))
                 .all()
             ):
-                if score is None or score_is_unreliable(result):
+                if score is None or score_is_unreliable(result_from_projection(markers)):
                     continue
                 _sums.setdefault(repo_id, []).append(score)
             avg_map = {rid: sum(v) / len(v) for rid, v in _sums.items() if v}

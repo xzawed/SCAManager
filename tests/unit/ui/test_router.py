@@ -1764,6 +1764,25 @@ def test_reinstall_webhook_deletes_matching_hooks():
 
 # ── overview 컬럼 리디자인 TDD 테스트 (Red 단계) ──────────────────────────
 
+
+def _overview_row(repo_id, score, result):
+    """overview 집계 쿼리의 행 모양을 만든다 — `(repo_id, score, *마커5)`.
+
+    🔴 마커를 **손으로 나열하지 않는다**. `RELIABILITY_RESULT_PATHS` 에서 파생하므로
+    경로가 늘어도 이 mock 이 낡지 않는다. 초판은 `(repo_id, score, result)` 3-튜플을
+    손으로 적었고, 투영 도입 때 이 파일만 남아 `ValueError` 로 터졌다.
+    Derived from the production path declaration so the mock cannot drift again.
+    """
+    from src.scorer.reliability import RELIABILITY_RESULT_PATHS  # noqa: PLC0415
+
+    markers = []
+    for path in RELIABILITY_RESULT_PATHS:
+        node = result
+        for key in path:
+            node = node.get(key) if isinstance(node, dict) else None
+        markers.append(node)
+    return (repo_id, score, *markers)
+
 def test_overview_does_not_show_latest_score_column():
     """GET / 응답 HTML에 '최근 점수' 문자열이 없어야 한다.
     변경 예정: 최근 점수 컬럼 제거 — 구현 전까지 이 테스트는 실패(Red).
@@ -1793,12 +1812,13 @@ def test_overview_grade_derived_from_avg_score():
     mock_db.query.return_value.filter.return_value.group_by.return_value.all.return_value = [
         (1, 1),       # count_map: [(repo_id, count)]
     ]
-    # 🔴 평균은 이제 SQL AVG 가 아니라 **행을 읽어 Python 으로 접는다** (R46 Axis B, 2026-08-15).
-    #    신뢰도는 `result` JSON 안에 있어 SQL 로 판정할 수 없고, SQL AVG 를 두면 이 카드가
-    #    대시보드 KPI 와 **다른 평균**을 보인다. 그래서 `(repo_id, score, result)` 를 돌려준다.
-    #    Averages are folded in Python now; SQL AVG cannot see the reliability flags.
+    # 🔴 평균은 SQL AVG 가 아니라 **행을 읽어 Python 으로 접는다** (R46 Axis B, 2026-08-15) —
+    #    SQL AVG 를 두면 이 카드가 대시보드 KPI 와 **다른 평균**을 보인다.
+    #    다만 `result` 블롭 전량이 아니라 신뢰도 판정이 읽는 5경로만 투영한다
+    #    (실측 30 MB → 80 kB). 그래서 행 모양이 `(repo_id, score, *마커5)` 다.
+    #    Rows are `(repo_id, score, *markers)`: only the reliability paths are projected.
     mock_db.query.return_value.filter.return_value.all.return_value = [
-        (1, 92, {"source": "pr", "ai_review_status": "success", "breakdown": {}}),
+        _overview_row(1, 92, {"source": "pr", "ai_review_status": "success", "breakdown": {}}),
     ]
 
     with patch("src.ui.routes.overview.SessionLocal", return_value=_ctx(mock_db)):
