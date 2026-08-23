@@ -51,7 +51,7 @@ a repository; the rest stays off until you switch it on.
 | | What happens | Default |
 |---|---|---|
 | **Analyze and score** | Every push and pull request is analyzed and scored. The result is stored and shown in the web UI. | **On** |
-| **AI review** | Claude reviews the diff. Every analyzed push and PR is one Claude call, billed to your Anthropic account. | **On** |
+| **AI review** | Claude reviews the diff. Each review is a Claude API call billed to your Anthropic account — skipped when there is no key, the feature is off, or the diff is empty. | **On** |
 | **PR review comment** | The review is posted as a comment on the pull request. | **On** |
 | **Notifications** | Telegram, Discord, Slack, email, webhook, n8n, GitHub commit comment, GitHub issue. | Off — except Telegram, which is enabled as soon as a bot token and chat ID exist |
 | **Approve / request changes** | Acts on GitHub for you, based on the score. | **Off** |
@@ -142,8 +142,8 @@ A commit starts at 100 points and is judged on five things:
 Claude is responsible for 55 of those 100 points. When there is no usable AI review — no API key,
 the feature switched off, or an empty diff — those three parts are not zeroed. They are replaced
 by fixed neutral values worth 44 of the 55, which is why a flawless static run then tops out at
-**89**: a B, never an A. The run is also left out of every average, so a score that never saw an
-AI review cannot pass for one that did.
+**89**: a B, never an A. The run is also flagged as unverified, so a score that never saw an AI
+review can be told apart from one that did.
 
 If the AI call genuinely failed — an API error, or a response that could not be parsed — no score
 is stored at all.
@@ -163,7 +163,7 @@ analyzer behind them. There are **25 registered analyzers**; **16** ship in ever
 contract described above, and the rest run when their binary happens to be on `PATH`.
 
 A local `make run` will not have all 25 available, and that is fine — a missing *optional* analyzer
-is skipped quietly. See [docs/architecture.md](docs/architecture.md) for the full inventory.
+is skipped quietly. [docs/STATE.md](docs/STATE.md) carries the current counts.
 
 Languages with static analysis:
 
