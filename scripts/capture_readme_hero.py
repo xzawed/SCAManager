@@ -90,6 +90,8 @@ def _start_server(db_path: str):
             if requests.get(f"{BASE}/health", timeout=1).status_code == 200:
                 return server, thread
         except requests.RequestException:
+            # 아직 안 떴을 뿐이다 — 기동 대기 중 연결 거부는 정상이라 재시도한다.
+            # Not up yet; connection errors while polling are expected, so retry.
             pass
         time.sleep(0.5)
     server.should_exit = True
@@ -173,6 +175,13 @@ def _shrink(path: Path) -> None:
 
 
 def main() -> int:
+    # 🔴 `scripts/*.py` 전역 규칙 — 비-ASCII 출력이 cp949 콘솔에서 죽지 않게 한다.
+    #    "이 스크립트는 안 쓴다" 는 판단을 두지 않는다(`test_stdout_encoding_guard.py`).
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass  # 캡처된 stream 등 reconfigure 미지원 — 무시 / stream without reconfigure
+
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--locale", choices=sorted(_CAPTION_FILE), action="append",
                     help="반복 지정 가능. 생략하면 전부.")
