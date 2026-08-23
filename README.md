@@ -44,9 +44,11 @@ GitHub commit comment · GitHub issue, configured per repository.
 
 <div align="center">
 
+<!-- 재생성 / regenerate: py -3 scripts/capture_readme_hero.py -->
 ![SCAManager dashboard](docs/readme/dashboard.png)
 
-<sub>Dashboard — demo data on a local instance.</sub>
+<sub>Local instance with a seeded 7-day history — not what first boot looks like.
+AI cost reads $0.00 because the seed makes no API calls.</sub>
 
 </div>
 

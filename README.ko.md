@@ -42,9 +42,11 @@ GitHub 커밋 코멘트 · GitHub 이슈. 리포마다 따로 설정한다.
 
 <div align="center">
 
-![SCAManager dashboard](docs/readme/dashboard.png)
+<!-- 재생성 / regenerate: py -3 scripts/capture_readme_hero.py -->
+![SCAManager 대시보드](docs/readme/dashboard.ko.png)
 
-<sub>대시보드 — 로컬 인스턴스의 데모 데이터.</sub>
+<sub>7일치 이력을 심어 둔 로컬 인스턴스 — 처음 띄웠을 때의 화면이 아니다.
+AI 비용이 $0.00 인 것은 시드가 실제 API 를 호출하지 않기 때문이다.</sub>
 
 </div>
 
