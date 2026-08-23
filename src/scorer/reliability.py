@@ -50,21 +50,40 @@ RELIABILITY_RESULT_PATHS: tuple[tuple[str, ...], ...] = (
 )
 
 
-def _json_bool(value: object) -> object:
-    """JSON 불린 정규화 — 백엔드마다 타입이 다르다.
+# 🔴 판정이 `is True` 로 **엄격 비교**하는 경로 — 여기만 불린 정규화 대상이다.
+#
+# Grok claim-review `01a02f14` Q1 적발: 초판은 정규화를 **전 경로**에 걸었고, 그것이
+# 오히려 발산을 만들었다. 실측 반례:
+#   `{"static_analysis_incomplete": "false"}` → 전체: 비어있지 않은 문자열이라 truthy → True
+#                                              투영: "false" → False 로 뒤집힘
+#   `{"static_uncovered_languages": "false"}` → 같은 형태
+# 그 두 경로는 **truthy 판정**이라 SQLite 의 0/1 이 그대로 들어가도 결과가 같다.
+# 정규화가 필요한 것은 `is True` 하나뿐이다 — 좁히면 위 반례가 사라진다.
+# Normalizing every path created divergences; only the strict-identity path needs it.
+_STRICT_BOOL_PATHS: frozenset[tuple[str, ...]] = frozenset({
+    ("breakdown", "ai_defaults_applied"),
+})
 
-    🔴 SQLite 는 JSON 불린을 **0/1 정수**로 돌려준다(실측). `score_is_unreliable` 은
-    `ai_defaults_applied is True` 로 **엄격 비교**하므로 `1 is True` 는 False 다 —
-    정규화하지 않으면 그 행이 집계에서 안 빠지고 평균이 조용히 틀어진다.
-    PostgreSQL 은 True/False 로 준다. 둘을 여기서 하나로 만든다.
-    SQLite returns JSON booleans as 0/1; the predicate uses `is True`, so normalize.
+
+def _json_bool(value: object) -> object:
+    """SQLite 의 JSON 불린(0/1 정수)을 파이썬 불린으로 되돌린다.
+
+    🔴 **정수 0/1 만** 건드린다. 문자열 `"true"`/`"false"` 는 손대지 않는다 —
+    전체 blob 경로에서 `"true" is True` 는 False 이므로, 여기서 True 로 바꾸면
+    없던 발산이 생긴다(초판이 그랬다).
+
+    🔴 남는 한계(실측·정직 기준): SQLite 에서 JSON `true` 와 JSON `1` 은 추출 후
+    **구별 불가능**하다. 저장값이 숫자 `1` 이면 전체 blob 은 `1 is True`=False,
+    투영은 True 가 된다. PostgreSQL(운영)은 둘을 구별하므로 이 발산이 없고,
+    현재 기록자는 항상 불린을 저장한다(`scorer/calculator.py` · `worker/pipeline.py`).
+    이 한계는 테스트가 명시적으로 고정한다 — 모르고 지나가지 않는다.
+    Only int 0/1 is converted; strings are left alone. On SQLite a stored numeric 1 is
+    indistinguishable from JSON true after extraction (documented and pinned by a test).
     """
-    if value is None or isinstance(value, bool):
+    if isinstance(value, bool) or value is None:
         return value
-    if value in (0, 1):
+    if isinstance(value, int) and value in (0, 1):
         return bool(value)
-    if isinstance(value, str) and value.lower() in ("true", "false"):
-        return value.lower() == "true"
     return value
 
 
@@ -86,7 +105,8 @@ def result_from_projection(values: "Sequence[object]") -> dict:
         node = out
         for key in path[:-1]:
             node = node.setdefault(key, {})
-        node[path[-1]] = _json_bool(value)
+        # 엄격 비교 경로만 정규화한다 — truthy 판정 경로는 원값 그대로가 동치다.
+        node[path[-1]] = _json_bool(value) if path in _STRICT_BOOL_PATHS else value
     return out
 
 
