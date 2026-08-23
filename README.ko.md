@@ -39,6 +39,15 @@ swift · terraform · typescript · yaml</sub>
 **알림** — Telegram · Discord · Slack · Email · webhook · n8n ·
 GitHub 커밋 코멘트 · GitHub 이슈. 리포마다 따로 설정한다.
 
+
+<div align="center">
+
+![SCAManager dashboard](docs/readme/dashboard.png)
+
+<sub>대시보드 — 로컬 인스턴스의 데모 데이터.</sub>
+
+</div>
+
 ## 빠른 시작
 
 ```bash

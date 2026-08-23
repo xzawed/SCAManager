@@ -41,6 +41,15 @@ it on per repository.
 **Notifications** — Telegram · Discord · Slack · Email · webhook · n8n ·
 GitHub commit comment · GitHub issue, configured per repository.
 
+
+<div align="center">
+
+![SCAManager dashboard](docs/readme/dashboard.png)
+
+<sub>Dashboard — demo data on a local instance.</sub>
+
+</div>
+
 ## Quick start
 
 ```bash
