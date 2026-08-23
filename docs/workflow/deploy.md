@@ -27,7 +27,7 @@ replica 는 `[deploy.multiRegionConfig.us-east4-eqdc4a] numReplicas`(`railway.to
 
 ## 운영 판정
 
-`is_production`(`src/config.py:277`) = `ENVIRONMENT=production` 이거나 `APP_BASE_URL` 이 `https` 로 시작. 켜지면 `/docs`·`/redoc` 비노출 + 기본 `SESSION_SECRET` 기동 차단 + 스케줄러 기동이 함께 걸린다. 둘 다 없으면 공개된 기본 시크릿으로 뜬다.
+`is_production`(`src/config.py:264`) = `ENVIRONMENT=production` 이거나 `APP_BASE_URL` 이 `https` 로 시작. 켜지면 `/docs`·`/redoc` 비노출 + 기본 `SESSION_SECRET` 기동 차단 + 스케줄러 기동이 함께 걸린다. 둘 다 없으면 공개된 기본 시크릿으로 뜬다.
 
 ## 의존성
 

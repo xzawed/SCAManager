@@ -30,7 +30,7 @@ USING (repo_id IN (SELECT id FROM repositories
 
 ## 저장소 계층
 
-`src/repositories/<name>_repo.py` 에 모듈 함수로 쓴다 — 클래스 없음, 첫 인자 `db: Session`. `__init__.py` 는 빈 파일로 둔다. 세션은 `src/database.py` — 웹 `get_db()`(:302), 백그라운드 `WorkerSessionLocal`(:298). 웹 경로만 쿼리마다 `SET LOCAL app.user_id` 를 발화한다(:261).
+`src/repositories/<name>_repo.py` 에 모듈 함수로 쓴다 — 클래스 없음, 첫 인자 `db: Session`. `__init__.py` 는 빈 파일로 둔다. 세션은 `src/database.py` — 웹 `get_db()`, 백그라운드 `WorkerSessionLocal`. 웹 경로만 쿼리마다 `SET LOCAL app.user_id` 를 발화한다.
 
 ## 검증
 

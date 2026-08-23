@@ -12,7 +12,7 @@
 | RLS user_id 전파 | 모든 HTTP | `src/middleware/rls_session.py:33` |
 | 로그 시크릿 마스킹 | 전 로거 | `src/logging_config.py:87` |
 
-prod 판정 = `ENVIRONMENT=production` 이거나 `APP_BASE_URL` 이 https (`src/config.py:278`).
+prod 판정 = `ENVIRONMENT=production` 이거나 `APP_BASE_URL` 이 https (`src/config.py:264`).
 
 ## 운영 배포 전 6단계
 
@@ -36,4 +36,4 @@ prod 판정 = `ENVIRONMENT=production` 이거나 `APP_BASE_URL` 이 https (`src/
 - 외부 URL: 저장 시 `is_safe_webhook_url()` (`src/shared/ssrf.py:56`), 발신 직전 `await validate_external_url()` + `build_safe_client()` (`src/notifier/_http.py:37`), 로그에는 `url_host_for_log()` 만.
 - 인증: 세션 `require_login` · 관리자 `require_admin` (`src/auth/session.py:74`) · 시스템 `require_api_key` (`src/api/auth.py:39`).
 - 키·서명 비교는 `secure_str_compare` (`src/shared/secure_compare.py:16`). 키 미설정은 통과가 아니라 503.
-- 사용자 입력 로깅은 `sanitize_for_log` (`src/shared/log_safety.py:12`).
+- 사용자 입력 로깅은 `sanitize_for_log` (`src/shared/log_safety.py:13`).
