@@ -5,13 +5,20 @@ R46 선택 (flag, not NULL for new categories):
 - NULL-persist 는 genuine AI 실패(`api_error`/`parse_error`)만 — 기존 계약 유지.
 - CLI / AI 기본값 / disabled / uncovered 는 **점수를 저장하되** 집계에서 제외.
   이유: 역사 행 rewrite 금지 + 상세 페이지가 점수·breakdown 을 보여줘야 함.
-  집계는 `score_is_unreliable(result)` 로 result 마커를 읽어 필터 (마이그레이션 0).
+  집계는 `score_is_unreliable(result)` 로 판정한다.
+  🔴 **「마이그레이션 0」은 더 이상 사실이 아니다** (0046). 집계 경로가 result 블롭을
+     전량 읽는 대가가 커서(실측 33 MB·422 ms) 판정 결과를 `analyses.score_unreliable`
+     컬럼에 **캐시**한다. 정의는 여전히 이 함수 하나지만, 판정을 바꾸면 기존 행의
+     캐시가 낡으므로 **백필 리비전이 필요하다** —
+     `tests/unit/scorer/test_reliability_cache_contract.py` 가 그것을 강제한다.
 
 R46 choice (flag, not NULL for new categories):
 - NULL-persist stays limited to genuine AI failures (existing contract).
 - CLI / AI-defaults / disabled / uncovered **persist the score** but aggregates exclude them.
   Historical rows are not rewritten; the detail page keeps score/breakdown visible.
-  Aggregates filter via `score_is_unreliable(result)` markers (zero migrations).
+  Aggregates filter via this predicate. "Zero migrations" no longer holds (0046): the
+  verdict is cached in `analyses.score_unreliable`, so changing the predicate requires a
+  backfill revision (enforced by a behaviour-hash guard).
 """
 from __future__ import annotations
 
@@ -45,7 +52,14 @@ def score_is_unreliable(result: dict | None) -> bool:
     if status in _AI_UNVERIFIED_STATUSES:
         return True
     breakdown = result.get("breakdown")
-    if isinstance(breakdown, dict) and breakdown.get("ai_defaults_applied") is True:
+    # 🔴 `is True` 가 아니라 truthy 다 (2026-08-24).
+    #    `is True` 는 불린이 아닌 참값(숫자 1·문자열)을 **신뢰 가능**으로 흘려보낸다 —
+    #    기본값이 적용됐는데 집계에 남는 fail-open 이다. truthy 는 fail-closed 다.
+    #    운영 실측: `ai_defaults_applied` 는 boolean 3,599행 + 키 없음 1,564행,
+    #    **비-불린 0행** — 현재 데이터에서 이 변경은 증명 가능한 no-op 이다.
+    #    Truthy, not `is True`: a non-boolean truthy marker must not slip through as reliable.
+    #    Measured: 0 non-boolean values in production, so this is a provable no-op today.
+    if isinstance(breakdown, dict) and breakdown.get("ai_defaults_applied"):
         return True
     uncovered = result.get("static_uncovered_languages") or []
     if uncovered:

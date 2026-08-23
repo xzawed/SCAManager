@@ -1,7 +1,7 @@
 """Analysis ORM 모델 — 분석 이력(정적 분석 + AI 리뷰 점수) 저장."""
 from datetime import datetime, timezone
 from sqlalchemy import (
-    Column, Integer, String, JSON, DateTime, ForeignKey, UniqueConstraint, Index, text,
+    Boolean, Column, Integer, String, JSON, DateTime, ForeignKey, UniqueConstraint, Index, text,
 )
 from sqlalchemy.orm import relationship
 from src.database import Base
@@ -30,6 +30,14 @@ class Analysis(Base):
             "repo_id", "created_at",
             postgresql_where=text("input_tokens IS NOT NULL"),
             sqlite_where=text("input_tokens IS NOT NULL"),
+        ),
+        # 0046: 집계는 «점수가 있고 신뢰 가능한» 행만 본다 — 부분 인덱스가 Index Only Scan 을
+        # 만든다(실측 0.45 ms · 버퍼 6; 없으면 2.17 ms · 버퍼 1,145). 운영 기준 29% 만 덮는다.
+        Index(
+            "ix_analyses_reliable_scores",
+            "repo_id", "score",
+            postgresql_where=text("score IS NOT NULL AND score_unreliable IS NOT TRUE"),
+            sqlite_where=text("score IS NOT NULL AND score_unreliable IS NOT TRUE"),
         ),
     )
 
@@ -68,5 +76,35 @@ class Analysis(Base):
     # Actual Anthropic API token usage — for cost calculation (Alembic 0032)
     input_tokens = Column(Integer, nullable=True)
     output_tokens = Column(Integer, nullable=True)
+
+    # 🔴 `score_is_unreliable(result)` 의 **비정규화 캐시** (Alembic 0046).
+    #
+    # 집계(평균·추세)는 이 판정으로 행을 걸러내는데, 판정 근거가 `result` JSON 안에 있어
+    # 그 전량을 읽어야 했다. 실측(로컬 PG17, 운영 동형 5,164행 · 33 MB):
+    #     json 전체 blob 로드          16.2 ms · 5,164행 · 33 MB 전송
+    #     json 5경로 `->` 추출        422.5 ms  ← `json` 은 텍스트라 접근마다 재파싱
+    #     jsonb 5경로 `->`             74.7 ms  (테이블 재작성 필요, 여전히 5,164행)
+    #     이 컬럼 + 부분인덱스           0.45 ms · **4행**
+    #
+    # 🔴 이것은 **캐시**지 정의가 아니다. 정의는 `scorer/reliability.score_is_unreliable`
+    #    하나뿐이고, 이 컬럼이 그것과 어긋나면 평균이 조용히 틀린다(예외도 red 도 없이).
+    #    판정 함수 본문이 바뀌면 백필 리비전을 강제하는 가드가 CI 에 있다
+    #    (`tests/unit/scorer/test_reliability_cache_contract.py`).
+    #
+    # Denormalized cache of `score_is_unreliable(result)`: aggregates filtered on a predicate whose
+    # inputs live inside the JSON blob, forcing a full read. This is a cache, not the definition;
+    # a CI guard forces a backfill revision whenever the predicate body changes.
+    # 🔴 기본값이 **true(신뢰 불가)** 다 — fail-closed (Grok claim-review `01a02f70` Q3).
+    #    이 기본값이 적용되는 경우는 「쓰기가 이 컬럼을 빠뜨렸을 때」뿐이다:
+    #      · 새 쓰기 경로가 대입을 잊음  · 배포 교체 중 옛 바이너리의 insert
+    #      · 미래의 bulk/raw SQL 경로
+    #    false 로 두면 그 행이 **검증된 점수로 평균에 들어간다** — R46 Axis B 의 재현이다.
+    #    운영 실측 신뢰불가 비율 70.8% 를 감안하면 「모르면 신뢰 가능」은 나쁜 사전확률이다.
+    #    true 면 모르는 행은 평균에서 빠진다 — 판정 자체가 fail-closed 인 것과 방향이 같다.
+    #    Unknown rows must not enter verified averages; the default is the backstop for
+    #    forgotten writes, so it points the same way the predicate does.
+    score_unreliable = Column(
+        Boolean, nullable=False, server_default=text("true"),
+    )
 
     repository = relationship("Repository", back_populates="analyses")

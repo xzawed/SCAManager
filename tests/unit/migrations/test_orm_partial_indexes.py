@@ -48,6 +48,21 @@ def test_analyses_tokens_partial_index_declared():
     assert _where_str(ix, "sqlite") == "input_tokens IS NOT NULL", "sqlite_where 술어 불일치"
 
 
+def test_analyses_reliable_scores_partial_index_declared():
+    """🔴 0046 `ix_analyses_reliable_scores` 부분 인덱스 ORM 선언 + 술어 정확 비교.
+
+    이 인덱스가 없거나 술어가 어긋나면 `GET /` 의 집계가 Index Only Scan 을 놓친다 —
+    **값은 맞고 성능만 조용히 죽는다**(실측 0.45 ms → 2.17 ms, 버퍼 6 → 1,145).
+    ORM↔alembic 정합 축은 PostgreSQL 이 있을 때만 돌아 여기서 값싸게 덮는다.
+    """
+    ix = _index(Analysis.__table__, "ix_analyses_reliable_scores")
+    assert ix is not None, "ix_analyses_reliable_scores ORM 미선언 (0046 회귀)"
+    assert [c.name for c in ix.columns] == ["repo_id", "score"]
+    predicate = "score IS NOT NULL AND score_unreliable IS NOT TRUE"
+    assert _where_str(ix, "postgresql") == predicate, "postgresql_where 술어 불일치"
+    assert _where_str(ix, "sqlite") == predicate, "sqlite_where 술어 불일치"
+
+
 def test_insight_cache_partial_unique_indexes_declared():
     """insight_cache uq_insight_cache_global/repo 부분 유니크 인덱스 ORM 선언 (#18 drift ④')."""
     tbl = InsightNarrativeCache.__table__

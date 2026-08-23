@@ -22,8 +22,23 @@ from playwright.sync_api import Page, expect
 
 
 def _seed_score(db_path: str, score: int = 85) -> None:
-    """owner/testrepo 에 score 분석 1건 삽입 (overview avg_score 에 반영)."""
+    """owner/testrepo 에 score 분석 1건 삽입 (overview avg_score 에 반영).
+
+    🔴 `score_unreliable` 을 **명시로 넣는다** (0046). 이 시더는 원시 SQL 이라 ORM 을
+    거치지 않고, 컬럼의 `server_default` 는 **true(신뢰 불가)** 다 — fail-closed.
+    빠뜨리면 이 행이 집계에서 제외돼 `GET /` 에 점수 카드가 **아예 렌더되지 않는다**
+    (실측: 이 PR 의 CI 에서 overview e2e 5건이 그렇게 깨졌다).
+
+    값은 판정 함수에서 낸다 — 하드코딩하면 판정이 바뀌었을 때 이 시더가 조용히 낡는다.
+    Seeds must mirror the production write: raw SQL bypasses the ORM and the column defaults
+    to true (unreliable, fail-closed), which drops the row from every aggregate.
+    """
     from sqlalchemy import create_engine, text
+
+    from src.scorer.reliability import score_is_unreliable
+
+    seed_result: dict = {}
+    unreliable = score_is_unreliable(seed_result)
     engine = create_engine(f"sqlite:///{db_path}")
     with engine.connect() as conn:
         row = conn.execute(text(
@@ -34,9 +49,11 @@ def _seed_score(db_path: str, score: int = 85) -> None:
         rid = row[0]
         conn.execute(text(
             "INSERT OR IGNORE INTO analyses "
-            "(repo_id, commit_sha, commit_message, score, grade, result, author_login, created_at) "
-            "VALUES (:rid,'ov-score-001','seed',:sc,'B','{}','e2e-tester',datetime('now'))"
-        ), {"rid": rid, "sc": score})
+            "(repo_id, commit_sha, commit_message, score, grade, result, author_login,"
+            " score_unreliable, created_at) "
+            "VALUES (:rid,'ov-score-001','seed',:sc,'B','{}','e2e-tester',"
+            ":unrel,datetime('now'))"
+        ), {"rid": rid, "sc": score, "unrel": unreliable})
         conn.commit()
     engine.dispose()
 

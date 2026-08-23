@@ -1764,6 +1764,7 @@ def test_reinstall_webhook_deletes_matching_hooks():
 
 # ── overview 컬럼 리디자인 TDD 테스트 (Red 단계) ──────────────────────────
 
+
 def test_overview_does_not_show_latest_score_column():
     """GET / 응답 HTML에 '최근 점수' 문자열이 없어야 한다.
     변경 예정: 최근 점수 컬럼 제거 — 구현 전까지 이 테스트는 실패(Red).
@@ -1789,16 +1790,13 @@ def test_overview_grade_derived_from_avg_score():
     mock_repo = MagicMock(id=1, full_name="owner/repo", user_id=1, created_at="2026-01-01")
     mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [mock_repo]
 
-    # count_map 만 `.group_by().all()` 을 쓴다.
-    mock_db.query.return_value.filter.return_value.group_by.return_value.all.return_value = [
-        (1, 1),       # count_map: [(repo_id, count)]
-    ]
-    # 🔴 평균은 이제 SQL AVG 가 아니라 **행을 읽어 Python 으로 접는다** (R46 Axis B, 2026-08-15).
-    #    신뢰도는 `result` JSON 안에 있어 SQL 로 판정할 수 없고, SQL AVG 를 두면 이 카드가
-    #    대시보드 KPI 와 **다른 평균**을 보인다. 그래서 `(repo_id, score, result)` 를 돌려준다.
-    #    Averages are folded in Python now; SQL AVG cannot see the reliability flags.
-    mock_db.query.return_value.filter.return_value.all.return_value = [
-        (1, 92, {"source": "pr", "ai_review_status": "success", "breakdown": {}}),
+    # 🔴 0046 이후 **두 쿼리가 같은 체인 모양**이다 — count 도 avg 도
+    #    `.filter().group_by().all()` 이라 `return_value` 하나로는 구분되지 않는다.
+    #    호출 순서(count → avg)로 `side_effect` 를 준다. 순서가 바뀌면 이 테스트가 먼저 깨진다.
+    #    Both aggregates now share the same chain shape; distinguish them by call order.
+    mock_db.query.return_value.filter.return_value.group_by.return_value.all.side_effect = [
+        [(1, 1)],       # ① count_map: [(repo_id, count)]
+        [(1, 92.0)],    # ② avg_map:   [(repo_id, avg)]  — 신뢰 불가 행은 SQL 이 이미 뺐다
     ]
 
     with patch("src.ui.routes.overview.SessionLocal", return_value=_ctx(mock_db)):

@@ -395,13 +395,21 @@ def _seed_analysis(db_path: str) -> int:
         if row is None:
             raise RuntimeError("_seed_repo must be called before _seed_analysis")
         repo_id = row[0]
+        # 🔴 `score_unreliable` 을 판정 함수에서 낸다 (0046). 원시 SQL 은 ORM 을 거치지 않고
+        #    컬럼 기본값이 **true(신뢰 불가·fail-closed)** 라, 빠뜨리면 이 행이 집계에서
+        #    제외돼 대시보드·overview 가 빈 값을 그린다(실측: overview e2e 5건이 그렇게 깨졌다).
+        from src.scorer.reliability import score_is_unreliable  # noqa: PLC0415
+
+        seed_result = {"summary": "e2e perf test"}
         conn.execute(text("""
             INSERT OR IGNORE INTO analyses
-                (repo_id, commit_sha, commit_message, score, grade, result, author_login, created_at)
+                (repo_id, commit_sha, commit_message, score, grade, result, author_login,
+                 score_unreliable, created_at)
             VALUES
                 (:rid, 'perf-test-sha-001', 'perf: seed analysis for E2E',
-                 85, 'B', :res, 'e2e-tester', datetime('now'))
-        """), {"rid": repo_id, "res": json.dumps({"summary": "e2e perf test"})})
+                 85, 'B', :res, 'e2e-tester', :unrel, datetime('now'))
+        """), {"rid": repo_id, "res": json.dumps(seed_result),
+               "unrel": score_is_unreliable(seed_result)})
         conn.commit()
         analysis_row = conn.execute(text(
             "SELECT id FROM analyses WHERE repo_id=:rid AND commit_sha='perf-test-sha-001'"
