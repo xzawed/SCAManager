@@ -166,6 +166,7 @@ async def repo_settings(  # pylint: disable=too-many-positional-arguments,too-ma
     hook_fail: int = 0,
     saved: int = 0,
     save_error: int = 0,
+    stale_form: int = 0,
 ):
     """리포 Gate·알림 설정 페이지를 렌더링한다."""
     with SessionLocal() as db:
@@ -224,6 +225,8 @@ async def repo_settings(  # pylint: disable=too-many-positional-arguments,too-ma
         "notify_secrets_hidden": not repo_is_claimed,
         "hook_ok": bool(hook_ok), "hook_fail": bool(hook_fail),
         "saved": bool(saved), "save_error": bool(save_error),
+        # 낡은 폼(소유권 확보 전 렌더)이 거절된 뒤의 안내 — 위 POST 분기 참조.
+        "stale_form": bool(stale_form),
         "current_user": current_user,
         "railway_webhook_url": railway_webhook_url,
         "railway_webhook_unclaimed": railway_webhook_unclaimed,
@@ -256,15 +259,29 @@ async def update_repo_settings(
     #    사용자는 새로고침 후 실값이 담긴 폼으로 저장한다.
     #    A form rendered while unclaimed carries blank credential fields; if ownership is
     #    acquired between GET and POST it would pass require_write and wipe them.
-    if form.get("rendered_unclaimed"):
-        raise HTTPException(
-            status_code=409,
-            detail=get_text("errors.stale_unclaimed_form", get_locale(request)),
-        )
     with SessionLocal() as db:
-        get_accessible_repo(
+        repo = get_accessible_repo(
             db, repo_name, current_user, require_write=True, locale=get_locale(request),
         )
+        # 🔴 소유자 미등록 상태에서 렌더된 폼은 자격증명 칸이 **비어 있다**. GET 이후 다른
+        #    탭에서 소유권을 확보하면 위 `require_write` 를 통과하므로, 그 낡은 폼이 저장된
+        #    webhook·chat_id·수신자를 전부 빈값으로 덮어쓴다. 저장 **전에** 되돌린다.
+        #
+        # 🔴 409 가 아니라 303 이다 (2026-08-24): htmx 는 `200 <= status < 400` 만 swap 하고
+        #    이 리포에는 `htmx:responseError` 핸들러가 0건이라(실측), 409 는 화면에 아무것도
+        #    남기지 않았다 — 사용자는 저장됐다고 믿는다. 리다이렉트는 배너를 보여주고,
+        #    그 화면에는 소유권 확보 후의 **실값**이 있어 바로 다시 저장할 수 있다.
+        #
+        # 🔴 URL 은 **DB 가 돌려준 이름**을 `quote` 해서 만든다 — 경로 인자를 그대로 끼우면
+        #    검증 전 사용자 입력이 리다이렉트에 실린다(CodeQL py/url-redirection).
+        #    같은 파일의 다른 리다이렉트와 동일한 관용구다.
+        # Redirect (not 409) so the banner is actually seen; build the URL from the DB-validated
+        # name, never the raw path parameter.
+        if form.get("rendered_unclaimed"):
+            safe_name = quote(repo.full_name, safe="")
+            return RedirectResponse(
+                url=f"/repos/{safe_name}/settings?stale_form=1", status_code=303
+            )
         try:
             upsert_repo_config(db, RepoConfigData(
                 repo_full_name=repo_name,
