@@ -8,7 +8,7 @@
 4. 파일 수집(`:962`) — 동기 I/O 는 `asyncio.to_thread` offload.
 5. 병렬 실행(`:1002`) — `_run_static_with_timeout` + `review_code` gather.
    - 정적: 파일별 순차, deadline 60초(`:33`), 도구당 30초(`src/constants.py:107`). 초과 시 완료분 보존 + `incomplete`.
-   - AI: `src/analyzer/io/ai_review.py:68`. diff 16000자 절단(`review_prompt.py:31`), 모델 기본 `claude-sonnet-4-6`(`src/config.py:41`).
+   - AI: `src/analyzer/io/ai_review.py:82`. diff 16000자 절단(`review_prompt.py:31`), 모델 기본 `claude-sonnet-4-6`(`src/config.py:41`).
 6. 채점(`:1019`) → 저장·게이트(`:741`, PR 만 `run_gate_check`) → 알림(`:1070`).
 
 ## 점수

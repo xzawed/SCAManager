@@ -30,7 +30,7 @@ USING (repo_id IN (SELECT id FROM repositories
 
 ## 저장소 계층
 
-`src/repositories/<name>_repo.py` 에 모듈 함수로 쓴다 — 클래스 없음, 첫 인자 `db: Session`. `__init__.py` 는 빈 파일로 둔다. 세션은 `src/database.py` — 웹 `get_db()`(:302), 백그라운드 `WorkerSessionLocal`(:298). 웹 경로만 쿼리마다 `SET LOCAL app.user_id` 를 발화한다(:261).
+`src/repositories/<name>_repo.py` 에 모듈 함수로 쓴다 — 클래스 없음, 첫 인자 `db: Session`. `__init__.py` 는 빈 파일로 둔다. 세션은 `src/database.py` — 웹 `get_db()`, 백그라운드 `WorkerSessionLocal`. 웹 경로만 쿼리마다 `SET LOCAL app.user_id` 를 발화한다.
 
 ## 검증
 
@@ -42,7 +42,7 @@ py -3 -m pytest tests/unit/migrations tests/unit/test_migration_completeness.py 
 손으로 돌린다 — pre-deploy 는 primary 만 올리는데 `FailoverSessionFactory` 가 장애 시
 그쪽으로 전환한다.
 
-실 PG upgrade→downgrade 왕복과 ORM↔스키마 대조는 CI `pg-concurrency` job 만 돈다. PG 전용 테스트를 추가하면 `.github/workflows/ci.yml:669-676` node-id 핀에 등재해야 수집된다. 로컬에서 돌리려면 `DATABASE_URL_TEST_POSTGRES` 를 설정한다(`DATABASE_URL` 은 conftest 가 sqlite 로 덮는다).
+실 PG upgrade→downgrade 왕복과 ORM↔스키마 대조는 CI `pg-concurrency` job 만 돈다. PG 전용 테스트를 추가하면 그 job 의 실행 목록에 등재해야 수집된다 — 빠뜨리면 `tests/unit/scripts/test_ci_wires_every_pg_gated_test.py` 가 red 로 잡는다. 로컬에서 돌리려면 `DATABASE_URL_TEST_POSTGRES` 를 설정한다(`DATABASE_URL` 은 conftest 가 sqlite 로 덮는다).
 
 ## 적용
 

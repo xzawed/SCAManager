@@ -64,7 +64,7 @@
 - `test-and-analyze` — `pytest tests/` 전량 + coverage.xml → Codecov·SonarCloud. PR 은
   역-뮤테이션(되돌리면 red?) + 본문 수치 ↔ `--collect-only` 대조 추가.
 - `pg-concurrency` — pg16.4, SKIP LOCKED + 마이그레이션 round-trip.
-  **node-id 핀 목록** — 새 PG 테스트 자동 수집 안 됨.
+  **node-id 핀 목록** — 새 PG 테스트를 등재 안 하면 단위 스위트가 red 로 잡는다.
 - `e2e` — CSS 빌드 후 `--e2e-min-passed=100`, 수집 건수 ↔ `e2e/EXPECTED_COUNT` 대조.
 - `lint-changed-tests` — 변경 test: `flake8 --isolated --select=F401,F841` +
   dual-import · noqa 은닉 import · 미배선 dead code.
