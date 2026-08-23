@@ -14,6 +14,29 @@ from src.constants import STATIC_ANALYSIS_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
+# 🔴 세 도구의 «실패» 신호는 서로 다르다 (핀 버전 실측):
+#   pylint  clean/dirty → JSON 배열 · exit 16/20(메시지 범주 비트, **실패 아님**)
+#           crash       → stdout 빈값 · exit 32        ⇒ 판별은 stdout 이 `[` 로 시작하는가
+#   bandit  clean/dirty → JSON 객체 · exit 0/1
+#           crash       → stdout 빈값 · exit 2         ⇒ 판별은 stdout 이 `{` 로 시작하는가
+#   flake8  clean       → **stdout 빈값 · exit 0**  ← 빈 출력이 정당한 clean 이다
+#           crash       → stdout 빈값 · exit 2         ⇒ JSON 판별식을 쓰면 모든 clean 파일이
+#                                                        차단된다. tsc 규칙을 쓴다.
+# The three tools signal failure differently; pylint's exit code is a message-category
+# bitmask, and flake8's clean output is empty — so one shared discriminator cannot work.
+_ERR_EXCERPT = 200
+
+def _fail(tool: str, ctx, r) -> RuntimeError:
+    """실패를 예외로 만든다 — `static.py` 는 `run()` 이 **올릴 때만** `incomplete` 로 승격한다.
+
+    `[]` 를 돌려주면 그 실패가 «이슈 0건 · 완전» 이 되어 미분석 코드가 auto-merge 된다.
+    Returning `[]` would record the failure as a clean, complete run.
+    """
+    detail = str(getattr(r, "stderr", "") or r.stdout or "").strip()[:_ERR_EXCERPT]
+    return RuntimeError(
+        f"{tool} did not analyze {ctx.tmp_path} (exit={r.returncode}): {detail}"
+    )
+
 
 class _PylintAnalyzer:
     name = "pylint"
@@ -51,7 +74,12 @@ class _PylintAnalyzer:
                  f"--disable={disable}"],
                 capture_output=True, text=True, timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
             )
-            items = json.loads(r.stdout) if r.stdout.strip().startswith("[") else []
+            if not r.stdout.strip().startswith("["):
+                raise _fail("pylint", ctx, r)
+            try:
+                items = json.loads(r.stdout)
+            except json.JSONDecodeError as exc:
+                raise _fail("pylint", ctx, r) from exc
             # C10: item.get() 방어 접근 — 도구가 키 누락 JSON 을 내도 KeyError 로 analyzer 전체가
             # 중단(이슈 전량 무음 폐기 + incomplete 미설정 = fail-open)되지 않게 한다(golangci_lint 패턴).
             # C10: defensive .get() — a missing key must not raise KeyError and silently drop the whole
@@ -71,8 +99,10 @@ class _PylintAnalyzer:
             ctx.timed_out = True
             logger.warning("pylint timed out for %s", ctx.tmp_path)
             return []
-        except (json.JSONDecodeError, FileNotFoundError) as exc:
-            logger.warning("pylint failed for %s: %s", ctx.tmp_path, exc)
+        except FileNotFoundError as exc:
+            # 바이너리 부재 — 조달 축(`unavailable_tools`)이 담당한다.
+            # Binary missing: the procurement axis owns this, not incomplete.
+            logger.warning("pylint unavailable for %s: %s", ctx.tmp_path, exc)
             return []
 
 
@@ -122,6 +152,14 @@ class _Flake8Analyzer:
                         ))
                     except ValueError:
                         continue
+
+            if not issues and r.returncode != 0:
+                # 🔴 flake8 은 clean 일 때 **빈 출력 + exit 0** 이다. 그래서 «빈 출력 = 실패»
+                #    로 판정하면 정상 파일이 전부 차단된다. 아무것도 못 읽었는데 비정상
+                #    종료일 때만 실패로 본다(tsc 어댑터와 같은 규칙).
+                # Empty stdout is a legitimate clean for flake8; only nonzero exit with
+                # nothing parsed is a failure.
+                raise _fail("flake8", ctx, r)
             return issues
         except subprocess.TimeoutExpired:
             ctx.timed_out = True
@@ -169,7 +207,12 @@ class _BanditAnalyzer:
                 ["bandit", "-f", "json", "-q", ctx.tmp_path],
                 capture_output=True, text=True, timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
             )
-            data = json.loads(r.stdout) if r.stdout.strip().startswith("{") else {}
+            if not r.stdout.strip().startswith("{"):
+                raise _fail("bandit", ctx, r)
+            try:
+                data = json.loads(r.stdout)
+            except json.JSONDecodeError as exc:
+                raise _fail("bandit", ctx, r) from exc
             # C10: item.get() 방어 접근 (pylint 대칭) — 키 누락 JSON 의 KeyError fail-open 차단.
             # C10: defensive .get() (mirrors pylint) — block the KeyError fail-open on missing keys.
             return [
@@ -188,8 +231,9 @@ class _BanditAnalyzer:
             ctx.timed_out = True
             logger.warning("bandit timed out for %s", ctx.tmp_path)
             return []
-        except (json.JSONDecodeError, FileNotFoundError) as exc:
-            logger.warning("bandit failed for %s: %s", ctx.tmp_path, exc)
+        except FileNotFoundError as exc:
+            # 바이너리 부재 — 조달 축이 담당한다 / procurement axis owns this.
+            logger.warning("bandit unavailable for %s: %s", ctx.tmp_path, exc)
             return []
 
 
