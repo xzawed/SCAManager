@@ -27,7 +27,7 @@ changes, or squash-merge it.
 
 **You run it yourself.** There is no service to sign up for and no account to create. It lives on
 your laptop, your server, or your own Railway project, and it talks to GitHub and Anthropic using
-your own credentials.
+your own credentials. The Claude usage is billed to your Anthropic account, not to anyone else.
 
 **It might be for you if** you review pull requests on GitHub, you want a consistent second
 opinion on every one of them, and you would rather not hand your code to someone else's hosted
@@ -43,7 +43,7 @@ The AI cost card reads $0.00 because the seed data never called the API.</sub>
 
 </div>
 
-## What it does to your pull requests
+## What it does to your repository
 
 This is the part worth reading before you install anything. Some of it starts the moment you add
 a repository; the rest stays off until you switch it on.
@@ -51,25 +51,31 @@ a repository; the rest stays off until you switch it on.
 | | What happens | Default |
 |---|---|---|
 | **Analyze and score** | Every push and pull request is analyzed and scored. The result is stored and shown in the web UI. | **On** |
-| **AI review** | Claude reviews the diff. Turning it off costs you 55 of the 100 points — see [How the score works](#how-the-score-works). | **On** |
+| **AI review** | Claude reviews the diff. Every analyzed push and PR is one Claude call, billed to your Anthropic account. | **On** |
 | **PR review comment** | The review is posted as a comment on the pull request. | **On** |
-| **Notifications** | Telegram, Discord, Slack, email, generic webhook, n8n, GitHub commit comment, GitHub issue. | Off — except Telegram, which sends as soon as a bot token and chat ID exist |
+| **Notifications** | Telegram, Discord, Slack, email, webhook, n8n, GitHub commit comment, GitHub issue. | Off — except Telegram, which is enabled as soon as a bot token and chat ID exist |
 | **Approve / request changes** | Acts on GitHub for you, based on the score. | **Off** |
 | **Squash-merge** | Merges the pull request once the score is high enough. | **Off** |
 
-Every row is configured per repository, on that repository's **⚙️ Settings** page. Until you turn
-on approve or merge, the review comment is the only thing this writes to GitHub.
+Every row is configured per repository, on that repository's **⚙️ Settings** page.
+
+Two things happen once, when you add a repository, regardless of those settings: a **webhook is
+installed** on it, and — for **private** repositories only — a small `.scamanager/` directory
+(a config file and a CLI hook script) is **committed** to it. Public repositories do not get that
+commit.
 
 ## Try it without touching GitHub
 
 Before wiring anything up, you can run the same analysis over your working tree from the command
-line. It reads local files, writes nothing, and never calls GitHub:
+line. It reads local files and never calls GitHub:
 
 ```bash
 python -m src.cli review --base main   # compare against a branch
 python -m src.cli review --staged      # or just what you have staged
 python -m src.cli review --no-ai       # skip Claude entirely — no API key needed
 ```
+
+On Windows, use `py -3` in place of `python`.
 
 ## Running the server
 
@@ -79,9 +85,9 @@ python -m src.cli review --no-ai       # skip Claude entirely — no API key nee
 |---|---|
 | **Python 3.12** | The version CI runs. Newer usually works; 3.12 is what is tested. |
 | **Node.js 20** | Only to build the CSS bundle, once. |
-| **PostgreSQL** | A reachable database. SQLite is used by the test suite, not by the running app. |
+| **PostgreSQL** | A reachable database. SQLite is what the test suite uses; run the app on PostgreSQL. |
 | **A GitHub OAuth app** | To sign in to the web UI. Not needed if you only want the CLI above. |
-| **An Anthropic API key** | Optional — but without it there is no AI review, and every score is capped at 89. |
+| **An Anthropic API key** | Optional — but without it there is no AI review, and no score can exceed 89. |
 
 ### Install and run
 
@@ -93,30 +99,31 @@ cp .env.example .env
 make run             # uvicorn on :8000, database migrations run at boot
 ```
 
-If `make` is not available — on Windows, for instance — each target is one or two plain commands.
-Open the [Makefile](Makefile) and run them directly; `install` and `run` are the only two you need
-to get started.
+If `make` is not available — on Windows, for instance — each of those targets is one or two plain
+commands. Open the [Makefile](Makefile), run the four above in order, and substitute `py -3` for
+`python`.
 
 ### Filling in `.env`
 
-`.env.example` ships with working placeholders for most settings, so the app boots as soon as
-`DATABASE_URL` points at a real database. Three entries are worth attention before you use it for
+`.env.example` ships with working example values for most settings, so the app boots as soon as
+`DATABASE_URL` points at a real database. Three entries deserve attention before you use it for
 anything real:
 
-- **`SESSION_SECRET`** — generate one with `openssl rand -hex 32`. Left as it is, the app falls
-  back to a publicly known development value and logs a warning. In production — meaning an
-  `https://` `APP_BASE_URL`, or `ENVIRONMENT=production` — it refuses to start instead, because
-  that default would let anyone forge a session.
-- **`ANTHROPIC_API_KEY`** — without it there is no AI review, and every score is capped at 89.
-- **`GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`** — from a GitHub OAuth app. Needed to sign in
-  to the web UI.
+- **`SESSION_SECRET`** — generate one with `openssl rand -hex 32`. Left alone, the app runs on a
+  publicly known development value and logs a warning; in production (an `https://` `APP_BASE_URL`,
+  or `ENVIRONMENT=production`) it refuses to start instead.
+- **`ANTHROPIC_API_KEY`** — without it there is no AI review, and no score can exceed 89.
+- **`GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`** — from a GitHub OAuth app, for signing in to
+  the web UI.
+
+Everything else is in [docs/reference/env-vars.md](docs/reference/env-vars.md).
 
 ### Adding your first repository
 
 Open <http://localhost:8000>, sign in with GitHub, and choose **+ Add Repository**. That installs a
-webhook on the repository, and the next push to it is analyzed. From there, the repository's
-**⚙️ Settings** page decides which notification channels are used and whether the gate may act on
-GitHub for you.
+webhook on the repository (and, for private repositories, commits the `.scamanager/` files noted
+above), and the next push is analyzed. From there, the repository's **⚙️ Settings** page decides
+which notification channels are used and whether the gate may act on GitHub for you.
 
 ## How the score works
 
@@ -132,18 +139,19 @@ A commit starts at 100 points and is judged on five things:
 
 **A** is 90 and above, **B** 75, **C** 60, **D** 45, and anything below that is **F**.
 
-Two things are worth knowing about the AI half of that:
+Claude is responsible for 55 of those 100 points. When there is no usable AI review — no API key,
+the feature switched off, or an empty diff — those three parts are not zeroed. They are replaced
+by fixed neutral values worth 44 of the 55, which is why a flawless static run then tops out at
+**89**: a B, never an A. The run is also left out of every average, so a score that never saw an
+AI review cannot pass for one that did.
 
-- **If the AI review produces no usable result**, those last three parts fall back to fixed neutral
-  values. A flawless static run then tops out at 89 — a B, never an A. That is deliberate: a score
-  that never saw an AI review should not be able to look like one that did.
-- **If the AI call genuinely failed** — an API error, or a response that could not be parsed — no
-  score is stored at all, and the run is left out of every average.
+If the AI call genuinely failed — an API error, or a response that could not be parsed — no score
+is stored at all.
 
-The static half works the same way. Every deployment installs 16 analyzers under a fixed contract;
-if one of them is missing when a run starts, the analysis is marked **incomplete** and the gate
-will not auto-approve or auto-merge it. A run that analyzed nothing should not be able to score
-well.
+The static half works the same way. Every deployment installs 16 analyzers under a fixed
+contract. If one of them is missing and it applies to a file in the current change, that analysis
+is marked **incomplete**, and the gate will not auto-approve or auto-merge it. A run that could
+not analyze what it was given should not be able to score well.
 
 <details>
 <summary><b>Language coverage</b> — 49 for the AI review, 27 with a static analyzer</summary>
@@ -151,11 +159,11 @@ well.
 <br>
 
 Claude reviews **49 languages**, each against its own checklist. **27** of those also have a static
-analyzer behind them. There are **25 registered analyzers** in total, of which **16** ship in every
-deployment as the contract described above; the rest run when their binary happens to be on `PATH`.
+analyzer behind them. There are **25 registered analyzers**; **16** ship in every deployment as the
+contract described above, and the rest run when their binary happens to be on `PATH`.
 
-A local `make run` will not have all 25 available, and that is fine. A missing *optional* analyzer
-is skipped quietly; a missing *contracted* one marks the run incomplete.
+A local `make run` will not have all 25 available, and that is fine — a missing *optional* analyzer
+is skipped quietly. See [docs/architecture.md](docs/architecture.md) for the full inventory.
 
 Languages with static analysis:
 
@@ -196,7 +204,8 @@ uvicorn src.main:app --host 0.0.0.0 --port 8000 --proxy-headers
 
 Running it yourself is not the same as nothing leaving your network. Your diffs and scores reach:
 
-- **GitHub** — the review comment, plus any approve or merge you enable
+- **GitHub** — the review comment, the `.scamanager/` commit on private repositories, and any
+  approve or merge you enable
 - **Your own database** — scores, findings derived from the diff, and the AI review text
 - **Anthropic** — the diff itself, for the review
 - **Any notification channel you turn on** — score summaries
