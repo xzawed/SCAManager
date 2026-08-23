@@ -40,6 +40,7 @@ from src.auth.session import require_login
 from src.config_manager.manager import RepoConfigData
 from src.main import app
 from src.models.user import User as UserModel
+from src.ui.routes.settings import _NOTIFY_SECRET_FIELDS
 
 _TEST_USER = UserModel(
     id=1, github_id="12345", github_login="testuser",
@@ -48,15 +49,22 @@ _TEST_USER = UserModel(
 app.dependency_overrides[require_login] = lambda: _TEST_USER
 client = TestClient(app)
 
-# 🔴 각 값은 서로 **구별 가능**해야 한다 — 하나만 새도 어느 필드인지 실패 메시지가 지목한다.
+# 🔴 값 목록을 **손으로 적지 않는다** — `_NOTIFY_SECRET_FIELDS` 에서 파생한다.
+#
+# Grok claim-review `01a02eaf` Q4 적발: 초판은 여섯 이름을 손으로 적었고, 별도 가드는
+# 「`type="password"` 태그 안에 `config.` 리터럴이 있는가」라는 **형태**만 봤다. 그러면
+# 아래 세 변경이 전부 통과하면서 자격증명을 다시 노출한다:
+#   · `type="password"` → `type="url"` 로 바꾸고 `config.x` 직결
+#   · `<input>` → `<textarea>{{ config.email_recipients }}</textarea>`
+#   · `{% set u = config.x %}` 로 한 단계 우회한 뒤 `value="{{ u }}"`
+# 값을 필드 목록에서 파생해 **렌더 결과에 그 값이 있는가**로 판정하면 마크업 형태와
+# 무관해진다 — 위 셋 모두 red 가 된다. 새 비밀 필드도 자동으로 덮인다.
+#
+# Derived from the production field list and asserted against the rendered body, so the check
+# is independent of markup shape (the form-based guard had three trivial bypasses).
 _SECRETS = {
-    "notify_chat_id": "-1001234567890",
-    "discord_webhook_url": "https://discord.com/api/webhooks/111/aaaLEAKdiscord",
-    "slack_webhook_url": "https://hooks.slack.com/services/T1/B1/aaaLEAKslack",
-    "n8n_webhook_url": "https://n8n.example.com/webhook/aaaLEAKn8n",
-    "custom_webhook_url": "https://example.com/hook/aaaLEAKcustom",
-    # 🔴 감사 목록에 없었던 6번째 — 같은 `type="password"` 마스킹 필드이고 수신자 PII 다.
-    "email_recipients": "leak-victim@example.com",
+    name: f"LEAK-SENTINEL-{name}-{i}"
+    for i, name in enumerate(_NOTIFY_SECRET_FIELDS)
 }
 
 
@@ -180,3 +188,47 @@ def test_unclaimed_hint_is_shown_and_translated():
 def test_owner_does_not_see_the_unclaimed_hint():
     """대조군 — 소유자 화면에는 그 안내가 없다(항상 표시하면 문구가 무의미해진다)."""
     assert "has no registered owner" not in _render(user_id=1).text
+
+
+# 🔴 새 설정 필드는 **분류를 강제**받는다 (Grok claim-review `01a02eaf` Q4 후속).
+#
+# 위 가드들은 "오늘 비밀인 것"만 본다. `notify_api_key` 같은 필드가 내일 추가되면
+# 어떤 가드도 발동하지 않는다 — `WEBHOOK_URL_FIELDS` 에도 없고 `type="password"` 도
+# 아닐 수 있기 때문이다. 아래는 **RepoConfigData 의 모든 필드**가 둘 중 하나로
+# 분류돼 있기를 요구한다. 새 필드는 이 목록에 손이 닿기 전까지 red 다.
+#
+# 🔴 손유지가 결함이 아니라 **독립 오라클**이다 (`test_static_input_diversity.py`
+#    `_tool_applies` 와 같은 논리) — 프로덕션에서 파생하면 기대값이 결함과 함께 움직인다.
+_PUBLIC_CONFIG_FIELDS = frozenset({
+    "repo_full_name", "pr_review_comment", "ai_review_enabled", "approve_mode",
+    "approve_threshold", "reject_threshold", "auto_merge", "merge_threshold",
+    "commit_comment", "create_issue", "railway_deploy_alerts",
+    "auto_merge_issue_on_failure", "notification_language", "review_model",
+    "disabled_tools",
+})
+
+
+def test_every_config_field_is_classified_public_or_secret():
+    """🔴 미분류 필드가 있으면 red — 「비밀인데 아무도 안 가리는」 상태를 못 만든다."""
+    from dataclasses import fields  # pylint: disable=import-outside-toplevel
+
+    from src.config_manager.manager import RepoConfigData  # pylint: disable=import-outside-toplevel
+    from src.ui.routes.settings import (  # pylint: disable=import-outside-toplevel
+        _NOTIFY_SECRET_FIELDS,
+    )
+
+    declared = {f.name for f in fields(RepoConfigData)}
+    classified = _PUBLIC_CONFIG_FIELDS | set(_NOTIFY_SECRET_FIELDS)
+
+    unclassified = declared - classified
+    assert not unclassified, (
+        f"분류되지 않은 설정 필드: {sorted(unclassified)}.\n"
+        "→ 자격증명·PII 면 src/ui/routes/settings.py 의 `_NOTIFY_SECRET_FIELDS` 에, "
+        "아니면 이 파일의 `_PUBLIC_CONFIG_FIELDS` 에 넣을 것. "
+        "비밀로 넣으면 위 노출 테스트가 **자동으로** 그 필드를 덮는다."
+    )
+
+    stale = classified - declared
+    assert not stale, (
+        f"RepoConfigData 에 없는데 분류 목록에 남은 필드: {sorted(stale)} — 목록이 낡았다"
+    )
