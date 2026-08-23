@@ -33,7 +33,6 @@ from pathlib import Path
 from src.scorer.reliability import score_is_unreliable
 
 _ROOT = Path(__file__).resolve().parents[3]
-_RELIABILITY = _ROOT / "src" / "scorer" / "reliability.py"
 _VERSIONS = _ROOT / "alembic" / "versions"
 
 # 🔴 판정의 **행동**을 해시한다 — 소스 AST 가 아니다.
@@ -144,7 +143,9 @@ def test_the_behaviour_hash_does_not_depend_on_the_interpreter():
     bits = _verdict_bits()
     assert set(bits) == {"0", "1"}, "표본이 한쪽 판정으로 쏠렸다 — 벡터가 무의미하다"
     assert len(bits) == len(_corpus())
-    assert _behaviour_sha() == _behaviour_sha(), "판정에 숨은 상태가 있다"
+    # 두 번 계산해 같은지 — 판정에 숨은 상태(캐시·전역·난수)가 없음을 본다.
+    first, second = _behaviour_sha(), _behaviour_sha()
+    assert first == second, f"판정에 숨은 상태가 있다: {first} != {second}"
     # 🔴 문자열 검색으로 보면 **이 파일의 설명 주석**이 걸린다(실측 — 산문 가드는
     #    양방향으로 틀린다). 호출을 AST 로 찾는다.
     tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))

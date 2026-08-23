@@ -146,7 +146,7 @@ def test_backfill_is_idempotent(db):
 def test_backfill_chunks_instead_of_loading_everything(db):
     """청크 크기가 선언돼 있고 전량 로드가 아니다 — 30 MB 를 한 번에 올리지 않는다."""
     mod = _module()
-    assert isinstance(mod._CHUNK, int) and 0 < mod._CHUNK <= 5000, (  # pylint: disable=protected-access
-        f"청크 크기가 비정상: {mod._CHUNK}"  # pylint: disable=protected-access
-    )
+    chunk = mod._CHUNK  # pylint: disable=protected-access
+    assert isinstance(chunk, int), f"청크 크기가 정수가 아니다: {chunk!r}"
+    assert 0 < chunk <= 5000, f"청크 크기가 범위 밖이다: {chunk}"
     assert "LIMIT" in _REV.read_text(encoding="utf-8"), "백필이 LIMIT 없이 전량을 읽는다"
