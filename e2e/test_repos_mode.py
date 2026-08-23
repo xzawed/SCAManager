@@ -2,8 +2,6 @@
 E2E regression guard for Dashboard repos mode.
 """
 import json
-
-from src.scorer.reliability import score_is_unreliable
 import os
 
 import pytest
@@ -31,6 +29,10 @@ def _seed_trend_analyses(db_path: str) -> None:
                                   ("trend-sha-002", 90, "-0 days")):
             # 🔴 `score_unreliable` 명시 (0046) — 원시 SQL 은 ORM 을 안 거치고 기본값이
             #    true(신뢰 불가·fail-closed) 라, 빠뜨리면 추세 차트가 빈 값을 그린다.
+            # 🔴 임포트는 **함수 안**이다 — 모듈 레벨이면 pytest **수집 시점**에
+            #    `src.config` 검증이 돌고, e2e conftest 가 env 를 넣기 전이라 수집이 죽는다
+            #    (실측: CI 의 e2e 범위 점검이 `SettingsValidationError` 로 exit 2).
+            from src.scorer.reliability import score_is_unreliable  # noqa: PLC0415
             trend_result = {"summary": "trend"}
             conn.execute(text("""
                 INSERT OR IGNORE INTO analyses
