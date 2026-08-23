@@ -104,13 +104,25 @@ def test_non_python_md_file_returns_empty_issues():
 
 
 def test_non_python_yml_file_with_mocked_tools_returns_no_issues():
+    """🔴 원래 `len(result.issues) == 0` 을 단언했고, 그것이 통과한 이유는
+    yamllint 어댑터가 고장나 있었기 때문이다 — 핀된 1.38.0 은 `-f json` 을 모르는데
+    어댑터가 그 값을 넘겨 매 호출이 exit 2 로 죽었고, 그 실패가 «이슈 0건» 으로
+    기록됐다. 즉 그 단언은 결함을 정답으로 못박고 있었다.
+
+    `key: value` 는 yamllint 기준으로 깨끗하지 않다(`document-start`). 원래 의도인
+    «Python 도구는 .yml 에 관여하지 않는다» 만 남겨 직접 단언한다.
+    The old `== 0` passed only because the yamllint adapter never ran.
+    """
     # .yml 파일 분석 시 도구들이 이슈를 반환하지 않으면 빈 결과를 반환한다
     # Analyzing a .yml file should return an empty result when no tool fires.
     with patch("src.analyzer.io.static._run_pylint", return_value=[]), \
          patch("src.analyzer.io.static._run_flake8", return_value=[]), \
          patch("src.analyzer.io.static._run_bandit", return_value=[]):
         result = analyze_file("config.yml", "key: value\n")
-    assert len(result.issues) == 0
+    tools = {i.tool for i in result.issues}
+    assert not (tools & {"pylint", "flake8", "bandit"}), (
+        f"Python 도구가 .yml 을 분석했다: {tools}"
+    )
     assert result.filename == "config.yml"
 
 
