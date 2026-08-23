@@ -349,3 +349,44 @@ def test_the_partial_index_name_matches_between_model_and_migration():
     predicate = "score IS NOT NULL AND score_unreliable IS NOT TRUE"
     assert predicate in model_src, f"모델 부분 인덱스 술어가 다르다 (기대: {predicate})"
     assert predicate in migration, f"마이그레이션 부분 인덱스 술어가 다르다 (기대: {predicate})"
+
+
+def test_every_raw_sql_insert_into_analyses_sets_the_cache():
+    """🔴 원시 SQL 삽입도 캐시를 넣어야 한다 — ORM 을 안 거치면 기본값(true)이 들어간다.
+
+    ## 이 가드가 왜 생겼나 (실측)
+
+    0046 이 기본값을 `true`(신뢰 불가·fail-closed)로 두자, `INSERT INTO analyses` 를
+    직접 쓰는 e2e 시더 3곳의 행이 전부 집계에서 빠졌다 — `GET /` 에 점수 카드가 **아예
+    렌더되지 않아** overview e2e 5건이 깨졌다. CI 에서 4분을 태우고 나서야 보였다.
+
+    Grok claim-review `01a02f4f` Q1 이 예고한 경로다(「raw SQL 은 ORM 이벤트가 못 잡는다」).
+    ORM 이벤트를 쓰지 않기로 한 이상, 이 축은 **정적 가드로만** 닫힌다.
+
+    Raw-SQL inserts bypass the ORM, so the fail-closed default silently drops those rows from
+    every aggregate; this scan closes the axis the (rejected) ORM event could not.
+    """
+    roots = [_ROOT / "src", _ROOT / "e2e", _ROOT / "tests"]
+    pattern = re.compile(r"INSERT\s+(?:OR\s+\w+\s+)?INTO\s+analyses\b", re.IGNORECASE)
+    offenders = []
+    scanned = 0
+    for root in roots:
+        for path in root.rglob("*.py"):
+            if path.name == Path(__file__).name:
+                continue
+            text = path.read_text(encoding="utf-8")
+            for match in pattern.finditer(text):
+                scanned += 1
+                # 삽입문의 컬럼 목록 = 여는 괄호부터 VALUES 까지.
+                tail = text[match.end():match.end() + 600]
+                head = tail.split("VALUES", 1)[0] if "VALUES" in tail else tail
+                if "score_unreliable" not in head:
+                    line = text[:match.start()].count("\n") + 1
+                    offenders.append(f"{path.relative_to(_ROOT).as_posix()}:{line}")
+
+    assert scanned, "`INSERT INTO analyses` 를 하나도 못 찾았다 — 이 가드가 공허하다"
+    assert not offenders, (
+        "원시 SQL 삽입이 `score_unreliable` 을 넣지 않는다 — 그 행은 기본값 true 로 들어가 "
+        f"모든 집계에서 조용히 빠진다:\n  " + "\n  ".join(offenders)
+        + "\n→ 컬럼 목록에 추가하고 값은 `score_is_unreliable(result)` 에서 낼 것."
+    )

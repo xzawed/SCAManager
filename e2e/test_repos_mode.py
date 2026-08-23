@@ -2,6 +2,8 @@
 E2E regression guard for Dashboard repos mode.
 """
 import json
+
+from src.scorer.reliability import score_is_unreliable
 import os
 
 import pytest
@@ -27,14 +29,19 @@ def _seed_trend_analyses(db_path: str) -> None:
         repo_id = row[0]
         for sha, score, delta in (("trend-sha-001", 70, "-3 days"),
                                   ("trend-sha-002", 90, "-0 days")):
+            # 🔴 `score_unreliable` 명시 (0046) — 원시 SQL 은 ORM 을 안 거치고 기본값이
+            #    true(신뢰 불가·fail-closed) 라, 빠뜨리면 추세 차트가 빈 값을 그린다.
+            trend_result = {"summary": "trend"}
             conn.execute(text("""
                 INSERT OR IGNORE INTO analyses
-                    (repo_id, commit_sha, commit_message, score, grade, result, author_login, created_at)
+                    (repo_id, commit_sha, commit_message, score, grade, result, author_login,
+                     score_unreliable, created_at)
                 VALUES
                     (:rid, :sha, 'feat: trend seed', :score, 'B', :res, 'e2e-tester',
-                     datetime('now', :delta))
+                     :unrel, datetime('now', :delta))
             """), {"rid": repo_id, "sha": sha, "score": score,
-                   "res": json.dumps({"summary": "trend"}), "delta": delta})
+                   "res": json.dumps(trend_result), "delta": delta,
+                   "unrel": score_is_unreliable(trend_result)})
         conn.commit()
     engine.dispose()
 
