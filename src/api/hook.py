@@ -20,6 +20,7 @@ from src.models.user import User
 from src.repositories import repo_config_repo, analysis_repo
 from src.analyzer.io.ai_review import AiReviewResult
 from src.scorer.calculator import calculate_score
+from src.scorer.reliability import score_is_unreliable
 from src.worker.pipeline import build_analysis_result_dict
 from src.constants import (
     AI_DEFAULT_COMMIT_RAW,
@@ -292,6 +293,9 @@ def save_hook_result(  # pylint: disable=unused-argument,too-many-locals
             score=persisted_score,
             grade=persisted_grade,
             result=result_dict,
+            # 0046 비정규화 캐시 — CLI 행은 `source=="cli"` 라 항상 신뢰불가지만,
+            # 그 사실을 여기서 하드코딩하지 않는다(판정은 한 곳에서만 한다).
+            score_unreliable=score_is_unreliable(result_dict),
         )
 
         # 동시 동일 SHA insert race 안전 저장 — 두 hook 이 위 existing 체크(멱등성)를 동시에

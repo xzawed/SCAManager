@@ -15,6 +15,7 @@ from src.github_client.diff import get_pr_files, get_push_files, ChangedFile
 from src.analyzer.io.static import analyze_file, StaticAnalysisResult
 from src.analyzer.io.ai_review import review_code
 from src.scorer.calculator import calculate_score
+from src.scorer.reliability import score_is_unreliable
 from src.models.repository import Repository
 from src.models.analysis import Analysis
 from src.gate.engine import run_gate_check
@@ -676,7 +677,7 @@ async def _race_recover_existing(
 
 def _claim_and_supersede_cli(
     db: Session, analysis: Analysis, params: "_AnalysisSaveParams",
-    result_dict: dict, score_unreliable: bool,
+    result_dict: dict, null_persist_score: bool,
 ) -> Analysis | None:
     """CLI 훅 행을 원자적으로 claim 해 full 분석 결과로 **제자리 교체**한다. 패배 시 None.
 
@@ -723,9 +724,17 @@ def _claim_and_supersede_cli(
     locked.commit_message = params.commit_message
     if params.pr_number is not None:
         locked.pr_number = params.pr_number
-    locked.score = None if score_unreliable else params.score_result.total
-    locked.grade = None if score_unreliable else params.score_result.grade
+    # 🔴 `null_persist_score` 와 `score_unreliable` 은 **서로 다른 판정**이다.
+    #    전자 = `should_null_persist_score` (genuine AI 실패만 → score/grade NULL 저장)
+    #    후자 = `score_is_unreliable`       (CLI·기본값·미커버 포함 → 집계에서만 제외)
+    #    초판 인자명이 `score_unreliable` 이라 둘이 같아 보였다 — 섞으면 R46 결함이 되돌아온다.
+    #    The two predicates are different; the old parameter name made them look identical.
+    locked.score = None if null_persist_score else params.score_result.total
+    locked.grade = None if null_persist_score else params.score_result.grade
     locked.result = result_dict
+    # result 를 다시 쓰면 캐시도 함께 갱신한다 — 이 경로를 빠뜨리면 CLI 행이 승격된 뒤에도
+    # 옛 판정으로 남아 평균이 조용히 틀어진다.
+    locked.score_unreliable = score_is_unreliable(result_dict)
     locked.author_login = params.author_login
     locked.review_model = getattr(ai, "used_model", None)
     locked.input_tokens = getattr(ai, "input_tokens", None) or None
@@ -782,6 +791,11 @@ async def _save_and_gate(db: Session, params: _AnalysisSaveParams):
         score=None if _score_unreliable else params.score_result.total,
         grade=None if _score_unreliable else params.score_result.grade,
         result=result_dict,
+        # 🔴 `score_is_unreliable` 의 비정규화 캐시 (0046). ORM 이벤트가 아니라 **명시 대입**이다 —
+        #    이 리포에는 모델 이벤트가 하나도 없고, 쓰기 지점은 grep 가능한 3곳뿐이라
+        #    보이지 않는 훅보다 여기 한 줄이 정직하다. 누락은 가드가 잡는다
+        #    (`tests/unit/scorer/test_reliability_cache_contract.py`).
+        score_unreliable=score_is_unreliable(result_dict),
         author_login=params.author_login,
         review_model=getattr(ai, "used_model", None),
         input_tokens=getattr(ai, "input_tokens", None) or None,

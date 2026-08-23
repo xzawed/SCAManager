@@ -18,11 +18,6 @@ from src.models.analysis import Analysis
 from src.models.repository import Repository
 from src.repositories import analysis_feedback_repo
 from src.scorer.calculator import calculate_grade
-from src.scorer.reliability import (
-    RELIABILITY_RESULT_PATHS,
-    result_from_projection,
-    score_is_unreliable,
-)
 from src.ui._helpers import get_locale, templates
 
 router = APIRouter()
@@ -31,25 +26,6 @@ router = APIRouter()
 # 허용된 error 파라미터 값 — 미등록 값은 None 으로 치환해 임의 문자열 렌더링 방지
 # Allowlisted error param values — unrecognised values replaced with None to prevent arbitrary string rendering
 _ALLOWED_ERRORS = {"oauth_failed", "auth_failed"}
-
-
-def _json_path(column, path: tuple[str, ...]):
-    """`column["a"]["b"]` 형태의 JSON 경로 접근식을 만든다.
-
-    SQLAlchemy 의 JSON 인덱싱은 SQLite(`JSON_EXTRACT`)·PostgreSQL(`#>`) 양쪽으로
-    컴파일된다 — 방언 분기를 코드에 두지 않는다.
-    """
-    expr = column
-    for key in path:
-        expr = expr[key]
-    return expr
-
-
-# 신뢰도 판정이 읽는 경로만 투영한다 — `Analysis.result` 전체를 select 하지 않는다.
-# 순서는 `RELIABILITY_RESULT_PATHS` 와 같아야 하며 `result_from_projection` 이 그것을 가정한다.
-_RELIABILITY_COLUMNS = tuple(
-    _json_path(Analysis.result, path) for path in RELIABILITY_RESULT_PATHS
-)
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -88,30 +64,37 @@ def overview(
                 .group_by(Analysis.repo_id)
                 .all()
             )
-            # 🔴 **SQL AVG 를 쓰지 않는다** (R46 Axis B — 2026-08-15).
-            #    `func.avg(Analysis.score)` 는 신뢰 불가 점수(CLI 무검증 45 · AI 기본값 44 ·
-            #    disabled · 미커버 언어)를 **검증된 점수와 섞는다**. 대시보드 KPI 는
-            #    `dashboard_service._reliable_scores` 로 그것들을 빼는데 이 카드가 SQL AVG 로
-            #    남으면 **같은 화면의 두 평균이 갈린다** — 사용자는 어느 쪽이 참인지 알 수 없다.
-            #    신뢰도는 `result` JSON 안에 있어 SQL 로 판정할 수 없으므로 Python 으로 접는다.
-            #    Dashboard KPI already excludes unreliable rows; keeping SQL AVG here would make
-            #    two averages on the same product disagree.
-            #    🔴 그렇다고 `result` 블롭을 통째로 가져오지도 않는다. 판정이 읽는 것은
-            #    `RELIABILITY_RESULT_PATHS` 5경로뿐인데 전량을 파싱하고 있었다 —
-            #    실측(운영 DB 2026-08-23): 5,157행 · 전송 30 MB · 필요분 80 kB(약 384배),
-            #    월 1.5~1.9 MB 씩 선형 증가. 경로만 투영하면 **같은 판정을 같은 값으로**
-            #    내면서 블롭을 읽지 않는다(판정 함수는 하나 그대로다).
-            #    Project only the paths the predicate reads instead of parsing every blob.
-            _sums: dict[int, list[int]] = {}
-            for repo_id, score, *markers in (
-                db.query(Analysis.repo_id, Analysis.score, *_RELIABILITY_COLUMNS)
-                .filter(Analysis.repo_id.in_(repo_ids))
+            # 🔴 **SQL AVG 를 쓰되, 신뢰 불가 행을 SQL 에서 뺀다** (0046).
+            #
+            #    이전 판은 SQL AVG 를 금지했다 — 신뢰도가 `result` JSON 안에 있어 SQL 로
+            #    판정할 수 없었고, 그냥 AVG 를 쓰면 CLI 무검증 45 · AI 기본값 44 · disabled ·
+            #    미커버 언어가 검증된 점수와 섞여 **같은 화면의 두 평균이 갈렸다**(R46 Axis B).
+            #    그래서 행을 전부 읽어 Python 으로 접었는데, 그 대가가 컸다.
+            #
+            #    실측(로컬 PG17, 운영 동형 5,164행 · 33 MB):
+            #        result 블롭 전량 로드      16.2 ms · 5,164행 · 33 MB 전송
+            #        json 5경로 `->` 추출      422.5 ms  ← `json` 은 텍스트라 접근마다 재파싱
+            #        jsonb 5경로 `->`           74.7 ms  (테이블 재작성 필요)
+            #        이 쿼리(0046 컬럼+부분인덱스) 0.45 ms · **4행** · 버퍼 6
+            #
+            #    `Analysis.score_unreliable` 은 `score_is_unreliable(result)` 의 비정규화
+            #    캐시다(쓰기 시점에 채운다). 판정 **정의는 여전히 한 곳**이고, 캐시가 그것과
+            #    어긋나지 않도록 CI 가 판정 함수 변경 시 백필 리비전을 강제한다.
+            #
+            #    SQL AVG is back, but with the unreliable rows excluded in SQL via a denormalized
+            #    cache of the same single-source predicate.
+            avg_map = dict(
+                db.query(Analysis.repo_id, func.avg(Analysis.score))
+                .filter(
+                    Analysis.repo_id.in_(repo_ids),
+                    Analysis.score.isnot(None),
+                    # 부분 인덱스 술어와 **같은 형태**로 적는다 — 다르게 적으면 Index Only
+                    # Scan 을 놓친다(실측 0.45 ms → 2.17 ms).
+                    Analysis.score_unreliable.isnot(True),
+                )
+                .group_by(Analysis.repo_id)
                 .all()
-            ):
-                if score is None or score_is_unreliable(result_from_projection(markers)):
-                    continue
-                _sums.setdefault(repo_id, []).append(score)
-            avg_map = {rid: sum(v) / len(v) for rid, v in _sums.items() if v}
+            )
 
             for r in repos:
                 count = count_map.get(r.id, 0)

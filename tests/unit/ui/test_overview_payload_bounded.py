@@ -46,6 +46,7 @@ from src.main import app
 from src.models.analysis import Analysis
 from src.models.repository import Repository
 from src.models.user import User
+from src.scorer.reliability import score_is_unreliable
 
 # 행당 블롭 크기 — 운영 평균 6 kB 의 약 8배로 잡아 신호를 크게 만든다.
 _FILLER = "x" * 50_000
@@ -88,15 +89,20 @@ def _engine_with_counter():
     # 신뢰 가능한 행 — 점수 100 · 80 (평균 90). 나머지는 전부 제외돼야 한다.
     reliable_scores = [100, 80]
     for i, score in enumerate(reliable_scores):
+        result = {"ai_review_status": "success", "filler": _FILLER}
         session.add(Analysis(
-            repo_id=1, commit_sha=f"ok{i:038d}", score=score,
-            result={"ai_review_status": "success", "filler": _FILLER},
+            repo_id=1, commit_sha=f"ok{i:038d}", score=score, result=result,
+            # 🔴 프로덕션 쓰기 경로와 **같은 방식**으로 캐시를 채운다. 여기서 빠뜨리면
+            #    server_default(false) 가 들어가 신뢰 불가 행이 평균에 섞인다 —
+            #    즉 이 한 줄이 곧 프로덕션의 실패 모드다.
+            score_unreliable=score_is_unreliable(result),
         ))
     for i in range(_ROWS):
         bad = dict(_UNRELIABLE[i % len(_UNRELIABLE)])
         bad["filler"] = _FILLER
         session.add(Analysis(
             repo_id=1, commit_sha=f"bad{i:037d}", score=1, result=bad,
+            score_unreliable=score_is_unreliable(bad),
         ))
     session.commit()
 
@@ -138,10 +144,14 @@ def test_overview_does_not_parse_the_whole_result_blob(json_bytes):
     """
     counter, _ = json_bytes
     _render()
+    # 0046 이후 이 화면은 `result` 를 **전혀** 읽지 않는다 — 평균은 SQL 이 낸다.
+    # 상한을 시드의 1/1000 로 조인다(투영 시절엔 1/10 이었다). 0 으로 두지 않는 것은
+    # 다른 카드가 소량의 JSON 을 읽을 여지를 남기기 위함이고, 블롭 로드는 이 값을
+    # 세 자릿수로 넘긴다(실측: 수정 전 1,101,041 바이트).
     seeded = _ROWS * len(_FILLER)
-    assert counter["bytes"] < seeded // 10, (
+    assert counter["bytes"] < seeded // 1000, (
         f"렌더가 JSON {counter['bytes']:,} 바이트를 파싱했다 (시드 블롭 {seeded:,}). "
-        "result 컬럼을 통째로 가져오고 있다 — 평균 4개를 내려고 분석 전량을 읽는다."
+        "평균 4개를 내려고 분석 result 를 읽고 있다 — SQL 집계가 아니다."
     )
 
 
