@@ -626,3 +626,42 @@ class TestFailClosedDoesNotBlockCleanRuns:
         stdout = json.dumps([{"type": "error", "message": "boom", "line": 3}])
         with patch("subprocess.run", return_value=_mock_proc(stdout, 20)):
             assert len(_PylintAnalyzer().run(py_ctx)) == 1
+
+
+class TestShapeGuardCatchesWhatJsonDecodeCannot:
+    """🔴 `startswith` 가드의 **고유 몫** — Grok claim-review `01a02e78` 정정.
+
+    나는 이 가드가 `except json.JSONDecodeError` 와 중복이라고 판단했다. 근거는
+    「`if False:` 로 지워도 스위트가 GREEN」이었다. 그 판단이 틀렸다 —
+    `null`·`123`·`""` 는 **유효한 JSON** 이라 `JSONDecodeError` 가 아예 발생하지 않는다.
+    GREEN 이었던 것은 중복이어서가 아니라 **그 입력을 준 테스트가 없어서**였다.
+
+    실측(`json.loads`):
+        `null` → None  → `for item in None`      → TypeError      (static.py 가 승격)
+        `123`  → 123   → `for item in 123`       → TypeError      (승격)
+        `""`   → ''    → `for item in ''` 는 no-op → **`[]` 반환** ← 조용한 fail-open
+
+    마지막 줄이 이 가드가 존재하는 이유다. 가드 없이는 pylint 가 `""` 를 내면
+    「검사했고 이슈 0건」으로 기록된다. 나머지 둘도 가드가 있어야 TypeError 대신
+    **사유가 적힌 RuntimeError** 가 나간다.
+
+    The shape guard is not redundant with the JSONDecodeError handler: valid-but-wrong-shape
+    JSON never raises a decode error, and `""` in particular returns [] silently.
+    """
+
+    @pytest.mark.parametrize("stdout", ['""', "null", "123", '"text"'])
+    def test_pylint_valid_json_of_the_wrong_shape_raises(self, py_ctx, stdout):
+        proc = _mock_proc(stdout, 0)
+        proc.stderr = ""
+        with patch("subprocess.run", return_value=proc):
+            with pytest.raises(RuntimeError, match="pylint did not analyze"):
+                _PylintAnalyzer().run(py_ctx)
+
+    @pytest.mark.parametrize("stdout", ['""', "null", "123", "[]"])
+    def test_bandit_valid_json_of_the_wrong_shape_raises(self, py_ctx, stdout):
+        """bandit 은 객체를 낸다 — 배열 `[]` 조차 이 도구에서는 잘못된 형태다."""
+        proc = _mock_proc(stdout, 0)
+        proc.stderr = ""
+        with patch("subprocess.run", return_value=proc):
+            with pytest.raises(RuntimeError, match="bandit did not analyze"):
+                _BanditAnalyzer().run(py_ctx)
