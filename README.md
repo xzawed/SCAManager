@@ -16,77 +16,110 @@
 
 </div>
 
-Self-hosted FastAPI service on Python 3.12 — self-hosted, not airtight. The GitHub API and your
-`DATABASE_URL` unavoidably see files and scores; Anthropic gets the diff; enabled channels get the
-summary; some analyzers reach the network. Full table, and how to switch each off:
-[SECURITY.md](SECURITY.md#data-egress).
+You point it at a GitHub repository. From then on every push and pull request is analyzed, scored
+out of 100, and — if you let it — approved, merged, or sent back for changes automatically.
+It runs on your own machine or your own Railway project; there is no hosted service.
 
-## Pipeline
+## What you get
 
-```
-POST /webhooks/github — HMAC-SHA256, per-repo secret · push, PR opened/synchronize/reopened
- └─ run_analysis_pipeline()  src/worker/pipeline.py
-    gather   25 static analyzers (27 languages) + Claude review (49 language checklists)
-    score    calculate_score() → DB
-    gate     PR approve · request changes · Telegram buttons · squash merge
-    notify   channels are independent — one failing does not stop the rest
-```
+**Analysis** — 25 static analyzers over 27 languages, plus a Claude review that follows a
+per-language checklist (49 of them). A contracted analyzer that is missing marks the run
+incomplete and blocks auto-merge, rather than scoring high on nothing having run.
 
-If an analyzer the deployment is contracted to install is missing, the run is marked incomplete and
-auto-merge is blocked — rather than scoring a clean 100 with nothing having run.
+<sub>c · clojure · cpp · csharp · css · dart · dockerfile · elixir · go · html · java · javascript ·
+kotlin · php · powershell · protobuf · python · ruby · rust · scala · shell · solidity · sql ·
+swift · terraform · typescript · yaml</sub>
 
-## Scoring
+**A score** — out of 100, with a grade, per commit, stored and trended.
 
-Out of 100 — code quality 25 (error −3, warning −1) · security 20 (HIGH −7, LOW/MEDIUM −2) ·
-commit message 15 · direction 25 · tests 15. The last three come from Claude as raw 0–20 / 0–20 /
-0–10 and are scaled. Grades: **A** 90+ · **B** 75+ · **C** 60+ · **D** 45+ · **F** below 45.
+**A web UI** — dashboard, per-repository history, per-analysis detail, and settings, in
+**en · ko · ja**, four themes.
 
-Whenever the AI review returns no usable result — missing key, disabled, empty diff, API or parse
-error — those three rows fall back to 13 / 21 / 10. That caps the run at 89, so a review that did
-not happen can never look like an A. Source of truth: [`src/constants.py`](src/constants.py).
+**A gate** — approve the PR, request changes, or squash-merge it, by score. Off until you turn
+it on per repository.
 
-## Gate and delivery
+**Notifications** — Telegram · Discord · Slack · Email · webhook · n8n ·
+GitHub commit comment · GitHub issue, configured per repository.
 
-Approve at ≥75, request changes below 50, squash-merge at ≥75. `approve_mode=auto` acts on GitHub
-immediately; `semi-auto` asks first via Telegram buttons. Merges held by in-flight CI are queued
-and retried.
 
-A second-model verifier is **opt-in**: set `OPENAI_API_KEY` and every merge-eligible score is
-re-checked for prompt injection in the diff — deliberately with no upper bound, since injection
-aims at *high* scores. Unset, it never runs; its absence does not block merges.
+<div align="center">
 
-Notification channels are per repository and fire independently: Telegram · Discord · Slack ·
-Email · webhook · n8n · GitHub commit comment · GitHub issue. (Approving the PR itself is the gate
-acting on GitHub, not a notifier.) UI, notifications and prompts: **en · ko · ja**.
+<!-- 재생성 / regenerate: py -3 scripts/capture_readme_hero.py -->
+![SCAManager dashboard](docs/readme/dashboard.png)
+
+<sub>Local instance with a seeded 7-day history — not what first boot looks like.
+AI cost reads $0.00 because the seed makes no API calls.</sub>
+
+</div>
 
 ## Quick start
 
 ```bash
 git clone https://github.com/xzawed/SCAManager.git && cd SCAManager
 make install         # pip install -r requirements-dev.txt + npm install
-make css-build       # Tailwind bundle — gitignored; the utility layer templates rely on
+make css-build       # Tailwind bundle (gitignored — build it once)
 cp .env.example .env
-make run             # uvicorn :8000 --reload, migrations at boot
+make run             # uvicorn on :8000, migrations at boot
 ```
 
-No `make`? These three targets are one or two commands each — read them off the
-[Makefile](Makefile).
+No `make`? Each target is one or two commands — read them off the [Makefile](Makefile).
 
-Boot requires `DATABASE_URL`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` — the only settings with no
-default. `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `SESSION_SECRET` (32+ random chars) ship with
-placeholders: the process starts, OAuth login does not until you replace them.
+`.env.example` ships placeholders for the database and Telegram, but **`SESSION_SECRET` is empty
+and an empty one refuses to boot** — generate it with `openssl rand -hex 32`. Add
+`ANTHROPIC_API_KEY`, or the AI half of every score falls back to neutral defaults. The GitHub
+sign-in below needs `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` from an OAuth app; leave them
+empty only if you are staying on the CLI.
 
-Log in, choose **+ Add Repo** — the webhook is created and the next push is analyzed.
-No server at all: `python -m src.cli review --base main`.
+Then open <http://localhost:8000>, sign in with GitHub, and choose **+ Add Repository**. That
+registers the webhook, and the next push to that repository is analyzed. Which channels fire and
+whether the gate acts on its own are per repository — **⚙️ Settings** on the repository page.
+
+**Without a server**, review your working tree before you push:
+
+```bash
+python -m src.cli review --base main   # or --staged
+python -m src.cli review --json        # --no-ai skips the Claude call
+```
+
+## Pipeline
+
+```
+POST /webhooks/github — HMAC-SHA256, per-repo secret · push, PR opened/synchronize/reopened
+ └─ gather   static analyzers + Claude review
+    score    calculate_score() → DB
+    gate     PR approve · request changes · Telegram buttons · squash merge
+    notify   per-repository channels
+```
+
+## Scoring
+
+Out of 100 — code quality 25 (error −3, warning −1) · security 20 (HIGH −7, LOW/MEDIUM −2) ·
+commit message 15 · direction 25 · tests 15. The last three come from the AI review.
+Grades: **A** 90+ · **B** 75+ · **C** 60+ · **D** 45+ · **F** below 45.
+
+With no usable AI result those three fall back to neutral defaults, so a perfect static run tops
+out at 89 — a B. A genuine API or parse error stores no score at all.
+
+## Gate and delivery
+
+Defaults: approve at ≥75, request changes below 50, squash-merge at ≥75 — and both actions ship
+off. `approve_mode=auto` acts on GitHub
+immediately; `semi-auto` asks first via Telegram buttons. Merges blocked by in-flight CI are
+queued and retried.
+
+Notification channels fire independently, so one broken webhook does not silence the rest.
 
 ## Deploy
 
 **Railway** — connect the repo, add the PostgreSQL plugin, set the variables above plus
-`ANTHROPIC_API_KEY` and an `https://` `APP_BASE_URL`. On `http://` the value is registered as-is and
-both OAuth redirect and webhook delivery fail ([runbook](docs/runbooks/railway.md)).
+`ANTHROPIC_API_KEY` and an `https://` `APP_BASE_URL`. On `http://` both OAuth redirect and webhook
+delivery fail ([runbook](docs/runbooks/railway.md)).
 
 **On premises** — `uvicorn src.main:app --host 0.0.0.0 --port 8000 --proxy-headers`.
-`DATABASE_URL_FALLBACK` enables automatic failover to a secondary database.
+
+Self-hosted is not airtight: diffs and scores reach GitHub, your database, Anthropic, and whichever
+channels you enable. Full table and how to switch each off:
+[SECURITY.md](SECURITY.md#data-egress).
 
 ## Docs
 
