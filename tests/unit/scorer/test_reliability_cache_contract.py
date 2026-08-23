@@ -213,3 +213,32 @@ def test_truthy_marker_is_now_fail_closed():
     assert score_is_unreliable({"breakdown": {"ai_defaults_applied": False}}) is False
     assert score_is_unreliable({"breakdown": {"ai_defaults_applied": 0}}) is False
     assert score_is_unreliable({"breakdown": {}}) is False
+
+
+def test_the_partial_index_name_matches_between_model_and_migration():
+    """🔴 모델과 마이그레이션의 인덱스 **이름이 같아야** 한다.
+
+    이름이 갈리면 운영에는 마이그레이션이 만든 인덱스가 남고 ORM 은 다른 이름을 기대해
+    ORM↔alembic 정합이 깨진다. 그 축(`test_orm_alembic_parity`)은 **PostgreSQL 이 있을 때만**
+    돌아서, 로컬에서는 이 뮤테이션이 초록이었다(실측). 여기서 값싸게 메운다.
+
+    The parity axis is PG-gated, so this cheap name check closes the local blind spot.
+    """
+    model_src = (_ROOT / "src" / "models" / "analysis.py").read_text(encoding="utf-8")
+    migration = next(_VERSIONS.glob(f"{_BACKFILL_REVISION}_*.py")).read_text(encoding="utf-8")
+
+    names = set(re.findall(r'"(ix_analyses_[a-z_]+)"', model_src))
+    assert names, "모델에서 인덱스 이름을 하나도 못 읽었다 — 이 가드가 공허하다"
+
+    target = "ix_analyses_reliable_scores"
+    assert target in names, (
+        f"모델이 {target} 을 선언하지 않는다 (선언된 것: {sorted(names)}). "
+        "이름을 바꾸려면 마이그레이션도 함께 바꿀 것."
+    )
+    assert target in migration, (
+        f"마이그레이션 {_BACKFILL_REVISION} 이 {target} 을 만들지 않는다 — 모델과 갈렸다."
+    )
+    # 술어도 같아야 한다 — 이름만 같고 조건이 다르면 계획이 인덱스를 못 쓴다.
+    predicate = "score IS NOT NULL AND score_unreliable IS NOT TRUE"
+    assert predicate in model_src, f"모델 부분 인덱스 술어가 다르다 (기대: {predicate})"
+    assert predicate in migration, f"마이그레이션 부분 인덱스 술어가 다르다 (기대: {predicate})"
