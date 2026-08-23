@@ -19,7 +19,7 @@ JSON 안에 있어 그 전량을 읽어야 했다. 실측(로컬 PG17, 운영 �
    벌이 되고, 이 리포는 이미 그 형태로 한 번 다쳤다(JSON 불린 `"false"` 가 파이썬에선
    truthy·SQL 투영에선 False). 정의는 하나여야 한다.
 
-🔴 `server_default=text("false")` 필수 — `nullable=False` 만 두면 **데이터가 있는 운영
+🔴 `server_default` 필수(값은 **true** — 위 주석 참조) — `nullable=False` 만 두면 **데이터가 있는 운영
    테이블에서만** 실패한다(SQLite 테스트는 create_all 이라 안 보인다).
 
 PG 11+ 에서 상수 DEFAULT + NOT NULL 은 카탈로그 변경뿐이라 테이블 재작성이 없다.
@@ -87,7 +87,11 @@ def upgrade() -> None:
             "score_unreliable",
             sa.Boolean(),
             nullable=False,
-            server_default=sa.text("false"),
+            # 🔴 **true(신뢰 불가)** 가 기본값이다 — fail-closed. 이 값이 쓰이는 경우는
+            #    「쓰기가 컬럼을 빠뜨렸을 때」뿐이고(새 경로 누락·배포 교체 중 옛 바이너리),
+            #    false 면 그 행이 검증된 점수로 평균에 들어간다(R46 Axis B 재현).
+            #    운영 신뢰불가 비율 70.8% — 「모르면 신뢰 가능」은 나쁜 사전확률이다.
+            server_default=sa.text("true"),
         ),
     )
     _backfill(op.get_bind())

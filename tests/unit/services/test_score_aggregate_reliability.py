@@ -149,8 +149,15 @@ def test_every_sql_avg_of_score_excludes_unreliable_rows():
             while owner in parents and not isinstance(
                     owner, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Module)):
                 owner = parents[owner]
-            segment = ast.dump(owner)
-            if "score_unreliable" not in segment:
+            # 🔴 `ast.dump` 부분문자열로 보면 **다른 이름**이 걸린다 — 같은 함수 안의
+            #    `_score_unreliable`(다른 판정)이 이 가드를 통과시켰다(Grok `01a02f70` Q5-7).
+            #    `Analysis.score_unreliable` 속성 접근을 구조로 찾는다.
+            filtered = any(
+                isinstance(n, ast.Attribute) and n.attr == "score_unreliable"
+                and isinstance(n.value, ast.Name) and n.value.id == "Analysis"
+                for n in ast.walk(owner)
+            )
+            if not filtered:
                 bare.append(f"{path.relative_to(root.parent).as_posix()}:{node.lineno}")
 
     assert total, (

@@ -782,14 +782,14 @@ async def _save_and_gate(db: Session, params: _AnalysisSaveParams):
     # AI genuine 실패(#25/#814) 시에만 score/grade NULL 저장 → 집계 오염 차단(쿼리 변경 0).
     # 입력-diff 절단은 NULL 제외(점수 유지)·예외(no_api_key/empty_diff)는 _persisted_score_is_unreliable 도크스트링 참조.
     # NULL-persist score/grade only on a genuine AI failure — see helper docstring (truncation excluded).
-    _score_unreliable = _persisted_score_is_unreliable(result_dict)
+    _null_persist = _persisted_score_is_unreliable(result_dict)
     analysis, created = analysis_repo.save_new(db, Analysis(
         repo_id=repo.id,
         commit_sha=params.commit_sha,
         commit_message=params.commit_message,
         pr_number=params.pr_number,
-        score=None if _score_unreliable else params.score_result.total,
-        grade=None if _score_unreliable else params.score_result.grade,
+        score=None if _null_persist else params.score_result.total,
+        grade=None if _null_persist else params.score_result.grade,
         result=result_dict,
         # 🔴 `score_is_unreliable` 의 비정규화 캐시 (0046). ORM 이벤트가 아니라 **명시 대입**이다 —
         #    이 리포에는 모델 이벤트가 하나도 없고, 쓰기 지점은 grep 가능한 3곳뿐이라
@@ -802,7 +802,7 @@ async def _save_and_gate(db: Session, params: _AnalysisSaveParams):
         output_tokens=getattr(ai, "output_tokens", None) or None,
     ))
     if not created and _is_cli_only(analysis):
-        analysis = _claim_and_supersede_cli(db, analysis, params, result_dict, _score_unreliable)
+        analysis = _claim_and_supersede_cli(db, analysis, params, result_dict, _null_persist)
         created = analysis is not None  # None = claim 패배 → 아래 race-recovery 로 강등
         if analysis is None:
             existing_row = analysis_repo.find_by_sha(db, params.commit_sha, repo.id)

@@ -25,7 +25,7 @@ JSON 경로 접근이 `JSON_EXTRACT` / `#>` 로 달라 오탐·미탐이 둘 다
 ## 같이 고정하는 것: 의미가 안 바뀌었는가
 
 투영으로 바꾸면 신뢰도 판정 입력이 달라진다. SQLite 는 JSON 불린을 **0/1 정수**로 주는데
-`score_is_unreliable` 은 `ai_defaults_applied is True` 로 **엄격 비교**한다
+`score_is_unreliable` 은 `ai_defaults_applied` 를 **truthy** 로 본다
 (`src/scorer/reliability.py`) — 정규화를 빠뜨리면 그 행이 집계에서 안 빠지고 평균이
 조용히 틀어진다. 그래서 평균 자체를 함께 단언한다.
 """
@@ -58,7 +58,7 @@ _UNRELIABLE = (
     {"ai_review_status": "disabled"},
     {"static_analysis_incomplete": True},
     {"source": "cli"},
-    {"breakdown": {"ai_defaults_applied": True}},   # 🔴 `is True` 엄격 비교 축
+    {"breakdown": {"ai_defaults_applied": True}},   # 🔴 truthy 판정 축
     {"static_uncovered_languages": ["rust"]},
 )
 
@@ -149,6 +149,13 @@ def test_overview_does_not_parse_the_whole_result_blob(json_bytes):
     # 다른 카드가 소량의 JSON 을 읽을 여지를 남기기 위함이고, 블롭 로드는 이 값을
     # 세 자릿수로 넘긴다(실측: 수정 전 1,101,041 바이트).
     seeded = _ROWS * len(_FILLER)
+    # 🔴 실측은 **정확히 0** 이다 — 주장과 단언을 일치시킨다(Grok `01a02f70` Q5-4:
+    #    「0 이라 주장하고 '작다'로 단언하는 간극」). 다른 카드가 JSON 을 읽기 시작하면
+    #    여기서 먼저 보이는 편이 낫다 — 느슨한 상한은 그 변화를 삼킨다.
+    assert counter["bytes"] == 0, (
+        f"렌더가 JSON {counter['bytes']:,} 바이트를 파싱했다 — 0 이어야 한다. "
+        "평균은 SQL 이 내므로 이 화면은 result 를 읽지 않는다."
+    )
     assert counter["bytes"] < seeded // 1000, (
         f"렌더가 JSON {counter['bytes']:,} 바이트를 파싱했다 (시드 블롭 {seeded:,}). "
         "평균 4개를 내려고 분석 result 를 읽고 있다 — SQL 집계가 아니다."
@@ -158,7 +165,7 @@ def test_overview_does_not_parse_the_whole_result_blob(json_bytes):
 def test_overview_average_excludes_every_unreliable_reason(json_bytes):
     """🔴 의미 비회귀 — 투영이 신뢰도 판정을 바꾸면 평균이 조용히 틀어진다.
 
-    특히 `ai_defaults_applied` 는 `is True` 엄격 비교라, SQLite 가 주는 0/1 정수를
+    특히 캐시(`score_unreliable`)가 판정과 어긋나면 그 행이 집계에서 안 빠지고
     정규화하지 않으면 이 행이 집계에 남아 평균이 90 이 아니게 된다.
     """
     _, _sess = json_bytes

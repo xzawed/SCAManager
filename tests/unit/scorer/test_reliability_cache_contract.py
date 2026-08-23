@@ -37,39 +37,150 @@ _ROOT = Path(__file__).resolve().parents[3]
 _RELIABILITY = _ROOT / "src" / "scorer" / "reliability.py"
 _VERSIONS = _ROOT / "alembic" / "versions"
 
-# 🔴 판정 **본문**(docstring 제외)의 AST 해시. 마커가 하나라도 늘거나 조건이 바뀌면 달라진다.
-#    갱신할 때는 반드시 **백필 리비전을 함께** 만든다 — 그것이 이 상수의 존재 이유다.
-_PREDICATE_BODY_SHA = "c1805045947495ef"
+# 🔴 판정의 **행동**을 해시한다 — 소스 AST 가 아니다.
+#
+# ## 초판이 CI 를 거짓으로 빨갛게 만들었다 (Grok claim-review `01a02f70`, 실측 확인)
+#
+# 초판은 `ast.dump(score_is_unreliable)` 를 해시했다. 그 출력은 **파이썬 버전마다 다르다** —
+# 3.12 는 빈 기본값(`posonlyargs=[]` 등)을 찍고 3.14 는 생략한다. 같은 소스에 대해:
+#
+#     py3.14  sha=c1805045947495ef  dump_len=2124   ← 여기서 핀을 떴다
+#     py3.12  sha=32185cf588a13b92  dump_len=2426   ← CI 인터프리터
+#
+# 즉 CI 는 「판정 본문이 바뀌었다」며 백필을 요구했을 것이다 — **본문은 그대로인데.**
+# 거짓 사유로 red 를 내는 가드는 무집행보다 나쁘다: 사람을 상수 갈아끼우기로 훈련시킨다.
+#
+# ## 그리고 정작 봐야 할 것을 못 봤다
+#
+# `ast.dump` 에는 **이름**만 있고 그 이름이 묶인 **값**은 없다. 그래서 아래가 전부 통과했다:
+#     `_AI_UNVERIFIED_STATUSES` 에 상태 추가    → 행동 변화, 해시 불변
+#     `AI_REVIEW_FAILED_STATUSES` 에 상태 추가  → 행동 변화, 해시 불변(다른 모듈)
+#     `ai_review_failed` 본문 변경              → 행동 변화, 해시 불변(호출만 보인다)
+#
+# ## 그래서 무엇을 해시하는가
+#
+# **운영에 실재하는 키**로 만든 표본 전체의 판정 결과 벡터. 키 목록은 운영 DB 실측이다
+# (2026-08-24, `json_object_keys` 집계 19키). 판정이 기존 행의 결과를 바꾸면 — 원인이
+# 함수 본문이든 frozenset 이든 위임 함수든 — 벡터가 바뀐다. 파이썬 버전에는 의존하지 않고,
+# 주석·어노테이션·이름 변경 같은 무해한 편집에는 발동하지 않는다.
+#
+# Hash the predicate's BEHAVIOUR over a corpus built from keys that actually exist in production,
+# not its AST: ast.dump is version-dependent (measured) and blind to the frozensets and delegate.
+_BEHAVIOUR_SHA = "6e36c9b592da815b"
 
-# 이 해시를 마지막으로 갱신한 백필 리비전. 판정이 바뀌면 새 리비전 번호로 올린다.
+# 이 벡터를 마지막으로 백필한 리비전. 판정이 바뀌면 새 리비전 번호로 올린다.
 _BACKFILL_REVISION = "0046"
 
+# 🔴 운영 DB 실측 최상위 키 19종 (2026-08-24). 판정과 무관한 키도 넣는다 —
+#    「무관하다」가 계속 참인지도 이 벡터가 지켜본다.
+_PRODUCTION_KEYS = (
+    "issues", "file_feedbacks", "ai_suggestions", "direction_feedback",
+    "commit_message_feedback", "code_quality_feedback", "ai_summary", "test_feedback",
+    "breakdown", "security_feedback", "ai_review_status", "source",
+    "ai_review_truncated", "ai_review_error_type", "static_analysis_incomplete",
+    "ai_review_error_status_code", "grade", "static_uncovered_languages", "score",
+)
 
-def _predicate_body_sha() -> str:
-    tree = ast.parse(_RELIABILITY.read_text(encoding="utf-8"))
-    fn = next(
-        n for n in ast.walk(tree)
-        if isinstance(n, ast.FunctionDef) and n.name == "score_is_unreliable"
-    )
-    # docstring 은 판정이 아니다 — 설명을 고쳤다고 백필을 요구하면 가드가 미움받고 꺼진다.
-    fn.body = [
-        x for x in fn.body
-        if not (isinstance(x, ast.Expr) and isinstance(x.value, ast.Constant)
-                and isinstance(x.value.value, str))
-    ]
-    dumped = ast.dump(ast.Module(body=[fn], type_ignores=[]))
-    return hashlib.sha256(dumped.encode()).hexdigest()[:16]
+# 키마다 시도할 값 — 참/거짓·존재/부재를 훑는다.
+_VALUES = {
+    "ai_review_status": ["success", "api_error", "parse_error", "disabled",
+                         "no_api_key", "empty_diff", "skipped", "timeout", None],
+    "source": ["pr", "push", "cli", None],
+    "static_analysis_incomplete": [True, False, None],
+    "ai_review_truncated": [True, False, None],
+    "static_uncovered_languages": [["rust"], [], None],
+    "breakdown": [{"ai_defaults_applied": True}, {"ai_defaults_applied": False}, {}, None],
+    "ai_review_error_type": ["overloaded", None],
+    "ai_review_error_status_code": [529, None],
+    "grade": ["A", None],
+    "score": [95, None],
+}
 
 
-def test_predicate_change_requires_a_backfill_revision():
-    """🔴 판정이 바뀌면 기존 행의 캐시가 낡는다 — 백필 없이는 통과시키지 않는다."""
-    actual = _predicate_body_sha()
-    assert actual == _PREDICATE_BODY_SHA, (
-        f"`score_is_unreliable` 본문이 바뀌었다 ({_PREDICATE_BODY_SHA} → {actual}).\n"
+def _corpus():
+    """운영 키 구조에서 **파생한** 표본. 손으로 나열하지 않는다."""
+    samples = [None, {}]
+    base = {k: "x" for k in _PRODUCTION_KEYS if k not in _VALUES}
+    for key, values in sorted(_VALUES.items()):
+        for value in values:
+            sample = dict(base)
+            if value is not None:
+                sample[key] = value
+            samples.append(sample)
+    # 조합 축 — 두 마커가 동시에 있을 때의 단락 순서를 고정한다.
+    samples.append({"source": "cli", "ai_review_status": "success"})
+    samples.append({"ai_review_status": "api_error", "static_analysis_incomplete": False})
+    samples.append({"breakdown": {"ai_defaults_applied": True}, "ai_review_status": "success"})
+    return samples
+
+
+def _verdict_bits():
+    return "".join("1" if score_is_unreliable(s) else "0" for s in _corpus())
+
+
+def _behaviour_sha():
+    """표본 전체의 판정 결과 벡터 해시 — 파이썬 버전 비의존."""
+    return hashlib.sha256(_verdict_bits().encode()).hexdigest()[:16]
+
+
+def test_predicate_behaviour_change_requires_a_backfill_revision():
+    """🔴 판정 **결과**가 바뀌면 기존 행의 캐시가 낡는다 — 백필 없이는 통과시키지 않는다."""
+    actual = _behaviour_sha()
+    assert actual == _BEHAVIOUR_SHA, (
+        f"`score_is_unreliable` 의 판정 결과가 바뀌었다 ({_BEHAVIOUR_SHA} -> {actual}).\n"
         "`analyses.score_unreliable` 은 이 함수의 **캐시**이므로 기존 행이 낡았다.\n"
-        "→ ① 새 alembic 리비전에서 전 행을 이 함수로 다시 채우고\n"
-        "  ② 이 파일의 `_PREDICATE_BODY_SHA` 와 `_BACKFILL_REVISION` 을 갱신할 것.\n"
-        "  백필 없이 해시만 고치면 평균이 조용히 틀린 채 초록이 된다."
+        "-> (1) 새 alembic 리비전에서 전 행을 이 함수로 다시 채우고\n"
+        "   (2) 이 파일의 `_BEHAVIOUR_SHA` 와 `_BACKFILL_REVISION` 을 갱신할 것.\n"
+        "   백필 없이 해시만 고치면 평균이 조용히 틀린 채 초록이 된다.\n"
+        "   (주석·어노테이션만 고쳤다면 이 벡터는 바뀌지 않는다 — 바뀌었다면 행동이 바뀐 것이다.)"
+    )
+
+
+def test_the_behaviour_hash_does_not_depend_on_the_interpreter():
+    """🔴 초판이 여기서 무너졌다 — 계기가 인터프리터에 따라 다르면 CI 를 거짓으로 빨갛게 한다.
+
+    결과 벡터는 파이썬 자료형 연산만 쓰므로 그런 의존이 없다. 그 사실을 구조로 못박는다:
+    벡터가 두 판정을 모두 포함하고, 재실행에 안정적이며, AST 표현이 섞여 있지 않다.
+    """
+    bits = _verdict_bits()
+    assert set(bits) == {"0", "1"}, "표본이 한쪽 판정으로 쏠렸다 — 벡터가 무의미하다"
+    assert len(bits) == len(_corpus())
+    assert _behaviour_sha() == _behaviour_sha(), "판정에 숨은 상태가 있다"
+    # 🔴 문자열 검색으로 보면 **이 파일의 설명 주석**이 걸린다(실측 — 산문 가드는
+    #    양방향으로 틀린다). 호출을 AST 로 찾는다.
+    tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+    dumps = [
+        n.lineno for n in ast.walk(tree)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+        and n.func.attr == "dump" and isinstance(n.func.value, ast.Name)
+        and n.func.value.id == "ast"
+    ]
+    assert not dumps, (
+        f"`ast.dump` 호출이 다시 들어왔다 (줄 {dumps}) — 그 출력은 파이썬 버전마다 다르다"
+        " (실측 3.12 dump_len=2426 vs 3.14 dump_len=2124)."
+    )
+
+
+def test_the_corpus_covers_every_marker_the_predicate_uses():
+    """🔴 공허화 차단 — 마커 키가 표본에 없으면 그 축의 변경을 못 본다."""
+    corpus_keys = {k for s in _corpus() if isinstance(s, dict) for k in s}
+    for marker in ("ai_review_status", "static_analysis_incomplete", "source",
+                   "breakdown", "static_uncovered_languages"):
+        assert marker in corpus_keys, f"표본에 마커 {marker!r} 가 없다"
+
+
+def test_status_sets_and_delegate_are_inside_the_hashed_surface():
+    """🔴 초판이 못 본 축 — frozenset·위임 함수 변경이 벡터를 실제로 움직이는가.
+
+    `_AI_UNVERIFIED_STATUSES` 에 없는 상태(`skipped`·`timeout`)가 표본에 있고 지금은
+    신뢰 가능으로 판정된다. 누가 그것을 집합에 넣으면 벡터가 바뀌어 백필이 요구된다.
+    """
+    assert score_is_unreliable({"ai_review_status": "skipped"}) is False, (
+        "표본 전제가 깨졌다 — 이미 신뢰불가면 그 축의 변경 탐지가 무뎌진다"
+    )
+    assert score_is_unreliable({"ai_review_status": "timeout"}) is False
+    assert score_is_unreliable({"ai_review_status": "api_error"}) is True, (
+        "위임(`ai_review_failed`)의 판정이 표본에 반영되지 않는다"
     )
 
 
@@ -84,19 +195,6 @@ def test_the_named_backfill_revision_exists_and_calls_the_predicate():
     )
     assert "score_unreliable" in src, f"{matches[0].name} 이 캐시 컬럼을 채우지 않는다"
 
-
-def test_the_hash_guard_is_not_vacuous():
-    """해시 계산이 깨져 있으면 위 단언이 늘 통과한다."""
-    sha = _predicate_body_sha()
-    assert re.fullmatch(r"[0-9a-f]{16}", sha), f"해시 형식이 깨졌다: {sha!r}"
-
-
-# ── 쓰기 경로가 캐시를 실제로 채우는가 ────────────────────────────────────────
-#
-# 🔴 ORM 이벤트를 쓰지 않는다 (Grok `01a02f4f` Q1). 이 리포에는 모델 이벤트가 하나도 없고,
-#    이벤트는 「어떤 쓰기도 잊을 수 없다」를 **보장하지 못한다**(bulk update·raw SQL·
-#    alembic 데이터 마이그레이션은 발동하지 않는다). 쓰기 지점은 grep 가능한 3곳뿐이라
-#    명시 대입이 더 정직하고, 누락은 아래 가드가 잡는다.
 
 _WRITE_FILES = ("src/worker/pipeline.py", "src/api/hook.py")
 
@@ -167,15 +265,25 @@ def test_every_result_attribute_write_updates_the_cache():
     problems = []
     for rel, line, obj in _result_attribute_writes():
         tree = ast.parse((_ROOT / rel).read_text(encoding="utf-8"))
+        # 🔴 짝은 **같은 함수 안**에 있어야 한다. 파일 전체를 훑으면
+        #    `def f(): x.result = a` 와 `def g(): x.score_unreliable = b` 가 짝으로 잡혀
+        #    정작 그 쓰기는 캐시를 갱신하지 않는다(Grok `01a02f70` Q5-6).
+        owner = None
+        for fn in ast.walk(tree):
+            if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef))                     and fn.lineno <= line <= (fn.end_lineno or fn.lineno):
+                if owner is None or fn.lineno > owner.lineno:
+                    owner = fn          # 가장 안쪽 함수
+        scope = owner if owner is not None else tree
         paired = any(
             isinstance(n, ast.Assign)
             and any(isinstance(t, ast.Attribute) and t.attr == "score_unreliable"
                     and isinstance(t.value, ast.Name) and t.value.id == obj
                     for t in n.targets)
-            for n in ast.walk(tree)
+            for n in ast.walk(scope)
         )
         if not paired:
-            problems.append(f"{rel}:{line} ({obj}.result)")
+            where = owner.name if owner is not None else "<module>"
+            problems.append(f"{rel}:{line} ({obj}.result, in {where})")
     assert not problems, (
         f"`.result` 를 다시 쓰면서 캐시를 갱신하지 않는다: {problems}\n"
         f"→ 같은 객체에 `score_unreliable = score_is_unreliable(result_dict)` 를 대입할 것."

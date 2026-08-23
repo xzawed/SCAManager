@@ -94,8 +94,17 @@ class Analysis(Base):
     # Denormalized cache of `score_is_unreliable(result)`: aggregates filtered on a predicate whose
     # inputs live inside the JSON blob, forcing a full read. This is a cache, not the definition;
     # a CI guard forces a backfill revision whenever the predicate body changes.
+    # 🔴 기본값이 **true(신뢰 불가)** 다 — fail-closed (Grok claim-review `01a02f70` Q3).
+    #    이 기본값이 적용되는 경우는 「쓰기가 이 컬럼을 빠뜨렸을 때」뿐이다:
+    #      · 새 쓰기 경로가 대입을 잊음  · 배포 교체 중 옛 바이너리의 insert
+    #      · 미래의 bulk/raw SQL 경로
+    #    false 로 두면 그 행이 **검증된 점수로 평균에 들어간다** — R46 Axis B 의 재현이다.
+    #    운영 실측 신뢰불가 비율 70.8% 를 감안하면 「모르면 신뢰 가능」은 나쁜 사전확률이다.
+    #    true 면 모르는 행은 평균에서 빠진다 — 판정 자체가 fail-closed 인 것과 방향이 같다.
+    #    Unknown rows must not enter verified averages; the default is the backstop for
+    #    forgotten writes, so it points the same way the predicate does.
     score_unreliable = Column(
-        Boolean, nullable=False, server_default=text("false"),
+        Boolean, nullable=False, server_default=text("true"),
     )
 
     repository = relationship("Repository", back_populates="analyses")
