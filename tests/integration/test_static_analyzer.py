@@ -209,37 +209,42 @@ def test_flake8_timeout_returns_empty_list():
 # pylint JSON parsing failure handling.
 # ---------------------------------------------------------------------------
 
-def test_pylint_json_decode_error_returns_empty_list():
-    # pylint stdout 이 유효하지 않은 JSON 이면 JSONDecodeError → 빈 이슈 목록 반환
-    # Invalid JSON from pylint stdout → JSONDecodeError → return empty issue list.
+def test_pylint_non_json_stdout_raises_so_the_file_is_marked_incomplete():
+    """🔴 파싱 불가 출력은 **분석 실패**다 — 「이슈 0건」이 아니다.
+
+    구 판은 `result == []` 을 단언했다. 그러면 호출부(`static.py`)는 예외를 못 보고
+    「도구가 돌았고 깨끗하다」로 기록한다 — 미분석 코드가 만점으로 auto-merge 된다.
+    The old assertion pinned the swallow: an unparseable run was recorded as "clean".
+    """
     mock_proc = MagicMock()
     mock_proc.stdout = "this is not valid json at all"
+    mock_proc.stderr = ""
     mock_proc.returncode = 0
-    # stdout 이 "[" 로 시작하지 않으면 json.loads 를 건너뛰고 [] 반환
     with patch("subprocess.run", return_value=mock_proc):
-        result = _run_pylint("/tmp/fake.py")
-    assert result == []
+        with pytest.raises(RuntimeError, match="pylint did not analyze"):
+            _run_pylint("/tmp/fake.py")
 
 
-def test_pylint_stdout_starts_with_bracket_but_invalid_json_returns_empty():
-    # pylint stdout 이 "[" 로 시작하지만 파싱 불가능한 JSON 이면 빈 이슈 목록 반환
-    # stdout starting with "[" but unparseable JSON → return empty issue list.
+def test_pylint_broken_json_after_bracket_raises():
+    """`[` 로 시작해 판별을 통과해도 파싱이 깨지면 실패로 승격된다 (2차 방어)."""
     mock_proc = MagicMock()
     mock_proc.stdout = "[invalid json content}"
+    mock_proc.stderr = ""
     mock_proc.returncode = 0
     with patch("subprocess.run", return_value=mock_proc):
-        result = _run_pylint("/tmp/fake.py")
-    assert result == []
+        with pytest.raises(RuntimeError, match="pylint did not analyze"):
+            _run_pylint("/tmp/fake.py")
 
 
-def test_bandit_invalid_json_returns_empty_list():
-    # bandit stdout 이 유효하지 않은 JSON 이면 빈 이슈 목록을 반환한다
+def test_bandit_non_json_stdout_raises():
+    """bandit 은 clean 이어도 항상 JSON 객체를 낸다 — `{` 로 시작하지 않으면 실패다."""
     mock_proc = MagicMock()
     mock_proc.stdout = "[broken json"
+    mock_proc.stderr = ""
     mock_proc.returncode = 1
     with patch("subprocess.run", return_value=mock_proc):
-        result = _run_bandit("/tmp/fake.py")
-    assert result == []
+        with pytest.raises(RuntimeError, match="bandit did not analyze"):
+            _run_bandit("/tmp/fake.py")
 
 
 # ---------------------------------------------------------------------------
@@ -323,14 +328,20 @@ def test_bandit_empty_results_returns_empty_list():
     assert result == []
 
 
-def test_bandit_empty_stdout_returns_empty_list():
-    # bandit stdout 이 완전히 비어 있으면 빈 이슈 목록을 반환한다
+def test_bandit_empty_stdout_raises():
+    """🔴 빈 stdout 은 bandit 이 **돌지 않았다**는 뜻이다 — clean 이 아니다.
+
+    실측: clean 파일에도 `{"errors": [], "results": [], ...}` 가 나온다. 빈 stdout 은
+    바이너리가 죽었거나 인자가 거부된 경우뿐이고, 그것을 `[]` 로 돌려주면 그 파일은
+    「검사했고 취약점 0」으로 기록된다.
+    """
     mock_proc = MagicMock()
     mock_proc.stdout = ""
+    mock_proc.stderr = "bandit: error: unrecognized arguments"
     mock_proc.returncode = 0
     with patch("subprocess.run", return_value=mock_proc):
-        result = _run_bandit("/tmp/fake.py")
-    assert result == []
+        with pytest.raises(RuntimeError, match="bandit did not analyze"):
+            _run_bandit("/tmp/fake.py")
 
 
 # ---------------------------------------------------------------------------

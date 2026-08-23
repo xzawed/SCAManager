@@ -90,13 +90,30 @@ def _no_subprocess():
     그 축은 `tests/integration/test_static_analyzer.py` 가 실바이너리로 덮는다.
     여기서 재는 것은 「어떤 입력 조합이 어떤 판정으로 가는가」뿐이다.
 
-    반환값이 빈 stdout 인 것은 의도다 — 각 어댑터가 `json.JSONDecodeError` 를 내부에서
-    잡아 `[]` 를 돌려주므로, 「도구는 돌았고 이슈는 0」 상태가 된다.
+    🔴 **스텁 출력은 도구별 실제 clean 출력이어야 한다.** 초판은 전 도구에 빈 stdout 을
+    돌려주고 「도구는 돌았고 이슈는 0」이라 적었는데, 그것은 어댑터가 파싱 실패를 삼켜
+    `[]` 를 돌려주던 **결함에 기댄 전제**였다. 실측 clean 출력은 pylint `[]`,
+    bandit·semgrep `{...}`, flake8 는 빈 stdout + exit 0 이다. 「빈 stdout + JSON 도구」는
+    프로덕션에서 나올 수 없는 조합이고 이제 fail-closed 로 승격되므로, 그 조합을 스텁이
+    계속 먹이면 이 파일은 **판정이 아니라 옛 결함**을 재고 있게 된다.
+    Per-tool realistic clean output; the old blanket-empty stub encoded the swallow bug.
+
     Stubs subprocess so this file measures the promotion decision, not the linters
     (real binaries make it 214s; the integration suite covers the linting axis).
     """
-    done = subprocess.CompletedProcess(args=["stub"], returncode=0, stdout="", stderr="")
-    with patch("subprocess.run", return_value=done):
+    clean = {
+        "pylint": "[]",
+        "bandit": '{"results": [], "errors": []}',
+        "semgrep": '{"results": [], "errors": []}',
+    }
+
+    def _stub(cmd, *_a, **_k):
+        tool = cmd[0] if isinstance(cmd, (list, tuple)) and cmd else ""
+        return subprocess.CompletedProcess(
+            args=cmd, returncode=0, stdout=clean.get(tool, ""), stderr="",
+        )
+
+    with patch("subprocess.run", side_effect=_stub):
         yield
 
 

@@ -211,16 +211,33 @@ class TestPylintRunOutputParsing:
             issues = _PylintAnalyzer().run(py_ctx)
         assert issues[0].severity == Severity.WARNING
 
-    def test_returns_empty_when_stdout_not_starts_with_bracket(self, py_ctx):
-        """non-JSON stdout (예: pylint banner) → 빈 list."""
-        with patch("subprocess.run", return_value=_mock_proc("Your code rated 10.00/10")):
-            issues = _PylintAnalyzer().run(py_ctx)
-        assert issues == []
+    def test_non_json_stdout_raises_so_the_run_is_marked_incomplete(self, py_ctx):
+        """🔴 구 테스트는 이 입력에 `issues == []` 를 단언했다 — 결함을 정답으로 못박았다.
 
-    def test_returns_empty_when_stdout_empty(self, py_ctx):
-        with patch("subprocess.run", return_value=_mock_proc("")):
-            issues = _PylintAnalyzer().run(py_ctx)
-        assert issues == []
+        docstring 은 「pylint banner」라고 했지만 `--output-format=json` 에서 pylint 는
+        배너를 내지 않는다. 실측: **정상이면 clean 도 JSON 배열**(exit 16/20 은 메시지
+        범주 비트이지 실패가 아니다), **크래시면 stdout 빈값 + exit 32**. 즉 JSON 이
+        아닌 stdout 은 언제나 *실패* 다.
+
+        `[]` 를 돌려주면 `static.py` 가 `incomplete` 로 승격하지 못해 미분석 코드가
+        만점을 받고 auto-merge 된다.
+
+        The old assertion certified a crash as a clean run; pylint never emits a banner in
+        JSON mode, so non-JSON stdout always means failure.
+        """
+        with patch("subprocess.run", return_value=_mock_proc("Your code rated 10.00/10", 32)):
+            with pytest.raises(RuntimeError, match="pylint"):
+                _PylintAnalyzer().run(py_ctx)
+
+    def test_empty_stdout_raises(self, py_ctx):
+        """🔴 pylint 는 clean 파일에도 `[]` 를 출력한다 — **빈 출력은 clean 이 아니다**.
+
+        실측: crash 시에만 stdout 이 빈다(exit 32). flake8 과 정반대라 같은 판별식을
+        쓸 수 없다(flake8 은 빈 출력이 정당한 clean).
+        """
+        with patch("subprocess.run", return_value=_mock_proc("", 32)):
+            with pytest.raises(RuntimeError, match="pylint"):
+                _PylintAnalyzer().run(py_ctx)
 
     def test_propagates_language_field(self, py_ctx):
         stdout = json.dumps([{"type": "warning", "message": "x", "line": 1}])
@@ -249,11 +266,16 @@ class TestPylintRunGracefulDegradation:
             issues = _PylintAnalyzer().run(py_ctx)
         assert issues == []
 
-    def test_json_decode_error_returns_empty(self, py_ctx):
-        """깨진 JSON ([로 시작하지만 파싱 실패) → []."""
-        with patch("subprocess.run", return_value=_mock_proc("[broken json")):
-            issues = _PylintAnalyzer().run(py_ctx)
-        assert issues == []
+    def test_broken_json_raises(self, py_ctx):
+        """🔴 `[` 로 시작하지만 파싱이 깨진 출력 = 도구가 온전한 결과를 못 냈다.
+
+        구 테스트는 `[]` 를 단언해 그 상태를 «이슈 없음» 으로 고정했다. 파싱 실패는
+        이슈를 통째로 잃는다는 뜻이므로, 삼키면 그만큼 점수가 부풀려진다.
+        eslint 어댑터가 같은 입력에 `RuntimeError` 를 올리는 것과 대칭이다.
+        """
+        with patch("subprocess.run", return_value=_mock_proc("[broken json", 32)):
+            with pytest.raises(RuntimeError, match="pylint"):
+                _PylintAnalyzer().run(py_ctx)
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -449,11 +471,15 @@ class TestBanditRunOutputParsing:
             issues = _BanditAnalyzer().run(py_ctx)
         assert issues == []
 
-    def test_returns_empty_when_stdout_not_json(self, py_ctx):
-        """stdout 이 { 로 시작하지 않으면 빈 list."""
-        with patch("subprocess.run", return_value=_mock_proc("bandit usage info")):
-            issues = _BanditAnalyzer().run(py_ctx)
-        assert issues == []
+    def test_non_json_stdout_raises(self, py_ctx):
+        """🔴 bandit 은 clean 파일에도 JSON 객체를 낸다(`{"results": []}`).
+
+        실측: crash 시 stdout 빈값 + exit 2. usage 텍스트가 왔다는 것은 분석을 못 했다는
+        뜻이므로 `[]` 로 삼키면 «보안 이슈 0건» 이 되어 만점이 나간다.
+        """
+        with patch("subprocess.run", return_value=_mock_proc("bandit usage info", 2)):
+            with pytest.raises(RuntimeError, match="bandit"):
+                _BanditAnalyzer().run(py_ctx)
 
 
 class TestBanditRunGracefulDegradation:
@@ -473,10 +499,11 @@ class TestBanditRunGracefulDegradation:
             issues = _BanditAnalyzer().run(py_ctx)
         assert issues == []
 
-    def test_json_decode_error_returns_empty(self, py_ctx):
-        with patch("subprocess.run", return_value=_mock_proc("{broken json")):
-            issues = _BanditAnalyzer().run(py_ctx)
-        assert issues == []
+    def test_broken_json_raises(self, py_ctx):
+        """🔴 파싱 실패를 삼키면 보안 이슈가 통째로 사라진 채 «0건» 이 된다 (pylint 대칭)."""
+        with patch("subprocess.run", return_value=_mock_proc("{broken json", 2)):
+            with pytest.raises(RuntimeError, match="bandit"):
+                _BanditAnalyzer().run(py_ctx)
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -550,3 +577,52 @@ class TestC10DefensiveParsing:
         assert issues[0].message == ""
         assert issues[0].line == 0
         assert issues[0].severity == Severity.ERROR
+
+
+# ─── 🔴 과교정 방지 — 세 도구의 «정상» 은 서로 다르다 ────────────────────────
+#
+# fail-closed 를 한 판별식으로 몰면 반드시 어느 하나가 깨진다. 핀 버전 실측:
+#
+#   pylint  clean → JSON 배열 `[]` · exit 16   (exit 는 메시지 범주 비트, 실패 아님)
+#   bandit  clean → JSON 객체      · exit 0
+#   flake8  clean → **빈 출력**    · exit 0    ← 여기에 JSON 판별식을 쓰면 정상 파일이
+#                                                 전부 incomplete 가 되어 auto-merge 전면 차단
+#
+# 아래는 «고쳤더니 정상이 막혔다» 를 막는 축이다.
+
+class TestFailClosedDoesNotBlockCleanRuns:
+    """정상 실행을 실패로 오인하지 않는가."""
+
+    def test_pylint_clean_file_is_not_a_failure(self, py_ctx):
+        """clean 이어도 pylint 는 `[]` 를 낸다 — exit 16 은 실패가 아니다."""
+        with patch("subprocess.run", return_value=_mock_proc("[]", 16)):
+            assert _PylintAnalyzer().run(py_ctx) == []
+
+    def test_bandit_clean_file_is_not_a_failure(self, py_ctx):
+        """clean 이어도 bandit 은 JSON 객체를 낸다."""
+        with patch("subprocess.run", return_value=_mock_proc('{"results": []}', 0)):
+            assert _BanditAnalyzer().run(py_ctx) == []
+
+    def test_flake8_clean_file_is_not_a_failure(self, py_ctx):
+        """🔴 flake8 만 **빈 출력이 정당한 clean** 이다(exit 0). 여기서 raise 하면
+        모든 정상 Python 파일이 차단된다."""
+        with patch("subprocess.run", return_value=_mock_proc("", 0)):
+            assert _Flake8Analyzer().run(py_ctx) == []
+
+    def test_flake8_crash_still_raises(self, py_ctx):
+        """대조축 — 같은 «빈 출력» 이라도 비정상 종료면 실패다(tsc 규칙).
+
+        이 축이 없으면 flake8 은 fail-open 인 채로 남는다 — 빈 출력이 clean 이라는
+        이유로 크래시까지 통과시키게 된다.
+        """
+        proc = _mock_proc("", 2)
+        proc.stderr = "flake8: error: unrecognized arguments"
+        with patch("subprocess.run", return_value=proc):
+            with pytest.raises(RuntimeError, match="flake8"):
+                _Flake8Analyzer().run(py_ctx)
+
+    def test_pylint_findings_survive_a_nonzero_exit(self, py_ctx):
+        """대조축 — pylint 는 이슈를 찾으면 exit 20 이다. 종료코드로 판정하면 결과를 버린다."""
+        stdout = json.dumps([{"type": "error", "message": "boom", "line": 3}])
+        with patch("subprocess.run", return_value=_mock_proc(stdout, 20)):
+            assert len(_PylintAnalyzer().run(py_ctx)) == 1
