@@ -98,37 +98,87 @@ def test_the_hash_guard_is_not_vacuous():
 #    alembic 데이터 마이그레이션은 발동하지 않는다). 쓰기 지점은 grep 가능한 3곳뿐이라
 #    명시 대입이 더 정직하고, 누락은 아래 가드가 잡는다.
 
-_WRITE_SITES = (
-    ("src/worker/pipeline.py", "Analysis("),          # 통상 insert
-    ("src/api/hook.py", "Analysis("),                 # CLI 훅 insert
-    ("src/worker/pipeline.py", "locked.result = "),   # CLI supersede update
-)
+_WRITE_FILES = ("src/worker/pipeline.py", "src/api/hook.py")
 
 
-@pytest.mark.parametrize("rel,anchor", _WRITE_SITES)
-def test_every_result_write_site_also_sets_the_cache(rel, anchor):
-    """🔴 `result` 를 쓰는 곳은 캐시도 함께 쓴다 — 한 곳만 빠져도 그 행이 조용히 틀린다."""
-    src = (_ROOT / rel).read_text(encoding="utf-8")
-    assert anchor in src, f"{rel}: 앵커 {anchor!r} 가 사라졌다 — 이 가드가 공허하다"
-    idx = src.index(anchor)
-    window = src[idx:idx + 1400]
-    assert "score_unreliable" in window, (
-        f"{rel} 의 {anchor!r} 부근이 `score_unreliable` 을 설정하지 않는다.\n"
-        "→ `score_unreliable=score_is_unreliable(result_dict)` 를 함께 쓸 것."
+def _analysis_constructions() -> list[tuple[str, int, set[str]]]:
+    """`Analysis(...)` 생성 호출 — (파일, 줄, 키워드 인자 이름들)."""
+    out = []
+    for rel in _WRITE_FILES:
+        tree = ast.parse((_ROOT / rel).read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                    and node.func.id == "Analysis"):
+                out.append((rel, node.lineno, {k.arg for k in node.keywords if k.arg}))
+    return out
+
+
+def _result_attribute_writes() -> list[tuple[str, int, str]]:
+    """`<obj>.result = ...` 대입 — (파일, 줄, 객체명)."""
+    out = []
+    for rel in _WRITE_FILES:
+        tree = ast.parse((_ROOT / rel).read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Assign):
+                continue
+            for tgt in node.targets:
+                if (isinstance(tgt, ast.Attribute) and tgt.attr == "result"
+                        and isinstance(tgt.value, ast.Name)):
+                    out.append((rel, node.lineno, tgt.value.id))
+    return out
+
+
+def test_the_write_site_scan_is_not_vacuous():
+    """🔴 스캔이 0건이면 아래 단언이 전부 공허하다."""
+    ctors = _analysis_constructions()
+    assert len(ctors) == 2, (
+        f"`Analysis(...)` 생성이 2곳이 아니다: {[(f, l) for f, l, _ in ctors]}\n"
+        "→ 새 쓰기 경로가 생겼다면 `score_unreliable` 을 설정할 것."
+    )
+    assert _result_attribute_writes(), "`.result = ` 대입을 못 찾았다 — 파싱이 깨졌다"
+
+
+def test_every_analysis_construction_sets_the_cache():
+    """🔴 생성 시 캐시를 함께 넣는다 — **AST 키워드 인자**로 확인한다.
+
+    초판은 `Analysis(` 이후 1400자에 `score_unreliable` 문자열이 있는지 봤다. 그런데
+    같은 창에 `_claim_and_supersede_cli(..., _score_unreliable)` 호출이 있어
+    **부분 문자열이 걸려** 대입을 지워도 초록이었다(뮤테이션으로 실측).
+    산문 가드는 양방향으로 틀린다 — 구조로 본다.
+    Substring matching gave a false pass; assert the keyword argument in the AST instead.
+    """
+    missing = [
+        f"{rel}:{line}" for rel, line, kwargs in _analysis_constructions()
+        if "score_unreliable" not in kwargs
+    ]
+    assert not missing, (
+        f"`Analysis(...)` 가 캐시를 설정하지 않는다: {missing}\n"
+        "→ `score_unreliable=score_is_unreliable(result_dict)` 를 인자로 넣을 것. "
+        "빠지면 server_default(false) 가 들어가 신뢰 불가 행이 평균에 섞인다."
     )
 
 
-def test_no_other_write_site_appeared():
-    """🔴 공허화 차단 — `Analysis(` 생성이 늘면 위 목록이 낡는다."""
-    hits = []
-    for path in (_ROOT / "src").rglob("*.py"):
-        for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-            if re.search(r"(?<![A-Za-z_])Analysis\($", line.strip()) or \
-               re.search(r"(?<![A-Za-z_])Analysis\(\s*$", line):
-                hits.append(f"{path.relative_to(_ROOT).as_posix()}:{i}")
-    assert len(hits) == 2, (
-        f"`Analysis(` 생성 지점이 2곳이 아니다: {hits}\n"
-        "→ 새 쓰기 경로가 생겼다면 `score_unreliable` 을 설정하고 _WRITE_SITES 에 추가할 것."
+def test_every_result_attribute_write_updates_the_cache():
+    """🔴 `x.result = ...` 를 쓰면 같은 객체의 `x.score_unreliable` 도 갱신한다.
+
+    CLI supersede(`pipeline.py`)가 이 경로다. 빠뜨리면 CLI 행이 full 분석으로 승격된
+    뒤에도 옛 판정으로 남아 평균이 조용히 틀어진다.
+    """
+    problems = []
+    for rel, line, obj in _result_attribute_writes():
+        tree = ast.parse((_ROOT / rel).read_text(encoding="utf-8"))
+        paired = any(
+            isinstance(n, ast.Assign)
+            and any(isinstance(t, ast.Attribute) and t.attr == "score_unreliable"
+                    and isinstance(t.value, ast.Name) and t.value.id == obj
+                    for t in n.targets)
+            for n in ast.walk(tree)
+        )
+        if not paired:
+            problems.append(f"{rel}:{line} ({obj}.result)")
+    assert not problems, (
+        f"`.result` 를 다시 쓰면서 캐시를 갱신하지 않는다: {problems}\n"
+        f"→ 같은 객체에 `score_unreliable = score_is_unreliable(result_dict)` 를 대입할 것."
     )
 
 
