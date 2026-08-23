@@ -29,7 +29,6 @@ import hashlib
 import re
 from pathlib import Path
 
-import pytest
 
 from src.scorer.reliability import score_is_unreliable
 

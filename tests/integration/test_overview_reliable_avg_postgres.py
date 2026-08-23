@@ -53,7 +53,13 @@ _ROWS = [
 def _pg():
     """PG 세션 — 잔류 제거 후 clean slate (기존 PG 테스트 패턴)."""
     from src.database import Base  # pylint: disable=import-outside-toplevel
-    import src.models.analysis  # noqa: F401  pylint: disable=import-outside-toplevel,unused-import
+    from src.models.analysis import Analysis  # pylint: disable=import-outside-toplevel
+
+    # 🔴 side-effect import 는 `# noqa: F401` 이 아니라 **튜플 참조**로 남긴다 —
+    #    CodeQL 이 'used' 로 인식하고, import 가 사라지면 여기서 loud-fail 한다.
+    #    (`import src.models.analysis` + `from ... import` 이중 형태도 게이트가 막는다.)
+    _TABLE_REGISTRATION = (Analysis,)
+    assert _TABLE_REGISTRATION, "모델이 Base.metadata 에 등록되지 않았다"
 
     engine = create_engine(_PG_URL, pool_pre_ping=True)
     Base.metadata.drop_all(engine)
