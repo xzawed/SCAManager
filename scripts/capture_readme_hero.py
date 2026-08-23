@@ -59,6 +59,9 @@ _MSGS = [
     "docs: update runbook",
 ]
 _CAPTION_FILE = {"en": "dashboard.png", "ko": "dashboard.ko.png"}
+# README 는 GitHub 의 밝은/어두운 크롬 양쪽에서 읽혀야 해 다크로 고정한다.
+# Fixed to dark: the README is read against both GitHub chromes.
+THEME = "dark"
 
 
 def _start_server(db_path: str):
@@ -152,7 +155,12 @@ def _capture(locale: str) -> Path:
                           "url": BASE}])
         page = ctx.new_page()
         page.goto(f"{BASE}/dashboard", wait_until="networkidle")
-        page.evaluate("localStorage.setItem('theme','dark')")
+        # 🔴 키는 `sca-theme` 다 (`src/templates/base.html`). 초판은 `theme` 를 써서
+        #    **아무 일도 하지 않았고**, 결과가 다크였던 건 그것이 기본값이기 때문이다 —
+        #    지정한 척하며 지정하지 않는 줄이었다. 기본값이 바뀌면 조용히 다른 테마가 찍힌다.
+        # The app reads `sca-theme`; the original `theme` write was a silent no-op that only
+        # looked correct because dark is the default.
+        page.evaluate(f"localStorage.setItem('sca-theme','{THEME}')")
         page.reload(wait_until="networkidle")
         page.wait_for_timeout(2000)
         page.screenshot(path=str(out))
