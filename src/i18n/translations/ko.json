@@ -561,7 +561,8 @@
       "custom_label": "Custom Webhook",
       "section_automation": "자동화 연동 (발신)",
       "n8n_label": "n8n Webhook",
-      "mask_aria": "값 보이기/숨기기"
+      "mask_aria": "값 보이기/숨기기",
+      "unclaimed_hidden": "이 저장소에는 등록된 소유자가 없어 알림 채널의 저장된 값을 표시하지 않습니다. '저장소 추가'에서 소유권을 확보하면 표시됩니다."
     },
     "inbound": {
       "header": "통합 & 인증 (수신)",
@@ -699,7 +700,8 @@
     "hook_invalid_repo_or_token": "등록되지 않은 리포 또는 유효하지 않은 토큰",
     "hook_invalid_token": "유효하지 않은 토큰",
     "hook_repo_not_found": "리포지토리를 찾을 수 없습니다",
-    "repo_unclaimed": "이 저장소는 SCAManager에 소유자가 등록되어 있지 않습니다(Webhook으로 자동 생성됨). 설정을 변경하려면 '리포 추가'에서 이 저장소를 등록해 소유권을 확보하세요."
+    "repo_unclaimed": "이 저장소는 SCAManager에 소유자가 등록되어 있지 않습니다(Webhook으로 자동 생성됨). 설정을 변경하려면 '리포 추가'에서 이 저장소를 등록해 소유권을 확보하세요.",
+    "stale_unclaimed_form": "이 화면은 저장소에 소유자가 없을 때 열려서 알림 채널 값이 비어 있습니다. 저장하면 기존 값이 지워지므로 저장하지 않았습니다 — 새로고침 후 다시 시도하세요."
   },
   "notifier": {
     "cron": {

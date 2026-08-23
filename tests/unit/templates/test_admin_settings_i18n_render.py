@@ -19,6 +19,8 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from src.i18n.filters import register_i18n_filters
 from src.i18n.loader import get_text
+from src.constants import CLAUDE_MODELS
+from src.ui.routes.settings import renderable_secrets
 
 
 def _render(template_name: str, **context) -> str:
@@ -281,15 +283,26 @@ class _Cfg:
 
 
 def _settings_ctx(**overrides) -> dict:
+    # 🔴 `secrets` 는 **프로덕션 함수로 파생**한다 — 손으로 dict 를 적으면 비밀 필드가
+    #    늘었을 때 이 fixture 만 낡아 「렌더는 되는데 실제와 다른 화면」을 재게 된다.
+    #    (아래 test_settings_ctx_covers_every_key_the_route_passes 가 키 누락 축을 본다.)
+    # Derived from the production helper so a newly added secret cannot desync this fixture.
+    cfg = _Cfg()
     base = {
         "current_user": _FakeUser(),
         "repo_name": "owner/repo",
-        "config": _Cfg(),
+        "config": cfg,
+        "secrets": renderable_secrets(cfg, claimed=True),
+        "notify_secrets_hidden": False,
         "hook_ok": False,
         "hook_fail": False,
         "saved": False,
         "save_error": False,
         "railway_webhook_url": None,
+        # 🔴 아래 둘은 위 가드가 실측으로 찾아낸 **기존 드리프트**다 — 템플릿이 아직
+        #    `{% if %}` 로만 써서 Undefined 가 falsy 로 통과하고 있었을 뿐이다.
+        "railway_webhook_unclaimed": False,
+        "claude_models": CLAUDE_MODELS,
         "railway_api_token_set": False,
         "webhook_stale": False,
         "onboarding_needed": False,
@@ -297,6 +310,51 @@ def _settings_ctx(**overrides) -> dict:
     }
     base.update(overrides)
     return base
+
+
+def test_settings_ctx_covers_every_key_the_route_passes():
+    """🔴 fixture ↔ 라우트 양방향 대조 — 이 하네스는 컨텍스트를 **손으로 조립**한다.
+
+    손 조립 fixture 는 프로덕션과 따로 늙는다. 실측: 라우트가 `secrets` 를 추가했을 때
+    이 파일의 23개 테스트가 `UndefinedError` 로 한꺼번에 터졌다 — 원인이 자기 fixture 인데
+    실패는 「템플릿 i18n 이 깨졌다」처럼 보인다.
+
+    여기서 키를 손으로 나열하지 않는다. 라우트 소스를 AST 로 읽어 `TemplateResponse` 에
+    넘기는 키를 **파생**하므로, 라우트가 변수를 추가하면 이 단언이 먼저 그것을 지목한다.
+
+    Derives the route's template keys via AST instead of restating them, so the hand-built
+    fixture cannot silently drift from production.
+    """
+    import ast  # pylint: disable=import-outside-toplevel
+
+    src = Path("src/ui/routes/settings.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    fn = next(
+        (n for n in ast.walk(tree)
+         if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == "repo_settings"),
+        None,
+    )
+    assert fn is not None, "repo_settings 를 못 찾았다 — 이 가드가 공허하다"
+
+    keys = set()
+    for node in ast.walk(fn):
+        if not isinstance(node, ast.Call):
+            continue
+        if not (isinstance(node.func, ast.Attribute) and node.func.attr == "TemplateResponse"):
+            continue
+        for arg in node.args:
+            if isinstance(arg, ast.Dict):
+                keys |= {k.value for k in arg.keys
+                         if isinstance(k, ast.Constant) and isinstance(k.value, str)}
+    assert keys, "TemplateResponse 컨텍스트 키를 하나도 못 읽었다 — 파싱이 깨졌다"
+
+    # `locale` 은 `_render(..., locale=...)` 로 **호출부가** 준다 — fixture 밖이 정상이다.
+    supplied_at_call_site = {"locale"}
+    missing = keys - set(_settings_ctx()) - supplied_at_call_site
+    assert not missing, (
+        f"라우트가 넘기는데 이 fixture 에 없는 키: {sorted(missing)}. "
+        "템플릿이 그 값을 쓰는 순간 이 파일 전체가 UndefinedError 로 터진다."
+    )
 
 
 def test_settings_renders_korean_headers_and_save():
