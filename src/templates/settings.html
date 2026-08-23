@@ -903,6 +903,15 @@
           <span class="hdr-badge">{{ 'settings_page.notify.badge' | i18n_args(locale | default('ko')) }}</span>
         </div>
         <div class="s-card-body">
+          {# 🔴 소유자 미등록(NULL-owner) 저장소에서는 자격증명 **값**을 렌더하지 않는다.
+             연결 상태 점(conn-dot)은 `config` 를 그대로 보므로 「설정됨」은 유지된다 —
+             값만 비고 이유가 없으면 사용자가 '미설정'으로 오독한다. 같은 화면
+             railway_webhook_unclaimed 와 같은 이유의 안내다(거짓 안내 금지).
+             Values are withheld for unclaimed repos; the dots stay truthful, so the reason
+             must be stated or an empty field reads as "not configured". #}
+          {% if notify_secrets_hidden %}
+          <div class="field-hint" role="status">{{ 'settings_page.notify.unclaimed_hidden' | i18n_args(locale | default('ko')) }}</div>
+          {% endif %}
           <div class="s-section-label">{{ 'settings_page.notify.section_telegram' | i18n_args(locale | default('ko')) }}</div>
           <div class="channel-grid">
             <div class="field-row">
@@ -914,7 +923,7 @@
               <div class="masked-field">
                 <input class="field-input" type="password" name="notify_chat_id" id="notify_chat_id"
                        aria-label="{{ 'settings_page.notify.telegram_chat_id_label' | i18n_args(locale | default('ko')) }}"
-                       value="{{ config.notify_chat_id or '' }}"
+                       value="{{ secrets.notify_chat_id }}"
                        placeholder="-100xxxxxxxxx" autocomplete="off">
                 <button type="button" class="mask-toggle" onclick="toggleFieldMask(this)"
                         aria-label="{{ 'settings_page.notify.mask_aria' | i18n_args(locale | default('ko')) }}">👁️</button>
@@ -999,7 +1008,7 @@
               <div class="masked-field">
                 <input class="field-input" type="password" name="discord_webhook_url" id="discord_webhook_url"
                        aria-label="{{ 'settings_page.notify.discord_label' | i18n_args(locale | default('ko')) }}"
-                       value="{{ config.discord_webhook_url or '' }}"
+                       value="{{ secrets.discord_webhook_url }}"
                        placeholder="https://discord.com/api/webhooks/..." autocomplete="off">
                 <button type="button" class="mask-toggle" onclick="toggleFieldMask(this)"
                         aria-label="{{ 'settings_page.notify.mask_aria' | i18n_args(locale | default('ko')) }}">👁️</button>
@@ -1013,7 +1022,7 @@
               <div class="masked-field">
                 <input class="field-input" type="password" name="slack_webhook_url" id="slack_webhook_url"
                        aria-label="{{ 'settings_page.notify.slack_label' | i18n_args(locale | default('ko')) }}"
-                       value="{{ config.slack_webhook_url or '' }}"
+                       value="{{ secrets.slack_webhook_url }}"
                        placeholder="https://hooks.slack.com/services/..." autocomplete="off">
                 <button type="button" class="mask-toggle" onclick="toggleFieldMask(this)"
                         aria-label="{{ 'settings_page.notify.mask_aria' | i18n_args(locale | default('ko')) }}">👁️</button>
@@ -1028,7 +1037,7 @@
               <div class="masked-field">
                 <input class="field-input" type="password" name="email_recipients" id="email_recipients"
                        aria-label="{{ 'settings_page.notify.email_label' | i18n_args(locale | default('ko')) }}"
-                       value="{{ config.email_recipients or '' }}"
+                       value="{{ secrets.email_recipients }}"
                        placeholder="admin@example.com, dev@example.com" autocomplete="off">
                 <button type="button" class="mask-toggle" onclick="toggleFieldMask(this)"
                         aria-label="{{ 'settings_page.notify.mask_aria' | i18n_args(locale | default('ko')) }}">👁️</button>
@@ -1042,7 +1051,7 @@
               <div class="masked-field">
                 <input class="field-input" type="password" name="custom_webhook_url" id="custom_webhook_url"
                        aria-label="{{ 'settings_page.notify.custom_label' | i18n_args(locale | default('ko')) }}"
-                       value="{{ config.custom_webhook_url or '' }}"
+                       value="{{ secrets.custom_webhook_url }}"
                        placeholder="https://example.com/webhook/..." autocomplete="off">
                 <button type="button" class="mask-toggle" onclick="toggleFieldMask(this)"
                         aria-label="{{ 'settings_page.notify.mask_aria' | i18n_args(locale | default('ko')) }}">👁️</button>
@@ -1059,7 +1068,7 @@
               <div class="masked-field">
                 <input class="field-input" type="password" name="n8n_webhook_url" id="n8n_webhook_url"
                        aria-label="{{ 'settings_page.notify.n8n_label' | i18n_args(locale | default('ko')) }}"
-                       value="{{ config.n8n_webhook_url or '' }}"
+                       value="{{ secrets.n8n_webhook_url }}"
                        placeholder="https://n8n.example.com/webhook/..." autocomplete="off">
                 <button type="button" class="mask-toggle" onclick="toggleFieldMask(this)"
                         aria-label="{{ 'settings_page.notify.mask_aria' | i18n_args(locale | default('ko')) }}">👁️</button>

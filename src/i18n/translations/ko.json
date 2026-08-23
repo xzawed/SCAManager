@@ -561,7 +561,8 @@
       "custom_label": "Custom Webhook",
       "section_automation": "자동화 연동 (발신)",
       "n8n_label": "n8n Webhook",
-      "mask_aria": "값 보이기/숨기기"
+      "mask_aria": "값 보이기/숨기기",
+      "unclaimed_hidden": "이 저장소에는 등록된 소유자가 없어 알림 채널의 저장된 값을 표시하지 않습니다. '저장소 추가'에서 소유권을 확보하면 표시됩니다."
     },
     "inbound": {
       "header": "통합 & 인증 (수신)",

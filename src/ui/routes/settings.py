@@ -47,14 +47,51 @@ router = APIRouter()
 # (single source, shared with the REST API repos.py).
 
 
+# 저장 시 SSRF 검증 대상 webhook 필드 — 모듈 상수로 올려 아래 `_NOTIFY_SECRET_FIELDS` 와
+# 대조 가능하게 한다(가드가 「쓰기에서 검증하는 URL 은 읽기에서 가려진다」를 강제한다).
+# Hoisted so a guard can assert every write-validated URL is also read-redacted.
+WEBHOOK_URL_FIELDS = (
+    "n8n_webhook_url", "discord_webhook_url",
+    "slack_webhook_url", "custom_webhook_url",
+)
+
+# 🔴 소유자 미등록(NULL-owner) 저장소에서 **값을 렌더하지 않는** 필드 단일 출처.
+#
+# `GET /repos/{n}/settings` 는 읽기라 NULL-owner 저장소에 대해 모든 인증 사용자에게 열려
+# 있다(의도된 설계 — `_helpers.py:78-80`, RLS 0026 이 `user_id IS NULL` 을 whitelist).
+# 그런데 아래 값들은 **bearer 자격증명**이다: webhook URL 을 아는 사람은 별도 인증 없이
+# 그 채널에 게시할 수 있고, `notify_chat_id` 는 Telegram 발송 대상, `email_recipients` 는
+# 수신자 PII 다. `type="password"` 는 화면 표시만 가릴 뿐 DOM 에 평문이 들어 있고 같은
+# 화면의 `toggleFieldMask` 버튼이 한 번의 클릭으로 벗긴다.
+#
+# 소유 저장소는 `get_accessible_repo` 가 타인을 404 로 막으므로(`_helpers.py:96`) 소유권으로
+# 분기하면 정확히 유출 경로만 닫히고 소유자의 편집 흐름은 보존된다. 같은 화면
+# `railway_webhook_url` 이 이미 그 분기를 쓴다 — 이 상수는 그 비대칭을 없앤다.
+#
+# Single source for fields whose values are withheld on unclaimed repos. The settings GET is a
+# read, so unclaimed repos are viewable by any authenticated user by design — but these values
+# are bearer credentials. Branching on ownership closes exactly the leak path.
+_NOTIFY_SECRET_FIELDS = ("notify_chat_id", "email_recipients", *WEBHOOK_URL_FIELDS)
+
+
+def renderable_secrets(config, *, claimed: bool) -> dict[str, str]:
+    """템플릿이 `value=` 로 쓸 알림 자격증명. 소유자 미등록이면 전부 빈 문자열.
+
+    🔴 템플릿이 `config.<필드>` 를 직접 읽지 않고 이 dict 만 보게 하는 것이 요점이다 —
+    새 비밀 필드가 생겼을 때 가려야 할 자리가 **한 곳**으로 모인다. 연결 상태 점
+    (`conn-dot`)은 `config` 를 그대로 보므로 「설정됨」 표시는 거짓이 되지 않는다.
+
+    Template reads only this dict, so a newly added secret has one place to be redacted.
+    """
+    if not claimed:
+        return {name: "" for name in _NOTIFY_SECRET_FIELDS}
+    return {name: getattr(config, name) or "" for name in _NOTIFY_SECRET_FIELDS}
+
+
 def _validate_webhook_urls(form, locale: str) -> None:
     """폼의 모든 webhook URL을 검증한다. 안전하지 않으면 HTTPException(400).
     Validate all webhook URLs in the form. Raises HTTPException(400) if unsafe."""
-    webhook_fields = (
-        "n8n_webhook_url", "discord_webhook_url",
-        "slack_webhook_url", "custom_webhook_url",
-    )
-    for field in webhook_fields:
+    for field in WEBHOOK_URL_FIELDS:
         url = form.get(field) or ""
         if url and not is_safe_webhook_url(url):
             raise HTTPException(
@@ -182,6 +219,9 @@ async def repo_settings(  # pylint: disable=too-many-positional-arguments,too-ma
 
     return templates.TemplateResponse(request, "settings.html", {
         "repo_name": repo_name, "config": config,
+        # 🔴 자격증명 값은 `config` 가 아니라 이것으로 렌더한다 (`renderable_secrets` docstring).
+        "secrets": renderable_secrets(config, claimed=repo_is_claimed),
+        "notify_secrets_hidden": not repo_is_claimed,
         "hook_ok": bool(hook_ok), "hook_fail": bool(hook_fail),
         "saved": bool(saved), "save_error": bool(save_error),
         "current_user": current_user,
