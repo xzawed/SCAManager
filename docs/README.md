@@ -8,4 +8,4 @@
 
 `runbooks/` — railway 운영 DB · new-machine-setup · branch-protection · rls-role-separation · secret-prevention · n8n-workflow.json
 
-`design/brief/screenshots/` 4테마 캡처 · `samples/p4-gate/` 분석기 샘플 입력 · `superpowers/plans/` · `reports/` 산출물 착지
+`readme/` README 이미지(`scripts/capture_readme_hero.py` 로 재생성) · `samples/p4-gate/` 분석기 샘플 입력 · `reports/` 산출물 착지. `design/brief/screenshots/` 는 gitignore — 새 클론엔 없다.
