@@ -341,6 +341,44 @@ async def test_http_fallback_logs_error_metric_on_failure(monkeypatch):
     assert error_calls[0]["error_type"] == "RuntimeError"
 
 
+class TestAcloseOpenAIClientDoubles:
+    """aclose_openai_client 의 폴백·loud-fail 분기 — `claude_metrics` 쪽과 대칭.
+
+    미러 헬퍼를 만들면 **가드도 같이 미러해야 한다**. 이 두 건이 빠져 있어
+    codecov/patch 가 75% 로 red 였다(분기 자체가 한 번도 실행되지 않았다).
+    Mirroring a helper without mirroring its guards leaves the new branches unexecuted.
+    """
+
+    @pytest.mark.asyncio
+    async def test_awaits_async_close(self):
+        from unittest.mock import AsyncMock, MagicMock
+        client = MagicMock(spec=["close"])
+        client.close = AsyncMock()
+        await openai_metrics.aclose_openai_client(client)
+        client.close.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_aclose_when_close_absent(self):
+        # httpx 계열 객체는 `aclose` 만 갖는다 — 폴백 분기가 살아 있는지 고정.
+        from unittest.mock import AsyncMock, MagicMock
+        client = MagicMock(spec=["aclose"])
+        client.aclose = AsyncMock()
+        await openai_metrics.aclose_openai_client(client)
+        client.aclose.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_warns_when_no_closer_found(self, caplog):
+        """종료 메서드를 하나도 못 찾으면 조용히 넘어가지 않는다 — 조용한 no-op 이 결함을 숨겼다."""
+        import logging
+        from unittest.mock import MagicMock
+        client = MagicMock(spec=[])
+        with caplog.at_level(logging.WARNING, logger="src.shared.openai_metrics"):
+            await openai_metrics.aclose_openai_client(client)  # 예외 미발생
+        assert any("close" in r.message for r in caplog.records), (
+            "종료 메서드 부재가 로그에 남지 않았다 — 거짓 초록"
+        )
+
+
 class TestAcloseOpenAIClientAgainstRealSDK:
     """🔴 실 SDK 객체로 재는 축 — 위 `_FakeClient` 들이 원리적으로 못 재는 것.
 
