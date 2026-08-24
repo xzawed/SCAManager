@@ -36,6 +36,9 @@ def create(  # pylint: disable=too-many-arguments
 
     Phase 3 PR-B1: state + enabled_at 파라미터 추가. 기본값 'legacy' 유지로
     backwards compatible — 기존 호출처는 변경 불필요.
+    2026-08-24: merged_at 추가 (INSERT 시점에 머지 시각을 남길 수 있게).
+    🔴 그 기본값 'legacy' 가 **운영 primary 머지 경로를 라벨 없이 남겼다** — 호출부가
+    성공을 기록할 때 state 를 넘기는지 `test_merge_kpi_definition.py` 가 강제한다.
     """
     record = MergeAttempt(
         analysis_id=analysis_id,
