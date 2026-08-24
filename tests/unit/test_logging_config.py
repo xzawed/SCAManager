@@ -881,3 +881,61 @@ def test_existing_channel_patterns_still_redact():
     """🔴 대조군 — 새 패턴이 기존 채널 마스킹을 깨뜨리지 않는다(회귀 방지)."""
     assert "SECRET" not in _redact("https://api.telegram.org/botSECRET/sendMessage")
     assert "SECRET" not in _redact("https://hooks.slack.com/services/SECRET")
+
+
+# ---------------------------------------------------------------------------
+# 리댁션 과잉 방지 — 스킴 없는 userinfo 백스톱을 **의도적으로 두지 않는다**
+# ---------------------------------------------------------------------------
+
+
+class TestOrdinaryLogShapesAreNotMangled:
+    """🔴 `user:pass@host` 를 **스킴 없이** 마스킹하는 패턴을 넣지 않는다 — 넣으면 안 된다.
+
+    #1487 수정 중 실제로 시도했다가 철회했다. 스킴 없는 `word:word@host` 는 정규식으로
+    일반 텍스트와 구별할 수 없다. 리포에서 파생한 503줄 코퍼스에 대조한 실측:
+
+        From:alice@example.com        -> From:***@example.com
+        mailto:alice@example.com     -> mailto:***@example.com
+        12:30@office.local           -> 12:***@office.local
+        image:1.2.3@sha256:0123...   -> image:***@sha256:0123...
+        com.google.guava:guava@31.1  -> com.google.***@31.1
+        {"user":"a:b@c.com"}         -> {"user":"a:***@c.com"}
+
+    호스트에 점/포트를 요구해도 `office.local` 하나로 무너진다. 운영 진단 로그를 망가뜨리는
+    가드는 무집행보다 나쁘다 — 다음 사람이 다시 넣지 않도록 그 형상들을 여기에 못박는다.
+
+    유출 자체는 `url_host_for_log` 가 `hostname` 을 쓰도록 고쳐 **생산자 쪽에서** 막았고,
+    전체 URL 형태는 기존 `://` 패턴이 계속 덮는다.
+
+    Deliberately NO scheme-less userinfo pattern: it cannot be told apart from ordinary text
+    (mail headers, Docker refs, Maven coords, JSON values). The leak is fixed at the producer.
+    """
+
+    ORDINARY = (
+        "From:alice@example.com",
+        "mailto:alice@example.com",
+        "Reply-To:alice@example.com",
+        "meeting at 12:30@office.local",
+        "ratio 3:1@peak.load",
+        "scale 16:9@display.main",
+        "image:1.2.3@sha256:0123456789",
+        "myimage:latest@registry.example.com",
+        "com.google.guava:guava@31.1",
+        'json: {"user":"a:b@c.com"}',
+        "git@github.com:owner/repo.git",
+        "user email: someone@example.com",
+    )
+
+    def test_ordinary_lines_pass_through_untouched(self):
+        from src.logging_config import _redact  # noqa: PLC0415
+
+        for line in self.ORDINARY:
+            assert _redact(line) == line, f"과잉 리댁션: {line!r} -> {_redact(line)!r}"
+
+    def test_full_url_userinfo_is_still_masked(self):
+        """생산자 수정과 무관하게 기존 `://` 패턴은 계속 살아 있어야 한다 — 대조군."""
+        from src.logging_config import _redact  # noqa: PLC0415
+
+        out = _redact("https://svc:PW9931@host.example/webhook/abc")
+        assert "PW9931" not in out
+        assert "svc:***@host.example" in out
