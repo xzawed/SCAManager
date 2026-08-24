@@ -118,6 +118,13 @@ def build_analysis_result_dict(
                 "line": i.line,
                 "category": i.category,
                 "language": i.language,
+                # 🔴 `file` — 없던 동안 분석 상세가 이슈의 파일 경로를 **영원히** 못 보여줬다.
+                #   템플릿 가드 `iss.get('path') or iss.get('file')` 가 제품이 만드는 모든
+                #   레코드에 대해 무조건 False 였다(#1488). 모델 부재가 아니라 **투영 시 폐기**다 —
+                #   `r.filename` 은 바로 아래 루프 변수로 이미 스코프에 있었다.
+                # `file` was dropped here, so the detail view could never render an issue's path;
+                #   `r.filename` was already in scope on the very next line.
+                "file": r.filename,
             }
             for r in analysis_results
             for i in r.issues

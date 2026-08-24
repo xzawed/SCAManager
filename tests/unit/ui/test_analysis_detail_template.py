@@ -374,3 +374,98 @@ class TestFeedbackButtonHandler:
         assert "_initFeedback" in html_no_trend, (
             "케이스 C 에서 _initFeedback 함수가 없음."
         )
+
+
+# ─── #1488 — 이슈 파일 경로가 실제로 렌더되는가 ──────────────────────────────
+
+
+def _render_with_issues(env: jinja2.Environment, issues: list[dict]) -> str:
+    """주어진 issues 목록으로 상세 화면을 렌더한다."""
+    analysis = SimpleNamespace(
+        **{**vars(_ANALYSIS), "result": {**_ANALYSIS.result, "issues": issues}}
+    )
+    ctx = {**_CTX_WITH_TREND, "analysis": analysis}
+    return env.get_template("analysis_detail.html").render(**ctx)
+
+
+_ISSUE_BASE = {
+    "tool": "pylint",
+    "severity": "warning",
+    "message": "unused import",
+    "line": 3,
+    "category": "quality",
+    "language": "python",
+}
+
+
+def test_issue_path_row_renders_when_file_present(env: jinja2.Environment):
+    """🔴 `file` 키가 있으면 `.issue__path` 행이 실제로 렌더돼야 한다.
+
+    `file` 이 투영에서 버려지던 동안 이 행은 **한 번도 렌더된 적이 없다** —
+    템플릿 가드 `iss.get('path') or iss.get('file')` 가 제품이 만드는 모든 레코드에
+    대해 무조건 False 였기 때문이다(#1488).
+    """
+    html = _render_with_issues(env, [{**_ISSUE_BASE, "file": "src/auth/login.py"}])
+    assert 'class="issue__path"' in html, "파일 경로 행이 렌더되지 않았다"
+    assert "src/auth/login.py:3" in html, "파일 경로와 줄번호가 표시되지 않았다"
+
+
+def test_issue_path_row_absent_without_file(env: jinja2.Environment):
+    """계기 대조군 — `file` 이 없으면 그 행은 나오지 않아야 한다(과잉 렌더 방지)."""
+    html = _render_with_issues(env, [dict(_ISSUE_BASE)])
+    assert 'class="issue__path"' not in html
+
+
+def test_two_files_render_distinct_paths(env: jinja2.Environment):
+    """같은 메시지라도 파일이 다르면 화면에서 구별돼야 한다."""
+    html = _render_with_issues(env, [
+        {**_ISSUE_BASE, "file": "src/auth/login.py"},
+        {**_ISSUE_BASE, "file": "src/api/hook.py"},
+    ])
+    assert "src/auth/login.py:3" in html
+    assert "src/api/hook.py:3" in html
+
+
+def test_real_projection_output_renders_the_path(env: jinja2.Environment):
+    """🔴 **배선 단언** — 파이프라인이 실제로 만드는 dict 를 그대로 템플릿에 먹인다.
+
+    위 테스트들은 `file` 키를 손으로 넣어 템플릿만 잰다. 그러면 투영이 그 키를 안 만들어도
+    초록이다 — 실제로 #1488 이 그 상태였다(템플릿은 멀쩡했고 투영이 버렸다).
+    여기서는 `build_analysis_result_dict` 의 **산출물**을 렌더해 두 층을 잇는다.
+
+    Wiring assertion: feed the real projection output into the template so a dropped key
+    cannot pass by testing each layer in isolation.
+    """
+    from src.worker.pipeline import build_analysis_result_dict  # noqa: PLC0415
+
+    issue = SimpleNamespace(
+        tool="pylint", severity="warning", message="unused import",
+        line=3, category="quality", language="python",
+    )
+    result = build_analysis_result_dict(
+        ai_review=SimpleNamespace(
+            status="success", error_type=None, error_status_code=None, summary="ok",
+            suggestions=[], commit_message_feedback="", code_quality_feedback="",
+            security_feedback="", direction_feedback="", test_feedback="",
+            file_feedbacks=[], truncated=False,
+        ),
+        score_result=SimpleNamespace(
+            total=82, grade="B",
+            breakdown={"code_quality": 25, "security": 18, "commit_message": 13,
+                       "ai_review": 21, "test_coverage": 8},
+        ),
+        analysis_results=[
+            SimpleNamespace(filename="src/auth/login.py", issues=[issue]),
+        ],
+        source="pr",
+    )
+
+    analysis = SimpleNamespace(**{**vars(_ANALYSIS), "result": result})
+    html = env.get_template("analysis_detail.html").render(
+        **{**_CTX_WITH_TREND, "analysis": analysis}
+    )
+
+    assert 'class="issue__path"' in html, (
+        "실제 투영 산출물로는 파일 경로가 렌더되지 않는다 — 투영과 템플릿이 어긋나 있다"
+    )
+    assert "src/auth/login.py:3" in html

@@ -36,6 +36,10 @@ class _StubIssue:
 @dataclass
 class _StubAnalysisResult:
     issues: list[_StubIssue] = field(default_factory=list)
+    # 🔴 실제 `StaticAnalysisResult` 에는 `filename` 이 있다(src/analyzer/io/static.py:104).
+    #   더블이 그 필드를 빠뜨리고 있어서, 투영이 filename 을 버리는 것을 아무도 못 봤다.
+    #   The real dataclass has `filename`; the double omitted it, hiding the dropped projection.
+    filename: str = "app.py"
 
 
 def _make_ai_review() -> SimpleNamespace:
@@ -66,11 +70,14 @@ def _make_score_result(total: int = 80) -> SimpleNamespace:
 # ─── 회귀 가드 ──────────────────────────────────────────────────────────────
 
 
-def test_issues_json_contains_six_fields() -> None:
-    """issues JSON 의 각 항목은 6 필드 (tool/severity/message/line/category/language) 모두 포함.
+def test_issues_json_contains_seven_fields() -> None:
+    """issues JSON 의 각 항목은 7 필드 (tool/severity/message/line/category/language/file) 모두 포함.
 
     Phase 11 ~ 그룹 58 사이에는 4 필드 (tool/severity/message/line) 만 직렬화됐었다.
-    PR (그룹 58 후속) 에서 category + language 추가. 본 가드가 silent 회귀 차단.
+    PR (그룹 58 후속) 에서 category + language 추가. #1488 에서 `file` 추가 —
+    그전까지 분석 상세 화면이 이슈의 파일 경로를 **영원히** 보여주지 못했다
+    (템플릿 가드 `iss.get('path') or iss.get('file')` 가 항상 False 였다).
+    본 가드가 silent 회귀 차단.
     """
     issue = _StubIssue(category="security", language="ruby")
     result = build_analysis_result_dict(
@@ -84,7 +91,7 @@ def test_issues_json_contains_six_fields() -> None:
     assert len(result["issues"]) == 1, f"issues 개수 불일치: {len(result['issues'])}"
 
     issue_dict: dict[str, Any] = result["issues"][0]
-    expected_keys = {"tool", "severity", "message", "line", "category", "language"}
+    expected_keys = {"tool", "severity", "message", "line", "category", "language", "file"}
     actual_keys = set(issue_dict.keys())
     missing = expected_keys - actual_keys
     extra = actual_keys - expected_keys
@@ -98,6 +105,7 @@ def test_issues_json_contains_six_fields() -> None:
     assert issue_dict["line"] == 12
     assert issue_dict["category"] == "security"
     assert issue_dict["language"] == "ruby"
+    assert issue_dict["file"] == "app.py"
 
 
 def test_issues_json_multi_results_preserves_order() -> None:
@@ -218,3 +226,28 @@ class TestErrorCauseReachesTheStoredDict:
         assert {"error_type", "error_status_code"} <= names, (
             f"AiReviewResult 에 원인 필드가 없다 — 더블만 앞서 있다: {sorted(names)}"
         )
+
+
+def test_issues_from_different_files_are_distinguishable() -> None:
+    """🔴 파일이 다른 동일 메시지 이슈가 **구별돼야** 한다.
+
+    `file` 이 없던 동안, 서로 다른 파일의 같은 메시지 이슈는 직렬화 결과가 **바이트 동일**했다.
+    화면에서도 구별 불가였고, 이슈 등록 dedup 키도 같은 이유로 붕괴한다(#1488 본문 참조).
+
+    Without `file`, two findings from different files serialized byte-identically.
+    """
+    same = dict(tool="pylint", severity="warning", message="unused import", line=12)
+    result = build_analysis_result_dict(
+        ai_review=_make_ai_review(),
+        score_result=_make_score_result(),
+        analysis_results=[
+            _StubAnalysisResult(issues=[_StubIssue(**same)], filename="src/auth/login.py"),
+            _StubAnalysisResult(issues=[_StubIssue(**same)], filename="src/api/hook.py"),
+        ],
+        source="pr",
+    )
+
+    issues = result["issues"]
+    assert len(issues) == 2
+    assert issues[0] != issues[1], "서로 다른 파일의 이슈가 바이트 동일하다 — 구별 불가"
+    assert {i["file"] for i in issues} == {"src/auth/login.py", "src/api/hook.py"}
