@@ -1007,9 +1007,25 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
                     _static_repo_cfg = _cfg
                     _ai_review_enabled = getattr(_cfg, "ai_review_enabled", True)
             except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
-                logger.debug(
-                    "repo_config fetch failed for %s — using defaults for model and disabled_tools",
-                    repo_name,
+                # 🔴 이 분기는 **fail-open** 이다 — `_ai_review_enabled` 가 default `True` 로
+                #   남아, 사용자가 명시적으로 끈 저장소도 AI 리뷰가 돌고 **과금된다**(#1485).
+                #   동작은 가용성(일시적 DB 블립이 리뷰를 조용히 없애지 않는 것)을 위해 유지하되,
+                #   `debug` 는 기본 INFO 설정에서 한 줄도 남기지 않아 이 분기가 **관측 불가능**했다.
+                #   비용이 걸린 fail-open 은 최소한 보여야 한다 → `warning`.
+                # Fail-open by design (availability); `debug` made it invisible at the default
+                #   INFO level, so a billing-relevant fail-open left no trace. Raised to warning.
+                #   🔴 `sanitize_for_log` 필수 — 20줄 위 `repo_log` 와 같은 규약이다. 원시
+                #   `repo_name` 은 CR/LF 를 담을 수 있어 WARNING 한 줄이 여러 줄로 쪼개진다
+                #   (로그 주입). debug 였을 때는 안 보였으니 무해했지만 이제는 보인다.
+                #   `exc_info` — 「무엇이 실패했는지」 없이 「실패했다」만 남기면 운영자가 못 고친다.
+                #   트레이스백은 핸들러의 리댁션 필터를 거친다(test_exception_traceback_is_redacted).
+                # sanitize_for_log matches the convention 20 lines above (raw repo_name can carry
+                #   CR/LF and split the line); exc_info tells the operator *why* it failed.
+                logger.warning(
+                    "repo_config fetch failed for %s — ai_review runs with defaults "
+                    "(enabled=True); a repo you disabled may still be billed",
+                    sanitize_for_log(repo_name),
+                    exc_info=True,
                 )
 
             with stage_timer("analyze", repo=repo_log) as ctx:
