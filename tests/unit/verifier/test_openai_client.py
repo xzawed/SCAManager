@@ -339,3 +339,39 @@ async def test_http_fallback_logs_error_metric_on_failure(monkeypatch):
     error_calls = [c for c in calls if c.get("status") == "error"]
     assert error_calls, "fallback 실패 시 status='error' 메트릭이 기록돼야 한다"
     assert error_calls[0]["error_type"] == "RuntimeError"
+
+
+class TestAcloseOpenAIClientAgainstRealSDK:
+    """🔴 실 SDK 객체로 재는 축 — 위 `_FakeClient` 들이 원리적으로 못 재는 것.
+
+    이 파일의 더블은 전부 `async def aclose` 를 **스스로 정의**한다. 그래서 헬퍼가
+    어떤 이름을 찾든 초록이다. 실제 `openai.AsyncOpenAI` 의 종료 메서드는 `close()`
+    이고 `aclose` 는 없다(2.53.0·3.0.0·3.3.1 실측) — 더블과 실물이 어긋나 있었다.
+
+    Every double in this file defines `aclose` itself, so it cannot detect that the real
+    `AsyncOpenAI` exposes `close()` and never `aclose`.
+    """
+
+    @pytest.mark.asyncio
+    @_requires_openai
+    async def test_closes_real_async_openai_client(self):
+        """실 클라이언트를 넘기면 `is_closed()` 가 False → True 로 바뀐다."""
+        import openai  # pylint: disable=import-outside-toplevel
+
+        client = openai.AsyncOpenAI(api_key="unused-no-network-in-this-test")
+        assert client.is_closed() is False
+
+        await openai_metrics.aclose_openai_client(client)
+
+        assert client.is_closed() is True, (
+            "실 SDK 클라이언트가 닫히지 않았다 — 헬퍼가 존재하지 않는 속성을 찾고 있다"
+        )
+
+    @_requires_openai
+    def test_real_client_exposes_close_not_aclose(self):
+        """헬퍼가 무슨 이름을 찾아야 하는지 고정 — SDK 가 이름을 바꾸면 여기서 red."""
+        import openai  # pylint: disable=import-outside-toplevel
+
+        client = openai.AsyncOpenAI(api_key="unused-no-network-in-this-test")
+        assert hasattr(client, "close")
+        assert not hasattr(client, "aclose")

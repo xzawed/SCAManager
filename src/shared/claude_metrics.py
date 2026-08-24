@@ -22,13 +22,25 @@ logger = logging.getLogger(__name__)
 async def aclose_anthropic_client(client) -> None:
     """호출당 생성한 AsyncAnthropic(httpx 풀)를 안전 종료 — awaitable 일 때만 await (WBS P1 누수 차단).
 
-    실제 SDK 의 aclose 는 코루틴 → await. MagicMock 등 테스트 더블의 sync aclose 는 코루틴이
-    아니므로 조용히 무시 — 프로덕션/테스트 양쪽 호환. 정책 16 (≥3 사용처 헬퍼화).
-    Close a per-call AsyncAnthropic httpx pool; await only when aclose is awaitable (real SDK),
-    silently skip for sync test doubles.
+    🔴 종료 메서드 이름은 `close()` 다. `aclose` 는 anthropic 0.60.0~1.0.0 **어느 판에도 없다**
+    (실측). `aclose` 만 찾던 이전 구현은 실 SDK 앞에서 늘 no-op 였고, 더블이 없는 속성도
+    자동 생성하는 MagicMock 이라 테스트는 6월부터 계속 초록이었다. 그러니 `close` 를 먼저 본다.
+    `aclose` 폴백은 그 이름을 쓰는 httpx 계열 객체를 위해 남긴다. 둘 다 없으면 **조용히
+    넘어가지 않는다** — 못 닫았다는 사실이 로그에 남아야 다음 사람이 안다.
+
+    The real close method is `close()`; `aclose` exists on no anthropic 0.60.0-1.0.0 client, so
+    the previous aclose-only lookup was always a no-op that MagicMock doubles could not detect.
+    Look up `close` first, keep `aclose` as an httpx-style fallback, and warn when neither exists.
     """
-    closer = getattr(client, "aclose", None)
+    closer = getattr(client, "close", None)
     if closer is None:
+        closer = getattr(client, "aclose", None)
+    if closer is None:
+        logger.warning(
+            "커넥션 풀을 닫지 못했다 — close/aclose 둘 다 없음 (type=%s). "
+            "Could not close the connection pool: neither close nor aclose exists.",
+            type(client).__name__,
+        )
         return
     result = closer()
     if inspect.isawaitable(result):

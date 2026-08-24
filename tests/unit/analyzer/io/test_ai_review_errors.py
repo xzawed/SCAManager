@@ -529,10 +529,14 @@ async def test_review_code_closes_anthropic_client():
     fake_client = MagicMock()
     fake_client.messages = MagicMock()
     fake_client.messages.create = AsyncMock(side_effect=httpx.ConnectError("boom"))
-    fake_client.aclose = AsyncMock()
+    # 🔴 실 SDK 의 종료 메서드는 `close` 다 — 더블이 `aclose` 를 쓰면 헬퍼가 실물 앞에서
+    #    no-op 여도 이 테스트는 초록이었다. 이름을 실물에 맞춘다.
+    #    The real SDK closes via `close`; an `aclose` double kept this green while the helper
+    #    was a no-op against the real client.
+    fake_client.close = AsyncMock()
     with patch("src.analyzer.io.ai_review.anthropic.AsyncAnthropic", return_value=fake_client):
         await review_code("sk-test", "feat: x", [("app.py", "+ x = 1")])
-    fake_client.aclose.assert_awaited_once()
+    fake_client.close.assert_awaited_once()
 
 
 # ──────────────────────────────────────────────────────────────────────────

@@ -21,11 +21,21 @@ _DEFAULT_RATE = (0.15, 0.60)  # 미지 모델 → 소형 요율로 보수적 추
 
 async def aclose_openai_client(client) -> None:
     """호출당 생성한 AsyncOpenAI(httpx 풀)를 안전 종료 — awaitable 일 때만 await.
-    Close a per-call AsyncOpenAI httpx pool; await only when awaitable (real SDK), skip test doubles.
+
+    🔴 종료 메서드 이름은 `close()` 다 — `aclose` 는 openai 2.53.0·3.0.0·3.3.1 어디에도 없다
+    (실측). 근거와 폴백 순서는 `claude_metrics.aclose_anthropic_client` 와 동일하다.
+    The real close method is `close()`; `aclose` exists on no openai 2.x/3.x client.
     (claude_metrics.aclose_anthropic_client 미러 — 정책 16 >=2 사용처)
     """
-    closer = getattr(client, "aclose", None)
+    closer = getattr(client, "close", None)
     if closer is None:
+        closer = getattr(client, "aclose", None)
+    if closer is None:
+        logger.warning(
+            "커넥션 풀을 닫지 못했다 — close/aclose 둘 다 없음 (type=%s). "
+            "Could not close the connection pool: neither close nor aclose exists.",
+            type(client).__name__,
+        )
         return
     result = closer()
     if inspect.isawaitable(result):

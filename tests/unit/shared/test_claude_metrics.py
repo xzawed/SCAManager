@@ -281,26 +281,90 @@ class TestExtractUsage:
 
 
 class TestAcloseAnthropicClient:
-    """aclose_anthropic_client — AsyncAnthropic httpx 풀 안전 종료 (WBS P1 누수 차단 회귀 가드)."""
+    """aclose_anthropic_client — AsyncAnthropic httpx 풀 안전 종료 (WBS P1 누수 차단 회귀 가드).
+
+    🔴 더블은 전부 `spec=[...]` 으로 **가진 속성을 못 박는다**. 맨 MagicMock 은 없는 이름도
+    자동 생성해서, 헬퍼가 실 SDK 에 없는 이름(`aclose`)을 찾고 있어도 초록을 냈다.
+    Every double pins its attributes with `spec=[...]`; a bare MagicMock auto-creates any name
+    and therefore cannot detect a helper looking up a name the real SDK does not have.
+    """
 
     @pytest.mark.asyncio
-    async def test_awaits_async_aclose(self):
-        # 실제 SDK 패턴: aclose 가 코루틴 → await 됨 (풀 해제 보장).
+    async def test_awaits_async_close(self):
+        # 실 SDK 패턴: `close` 가 코루틴 → await 됨 (풀 해제 보장).
         from unittest.mock import AsyncMock
-        client = MagicMock()
+        client = MagicMock(spec=["close"])
+        client.close = AsyncMock()
+        await claude_metrics.aclose_anthropic_client(client)
+        client.close.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_skips_sync_close_without_error(self):
+        # 더블 패턴: sync MagicMock close() → 코루틴 아님 → await 생략, 에러 없음.
+        client = MagicMock(spec=["close"])
+        await claude_metrics.aclose_anthropic_client(client)  # 예외 미발생
+        client.close.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_aclose_when_close_absent(self):
+        # httpx 계열 객체는 `aclose` 만 갖는다 — 폴백 분기가 살아 있는지 고정.
+        from unittest.mock import AsyncMock
+        client = MagicMock(spec=["aclose"])
         client.aclose = AsyncMock()
         await claude_metrics.aclose_anthropic_client(client)
         client.aclose.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_skips_sync_aclose_without_error(self):
-        # 테스트 더블 패턴: sync MagicMock aclose() → 코루틴 아님 → await 생략, 에러 없음.
-        client = MagicMock()  # client.aclose 는 동기 MagicMock
-        await claude_metrics.aclose_anthropic_client(client)  # 예외 미발생
-        client.aclose.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_no_aclose_attribute_is_noop(self):
-        # aclose 속성 부재 → no-op (AttributeError 미발생).
+    async def test_no_closer_attribute_does_not_raise(self):
+        # 종료 메서드 부재 → AttributeError 를 내지 않는다(경고는 남는다 — 아래 실 SDK 클래스).
         client = MagicMock(spec=[])  # 속성 없음
         await claude_metrics.aclose_anthropic_client(client)  # 예외 미발생
+
+
+class TestAcloseAnthropicClientAgainstRealSDK:
+    """🔴 실 SDK 객체로 재는 축 — 위 MagicMock 테스트가 원리적으로 못 재는 것.
+
+    MagicMock 은 **없는 속성도 자동 생성**한다. 그래서 헬퍼가 `client.aclose` 를 찾든
+    `client.banana` 를 찾든 더블은 똑같이 초록이다. 실제 `anthropic.AsyncAnthropic` 의
+    종료 메서드 이름은 `close()` 이고 `aclose` 는 **존재한 적이 없다**(0.60.0~1.0.0 실측).
+    즉 더블만으로는 "풀이 실제로 닫혔는가"를 한 번도 잰 적이 없다.
+
+    Mock doubles auto-create any attribute, so they cannot tell whether the helper looks up a
+    name the real SDK actually has. The real client exposes `close()`, never `aclose`.
+    """
+
+    @pytest.mark.asyncio
+    async def test_closes_real_async_anthropic_client(self):
+        """실 클라이언트를 넘기면 `is_closed()` 가 False → True 로 바뀐다."""
+        import anthropic  # pylint: disable=import-outside-toplevel
+
+        client = anthropic.AsyncAnthropic(api_key="unused-no-network-in-this-test")
+        assert client.is_closed() is False
+
+        await claude_metrics.aclose_anthropic_client(client)
+
+        assert client.is_closed() is True, (
+            "실 SDK 클라이언트가 닫히지 않았다 — 헬퍼가 존재하지 않는 속성을 찾고 있다"
+        )
+
+    def test_real_client_exposes_close_not_aclose(self):
+        """헬퍼가 무슨 이름을 찾아야 하는지 고정 — SDK 가 이름을 바꾸면 여기서 red."""
+        import anthropic  # pylint: disable=import-outside-toplevel
+
+        client = anthropic.AsyncAnthropic(api_key="unused-no-network-in-this-test")
+        assert hasattr(client, "close")
+        assert not hasattr(client, "aclose")
+
+    @pytest.mark.asyncio
+    async def test_warns_when_no_closer_found(self, caplog):
+        """종료 메서드를 하나도 못 찾으면 **조용히 넘어가지 않는다**.
+
+        조용한 no-op 이 이 결함을 6월부터 숨겼다 — 못 닫았으면 로그로 말해야 한다.
+        A silent no-op is what hid this defect; if nothing was closed, say so.
+        """
+        client = MagicMock(spec=[])  # 종료 메서드 없음
+        with caplog.at_level(logging.WARNING, logger="src.shared.claude_metrics"):
+            await claude_metrics.aclose_anthropic_client(client)  # 예외는 여전히 미발생
+        assert any("close" in r.message for r in caplog.records), (
+            "종료 메서드 부재가 로그에 남지 않았다 — 거짓 초록"
+        )
