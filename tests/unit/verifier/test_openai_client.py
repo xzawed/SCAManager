@@ -72,7 +72,7 @@ async def test_call_openai_verifier_returns_content_text(monkeypatch):
     class _FakeClient:
         def __init__(self, **kwargs):
             self.chat = _FakeChat()
-        async def aclose(self):
+        async def close(self):
             pass
 
     import openai as _openai
@@ -95,7 +95,7 @@ async def test_call_openai_verifier_raises_on_api_error(monkeypatch):
     class _BoomClient:
         def __init__(self, **kwargs):
             self.chat = _BoomChat()
-        async def aclose(self):
+        async def close(self):
             pass
 
     import openai as _openai
@@ -172,7 +172,7 @@ async def test_call_openai_verifier_passes_max_completion_tokens(monkeypatch):
     class _CapClient:
         def __init__(self, **kwargs):
             self.chat = _CapChat()
-        async def aclose(self):
+        async def close(self):
             pass
 
     import openai as _openai
@@ -223,7 +223,7 @@ async def test_call_openai_verifier_passes_base_url_to_sdk(monkeypatch):
             seen.update(kwargs)
             self.chat = _Chat()
 
-        async def aclose(self):
+        async def close(self):
             pass
 
     import openai as _openai
@@ -252,7 +252,7 @@ async def test_call_openai_verifier_default_base_url_passes_none_to_sdk(monkeypa
             seen.update(kwargs)
             self.chat = _Chat()
 
-        async def aclose(self):
+        async def close(self):
             pass
 
     import openai as _openai
@@ -344,12 +344,13 @@ async def test_http_fallback_logs_error_metric_on_failure(monkeypatch):
 class TestAcloseOpenAIClientAgainstRealSDK:
     """🔴 실 SDK 객체로 재는 축 — 위 `_FakeClient` 들이 원리적으로 못 재는 것.
 
-    이 파일의 더블은 전부 `async def aclose` 를 **스스로 정의**한다. 그래서 헬퍼가
-    어떤 이름을 찾든 초록이다. 실제 `openai.AsyncOpenAI` 의 종료 메서드는 `close()`
-    이고 `aclose` 는 없다(2.53.0·3.0.0·3.3.1 실측) — 더블과 실물이 어긋나 있었다.
+    이 파일의 더블은 종료 메서드를 **스스로 정의**한다. 그래서 이름이 실물과 어긋나도
+    더블만으로는 초록이다 — 실제로 `aclose` 로 어긋나 있었고 아무도 못 봤다.
+    실제 `openai.AsyncOpenAI` 의 종료 메서드는 `close()` 이고 `aclose` 는 없다
+    (2.53.0·3.0.0·3.3.1 실측). 더블 이름은 실물에 맞췄고, 그래도 못 재는 축은 아래가 맡는다.
 
-    Every double in this file defines `aclose` itself, so it cannot detect that the real
-    `AsyncOpenAI` exposes `close()` and never `aclose`.
+    Doubles define their own closer, so a name that drifts from the real SDK still passes.
+    The real `AsyncOpenAI` exposes `close()` and never `aclose`.
     """
 
     @pytest.mark.asyncio
