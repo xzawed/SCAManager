@@ -133,3 +133,62 @@ def test_httpx_send_errors_is_not_bare_exception():
 
     assert Exception not in HTTPX_SEND_ERRORS
     assert BaseException not in HTTPX_SEND_ERRORS
+
+
+def test_every_control_code_point_is_rejected():
+    """🔴 C0 전 범위(U+0000–U+001F) **와 DEL(U+007F)** 을 전수 검사한다.
+
+    위 parametrize 는 대표 6종만 본다 — `== 0x7F` 조건만 지우는 뮤테이션이 그대로 초록이었다.
+    거부 집합은 httpx 가 실제로 거부하는 코드포인트와 일치해야 하므로 전수로 못박는다.
+
+    The representative sample above left `== 0x7F` unguarded; pin the whole measured set.
+    """
+    from src.shared.ssrf import is_safe_webhook_url  # noqa: PLC0415
+
+    leaked = [
+        hex(cp) for cp in list(range(0x00, 0x20)) + [0x7F]
+        if is_safe_webhook_url(f"https://hooks.example.com/a{chr(cp)}b") is not False
+    ]
+    assert not leaked, f"저장 게이트를 통과하는 제어문자: {leaked}"
+
+
+def test_space_is_not_treated_as_a_control_char():
+    """대조군 — U+0020 은 httpx 가 인코딩하므로 거부 대상이 아니다(과잉 차단 방지)."""
+    from src.shared.ssrf import is_safe_webhook_url  # noqa: PLC0415
+
+    assert is_safe_webhook_url("https://hooks.example.com/a b") is True
+
+
+def test_narrow_httpx_except_is_not_used_in_webhook_providers():
+    """🔴 **배선 단언** — 공용 튜플을 정의만 하고 호출부가 안 쓰면 구멍은 그대로다.
+
+    구조 가드(`covers_every_httpx_exception`)는 튜플만 본다. 호출부를 옛 좁은 절로
+    되돌려도 그 테스트는 초록이다 — 정의 ≠ 배선. AST 로 실제 except 절을 읽는다.
+
+    Wiring assertion: the structural guard only inspects the tuple; reverting the call sites
+    would keep it green. Read the actual except clauses via AST.
+    """
+    import ast  # noqa: PLC0415
+    import pathlib  # noqa: PLC0415
+
+    root = pathlib.Path(__file__).resolve().parents[3] / "src" / "webhook" / "providers"
+    files = sorted(root.glob("*.py"))
+    assert files, f"webhook provider 를 찾지 못했다: {root}"
+
+    narrow: list[str] = []
+    wired = 0
+    for f in files:
+        tree = ast.parse(f.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ExceptHandler) or node.type is None:
+                continue
+            src = ast.unparse(node.type)
+            if src == "httpx.HTTPError":
+                narrow.append(f"{f.name}:{node.lineno}")
+            elif "HTTPX_SEND_ERRORS" in src:
+                wired += 1
+
+    assert not narrow, (
+        f"좁은 `except httpx.HTTPError` 가 남아 있다 — HTTPError 밖 7종이 빠져나간다: {narrow}"
+    )
+    assert wired >= 3, f"HTTPX_SEND_ERRORS 를 쓰는 except 가 {wired}곳뿐이다 (기대 3곳 이상)"
