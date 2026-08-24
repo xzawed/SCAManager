@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from src.database import Base
 from src.models.analysis import Analysis
+from src.gate import _merge_attempt_states as _states
 from src.models.merge_attempt import MergeAttempt
 from src.models.repository import Repository
 from src.models.user import User
@@ -78,7 +79,9 @@ def _make_attempt(
     success: bool = True,
     failure_reason: str | None = None,
     offset_hours: int = 0,
+    state: str | None = None,
 ) -> MergeAttempt:
+    _state_kw = {} if state is None else {"state": state}
     m = MergeAttempt(
         analysis_id=analysis_id,
         repo_name=repo_name,
@@ -88,6 +91,7 @@ def _make_attempt(
         success=success,
         failure_reason=failure_reason,
         attempted_at=datetime.now(timezone.utc) - timedelta(hours=offset_hours),
+        **_state_kw,
     )
     db.add(m)
     db.commit()
@@ -128,6 +132,37 @@ class TestAutoMergeKpi:
         assert result["failure_count"] == 5
         # 단순 시도 기준 16.7%
         assert result["value"] == pytest.approx(16.7, abs=0.5)
+
+    def test_attempt_rate_excludes_enabled_but_unmerged(self, db, repo):
+        """🔴 시도율에서도 「켜기만 한」 auto-merge 는 머지가 아니다.
+
+        이 축이 PR-단위 축과 **따로** 필요하다. 실측: PR-단위만 고쳤을 때 시도율 쪽 뮤테이션이
+        통과했다 — 배선 검사(AST)는 같은 함수의 다른 줄에 `is_merged` 가 남아 있으면
+        속는다. 값으로 재야 잡힌다.
+        """
+        from src.services.dashboard_service import auto_merge_kpi
+
+        a = _make_analysis(db, repo.id)
+        _make_attempt(db, analysis_id=a.id, pr_number=1, success=True,
+                      state=_states.DIRECT_MERGED)
+        _make_attempt(db, analysis_id=a.id, pr_number=2, success=True,
+                      state=_states.ENABLED_PENDING_MERGE)
+        result = auto_merge_kpi(db, days=7)
+        assert result["total_attempts"] == 2
+        assert result["success_count"] == 1, (
+            "enabled_pending_merge 를 시도율에 넣었다 — 켜기만 하고 머지되지 않은 PR 이다"
+        )
+        assert result["value"] == pytest.approx(50.0, abs=0.5)
+
+    def test_attempt_rate_keeps_legacy_success(self, db, repo):
+        """🔴 과잉교정 대조군 — `state` 를 안 쓰던 시절의 성공은 시도율에서도 유지된다."""
+        from src.services.dashboard_service import auto_merge_kpi
+
+        a = _make_analysis(db, repo.id)
+        _make_attempt(db, analysis_id=a.id, pr_number=1, success=True)   # state 미지정 → legacy
+        _make_attempt(db, analysis_id=a.id, pr_number=2, success=False)
+        result = auto_merge_kpi(db, days=7)
+        assert result["success_count"] == 1, "legacy 성공이 시도율에서 빠졌다"
 
     def test_final_success_rate_distinct_pr(self, db, repo):
         """retry-aware: 같은 PR 의 attempts 중 1건이라도 success → 최종 성공.
