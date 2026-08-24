@@ -10,7 +10,7 @@ Phase F.1 관측 기반. Phase 3 PR-B1 에서 lifecycle 전이 함수 3개 추�
 """
 from datetime import datetime
 
-from sqlalchemy import func
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from src.gate import _merge_attempt_states as _states
@@ -30,6 +30,7 @@ def create(  # pylint: disable=too-many-arguments
     detail_message: str | None = None,
     state: str = _states.LEGACY,
     enabled_at: datetime | None = None,
+    merged_at: datetime | None = None,
 ) -> MergeAttempt:
     """MergeAttempt 레코드를 생성하고 반환한다 (항상 INSERT).
 
@@ -47,6 +48,12 @@ def create(  # pylint: disable=too-many-arguments
         detail_message=detail_message,
         state=state,
         enabled_at=enabled_at,
+        # 🔴 `merged_at` 은 지금까지 `mark_actually_merged`(webhook 전이) 에서만 채워졌다.
+        #    그 전이는 `enabled_pending_merge` 행에만 걸리는데 운영에 그 행이 0건이라,
+        #    실제 머지 경로에서는 이 컬럼이 **한 번도 채워진 적이 없다**(실측 2,635행 전부 NULL).
+        #    INSERT 시점에 받을 수 있게 열어, 실제로 머지한 경로가 시각을 남기게 한다.
+        # merged_at was previously write-only from the webhook transition, which never fires here.
+        merged_at=merged_at,
     )
     db.add(record)
     db.commit()
@@ -176,3 +183,16 @@ def mark_disabled_externally(
     )
     db.commit()
     return rows_updated > 0
+
+
+def merged_sql_predicate():
+    """«머지 성공» SQL 술어 — `_states.is_merged` 의 SQL 대응물.
+
+    🔴 판정 **정의는 `_merge_attempt_states.is_merged` 하나**다. 여기는 같은 규칙을 SQL 로
+    옮긴 것뿐이고, 둘이 어긋나면 같은 제품의 두 머지율이 갈린다. 차등 테스트가 모든
+    (state, success) 조합에서 대조한다.
+    """
+    return or_(
+        MergeAttempt.state.in_(sorted(_states.MERGED_STATES)),
+        and_(MergeAttempt.state == _states.LEGACY, MergeAttempt.success.is_(True)),
+    )

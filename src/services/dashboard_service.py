@@ -35,6 +35,7 @@ from sqlalchemy.orm import Session
 from src.config import settings
 from src.models.analysis import Analysis
 from src.models.analysis_feedback import AnalysisFeedback
+from src.gate import _merge_attempt_states as _states
 from src.models.merge_attempt import MergeAttempt
 from src.models.repository import Repository
 from src.scorer.calculator import calculate_grade
@@ -410,10 +411,14 @@ def auto_merge_kpi(
 
 def _simple_success(cur: list[MergeAttempt], prev: list[MergeAttempt]) -> dict[str, Any]:
     """단순 시도 기준 success rate + delta + count breakdown."""
-    cur_success = [a for a in cur if a.success]
+    # 🔴 `a.success` 가 아니다 — 켜기만 한 auto-merge 도 success=True 다.
+    #    판정 정의는 `_merge_attempt_states.is_merged` 한 곳이고, operations 카드의
+    #    SQL 술어와 차등 테스트로 대조된다(같은 제품의 두 머지율이 갈리지 않도록).
+    cur_success = [a for a in cur if _states.is_merged(a.state, a.success)]
     cur_value = round(100.0 * len(cur_success) / len(cur), 1) if cur else None
     prev_value = (
-        round(100.0 * sum(1 for a in prev if a.success) / len(prev), 1) if prev else None
+        round(100.0 * sum(1 for a in prev if _states.is_merged(a.state, a.success)) / len(prev), 1)
+        if prev else None
     )
     delta = (
         round(cur_value - prev_value, 1)
@@ -432,7 +437,9 @@ def _simple_success(cur: list[MergeAttempt], prev: list[MergeAttempt]) -> dict[s
 def _retry_aware_success(cur: list[MergeAttempt]) -> dict[str, Any]:
     """retry-aware: distinct (repo_name, pr_number) 기준 final success."""
     pr_keys = {(a.repo_name, a.pr_number) for a in cur}
-    success_pr_keys = {(a.repo_name, a.pr_number) for a in cur if a.success}
+    success_pr_keys = {
+        (a.repo_name, a.pr_number) for a in cur if _states.is_merged(a.state, a.success)
+    }
     distinct_prs = len(pr_keys)
     final_success = len(success_pr_keys)
     return {

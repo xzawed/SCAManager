@@ -52,6 +52,7 @@ def log_merge_attempt(  # pylint: disable=too-many-arguments,too-many-locals
     reason: str | None = None,
     state: str = _states.LEGACY,
     enabled_at: datetime | None = None,
+    merged_at: datetime | None = None,
 ) -> MergeAttempt | None:
     """MergeAttempt 를 DB 에 기록하고 구조화된 INFO 로그를 낸다.
 
@@ -84,6 +85,7 @@ def log_merge_attempt(  # pylint: disable=too-many-arguments,too-many-locals
             detail_message=detail_message,
             state=state,
             enabled_at=enabled_at,
+            merged_at=merged_at,
         )
     except Exception as exc:  # pylint: disable=broad-except
         # SQLAlchemy 는 commit 실패 후 세션을 invalid 로 표시 — rollback 하지 않으면

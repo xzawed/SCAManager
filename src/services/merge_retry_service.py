@@ -37,6 +37,7 @@ from src.notifier.merge_failure_issue import create_merge_failure_issue
 from src.notifier.telegram import telegram_post_message
 from src.repositories import merge_retry_repo, repository_repo, user_repo
 from src.shared.http_client import get_http_client
+from src.gate import _merge_attempt_states as _states
 from src.shared.merge_metrics import log_merge_attempt
 from src.shared.time_utils import to_naive_utc
 
@@ -277,10 +278,17 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
     # 이미 머지된 PR — 성공
     if pr_data.get("merged") is True:
         # 🔴 종결 전 MergeAttempt 미러링 (회고 P2#17) — PR 이 머지된 최종 상태 = success=True.
+        # 🔴 `state` 를 반드시 넘긴다 (2026-08-24). 기본값은 `legacy` 이고, 이 워커가
+        #    **운영의 primary 머지 경로**라 그 기본값이 머지 실적 대부분을 라벨 없는 상태로
+        #    남겨 왔다 — 실측: success=True 733행 중 675행이 `legacy`.
+        #    머지율 KPI 가 state 를 보게 되면 그 행들이 통째로 사라진다.
+        # The retry worker is the production primary merge path; leaving `state` at its
+        # default made most real merges unlabelled.
         log_merge_attempt(
             db, analysis_id=row.analysis_id, repo_name=row.repo_full_name,
             pr_number=row.pr_number, score=row.score,
             threshold=cfg.merge_threshold, success=True, reason=None,
+            state=_states.DIRECT_MERGED, merged_at=to_naive_utc(datetime.now(timezone.utc)),
         )
         merge_retry_repo.mark_succeeded(
             db, row.id, reason=merge_reasons.ALREADY_MERGED, expected_claim_token=_claim_tok,
@@ -324,10 +332,13 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
 
     # ── e. 성공 처리 ──────────────────────────────────────────────
     if ok:
+        # 🔴 `state=DIRECT_MERGED` — REST `merge_pr()` 즉시 성공이 이 state 의 정의다
+        #    (`_merge_attempt_states`). 위 관측 경로와 같은 이유로 기본값에 맡기지 않는다.
         log_merge_attempt(
             db, analysis_id=row.analysis_id, repo_name=row.repo_full_name,
             pr_number=row.pr_number, score=row.score,
             threshold=cfg.merge_threshold, success=True, reason=None,
+            state=_states.DIRECT_MERGED, merged_at=to_naive_utc(datetime.now(timezone.utc)),
         )
         merge_retry_repo.mark_succeeded(db, row.id, expected_claim_token=_claim_tok)
         await _notify_merge_succeeded(row, cfg, language=language)
