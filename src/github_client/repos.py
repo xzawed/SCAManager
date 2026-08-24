@@ -132,8 +132,20 @@ async def update_webhook_events(
     return resp.status_code == 200
 
 
-_INSTALL_HOOK_SH = """\
-#!/bin/bash
+# 🔴 **raw 문자열이어야 한다.**
+#   논-raw 였을 때 소스의 `\n`(12건)은 값에서 **진짜 개행**이, `\"`(52건)은 **맨 따옴표**가
+#   됐다. 그 결과 emit 되는 스크립트의 `python3 -c "..."` 인자가
+#     ① 파이썬 문자열 리터럴이 개행에서 끊기고 (`SyntaxError`)
+#     ② bash 이중따옴표가 맨 따옴표에서 조기 종료됐다
+#   훅은 `set -euo pipefail` 이라 그 실패가 non-zero exit 가 되고, pre-push 훅의
+#   non-zero 는 **push 를 차단한다**. 서버 verify 가 200 일 때만 그 지점에 도달하므로
+#   설정이 정상일수록 나빠지는 역전이었다.
+#   🔴 여는 따옴표 뒤의 `\` 줄이음은 raw 에서 동작하지 않는다 — 첫 줄을 같은 줄에 둔다.
+#   MUST stay raw: as a non-raw literal the source escapes were consumed by Python instead of
+#   reaching the emitted script, breaking both the Python literals and the bash quoting.
+#   Guarded by tests/unit/github_client/test_install_hook_script_is_valid.py (compiles each
+#   emitted `python3 -c` argument) — substring asserts cannot see this class of defect.
+_INSTALL_HOOK_SH = r"""#!/bin/bash
 # SCAManager Hook 설치 스크립트 — 한 번만 실행하면 됩니다
 set -euo pipefail
 HOOK=".git/hooks/pre-push"
@@ -161,8 +173,13 @@ STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer ${TOKE
 [ "${STATUS}" = "200" ] || exit 0
 
 read -r LOCAL_REF LOCAL_SHA REMOTE_REF REMOTE_SHA < /dev/stdin 2>/dev/null || true
-[ -n "${LOCAL_SHA}" ] || LOCAL_SHA="HEAD"
-[ -n "${REMOTE_SHA}" ] || REMOTE_SHA="0000000000000000000000000000000000000000"
+# 🔴 `:-` 필수 — 위 `read` 의 **리다이렉트 자체가 실패하면**(Windows Git Bash 에
+#   `/dev/stdin` 이 없는 경우) read 가 실행되지 않아 변수가 미설정으로 남고,
+#   `set -u` 가 `LOCAL_SHA: unbound variable` 로 훅을 죽인다 → pre-push non-zero → push 차단.
+#   (실측: stdin 이 비기만 하면 read 는 빈 문자열을 넣지만, 리다이렉트 실패는 미설정이다.)
+#   Needed because a failed redirect skips `read` entirely, leaving the vars unset under set -u.
+[ -n "${LOCAL_SHA:-}" ] || LOCAL_SHA="HEAD"
+[ -n "${REMOTE_SHA:-}" ] || REMOTE_SHA="0000000000000000000000000000000000000000"
 
 if [ "${REMOTE_SHA}" = "0000000000000000000000000000000000000000" ]; then
     DIFF=$(git diff HEAD~1 2>/dev/null || git show HEAD 2>/dev/null)
