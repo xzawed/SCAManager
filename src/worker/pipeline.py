@@ -1007,8 +1007,16 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
                     _static_repo_cfg = _cfg
                     _ai_review_enabled = getattr(_cfg, "ai_review_enabled", True)
             except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
-                logger.debug(
-                    "repo_config fetch failed for %s — using defaults for model and disabled_tools",
+                # 🔴 이 분기는 **fail-open** 이다 — `_ai_review_enabled` 가 default `True` 로
+                #   남아, 사용자가 명시적으로 끈 저장소도 AI 리뷰가 돌고 **과금된다**(#1485).
+                #   동작은 가용성(일시적 DB 블립이 리뷰를 조용히 없애지 않는 것)을 위해 유지하되,
+                #   `debug` 는 기본 INFO 설정에서 한 줄도 남기지 않아 이 분기가 **관측 불가능**했다.
+                #   비용이 걸린 fail-open 은 최소한 보여야 한다 → `warning`.
+                # Fail-open by design (availability); `debug` made it invisible at the default
+                #   INFO level, so a billing-relevant fail-open left no trace. Raised to warning.
+                logger.warning(
+                    "repo_config fetch failed for %s — ai_review runs with defaults "
+                    "(enabled=True); a repo you disabled may still be billed",
                     repo_name,
                 )
 

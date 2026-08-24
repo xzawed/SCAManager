@@ -1631,3 +1631,45 @@ def test_ensure_repo_reraises_when_refetch_also_none():
     # Seal the rollback → re-fetch → re-raise path distinctly from a bare commit raise (converged review note).
     mock_db.rollback.assert_called_once()
     assert mock_find_repo.call_count == 2
+
+
+async def test_repo_config_fetch_failure_is_logged_at_warning(mock_deps, caplog):
+    """🔴 조회 실패가 **운영 로그에 보여야** 한다 — 기본 INFO 에서 `debug` 는 보이지 않는다.
+
+    이 분기는 fail-open 이다: 조회가 실패하면 `_ai_review_enabled` 가 default `True` 로 남아
+    **사용자가 명시적으로 끈 저장소도 AI 리뷰가 돌고 과금된다**(#1485). 동작 자체는 가용성을
+    위해 유지하지만, 그렇다면 최소한 발화 사실이 보여야 한다. `debug` 는 기본 설정에서
+    한 줄도 남기지 않으므로 이 분기는 지금까지 **관측 불가능**했다.
+
+    The branch is fail-open: a failed fetch silently bills a repo the user disabled. Behaviour is
+    kept for availability, but the event must at least be visible — `debug` never reaches
+    production logs at the default INFO level.
+    """
+    import logging
+
+    from src.worker.pipeline import run_analysis_pipeline
+
+    mock_deps["get_config"].side_effect = RuntimeError("db down")
+    with caplog.at_level(logging.WARNING, logger="src.worker.pipeline"):
+        await run_analysis_pipeline("push", PUSH_DATA)
+
+    hits = [r for r in caplog.records if "repo_config" in r.message]
+    assert hits, "조회 실패가 WARNING 이상으로 남지 않았다 — 이 분기는 관측 불가능하다"
+    assert hits[0].levelno >= logging.WARNING
+
+
+async def test_repo_config_fetch_failure_warning_names_the_billing_risk(mock_deps, caplog):
+    """로그 문구가 「기본값을 쓴다」에서 끝나면 안 된다 — **끈 저장소가 과금될 수 있음**을 말해야 한다.
+
+    운영자가 이 줄을 보고 무엇을 확인해야 하는지 알 수 있어야 한다.
+    """
+    import logging
+
+    from src.worker.pipeline import run_analysis_pipeline
+
+    mock_deps["get_config"].side_effect = RuntimeError("db down")
+    with caplog.at_level(logging.WARNING, logger="src.worker.pipeline"):
+        await run_analysis_pipeline("push", PUSH_DATA)
+
+    text = " ".join(r.getMessage() for r in caplog.records if "repo_config" in r.message)
+    assert "ai_review" in text.lower(), f"AI 리뷰가 계속 도는 사실이 문구에 없다: {text!r}"
