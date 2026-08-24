@@ -72,7 +72,7 @@ async def test_call_openai_verifier_returns_content_text(monkeypatch):
     class _FakeClient:
         def __init__(self, **kwargs):
             self.chat = _FakeChat()
-        async def aclose(self):
+        async def close(self):
             pass
 
     import openai as _openai
@@ -95,7 +95,7 @@ async def test_call_openai_verifier_raises_on_api_error(monkeypatch):
     class _BoomClient:
         def __init__(self, **kwargs):
             self.chat = _BoomChat()
-        async def aclose(self):
+        async def close(self):
             pass
 
     import openai as _openai
@@ -172,7 +172,7 @@ async def test_call_openai_verifier_passes_max_completion_tokens(monkeypatch):
     class _CapClient:
         def __init__(self, **kwargs):
             self.chat = _CapChat()
-        async def aclose(self):
+        async def close(self):
             pass
 
     import openai as _openai
@@ -223,7 +223,7 @@ async def test_call_openai_verifier_passes_base_url_to_sdk(monkeypatch):
             seen.update(kwargs)
             self.chat = _Chat()
 
-        async def aclose(self):
+        async def close(self):
             pass
 
     import openai as _openai
@@ -252,7 +252,7 @@ async def test_call_openai_verifier_default_base_url_passes_none_to_sdk(monkeypa
             seen.update(kwargs)
             self.chat = _Chat()
 
-        async def aclose(self):
+        async def close(self):
             pass
 
     import openai as _openai
@@ -339,3 +339,78 @@ async def test_http_fallback_logs_error_metric_on_failure(monkeypatch):
     error_calls = [c for c in calls if c.get("status") == "error"]
     assert error_calls, "fallback 실패 시 status='error' 메트릭이 기록돼야 한다"
     assert error_calls[0]["error_type"] == "RuntimeError"
+
+
+class TestAcloseOpenAIClientDoubles:
+    """aclose_openai_client 의 폴백·loud-fail 분기 — `claude_metrics` 쪽과 대칭.
+
+    미러 헬퍼를 만들면 **가드도 같이 미러해야 한다**. 이 두 건이 빠져 있어
+    codecov/patch 가 75% 로 red 였다(분기 자체가 한 번도 실행되지 않았다).
+    Mirroring a helper without mirroring its guards leaves the new branches unexecuted.
+    """
+
+    @pytest.mark.asyncio
+    async def test_awaits_async_close(self):
+        from unittest.mock import AsyncMock, MagicMock
+        client = MagicMock(spec=["close"])
+        client.close = AsyncMock()
+        await openai_metrics.aclose_openai_client(client)
+        client.close.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_aclose_when_close_absent(self):
+        # httpx 계열 객체는 `aclose` 만 갖는다 — 폴백 분기가 살아 있는지 고정.
+        from unittest.mock import AsyncMock, MagicMock
+        client = MagicMock(spec=["aclose"])
+        client.aclose = AsyncMock()
+        await openai_metrics.aclose_openai_client(client)
+        client.aclose.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_warns_when_no_closer_found(self, caplog):
+        """종료 메서드를 하나도 못 찾으면 조용히 넘어가지 않는다 — 조용한 no-op 이 결함을 숨겼다."""
+        import logging
+        from unittest.mock import MagicMock
+        client = MagicMock(spec=[])
+        with caplog.at_level(logging.WARNING, logger="src.shared.openai_metrics"):
+            await openai_metrics.aclose_openai_client(client)  # 예외 미발생
+        assert any("close" in r.message for r in caplog.records), (
+            "종료 메서드 부재가 로그에 남지 않았다 — 거짓 초록"
+        )
+
+
+class TestAcloseOpenAIClientAgainstRealSDK:
+    """🔴 실 SDK 객체로 재는 축 — 위 `_FakeClient` 들이 원리적으로 못 재는 것.
+
+    이 파일의 더블은 종료 메서드를 **스스로 정의**한다. 그래서 이름이 실물과 어긋나도
+    더블만으로는 초록이다 — 실제로 `aclose` 로 어긋나 있었고 아무도 못 봤다.
+    실제 `openai.AsyncOpenAI` 의 종료 메서드는 `close()` 이고 `aclose` 는 없다
+    (2.53.0·3.0.0·3.3.1 실측). 더블 이름은 실물에 맞췄고, 그래도 못 재는 축은 아래가 맡는다.
+
+    Doubles define their own closer, so a name that drifts from the real SDK still passes.
+    The real `AsyncOpenAI` exposes `close()` and never `aclose`.
+    """
+
+    @pytest.mark.asyncio
+    @_requires_openai
+    async def test_closes_real_async_openai_client(self):
+        """실 클라이언트를 넘기면 `is_closed()` 가 False → True 로 바뀐다."""
+        import openai  # pylint: disable=import-outside-toplevel
+
+        client = openai.AsyncOpenAI(api_key="unused-no-network-in-this-test")
+        assert client.is_closed() is False
+
+        await openai_metrics.aclose_openai_client(client)
+
+        assert client.is_closed() is True, (
+            "실 SDK 클라이언트가 닫히지 않았다 — 헬퍼가 존재하지 않는 속성을 찾고 있다"
+        )
+
+    @_requires_openai
+    def test_real_client_exposes_close_not_aclose(self):
+        """헬퍼가 무슨 이름을 찾아야 하는지 고정 — SDK 가 이름을 바꾸면 여기서 red."""
+        import openai  # pylint: disable=import-outside-toplevel
+
+        client = openai.AsyncOpenAI(api_key="unused-no-network-in-this-test")
+        assert hasattr(client, "close")
+        assert not hasattr(client, "aclose")
