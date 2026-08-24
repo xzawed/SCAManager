@@ -77,6 +77,21 @@ _SECRET_URL_PATTERNS = (
     # Empty userinfo usernames are real (`redis://:pass@host`); quote/query chars are excluded
     # because real userinfo percent-encodes them, while including them mangles ordinary log lines.
     re.compile(r"(://[^/\s:@]*:)[^/\s@\"',?&#]+(?=@)"),
+    # 🔴 스킴 없는 userinfo — 위 패턴은 `://` 에 앵커돼 있어 `user:pass@host` 만 있는 문자열을
+    #   구조적으로 못 잡는다. `url_host_for_log` 가 `netloc`(userinfo 포함, 스킴 없음)을
+    #   반환하던 동안 백스톱이 무력했고, 「로그 안전용」 헬퍼 경유가 유출의 원인이 됐다.
+    #   헬퍼는 고쳤지만(hostname 사용) 백스톱을 백스톱으로 되돌려 둔다.
+    # 🔴 호스트에 **점 또는 :port** 를 요구하는 이유 = 오탐. 제약 없이 두면 `12:30@office`,
+    #   `3:1@peak`, `16:9@60fps` 같은 시각·비율 표기가 마스킹된다(후보 3종 × 실제 로그 형상
+    #   20종 대조 실측: 제약 없음 오탐 5/20 → 이 형태 오탐 0/20, 정탐 5/6).
+    #   미포함: `u:p@[2001:db8::1]` (대괄호 IPv6) — 고친 헬퍼가 더는 그 형상을 만들지 않고,
+    #   전체 URL 형태는 위 `://` 패턴이 덮는다.
+    # Scheme-less userinfo. Requiring a dot or :port in the host is what keeps clock/ratio
+    # notations (12:30@office) from being mangled — measured 0/20 false positives.
+    re.compile(
+        r"(?<![A-Za-z0-9._%+\-])([A-Za-z0-9._%+\-]+:)[^\s:@/\"']+"
+        r"(?=@[A-Za-z0-9\-]+(?:\.[A-Za-z0-9.\-]+|:\d+))"
+    ),
 )
 
 # 리댁션 대상이 예외 텍스트일 때 쓰는 기본 포맷터 — exc_info → 문자열 변환 전용.

@@ -176,3 +176,72 @@ def test_build_safe_client_docstring_notes_toctou_limitation():
     doc = build_safe_client.__doc__ or ""
     assert "TOCTOU" in doc
     assert "connect time" in doc
+
+
+# ---------------------------------------------------------------------------
+# url_host_for_log — 시크릿 유출 회귀 가드
+# ---------------------------------------------------------------------------
+
+
+class TestUrlHostForLogDropsUserinfo:
+    """🔴 `url_host_for_log` 는 **host 만** 남긴다 — userinfo(user:password)를 남기면 안 된다.
+
+    `urlparse(url).netloc` 은 userinfo 를 **포함한다**. 그래서 netloc 을 그대로 반환하면
+    basic-auth 비밀번호가 평문으로 로그에 남는다. 게다가 `logging_config` 의 리댁션 백스톱은
+    `://` 에 앵커돼 있어, 스킴이 제거된 이 헬퍼의 출력에는 **구조적으로 매칭되지 않는다** —
+    즉 「로그 안전용」 헬퍼를 경유하는 것이 유출의 원인이 된다.
+
+    netloc includes userinfo, so returning it verbatim leaks the basic-auth password. The
+    logging_config backstop is anchored on `://` and therefore cannot match this helper's
+    scheme-less output — routing through the "log-safe" helper is what causes the leak.
+    """
+
+    def test_userinfo_password_is_not_returned(self):
+        from src.notifier._http import url_host_for_log  # noqa: PLC0415
+
+        out = url_host_for_log(
+            "https://n8nsvc:SUPER_SECRET_PW_9931@n8n.internal.example/webhook/abc"
+        )
+        assert "SUPER_SECRET_PW_9931" not in out, f"비밀번호가 로그 라벨에 남았다: {out!r}"
+        assert "n8nsvc" not in out, f"userinfo 사용자명이 남았다: {out!r}"
+        assert out == "n8n.internal.example"
+
+    def test_survives_the_redaction_backstop(self):
+        """헬퍼 출력이 리댁션을 거쳐도 비밀번호가 없어야 한다(백스톱에 기대지 않는다)."""
+        from src.logging_config import _redact  # noqa: PLC0415
+        from src.notifier._http import url_host_for_log  # noqa: PLC0415
+
+        url = "https://svc:PW_BACKSTOP_7742@n8n.internal.example/webhook/abc"
+        assert "PW_BACKSTOP_7742" not in _redact(url_host_for_log(url))
+
+    def test_plain_host_unchanged(self):
+        """userinfo 가 없으면 기존 동작 그대로 — 대조군."""
+        from src.notifier._http import url_host_for_log  # noqa: PLC0415
+
+        assert url_host_for_log("https://discord.com/api/webhooks/123/SECRETTAIL") == "discord.com"
+
+    def test_port_is_preserved(self):
+        """운영자가 어느 엔드포인트가 막혔는지 알아야 하므로 포트는 남긴다."""
+        from src.notifier._http import url_host_for_log  # noqa: PLC0415
+
+        assert url_host_for_log("https://n8n.internal.example:5678/webhook/x") == "n8n.internal.example:5678"
+
+    def test_ipv6_host_keeps_brackets(self):
+        """IPv6 는 `hostname` 이 대괄호를 벗기므로 다시 씌워야 파싱 가능한 라벨이 된다."""
+        from src.notifier._http import url_host_for_log  # noqa: PLC0415
+
+        assert url_host_for_log("https://[2001:db8::1]:8443/hook") == "[2001:db8::1]:8443"
+
+    def test_userinfo_with_port_and_no_password(self):
+        """`user@host:port` 형태(비밀번호 없음)도 사용자명을 남기지 않는다."""
+        from src.notifier._http import url_host_for_log  # noqa: PLC0415
+
+        assert url_host_for_log("https://someuser@n8n.example:5678/hook") == "n8n.example:5678"
+
+    def test_no_host_and_unparseable_labels_kept(self):
+        """호스트 부재·파싱 실패 라벨은 기존 계약 유지 — 호출부가 이 문자열을 로그에 쓴다."""
+        from src.notifier._http import url_host_for_log  # noqa: PLC0415
+
+        assert url_host_for_log("") == "(no-host)"
+        assert url_host_for_log("not-a-url") == "(no-host)"
+        assert url_host_for_log("https://[oops") == "(unparseable)"

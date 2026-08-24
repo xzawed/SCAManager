@@ -27,9 +27,30 @@ def url_host_for_log(url):
     operators can still tell which channel was blocked.
 
     🔴 이 헬퍼를 우회해 `webhook_url` 을 직접 로깅하지 말 것 (호출처 6곳 전부 경유).
+
+    🔴 `netloc` 이 아니라 `hostname` 을 쓴다 — `netloc` 은 **userinfo 를 포함한다**.
+    `netloc` 을 반환하던 판은 `https://svc:PASSWORD@host` 의 비밀번호를 평문으로 로그에
+    남겼고, 더 나쁘게는 `logging_config` 의 리댁션 백스톱이 `://` 에 앵커돼 있어
+    스킴이 제거된 이 출력에는 **구조적으로 매칭되지 않았다** — 즉 「로그 안전용」 헬퍼를
+    경유하는 것이 유출의 원인이었다. URL 을 그냥 로깅했으면 백스톱이 잡았을 값이다.
+    Use `hostname`, not `netloc`: netloc embeds userinfo, and the logging_config backstop is
+    anchored on `://` so it cannot match this scheme-less output. Returning netloc made routing
+    through this "log-safe" helper the cause of the leak.
+
+    포트는 남긴다 — 운영자가 어느 엔드포인트가 막혔는지 판독해야 한다.
+    Port is kept so operators can tell which endpoint was blocked.
     """
     try:
-        return urlparse(url).netloc or "(no-host)"
+        parsed = urlparse(url)
+        host = parsed.hostname
+        if not host:
+            return "(no-host)"
+        # IPv6 는 `hostname` 이 대괄호를 벗긴다 — 포트와 구분되도록 다시 씌운다.
+        # `hostname` strips IPv6 brackets; restore them so the port stays unambiguous.
+        if ":" in host:
+            host = f"[{host}]"
+        port = parsed.port
+        return f"{host}:{port}" if port else host
     except ValueError:
         return "(unparseable)"
 

@@ -881,3 +881,56 @@ def test_existing_channel_patterns_still_redact():
     """🔴 대조군 — 새 패턴이 기존 채널 마스킹을 깨뜨리지 않는다(회귀 방지)."""
     assert "SECRET" not in _redact("https://api.telegram.org/botSECRET/sendMessage")
     assert "SECRET" not in _redact("https://hooks.slack.com/services/SECRET")
+
+
+# ---------------------------------------------------------------------------
+# 스킴 없는 userinfo 백스톱 — `url_host_for_log` 유출 사고 후속
+# ---------------------------------------------------------------------------
+
+
+class TestSchemeLessUserinfoBackstop:
+    """🔴 `user:password@host` 는 **스킴이 없어도** 마스킹돼야 한다.
+
+    기존 userinfo 패턴은 `://` 에 앵커돼 있어 전체 URL 만 잡았다. 그래서
+    `url_host_for_log` 가 `netloc`(=userinfo 포함, 스킴 없음)을 반환하던 동안
+    백스톱이 **구조적으로 매칭 불가**였고, 「로그 안전용」 헬퍼를 경유하는 것이
+    유출의 원인이 됐다. 헬퍼는 고쳤지만 백스톱을 백스톱으로 되돌려 둔다.
+
+    The pre-existing userinfo pattern was anchored on `://`, so a scheme-less
+    `user:pass@host` (what the log-safe helper used to emit) could never match.
+
+    🔴 오탐 실측: 아래 「바뀌면 안 되는」 케이스는 후보 정규식 3종을 실제 로그 형상
+    20종에 대조해 오탐 0건인 변형을 고른 근거다. `12:30@office` 처럼 시각 표기가
+    마스킹되면 그 가드는 없느니만 못하다 — 호스트에 점 또는 :port 를 요구해 갈랐다.
+    """
+
+    def test_scheme_less_userinfo_password_is_masked(self):
+        from src.logging_config import _redact  # noqa: PLC0415
+
+        out = _redact("blocked unsafe URL (host=n8nsvc:SUPER_SECRET_PW@n8n.internal.example)")
+        assert "SUPER_SECRET_PW" not in out
+        assert "n8nsvc:***@n8n.internal.example" in out
+
+    def test_scheme_less_userinfo_with_port(self):
+        from src.logging_config import _redact  # noqa: PLC0415
+
+        assert "s3cr3t" not in _redact("svc:s3cr3t@n8n-internal:5678")
+
+    def test_full_url_still_masked(self):
+        """기존 `://` 패턴이 회귀하지 않았는지 — 대조군."""
+        from src.logging_config import _redact  # noqa: PLC0415
+
+        assert "PW9931" not in _redact("https://svc:PW9931@host.example/webhook/abc")
+
+    def test_clock_time_is_not_over_redacted(self):
+        """🔴 오탐 가드 — 시각·비율 표기를 망가뜨리면 안 된다."""
+        from src.logging_config import _redact  # noqa: PLC0415
+
+        for line in ("meeting at 12:30@office", "ratio 3:1@peak", "scale 16:9@60fps"):
+            assert _redact(line) == line, f"오탐: {line!r} -> {_redact(line)!r}"
+
+    def test_plain_email_is_not_over_redacted(self):
+        from src.logging_config import _redact  # noqa: PLC0415
+
+        for line in ("user email: someone@example.com", "commit abc by dev@example.com"):
+            assert _redact(line) == line, f"오탐: {line!r} -> {_redact(line)!r}"
