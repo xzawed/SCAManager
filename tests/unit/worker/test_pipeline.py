@@ -1672,4 +1672,45 @@ async def test_repo_config_fetch_failure_warning_names_the_billing_risk(mock_dep
         await run_analysis_pipeline("push", PUSH_DATA)
 
     text = " ".join(r.getMessage() for r in caplog.records if "repo_config" in r.message)
-    assert "ai_review" in text.lower(), f"AI 리뷰가 계속 도는 사실이 문구에 없다: {text!r}"
+    lowered = text.lower()
+    assert "ai_review" in lowered, f"AI 리뷰가 계속 도는 사실이 문구에 없다: {text!r}"
+    assert "billed" in lowered, f"과금 위험이 문구에 없다: {text!r}"
+    assert "disabled" in lowered, f"「끈 저장소」라는 조건이 문구에 없다: {text!r}"
+
+
+async def test_repo_config_fetch_failure_sanitizes_repo_name(mock_deps, caplog):
+    """🔴 원시 `repo_name` 은 CR/LF 로 WARNING 한 줄을 여러 줄로 쪼갤 수 있다 (로그 주입).
+
+    `debug` 였을 때는 출력되지 않아 무해했지만 `warning` 으로 올린 순간 보이게 된다 —
+    20줄 위 `repo_log` 와 같은 `sanitize_for_log` 규약을 이 줄도 따라야 한다.
+    """
+    import logging
+
+    from src.worker.pipeline import run_analysis_pipeline
+
+    evil = {**PUSH_DATA}
+    evil["repository"] = {**PUSH_DATA["repository"], "full_name": "owner/repo\nINJECTED"}
+    mock_deps["get_config"].side_effect = RuntimeError("db down")
+    with caplog.at_level(logging.WARNING, logger="src.worker.pipeline"):
+        await run_analysis_pipeline("push", evil)
+
+    hits = [r for r in caplog.records if "repo_config" in r.message]
+    assert hits, "조회 실패 경고가 없다"
+    assert chr(10) not in hits[0].getMessage(), (
+        f"repo_name 이 정제되지 않아 로그가 쪼개진다: {hits[0].getMessage()!r}"
+    )
+
+
+async def test_repo_config_fetch_failure_records_why(mock_deps, caplog):
+    """「실패했다」만 남기면 운영자가 못 고친다 — 예외 정보가 같이 남아야 한다."""
+    import logging
+
+    from src.worker.pipeline import run_analysis_pipeline
+
+    mock_deps["get_config"].side_effect = RuntimeError("db down")
+    with caplog.at_level(logging.WARNING, logger="src.worker.pipeline"):
+        await run_analysis_pipeline("push", PUSH_DATA)
+
+    hits = [r for r in caplog.records if "repo_config" in r.message]
+    assert hits, "조회 실패 경고가 없다"
+    assert hits[0].exc_info is not None, "예외 정보가 없다 — 왜 실패했는지 알 수 없다"

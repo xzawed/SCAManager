@@ -1014,10 +1014,18 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
                 #   비용이 걸린 fail-open 은 최소한 보여야 한다 → `warning`.
                 # Fail-open by design (availability); `debug` made it invisible at the default
                 #   INFO level, so a billing-relevant fail-open left no trace. Raised to warning.
+                #   🔴 `sanitize_for_log` 필수 — 20줄 위 `repo_log` 와 같은 규약이다. 원시
+                #   `repo_name` 은 CR/LF 를 담을 수 있어 WARNING 한 줄이 여러 줄로 쪼개진다
+                #   (로그 주입). debug 였을 때는 안 보였으니 무해했지만 이제는 보인다.
+                #   `exc_info` — 「무엇이 실패했는지」 없이 「실패했다」만 남기면 운영자가 못 고친다.
+                #   트레이스백은 핸들러의 리댁션 필터를 거친다(test_exception_traceback_is_redacted).
+                # sanitize_for_log matches the convention 20 lines above (raw repo_name can carry
+                #   CR/LF and split the line); exc_info tells the operator *why* it failed.
                 logger.warning(
                     "repo_config fetch failed for %s — ai_review runs with defaults "
                     "(enabled=True); a repo you disabled may still be billed",
-                    repo_name,
+                    sanitize_for_log(repo_name),
+                    exc_info=True,
                 )
 
             with stage_timer("analyze", repo=repo_log) as ctx:
