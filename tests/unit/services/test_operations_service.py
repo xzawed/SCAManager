@@ -11,6 +11,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from src.database import Base
+from src.gate import _merge_attempt_states as _states
 from src.models.merge_attempt import MergeAttempt
 from src.services import operations_service
 from src.shared import claude_metrics
@@ -91,12 +92,20 @@ class TestApiCostEstimate:
 # ─── _merge_kpi ──────────────────────────────────────────────────────
 
 
-def _add_merge_attempt(db, success, days_ago=0):
-    """헬퍼: 과거 시점 MergeAttempt 추가."""
+def _add_merge_attempt(db, success, days_ago=0, state=None, pr_number=42):
+    """헬퍼: 과거 시점 MergeAttempt 추가.
+
+    `state` 를 주지 않으면 컬럼 기본값(`legacy`)이 들어간다 — 운영 데이터의 다수가
+    그 상태다(실측 2026-08-24: 2,635행 중 2,577행이 `legacy`).
+    """
+    kwargs = {}
+    if state is not None:
+        kwargs["state"] = state
     a = MergeAttempt(
-        analysis_id=1, repo_name="alice/r1", pr_number=42,
+        analysis_id=1, repo_name="alice/r1", pr_number=pr_number,
         score=85, threshold=80, success=success,
         attempted_at=datetime.now(timezone.utc) - timedelta(days=days_ago),
+        **kwargs,
     )
     db.add(a)
     db.commit()
@@ -118,6 +127,66 @@ class TestMergeKpi:
         assert result["total_attempts"] == 4
         assert result["success_count"] == 3
         assert result["success_rate_pct"] == 75.0
+
+    # ── 🔴 «머지 성공» 의 정의 (2026-08-24) ─────────────────────────────
+    #
+    # `success=True` 는 「이 시도의 GitHub 호출이 성공했다」이지 「머지됐다」가 아니다.
+    # native auto-merge 를 **켜기만** 한 행(`enabled_pending_merge`)도 success=True 이고,
+    # 그 PR 은 영영 머지되지 않을 수 있다(force-push·체크 실패·사용자 해제).
+    #
+    # 반대로 순진하게 `state IN (actually_merged, direct_merged)` 로 바꾸면 **더 나빠진다**:
+    # 운영 primary 인 재시도 경로가 `state` 를 안 넘겨 `legacy` 로 저장돼 왔기 때문이다
+    # (실측 2026-08-24: success=True 733행 중 675행이 `legacy`).
+    #
+    # 그래서 하이브리드다 — 「실제 머지 상태」 ∪ 「state 를 안 쓰던 시절의 성공」.
+
+    def test_enabled_pending_merge_is_not_counted_as_merged(self, db):
+        """🔴 auto-merge 를 **켜기만** 한 것은 머지가 아니다.
+
+        이 행은 `success=True` 다(GitHub 호출은 성공). 그러나 GitHub 이 나중에 머지할 수도,
+        안 할 수도 있다. 머지율 KPI 가 이것을 세면 운영자는 실제보다 높은 수치를 본다.
+        """
+        _add_merge_attempt(db, success=True, days_ago=1, state=_states.DIRECT_MERGED)
+        _add_merge_attempt(db, success=True, days_ago=1, state=_states.ENABLED_PENDING_MERGE)
+        result = operations_service._merge_kpi(db, days=7)
+        assert result["total_attempts"] == 2
+        assert result["success_count"] == 1, (
+            "enabled_pending_merge 를 머지로 셌다 — 켜기만 하고 머지되지 않은 PR 이다"
+        )
+        assert result["success_rate_pct"] == 50.0
+
+    def test_disabled_externally_is_not_counted_as_merged(self, db):
+        """🔴 켠 뒤 **외부에서 꺼진** 것도 머지가 아니다.
+
+        `mark_disabled_externally` 는 `state` 만 바꾸고 `success` 를 뒤집지 않는다(실측).
+        그래서 「success=True 이고 state != pending」 같은 블랙리스트 술어로는 이 행이 샌다 —
+        같은 결함이 한 전이 뒤에서 반복된다. 화이트리스트여야 한다.
+        """
+        _add_merge_attempt(db, success=True, days_ago=1, state=_states.DIRECT_MERGED)
+        _add_merge_attempt(db, success=True, days_ago=1, state=_states.DISABLED_EXTERNALLY)
+        result = operations_service._merge_kpi(db, days=7)
+        assert result["success_count"] == 1, (
+            "disabled_externally 를 머지로 셌다 — auto-merge 가 취소된 PR 이다"
+        )
+
+    def test_legacy_success_still_counts(self, db):
+        """🔴 과잉교정 대조군 — `state` 를 안 쓰던 시절의 성공은 계속 세야 한다.
+
+        운영 success=True 733행 중 **675행이 `legacy`** 다(실측). 이들을 빼면 머지율이
+        92% 급감하는데, 그 행들은 실제로 머지된 재시도 경로다. 백필할 신호가 데이터에 없다.
+        """
+        _add_merge_attempt(db, success=True, days_ago=1)          # state 미지정 → legacy
+        _add_merge_attempt(db, success=False, days_ago=1)
+        result = operations_service._merge_kpi(db, days=7)
+        assert result["success_count"] == 1, (
+            "legacy 성공행이 빠졌다 — 운영 머지 실적의 대부분이 이 상태다"
+        )
+
+    def test_actually_merged_counts(self, db):
+        """webhook 으로 pending → actually_merged 전이한 행은 머지다."""
+        _add_merge_attempt(db, success=True, days_ago=1, state=_states.ACTUALLY_MERGED)
+        result = operations_service._merge_kpi(db, days=7)
+        assert result["success_count"] == 1
 
     def test_days_window_filter(self, db):
         # 최근 1건 + 과거 100일전 1건 — days=7 = 1 만 카운트

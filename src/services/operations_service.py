@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from src.i18n.loader import get_i18n_metrics
 from src.models.merge_attempt import MergeAttempt
+from src.repositories import merge_attempt_repo
 from src.models.user import User
 from src.shared.claude_metrics import (
     estimate_claude_cost_usd,
@@ -94,10 +95,14 @@ def _merge_kpi(db: Session, days: int = 7) -> dict[str, Any]:
         select(func.count(MergeAttempt.id))  # pylint: disable=not-callable
         .where(MergeAttempt.attempted_at >= since)
     ) or 0
+    # 🔴 `success.is_(True)` 가 아니다 — 그것은 「GitHub 호출이 성공했다」이지 「머지됐다」가
+    #    아니다. auto-merge 를 **켜기만** 한 행도 success=True 이고, 그 PR 은 영영 머지되지
+    #    않을 수 있다. 판정 정의는 `_merge_attempt_states.is_merged` 한 곳이다.
+    #    Counting `success` would include merges that were only *enabled*.
     success = db.scalar(
         select(func.count(MergeAttempt.id))  # pylint: disable=not-callable
         .where(MergeAttempt.attempted_at >= since)
-        .where(MergeAttempt.success.is_(True))
+        .where(merge_attempt_repo.merged_sql_predicate())
     ) or 0
     rate = (success / total * 100) if total > 0 else 0.0
     return {

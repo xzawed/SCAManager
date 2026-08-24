@@ -52,6 +52,7 @@ def log_merge_attempt(  # pylint: disable=too-many-arguments,too-many-locals
     reason: str | None = None,
     state: str = _states.LEGACY,
     enabled_at: datetime | None = None,
+    merged_at: datetime | None = None,
 ) -> MergeAttempt | None:
     """MergeAttempt 를 DB 에 기록하고 구조화된 INFO 로그를 낸다.
 
@@ -62,6 +63,12 @@ def log_merge_attempt(  # pylint: disable=too-many-arguments,too-many-locals
     Phase 3 PR-B1 신규 파라미터:
     - state: 머지 라이프사이클 상태 (legacy/enabled_pending_merge/direct_merged 등)
     - enabled_at: native enable 시점 (state=enabled_pending_merge 일 때만 유효)
+    - merged_at: 실제 머지 시각 (2026-08-24 추가). 그전에는 webhook 전이
+      (`mark_actually_merged`)에서만 채워졌는데 그 전이는 `enabled_pending_merge` 행에만
+      걸리고 운영에 그 행이 0건이라, **실제 머지 경로에서 한 번도 채워진 적이 없었다.**
+      🔴 아직 모든 머지 경로가 이 값을 넘기지는 않는다(engine 의 direct_merged 는 미설정) —
+      `merged_at IS NOT NULL` 을 「머지됐다」 판정으로 쓰면 안 된다. 판정은
+      `_merge_attempt_states.is_merged` 하나다.
     Both default to legacy/None for backwards compatibility with existing callers.
     """
     failure_reason: str | None = None
@@ -84,6 +91,7 @@ def log_merge_attempt(  # pylint: disable=too-many-arguments,too-many-locals
             detail_message=detail_message,
             state=state,
             enabled_at=enabled_at,
+            merged_at=merged_at,
         )
     except Exception as exc:  # pylint: disable=broad-except
         # SQLAlchemy 는 commit 실패 후 세션을 invalid 로 표시 — rollback 하지 않으면
