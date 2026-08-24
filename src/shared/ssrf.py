@@ -65,6 +65,18 @@ def is_safe_webhook_url(url: str | None) -> bool:  # pylint: disable=too-many-re
     """
     if not url:
         return True
+    # 🔴 제어문자 거부 — `urlparse` 는 이것을 **안전으로 본다**. 그래서 검증 3층을
+    #   전부 통과해 저장된 뒤 발신에서 `httpx.InvalidURL` 로 죽었고, 그 예외는
+    #   `httpx.HTTPError` **밖**이라(28종 중 7종) 「여기가 유일한 통제」라고 적어 둔
+    #   `except httpx.HTTPError` 절을 그대로 빠져나갔다 (#1489).
+    #   집합은 추측이 아니라 **httpx 가 실제로 거부하는 코드포인트를 실측**해 맞췄다:
+    #   U+0000–U+001F(32종) + U+007F. 공백(U+0020)은 httpx 가 인코딩하므로 제외한다.
+    #   퍼센트 인코딩된 `%0A` 는 제어문자가 아니므로 통과한다(과잉 차단 방지).
+    # Reject control characters: urlparse considers them safe, so an undeliverable URL was
+    #   persisted and later raised httpx.InvalidURL — which is outside httpx.HTTPError.
+    #   The set matches what httpx itself rejects (measured), not a guess.
+    if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in url):
+        return False
     try:
         parsed = urlparse(url)
         if parsed.scheme != "https":

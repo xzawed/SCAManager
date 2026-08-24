@@ -25,6 +25,21 @@ from src.constants import HTTP_CLIENT_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
+# 🔴 httpx 예외 28종 중 **7종은 `HTTPError` 밖**이다 (실측):
+#   InvalidURL · CookieConflict · StreamError(+ StreamClosed/StreamConsumed/
+#   RequestNotRead/ResponseNotRead 4종이 그 하위).
+#   그래서 `except httpx.HTTPError` 만 쓰면 그 7종이 그대로 빠져나간다 — 발신 경로에서는
+#   ASGI 밖까지 탈출해 uvicorn 이 트레이스백 전문을 찍는다(#1489).
+#   좁은 catch 를 쓰는 지점이 3곳이라 여기서 한 번만 정의한다 — 같은 드리프트 재발 방지.
+# 7 of httpx's 28 exception classes sit OUTSIDE HTTPError (measured); catching only
+#   HTTPError lets them escape to the ASGI layer, where uvicorn logs a full traceback.
+HTTPX_SEND_ERRORS = (
+    httpx.HTTPError,
+    httpx.InvalidURL,
+    httpx.StreamError,
+    httpx.CookieConflict,
+)
+
 # Phase 2 — 명시적 connection pool 한도 (httpx 기본값 100/20 보다 여유)
 # Phase 2 — explicit connection-pool limits (more headroom than httpx default 100/20)
 # 폭주 시나리오 (monorepo check_suite 50개 동시 + 알림 6채널 fan-out + retry queue):
