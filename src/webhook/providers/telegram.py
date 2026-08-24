@@ -23,6 +23,7 @@ from src.gate._common import ai_review_failed
 from src.gate.github_review import HeadMovedError, post_github_review
 from src.i18n.loader import get_text
 from src.notifier._language import resolve_notification_language
+from src.shared.http_client import HTTPX_SEND_ERRORS
 from src.notifier.telegram import telegram_post_message
 from src.notifier.telegram_commands import handle_message_command, parse_cmd_callback
 from src.repositories import (
@@ -344,7 +345,7 @@ async def _post_message_guarded(bot_token, chat_id, payload):
     """
     try:
         await telegram_post_message(bot_token, chat_id, payload)
-    except httpx.HTTPError as exc:
+    except HTTPX_SEND_ERRORS as exc:
         # 🔴 예외 객체(`%s`)가 아니라 **타입명만** 로깅 — str(exc) 에 토큰 URL 이 들어있다.
         # Log the exception *type* only; str(exc) embeds the token-bearing URL.
         logger.warning("telegram background send failed: %s", type(exc).__name__)

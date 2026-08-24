@@ -12,7 +12,6 @@ import time
 from datetime import datetime, timezone
 from typing import Annotated
 
-import httpx
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -23,6 +22,7 @@ from src.database import WorkerSessionLocal as SessionLocal
 from src.github_client.issues import close_issue
 from src.notifier.n8n import notify_n8n_issue
 from src.repositories import merge_attempt_repo, merge_retry_repo, repository_repo
+from src.shared.http_client import HTTPX_SEND_ERRORS
 from src.services.merge_retry_service import process_pending_retries
 from src.shared.log_safety import sanitize_for_log
 from src.webhook._helpers import get_webhook_secret
@@ -160,7 +160,7 @@ async def _close_referenced_issues(repo_name: str, numbers: list[int]) -> None:
                 "Auto-closed issue #%d on %s (PR merge)",
                 issue_number, sanitize_for_log(repo_name),
             )
-        except httpx.HTTPError as exc:
+        except HTTPX_SEND_ERRORS as exc:
             # exc 본문에 GitHub API 응답 세부사항이 포함될 수 있으므로 타입명만 기록
             # Log only the exception type — exc body may contain GitHub API response details.
             logger.warning(
@@ -302,7 +302,7 @@ async def _notify_n8n_issue_guarded(  # pylint: disable=too-many-arguments
             n8n_secret=n8n_secret,
             repo_token=repo_token,
         )
-    except httpx.HTTPError as exc:
+    except HTTPX_SEND_ERRORS as exc:
         # 🔴 예외 객체(`%s`)가 아니라 **타입명만** — str(exc) 에 시크릿 URL 이 들어있다.
         # Log the exception *type* only; str(exc) embeds the secret-bearing URL.
         logger.warning("n8n issue relay failed: %s", type(exc).__name__)
