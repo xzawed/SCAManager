@@ -27,7 +27,7 @@ CONFLICT_SHA_CHANGED = "conflict_sha_changed"  # HTTP 409
 
 # --- 네트워크 / 기타 --------------------------------------------------------
 # --- Network / other --------------------------------------------------------
-NETWORK_ERROR = "network_error"           # httpx.HTTPError (non-status)
+NETWORK_ERROR = "network_error"           # HTTPX_SEND_ERRORS (전송 오류, non-status)
 UNKNOWN = "unknown"                       # 분류 불가
 
 # --- 2nd-LLM 머지 검증자 (cross-vendor 거버넌스 가드) ---------------------

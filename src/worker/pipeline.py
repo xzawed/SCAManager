@@ -3,7 +3,6 @@ import asyncio
 import logging
 from dataclasses import dataclass
 
-import httpx
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -885,14 +884,22 @@ async def _send_notifications(notify_tasks: list, task_names: list[str]) -> None
     message, and webhook URLs are themselves credentials. Arbitrary hosts (n8n/custom) cannot
     be covered by the redaction filter, so this call site is the only control.
 
-    HTTP 외 예외는 URL 을 싣지 않으므로 트레이스백을 그대로 보존한다(진단 가치 유지).
-    Non-HTTP exceptions keep their traceback — they do not carry webhook URLs.
+    전송 오류(`HTTPX_SEND_ERRORS`)가 **아닌** 예외만 트레이스백을 보존한다(진단 가치 유지).
+    🔴 판정을 `httpx.HTTPError` 로 두면 안 된다 — `InvalidURL` 등 7종이 그 밖이라
+    수다스러운 분기로 떨어진다(#1498). 실측상 그 7종의 메시지는 URL 을 담지 않지만,
+    메시지 포맷은 httpx 의 사정이고 이쪽 계약은 「전송 오류는 타입명만」이다.
+    Only non-transport exceptions keep their traceback; the isinstance check must use the
+    same widened tuple as the except clauses, not httpx.HTTPError.
     """
     results = await asyncio.gather(*notify_tasks, return_exceptions=True)
     for idx, exc in enumerate(results):
         if isinstance(exc, BaseException):
             name = task_names[idx] if idx < len(task_names) else "unknown"
-            if isinstance(exc, httpx.HTTPError):
+            # 🔴 `except` 만 넓히고 이 판정을 두면 새로 도달한 7종이 else 로 떨어진다
+            #   — 전송 오류인데 str(exc)+트레이스백이 붙는 쪽이다 (#1498).
+            #   Widening the except clauses without this check leaves the new classes
+            #   in the verbose branch.
+            if isinstance(exc, HTTPX_SEND_ERRORS):
                 response = getattr(exc, "response", None)
                 status = response.status_code if response is not None else "n/a"
                 logger.error(

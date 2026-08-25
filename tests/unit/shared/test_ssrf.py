@@ -202,3 +202,48 @@ def test_narrow_httpx_except_is_not_used_anywhere_in_src():
         f"HTTPError 밖 7종이 빠져나간다: {narrow}"
     )
     assert wired >= 46, f"HTTPX_SEND_ERRORS 를 쓰는 except 가 {wired}곳뿐이다 (기대 46곳 이상)"
+
+
+def test_httperror_is_only_named_where_the_shared_tuple_is_defined():
+    """🔴 **읽는 쪽까지** — `httpx.HTTPError` 는 공용 튜플 정의부에만 존재한다.
+
+    위 테스트는 `except` 절만 본다. 같은 좁은 이름이 `isinstance(exc, httpx.HTTPError)`
+    같은 **분기 판정**에 남아 있으면, 절을 넓혀도 새로 잡힌 7종은 좁은 쪽 분기로 떨어진다
+    — 쓰는 쪽만 넓히고 읽는 쪽이 눈먼 상태다(#1498 에서 pipeline `_send_notifications`
+    가 실제로 그랬다: 전송 오류에 str(exc)+트레이스백이 붙었다).
+
+    The narrow name must survive only at the tuple definition; a leftover isinstance check
+    would route the newly-caught classes into the narrow branch.
+    """
+    import ast  # noqa: PLC0415
+    import pathlib  # noqa: PLC0415
+
+    root = pathlib.Path(__file__).resolve().parents[3] / "src"
+    files = sorted(root.rglob("*.py"))
+    assert len(files) > 100, f"src/ 에서 {len(files)}개 파일만 찾았다 — 스캐너 점검 필요"
+
+    # 튜플을 정의하는 모듈만 이 이름을 가질 수 있다.
+    OWNER = "http_client.py"
+    hits = [
+        f"{f.relative_to(root).as_posix()}:{n.lineno}"
+        for f in files
+        if f.name != OWNER
+        for n in ast.walk(ast.parse(f.read_text(encoding="utf-8")))
+        if isinstance(n, ast.Attribute) and ast.unparse(n) == "httpx.HTTPError"
+    ]
+    assert not hits, (
+        "`httpx.HTTPError` 가 공용 튜플 밖에서 쓰인다 — 그 자리는 HTTPError 밖 7종을 "
+        f"놓친다. HTTPX_SEND_ERRORS 로 바꿔라: {hits}"
+    )
+
+
+def test_the_owner_module_really_defines_the_tuple():
+    """계기 자기검증 — 면제한 모듈이 실제로 튜플을 정의하는지 확인한다.
+
+    면제만 있고 정의가 없으면 위 가드는 이름만 남은 공허한 규칙이 된다.
+    """
+    from src.shared import http_client  # noqa: PLC0415
+
+    import httpx  # noqa: PLC0415
+
+    assert httpx.HTTPError in http_client.HTTPX_SEND_ERRORS

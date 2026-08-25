@@ -281,3 +281,62 @@ async def test_issues_event_queues_a_guarded_task(caplog):
     assert _FAKE_WEBHOOK_TAIL not in caplog.text, (
         f"🔴 배선된 경로에서 시크릿 경로가 로그에 남았다.\n로그: {caplog.text!r}"
     )
+
+
+# ── #1498 — 확대의 **읽는 쪽**: isinstance 판정도 같이 넓혀야 한다 ──────────────
+#
+# 🔴 `except` 절을 `HTTPX_SEND_ERRORS` 로 넓혀도, 분기 판정이 `isinstance(exc,
+#    httpx.HTTPError)` 로 남아 있으면 새로 도달한 7종은 **좁은 쪽 분기**로 떨어진다.
+#    여기서는 그 else 분기가 `str(exc)` + 전체 트레이스백을 찍는 쪽이다 — 즉 확대가
+#    로그 표면을 **넓히는** 방향으로 새는 자리다(쓰는 쪽만 넓히면 읽는 쪽이 눈먼다).
+#
+# 실측: `httpx.InvalidURL` 메시지 자체는 URL 을 담지 않는다(`"Invalid non-printable
+# ASCII character in URL, '\x00' at position 57."` / `"Invalid port: 'notaport'"`).
+# 그래서 **지금은** 유출이 아니다. 아래 단언은 유출이 아니라 **분기 배선**을 고정한다 —
+# 메시지 포맷은 httpx 의 사정이고, 우리 계약은 「전송 오류는 타입명만 남긴다」다.
+
+
+async def test_notification_failure_log_treats_invalid_url_as_transport_error(caplog):
+    """🔴 `httpx.InvalidURL` 도 전송 오류로 분류돼 **타입명만** 남는다.
+
+    확대 전에는 `isinstance(exc, httpx.HTTPError)` 가 False → else 분기 →
+    `%s` + `exc_info` 트레이스백. 이 클래스가 URL 을 메시지에 담게 되는 날
+    (httpx 구현 사정) 유출로 바뀌는 자리라, 계약을 지금 못박는다.
+    """
+    from src.worker.pipeline import _send_notifications  # pylint: disable=import-outside-toplevel
+
+    async def _failing_channel() -> None:
+        raise httpx.InvalidURL(f"bad url {_FAKE_WEBHOOK_URL}")
+
+    caplog.set_level(logging.DEBUG)
+    await _send_notifications([_failing_channel()], ["n8n"])
+
+    text = caplog.text
+    assert text, "실패 로그가 아예 없다"
+    assert "n8n" in text, f"채널명이 사라졌다.\n로그: {text!r}"
+    assert "InvalidURL" in text, f"예외 타입명이 없다 — 진단 불가.\n로그: {text!r}"
+    assert _FAKE_WEBHOOK_TAIL not in text, (
+        "🔴 InvalidURL 이 좁은 분기로 떨어져 str(exc)/exc_info 로 찍혔다 — "
+        f"isinstance 판정이 아직 httpx.HTTPError 다.\n로그: {text!r}"
+    )
+    assert "Traceback" not in text, (
+        f"전송 오류에 트레이스백이 붙었다 — else 분기로 떨어졌다.\n로그: {text!r}"
+    )
+
+
+async def test_notification_failure_log_keeps_traceback_for_non_transport_errors(caplog):
+    """대조군 — 전송 오류가 **아닌** 예외는 트레이스백을 그대로 보존한다(진단 가치).
+
+    확대가 무한정 넓어져 우리 버그까지 타입명 한 줄로 삼키면 안 된다.
+    """
+    from src.worker.pipeline import _send_notifications  # pylint: disable=import-outside-toplevel
+
+    async def _failing_channel() -> None:
+        raise ValueError("우리 코드 버그")
+
+    caplog.set_level(logging.DEBUG)
+    await _send_notifications([_failing_channel()], ["slack"])
+
+    text = caplog.text
+    assert "우리 코드 버그" in text, f"메시지가 사라졌다.\n로그: {text!r}"
+    assert "Traceback" in text, f"트레이스백이 사라졌다 — 진단 가치 손실.\n로그: {text!r}"

@@ -2,9 +2,9 @@
 
 이 환경에는 HTTP 라이브러리가 **두 벌** 있다:
 
-- `httpx` — 이 리포가 직접 쓴다 (`src/` **7개 파일**이 import, AST 실측)
+- `httpx` — 이 리포가 직접 쓴다 (`src/` **6개 파일**이 import, AST 실측)
   (#1498 이 좁은 `except` 43곳 — 단독 24 + 튜플 19 — 을 넓히며 미사용이 된 import
-  16개를 제거해 23 → 7. 남은 7개는 `httpx.HTTPStatusError` 등 다른 심볼을 쓴다)
+  17개를 제거해 23 → 6. 남은 6개는 `httpx.HTTPStatusError` 등 다른 심볼을 쓴다)
 - `httpx2` — `anthropic` / `openai` SDK 가 **내부적으로** 쓴다 (전이 의존, 직접 핀 아님)
 
 공유하는 예외 이름 **28종이 전부 서로 다른 클래스다** (실측: `is` 비교 28/28 False).
@@ -153,8 +153,8 @@ def test_docstring_facts_are_still_true():
         if (isinstance(n, ast.Import) and any(a.name.split(".")[0] == "httpx" for a in n.names))
         or (isinstance(n, ast.ImportFrom) and (n.module or "").split(".")[0] == "httpx")
     }
-    assert len(importers) == 7, (
-        f"src/ 에서 httpx 를 import 하는 파일이 7개가 아니다: {len(importers)} — docstring 갱신 필요"
+    assert len(importers) == 6, (
+        f"src/ 에서 httpx 를 import 하는 파일이 6개가 아니다: {len(importers)} — docstring 갱신 필요"
     )
 
 
