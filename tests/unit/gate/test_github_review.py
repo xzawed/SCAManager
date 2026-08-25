@@ -586,3 +586,63 @@ async def test_merge_pr_returns_head_sha_on_failure():
     assert "dirty" in result[1]
     assert result[2] == "ghi789"
     mock_client.put.assert_not_called()
+
+
+# ─── #1498 배선 단언 — 새로 도달 가능해진 7종이 **실제 핸들러**에 잡히는가 ────────
+#
+# 🔴 `issubclass(cls, HTTPX_SEND_ERRORS)` 는 튜플만 잰다 — 핸들러가 실제로 그것을 잡고
+#    어떤 결정을 내리는지는 재지 않는다(정의 ≠ 배선). 아래는 진짜 예외를 진짜 함수에
+#    던져 **반환값**을 단언한다. 확대 전에는 이 예외들이 호출부를 그냥 빠져나갔다.
+
+
+def _mk_state_response(state: str, sha: str) -> MagicMock:
+    """merge_pr 의 선행 상태 조회 응답 — 기존 테스트들이 인라인으로 쓰던 모양 그대로."""
+    resp = MagicMock()
+    resp.raise_for_status = MagicMock()
+    resp.json.return_value = {"mergeable_state": state, "head": {"sha": sha}}
+    return resp
+
+
+@pytest.mark.parametrize("exc", [
+    httpx.InvalidURL("bad url"),
+    httpx.StreamError("stream misuse"),
+    httpx.CookieConflict("cookie"),
+])
+async def test_merge_pr_put_catches_newly_reachable_classes(exc):
+    """🔴 merge PUT 에서 7종이 잡혀 `network_error` 로 귀결된다 — 예외가 전파되지 않는다.
+
+    확대 전에는 이 예외들이 호출부 밖으로 나가 재시도 워커의 `except Exception` 이
+    `unexpected_error` 로 받아 **30초 뒤 재시도**했다. 이제는 `network_error` 로
+    **종료 판정**이다(`NETWORK_ERROR` 는 재시도 태그가 아니다).
+    그 트레이드오프를 여기서 못박는다 — 바뀌면 이 테스트가 red 가 된다.
+    """
+    from src.gate import merge_reasons  # noqa: PLC0415
+
+    with patch("src.gate.github_review.get_http_client") as mock_get, \
+         patch("src.gate.github_review.settings.merge_unknown_retry_delay", 0):
+        mock_client = AsyncMock()
+        mock_get.return_value = mock_client
+        mock_client.get = AsyncMock(return_value=_mk_state_response("clean", "abc123"))
+        mock_client.put = AsyncMock(side_effect=exc)
+        ok, reason, head_sha = await merge_pr("token", "owner/repo", 5)
+
+    assert ok is False
+    assert reason.startswith(merge_reasons.NETWORK_ERROR), (
+        f"{type(exc).__name__} 가 network_error 로 귀결되지 않았다: {reason}"
+    )
+    assert head_sha == "abc123"
+
+
+async def test_merge_pr_put_does_not_swallow_unrelated_runtime_error():
+    """대조군 — 확대가 무관한 `RuntimeError` 까지 삼키면 안 된다.
+
+    `StreamError` 가 `RuntimeError` 하위라 범위가 넘칠 수 있는 자리다.
+    """
+    with patch("src.gate.github_review.get_http_client") as mock_get, \
+         patch("src.gate.github_review.settings.merge_unknown_retry_delay", 0):
+        mock_client = AsyncMock()
+        mock_get.return_value = mock_client
+        mock_client.get = AsyncMock(return_value=_mk_state_response("clean", "abc123"))
+        mock_client.put = AsyncMock(side_effect=RuntimeError("우리 코드 버그"))
+        with pytest.raises(RuntimeError, match="우리 코드 버그"):
+            await merge_pr("token", "owner/repo", 5)
