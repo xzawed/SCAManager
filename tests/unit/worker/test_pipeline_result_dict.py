@@ -48,6 +48,12 @@ def _make_ai_review() -> SimpleNamespace:
         status="success",
         error_type=None,
         error_status_code=None,
+        # 벤더 구조화 오류 필드 (#1506) — 실패 경로에서만 값이 찬다.
+        error_vendor_type=None,
+        error_code=None,
+        error_request_id=None,
+        error_retry_after=None,
+        error_derived_cause=None,
         summary="ok",
         suggestions=[],
         commit_message_feedback="commit ok",
@@ -251,3 +257,37 @@ def test_issues_from_different_files_are_distinguishable() -> None:
     assert len(issues) == 2
     assert issues[0] != issues[1], "서로 다른 파일의 이슈가 바이트 동일하다 — 구별 불가"
     assert {i["file"] for i in issues} == {"src/auth/login.py", "src/api/hook.py"}
+
+
+def test_the_double_carries_every_error_field_the_real_result_has():
+    """🔴 더블 ↔ 실물 동기화 — 더블은 실물과 **따로 늙는다**.
+
+    `_make_ai_review()` 는 `SimpleNamespace` 라 없는 속성은 `AttributeError` 로 터진다
+    (그래서 이번에 8건이 red 가 됐고, 그건 **좋은 신호**였다). 하지만 반대 방향은
+    안 잡힌다 — 실물에 필드가 늘어도 더블을 안 고치면 그 필드를 쓰는 새 코드가
+    이 파일에서만 안 보인다.
+
+    🔴 여기서 `getattr(..., None)` 으로 파이프라인을 관대하게 만들지 **않았다**.
+    그러면 실물 필드가 이름이 바뀌어도 프로덕션이 조용히 None 을 내보낸다 —
+    더블이 이름 어긋남을 숨기는 전형이다. 직접 접근 + 이 가드가 그 축을 지킨다.
+    The double ages separately from the real dataclass; direct attribute access plus this
+    guard keeps a rename loud instead of silently emitting None.
+    """
+    # 🔴 `from dataclasses import fields` 형식으로 통일 — 이 파일 16행이 이미
+    #   `from dataclasses import dataclass, field` 다. `import dataclasses` 를 섞으면
+    #   CodeQL py/import-and-import-from(이중 import)에 걸린다 (check_dual_import 지적).
+    # Match the file's existing from-import form; mixing both trips py/import-and-import-from.
+    from dataclasses import fields as dc_fields  # noqa: PLC0415
+
+    from src.analyzer.io.ai_review import AiReviewResult  # noqa: PLC0415
+
+    real_error_fields = {
+        f.name for f in dc_fields(AiReviewResult) if f.name.startswith("error_")
+    }
+    assert real_error_fields, "실물에 error_* 필드가 없다 — 스캐너 점검 필요"
+
+    double = _make_ai_review()
+    missing = sorted(f for f in real_error_fields if not hasattr(double, f))
+    assert not missing, (
+        f"더블에 없는 실물 error_* 필드: {missing} — 실물이 늘었는데 더블이 안 따라왔다"
+    )

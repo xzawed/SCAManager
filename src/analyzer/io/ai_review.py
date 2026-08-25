@@ -72,6 +72,37 @@ class AiReviewResult:  # pylint: disable=too-many-instance-attributes
     # Never store str(exc) — anthropic error bodies echo request content.
     error_type: str | None = None
     error_status_code: int | None = None
+    # 🔴 벤더의 **구조화** 오류 필드 (#1506) — 클래스명이 원인을 잘못 가리킨 사고의 대응.
+    # 2026-08-20~25 의 5일 100% 실패는 전부 `BadRequestError`/400 이었다. 그 이름은
+    # 「우리 요청이 malformed」를 가리키지만 실제 원인은 **조직 지출 한도**였다 —
+    # 벤더 장애도 우리 버그도 아닌 **계정 상태**다. 클래스명+상태코드만으로는 그 셋을
+    # 원리적으로 못 가른다.
+    #
+    # 실측 (anthropic 1.0.0, 공식 문서 페이로드):
+    #   티어 월 상한(429)  vendor_type=rate_limit_error   code=enforced_spend_limit_reached
+    #   일반 rate limit    vendor_type=rate_limit_error   code=None, retry_after 있음
+    #   내 한도(400)       vendor_type=invalid_request_error  code=None, retry_after 없음
+    #   malformed(400)     vendor_type=invalid_request_error  code=None, retry_after 없음
+    # → **429 축은 완전히 갈리고 400 축은 안 갈린다.** 400 은 `request_id` 가 유일한 실마리다.
+    #
+    # 🔴 담는 값은 전부 **요청 내용을 담을 수 없는 형태**다 — 고정 어휘 2, 불투명 ID 1,
+    # 숫자 1. 메시지는 위 규칙대로 절대 담지 않는다.
+    # Vendor's structured error fields: fixed vocabulary + opaque id only, never the message.
+    error_vendor_type: str | None = None      # body.error.type — 벤더 고정 어휘
+    error_code: str | None = None             # body.error.details.error_code — 429 상한 판별
+    error_request_id: str | None = None       # 불투명 ID — 400 축의 유일한 추적 수단
+    error_retry_after: str | None = None      # retry-after 헤더 — 상한 429 에는 없다
+    # 🔴 위 넷만으로는 **이번 사고를 진단하지 못한다** (Grok 반박, 판정 USELESS).
+    # 400 케이스에서 vendor_type/error_code/retry_after 가 malformed 요청과 완전히
+    # 같고, request_id 는 원인이 아니라 지원 티켓 손잡이다. 400 축을 실제로 가르는
+    # 유일한 신호는 **문서화된 메시지 접두사**다.
+    # 🔴 메시지를 **읽되 저장하지 않는다** — 규칙은 「str(exc) 를 저장하지 마라」이지
+    # 「읽지 마라」가 아니다. 프로세스 안에서 접두사를 보고 **우리가 소유한 닫힌
+    # 어휘**의 라벨만 남긴다: spend_limit_org | spend_limit_workspace | None.
+    # 저장되는 값에 벤더 문장은 한 조각도 들어가지 않는다.
+    # The four fields above cannot diagnose the incident that motivated them; only the
+    # documented message prefix can. Read the message, store a closed-vocabulary label.
+    error_derived_cause: str | None = None
     # C22: diff 가 MAX_DIFF_CHARS 로 잘렸는지 — 잘린 부분 미검토로 점수가 인플레될 수 있어
     # auto-merge/auto-approve 차단 마커(ai_review_truncated)로 전파된다(static_analysis_incomplete 대칭).
     # C22: whether the diff was truncated at MAX_DIFF_CHARS — the unseen part may inflate the score,
@@ -254,6 +285,7 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
             error_status_code=(
                 exc.status_code if isinstance(exc, anthropic.APIStatusError) else None
             ),
+            **_vendor_error_fields(exc),
         )
     finally:
         # 🔴 비용 로그는 **여기서 한 번만** — 성공·실패 어느 경로든 호출당 1행 (R63).
@@ -398,11 +430,100 @@ def _parse_response(text: str) -> AiReviewResult:
     return result
 
 
+# 벤더 구조화 필드의 길이 상한 — 실측상 가장 긴 값이 `enforced_spend_limit_reached`(29자)
+# 이고 `request_id` 가 `req_` + 24자다. 200 은 그 어휘가 늘어날 여지를 두면서도
+# 자유 텍스트가 통과하지 못하는 폭이다.
+# Longest measured value is 29 chars (`enforced_spend_limit_reached`); 200 leaves room for
+# vocabulary growth while excluding free text.
+# 🔴 문서화된 지출-한도 문구의 **접두사**. 400 축을 가르는 유일한 신호다
+# (https://platform.claude.com/docs/en/api/rate-limits — "Setting your own spend limit").
+# 🔴 **접두사**이지 부분 문자열이 아니다. 오류 본문은 요청 내용을 되비추므로,
+#   부분 문자열이면 사용자가 diff 에 이 문장을 넣는 것만으로 라벨을 조작할 수 있다.
+# 🔴 긴 것부터 검사한다 — workspace 문구가 org 문구를 포함하는 형태라
+#   순서를 바꾸면 워크스페이스 한도가 org 로 오분류된다.
+# Prefix (not substring): error bodies echo request content, so a substring test would let a
+# user forge the label from their own diff. Longest-first: the workspace phrase contains the
+# org phrase as a prefix.
+_SPEND_LIMIT_PREFIXES = (
+    ("You have reached your specified workspace API usage limits", "spend_limit_workspace"),
+    ("You have reached your specified API usage limits", "spend_limit_org"),
+)
+
+
+_VENDOR_FIELD_MAX_CHARS = 200
+
+
+def _vendor_error_fields(exc: Exception) -> dict[str, str | None]:
+    """벤더 오류의 **구조화 필드**만 뽑는다 — 메시지는 절대 뽑지 않는다 (#1506).
+
+    🔴 `isinstance(exc, anthropic.APIStatusError)` 로 막는다 — 덕타이핑이면
+    `.body` 를 가진 아무 예외나 값을 채워 우리 오류가 벤더로 위장한다
+    (`error_status_code` 가 같은 이유로 그렇게 돼 있다).
+
+    🔴 뽑는 값의 형태를 못박는다: `type`·`error_code` 는 벤더 고정 어휘,
+    `request_id` 는 불투명 ID, `retry-after` 는 숫자 문자열. 어느 것도 요청 내용을
+    담을 수 없다. `message` 는 요청을 되비추므로 **뽑지 않는다**.
+    Extracts only fixed-vocabulary / opaque fields; never the message, which echoes
+    request content.
+    """
+    empty: dict[str, str | None] = {
+        "error_vendor_type": None, "error_code": None,
+        "error_request_id": None, "error_retry_after": None,
+        "error_derived_cause": None,
+    }
+    if not isinstance(exc, anthropic.APIStatusError):
+        return empty
+
+    body = exc.body if isinstance(exc.body, dict) else {}
+    err = body.get("error") if isinstance(body.get("error"), dict) else {}
+    details = err.get("details") if isinstance(err.get("details"), dict) else {}
+
+    def _str_or_none(value: object) -> str | None:
+        # 문자열만 통과 — dict/list 가 오면 그 안에 무엇이 있는지 알 수 없다.
+        # 🔴 길이 상한도 건다 (Grok 리뷰). 실측상 이 값들은 짧은 고정 토큰이지만
+        #   여기엔 allowlist 도 형식 검사도 없다 — 벤더가 그 키에 긴 문자열을 넣거나
+        #   응답이 변조되면 그대로 `analyses.result` 를 타고 대시보드·알림까지 간다.
+        #   「지금 짧다」는 관측이지 계약이 아니다. 잘라 버리지 않고 **버린다** —
+        #   잘린 토큰은 고정 어휘가 아니라서 조회 조건으로 못 쓰고, 남아 있으면
+        #   「값이 있다」로 오독된다.
+        # Only strings, and only short ones: these reach dashboards/notifications, and
+        # nothing else bounds them. Over-length values are dropped, not truncated — a
+        # truncated token is not the fixed vocabulary and would read as a real value.
+        if not isinstance(value, str):
+            return None
+        return value if len(value) <= _VENDOR_FIELD_MAX_CHARS else None
+
+    # 🔴 메시지는 **여기서만** 읽고 밖으로 내보내지 않는다 — 접두사 판정에만 쓴다.
+    #   나가는 것은 아래 닫힌 어휘의 라벨뿐이다.
+    # The message is read here and never leaves: only the closed-vocabulary label does.
+    message = err.get("message")
+    derived = None
+    if isinstance(message, str):
+        stripped = message.lstrip()
+        for prefix, label in _SPEND_LIMIT_PREFIXES:
+            if stripped.startswith(prefix):
+                derived = label
+                break
+
+    return {
+        "error_vendor_type": _str_or_none(err.get("type")),
+        "error_code": _str_or_none(details.get("error_code")),
+        "error_request_id": _str_or_none(getattr(exc, "request_id", None)),
+        "error_retry_after": _str_or_none(exc.response.headers.get("retry-after")),
+        "error_derived_cause": derived,
+    }
+
+
 def _default_result(
     reason: str = "no_api_key",
     *,
     error_type: str | None = None,
     error_status_code: int | None = None,
+    error_vendor_type: str | None = None,
+    error_code: str | None = None,
+    error_request_id: str | None = None,
+    error_retry_after: str | None = None,
+    error_derived_cause: str | None = None,
 ) -> AiReviewResult:
     """API key 없음, 빈 diff, 또는 오류 시 반환하는 중립적 기본값.
 
@@ -425,4 +546,9 @@ def _default_result(
         status=reason,
         error_type=error_type,
         error_status_code=error_status_code,
+        error_vendor_type=error_vendor_type,
+        error_code=error_code,
+        error_request_id=error_request_id,
+        error_retry_after=error_retry_after,
+        error_derived_cause=error_derived_cause,
     )
