@@ -4,8 +4,15 @@ from urllib.parse import quote, unquote
 
 # GitHub 소유자·저장소 이름에 허용되는 문자 — 화이트리스트.
 # 슬래시는 정확히 하나이고, `%`·공백·`?`·`#`·`@` 는 들어올 수 없다.
-# GitHub owner/repo charset; exactly one slash and no URL-structural characters.
-REPO_FULL_NAME_RE = re.compile(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+")
+#
+# 🔴 수량자는 **바운드여야 한다**(`+` 금지). 무한 `+` 두 개는 CodeQL
+# `py/polynomial-redos` 이고, 실측으로도 비앵커 형태에서 n² 이다
+# (20k 자 입력 572.8 ms vs 바운드 5.7 ms). 상한은 GitHub 실제 한계다:
+# 소유자 39자 · 저장소 100자.
+#
+# GitHub owner/repo charset; exactly one slash, no URL-structural characters,
+# and bounded quantifiers (unbounded `+` is polynomial — measured).
+REPO_FULL_NAME_RE = re.compile(r"[A-Za-z0-9._-]{1,39}/[A-Za-z0-9._-]{1,100}")
 
 
 def repo_path(full_name: str) -> str:

@@ -145,3 +145,42 @@ def test_whitelist_uses_a_modeled_guard():
     )
     assert pattern.fullmatch("owner/repo"), f"정상 이름을 거부한다: {pattern.pattern}"
     assert not pattern.fullmatch("owner/repo/extra"), "슬래시 2개를 통과시킨다"
+
+
+# ─── 길이 상한 (ReDoS) ───────────────────────────────────────────────────────
+#
+# 🔴 CodeQL `py/polynomial-redos`(alert #600) 가 무한 수량자 `+` 두 개를 지적했다.
+# 실측(400k 자 `-` 반복):
+#
+#   | 형태 | 무한 `+` | 바운드 `{1,n}` |
+#   |---|---|---|
+#   | `fullmatch` (실제 사용) | 1.088 ms | 0.002 ms |
+#   | `search` (비앵커) n=20k | 572.8 ms | 5.7 ms |
+#
+# `fullmatch` 는 앵커라 선형이라 실 익스플로잇은 아니었다. 그러나 바운드가
+# 200배 빠르고 GitHub 실제 한계(owner 39 · repo 100)와도 일치하므로 바꾼다 —
+# 억제가 아니라 더 정확한 명세다.
+
+
+def test_names_longer_than_github_allows_are_rejected():
+    """🔴 GitHub 한계를 넘는 길이는 거부한다 — 무한 수량자를 없애는 근거이기도 하다."""
+    assert repo_path("o" * 39 + "/" + "r" * 100), "한계값 자체는 통과해야 한다"
+
+    for too_long in ("o" * 40 + "/repo", "owner/" + "r" * 101):
+        with pytest.raises(ValueError, match="charset"):
+            repo_path(too_long)
+
+
+def test_the_pattern_has_no_unbounded_quantifier():
+    """🔴 패턴에 `+`/`*` 가 없다 — 되돌리면 polynomial-redos 가 되살아난다.
+
+    동작 테스트로는 이 성질을 잡을 수 없다(`fullmatch` 는 어느 쪽이든 통과한다).
+    되돌림을 막는 것이 목적이므로 패턴 문자열 자체를 본다.
+    """
+    from src.github_client.helpers import REPO_FULL_NAME_RE
+
+    src = REPO_FULL_NAME_RE.pattern
+    for quant in ("+", "*"):
+        assert quant not in src, (
+            f"패턴에 무한 수량자 {quant!r} 가 있다 — polynomial-redos 재발: {src}"
+        )
