@@ -30,20 +30,34 @@ and this guard stops complaining on its own.
 from __future__ import annotations
 
 import ast
-import importlib
 import pathlib
 
 _ROOT = pathlib.Path(__file__).resolve().parents[3]
 _TESTS = _ROOT / "tests"
 
 
-def _tables_registered_by(module_name: str) -> set[str]:
-    """`module_name` 을 import 했을 때 `Base.metadata` 에 **새로** 생기는 테이블 이름."""
-    from src.database import Base  # noqa: PLC0415
+def _package_can_register() -> bool:
+    """`src/models/__init__.py` 가 무언가를 등록할 **수** 있는가 — 정적 판정.
 
-    before = set(Base.metadata.tables)
-    importlib.import_module(module_name)
-    return set(Base.metadata.tables) - before
+    🔴 **import-diff 로 재면 안 된다.** 첫 판을 그렇게 짰다가 공허해졌다:
+    `importlib.import_module` 은 `sys.modules` 캐시를 반환하므로 **모듈을 재실행하지
+    않는다.** 테스트 프로세스에서는 `src.models` 가 이미 import 된 뒤라 diff 가
+    **항상 0건**이고, `__init__.py` 에 무엇을 넣든 통과한다(실측 확인). 즉 조건부
+    분기가 영영 안 타고 사실-고정은 거짓 초록이 된다.
+
+    그래서 **파일을 읽어** 판정한다. import 문도 호출식도 없는 모듈은 어떤 부작용도
+    낼 수 없다 — 0 바이트 파일이 그 극단이다.
+
+    Do NOT measure this with an import diff: import_module returns the cached module and
+    never re-executes it, so the diff is always empty and the guard passes vacuously.
+    """
+    init = _ROOT / "src" / "models" / "__init__.py"
+    assert init.exists(), "src/models/__init__.py 가 없다 — 스캐너 점검 필요"
+    tree = ast.parse(init.read_text(encoding="utf-8"))
+    return any(
+        isinstance(n, (ast.Import, ast.ImportFrom, ast.Call))
+        for n in ast.walk(tree)
+    )
 
 
 def _bare_src_models_imports() -> list[str]:
@@ -83,16 +97,53 @@ def test_ast_matcher_separates_bare_from_submodule_imports():
     assert not _is_bare(sub), "하위모듈 import 를 bare 로 오판했다 — 정상 코드를 막는다"
 
 
-def test_src_models_package_registers_no_tables():
-    """🔴 사실 고정 — `import src.models` 는 테이블을 0건 등록한다.
+def test_src_models_package_is_import_free():
+    """🔴 사실 고정 — `src/models/__init__.py` 는 아무 부작용도 낼 수 없다.
 
-    이 단언이 red 가 되면 `src/models/__init__.py` 가 채워졌다는 뜻이고, 그때는
-    「side-effect: populate Base.metadata」 주석이 **비로소 참**이 된다.
+    이 단언이 red 가 되면 `__init__.py` 가 채워졌다는 뜻이고, 그때는
+    「side-effect: populate Base.metadata」 주석이 **비로소 참**이 될 수 있다.
     이 파일의 docstring 과 아래 가드를 그 시점에 재검토하라.
     """
-    assert not _tables_registered_by("src.models"), (
-        "src.models 가 테이블을 등록하기 시작했다 — __init__.py 가 채워졌다. "
-        "이 파일의 전제가 바뀌었으니 docstring 과 아래 가드를 재검토하라"
+    assert not _package_can_register(), (
+        "src/models/__init__.py 에 import/호출이 생겼다 — bare `import src.models` 가 "
+        "부작용을 낼 수 있게 됐다. 이 파일의 전제가 바뀌었으니 재검토하라"
+    )
+
+
+def test_subprocess_confirms_the_bare_import_registers_nothing():
+    """🔴 정적 판정을 **실물로** 교차 확인 — 캐시 없는 새 인터프리터에서 잰다.
+
+    위 테스트는 파일을 읽어 판정한다(정적). 여기서는 새 프로세스를 띄워 실제로
+    `import src.models` 만 하고 `Base.metadata` 에 몇 개가 생기는지 센다.
+    두 축이 어긋나면 둘 중 하나가 거짓말하는 것이다.
+    """
+    import os  # noqa: PLC0415
+    import subprocess  # noqa: PLC0415
+    import sys  # noqa: PLC0415
+
+    code = (
+        "import src.models;"
+        "from src.database import Base;"
+        "print(len(Base.metadata.tables))"
+    )
+    env = dict(os.environ)
+    env.setdefault("DATABASE_URL", "sqlite:///:memory:")
+    env.setdefault("GITHUB_WEBHOOK_SECRET", "test_secret")
+    env.setdefault("GITHUB_TOKEN", "ghp_test")
+    env.setdefault("TELEGRAM_BOT_TOKEN", "123:ABC")
+    env.setdefault("TELEGRAM_CHAT_ID", "-100123")
+    env.setdefault("ANTHROPIC_API_KEY", "")
+    env["PYTHONIOENCODING"] = "utf-8"
+
+    proc = subprocess.run(
+        [sys.executable, "-c", code], cwd=_ROOT, env=env,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
+    )
+    assert proc.returncode == 0, f"서브프로세스 실패 — 계기 고장: {proc.stderr[-400:]}"
+    counted = int(proc.stdout.strip().splitlines()[-1])
+    assert counted == 0, (
+        f"새 인터프리터에서 `import src.models` 가 {counted}개 테이블을 등록했다 — "
+        "정적 판정과 어긋난다"
     )
 
 
@@ -102,8 +153,8 @@ def test_no_test_relies_on_the_bare_import_while_it_is_a_noop():
     `src.models` 가 실제로 등록하게 되면 이 테스트는 스스로 통과한다.
     관용구 금지가 아니라 「지금 거짓인 것에 기대지 마라」다.
     """
-    if _tables_registered_by("src.models"):  # pragma: no cover - 전제가 바뀐 미래
-        return  # 이제 진짜 부작용이 있다 — 쓰는 것이 정당하다
+    if _package_can_register():  # pragma: no cover - 전제가 바뀐 미래
+        return  # 이제 진짜 부작용이 있을 수 있다 — 쓰는 것이 정당하다
 
     hits = _bare_src_models_imports()
     assert not hits, (
