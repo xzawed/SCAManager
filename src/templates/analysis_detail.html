@@ -781,8 +781,8 @@
   <!-- GitHub Issue 등록 패널 / GitHub Issue registration panel -->
   <section class="issue-reg-panel" id="issueRegPanel"
            data-analysis-id="{{ analysis.id }}"
-           data-ai-suggestions="{{ (analysis.result or {}).get('ai_suggestions', []) | tojson }}"
-           data-static-issues="{{ (analysis.result or {}).get('issues', []) | tojson }}"
+           data-ai-suggestions='{{ (analysis.result or {}).get('ai_suggestions', []) | tojson }}'
+           data-static-issues='{{ (analysis.result or {}).get('issues', []) | tojson }}'
            data-i18n-suggestion-prefix="{{ 'analysis_detail.js_msg.suggestion_prefix' | i18n_args(locale | default('ko')) }}"
            data-i18n-status-resolved="{{ 'analysis_detail.js_msg.status_resolved' | i18n_args(locale | default('ko'), num='__N__') }}"
            data-i18n-status-open="{{ 'analysis_detail.js_msg.status_open' | i18n_args(locale | default('ko'), num='__N__') }}"

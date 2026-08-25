@@ -1266,7 +1266,7 @@
               <div class="t-desc">{{ 'settings_page.danger.delete_repo_desc' | i18n_args(locale | default('ko')) | safe }}</div>
             </div>
             <form method="post" action="/repos/{{ repo_name }}/delete"
-                  onsubmit="return confirm({{ 'settings_page.danger.delete_confirm' | i18n_args(locale | default('ko'), repo_name=repo_name) | tojson }});">
+                  onsubmit='return confirm({{ 'settings_page.danger.delete_confirm' | i18n_args(locale | default('ko'), repo_name=repo_name) | tojson }});'>
               <button type="submit" style="background:var(--danger);color:var(--btn-on-accent);border:none;border-radius:8px;padding:.6rem 1.1rem;font-weight:600;cursor:pointer;">
                 {{ 'settings_page.danger.delete_btn' | i18n_args(locale | default('ko')) }}
               </button>
@@ -1282,7 +1282,7 @@
         action="/repos/{{ repo_name }}/reinstall-hook" style="display:none"></form>
   <form id="reinstall_webhook_form" method="post"
         action="/repos/{{ repo_name }}/reinstall-webhook" style="display:none"
-        onsubmit="return confirm({{ 'settings_page.danger.webhook_reinstall_confirm' | i18n_args(locale | default('ko')) | tojson }})"></form>
+        onsubmit='return confirm({{ 'settings_page.danger.webhook_reinstall_confirm' | i18n_args(locale | default('ko')) | tojson }})'></form>
 
 </div>
 

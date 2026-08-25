@@ -34,8 +34,10 @@ Verification method:
 """
 from __future__ import annotations
 
+import json
 import re
 import pathlib
+from html.parser import HTMLParser
 from types import SimpleNamespace
 
 import pytest
@@ -469,3 +471,60 @@ def test_real_projection_output_renders_the_path(env: jinja2.Environment):
         "실제 투영 산출물로는 파일 경로가 렌더되지 않는다 — 투영과 템플릿이 어긋나 있다"
     )
     assert "src/auth/login.py:3" in html
+
+
+# ─── #1493 — 렌더된 HTML 을 실제로 파싱해 속성 잘림을 잡는다 ────────────────
+
+
+class _AttrCollector(HTMLParser):
+    """`issueRegPanel` 요소의 속성을 그대로 수집한다."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.panel_attrs: dict[str, str] | None = None
+
+    def handle_starttag(self, tag, attrs):
+        d = {k: (v or "") for k, v in attrs}
+        if d.get("id") == "issueRegPanel":
+            self.panel_attrs = d
+
+
+def test_rendered_json_attributes_are_not_truncated(env: jinja2.Environment):
+    """🔴 줄 단위 스캐너가 못 보는 축 — **렌더 결과를 파서에 먹여** 잘림을 판정한다.
+
+    `tojson` 이 이중따옴표 속성에 있으면 값이 JSON 첫 `"` 에서 끊기고, 나머지가
+    **잡스러운 속성들**로 파싱된다(#1493 실측: 요소 속성 2개 → 29개).
+    소스 문자열 검사로는 여러 줄에 걸친 속성이나 `=` 뒤 공백 형태를 놓칠 수 있으므로,
+    이 축은 파서로 재는 것이 정본이다.
+
+    Source-text scanning cannot see multi-line attributes; parse the rendered HTML instead.
+    """
+    issues = [
+        {"tool": "pylint", "severity": "warning", "message": "it's <unused>",
+         "line": 3, "category": "quality", "language": "python", "file": "src/a.py"},
+        {"tool": "bandit", "severity": "high", "message": 'say "hi" & </script>',
+         "line": 9, "category": "security", "language": "python", "file": "src/b.py"},
+    ]
+    analysis = SimpleNamespace(**{
+        **vars(_ANALYSIS),
+        "result": {**_ANALYSIS.result, "issues": issues, "ai_suggestions": ["don't eval()"]},
+    })
+    html = env.get_template("analysis_detail.html").render(
+        **{**_CTX_WITH_TREND, "analysis": analysis}
+    )
+
+    p = _AttrCollector()
+    p.feed(html)
+    assert p.panel_attrs is not None, "issueRegPanel 을 찾지 못했다 — 계기 점검 필요"
+
+    raw = p.panel_attrs.get("data-static-issues")
+    assert raw is not None, "data-static-issues 속성이 없다"
+    parsed = json.loads(raw)  # 잘렸으면 여기서 JSONDecodeError
+    assert [i["file"] for i in parsed] == ["src/a.py", "src/b.py"]
+
+    sugg = json.loads(p.panel_attrs.get("data-ai-suggestions") or "null")
+    assert sugg == ["don't eval()"]
+
+    # 잘렸다면 JSON 파편이 속성 이름으로 파싱돼 개수가 폭증한다.
+    stray = [k for k in p.panel_attrs if k.startswith(("{", "[", '"')) or ":" in k]
+    assert not stray, f"JSON 파편이 속성으로 파싱됐다 — 값이 잘렸다: {stray[:5]}"
