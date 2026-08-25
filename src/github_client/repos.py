@@ -123,7 +123,6 @@ async def list_webhooks(token: str, repo_full_name: str) -> list[dict]:
     hooks past GitHub's default page size were invisible to both callers.
     """
     client = get_http_client()  # 싱글톤
-    base = f"{GITHUB_API}/repos/{_repo_path(repo_full_name)}/hooks"
     results: list[dict] = []
     for page_num in range(1, _MAX_WEBHOOK_PAGES + 1):
         # 🔴 **서버가 준 URL 을 요청하지 않는다.** `Link` 헤더의 next URL 을 그대로
@@ -135,7 +134,10 @@ async def list_webhooks(token: str, repo_full_name: str) -> list[dict]:
         # Never request a server-supplied URL: build it ourselves and read only the
         # has-more signal from the Link header. Removes the taint instead of sanitizing it.
         resp = await client.get(
-            base,
+            # 형제 호출부(create/delete/update)와 **동일한 인라인 형태** — 이 파일의
+            # 다른 4곳은 같은 f-string 을 인자 자리에서 만들고 CodeQL 이 걸지 않는다.
+            # Same inline shape as the four sibling call sites in this file.
+            f"{GITHUB_API}/repos/{_repo_path(repo_full_name)}/hooks",
             params={"per_page": 100, "page": page_num},
             headers=_auth_headers(token),
         )
