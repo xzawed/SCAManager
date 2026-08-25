@@ -18,6 +18,7 @@ Diff-scoped: only ADDED lines are checked; legacy noqa imports are left untouche
 사용법 / Usage: python scripts/check_noqa_sideeffect.py <base_sha> [head_sha]
   base 미지정 시 origin/main, head 미지정 시 HEAD. tests/ 하위 .py 만 대상(#979 lint-changed-tests 페어).
 """
+import ast
 import re
 import subprocess
 import sys
@@ -25,7 +26,20 @@ from itertools import takewhile
 
 # import 문 여부 (import X / from X import Y). diff 의 `+` 는 사전에 제거하고 판정.
 # Whether a line is an import statement (the leading diff `+` is stripped before checking).
+#
+# 🔴 **이것은 소스를 못 읽을 때의 폴백 전용이다** (#1509). 정본 판정은 AST 다.
+#   텍스트는 「import 문처럼 보이는 줄」과 「실제 import 문」을 구분하지 못해 양방향으로 틀린다:
+#     · 위양성 — docstring 안의 **인용**을 코드로 잡는다. 이 가드가 막으려는 거짓을
+#       문서화하려면 인용해야 하는데, 그 인용이 막힌다 (실측: #1508 이 CI 를 막았다).
+#     · 위음성 — 여러 줄 import 의 continuation(`    Repository,  # noqa: F401`)은
+#       이 패턴에 안 맞아 **그냥 통과**한다. 막으려던 형태가 그대로 들어온다.
+#   같은 실패를 #1501 에서 겪고 AST 로 재작성한 선례가 있다.
+# Fallback only: text matching is wrong in both directions (blocks docstring quotations,
+# misses noqa on a multi-line import's continuation). AST is the primary judgment.
 _IMPORT = re.compile(r"^\s*(?:import\s|from\s+\S+\s+import\s)")
+# `git diff -U0` 의 hunk 헤더 — `@@ -a,b +c,d @@` 에서 **새 파일** 시작 줄번호(c)를 잡는다.
+# Hunk header of `git diff -U0`; captures the NEW-file start line so ADDED lines get numbers.
+_HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 # `# noqa` (bare) 또는 `# noqa: <codes>` — codes 그룹(있으면) 캡처.
 # `# noqa` (bare) or `# noqa: <codes>` — captures the codes group when present.
 _NOQA = re.compile(r"#\s*noqa(?::\s*([A-Za-z0-9,\s]+))?", re.IGNORECASE)
@@ -47,6 +61,28 @@ _CODE_TOKEN = re.compile(r"^[A-Z]+[0-9]+$")
 _ADDED = re.compile(r"^\+(?!\+\+)")
 
 
+def noqa_hides_f401(line):
+    """줄에 붙은 `# noqa` 가 F401 을 억제하면 True — **import 여부는 보지 않는다**.
+
+    🔴 import 판정과 noqa 판정을 분리한 이유 (#1509): 여러 줄 import 에서 noqa 는
+    continuation 줄에 붙는다(`    Repository,  # noqa: F401`). 그 줄은 import 문처럼
+    생기지 않았지만 flake8 은 거기서 F401 을 실제로 억제한다. 「어느 줄이 import 문에
+    속하는가」는 AST 가 답하고, 이 함수는 「그 줄이 F401 을 숨기는가」만 답한다.
+    Separated from the import-shape test: on a multi-line import the noqa sits on a
+    continuation line, which AST — not a line pattern — must attribute to the import.
+    """
+    m = _NOQA.search(line)
+    if not m:
+        return False
+    codes = m.group(1)
+    if codes is None:  # bare noqa — suppresses everything, incl. F401
+        return True
+    # flake8 동형 — 선두 연속 코드 토큰만 취하고 첫 비-코드에서 종료.
+    # flake8-equivalent — take the leading run of code tokens, stop at the first non-code.
+    leading = takewhile(_CODE_TOKEN.match, _CODE_SEP.split(codes.upper().strip()))
+    return "F401" in leading
+
+
 def line_hides_f401(line):
     """import 라인이 F401 을 억제하는 noqa 를 달고 있으면 True.
     True if an import line carries a noqa that suppresses F401.
@@ -58,18 +94,7 @@ def line_hides_f401(line):
     - `# noqa: E501`        → False (F401 미포함)
     - import 아닌 라인       → False
     """
-    if not _IMPORT.match(line):
-        return False
-    m = _NOQA.search(line)
-    if not m:
-        return False
-    codes = m.group(1)
-    if codes is None:  # bare noqa — suppresses everything, incl. F401
-        return True
-    # flake8 동형 — 선두 연속 코드 토큰만 취하고 첫 비-코드에서 종료.
-    # flake8-equivalent — take the leading run of code tokens, stop at the first non-code.
-    leading = takewhile(_CODE_TOKEN.match, _CODE_SEP.split(codes.upper().strip()))
-    return "F401" in leading
+    return bool(_IMPORT.match(line)) and noqa_hides_f401(line)
 
 
 def parse_added_noqa_imports(diff_text):
@@ -85,10 +110,67 @@ def parse_added_noqa_imports(diff_text):
     return out
 
 
-def find_violations(path, diff_text):
+def added_lines_with_numbers(diff_text):
+    """`git diff -U0` 에서 ADDED 라인을 `(새파일_줄번호, 내용)` 으로 반환.
+
+    hunk 헤더 `@@ -a,b +c,d @@` 의 `c` 부터 ADDED 라인마다 1씩 증가한다
+    (`-U0` 이라 context 라인이 없고, 삭제 라인은 새 파일 줄번호를 소비하지 않는다).
+    """
+    out = []
+    lineno = None
+    for raw in diff_text.splitlines():
+        hunk = _HUNK.match(raw)
+        if hunk:
+            lineno = int(hunk.group(1))
+            continue
+        if _ADDED.match(raw):
+            if lineno is not None:
+                out.append((lineno, raw[1:]))
+                lineno += 1
+    return out
+
+
+def import_line_numbers(source):
+    """소스에서 **실제 import 문**이 차지하는 줄번호 집합. 파싱 실패 시 None.
+
+    여러 줄 import 는 `lineno..end_lineno` 전체를 차지한다 — continuation 에 붙은
+    noqa 를 그 import 에 귀속시키기 위해 구간 전체를 넣는다.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return None
+    spans = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            spans.update(range(node.lineno, (node.end_lineno or node.lineno) + 1))
+    return spans
+
+
+def find_violations(path, diff_text, source=None):
     """파일 path 의 diff 에서 위반(ADDED noqa-은닉 import) 라인 목록.
-    Violation lines (ADDED noqa-hidden imports) in the diff for `path`."""
-    return parse_added_noqa_imports(diff_text)
+
+    🔴 **AST 가 정본 판정이다** (#1509). `source` 가 주어지고 파싱되면, ADDED 라인 중
+    **실제 import 문 구간에 속하는** 줄만 본다 — docstring 안의 인용은 어떤 import
+    노드에도 속하지 않으므로 잡히지 않고, 여러 줄 import 의 continuation 은 속하므로
+    잡힌다. 텍스트 정규식은 두 경우 모두 반대로 틀린다.
+
+    `source` 가 없거나 SyntaxError 면 **텍스트 폴백**이다 — 덜 정확하지만 더 엄격한
+    쪽(fail-closed)이라 놓치는 것보다 낫다.
+
+    AST is authoritative: only ADDED lines inside a real import node count. Falls back to
+    the (stricter, less precise) text match when the source is unavailable or unparsable.
+    """
+    if source is None:
+        return parse_added_noqa_imports(diff_text)
+    spans = import_line_numbers(source)
+    if spans is None:  # 구문 오류 — 폴백(fail-closed)
+        return parse_added_noqa_imports(diff_text)
+    return [
+        line.strip()
+        for lineno, line in added_lines_with_numbers(diff_text)
+        if lineno in spans and noqa_hides_f401(line)
+    ]
 
 
 def _git(args):
@@ -123,7 +205,12 @@ def main(argv):
     violations = []
     for path in _changed_test_files(base, head):
         diff = _git(["diff", "-U0", base, head, "--", path])
-        for line in find_violations(path, diff):
+        # 🔴 head 시점의 **파일 내용**을 가져와 AST 로 판정한다 (#1509).
+        #   작업트리를 읽지 않는 이유 — head 가 HEAD 가 아닐 수도 있고, 그때 디스크
+        #   내용은 판정 대상과 다르다(엉뚱한 파일을 AST 로 읽는 무음 오판).
+        # Fetch the file AS OF `head`; reading the worktree would judge a different revision.
+        source = _git(["show", f"{head}:{path}"])
+        for line in find_violations(path, diff, source):
             violations.append((path, line))
 
     if not violations:
