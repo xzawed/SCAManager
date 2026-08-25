@@ -233,7 +233,7 @@ async def handle_gate_callback(  # pylint: disable=too-many-locals
             # 🔴 분석 SHA ≠ 현재 head — 정상 fail-closed. 이 경로는 노출이 가장 크다(무만료 HMAC).
             # 🔴 여기서 잡아야 하는 이유 (실측): HeadMovedError 는 Exception 직계라 (a) 아래 broad
             # except 튜플에도, (b) 상위 래퍼 `_handle_gate_callback_guarded` 의
-            # `(httpx.HTTPError, SQLAlchemyError)` 에도 걸리지 않는다 → BackgroundTask 밖으로 탈출해
+            # `(*HTTPX_SEND_ERRORS, SQLAlchemyError)` 에도 걸리지 않는다 → BackgroundTask 밖으로 탈출해
             # uvicorn 이 트레이스백을 찍는다. 즉 **정상 fail-closed 가 크래시로 보고**돼 진짜 장애와
             # 구분되지 않는다. 예외 전파로 아래 auto-merge 는 자연 skip 된다.
             # ⚠️ 정확성 — 이 예외 메시지는 SHA 뿐이라 **credential 을 담지 않는다**. 형제 래퍼가
@@ -340,7 +340,7 @@ async def _post_message_guarded(bot_token, chat_id, payload):
     The redaction filter is defense-in-depth; masking here at the source is the real fix.
 
     형제 호출처(`gate/actions/approve.py`·`services/cron_service.py`·
-    `services/merge_retry_service.py`)와 동일한 좁은 `except httpx.HTTPError` 패턴.
+    `services/merge_retry_service.py`)와 동일한 `except HTTPX_SEND_ERRORS` 패턴(#1498).
     """
     try:
         await telegram_post_message(bot_token, chat_id, payload)

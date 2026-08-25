@@ -164,7 +164,7 @@ async def run_weekly_reports(db: Session, *, now: datetime | None = None) -> int
         except (*HTTPX_SEND_ERRORS, SQLAlchemyError, KeyError, ValueError) as exc:
             # 리포별 예외 격리 — 한 리포 실패가 다른 리포 알림을 막지 않는다
             # Per-repo exception isolation — one failure does not block others
-            # 🔴 계층1 근본통제 (security.md) — httpx.HTTPError 는 Telegram URL(bot<TOKEN>)을
+            # 🔴 계층1 근본통제 (security.md) — httpx 전송 오류는 Telegram URL(bot<TOKEN>)을
             # 담으므로 raw exc 로깅 금지. type(exc).__name__ 만(형제 orphan sweep 과 동일).
             # Layer-1 root control: an httpx error can carry the bot-token URL — log the type only.
             logger.warning(
@@ -276,7 +276,7 @@ async def run_trend_check(  # pylint: disable=too-many-locals
         except (*HTTPX_SEND_ERRORS, SQLAlchemyError, KeyError, ValueError) as exc:
             # 리포별 예외 격리 — 한 리포 실패가 다른 리포 알림을 막지 않는다
             # Per-repo exception isolation — one failure does not block others
-            # 🔴 계층1 근본통제 (security.md) — httpx.HTTPError 는 Telegram URL(bot<TOKEN>)을
+            # 🔴 계층1 근본통제 (security.md) — httpx 전송 오류는 Telegram URL(bot<TOKEN>)을
             # 담으므로 raw exc 로깅 금지. type(exc).__name__ 만(형제 weekly_report 와 동일).
             # Layer-1 root control: an httpx error can carry the bot-token URL — log the type only.
             logger.warning(
