@@ -91,6 +91,18 @@ def build_analysis_result_dict(
         # mean two different things, an ambiguity this column already carries.
         "ai_review_error_type": ai_review.error_type,
         "ai_review_error_status_code": ai_review.error_status_code,
+        # 🔴 벤더의 **구조화** 오류 필드 (#1506) — 클래스명이 원인을 잘못 가리킨 사고의 대응.
+        # 2026-08-20~25 의 5일 100% 실패는 전부 `BadRequestError`/400 이었는데 실제
+        # 원인은 **조직 지출 한도**였다. 클래스명+상태코드로는 「우리 요청이 malformed」와
+        # 「계정 상태」를 원리적으로 못 가른다. 실측상 429 축은 `error_code` 로 완전히
+        # 갈리고, 400 축은 안 갈려서 `request_id` 가 사람이 추적할 유일한 실마리다.
+        # 위와 같은 규율으로 **성공 경로에서도 키를 낸다**(값 None).
+        # Vendor structured error fields: the class name misattributed a 5-day outage whose
+        # real cause was an account spend limit. Always emitted (None on success).
+        "ai_review_error_vendor_type": ai_review.error_vendor_type,
+        "ai_review_error_code": ai_review.error_code,
+        "ai_review_error_request_id": ai_review.error_request_id,
+        "ai_review_error_retry_after": ai_review.error_retry_after,
         # 🔴 정적분석 미커버 언어 — **차단 마커가 아니다**(가시화 전용, 사용자 결정).
         # 지원 분석기가 등록조차 안 된 언어(lua·perl·haskell·r 등 21종)는 정적 45/45 만점을 받는데
         # 그건 "깨끗함" 이 아니라 "검사 안 함" 이다. 게이트는 건드리지 않고 사람에게만 알린다.
