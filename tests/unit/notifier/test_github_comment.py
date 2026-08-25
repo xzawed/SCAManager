@@ -64,7 +64,10 @@ def test_comment_body_includes_static_issues():
     body = _build_comment_body(_make_score(), [r], None)
     assert "undefined-variable" in body
     assert "pylint" in body
-    assert "line 5" in body
+    # #1500 — 위치 표기가 `(line N)` 에서 `(file:line)` 으로 바뀌었다.
+    #   구 레코드(`file` 키 없음)의 `(line N)` 형식은 그대로 유지된다
+    #   (test_comment_body_keeps_line_only_form_without_file 이 그 축을 고정).
+    assert "app.py:5" in body
 
 
 def test_comment_body_no_issues_section_when_empty():
@@ -384,7 +387,10 @@ def test_build_comment_body_and_from_result_produce_same_output():
         "direction_feedback": "방향 적절",
         "test_feedback": "테스트 충분",
         "file_feedbacks": [{"file": "app.py", "issues": ["개선 필요"]}],
-        "issues": [{"tool": "pylint", "severity": "error", "message": "err", "line": 1}],
+        # #1500 — 객체 경로가 `file` 을 싣게 됐으므로 dict 경로도 같은 계약이어야 한다.
+        #   이 패리티 테스트가 생산자/소비자 어긋남을 잡는 축이다.
+        "issues": [{"tool": "pylint", "severity": "error",
+                    "message": "err", "line": 1, "file": "app.py"}],
     }
     body_dict = _build_comment_from_result(result_dict)
 
@@ -431,3 +437,96 @@ async def test_post_plain_pr_comment_posts_body(monkeypatch):
     await github_comment.post_plain_pr_comment("tok", "o/r", 7, "hello body")
     assert captured["url"].endswith("/repos/o/r/issues/7/comments")
     assert captured["body"] == "hello body"
+
+
+# ─── #1500 — 코멘트가 이슈의 파일 경로를 보여준다 ───────────────────────────
+
+
+def test_comment_body_includes_issue_file_path():
+    """🔴 이슈가 **어느 파일**인지 코멘트에 나와야 한다.
+
+    투영(`_build_comment_body`)이 4키만 복사해 `r.filename` 을 버렸다 — `r` 이 바로 그
+    루프 변수인데도. 그래서 서로 다른 파일의 동일 메시지 이슈가 코멘트에서 구별되지 않았다.
+    #1488(웹 상세 화면)과 같은 실수가 이 파일에 복제돼 있었다.
+    """
+    issues = [AnalysisIssue(tool="pylint", severity="error", message="undefined-variable", line=5)]
+    r = StaticAnalysisResult(filename="src/auth/login.py", issues=issues)
+    body = _build_comment_body(_make_score(), [r], None)
+    assert "src/auth/login.py" in body, f"파일 경로가 코멘트에 없다:\n{body}"
+
+
+def test_comment_body_distinguishes_same_message_in_different_files():
+    """같은 메시지라도 파일이 다르면 코멘트에서 구별돼야 한다."""
+    mk = lambda: [AnalysisIssue(tool="pylint", severity="error", message="unused import", line=3)]  # noqa: E731
+    body = _build_comment_body(
+        _make_score(),
+        [StaticAnalysisResult(filename="src/auth/login.py", issues=mk()),
+         StaticAnalysisResult(filename="src/api/hook.py", issues=mk())],
+        None,
+    )
+    assert "src/auth/login.py" in body
+    assert "src/api/hook.py" in body
+
+
+def test_comment_body_escapes_markdown_in_file_path():
+    """🔴 파일명도 untrusted 다 — 메시지와 같은 이스케이프를 거쳐야 한다.
+
+    이 함수는 이미 `message` 를 `escape_markdown` 으로 처리한다(감사 D: 링크/이미지/HTML
+    인젝션 차단). 파일명만 날것으로 두면 같은 구멍이 열린다.
+    """
+    issues = [AnalysisIssue(tool="pylint", severity="error", message="x", line=1)]
+    evil = "src/[a](http://evil.example)/<img src=x>.py"
+    body = _build_comment_body(
+        _make_score(), [StaticAnalysisResult(filename=evil, issues=issues)], None)
+    assert "](http://evil.example)" not in body, f"파일명이 이스케이프되지 않았다:\n{body}"
+    assert "<img src=x>" not in body
+
+
+def test_comment_body_keeps_line_only_form_without_file():
+    """대조군 — `file` 키가 없는 레코드(구 형식)도 깨지지 않는다."""
+    from src.notifier.github_comment import _build_comment_from_result  # noqa: PLC0415
+
+    body = _build_comment_from_result({
+        "score": 82, "grade": "B",
+        "breakdown": {"code_quality": 28, "security": 20,
+                      "commit_message": 17, "ai_review": 15, "test_coverage": 2},
+        "issues": [{"tool": "pylint", "severity": "error", "message": "old-record", "line": 7}],
+    })
+    assert "old-record" in body
+    assert "line 7" in body
+
+
+def test_comment_body_collapses_newline_in_file_path():
+    """🔴 경로의 개행이 목록 항목을 쪼개면 안 된다 — `escape_markdown` 은 개행을 안 다룬다(실측).
+
+    GitHub `files[].filename` 에는 사실상 없지만 이 값은 **저장된 JSON**에서도 온다.
+    """
+    from src.notifier.github_comment import _build_comment_from_result  # noqa: PLC0415
+
+    body = _build_comment_from_result({
+        "score": 82, "grade": "B",
+        "breakdown": {"code_quality": 28, "security": 20,
+                      "commit_message": 17, "ai_review": 15, "test_coverage": 2},
+        "issues": [{"tool": "pylint", "message": "x", "line": 1,
+                    "file": "src/foo\n- injected.py"}],
+    })
+    issue_lines = [ln for ln in body.splitlines() if ln.startswith("- **[")]
+    assert len(issue_lines) == 1, f"경로의 개행이 목록을 쪼갰다:\n{body}"
+    assert "injected" in issue_lines[0]
+
+
+def test_comment_body_ignores_non_string_file():
+    """`file` 이 문자열이 아니면 경로 자리에 찍지 않는다 — 진리값 검사의 함정."""
+    from src.notifier.github_comment import _build_comment_from_result  # noqa: PLC0415
+
+    def render(fv):
+        return _build_comment_from_result({
+            "score": 82, "grade": "B",
+            "breakdown": {"code_quality": 28, "security": 20,
+                          "commit_message": 17, "ai_review": 15, "test_coverage": 2},
+            "issues": [{"tool": "pylint", "message": "x", "line": 7, "file": fv}],
+        })
+
+    for bad in (42, True, ["a.py"], {"p": "a.py"}, "   "):
+        body = render(bad)
+        assert "(line 7)" in body, f"비문자열 file={bad!r} 이 경로로 찍혔다:\n{body}"

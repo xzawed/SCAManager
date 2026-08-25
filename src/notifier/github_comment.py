@@ -35,7 +35,16 @@ def _build_comment_body(
         "test_feedback": ai_review.test_feedback if ai_review else None,
         "file_feedbacks": ai_review.file_feedbacks if ai_review else [],
         "issues": [
-            {"tool": i.tool, "severity": i.severity, "message": i.message, "line": i.line}
+            # 🔴 `file` — 없던 동안 코멘트가 이슈의 파일 경로를 보여주지 못했고,
+            #   서로 다른 파일의 동일 메시지 이슈가 구별되지 않았다 (#1500).
+            #   `r.filename` 은 바로 아래 루프 변수로 이미 스코프에 있었다 — 투영 시 폐기였다.
+            #   웹 상세 화면(#1488)과 같은 실수가 이 파일에 복제돼 있었다.
+            # `r.filename` was already the loop variable; dropping it hid which file each
+            #   issue belongs to. Same defect as the detail view (#1488), duplicated here.
+            {
+                "tool": i.tool, "severity": i.severity,
+                "message": i.message, "line": i.line, "file": r.filename,
+            }
             for r in analysis_results
             for i in r.issues
         ],
@@ -172,9 +181,31 @@ def _static_issues_lines(result: dict, language: str = "en") -> list[str]:
     for issue in result["issues"][:NOTIFIER_MAX_ISSUES_LONG]:
         # 감사 D: untrusted 정적 도구 메시지 → markdown 이스케이프 (링크/이미지/HTML 인젝션 차단)
         # Audit D: escape untrusted static-tool message for markdown (block link/image/HTML injection)
+        # 🔴 파일명도 **같은 축의 untrusted 입력**이다 — 저장소가 정하는 경로라
+        #   `[a](http://evil)` 같은 이름이 가능하다. 메시지만 이스케이프하고 파일명을
+        #   날것으로 두면 같은 구멍이 열린다.
+        # The filename is untrusted on the same axis as the message; escape it too.
+        # 🔴 `str` 인 것만 받는다 — 진리값 검사면 `42`/`True` 같은 비문자열이
+        #   경로 자리에 그대로 찍히고, `0`/`False` 는 조용히 레거시 형식으로 떨어진다.
+        #   Accept only a str: a truthiness check would print non-string values as a path.
+        raw_file = issue.get("file")
+        where = raw_file.strip() if isinstance(raw_file, str) else ""
+        # 🔴 개행 제거 — `escape_markdown` 은 개행을 다루지 않는다(실측).
+        #   경로에 개행 + 목록 마커가 들어오면 항목이 둘로 쪼개져 코멘트 레이아웃이 깨진다.
+        #   GitHub 의 `files[].filename` 에는 사실상 없지만, 이 값은 **저장된 JSON**에서도
+        #   오므로 렌더 직전에 한 줄로 접는다.
+        #   escape_markdown does not touch newlines; a path containing one would split the
+        #   list item. Collapse to a single line before escaping.
+        where = " ".join(where.split())
+        # 구 레코드(`file` 키 없음)는 기존 `(line N)` 형식을 그대로 유지한다.
+        # Legacy records without `file` keep the original `(line N)` form.
+        loc = (
+            f"{escape_markdown(where)}:{issue.get('line', '?')}" if where
+            else f"line {issue.get('line', '?')}"
+        )
         lines.append(
             f"- **[{issue.get('tool', '?')}]** {escape_markdown(str(issue.get('message', '')))} "
-            f"(line {issue.get('line', '?')})"
+            f"({loc})"
         )
     return lines
 
