@@ -4,11 +4,12 @@
 
 `src/models/__init__.py` 는 **0 바이트**다. 하위 모듈을 아무것도 import 하지 않으므로
 `import src.models` 는 `Base.metadata` 에 테이블을 **하나도** 등록하지 않는다(실측).
-그런데 세 테스트가 그 줄에 이런 주석을 달고 있었다:
+그런데 세 테스트가 그 줄에 `# noqa: F401  side-effect: populate Base.metadata` 라는
+주석을 달고 있었다. **그 부작용은 존재하지 않는다.**
 
-    import src.models  # noqa: F401  side-effect: populate Base.metadata
-
-**그 부작용은 존재하지 않는다.** 테스트가 통과한 이유는 따로 있다 — 두 곳은 구체 모델
+(🔴 위 주석을 원래 줄 그대로 인용하지 못한다 — `check_noqa_sideeffect` 가 diff 원문에
+정규식을 걸어 판정하므로 **docstring 안의 인용까지 코드로 오판**한다. 실측으로 확인했고
+별건으로 기록했다. 산문을 막는 가드의 전형이다.) 테스트가 통과한 이유는 따로 있다 — 두 곳은 구체 모델
 클래스를 직접 import 하고(`from src.models.repository import Repository` 등), 한 곳은
 `from src.main import app` 이 전이적으로 전 모델을 끌어온다(실측: `src.main` 이 12건 등록,
 `src.models` 는 0건).
