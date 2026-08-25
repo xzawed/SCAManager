@@ -412,7 +412,20 @@ async def reinstall_webhook(  # pylint: disable=too-many-locals  # 3분기 보�
             for hook in all_hooks:
                 hook_url = hook.get("config", {}).get("url", "")
                 if GITHUB_WEBHOOK_PATH in hook_url:
-                    await delete_webhook(token, repo_name, hook["id"])
+                    # 🔴 `delete_webhook` 은 **예외를 던지지 않는다** — `status_code == 204`
+                    #   를 반환할 뿐이라 404/403/500 이면 조용히 `False` 다
+                    #   (`github_client/repos.py::delete_webhook`). 반환값을 안 보면
+                    #   「GitHub 이 삭제를 거부했다」가 완전 성공으로 보고된다 —
+                    #   이 라우트가 고치려는 바로 그 위양성 초록이다 (Grok 지적).
+                    # delete_webhook returns a bool (no raise_for_status): ignoring it would
+                    # report a refused delete as full success.
+                    if not await delete_webhook(token, repo_name, hook["id"]):
+                        cleanup_ok = False
+                        logger.warning(
+                            "Webhook delete refused by GitHub (id=%d) — stale hook remains",
+                            hook["id"],
+                        )
+                        continue
                     logger.info("Deleted duplicate webhook id=%d url=%s", hook["id"], hook_url)
         except (*HTTPX_SEND_ERRORS, KeyError, ValueError, OSError) as exc:
             cleanup_ok = False

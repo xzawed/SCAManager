@@ -288,3 +288,45 @@ def test_partial_banner_text_exists_in_every_language():
         if absent:
             missing[lang] = absent
     assert not missing, f"번역 누락 — 그 로케일에서 배너가 비어 보인다: {missing}"
+
+
+def test_delete_returning_false_also_counts_as_partial():
+    """🔴 **위양성 초록** — `delete_webhook` 은 예외를 던지지 않고 `False` 를 반환한다.
+
+    `github_client/repos.py::delete_webhook` 은 `resp.status_code == 204` 를 **반환**한다
+    — `raise_for_status` 가 없다. 즉 404/403/500 이면 조용히 `False` 다.
+
+    초판은 `except` 만 보고 `cleanup_ok` 를 내렸다. 그래서 「GitHub 이 삭제를 거부했다」는
+    경우가 **완전 성공으로 보고**됐다 — 이 PR 이 고치려던 바로 그 결함을 내 수정이
+    그대로 갖고 있었다 (Grok 지적 `01a03992`).
+    """
+    db = _db()
+    with patch("src.ui.routes.settings.list_webhooks", new_callable=AsyncMock, return_value=[
+                   {"id": 111, "config": {"url": "https://x.test/webhooks/github"}}]), \
+         patch("src.ui.routes.settings.delete_webhook",
+               new_callable=AsyncMock, return_value=False) as mock_del, \
+         patch("src.ui.routes.settings.create_webhook",
+               new_callable=AsyncMock, return_value=12345), \
+         patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(db)):
+        resp = client.post("/repos/owner%2Frepo/reinstall-webhook", follow_redirects=False)
+
+    mock_del.assert_awaited_once()
+    assert "webhook_partial=1" in resp.headers["location"], (
+        "GitHub 이 삭제를 거부했는데(False 반환) 완전 성공으로 보고한다 — "
+        f"옛 훅이 그대로 남아 중복 배달이 계속된다: {resp.headers['location']}"
+    )
+
+
+def test_delete_returning_true_stays_full_success():
+    """대조군 — 삭제가 성공(True)하면 완전 성공이다. 반환값 검사가 과잉이 되지 않는다."""
+    db = _db()
+    with patch("src.ui.routes.settings.list_webhooks", new_callable=AsyncMock, return_value=[
+                   {"id": 111, "config": {"url": "https://x.test/webhooks/github"}}]), \
+         patch("src.ui.routes.settings.delete_webhook",
+               new_callable=AsyncMock, return_value=True), \
+         patch("src.ui.routes.settings.create_webhook",
+               new_callable=AsyncMock, return_value=12345), \
+         patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(db)):
+        resp = client.post("/repos/owner%2Frepo/reinstall-webhook", follow_redirects=False)
+
+    assert "webhook_ok=1" in resp.headers["location"]
