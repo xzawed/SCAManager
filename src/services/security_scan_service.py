@@ -19,7 +19,6 @@ import logging
 import os
 from typing import Any
 
-import httpx
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -29,6 +28,7 @@ from src.repositories import security_alert_log_repo, user_repo
 from src.shared.feature_kill_switch import is_disabled
 from src.shared.http_client import get_http_client
 from src.shared.log_safety import sanitize_for_log
+from src.shared.http_client import HTTPX_SEND_ERRORS
 
 logger = logging.getLogger(__name__)
 _CODE_SCANNING_KEY = "code_scanning"
@@ -94,7 +94,7 @@ async def _fetch_alerts(  # pylint: disable=too-many-return-statements
                 params={"state": "open", "per_page": 100, "page": page},
                 headers=headers,
             )
-        except httpx.HTTPError as exc:
+        except HTTPX_SEND_ERRORS as exc:
             logger.warning(
                 "security_scan: API 호출 실패 repo=%s page=%d err=%s",
                 sanitize_for_log(repo_full_name), page, type(exc).__name__,
@@ -235,7 +235,7 @@ async def scan_all_repos(db: Session) -> dict[str, int]:
             totals["code_scanning"] += counts["code_scanning"]
             totals["secret_scanning"] += counts["secret_scanning"]
             totals["skipped"] += counts["skipped"]
-        except (httpx.HTTPError, SQLAlchemyError, KeyError, ValueError) as exc:
+        except (*HTTPX_SEND_ERRORS, SQLAlchemyError, KeyError, ValueError) as exc:
             logger.warning(
                 "security_scan: repo=%s 처리 실패 err=%s",
                 sanitize_for_log(repo.full_name), type(exc).__name__,

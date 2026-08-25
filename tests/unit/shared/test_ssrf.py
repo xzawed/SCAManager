@@ -159,7 +159,7 @@ def test_space_is_not_treated_as_a_control_char():
     assert is_safe_webhook_url("https://hooks.example.com/a b") is True
 
 
-def test_narrow_httpx_except_is_not_used_in_webhook_providers():
+def test_narrow_httpx_except_is_not_used_anywhere_in_src():
     """🔴 **배선 단언** — 공용 튜플을 정의만 하고 호출부가 안 쓰면 구멍은 그대로다.
 
     구조 가드(`covers_every_httpx_exception`)는 튜플만 본다. 호출부를 옛 좁은 절로
@@ -171,9 +171,12 @@ def test_narrow_httpx_except_is_not_used_in_webhook_providers():
     import ast  # noqa: PLC0415
     import pathlib  # noqa: PLC0415
 
-    root = pathlib.Path(__file__).resolve().parents[3] / "src" / "webhook" / "providers"
-    files = sorted(root.glob("*.py"))
-    assert files, f"webhook provider 를 찾지 못했다: {root}"
+    # #1498 — 범위를 `webhook/providers` 에서 **src/ 전체**로 넓혔다.
+    #   그전에는 3곳만 보고 나머지 24곳의 같은 구멍을 못 봤다.
+    #   Scope widened from webhook/providers to all of src/ (#1498).
+    root = pathlib.Path(__file__).resolve().parents[3] / "src"
+    files = sorted(root.rglob("*.py"))
+    assert len(files) > 100, f"src/ 에서 {len(files)}개 파일만 찾았다 — 스캐너 점검 필요"
 
     narrow: list[str] = []
     wired = 0
@@ -183,12 +186,64 @@ def test_narrow_httpx_except_is_not_used_in_webhook_providers():
             if not isinstance(node, ast.ExceptHandler) or node.type is None:
                 continue
             src = ast.unparse(node.type)
-            if src == "httpx.HTTPError":
+            # 🔴 튜플 안에 숨은 것도 같은 구멍이다 — `except (httpx.HTTPError, KeyError)`
+            #   는 7종을 여전히 흘린다. 첫 판은 정확 일치만 봐서 19곳을 못 봤다(Grok Q5).
+            #   A tuple member is the same hole; exact-match missed 19 sites.
+            in_tuple = isinstance(node.type, ast.Tuple) and any(
+                ast.unparse(e) == "httpx.HTTPError" for e in node.type.elts
+            )
+            if src == "httpx.HTTPError" or in_tuple:
                 narrow.append(f"{f.name}:{node.lineno}")
             elif "HTTPX_SEND_ERRORS" in src:
                 wired += 1
 
     assert not narrow, (
-        f"좁은 `except httpx.HTTPError` 가 남아 있다 — HTTPError 밖 7종이 빠져나간다: {narrow}"
+        "좁은 `httpx.HTTPError` 가 남아 있다(단독 또는 튜플 원소) — "
+        f"HTTPError 밖 7종이 빠져나간다: {narrow}"
     )
-    assert wired >= 3, f"HTTPX_SEND_ERRORS 를 쓰는 except 가 {wired}곳뿐이다 (기대 3곳 이상)"
+    assert wired >= 46, f"HTTPX_SEND_ERRORS 를 쓰는 except 가 {wired}곳뿐이다 (기대 46곳 이상)"
+
+
+def test_httperror_is_only_named_where_the_shared_tuple_is_defined():
+    """🔴 **읽는 쪽까지** — `httpx.HTTPError` 는 공용 튜플 정의부에만 존재한다.
+
+    위 테스트는 `except` 절만 본다. 같은 좁은 이름이 `isinstance(exc, httpx.HTTPError)`
+    같은 **분기 판정**에 남아 있으면, 절을 넓혀도 새로 잡힌 7종은 좁은 쪽 분기로 떨어진다
+    — 쓰는 쪽만 넓히고 읽는 쪽이 눈먼 상태다(#1498 에서 pipeline `_send_notifications`
+    가 실제로 그랬다: 전송 오류에 str(exc)+트레이스백이 붙었다).
+
+    The narrow name must survive only at the tuple definition; a leftover isinstance check
+    would route the newly-caught classes into the narrow branch.
+    """
+    import ast  # noqa: PLC0415
+    import pathlib  # noqa: PLC0415
+
+    root = pathlib.Path(__file__).resolve().parents[3] / "src"
+    files = sorted(root.rglob("*.py"))
+    assert len(files) > 100, f"src/ 에서 {len(files)}개 파일만 찾았다 — 스캐너 점검 필요"
+
+    # 튜플을 정의하는 모듈만 이 이름을 가질 수 있다.
+    OWNER = "http_client.py"
+    hits = [
+        f"{f.relative_to(root).as_posix()}:{n.lineno}"
+        for f in files
+        if f.name != OWNER
+        for n in ast.walk(ast.parse(f.read_text(encoding="utf-8")))
+        if isinstance(n, ast.Attribute) and ast.unparse(n) == "httpx.HTTPError"
+    ]
+    assert not hits, (
+        "`httpx.HTTPError` 가 공용 튜플 밖에서 쓰인다 — 그 자리는 HTTPError 밖 7종을 "
+        f"놓친다. HTTPX_SEND_ERRORS 로 바꿔라: {hits}"
+    )
+
+
+def test_the_owner_module_really_defines_the_tuple():
+    """계기 자기검증 — 면제한 모듈이 실제로 튜플을 정의하는지 확인한다.
+
+    면제만 있고 정의가 없으면 위 가드는 이름만 남은 공허한 규칙이 된다.
+    """
+    from src.shared import http_client  # noqa: PLC0415
+
+    import httpx  # noqa: PLC0415
+
+    assert httpx.HTTPError in http_client.HTTPX_SEND_ERRORS

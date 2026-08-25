@@ -6,7 +6,6 @@ Sprint E-final: Implementation lives here directly (delegation to engine.py remo
 """
 import logging
 
-import httpx
 
 from src.config import settings
 from src.database import WorkerSessionLocal as SessionLocal
@@ -19,6 +18,7 @@ from src.i18n.loader import get_text
 from src.notifier._language import resolve_notification_language
 from src.repositories import gate_decision_repo
 from src.shared.log_safety import sanitize_for_log
+from src.shared.http_client import HTTPX_SEND_ERRORS
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +119,7 @@ class ApproveAction(GateAction):
                 "GitHub Review skipped — head moved since analysis (fail-closed): %s (%s)",
                 ctx.repo_name, exc,
             )
-        except (httpx.HTTPError, KeyError) as exc:
+        except (*HTTPX_SEND_ERRORS, KeyError) as exc:
             # 🔴 422 를 'head 이동'으로 단정하지 않는다 — 실측상 422 는 head 이동에서 오지 **않는다**
             # (owed #1072: 구 SHA 도 GitHub 은 200 으로 수락). 실제 422 사유는 self-approval
             # (`Can not approve your own pull request`)·존재하지 않는 commitOID 등이며, head 드리프트는
@@ -190,7 +190,7 @@ class ApproveAction(GateAction):
                 language=language,
                 result=ctx.result,
             )
-        except (httpx.HTTPError, KeyError) as exc:
+        except (*HTTPX_SEND_ERRORS, KeyError) as exc:
             logger.error("Telegram Gate 요청 실패: %s", type(exc).__name__)
 
 

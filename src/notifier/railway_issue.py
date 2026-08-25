@@ -1,12 +1,12 @@
 """Railway 빌드 실패 시 GitHub Issue 자동 생성."""
 import logging
-import httpx
 from src.constants import GITHUB_API
 from src.github_client.helpers import github_api_headers
 from src.i18n.loader import get_text
 from src.railway_client.models import RailwayDeployEvent
 from src.shared.http_client import get_http_client
 from src.shared.log_safety import sanitize_for_log
+from src.shared.http_client import HTTPX_SEND_ERRORS
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +98,7 @@ async def create_deploy_failure_issue(
         number = create_resp.json().get("number")
         logger.info("Railway Issue 생성 완료 #%s (%s)", number, sanitize_for_log(repo_full_name))
         return number
-    except httpx.HTTPError:
+    except HTTPX_SEND_ERRORS:
         # Phase H PR-6A: logger.exception 으로 stack trace 보존
         logger.exception("create_deploy_failure_issue 실패 (%s)", sanitize_for_log(repo_full_name))
         return None

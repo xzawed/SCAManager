@@ -461,3 +461,40 @@ async def test_graphql_request_retries_on_network_error():
 
     assert result == success_body
     assert mock_client.post.call_count == 2
+
+
+# ── #1498 배선 단언 — 새로 도달 가능해진 클래스가 **이 핸들러**에 잡히는가 ─────────
+#
+# 🔴 `issubclass(cls, HTTPX_SEND_ERRORS)` 는 튜플만 잰다. 여기서는 진짜 예외를 진짜
+#    함수에 던져 **반환값**을 단언한다 — `None` 은 native_automerge 의 REST 폴백 신호다.
+#    확대 전에는 이 예외들이 빠져나가 폴백 없이 auto-merge 전체가 중단됐다.
+
+
+@pytest.mark.parametrize("exc", [
+    httpx.InvalidURL("bad url"),
+    httpx.StreamError("stream misuse"),
+    httpx.CookieConflict("cookie"),
+])
+async def test_get_pr_node_id_returns_none_for_newly_reachable_classes(exc):
+    """확대로 새로 잡히는 예외 → `None` 반환 → 호출자(native_automerge)가 REST 로 폴백.
+
+    확대 전에는 예외가 `enable_or_fallback_with_path` 밖으로 전파돼 폴백 경로에
+    **도달하지 못했다**. 이 테스트가 그 폴백 도달을 고정한다.
+    """
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(side_effect=exc)
+
+    with patch("src.github_client.graphql.get_http_client", return_value=mock_client):
+        result = await get_pr_node_id(TOKEN, REPO, 7)
+
+    assert result is None, f"{type(exc).__name__} 가 안 잡혀 폴백 신호(None)가 안 나왔다"
+
+
+async def test_get_pr_node_id_does_not_swallow_unrelated_runtime_error():
+    """대조군 — `StreamError` 가 `RuntimeError` 하위라도 일반 `RuntimeError` 는 전파된다."""
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(side_effect=RuntimeError("우리 코드 버그"))
+
+    with patch("src.github_client.graphql.get_http_client", return_value=mock_client):
+        with pytest.raises(RuntimeError, match="우리 코드 버그"):
+            await get_pr_node_id(TOKEN, REPO, 7)

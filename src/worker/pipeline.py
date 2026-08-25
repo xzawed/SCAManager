@@ -3,7 +3,6 @@ import asyncio
 import logging
 from dataclasses import dataclass
 
-import httpx
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -24,6 +23,7 @@ from src.config_manager.manager import get_repo_config
 import src.notifier  # noqa: F401 — 자동 등록 트리거  # pylint: disable=unused-import
 from src.notifier.registry import NotifyContext, REGISTRY
 from src.repositories import repository_repo, analysis_repo, analysis_attempt_repo
+from src.shared.http_client import HTTPX_SEND_ERRORS
 
 logger = logging.getLogger(__name__)
 
@@ -849,7 +849,7 @@ async def _save_and_gate(db: Session, params: _AnalysisSaveParams):
                 config=repo_config,
                 commit_sha=params.commit_sha,
             )
-        except (httpx.HTTPError, SQLAlchemyError, KeyError, ValueError, OSError):
+        except (*HTTPX_SEND_ERRORS, SQLAlchemyError, KeyError, ValueError, OSError):
             # Phase H PR-6A: logger.exception 으로 stack trace 보존
             logger.exception("Gate check failed")
         except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
@@ -884,14 +884,27 @@ async def _send_notifications(notify_tasks: list, task_names: list[str]) -> None
     message, and webhook URLs are themselves credentials. Arbitrary hosts (n8n/custom) cannot
     be covered by the redaction filter, so this call site is the only control.
 
-    HTTP 외 예외는 URL 을 싣지 않으므로 트레이스백을 그대로 보존한다(진단 가치 유지).
-    Non-HTTP exceptions keep their traceback — they do not carry webhook URLs.
+    전송 오류(`HTTPX_SEND_ERRORS`)가 **아닌** 예외만 트레이스백을 보존한다(진단 가치 유지).
+    🔴 판정을 `httpx.HTTPError` 로 두면 안 된다 — `InvalidURL` 등 7종이 그 밖이라
+    수다스러운 분기로 떨어진다(#1498).
+    실측(httpx 0.28.1 `_urlparse.py`): 그 메시지에 실리는 URL 유래 값은 **호스트·포트**
+    까지다 — `Invalid IPv6 address: '[::zz]'` · `Invalid port: 'notaport'`. **경로·쿼리·
+    userinfo 는 어느 raise 지점에서도 실리지 않는다**(361·376·392 는 `{host!r}`, 411 은
+    `{port!r}`, 나머지는 문자 1개+위치 또는 컴포넌트 이름). 여기서 지켜야 할 credential 은
+    **경로**이므로 지금은 유출이 아니다. 그래도 분기를 맞추는 이유는 메시지 포맷이 httpx 의
+    사정이고 이쪽 계약은 「전송 오류는 타입명만」이기 때문이다.
+    Only non-transport exceptions keep their traceback; the isinstance check must use the
+    same widened tuple as the except clauses, not httpx.HTTPError.
     """
     results = await asyncio.gather(*notify_tasks, return_exceptions=True)
     for idx, exc in enumerate(results):
         if isinstance(exc, BaseException):
             name = task_names[idx] if idx < len(task_names) else "unknown"
-            if isinstance(exc, httpx.HTTPError):
+            # 🔴 `except` 만 넓히고 이 판정을 두면 새로 도달한 7종이 else 로 떨어진다
+            #   — 전송 오류인데 str(exc)+트레이스백이 붙는 쪽이다 (#1498).
+            #   Widening the except clauses without this check leaves the new classes
+            #   in the verbose branch.
+            if isinstance(exc, HTTPX_SEND_ERRORS):
                 response = getattr(exc, "response", None)
                 status = response.status_code if response is not None else "n/a"
                 logger.error(

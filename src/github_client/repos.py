@@ -4,12 +4,12 @@ import json
 import logging
 from urllib.parse import quote
 
-import httpx
 
 from src.constants import GITHUB_API
 from src.github_client.helpers import repo_path as _repo_path
 from src.shared.http_client import get_http_client
 from src.shared.log_safety import safe_repo_full_name, sanitize_for_log
+from src.shared.http_client import HTTPX_SEND_ERRORS
 
 logger = logging.getLogger(__name__)
 
@@ -314,7 +314,7 @@ async def is_public_repo(token: str, repo_full_name: str) -> bool | None:
         )
         resp.raise_for_status()
         payload = resp.json()
-    except (httpx.HTTPError, OSError, ValueError) as exc:
+    except (*HTTPX_SEND_ERRORS, OSError, ValueError) as exc:
         # 🔴 사용자 제어 값은 `sanitize_for_log` 경유 — 원문 보간은 py/log-injection.
         logger.warning(
             "repo visibility 조회 실패 (%s): %s", sanitize_for_log(repo_full_name), exc,
@@ -395,7 +395,7 @@ async def commit_scamanager_files(
             put_resp.raise_for_status()
 
         return True
-    except httpx.HTTPError as exc:
+    except HTTPX_SEND_ERRORS as exc:
         logger.warning(
             "commit_scamanager_files 실패 (%s): %s",
             sanitize_for_log(repo_full_name), exc,

@@ -12,7 +12,6 @@ import hmac
 import logging
 from typing import Annotated
 
-import httpx
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -234,7 +233,7 @@ async def handle_gate_callback(  # pylint: disable=too-many-locals
             # 🔴 분석 SHA ≠ 현재 head — 정상 fail-closed. 이 경로는 노출이 가장 크다(무만료 HMAC).
             # 🔴 여기서 잡아야 하는 이유 (실측): HeadMovedError 는 Exception 직계라 (a) 아래 broad
             # except 튜플에도, (b) 상위 래퍼 `_handle_gate_callback_guarded` 의
-            # `(httpx.HTTPError, SQLAlchemyError)` 에도 걸리지 않는다 → BackgroundTask 밖으로 탈출해
+            # `(*HTTPX_SEND_ERRORS, SQLAlchemyError)` 에도 걸리지 않는다 → BackgroundTask 밖으로 탈출해
             # uvicorn 이 트레이스백을 찍는다. 즉 **정상 fail-closed 가 크래시로 보고**돼 진짜 장애와
             # 구분되지 않는다. 예외 전파로 아래 auto-merge 는 자연 skip 된다.
             # ⚠️ 정확성 — 이 예외 메시지는 SHA 뿐이라 **credential 을 담지 않는다**. 형제 래퍼가
@@ -261,7 +260,7 @@ async def handle_gate_callback(  # pylint: disable=too-many-locals
                     chat_id,
                     {"text": text, "parse_mode": "HTML"},
                 )
-        except (httpx.HTTPError, KeyError, ValueError, RuntimeError, SQLAlchemyError):
+        except (*HTTPX_SEND_ERRORS, KeyError, ValueError, RuntimeError, SQLAlchemyError):
             # Phase H PR-6A: logger.exception 으로 stack trace 보존
             # RuntimeError 포함 — _run_auto_merge(legacy 경로)가 누출할 수 있어 콜백 격리 보강
             # Include RuntimeError — _run_auto_merge (legacy path) may leak it; isolate the callback
@@ -316,7 +315,7 @@ async def _notify_replay_blocked(db, chat_id, analysis_id):
                 "parse_mode": "HTML",
             },
         )
-    except (httpx.HTTPError, KeyError, ValueError, RuntimeError, SQLAlchemyError):
+    except (*HTTPX_SEND_ERRORS, KeyError, ValueError, RuntimeError, SQLAlchemyError):
         # 🔴 예외 본문은 로깅하지 않는다 — 형제 발신 경로가 URL 에 봇 토큰을 싣는다.
         # Type name only: sibling send paths embed the bot token in the URL.
         logger.warning(
@@ -341,7 +340,7 @@ async def _post_message_guarded(bot_token, chat_id, payload):
     The redaction filter is defense-in-depth; masking here at the source is the real fix.
 
     형제 호출처(`gate/actions/approve.py`·`services/cron_service.py`·
-    `services/merge_retry_service.py`)와 동일한 좁은 `except httpx.HTTPError` 패턴.
+    `services/merge_retry_service.py`)와 동일한 `except HTTPX_SEND_ERRORS` 패턴(#1498).
     """
     try:
         await telegram_post_message(bot_token, chat_id, payload)
@@ -382,7 +381,7 @@ async def _handle_gate_callback_guarded(
             telegram_user_id=telegram_user_id,
             chat_id=chat_id,
         )
-    except (httpx.HTTPError, SQLAlchemyError) as exc:
+    except (*HTTPX_SEND_ERRORS, SQLAlchemyError) as exc:
         logger.warning("telegram gate callback failed: %s", type(exc).__name__)
 
 

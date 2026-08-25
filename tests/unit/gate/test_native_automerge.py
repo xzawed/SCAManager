@@ -20,6 +20,7 @@ os.environ.setdefault("ANTHROPIC_API_KEY", "sk-test-key")
 from unittest.mock import AsyncMock, patch
 
 import httpx
+import pytest
 
 from src.gate.native_automerge import enable_or_fallback
 from src.gate.merge_reasons import NETWORK_ERROR
@@ -423,3 +424,49 @@ async def test_enable_with_path_get_pr_state_failure_fail_closed():
     assert outcome.reason == NETWORK_ERROR
     assert outcome.head_sha == ""
     assert outcome.path == PATH_NO_ATTEMPT
+
+
+# ── #1498 배선 단언 — head_sha 조회의 확대된 except 가 fail-closed 를 지키는가 ──────
+#
+# 🔴 기존 fail-closed 테스트는 `httpx.HTTPError` 하나만 던진다. 확대로 새로 잡히게 된
+#    7종은 확대 전에는 이 함수 밖으로 **전파**돼 fail-closed 분기에 도달조차 못 했다
+#    (= SHA 가드 판정 없이 호출 스택이 끊겼다). 클래스마다 실제로 던져 확인한다.
+
+
+@pytest.mark.parametrize("exc", [
+    httpx.InvalidURL("bad url"),
+    httpx.StreamError("stream misuse"),
+    httpx.CookieConflict("cookie"),
+])
+async def test_fail_closed_covers_newly_reachable_classes(exc):
+    """새로 도달 가능해진 예외 → head_sha 미확보 → enable 미시도 + terminal NETWORK_ERROR."""
+    from src.gate.native_automerge import (  # noqa: PLC0415
+        PATH_NO_ATTEMPT, enable_or_fallback_with_path,
+    )
+
+    p_enable, p_merge, p_node, p_state, enable_mock, merge_mock, _, _ = _patch_native(
+        enable_result=EnableAutoMergeResult(ENABLE_OK),
+        state_result=exc,
+    )
+    with p_enable, p_merge, p_node, p_state:
+        outcome = await enable_or_fallback_with_path(TOKEN, REPO, PR)
+
+    enable_mock.assert_not_awaited()
+    merge_mock.assert_not_awaited()
+    assert outcome.ok is False
+    assert outcome.reason == NETWORK_ERROR
+    assert outcome.head_sha == ""
+    assert outcome.path == PATH_NO_ATTEMPT
+
+
+async def test_fail_closed_does_not_swallow_unrelated_runtime_error():
+    """대조군 — 무관한 `RuntimeError` 는 fail-closed 로 삼키지 않고 전파한다."""
+    from src.gate.native_automerge import enable_or_fallback_with_path  # noqa: PLC0415
+
+    p_enable, p_merge, p_node, p_state, _, _, _, _ = _patch_native(
+        enable_result=EnableAutoMergeResult(ENABLE_OK),
+        state_result=RuntimeError("우리 코드 버그"),
+    )
+    with p_enable, p_merge, p_node, p_state:
+        with pytest.raises(RuntimeError, match="우리 코드 버그"):
+            await enable_or_fallback_with_path(TOKEN, REPO, PR)

@@ -8,7 +8,6 @@ import logging
 from datetime import datetime, timezone
 from html import escape
 
-import httpx
 from sqlalchemy.orm import Session
 from src.config import settings
 from src.database import WorkerSessionLocal as SessionLocal  # 독립 세션 열기용 — asyncio.gather 공유 세션 오염 방지
@@ -38,6 +37,7 @@ from src.notifier.telegram import telegram_post_message
 from src.repositories import merge_retry_repo
 from src.shared.log_safety import sanitize_for_log
 from src.shared.merge_metrics import log_merge_attempt
+from src.shared.http_client import HTTPX_SEND_ERRORS
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +154,7 @@ async def _run_auto_merge(  # pylint: disable=too-many-arguments,too-many-locals
                 config, github_token, repo_name, pr_number, score,
                 analysis_id=analysis_id, db=db, analyzed_sha=analyzed_sha,
             )
-        except (httpx.HTTPError, KeyError, RuntimeError, ValueError) as exc:
+        except (*HTTPX_SEND_ERRORS, KeyError, RuntimeError, ValueError) as exc:
             logger.error(
                 "Auto Merge 실패 (repo=%s, pr=%d): %s",
                 repo_name, pr_number, type(exc).__name__,
@@ -187,7 +187,7 @@ async def _run_auto_merge_retry(  # pylint: disable=too-many-arguments,too-many-
     # 1. Get PR state + head_sha
     try:
         _state, head_sha = await get_pr_mergeable_state(github_token, repo_name, pr_number)
-    except httpx.HTTPError as exc:
+    except HTTPX_SEND_ERRORS as exc:
         logger.warning("get_pr_mergeable_state 실패 (pr=%d): %s", pr_number, exc)
         head_sha = ""
 
@@ -338,7 +338,7 @@ async def _get_ci_status_safe(
     """
     try:
         required = await get_required_check_contexts(github_token, repo_name, base_ref)
-    except httpx.HTTPError:
+    except HTTPX_SEND_ERRORS:
         required = None  # None 이면 모든 체크 고려 / None means "consider all checks"
 
     # 방어층: BPR Required 미설정으로 빈 set 이 반환되면 None 으로 통일
@@ -353,7 +353,7 @@ async def _get_ci_status_safe(
             github_token, repo_name, commit_sha,
             required_contexts=required,
         )
-    except httpx.HTTPError:
+    except HTTPX_SEND_ERRORS:
         return "unknown"
 
 
@@ -552,7 +552,7 @@ async def _run_auto_merge_legacy(  # pylint: disable=too-many-arguments,too-many
                 )
     # Phase F QW4: RuntimeError/ValueError 도 포착해 알림 스킵 방지
     # Phase F QW4: also catch RuntimeError/ValueError to prevent notification skip.
-    except (httpx.HTTPError, KeyError, RuntimeError, ValueError) as exc:
+    except (*HTTPX_SEND_ERRORS, KeyError, RuntimeError, ValueError) as exc:
         logger.error(
             "Auto Merge 실패 (repo=%s, pr=%d): %s",
             repo_name, pr_number, type(exc).__name__,
@@ -663,7 +663,7 @@ async def _notify_merge_failure(
             chat_id,
             {"text": text, "parse_mode": "HTML"},
         )
-    except httpx.HTTPError as exc:
+    except HTTPX_SEND_ERRORS as exc:
         # 🔴 계층1 근본통제 (security.md) — raw exc 는 Telegram URL(bot<TOKEN>)을 담을 수 있어
         # type(exc).__name__ 만 로깅(형제 _notify_merge_deferred 와 동일). 계층2 필터는 backstop.
         # Layer-1 root control: raw exc can carry the bot-token URL — log the type only.

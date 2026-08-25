@@ -12,7 +12,6 @@ import logging
 from datetime import datetime, timedelta, timezone
 from html import escape
 
-import httpx
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -40,6 +39,7 @@ from src.shared.http_client import get_http_client
 from src.gate import _merge_attempt_states as _states
 from src.shared.merge_metrics import log_merge_attempt
 from src.shared.time_utils import to_naive_utc
+from src.shared.http_client import HTTPX_SEND_ERRORS
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +102,7 @@ async def process_pending_retries(
         _orig_tok = claim_tokens[row.id]
         try:
             await _process_single_retry(db, row, now, counts, claim_token=_orig_tok)
-        except (httpx.HTTPError, SQLAlchemyError) as exc:
+        except (*HTTPX_SEND_ERRORS, SQLAlchemyError) as exc:
             # 인프라 에러 — 클레임 해제, 짧은 백오프, attempts_count 미증가
             # Infra error — release claim, short backoff, do NOT bump attempts_count
             logger.warning(
@@ -457,7 +457,7 @@ async def _get_pr_data(
         r = await client.get(url, headers=github_api_headers(token))
         r.raise_for_status()
         return r.json()
-    except httpx.HTTPError:
+    except HTTPX_SEND_ERRORS:
         return None
 
 
@@ -481,7 +481,7 @@ async def _get_ci_status_safe(
     """
     try:
         required = await get_required_check_contexts(token, repo_full_name, base_ref)
-    except httpx.HTTPError:
+    except HTTPX_SEND_ERRORS:
         required = None
 
     # 방어층: BPR Required 미설정으로 빈 set 이 반환되면 None 으로 통일
@@ -497,7 +497,7 @@ async def _get_ci_status_safe(
             commit_sha,
             required_contexts=required,
         )
-    except httpx.HTTPError:
+    except HTTPX_SEND_ERRORS:
         return "unknown"
 
 
@@ -533,7 +533,7 @@ async def _notify_config_changed(
         await telegram_post_message(
             settings.telegram_bot_token, chat_id, {"text": msg, "parse_mode": "HTML"}
         )
-    except httpx.HTTPError as exc:
+    except HTTPX_SEND_ERRORS as exc:
         logger.warning("_notify_config_changed 전송 실패: %s", type(exc).__name__)
 
 
@@ -565,7 +565,7 @@ async def _notify_merge_succeeded(
         await telegram_post_message(
             settings.telegram_bot_token, chat_id, {"text": msg, "parse_mode": "HTML"}
         )
-    except httpx.HTTPError as exc:
+    except HTTPX_SEND_ERRORS as exc:
         logger.warning("_notify_merge_succeeded 전송 실패: %s", type(exc).__name__)
 
 
@@ -608,7 +608,7 @@ async def _notify_merge_terminal(
         await telegram_post_message(
             settings.telegram_bot_token, chat_id, {"text": msg, "parse_mode": "HTML"}
         )
-    except httpx.HTTPError as exc:
+    except HTTPX_SEND_ERRORS as exc:
         logger.warning("_notify_merge_terminal 전송 실패: %s", type(exc).__name__)
 
 

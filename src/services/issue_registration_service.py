@@ -5,13 +5,13 @@ import hashlib
 import logging
 from datetime import datetime, timezone
 
-import httpx
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.github_client.issues import create_issue, get_issue_state
 from src.models.issue_registration import IssueRegistration
 from src.repositories import issue_registration_repo
+from src.shared.http_client import HTTPX_SEND_ERRORS
 
 logger = logging.getLogger(__name__)
 
@@ -138,12 +138,12 @@ async def _sync_state_if_stale(
     try:
         state = await get_issue_state(github_token, repo_full_name, rec.github_issue_number)
         issue_registration_repo.update_state(db, record=rec, state=state)
-    except (httpx.HTTPError, KeyError, ValueError):
+    except (*HTTPX_SEND_ERRORS, KeyError, ValueError):
         # 동기화 실패 시 기존 상태 유지 — 사용자에게 오류 미노출.
-        # httpx.HTTPError(5xx/네트워크) 외에 GitHub 응답이 malformed 면 get_issue_state 의
+        # 전송 오류(5xx/네트워크/InvalidURL) 외에 GitHub 응답이 malformed 면 get_issue_state 의
         # resp.json()["state"] 가 KeyError/JSONDecodeError(ValueError) 를 던질 수 있어 함께 포착
         # (동기화 실패가 API 라우트 500 으로 전파되지 않도록 — silent fallback 의도 일관, 감사 P2).
-        # Keep existing state on sync failure — silent fallback. Besides httpx.HTTPError
+        # Keep existing state on sync failure — silent fallback. Besides transport errors
         # (5xx/network), a malformed GitHub response makes get_issue_state's
         # resp.json()["state"] raise KeyError/JSONDecodeError(ValueError); catch those too
         # so a sync failure never surfaces as a 500 from the API route.

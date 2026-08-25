@@ -4,11 +4,11 @@ Phase 3 PR-11 (사이클 84) — i18n: language 인자 + 3-layer fallback. Title
 Phase 3 PR-11 (Cycle 84) — i18n: language arg + 3-layer fallback. Title prefix English-fixed.
 """
 import logging
-import httpx
 from src.constants import GITHUB_API
 from src.github_client.helpers import github_api_headers
 from src.i18n.loader import get_text
 from src.shared.http_client import get_http_client
+from src.shared.http_client import HTTPX_SEND_ERRORS
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +117,7 @@ async def create_merge_failure_issue(  # pylint: disable=too-many-locals
         number = create_resp.json().get("number")
         logger.info("Auto-merge failure Issue 생성 완료 #%s (pr=%d)", number, pr_number)
         return number
-    except httpx.HTTPError:
+    except HTTPX_SEND_ERRORS:
         # Phase H PR-6A: logger.exception 으로 stack trace 보존
         logger.exception(
             "create_merge_failure_issue 실패 (%s, pr=%d)", repo_name, pr_number,

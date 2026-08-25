@@ -10,6 +10,7 @@ from src.gate import merge_reasons
 from src.github_client.helpers import github_api_headers
 from src.shared.http_client import get_http_client
 from src.shared.log_safety import sanitize_for_log
+from src.shared.http_client import HTTPX_SEND_ERRORS
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +131,7 @@ async def get_pr_base_ref(
         r = await client.get(url, headers=github_api_headers(github_token))
         r.raise_for_status()
         return r.json().get("base", {}).get("ref", fallback) or fallback
-    except httpx.HTTPError:
+    except HTTPX_SEND_ERRORS:
         # 네트워크 / HTTP 오류 시 fallback (이전 동작 유지)
         # Fall back on network/HTTP error (preserves prior behavior).
         return fallback
@@ -180,7 +181,7 @@ async def merge_pr(  # pylint: disable=too-many-locals
     for attempt in range(retry_limit):
         try:
             state, head_sha = await get_pr_mergeable_state(github_token, repo_full_name, pr_number)
-        except httpx.HTTPError as exc:
+        except HTTPX_SEND_ERRORS as exc:
             logger.warning("mergeable_state 조회 실패 (pr=%d): %s", pr_number, exc)
             state = "unknown"
             head_sha = ""
@@ -221,7 +222,7 @@ async def merge_pr(  # pylint: disable=too-many-locals
             repo_full_name, pr_number, exc.response.status_code, reason,
         )
         return (False, reason, head_sha)
-    except httpx.HTTPError as exc:
+    except HTTPX_SEND_ERRORS as exc:
         reason = f"{merge_reasons.NETWORK_ERROR}: {exc}"
         logger.warning(
             "PR Merge 실패 (repo=%s, pr=%d): %s",

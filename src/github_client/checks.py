@@ -12,6 +12,7 @@ from src.constants import GITHUB_API
 from src.github_client.helpers import repo_path
 from src.shared.http_client import get_http_client
 from src.shared.log_safety import sanitize_for_log
+from src.shared.http_client import HTTPX_SEND_ERRORS
 
 logger = logging.getLogger(__name__)
 
@@ -324,7 +325,7 @@ async def get_required_check_contexts(
         # HTTP 오류 분류 — 운영 진단을 위해 로그 레벨 분리
         # Classify HTTP error — separate log levels for ops diagnostics
         contexts = _classify_bpr_http_error(exc, repo_full_name, branch)
-    except httpx.HTTPError as exc:
+    except HTTPX_SEND_ERRORS as exc:
         # 네트워크/연결 오류 (DNS, timeout, ConnectError 등)
         # Network/connection error (DNS, timeout, ConnectError, etc.)
         logger.warning(

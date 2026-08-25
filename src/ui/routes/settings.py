@@ -6,7 +6,6 @@ from dataclasses import fields as dataclass_fields
 from typing import Annotated
 from urllib.parse import quote
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
@@ -39,6 +38,7 @@ from src.ui._helpers import (
     templates,
     webhook_base_url,
 )
+from src.shared.http_client import HTTPX_SEND_ERRORS
 
 router = APIRouter()
 
@@ -124,7 +124,7 @@ async def _detect_stale_webhook(
         # webhook_id 와 일치하는 훅 없음 → 배너 표시 불필요
         # No hook matching webhook_id — no banner needed
         return False
-    except (httpx.HTTPError, KeyError, ValueError) as exc:
+    except (*HTTPX_SEND_ERRORS, KeyError, ValueError) as exc:
         safe_repo_full_name = sanitize_for_log(repo_full_name)
         logger.debug("_detect_stale_webhook: API call failed for %s: %s", safe_repo_full_name, exc)
         return False
@@ -393,7 +393,7 @@ async def reinstall_webhook(
                 if GITHUB_WEBHOOK_PATH in hook_url:
                     await delete_webhook(token, repo_name, hook["id"])
                     logger.info("Deleted duplicate webhook id=%d url=%s", hook["id"], hook_url)
-        except (httpx.HTTPError, KeyError, ValueError, OSError) as exc:
+        except (*HTTPX_SEND_ERRORS, KeyError, ValueError, OSError) as exc:
             logger.warning("Webhook cleanup failed, proceeding with reinstall: %s", exc)
 
         # create_webhook 실패(빈 토큰·GitHub API 오류 등) 시 hook_fail 리다이렉트
@@ -401,7 +401,7 @@ async def reinstall_webhook(
         try:
             new_secret = secrets.token_hex(32)
             new_id = await create_webhook(token, repo_name, webhook_url, new_secret)
-        except (httpx.HTTPError, KeyError, ValueError, OSError) as exc:
+        except (*HTTPX_SEND_ERRORS, KeyError, ValueError, OSError) as exc:
             logger.warning("Webhook reinstall failed: %s", exc)
             # repo.full_name 사용 — DB 검증값으로 CodeQL py/url-redirection 차단
             # Use repo.full_name (DB-validated) to prevent CodeQL py/url-redirection
