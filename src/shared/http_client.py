@@ -14,32 +14,6 @@ FastAPI lifespan 에서 `init_http_client()` 로 초기화되고 `close_http_cli
 - **외부 untrusted webhook** (n8n/discord/slack/custom): `src/notifier/_http.py`
   의 `build_safe_client()` 사용 (SSRF 방어, `follow_redirects=False`, 매
   호출 신규)
-
-🔴 **이 환경에는 HTTP 라이브러리가 두 벌 있다** (#1501):
-
-- `httpx` — 이 리포가 직접 쓴다 (src/ 24개 모듈)
-- `httpx2` — `anthropic` / `openai` SDK 가 **내부적으로** 쓴다 (전이 의존, 직접 핀 아님)
-
-두 벌의 예외 클래스는 **이름만 같고 서로 다른 클래스다** (실측 11종 전부):
-`httpx.HTTPError is httpx2.HTTPError` → False. 따라서 `except httpx.HTTPError` 는
-httpx2 예외를 **구조적으로 못 잡는다.**
-
-지금은 무해하다 — SDK 가 전송 오류를 `anthropic.APIConnectionError` 등 자기 타입으로
-감싸고, SDK 호출부 4곳이 전부 `except Exception` 이라 좁은 `except httpx.*` 로 감싼
-SDK 호출은 0곳이다. **SDK 호출부의 broad except 를 좁힐 때 이 사실을 먼저 보라.**
-
-관련 함정 2가지:
-
-- `httpx2.alias_httpx()` 를 프로세스 내 어디서든 한 번 부르면 `import httpx` 가 전역에서
-  httpx2 로 해석돼 리포의 `except httpx.*` 절이 **조용히 무력화**된다. 호출 금지.
-- SDK 에 `http_client=` 를 넘길 때 비대칭 — anthropic 은 httpx 클라이언트를 TypeError 로
-  거부하지만 **openai 는 검사 없이 통과**한다. 어느 쪽에도 넘기지 않는다.
-
-Two HTTP libraries coexist: this repo uses `httpx`; the anthropic/openai SDKs use `httpx2`
-internally. Their exception classes share names but are distinct types, so
-`except httpx.HTTPError` cannot catch an httpx2 error. Harmless today because the SDKs wrap
-transport errors and every SDK call site catches `Exception` — check this before narrowing
-any of those. Never call `httpx2.alias_httpx()`, and never pass `http_client=` to the SDKs.
 """
 from __future__ import annotations
 
@@ -59,6 +33,13 @@ logger = logging.getLogger(__name__)
 #   좁은 catch 를 쓰는 지점이 3곳이라 여기서 한 번만 정의한다 — 같은 드리프트 재발 방지.
 # 7 of httpx's 28 exception classes sit OUTSIDE HTTPError (measured); catching only
 #   HTTPError lets them escape to the ASGI layer, where uvicorn logs a full traceback.
+# 🔴 **이 튜플을 anthropic/openai 호출부에 옮겨 붙이지 마라.** 그쪽은 `httpx` 가 아니라
+#   별개 패키지 `httpx2` 를 쓴다 — 두 벌의 예외는 이름만 같고 서로 다른 타입이다
+#   (공유 이름 28종 전부 `is` False, 실측). SDK 는 전송 오류를 자기 타입으로 감싸고
+#   호출부 4곳이 전부 `except Exception` 이라 지금은 무해하다. 좁히려면 먼저
+#   tests/unit/shared/test_httpx_dual_install_guard.py 의 docstring 을 읽어라 (#1501).
+# Do not copy this tuple onto an anthropic/openai call site: those use httpx2, whose
+#   exception classes are distinct types from httpx's despite sharing names.
 HTTPX_SEND_ERRORS = (
     httpx.HTTPError,
     httpx.InvalidURL,
