@@ -45,11 +45,17 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-import src.models  # noqa: F401  side-effect: populate Base.metadata
+import src.models
 from src.database import Base
-from src.models.insight_narrative_cache import InsightNarrativeCache  # noqa: F401
+from src.models.insight_narrative_cache import InsightNarrativeCache
 from src.models.repository import Repository
 from src.models.user import User
+
+# 🔴 side-effect import 를 튜플로 **참조**한다 — `# noqa: F401` 은 CodeQL
+#   py/unused-import 를 숨길 뿐이고, import 가 사라지면 조용히 깨진다.
+#   튜플 참조는 「쓰인다」로 인식되고 import 소실 시 NameError 로 시끄럽게 터진다.
+#   Tuple-reference instead of noqa: CodeQL sees it as used and a lost import fails loudly.
+_FK_TARGET_MODELS = (src.models, InsightNarrativeCache)
 
 _KPI = {
     "analysis_count": 2, "avg_score": 60, "grade": "D", "score_delta": None,
