@@ -229,111 +229,89 @@ async def test_exactly_at_the_cap_returns_instead_of_raising(pages):
     assert client.get.await_count == pages
 
 
-# ─── SSRF — 서버가 준 next URL 을 검증 없이 따라가지 않는다 ────────────────────
+# ─── SSRF — 서버가 준 URL 을 **아예 요청하지 않는다** ─────────────────────────
 #
 # 🔴 CodeQL `py/partial-ssrf` (alert #597) 이 잡은 실제 위험이다. `Link` 헤더의
-#    URL 은 **서버가 준 값**인데, 우리는 거기에 `Authorization: Bearer <토큰>` 을
-#    붙여 보낸다. 응답이 변조되거나 프록시가 끼면 **GitHub 토큰이 임의 호스트로
-#    나간다.**
+#    URL 은 **서버가 준 값**인데, 그것을 요청하면 `Authorization: Bearer <토큰>` 이
+#    함께 실린다. 응답이 변조되거나 프록시가 끼면 **토큰이 임의 호스트로 나간다.**
 #
-# 🔴 형제 `list_user_repos` 도 같은 패턴이지만 기존 alert 라 게이트를 안 탄다.
-#    형제의 결함을 베끼지 않는다 — 새로 쓰는 쪽은 검증한다.
+# 🔴 처음엔 origin 을 **검증**해 막으려 했다. CodeQL 은 그 비교를 sanitizer 로
+#    인식하지 않았고(재실행에도 red), 더 나은 답은 **taint 를 없애는 것**이었다:
+#    URL 은 우리가 만들고(`base` + 정수 `page`), 서버에게서는 「더 있는가」라는
+#    **불리언 신호만** 받는다. 검증할 대상 자체가 사라진다.
+#
+# 결과가 더 낫기도 하다 — 공격자가 준 URL 때문에 **작업이 실패하지 않는다.**
+# 그 URL 은 무시되고 페이지 순회는 정상으로 계속된다.
 
 
 @pytest.mark.asyncio
-async def test_next_url_on_a_foreign_host_is_rejected():
-    """🔴 next URL 이 GitHub API 호스트가 아니면 **따라가지 않는다**.
+@pytest.mark.parametrize("host", [
+    "evil.example.com",
+    "api.github.com.evil.test",   # 접미 서브도메인 — 접두사 비교였다면 통과했다
+    "notapi.github.com",
+])
+async def test_foreign_next_url_is_never_requested(host):
+    """🔴 적대적 next URL 이 와도 **그 호스트로 요청하지 않는다**.
 
-    따라가면 그 요청에 `Authorization` 헤더가 실려 토큰이 그 호스트로 나간다.
+    요청하면 그 요청에 GitHub 토큰이 실린다. 이제는 URL 을 읽지도 않으므로
+    호스트가 무엇이든 무관하다 — 우리는 우리 `base` 에 `page` 만 바꿔 요청한다.
     """
     client = AsyncMock()
     client.get = AsyncMock(side_effect=[
-        _page([{"id": 1}], next_url="https://evil.example.com/repos/o/r/hooks?page=2"),
-        _page([{"id": 2}]),
-    ])
-
-    with patch("src.github_client.repos.get_http_client", return_value=client):
-        with pytest.raises(ValueError, match="host"):
-            await list_webhooks("ghp_t", "owner/repo")
-
-    assert client.get.await_count == 1, (
-        "외부 호스트로 요청을 보냈다 — 그 요청에 GitHub 토큰이 실린다"
-    )
-
-
-@pytest.mark.asyncio
-async def test_next_url_on_the_github_host_is_followed():
-    """대조군 — 같은 호스트면 정상적으로 따라간다 (검증이 과잉이 되지 않는다)."""
-    from src.github_client.repos import GITHUB_API  # noqa: PLC0415
-
-    client = AsyncMock()
-    client.get = AsyncMock(side_effect=[
-        _page([{"id": 1}], next_url=f"{GITHUB_API}/repos/o/r/hooks?page=2"),
+        _page([{"id": 1}], next_url=f"https://{host}/repos/o/r/hooks?page=2"),
         _page([{"id": 2}]),
     ])
 
     with patch("src.github_client.repos.get_http_client", return_value=client):
         hooks = await list_webhooks("ghp_t", "owner/repo")
 
+    # 적대적 URL 은 무시되고 순회는 정상 진행 — 작업이 깨지지 않는다.
     assert [h["id"] for h in hooks] == [1, 2]
 
-
-@pytest.mark.asyncio
-async def test_scheme_downgrade_in_next_url_is_rejected():
-    """🔴 http 로 내려가는 next URL 도 거부한다 — 토큰이 평문으로 나간다."""
-    from src.github_client.repos import GITHUB_API  # noqa: PLC0415
-
-    downgraded = GITHUB_API.replace("https://", "http://", 1)
-    client = AsyncMock()
-    client.get = AsyncMock(return_value=_page(
-        [{"id": 1}], next_url=f"{downgraded}/repos/o/r/hooks?page=2"))
-
-    with patch("src.github_client.repos.get_http_client", return_value=client):
-        with pytest.raises(ValueError):
-            await list_webhooks("ghp_t", "owner/repo")
-
-    assert client.get.await_count == 1, "평문 http 로 토큰을 보냈다"
+    requested = [str(c.args[0]) for c in client.get.await_args_list]
+    assert all(host not in u for u in requested), (
+        f"적대적 호스트로 요청을 보냈다 — 그 요청에 토큰이 실린다: {requested}"
+    )
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("host", [
-    "api.github.com.evil.test",     # 접미 서브도메인 — startswith 였다면 통과했다
-    "evil.test",
-    "notapi.github.com",
-])
-async def test_origin_check_is_not_a_prefix_match(host):
-    """🔴 docstring 이 주장하는 것을 **테스트가 확인한다**.
+async def test_every_request_targets_our_own_base_url():
+    """🔴 모든 요청이 **우리가 만든 base** 를 향한다 — 서버 값은 URL 에 안 들어간다.
 
-    `_same_github_origin` docstring 은 「접두사 비교가 아니라 파싱해서 origin 을
-    비교한다」고 적었다. 주장만 있고 테스트가 없으면 그 문장이 거짓이 되는 날을
-    아무도 모른다 — 이 세션에서 반복해 고쳐온 형태다.
-
-    `https://api.github.com.evil.test/...` 는 `startswith("https://api.github.com")`
-    를 **통과한다**. 파싱 비교라야 막힌다.
-    """
-    client = AsyncMock()
-    client.get = AsyncMock(return_value=_page(
-        [{"id": 1}], next_url=f"https://{host}/repos/o/r/hooks?page=2"))
-
-    with patch("src.github_client.repos.get_http_client", return_value=client):
-        with pytest.raises(ValueError, match="host"):
-            await list_webhooks("ghp_t", "owner/repo")
-
-    assert client.get.await_count == 1, f"{host} 로 토큰이 실린 요청을 보냈다"
-
-
-def test_prefix_match_would_have_accepted_the_subdomain():
-    """계기 자기검증 — 위 공격이 접두사 비교로는 **실제로 통과**하는지 확인한다.
-
-    통과하지 않는다면 위 테스트가 막는 것이 없는 셈이고, docstring 의 경고도 공허하다.
+    이것이 CodeQL taint 를 없앤 근거다. 하나라도 서버 값이 섞이면 그 근거가 무너진다.
     """
     from src.constants import GITHUB_API  # noqa: PLC0415
 
-    attack = "https://api.github.com.evil.test/repos/o/r/hooks?page=2"
-    assert attack.startswith(GITHUB_API), (
-        "접두사 비교가 이 공격을 막는다 — docstring 의 경고 전제가 바뀌었다"
-    )
+    client = AsyncMock()
+    client.get = AsyncMock(side_effect=[
+        _page([{"id": 1}], next_url="https://evil.test/x?page=2"),
+        _page([{"id": 2}], next_url="https://evil.test/x?page=3"),
+        _page([{"id": 3}]),
+    ])
 
-    from src.github_client.repos import _same_github_origin  # noqa: PLC0415
+    with patch("src.github_client.repos.get_http_client", return_value=client):
+        await list_webhooks("ghp_t", "owner/repo")
 
-    assert not _same_github_origin(attack), "파싱 비교가 서브도메인 공격을 통과시킨다"
+    expected = f"{GITHUB_API}/repos/owner/repo/hooks"
+    for call in client.get.await_args_list:
+        assert str(call.args[0]) == expected, (
+            f"요청 URL 이 우리 base 가 아니다: {call.args[0]}"
+        )
+        assert call.kwargs["params"]["per_page"] == 100
+
+
+@pytest.mark.asyncio
+async def test_page_number_increments_on_our_side():
+    """페이지 번호는 **우리가** 센다 — 서버가 준 URL 의 page 값을 믿지 않는다."""
+    client = AsyncMock()
+    client.get = AsyncMock(side_effect=[
+        _page([{"id": 1}], next_url="https://evil.test/x?page=99"),
+        _page([{"id": 2}], next_url="https://evil.test/x?page=99"),
+        _page([{"id": 3}]),
+    ])
+
+    with patch("src.github_client.repos.get_http_client", return_value=client):
+        await list_webhooks("ghp_t", "owner/repo")
+
+    pages = [c.kwargs["params"]["page"] for c in client.get.await_args_list]
+    assert pages == [1, 2, 3], f"페이지 번호가 우리 쪽에서 증가하지 않는다: {pages}"

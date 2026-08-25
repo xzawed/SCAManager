@@ -2,7 +2,7 @@
 import base64
 import json
 import logging
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote
 
 
 from src.constants import GITHUB_API
@@ -89,22 +89,6 @@ async def create_webhook(token: str, repo_full_name: str, webhook_url: str, secr
     return resp.json()["id"]
 
 
-def _same_github_origin(candidate: str) -> bool:
-    """`candidate` 가 `GITHUB_API` 와 **같은 scheme+host+port** 인지.
-
-    🔴 왜 필요한가 — `Link` 헤더의 URL 은 **서버가 준 값**인데 우리는 거기에
-    `Authorization: Bearer <토큰>` 을 붙여 보낸다. 응답이 변조되거나 중간 프록시가
-    끼면 **GitHub 토큰이 임의 호스트로 나간다** (CodeQL `py/partial-ssrf`).
-
-    🔴 scheme 도 본다 — `http` 로 내려가면 토큰이 평문으로 나간다.
-    🔴 **접두사 비교가 아니라 파싱해서 origin 을 비교한다** — `startswith` 는
-    `https://api.github.com.evil.test/...` 를 통과시킨다.
-    Parse and compare the origin: a prefix test would accept `api.github.com.evil.test`.
-    """
-    want, got = urlsplit(GITHUB_API), urlsplit(candidate)
-    return (want.scheme, want.hostname, want.port) == (got.scheme, got.hostname, got.port)
-
-
 # 🔴 훅 페이지 순회 상한 — 실물 GitHub 은 next 를 반복하지 않지만 프록시·오설정·
 #   악의적 응답이 같은 URL 을 계속 주면 이 함수 하나가 워커를 묶는다.
 #   100개/페이지 × 20 = 2,000개로 어떤 실사용 리포보다 크다.
@@ -139,16 +123,22 @@ async def list_webhooks(token: str, repo_full_name: str) -> list[dict]:
     hooks past GitHub's default page size were invisible to both callers.
     """
     client = get_http_client()  # 싱글톤
+    base = f"{GITHUB_API}/repos/{_repo_path(repo_full_name)}/hooks"
     results: list[dict] = []
-    url: str | None = f"{GITHUB_API}/repos/{_repo_path(repo_full_name)}/hooks"
-    params: dict | None = {"per_page": 100}
-    # 🔴 종료 검사를 **루프 뒤**로 뺀다 (off-by-one). `if not url` 을 다음 순회
-    #   머리에 두면 마지막 순회 뒤에는 그 검사가 실행되지 않아, 정확히
-    #   `_MAX_WEBHOOK_PAGES` 페이지인 **멀쩡한** 리포가 예외를 맞는다(실측).
-    # Exit check after the loop: a head-of-next-iteration check never runs after the final
-    # trip, so a repo with exactly the cap number of pages raised spuriously.
-    for _ in range(_MAX_WEBHOOK_PAGES):
-        resp = await client.get(url, params=params, headers=_auth_headers(token))
+    for page_num in range(1, _MAX_WEBHOOK_PAGES + 1):
+        # 🔴 **서버가 준 URL 을 요청하지 않는다.** `Link` 헤더의 next URL 을 그대로
+        #   따라가면 그 요청에 `Authorization: Bearer <토큰>` 이 실리고, 응답이 변조되면
+        #   토큰이 임의 호스트로 나간다 (CodeQL `py/partial-ssrf` alert #597 — 실제 위험).
+        #   origin 을 검증해 봤지만 CodeQL 은 그 비교를 sanitizer 로 인식하지 않았고,
+        #   **더 나은 답은 taint 를 아예 없애는 것**이었다: URL 은 우리가 만들고
+        #   (`base` + 정수 `page`), 서버에게서는 「더 있는가」라는 **신호만** 받는다.
+        # Never request a server-supplied URL: build it ourselves and read only the
+        # has-more signal from the Link header. Removes the taint instead of sanitizing it.
+        resp = await client.get(
+            base,
+            params={"per_page": 100, "page": page_num},
+            headers=_auth_headers(token),
+        )
         resp.raise_for_status()
         page = resp.json()
         # 🔴 200 인데 본문이 list 가 아니면 **거부**한다.
@@ -162,16 +152,10 @@ async def list_webhooks(token: str, repo_full_name: str) -> list[dict]:
                 "목록을 신뢰할 수 없다"
             )
         results.extend(page)
-        url = resp.links.get("next", {}).get("url")
-        params = None  # 두 번째 요청부터 URL 에 파라미터가 포함된다
-        if not url:
+        # 다음 페이지 유무는 서버가 안다 — 그 **불리언**만 쓴다(URL 은 안 쓴다).
+        # Use only the boolean; never the URL.
+        if not resp.links.get("next"):
             return results
-        # 🔴 서버가 준 URL 을 검증 없이 따라가지 않는다 — 그 요청에 토큰이 실린다.
-        if not _same_github_origin(url):
-            raise ValueError(
-                "webhook next-page URL host mismatch - "
-                "서버가 준 URL 이 GitHub API origin 이 아니다(토큰 유출 위험)"
-            )
 
     # 🔴 상한에 걸리면 **던진다** - 잘린 목록을 완전한 것처럼 주면 안 된다.
     #   `reinstall_webhook` 은 반환값을 「전부」라고 믿고 정리한 뒤 완전 성공을 보고한다.
