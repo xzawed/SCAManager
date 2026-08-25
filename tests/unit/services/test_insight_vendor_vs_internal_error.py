@@ -230,3 +230,40 @@ async def test_success_path_is_unchanged(db, repo):
 
     assert result["status"] == "success"
     assert result["text"] == "좋은 리포다"
+
+
+@pytest.mark.asyncio
+async def test_non_sdk_exception_from_the_call_itself_is_internal_error(db, repo):
+    """🔴 Grok Q1 공백 — 호출 자체가 **SDK 밖 예외**를 내면 `internal_error` 다.
+
+    위 두 테스트는 파싱 단계만 덮는다. 판정은 「어느 단계인가」가 아니라 「`anthropic.
+    APIError` 하위인가」이므로, `messages.create` 가 `RuntimeError` 를 내는 경우도
+    우리 쪽으로 분류돼야 한다 — 이 축을 고정하지 않으면 판정식을
+    `단계 기준`으로 바꿔도 테스트가 안 잡는다.
+
+    이것이 옛 테스트가 `RuntimeError("network down")` 으로 **벤더 실패를 흉내 내며**
+    `api_error` 를 단언하던 자리다. 그 더블은 검사 대상인 구분 자체를 지웠다.
+    """
+    result = await _run(db, repo, side_effect=RuntimeError("우리 코드가 낸 오류"))
+
+    assert result["status"] == "internal_error", (
+        f"SDK 밖 예외가 벤더 실패로 분류된다: {result['status']!r}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_bare_anthropic_error_is_not_treated_as_vendor(db, repo):
+    """경계 — SDK 루트 `AnthropicError` 는 `APIError` 하위가 **아니다**.
+
+    `AnthropicError` 는 「SDK 가 낸 오류」일 뿐 벤더 HTTP 응답을 뜻하지 않는다.
+    판정식이 `anthropic.AnthropicError` 로 넓어지면 우리 쪽 오류가 벤더로 위장한다.
+    """
+    assert not issubclass(anthropic.AnthropicError, anthropic.APIError), (
+        "AnthropicError 가 APIError 하위가 됐다 — 판정 경계를 재검토하라"
+    )
+
+    result = await _run(db, repo, side_effect=anthropic.AnthropicError("SDK 내부 오류"))
+
+    assert result["status"] == "internal_error", (
+        f"루트 AnthropicError 가 벤더로 분류된다: {result['status']!r}"
+    )

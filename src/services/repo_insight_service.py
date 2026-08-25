@@ -352,9 +352,12 @@ def _record_narrative_error(
     db: Session, *, user_id: int | None, repo_id: int, days: int,
     language: str, error_type: str, now: datetime,
 ) -> None:
-    """user_id 가 있으면 내러티브 캐시에 에러 기록 (no_data/api_error 경로 공통).
+    """user_id 가 있으면 내러티브 캐시에 에러 기록 (no_data/api_error/internal_error 공통).
 
-    Record a narrative error in the cache when user_id is set (shared by no_data/api_error paths).
+    기록하는 것은 **예외 클래스명**(`error_type`)이지 반환 status 가 아니다 — #1458 의
+    벤더/우리코드 분류는 반환 dict 에만 있고 캐시 동작은 바뀌지 않는다.
+    Records the exception class name, not the returned status: the #1458 vendor/ours split
+    lives in the return dict only and does not change caching behaviour.
     """
     if user_id is None:
         return
@@ -511,7 +514,9 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
             user_id=user_id,
             **_tokens,
         )
-        logger.exception("repo_insight_narrative API call failed")
+        logger.exception(
+            "repo_insight_narrative failed (status=%s, exc=%s)", status, type(exc).__name__,
+        )
         _record_narrative_error(
             db, user_id=user_id, repo_id=repo_id, days=days,
             language=language, error_type=type(exc).__name__, now=_now,
