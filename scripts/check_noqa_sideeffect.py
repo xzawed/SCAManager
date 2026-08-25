@@ -172,10 +172,17 @@ def import_line_numbers(source):
         if not isinstance(node, (ast.Import, ast.ImportFrom)):
             continue
         start = node.lineno
+        end = node.end_lineno or start
         spans.add(start)
         # backslash 로 이어진 물리 줄까지 — flake8 은 그 줄의 noqa 도 적용한다.
+        # 🔴 `end_lineno` 로 **경계를 묶는다**. 안 묶으면 주석 안의 backslash
+        #   (`import os  # 뭔가 \`) 를 continuation 으로 착각해 **다음 문장**까지
+        #   먹는다 — 그 줄의 무관한 noqa 가 이 import 에 귀속돼 오탐이다(실측:
+        #   그 형태의 `end_lineno` 는 1인데 walk 는 2까지 갔다).
+        # Bounded by end_lineno: an unbounded walk mistakes a trailing backslash inside a
+        # comment for a continuation and swallows the NEXT statement's noqa.
         i = start
-        while 1 <= i <= len(lines) and lines[i - 1].rstrip().endswith("\\"):
+        while i < end and i <= len(lines) and lines[i - 1].rstrip().endswith("\\"):
             i += 1
             spans.add(i)
     return spans

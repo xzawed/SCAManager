@@ -416,3 +416,42 @@ def test_changed_files_query_disables_quotepath(monkeypatch):
     assert argv[argv.index("-c") + 1] == "core.quotepath=false", (
         f"`-c` 다음 인자가 설정값이 아니다 — git 이 무시한다. argv={argv}"
     )
+
+
+def test_comment_backslash_does_not_swallow_the_next_statement():
+    """🔴 과확장 방지 — 주석 안의 backslash 는 continuation 이 **아니다**.
+
+    `import os  # 뭔가 \` 는 문장이 그 줄에서 끝난다(`end_lineno == lineno`).
+    그런데 물리 줄만 보고 walk 하면 다음 줄까지 먹어, **무관한 문장**의 noqa 가
+    이 import 에 귀속된다 — 오탐이다.
+
+    실측(초판): 그 형태의 span 이 `[1, 2]` 였다. `end_lineno` 로 묶어 `[1]` 로 고쳤다.
+    (Grok 지적 → flake8/AST 로 재확인.)
+    """
+    backslash = chr(92)
+    src = (
+        "import os  # 뭔가 " + backslash + chr(10)
+        + "x = 1  # noqa: F401" + chr(10)
+    )
+    violations = find_violations("tests/unit/x.py", *_diff_and_source(src))
+    assert not violations, (
+        "주석 backslash 를 continuation 으로 착각해 다음 문장의 noqa 를 "
+        f"import 에 귀속시켰다(오탐): {violations}"
+    )
+
+
+def test_import_span_shapes_are_pinned():
+    """계기 자기검증 — 세 형태의 귀속 구간을 직접 고정한다.
+
+    `find_violations` 를 거치지 않고 구간 자체를 본다. 구간이 틀리면 위 단언들이
+    **다른 이유로** 통과할 수 있다.
+    """
+    from scripts.check_noqa_sideeffect import import_line_numbers  # noqa: PLC0415
+
+    backslash = chr(92)
+    assert import_line_numbers("import os  # 뭔가 " + backslash + chr(10) + "x = 1" + chr(10)) == {1}
+    assert import_line_numbers("import os, " + backslash + chr(10) + "    sys" + chr(10)) == {1, 2}
+    assert import_line_numbers(
+        "from src.models import (" + chr(10) + "    Y," + chr(10) + ")" + chr(10)
+    ) == {1}
+    assert import_line_numbers("import os" + chr(10)) == {1}
