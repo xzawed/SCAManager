@@ -494,3 +494,39 @@ def test_comment_body_keeps_line_only_form_without_file():
     })
     assert "old-record" in body
     assert "line 7" in body
+
+
+def test_comment_body_collapses_newline_in_file_path():
+    """🔴 경로의 개행이 목록 항목을 쪼개면 안 된다 — `escape_markdown` 은 개행을 안 다룬다(실측).
+
+    GitHub `files[].filename` 에는 사실상 없지만 이 값은 **저장된 JSON**에서도 온다.
+    """
+    from src.notifier.github_comment import _build_comment_from_result  # noqa: PLC0415
+
+    body = _build_comment_from_result({
+        "score": 82, "grade": "B",
+        "breakdown": {"code_quality": 28, "security": 20,
+                      "commit_message": 17, "ai_review": 15, "test_coverage": 2},
+        "issues": [{"tool": "pylint", "message": "x", "line": 1,
+                    "file": "src/foo\n- injected.py"}],
+    })
+    issue_lines = [ln for ln in body.splitlines() if ln.startswith("- **[")]
+    assert len(issue_lines) == 1, f"경로의 개행이 목록을 쪼갰다:\n{body}"
+    assert "injected" in issue_lines[0]
+
+
+def test_comment_body_ignores_non_string_file():
+    """`file` 이 문자열이 아니면 경로 자리에 찍지 않는다 — 진리값 검사의 함정."""
+    from src.notifier.github_comment import _build_comment_from_result  # noqa: PLC0415
+
+    def render(fv):
+        return _build_comment_from_result({
+            "score": 82, "grade": "B",
+            "breakdown": {"code_quality": 28, "security": 20,
+                          "commit_message": 17, "ai_review": 15, "test_coverage": 2},
+            "issues": [{"tool": "pylint", "message": "x", "line": 7, "file": fv}],
+        })
+
+    for bad in (42, True, ["a.py"], {"p": "a.py"}, "   "):
+        body = render(bad)
+        assert "(line 7)" in body, f"비문자열 file={bad!r} 이 경로로 찍혔다:\n{body}"

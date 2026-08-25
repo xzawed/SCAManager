@@ -185,11 +185,22 @@ def _static_issues_lines(result: dict, language: str = "en") -> list[str]:
         #   `[a](http://evil)` 같은 이름이 가능하다. 메시지만 이스케이프하고 파일명을
         #   날것으로 두면 같은 구멍이 열린다.
         # The filename is untrusted on the same axis as the message; escape it too.
-        where = issue.get("file")
+        # 🔴 `str` 인 것만 받는다 — 진리값 검사면 `42`/`True` 같은 비문자열이
+        #   경로 자리에 그대로 찍히고, `0`/`False` 는 조용히 레거시 형식으로 떨어진다.
+        #   Accept only a str: a truthiness check would print non-string values as a path.
+        raw_file = issue.get("file")
+        where = raw_file.strip() if isinstance(raw_file, str) else ""
+        # 🔴 개행 제거 — `escape_markdown` 은 개행을 다루지 않는다(실측).
+        #   경로에 개행 + 목록 마커가 들어오면 항목이 둘로 쪼개져 코멘트 레이아웃이 깨진다.
+        #   GitHub 의 `files[].filename` 에는 사실상 없지만, 이 값은 **저장된 JSON**에서도
+        #   오므로 렌더 직전에 한 줄로 접는다.
+        #   escape_markdown does not touch newlines; a path containing one would split the
+        #   list item. Collapse to a single line before escaping.
+        where = " ".join(where.split())
         # 구 레코드(`file` 키 없음)는 기존 `(line N)` 형식을 그대로 유지한다.
         # Legacy records without `file` keep the original `(line N)` form.
         loc = (
-            f"{escape_markdown(str(where))}:{issue.get('line', '?')}" if where
+            f"{escape_markdown(where)}:{issue.get('line', '?')}" if where
             else f"line {issue.get('line', '?')}"
         )
         lines.append(
