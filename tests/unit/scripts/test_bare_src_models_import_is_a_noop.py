@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import ast
 import pathlib
+import re
 
 _ROOT = pathlib.Path(__file__).resolve().parents[3]
 _TESTS = _ROOT / "tests"
@@ -121,10 +122,15 @@ def test_subprocess_confirms_the_bare_import_registers_nothing():
     import subprocess  # noqa: PLC0415
     import sys  # noqa: PLC0415
 
+    # 🔴 **센티널로 감싸 출력한다.** 첫 판은 마지막 줄을 int() 했는데, CI 는
+    #   `--cov=src`(ci.yml:503)로 돌아 coverage 의 sitecustomize/pth 가 자식 프로세스에
+    #   붙는다 — 접미 노이즈 한 줄이면 int() 가 터지고, 이 테스트가 **재려는 사실과
+    #   무관한 이유로** red 가 된다. 아래에서 coverage 환경변수도 함께 제거한다.
+    #   Sentinel-wrapped output: CI runs with --cov, whose child hooks can append noise.
     code = (
         "import src.models;"
         "from src.database import Base;"
-        "print(len(Base.metadata.tables))"
+        "print('<<TABLES:%d>>' % len(Base.metadata.tables))"
     )
     env = dict(os.environ)
     env.setdefault("DATABASE_URL", "sqlite:///:memory:")
@@ -134,13 +140,24 @@ def test_subprocess_confirms_the_bare_import_registers_nothing():
     env.setdefault("TELEGRAM_CHAT_ID", "-100123")
     env.setdefault("ANTHROPIC_API_KEY", "")
     env["PYTHONIOENCODING"] = "utf-8"
+    # coverage 가 자식에 붙지 않게 한다 — 이 테스트는 커버리지 대상이 아니다.
+    for k in ("COV_CORE_SOURCE", "COV_CORE_CONFIG", "COV_CORE_DATAFILE", "COVERAGE_PROCESS_START"):
+        env.pop(k, None)
 
     proc = subprocess.run(
         [sys.executable, "-c", code], cwd=_ROOT, env=env,
         capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
     )
-    assert proc.returncode == 0, f"서브프로세스 실패 — 계기 고장: {proc.stderr[-400:]}"
-    counted = int(proc.stdout.strip().splitlines()[-1])
+    assert proc.returncode == 0, (
+        "서브프로세스가 실패했다 — 이 테스트의 **계기**가 고장난 것이지 사실이 바뀐 것이 아니다. "
+        f"stdout={proc.stdout[-300:]!r} stderr={proc.stderr[-400:]!r}"
+    )
+    found = re.findall(r"<<TABLES:(\d+)>>", proc.stdout)
+    assert len(found) == 1, (
+        "센티널을 찾지 못했다 — 계기 고장(자식 출력 오염). "
+        f"stdout={proc.stdout[-300:]!r} stderr={proc.stderr[-400:]!r}"
+    )
+    counted = int(found[0])
     assert counted == 0, (
         f"새 인터프리터에서 `import src.models` 가 {counted}개 테이블을 등록했다 — "
         "정적 판정과 어긋난다"

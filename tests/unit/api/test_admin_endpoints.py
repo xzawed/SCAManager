@@ -7,11 +7,16 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-# 🔴 테이블 정의는 아래 `from src.main import app` 이 전이적으로 보장한다(실측: 12건).
-#   예전에는 `import src.models` 가 그 역할이라고 적혀 있었으나 그 패키지의
+# 🔴 이 파일이 쓰는 테이블은 아래 `from src.api.admin import _get_db` 가 이미
+#   등록한다 — 실측 4건(users · repositories · analyses · merge_attempts)이고
+#   그것이 tenant_inventory · operations_kpi 가 조회하는 전부다.
+#   `from src.main import app` 은 전이적으로 12건까지 늘리지만 여기 필요조건은 아니다.
+#   예전 주석은 `import src.models` 를 보장자로 지목했으나 그 패키지의
 #   `__init__.py` 는 비어 있어 **0건** 등록이다 (#1508).
-#   Table definitions come transitively from `src.main` (measured: 12); the bare
-#   `import src.models` registered none — its __init__.py is empty.
+#   🔴 `create_all` 은 빈 metadata 에서도 조용히 성공한다 — 등록이 깨지면
+#   tenants/operations 라우트만 500 으로 터지고 나머지는 초록으로 남는다.
+#   The tables these tests touch are registered by `src.api.admin` (measured: 4);
+#   note that create_all on empty metadata succeeds silently.
 from src.api.admin import _get_db as _api_get_db  # noqa: F401  pylint: disable=unused-import
 from src.api.admin import _get_worker_db as _api_get_worker_db  # noqa: F401  pylint: disable=unused-import
 from src.auth.session import CurrentUser, require_admin
