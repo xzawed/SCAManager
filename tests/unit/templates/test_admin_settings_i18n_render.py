@@ -296,6 +296,10 @@ def _settings_ctx(**overrides) -> dict:
         "notify_secrets_hidden": False,
         "hook_ok": False,
         "hook_fail": False,
+        # 웹훅 재설치 3분기 (#1504 R1) — CLI 훅 배너와 분리된 신호.
+        "webhook_ok": False,
+        "webhook_partial": False,
+        "webhook_fail": False,
         "saved": False,
         "save_error": False,
         "stale_form": False,
