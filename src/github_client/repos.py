@@ -2,7 +2,7 @@
 import base64
 import json
 import logging
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 
 from src.constants import GITHUB_API
@@ -89,9 +89,25 @@ async def create_webhook(token: str, repo_full_name: str, webhook_url: str, secr
     return resp.json()["id"]
 
 
-# 훅 페이지 순회 상한 — 실물 GitHub 은 next 를 반복하지 않지만 프록시·오설정·악의적
-# 응답이 같은 URL 을 계속 주면 이 함수 하나가 워커를 묶는다. 100개/페이지 × 20 = 2,000개로
-# 어떤 실사용 리포보다 크다.
+def _same_github_origin(candidate: str) -> bool:
+    """`candidate` 가 `GITHUB_API` 와 **같은 scheme+host+port** 인지.
+
+    🔴 왜 필요한가 — `Link` 헤더의 URL 은 **서버가 준 값**인데 우리는 거기에
+    `Authorization: Bearer <토큰>` 을 붙여 보낸다. 응답이 변조되거나 중간 프록시가
+    끼면 **GitHub 토큰이 임의 호스트로 나간다** (CodeQL `py/partial-ssrf`).
+
+    🔴 scheme 도 본다 — `http` 로 내려가면 토큰이 평문으로 나간다.
+    🔴 **접두사 비교가 아니라 파싱해서 origin 을 비교한다** — `startswith` 는
+    `https://api.github.com.evil.test/...` 를 통과시킨다.
+    Parse and compare the origin: a prefix test would accept `api.github.com.evil.test`.
+    """
+    want, got = urlsplit(GITHUB_API), urlsplit(candidate)
+    return (want.scheme, want.hostname, want.port) == (got.scheme, got.hostname, got.port)
+
+
+# 🔴 훅 페이지 순회 상한 — 실물 GitHub 은 next 를 반복하지 않지만 프록시·오설정·
+#   악의적 응답이 같은 URL 을 계속 주면 이 함수 하나가 워커를 묶는다.
+#   100개/페이지 × 20 = 2,000개로 어떤 실사용 리포보다 크다.
 # Page-walk ceiling: a misbehaving proxy repeating `next` would otherwise pin a worker.
 _MAX_WEBHOOK_PAGES = 20
 
@@ -150,6 +166,12 @@ async def list_webhooks(token: str, repo_full_name: str) -> list[dict]:
         params = None  # 두 번째 요청부터 URL 에 파라미터가 포함된다
         if not url:
             return results
+        # 🔴 서버가 준 URL 을 검증 없이 따라가지 않는다 — 그 요청에 토큰이 실린다.
+        if not _same_github_origin(url):
+            raise ValueError(
+                "webhook next-page URL host mismatch - "
+                "서버가 준 URL 이 GitHub API origin 이 아니다(토큰 유출 위험)"
+            )
 
     # 🔴 상한에 걸리면 **던진다** - 잘린 목록을 완전한 것처럼 주면 안 된다.
     #   `reinstall_webhook` 은 반환값을 「전부」라고 믿고 정리한 뒤 완전 성공을 보고한다.
