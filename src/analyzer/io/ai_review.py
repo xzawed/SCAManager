@@ -92,6 +92,17 @@ class AiReviewResult:  # pylint: disable=too-many-instance-attributes
     error_code: str | None = None             # body.error.details.error_code — 429 상한 판별
     error_request_id: str | None = None       # 불투명 ID — 400 축의 유일한 추적 수단
     error_retry_after: str | None = None      # retry-after 헤더 — 상한 429 에는 없다
+    # 🔴 위 넷만으로는 **이번 사고를 진단하지 못한다** (Grok 반박, 판정 USELESS).
+    # 400 케이스에서 vendor_type/error_code/retry_after 가 malformed 요청과 완전히
+    # 같고, request_id 는 원인이 아니라 지원 티켓 손잡이다. 400 축을 실제로 가르는
+    # 유일한 신호는 **문서화된 메시지 접두사**다.
+    # 🔴 메시지를 **읽되 저장하지 않는다** — 규칙은 「str(exc) 를 저장하지 마라」이지
+    # 「읽지 마라」가 아니다. 프로세스 안에서 접두사를 보고 **우리가 소유한 닫힌
+    # 어휘**의 라벨만 남긴다: spend_limit_org | spend_limit_workspace | None.
+    # 저장되는 값에 벤더 문장은 한 조각도 들어가지 않는다.
+    # The four fields above cannot diagnose the incident that motivated them; only the
+    # documented message prefix can. Read the message, store a closed-vocabulary label.
+    error_derived_cause: str | None = None
     # C22: diff 가 MAX_DIFF_CHARS 로 잘렸는지 — 잘린 부분 미검토로 점수가 인플레될 수 있어
     # auto-merge/auto-approve 차단 마커(ai_review_truncated)로 전파된다(static_analysis_incomplete 대칭).
     # C22: whether the diff was truncated at MAX_DIFF_CHARS — the unseen part may inflate the score,
@@ -424,6 +435,21 @@ def _parse_response(text: str) -> AiReviewResult:
 # 자유 텍스트가 통과하지 못하는 폭이다.
 # Longest measured value is 29 chars (`enforced_spend_limit_reached`); 200 leaves room for
 # vocabulary growth while excluding free text.
+# 🔴 문서화된 지출-한도 문구의 **접두사**. 400 축을 가르는 유일한 신호다
+# (https://platform.claude.com/docs/en/api/rate-limits — "Setting your own spend limit").
+# 🔴 **접두사**이지 부분 문자열이 아니다. 오류 본문은 요청 내용을 되비추므로,
+#   부분 문자열이면 사용자가 diff 에 이 문장을 넣는 것만으로 라벨을 조작할 수 있다.
+# 🔴 긴 것부터 검사한다 — workspace 문구가 org 문구를 포함하는 형태라
+#   순서를 바꾸면 워크스페이스 한도가 org 로 오분류된다.
+# Prefix (not substring): error bodies echo request content, so a substring test would let a
+# user forge the label from their own diff. Longest-first: the workspace phrase contains the
+# org phrase as a prefix.
+_SPEND_LIMIT_PREFIXES = (
+    ("You have reached your specified workspace API usage limits", "spend_limit_workspace"),
+    ("You have reached your specified API usage limits", "spend_limit_org"),
+)
+
+
 _VENDOR_FIELD_MAX_CHARS = 200
 
 
@@ -443,6 +469,7 @@ def _vendor_error_fields(exc: Exception) -> dict[str, str | None]:
     empty: dict[str, str | None] = {
         "error_vendor_type": None, "error_code": None,
         "error_request_id": None, "error_retry_after": None,
+        "error_derived_cause": None,
     }
     if not isinstance(exc, anthropic.APIStatusError):
         return empty
@@ -466,11 +493,24 @@ def _vendor_error_fields(exc: Exception) -> dict[str, str | None]:
             return None
         return value if len(value) <= _VENDOR_FIELD_MAX_CHARS else None
 
+    # 🔴 메시지는 **여기서만** 읽고 밖으로 내보내지 않는다 — 접두사 판정에만 쓴다.
+    #   나가는 것은 아래 닫힌 어휘의 라벨뿐이다.
+    # The message is read here and never leaves: only the closed-vocabulary label does.
+    message = err.get("message")
+    derived = None
+    if isinstance(message, str):
+        stripped = message.lstrip()
+        for prefix, label in _SPEND_LIMIT_PREFIXES:
+            if stripped.startswith(prefix):
+                derived = label
+                break
+
     return {
         "error_vendor_type": _str_or_none(err.get("type")),
         "error_code": _str_or_none(details.get("error_code")),
         "error_request_id": _str_or_none(getattr(exc, "request_id", None)),
         "error_retry_after": _str_or_none(exc.response.headers.get("retry-after")),
+        "error_derived_cause": derived,
     }
 
 
@@ -483,6 +523,7 @@ def _default_result(
     error_code: str | None = None,
     error_request_id: str | None = None,
     error_retry_after: str | None = None,
+    error_derived_cause: str | None = None,
 ) -> AiReviewResult:
     """API key 없음, 빈 diff, 또는 오류 시 반환하는 중립적 기본값.
 
@@ -509,4 +550,5 @@ def _default_result(
         error_code=error_code,
         error_request_id=error_request_id,
         error_retry_after=error_retry_after,
+        error_derived_cause=error_derived_cause,
     )

@@ -53,6 +53,7 @@ def _make_ai_review() -> SimpleNamespace:
         error_code=None,
         error_request_id=None,
         error_retry_after=None,
+        error_derived_cause=None,
         summary="ok",
         suggestions=[],
         commit_message_feedback="commit ok",

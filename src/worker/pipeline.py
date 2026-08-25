@@ -103,6 +103,13 @@ def build_analysis_result_dict(
         "ai_review_error_code": ai_review.error_code,
         "ai_review_error_request_id": ai_review.error_request_id,
         "ai_review_error_retry_after": ai_review.error_retry_after,
+        # 🔴 400 축을 실제로 가르는 유일한 신호 — 문서화된 메시지 접두사에서 파생한
+        #   **우리 소유 닫힌 어휘** 라벨(spend_limit_org | spend_limit_workspace).
+        #   메시지 자체는 저장하지 않는다. 위 네 키만으로는 이번 사고를 진단하지
+        #   못한다는 Grok 반박(USELESS)에 대한 응답이다.
+        # Closed-vocabulary label derived from the documented message prefix; the only
+        # signal that separates an account spend limit from a malformed 400.
+        "ai_review_error_derived_cause": ai_review.error_derived_cause,
         # 🔴 정적분석 미커버 언어 — **차단 마커가 아니다**(가시화 전용, 사용자 결정).
         # 지원 분석기가 등록조차 안 된 언어(lua·perl·haskell·r 등 21종)는 정적 45/45 만점을 받는데
         # 그건 "깨끗함" 이 아니라 "검사 안 함" 이다. 게이트는 건드리지 않고 사람에게만 알린다.

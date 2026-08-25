@@ -77,6 +77,10 @@ def test_result_dict_aggregates_uncovered_languages():
     ai = SimpleNamespace(
         status="success", truncated=False, summary="", suggestions=[],
         error_type=None, error_status_code=None,
+        # 벤더 구조화 오류 필드 (#1506) — 실패 경로에서만 값이 찬다.
+        error_vendor_type=None, error_code=None,
+        error_request_id=None, error_retry_after=None,
+        error_derived_cause=None,
         commit_message_feedback="", code_quality_feedback="", security_feedback="",
         direction_feedback="", test_feedback="", file_feedbacks=[],
     )

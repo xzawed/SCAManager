@@ -447,6 +447,10 @@ def test_real_projection_output_renders_the_path(env: jinja2.Environment):
     result = build_analysis_result_dict(
         ai_review=SimpleNamespace(
             status="success", error_type=None, error_status_code=None, summary="ok",
+            # 벤더 구조화 오류 필드 (#1506).
+            error_vendor_type=None, error_code=None,
+            error_request_id=None, error_retry_after=None,
+            error_derived_cause=None,
             suggestions=[], commit_message_feedback="", code_quality_feedback="",
             security_feedback="", direction_feedback="", test_feedback="",
             file_feedbacks=[], truncated=False,

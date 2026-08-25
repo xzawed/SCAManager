@@ -269,6 +269,7 @@ def test_pipeline_projects_the_vendor_fields_into_the_result_dict():
         "ai_review_error_code",
         "ai_review_error_request_id",
         "ai_review_error_retry_after",
+        "ai_review_error_derived_cause",
     }
     missing = expected - keys
     assert not missing, (
@@ -308,3 +309,109 @@ async def test_absurdly_long_vendor_values_are_bounded():
             f"{name} 이 상한 없이 저장된다 — {len(value)}자. "
             "이 값은 analyses.result 를 타고 대시보드·알림으로 흐른다"
         )
+
+
+# ─── 400 축을 실제로 가르는 유일한 신호 — 문서화된 메시지 **접두사** ──────────
+#
+# 🔴 Grok 반박(session 01a03971)이 옳았다. 위 네 필드만으로는 이번 사고를
+#    **진단하지 못한다** — 400 케이스에서 셋이 malformed 요청과 완전히 같고,
+#    `request_id` 는 원인이 아니라 지원 티켓 손잡이다. 판정: USELESS.
+#
+# 그 반박이 가리키는 곳은 하나다: **메시지 접두사**. 공식 문서가 문구를 못박고 있다.
+#
+#   조직 한도  : "You have reached your specified API usage limits"
+#   워크스페이스: "You have reached your specified workspace API usage limits"
+#
+# 🔴 **메시지를 읽되 저장하지 않는다.** 규칙은 「`str(exc)` 를 저장하지 마라」이지
+#    「읽지 마라」가 아니다. 프로세스 안에서 접두사를 보고 **우리가 소유한 닫힌
+#    어휘**의 라벨만 남긴다 — 저장되는 값에는 벤더 문장이 한 조각도 안 들어간다.
+#
+# 🔴 이것은 산문 판정이라 **문구가 바뀌면 조용히 못 잡는다**. 그때의 결과는
+#    「오늘과 같음」(라벨 None)이지 더 나쁘지 않다. 반대 방향(위양성)은 malformed
+#    메시지가 저 문장으로 **시작**해야 하는데, 그쪽은 `messages.0.content: …` 로
+#    시작한다(실측). 그래서 접두사이지 부분 문자열이 아니다.
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("message,expected", [
+    ("You have reached your specified API usage limits. Access resumes 2026-09-01.",
+     "spend_limit_org"),
+    ("You have reached your specified workspace API usage limits. ...",
+     "spend_limit_workspace"),
+])
+async def test_documented_spend_limit_prefix_yields_a_closed_label(message, expected):
+    """🔴 이번 사고를 실제로 진단했을 신호 — 문서화된 접두사 → 닫힌 라벨."""
+    exc = _vendor_error(
+        anthropic.BadRequestError, 400,
+        {"type": "error",
+         "error": {"type": "invalid_request_error", "message": message},
+         "request_id": "req_limit"},
+    )
+    result = await _run(exc)
+
+    assert result.error_derived_cause == expected, (
+        f"문서화된 지출 한도 문구를 못 알아봤다 — 이 사고가 또 5일 걸린다: "
+        f"{result.error_derived_cause!r}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_malformed_request_message_gets_no_label():
+    """🔴 대조군 — 진짜 malformed 400 에는 라벨이 붙지 않는다.
+
+    위양성이 나면 「계정 문제」로 오도해 **우리 버그를 사용자 탓으로** 돌린다.
+    그쪽이 미탐보다 나쁘다.
+    """
+    exc = _vendor_error(
+        anthropic.BadRequestError, 400,
+        {"type": "error",
+         "error": {"type": "invalid_request_error",
+                   "message": "messages.0.content.1: unexpected field `foo`"},
+         "request_id": "req_bad"},
+    )
+    result = await _run(exc)
+
+    assert result.error_derived_cause is None, (
+        f"malformed 요청에 계정-상태 라벨이 붙었다: {result.error_derived_cause!r}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_prefix_only_never_substring():
+    """🔴 **접두사**이지 부분 문자열이 아니다 — 문장 중간의 같은 문구는 무시한다.
+
+    오류 본문은 요청 내용을 되비춘다. 부분 문자열 매칭이면 사용자의 diff 에 그
+    문장이 들어 있는 것만으로 라벨이 붙는다 — 사용자가 라벨을 조작할 수 있게 된다.
+    """
+    exc = _vendor_error(
+        anthropic.BadRequestError, 400,
+        {"type": "error",
+         "error": {"type": "invalid_request_error",
+                   "message": "messages.0.content: You have reached your specified API usage limits"},
+         "request_id": "req_inject"},
+    )
+    result = await _run(exc)
+
+    assert result.error_derived_cause is None, (
+        "문장 **중간**의 문구로 라벨이 붙었다 — 사용자 diff 로 조작 가능해진다"
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_label_vocabulary_is_closed_and_the_message_is_not_stored():
+    """🔴 라벨은 **우리가 소유한 닫힌 어휘**이고 벤더 문장은 저장되지 않는다."""
+    tail = "SECRET_DIFF_TAIL_zzz"
+    exc = _vendor_error(
+        anthropic.BadRequestError, 400,
+        {"type": "error",
+         "error": {"type": "invalid_request_error",
+                   "message": f"You have reached your specified API usage limits. {tail}"},
+         "request_id": "req_x"},
+    )
+    result = await _run(exc)
+
+    assert result.error_derived_cause in {"spend_limit_org", "spend_limit_workspace"}
+    assert tail not in str(result.error_derived_cause), "벤더 문장이 라벨에 섞였다"
+    for name in ("error_type", "error_vendor_type", "error_code",
+                 "error_request_id", "error_retry_after"):
+        assert tail not in str(getattr(result, name)), f"{name} 에 메시지가 샜다"
