@@ -10,6 +10,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import anthropic
+import httpx
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -347,11 +349,21 @@ class TestRepoInsightNarrative:
 
     @pytest.mark.asyncio
     async def test_api_error_returns_api_error_status(self, db, repo):
-        """API 예외 → api_error."""
+        """벤더 예외 → api_error.
+
+        🔴 예전에는 `RuntimeError("network down")` 으로 「API 예외」를 흉내 냈다.
+        그 더블은 **벤더 실패와 우리 코드 버그의 차이 자체를 지운다** — 진짜 네트워크
+        실패는 `anthropic.APIConnectionError` 이고, 그것이 `anthropic.APIError` 하위라는
+        사실만이 이 분류의 근거다(#1458). 실물 예외로 바꾼다.
+        The old RuntimeError double erased the very distinction under test.
+        """
         from src.services.repo_insight_service import repo_insight_narrative
 
         mock_client = AsyncMock()
-        mock_client.messages.create = AsyncMock(side_effect=RuntimeError("network down"))
+        mock_client.messages.create = AsyncMock(side_effect=anthropic.APIConnectionError(
+            message="network down",
+            request=httpx.Request("POST", "https://api.anthropic.com/v1/messages"),
+        ))
 
         with patch("src.services.repo_insight_service.settings") as s, \
              patch("src.services.repo_insight_service.anthropic.AsyncAnthropic", return_value=mock_client):
