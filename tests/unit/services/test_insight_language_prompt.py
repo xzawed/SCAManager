@@ -12,7 +12,6 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-import src.models  # noqa: F401  side-effect: populate Base.metadata
 from src.database import Base
 from src.models.repository import Repository
 from src.models.user import User

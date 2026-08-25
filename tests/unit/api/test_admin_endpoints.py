@@ -7,9 +7,11 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-# 모든 ORM 모델 import — Base.metadata 에 테이블 정의 보장 (in-memory create_all 페어)
-# Import all ORM models — guarantee Base.metadata table definitions for in-memory create_all
-import src.models  # noqa: F401  pylint: disable=unused-import  # side-effect import
+# 🔴 테이블 정의는 아래 `from src.main import app` 이 전이적으로 보장한다(실측: 12건).
+#   예전에는 `import src.models` 가 그 역할이라고 적혀 있었으나 그 패키지의
+#   `__init__.py` 는 비어 있어 **0건** 등록이다 (#1508).
+#   Table definitions come transitively from `src.main` (measured: 12); the bare
+#   `import src.models` registered none — its __init__.py is empty.
 from src.api.admin import _get_db as _api_get_db  # noqa: F401  pylint: disable=unused-import
 from src.api.admin import _get_worker_db as _api_get_worker_db  # noqa: F401  pylint: disable=unused-import
 from src.auth.session import CurrentUser, require_admin
