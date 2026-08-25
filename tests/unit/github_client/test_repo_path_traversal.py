@@ -34,7 +34,7 @@ import httpx
 import pytest
 
 from src.constants import GITHUB_API
-from src.github_client.helpers import repo_path
+from src.github_client.helpers import REPO_FULL_NAME_RE, repo_path
 
 
 def _final_path(full_name: str) -> str:
@@ -184,3 +184,57 @@ def test_the_pattern_has_no_unbounded_quantifier():
         assert quant not in src, (
             f"패턴에 무한 수량자 {quant!r} 가 있다 — polynomial-redos 재발: {src}"
         )
+
+
+# ─── 세그먼트 검사에 **실제로 도달하는** 입력 ─────────────────────────────────
+#
+# 🔴 화이트리스트가 앞에 생기면서 이 파일의 traversal 테스트 입력이 **하나도**
+# 세그먼트 검사에 도달하지 않게 됐다(실측). 전부 슬래시 개수나 `%` 때문에
+# 화이트리스트에서 먼저 걸린다:
+#
+#   '../../../user/repos'  -> 화이트리스트 거부 (슬래시 3개)
+#   'owner/%2e%2e/admin'   -> 화이트리스트 거부 (`%`, 슬래시 2개)
+#   'owner/..'             -> 화이트리스트 **통과** ← 여기만 세그먼트 검사로 간다
+#
+# 그 결과 세그먼트 검사를 통째로 지워도 이 파일 18건이 전부 초록이었다(실측).
+# 에러 메시지가 둘 다 "repo path ..." 라 `match="path"` 가 양쪽을 다 받은 탓이다.
+#
+# 아래는 화이트리스트를 통과하는 입력만 쓰고, `match="traversal"` 로 **어느
+# 가드가 발화했는지**까지 고정한다.
+#
+# The whitelist now short-circuits every previous traversal fixture; these are the
+# only inputs that still reach the dot-segment guard.
+
+
+@pytest.mark.parametrize("passes_whitelist,reached", [
+    ("owner/..", "/repos/hooks"),
+    ("owner/.", "/repos/owner/hooks"),
+    ("../repo", "/repo/hooks"),
+])
+def test_dot_segments_that_pass_the_whitelist_are_still_rejected(passes_whitelist, reached):
+    """🔴 화이트리스트를 통과하고도 경로를 벗어나는 입력을 세그먼트 검사가 잡는다.
+
+    막지 않으면 실제로 `{reached}` 로 나간다(아래 대조군이 그것을 실측한다).
+    `match="traversal"` 이라 화이트리스트가 대신 잡아주는 것으로는 통과하지 못한다.
+    """
+    assert REPO_FULL_NAME_RE.fullmatch(passes_whitelist), (
+        f"이 입력이 화이트리스트에서 걸리면 세그먼트 검사를 재는 게 아니다: {passes_whitelist!r}"
+    )
+    with pytest.raises(ValueError, match="traversal"):
+        repo_path(passes_whitelist)
+
+
+@pytest.mark.parametrize("passes_whitelist,reached", [
+    ("owner/..", "/repos/hooks"),
+    ("owner/.", "/repos/owner/hooks"),
+    ("../repo", "/repo/hooks"),
+])
+def test_those_inputs_really_escape_when_unguarded(passes_whitelist, reached):
+    """🔴 계기 자기검증 — 위 입력이 정말 다른 엔드포인트로 가는지 직접 잰다.
+
+    가지 않는다면 위 테스트는 **허구를 지키는** 것이 된다.
+    """
+    url = f"{GITHUB_API}/repos/{passes_whitelist}/hooks"
+    assert httpx.Request("GET", url).url.path == reached, (
+        f"전제가 바뀌었다 — {passes_whitelist!r} 가 {reached} 로 가지 않는다"
+    )
