@@ -273,12 +273,16 @@ def test_the_double_carries_every_error_field_the_real_result_has():
     The double ages separately from the real dataclass; direct attribute access plus this
     guard keeps a rename loud instead of silently emitting None.
     """
-    import dataclasses  # noqa: PLC0415
+    # 🔴 `from dataclasses import fields` 형식으로 통일 — 이 파일 16행이 이미
+    #   `from dataclasses import dataclass, field` 다. `import dataclasses` 를 섞으면
+    #   CodeQL py/import-and-import-from(이중 import)에 걸린다 (check_dual_import 지적).
+    # Match the file's existing from-import form; mixing both trips py/import-and-import-from.
+    from dataclasses import fields as dc_fields  # noqa: PLC0415
 
     from src.analyzer.io.ai_review import AiReviewResult  # noqa: PLC0415
 
     real_error_fields = {
-        f.name for f in dataclasses.fields(AiReviewResult) if f.name.startswith("error_")
+        f.name for f in dc_fields(AiReviewResult) if f.name.startswith("error_")
     }
     assert real_error_fields, "실물에 error_* 필드가 없다 — 스캐너 점검 필요"
 
