@@ -43,7 +43,11 @@ def _attribute_context(line: str, pos: int) -> str:
     i = 0
     while i < len(head):
         ch = head[i]
-        if ch in (_DQ, _SQ) and i > 0 and head[i - 1] == "=":
+        # `=` 와 따옴표 사이의 공백을 허용한다 — `attr = "..."` 도 유효한 HTML 이고,
+        # 공백을 안 봐주면 그 형태가 검사망을 빠져나간다(Grok 리뷰 지적).
+        # Allow whitespace between `=` and the quote; HTML permits it and skipping it
+        # would let `attr = "{{ x | tojson }}"` evade this scan.
+        if ch in (_DQ, _SQ) and head[:i].rstrip().endswith("="):
             close = head.find(ch, i + 1)
             if close < 0:
                 open_kind = ch
@@ -68,6 +72,9 @@ def _attribute_context(line: str, pos: int) -> str:
         ("  var v = {{ y | tojson }};", "bare"),
         ('  <a href="/x" data-y="{{ z | tojson }}">', "double"),
         ('  <a href="/x">{{ z | tojson }}</a>', "bare"),
+        # `=` 와 따옴표 사이 공백 — 유효한 HTML 이고 놓치면 검사망을 빠져나간다.
+        ('  data-x = "{{ y | tojson }}"', "double"),
+        ("  data-x = '{{ y | tojson }}'", "single"),
     ],
 )
 def test_attribute_context_detector(line, expected):
@@ -94,6 +101,22 @@ def test_tojson_sites_are_found():
     """계기 자기검증 — 한 건도 못 찾으면 아래 단언이 공허하다."""
     sites = _tojson_sites()
     assert len(sites) >= 20, f"tojson 출현을 {len(sites)}건만 찾았다 — 스캐너 점검 필요"
+
+
+def test_json_carrying_attributes_still_exist():
+    """🔴 JSON 을 싣는 속성이 **사라져도** 위 단언은 초록이다 — 존재 자체를 못박는다.
+
+    `len(sites) >= 20` 은 다른 곳의 `tojson` 으로 충족되므로, 이 4곳이 통째로
+    삭제돼도 알아채지 못한다(Grok 리뷰 지적).
+    """
+    detail = (_TEMPLATE_DIR / "analysis_detail.html").read_text(encoding="utf-8")
+    settings = (_TEMPLATE_DIR / "settings.html").read_text(encoding="utf-8")
+
+    for attr in ("data-ai-suggestions", "data-static-issues"):
+        assert f"{attr}={_SQ}" in detail, f"{attr} 가 홑따옴표 속성으로 존재하지 않는다"
+    assert settings.count(f"onsubmit={_SQ}return confirm(") >= 2, (
+        "settings 의 confirm onsubmit 2곳이 홑따옴표로 존재하지 않는다"
+    )
 
 
 def test_no_tojson_inside_double_quoted_attribute():
