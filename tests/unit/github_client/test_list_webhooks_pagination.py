@@ -129,9 +129,10 @@ async def test_first_request_asks_for_the_largest_page():
     with patch("src.github_client.repos.get_http_client", return_value=client):
         await list_webhooks("ghp_t", "owner/repo")
 
-    url = str(client.get.await_args.args[0])
-    assert "per_page=100" in url, (
-        f"첫 요청이 최대 페이지 크기를 요청하지 않는다 — 왕복이 늘어난다: {url}"
+    _, kwargs = client.get.await_args
+    params = kwargs.get("params") or {}
+    assert params.get("per_page") == 100, (
+        f"첫 요청이 최대 페이지 크기를 요청하지 않는다 — 왕복이 늘어난다: {params}"
     )
 
 
@@ -293,11 +294,10 @@ async def test_every_request_targets_our_own_base_url():
 
     expected = f"{GITHUB_API}/repos/owner/repo/hooks"
     for call in client.get.await_args_list:
-        url = str(call.args[0])
-        assert url.startswith(expected), (
-            f"요청 URL 이 우리 base 가 아니다: {url}"
+        assert str(call.args[0]) == expected, (
+            f"요청 URL 이 우리 base 가 아니다: {call.args[0]}"
         )
-        assert "per_page=100" in url
+        assert call.kwargs["params"]["per_page"] == 100
 
 
 @pytest.mark.asyncio
@@ -313,10 +313,5 @@ async def test_page_number_increments_on_our_side():
     with patch("src.github_client.repos.get_http_client", return_value=client):
         await list_webhooks("ghp_t", "owner/repo")
 
-    import re as _re  # noqa: PLC0415
-
-    pages = [
-        int(_re.search(r"[?&]page=(\d+)", str(c.args[0])).group(1))
-        for c in client.get.await_args_list
-    ]
+    pages = [c.kwargs["params"]["page"] for c in client.get.await_args_list]
     assert pages == [1, 2, 3], f"페이지 번호가 우리 쪽에서 증가하지 않는다: {pages}"

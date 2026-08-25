@@ -97,3 +97,51 @@ def test_encoded_traversal_is_rejected_too():
     for encoded in ("owner/%2e%2e/admin", "owner/%2E%2E/admin"):
         with pytest.raises(ValueError, match="path"):
             repo_path(encoded)
+
+
+# ─── 화이트리스트 검증 ───────────────────────────────────────────────────────
+#
+# 🔴 `..` 세그먼트만 막는 것은 **블랙리스트**다. 실측으로 확인한 CodeQL
+# `py/partial-ssrf` 는 이 형태를 sanitizer 로 인정하지 않는다 — 인정하는 것은
+# `re.match`/`re.fullmatch` 가드와 `str.isalnum()` 계열뿐이다
+# (`ServerSideRequestForgeryCustomizations.qll::stringRestriction`, 실측).
+#
+# 게이트를 통과시키려고 넣는 것이 아니라, 화이트리스트가 실제로 더 강하기
+# 때문에 넣는다 — 블랙리스트는 다음 우회 문자를 매번 쫓아가야 한다.
+#
+# Whitelist validation: GitHub owner/repo names are `[A-Za-z0-9._-]+`.
+
+
+@pytest.mark.parametrize("bad", [
+    "owner/re po",          # 공백
+    "owner/repo?x=1",       # 쿼리 문자 — URL 구조를 바꾼다
+    "owner/repo#frag",      # fragment
+    "owner/repo/extra",     # 슬래시 2개 — owner/repo 형태가 아니다
+    "owner",                # 슬래시 없음
+    "owner/re%2Fpo",        # 인코딩된 슬래시
+    "owner/repo@host",      # authority 처럼 보이는 문자
+    "",                     # 빈 문자열
+])
+def test_names_outside_the_whitelist_are_rejected(bad):
+    """🔴 `owner/repo` 화이트리스트 밖의 이름은 전부 거부한다."""
+    with pytest.raises(ValueError):
+        repo_path(bad)
+
+
+def test_whitelist_uses_a_modeled_guard():
+    """🔴 검증이 `re.fullmatch` 가드로 이뤄진다 — 정적 분석이 읽는 형태다.
+
+    이 단언은 「어떤 API 로 검증하는가」를 고정한다. `..` in-check 로 되돌리면
+    동작은 같아 보여도 CodeQL 이 taint 를 못 끊어 alert 이 되살아난다(실측).
+    """
+    import re as _re
+
+    from src.github_client import helpers
+
+    pattern = getattr(helpers, "REPO_FULL_NAME_RE", None)
+    assert isinstance(pattern, _re.Pattern), (
+        "helpers.REPO_FULL_NAME_RE 가 컴파일된 정규식이 아니다 — "
+        f"{pattern!r}. re.fullmatch 가드가 없으면 CodeQL barrier 가 성립하지 않는다."
+    )
+    assert pattern.fullmatch("owner/repo"), f"정상 이름을 거부한다: {pattern.pattern}"
+    assert not pattern.fullmatch("owner/repo/extra"), "슬래시 2개를 통과시킨다"
