@@ -164,6 +164,14 @@ async def repo_settings(  # pylint: disable=too-many-positional-arguments,too-ma
     current_user: Annotated[CurrentUser, Depends(require_login)],
     hook_ok: int = 0,
     hook_fail: int = 0,
+    # 🔴 웹훅 재설치는 CLI 훅 커밋과 **다른 동작**이라 신호도 분리한다 (#1504 R1).
+    #   예전엔 둘 다 `hook_ok` 를 써서, GitHub 웹훅을 재등록해도 배너가
+    #   「.scamanager/ 파일이 커밋됐습니다」라는 무관한 문구를 띄웠다.
+    # Webhook reinstall is a different action from the CLI-hook commit; sharing one flag
+    # showed the wrong banner text.
+    webhook_ok: int = 0,
+    webhook_partial: int = 0,
+    webhook_fail: int = 0,
     saved: int = 0,
     save_error: int = 0,
     stale_form: int = 0,
@@ -224,6 +232,8 @@ async def repo_settings(  # pylint: disable=too-many-positional-arguments,too-ma
         "secrets": renderable_secrets(config, claimed=repo_is_claimed),
         "notify_secrets_hidden": not repo_is_claimed,
         "hook_ok": bool(hook_ok), "hook_fail": bool(hook_fail),
+        "webhook_ok": bool(webhook_ok), "webhook_partial": bool(webhook_partial),
+        "webhook_fail": bool(webhook_fail),
         "saved": bool(saved), "save_error": bool(save_error),
         # 낡은 폼(소유권 확보 전 렌더)이 거절된 뒤의 안내 — 위 POST 분기 참조.
         "stale_form": bool(stale_form),
@@ -386,6 +396,14 @@ async def reinstall_webhook(
 
         webhook_url = webhook_base_url(request) + GITHUB_WEBHOOK_PATH
 
+        # 🔴 정리 실패는 **부분 성공**이다 — 완전 성공으로 보고하지 않는다 (#1504 R1).
+        #   실패하면 옛 훅이 GitHub 에 남고, 아래에서 DB 가 **새 secret 만** 갖게 되므로
+        #   그 옛 훅의 배달은 전부 서명 검증에 실패한다 — 조용한 중복 배달 + 조용한 실패다.
+        #   재설치 자체는 계속한다: 훅 0개(재설치 중단)가 훅 2개보다 나쁘다.
+        #   고치는 것은 **보고**이지 흐름이 아니다.
+        # A cleanup failure leaves a stale hook whose deliveries fail signature verification.
+        # Keep reinstalling (no hook is worse than two) but stop calling it a full success.
+        cleanup_ok = True
         try:
             all_hooks = await list_webhooks(token, repo_name)
             for hook in all_hooks:
@@ -394,6 +412,7 @@ async def reinstall_webhook(
                     await delete_webhook(token, repo_name, hook["id"])
                     logger.info("Deleted duplicate webhook id=%d url=%s", hook["id"], hook_url)
         except (*HTTPX_SEND_ERRORS, KeyError, ValueError, OSError) as exc:
+            cleanup_ok = False
             logger.warning("Webhook cleanup failed, proceeding with reinstall: %s", exc)
 
         # create_webhook 실패(빈 토큰·GitHub API 오류 등) 시 hook_fail 리다이렉트
@@ -407,7 +426,7 @@ async def reinstall_webhook(
             # Use repo.full_name (DB-validated) to prevent CodeQL py/url-redirection
             safe_repo_name = quote(repo.full_name, safe="")
             return RedirectResponse(
-                url=f"/repos/{safe_repo_name}/settings?hook_fail=1",
+                url=f"/repos/{safe_repo_name}/settings?webhook_fail=1",
                 status_code=303,
             )
 
@@ -418,7 +437,12 @@ async def reinstall_webhook(
     # repo.full_name 사용 — DB 검증값으로 CodeQL py/url-redirection 차단
     # Use repo.full_name (DB-validated) to prevent CodeQL py/url-redirection
     safe_repo_name = quote(repo.full_name, safe="")
+    # 🔴 세 결과를 구분한다: 완전 성공 / **부분 성공** / 실패 (#1504 R1).
+    #   부분 성공을 실패(`hook_fail`)로 뭉뚱그리면 훅이 없다고 오해하고, 완전 성공
+    #   (`hook_ok`)으로 뭉뚱그리면 옛 훅이 남은 것을 모른다. 둘 다 틀리다.
+    # Three distinct outcomes; collapsing partial into either of the other two misleads.
+    flag = "webhook_ok=1" if cleanup_ok else "webhook_partial=1"
     return RedirectResponse(
-        url=f"/repos/{safe_repo_name}/settings?hook_ok=1",
+        url=f"/repos/{safe_repo_name}/settings?{flag}",
         status_code=303,
     )
