@@ -115,6 +115,12 @@ def added_lines_with_numbers(diff_text):
 
     hunk 헤더 `@@ -a,b +c,d @@` 의 `c` 부터 ADDED 라인마다 1씩 증가한다
     (`-U0` 이라 context 라인이 없고, 삭제 라인은 새 파일 줄번호를 소비하지 않는다).
+
+    🔴 hunk 헤더 **앞**에 나온 ADDED 라인은 줄번호가 `None` 이다 — 버리지 않는다.
+    버리면 「헤더 없는 diff → 위반 0건」이라는 **조용한 fail-open** 이 생긴다.
+    호출부가 그 라인을 텍스트 판정으로 넘겨 fail-closed 를 유지한다.
+    ADDED lines seen before any hunk header keep line number None rather than being dropped:
+    discarding them would create a silent fail-open on a header-less diff.
     """
     out = []
     lineno = None
@@ -124,8 +130,8 @@ def added_lines_with_numbers(diff_text):
             lineno = int(hunk.group(1))
             continue
         if _ADDED.match(raw):
+            out.append((lineno, raw[1:]))
             if lineno is not None:
-                out.append((lineno, raw[1:]))
                 lineno += 1
     return out
 
@@ -155,22 +161,42 @@ def find_violations(path, diff_text, source=None):
     노드에도 속하지 않으므로 잡히지 않고, 여러 줄 import 의 continuation 은 속하므로
     잡힌다. 텍스트 정규식은 두 경우 모두 반대로 틀린다.
 
-    `source` 가 없거나 SyntaxError 면 **텍스트 폴백**이다 — 덜 정확하지만 더 엄격한
-    쪽(fail-closed)이라 놓치는 것보다 낫다.
+    `source` 가 없거나 SyntaxError 면 **텍스트 폴백**이다.
 
-    AST is authoritative: only ADDED lines inside a real import node count. Falls back to
-    the (stricter, less precise) text match when the source is unavailable or unparsable.
+    🔴 폴백은 「더 엄격」이 아니라 **양방향으로 열화**다 (실측):
+
+    | 입력 | AST | 텍스트 |
+    |---|---|---|
+    | docstring 안의 인용 | 0 | **1 (오탐)** |
+    | 여러 줄 import 의 continuation | 1 | **0 (미탐)** |
+    | TYPE_CHECKING · 함수 내부 · try/except · `__future__` | 1 | 1 |
+
+    즉 폴백은 안전한 근사가 아니라 **정확도가 떨어지는 대체 경로**다. 그래도 두는
+    이유는 소스를 못 읽는 상황에서 「위반 0건」이라고 **조용히 통과시키는 것**이
+    더 나쁘기 때문이다. 폴백이 도는 경우가 늘면 그것 자체가 신호다.
+
+    AST is authoritative. The text fallback is NOT a stricter approximation — it is degraded
+    in BOTH directions (over-reports prose, misses continuations); it exists only so that an
+    unreadable source does not silently pass.
     """
     if source is None:
         return parse_added_noqa_imports(diff_text)
     spans = import_line_numbers(source)
     if spans is None:  # 구문 오류 — 폴백(fail-closed)
         return parse_added_noqa_imports(diff_text)
-    return [
-        line.strip()
-        for lineno, line in added_lines_with_numbers(diff_text)
-        if lineno in spans and noqa_hides_f401(line)
-    ]
+    out = []
+    for lineno, line in added_lines_with_numbers(diff_text):
+        if lineno is None:
+            # hunk 헤더 없이 나온 ADDED 라인 — AST 구간에 대조할 좌표가 없다.
+            # 조용히 버리면 fail-open 이라 텍스트 판정으로 넘긴다. 단일 줄 import 는
+            # 이쪽이 잡지만 continuation 은 못 잡는다 — 완전한 대체가 아니다.
+            # No coordinate to match against; use the text test rather than drop the line.
+            # It catches single-line imports but not continuations — not an equivalent.
+            if line_hides_f401(line):
+                out.append(line.strip())
+        elif lineno in spans and noqa_hides_f401(line):
+            out.append(line.strip())
+    return out
 
 
 def _git(args):

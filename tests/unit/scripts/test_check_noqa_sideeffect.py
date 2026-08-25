@@ -243,3 +243,98 @@ def test_multiline_import_with_noqa_on_continuation_is_caught():
         "여러 줄 import 의 continuation 에 붙은 noqa: F401 을 놓쳤다 — "
         "이 가드가 막으려는 바로 그 형태다"
     )
+
+
+def test_headerless_diff_does_not_silently_pass():
+    """🔴 fail-open 바닥 — hunk 헤더가 없는 diff 를 조용히 「위반 0건」으로 만들지 않는다.
+
+    AST 판정은 ADDED 라인의 **새 파일 줄번호**를 hunk 헤더에서 얻는다. 헤더가 없으면
+    대조할 좌표가 없는데, 그 라인을 그냥 버리면 **입력을 못 읽었을 때 초록**이 된다.
+    `git diff -U0` 은 항상 헤더를 내지만, 가드에서 「조용한 0」은 두면 안 되는 형태다
+    (형제 가드들의 fail-closed 규율과 같은 축).
+    """
+    src = "from src.models.user import User  # noqa: F401\n"
+    headerless = "+from src.models.user import User  # noqa: F401\n"
+
+    violations = find_violations("tests/unit/x.py", headerless, src)
+    assert violations, (
+        "hunk 헤더 없는 diff 가 조용히 통과했다 — 좌표를 못 얻으면 텍스트 판정으로 "
+        "넘겨야 한다(fail-closed)"
+    )
+
+
+def test_hunk_arithmetic_across_diff_shapes():
+    """계기 자기검증 — 줄번호 산술이 git 이 실제로 내놓는 형태들에서 맞는가.
+
+    틀리면 ADDED 라인이 **엉뚱한 AST 구간**에 대조돼 양방향으로 오판한다.
+    """
+    from scripts.check_noqa_sideeffect import added_lines_with_numbers  # noqa: PLC0415
+
+    # 쉼표 없는 헤더
+    assert added_lines_with_numbers("@@ -1 +1 @@\n+aaa\n") == [(1, "aaa")]
+    # 여러 hunk — 각 헤더에서 다시 시작
+    assert added_lines_with_numbers(
+        "@@ -0,0 +3,1 @@\n+aaa\n@@ -5,0 +10,2 @@\n+bbb\n+ccc\n"
+    ) == [(3, "aaa"), (10, "bbb"), (11, "ccc")]
+    # 삭제 라인은 새 파일 줄번호를 소비하지 않는다
+    assert added_lines_with_numbers("@@ -3,1 +3,2 @@\n-old\n+new1\n+new2\n") == [
+        (3, "new1"), (4, "new2")
+    ]
+    # `+++` 파일 헤더는 ADDED 가 아니다
+    assert added_lines_with_numbers("+++ b/tests/x.py\n@@ -0,0 +7,1 @@\n+aaa\n") == [(7, "aaa")]
+
+
+def test_fallback_is_degraded_not_stricter():
+    """🔴 폴백이 「더 엄격」이 아님을 **고정한다** — 초안 주석의 거짓 주장을 재발 방지.
+
+    처음에는 「텍스트 폴백은 덜 정확하지만 더 엄격하다(fail-closed)」고 적었다.
+    실측하니 **양방향으로 열화**였다: 산문을 오탐하고 continuation 을 미탐한다.
+    이 테스트가 red 가 되면 그 관계가 바뀐 것이니 docstring 을 다시 재라.
+    """
+    def _both(src: str) -> tuple[int, int]:
+        lines = src.splitlines()
+        diff = f"@@ -0,0 +1,{len(lines)} @@\n" + "".join("+" + l + "\n" for l in lines)
+        return len(find_violations("x.py", diff, src)), len(parse_added_noqa_imports(diff))
+
+    # 텍스트가 **놓치는** 자리 — 폴백이 더 느슨하다
+    ast_n, txt_n = _both("from src.models import (\n    Repository,  # noqa: F401\n)\n")
+    assert (ast_n, txt_n) == (1, 0), (
+        f"continuation 축이 바뀌었다 — AST={ast_n} 텍스트={txt_n}"
+    )
+
+    # 텍스트가 **오탐하는** 자리 — 폴백이 더 엄격하다
+    ast_n, txt_n = _both('"""예시:\n\n    import src.models  # noqa: F401\n\n"""\nx = 1\n')
+    assert (ast_n, txt_n) == (0, 1), (
+        f"산문 축이 바뀌었다 — AST={ast_n} 텍스트={txt_n}"
+    )
+
+
+def test_ast_path_does_not_regress_normal_import_forms():
+    """회귀 방지 — 텍스트가 잡던 정상 형태를 AST 도 전부 잡는다.
+
+    판정기를 바꾸며 **막으려던 것을 놓치면** 이 PR 은 가드를 약화한 것이다.
+    """
+    def _ast(src: str) -> int:
+        lines = src.splitlines()
+        diff = f"@@ -0,0 +1,{len(lines)} @@\n" + "".join("+" + l + "\n" for l in lines)
+        return len(find_violations("x.py", diff, src))
+
+    forms = {
+        "module level": "import src.models.user  # noqa: F401\n",
+        "from import": "from src.models.user import User  # noqa: F401\n",
+        "TYPE_CHECKING": (
+            "from typing import TYPE_CHECKING\n"
+            "if TYPE_CHECKING:\n"
+            "    from src.models.user import User  # noqa: F401\n"
+        ),
+        "function scope": "def f():\n    from src.models.user import User  # noqa: F401\n",
+        "try/except": (
+            "try:\n"
+            "    import src.models.user  # noqa: F401\n"
+            "except ImportError:\n"
+            "    pass\n"
+        ),
+        "bare noqa": "import src.models.user  # noqa\n",
+    }
+    missed = [name for name, src in forms.items() if _ast(src) == 0]
+    assert not missed, f"AST 판정이 놓친 형태 — 가드 약화: {missed}"
