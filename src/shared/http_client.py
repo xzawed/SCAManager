@@ -33,6 +33,13 @@ logger = logging.getLogger(__name__)
 #   좁은 catch 를 쓰는 지점이 3곳이라 여기서 한 번만 정의한다 — 같은 드리프트 재발 방지.
 # 7 of httpx's 28 exception classes sit OUTSIDE HTTPError (measured); catching only
 #   HTTPError lets them escape to the ASGI layer, where uvicorn logs a full traceback.
+# 🔴 **이 튜플을 anthropic/openai 호출부에 옮겨 붙이지 마라.** 그쪽은 `httpx` 가 아니라
+#   별개 패키지 `httpx2` 를 쓴다 — 두 벌의 예외는 이름만 같고 서로 다른 타입이다
+#   (공유 이름 28종 전부 `is` False, 실측). SDK 는 전송 오류를 자기 타입으로 감싸고
+#   호출부 4곳이 전부 `except Exception` 이라 지금은 무해하다. 좁히려면 먼저
+#   tests/unit/shared/test_httpx_dual_install_guard.py 의 docstring 을 읽어라 (#1501).
+# Do not copy this tuple onto an anthropic/openai call site: those use httpx2, whose
+#   exception classes are distinct types from httpx's despite sharing names.
 HTTPX_SEND_ERRORS = (
     httpx.HTTPError,
     httpx.InvalidURL,
