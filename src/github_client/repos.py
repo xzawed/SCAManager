@@ -95,6 +95,13 @@ async def create_webhook(token: str, repo_full_name: str, webhook_url: str, secr
 # Page-walk ceiling: a misbehaving proxy repeating `next` would otherwise pin a worker.
 _MAX_WEBHOOK_PAGES = 20
 
+# 🔴 이 함수가 던지는 것은 **`ValueError`** 다 — 호출부가 실제로 잡는 타입이기
+#   때문이다. 두 호출부 모두 `except (*HTTPX_SEND_ERRORS, KeyError, ValueError, ...)`
+#   이고, `RuntimeError` 는 그 튜플에 **안 잡힌다**(`StreamError` 가 `RuntimeError`
+#   하위일 뿐 역은 아니다 — 실측). RuntimeError 로 던지면 FastAPI 까지 올라가 500 이
+#   되어, 「부분 성공을 알린다」는 의도가 「페이지 전체가 깨진다」로 뒤집힌다.
+# Raise ValueError: both call sites catch it, while RuntimeError would escape to a 500.
+
 
 async def list_webhooks(token: str, repo_full_name: str) -> list[dict]:
     """리포의 **모든** GitHub 웹훅 목록을 반환한다 (pagination 처리).
@@ -121,13 +128,33 @@ async def list_webhooks(token: str, repo_full_name: str) -> list[dict]:
     params: dict | None = {"per_page": 100}
     for _ in range(_MAX_WEBHOOK_PAGES):
         if not url:
-            break
+            return results
         resp = await client.get(url, params=params, headers=_auth_headers(token))
         resp.raise_for_status()
-        results.extend(resp.json())
+        page = resp.json()
+        # 🔴 200 인데 본문이 list 가 아니면 **거부**한다.
+        #   `extend` 는 dict 를 주면 조용히 **키**를 넣고(`['message']`), 문자열을 주면
+        #   글자로 쪼갠다(실측). 그 쓰레기가 정리 루프로 흘러가면 엉뚱한 곳에서 터지고
+        #   로그는 원인을 안 가리킨다.
+        # A non-list 200 body would be spread silently (dict -> its keys, str -> chars).
+        if not isinstance(page, list):
+            raise ValueError(
+                f"GitHub hooks 응답이 list 가 아니다 ({type(page).__name__}) - "
+                "목록을 신뢰할 수 없다"
+            )
+        results.extend(page)
         url = resp.links.get("next", {}).get("url")
         params = None  # 두 번째 요청부터 URL 에 파라미터가 포함된다
-    return results
+
+    # 🔴 상한에 걸리면 **던진다** - 잘린 목록을 완전한 것처럼 주면 안 된다.
+    #   `reinstall_webhook` 은 반환값을 「전부」라고 믿고 정리한 뒤 완전 성공을 보고한다.
+    #   잘린 목록이면 못 지운 훅이 있는데도 「다 정리했다」가 된다(#1504 R1 이 고친 결함).
+    #   던지면 그 호출부의 `except` 가 받아 **부분 성공**으로 보고한다 - 정확한 결과다.
+    # Raising beats returning a truncated list: the caller treats the list as complete.
+    raise ValueError(
+        f"webhook page count exceeded {_MAX_WEBHOOK_PAGES} - "
+        "목록이 잘렸을 수 있어 완전한 것으로 취급하지 않는다"
+    )
 
 
 async def delete_webhook(token: str, repo_full_name: str, webhook_id: int) -> bool:

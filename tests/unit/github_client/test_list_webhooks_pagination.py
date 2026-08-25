@@ -148,10 +148,51 @@ async def test_pagination_stops_and_does_not_loop_forever():
     client.get = AsyncMock(return_value=_page([{"id": 9}], next_url=same))
 
     with patch("src.github_client.repos.get_http_client", return_value=client):
-        hooks = await list_webhooks("ghp_t", "owner/repo")
+        with pytest.raises(ValueError):
+            await list_webhooks("ghp_t", "owner/repo")
 
     assert client.get.await_count <= 20, (
         f"페이지 순회에 상한이 없다 — 무한 루프로 워커가 묶인다 "
         f"(요청 {client.get.await_count}회)"
     )
-    assert hooks, "상한에 걸려도 모은 것은 반환해야 한다"
+
+
+# ─── 잘린 목록을 완전한 것처럼 반환하지 않는다 ────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_hitting_the_page_cap_raises_instead_of_returning_a_truncated_list():
+    """🔴 상한에 걸리면 **던진다** — 잘린 목록을 완전한 것처럼 주면 위양성 초록이다.
+
+    `reinstall_webhook` 은 반환된 목록을 **전부**라고 믿고 정리한 뒤 `cleanup_ok=True`
+    로 완전 성공을 보고한다. 잘린 목록을 주면 못 지운 훅이 있는데도 「다 정리했다」가
+    된다 — #1504 R1 이 방금 고친 그 결함이다.
+
+    던지면 그 `except` 가 받아 **부분 성공**으로 보고한다(정확한 결과).
+    `_detect_stale_webhook` 쪽은 이미 조회 실패를 False 로 흡수한다(fail-safe).
+    """
+    same = "https://api.github.com/repos/owner/repo/hooks?page=2"
+    client = AsyncMock()
+    client.get = AsyncMock(return_value=_page([{"id": 9}], next_url=same))
+
+    with patch("src.github_client.repos.get_http_client", return_value=client):
+        with pytest.raises(ValueError, match="page"):
+            await list_webhooks("ghp_t", "owner/repo")
+
+
+@pytest.mark.asyncio
+async def test_non_list_payload_is_rejected_not_silently_spread():
+    """🔴 200 인데 본문이 list 가 아니면 **거부**한다 — `extend` 가 조용히 키를 넣는다.
+
+    실측: `[].extend({"message": "Not Found"})` → `['message']`,
+    `[].extend("문자열")` → `['문','자','열']`. 둘 다 예외 없이 통과한다.
+    그 쓰레기가 정리 루프로 흘러가면 `hook.get(...)` 이 엉뚱하게 터지고, 원인은
+    「GitHub 이 이상한 걸 줬다」인데 로그는 전혀 다른 곳을 가리킨다.
+    """
+    for payload in ({"message": "Not Found"}, "문자열", 42):
+        client = AsyncMock()
+        client.get = AsyncMock(return_value=_page(payload))
+
+        with patch("src.github_client.repos.get_http_client", return_value=client):
+            with pytest.raises((ValueError, TypeError)):
+                await list_webhooks("ghp_t", "owner/repo")
