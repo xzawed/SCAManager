@@ -421,7 +421,7 @@ def test_changed_files_query_disables_quotepath(monkeypatch):
 def test_comment_backslash_does_not_swallow_the_next_statement():
     """🔴 과확장 방지 — 주석 안의 backslash 는 continuation 이 **아니다**.
 
-    `import os  # 뭔가 \` 는 문장이 그 줄에서 끝난다(`end_lineno == lineno`).
+    주석 끝에 backslash 가 있는 import 는 문장이 그 줄에서 끝난다(`end_lineno == lineno`).
     그런데 물리 줄만 보고 walk 하면 다음 줄까지 먹어, **무관한 문장**의 noqa 가
     이 import 에 귀속된다 — 오탐이다.
 
