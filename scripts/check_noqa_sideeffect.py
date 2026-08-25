@@ -221,7 +221,17 @@ def _git(args):
 def _changed_test_files(base, head):
     """base..head 에서 변경된 tests/ 하위 .py 목록.
     Changed tests/*.py between base and head."""
-    names = _git(["diff", "--name-only", "--diff-filter=ACMR", base, head, "--", "tests/"])
+    # 🔴 quotepath 를 끈다 — 기본값(true)이면 git 이 비-ASCII 경로를 따옴표로 감싸고
+    #   8진 이스케이프한다: `"tests/unit/scripts/test_\355\225\234...py"`.
+    #   그 문자열은 `.py` 가 아니라 `.py"` 로 끝나 아래 필터에 **조용히 걸러진다**
+    #   — 한글 이름의 테스트 파일이 가드 대상에서 통째로 빠진다(실측: 이 가드의 선행 결함).
+    #   뒤이은 `git show {head}:{path}` 도 그 경로로는 `fatal: path ... does not exist` 다.
+    # Non-ASCII paths are quoted+octal-escaped by default, so they end with `.py"` and are
+    # silently dropped by the filter below, leaving such test files entirely unguarded.
+    names = _git([
+        "-c", "core.quotepath=false",
+        "diff", "--name-only", "--diff-filter=ACMR", base, head, "--", "tests/",
+    ])
     return [n for n in names.splitlines() if n.endswith(".py")]
 
 

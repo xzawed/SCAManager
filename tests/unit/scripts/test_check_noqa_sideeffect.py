@@ -338,3 +338,43 @@ def test_ast_path_does_not_regress_normal_import_forms():
     }
     missed = [name for name, src in forms.items() if _ast(src) == 0]
     assert not missed, f"AST 판정이 놓친 형태 — 가드 약화: {missed}"
+
+
+def test_changed_files_query_disables_quotepath(monkeypatch):
+    """🔴 비-ASCII 파일명이 **조용히 가드 밖으로 빠지는** 선행 결함을 막는다.
+
+    git 은 기본값 `core.quotepath=true` 로 비-ASCII 경로를 따옴표+8진 이스케이프로
+    내놓는다. 그 문자열은 `.py` 가 아니라 `.py"` 로 끝나 `_changed_test_files` 의
+    `endswith(".py")` 필터에 걸러진다 — **한글 이름의 테스트 파일이 통째로 무검사**다.
+
+    실측(이 PR): 한글 이름 파일에 noqa import 를 심었을 때
+      · 플래그 없음 → 대상 목록 `[]`, EXIT=0 (조용히 통과)
+      · 플래그 있음 → 대상 목록에 포함, EXIT=1 (잡힘)
+
+    🔴 **실제 인자를 본다 — 소스 텍스트가 아니라.** 첫 판은 `inspect.getsource` 에
+    문자열이 있는지만 봤는데, 바로 위 **주석에 같은 문자열이 있어** 플래그를 지워도
+    통과했다(뮤테이션으로 확인). 공허한 가드였다.
+    Asserts the actual argv, not the source text: a first version matched the explanatory
+    comment and stayed green when the flag was deleted.
+    """
+    from scripts import check_noqa_sideeffect as mod  # noqa: PLC0415
+
+    seen = []
+
+    def _fake_git(args):
+        seen.append(list(args))
+        return ""
+
+    monkeypatch.setattr(mod, "_git", _fake_git)
+    mod._changed_test_files("BASE", "HEAD")  # pylint: disable=protected-access
+
+    assert seen, "git 호출이 없었다 — 계기 고장"
+    argv = seen[0]
+    assert "-c" in argv and "core.quotepath=false" in argv, (
+        "_changed_test_files 가 core.quotepath 를 끄지 않는다 — 비-ASCII 경로가 "
+        f"따옴표로 감싸져 `.py` 필터에 걸러지고 그 파일은 무검사로 통과한다. argv={argv}"
+    )
+    # `-c` 바로 뒤에 와야 git 이 설정으로 받는다 (순서가 틀리면 무동작)
+    assert argv[argv.index("-c") + 1] == "core.quotepath=false", (
+        f"`-c` 다음 인자가 설정값이 아니다 — git 이 무시한다. argv={argv}"
+    )
