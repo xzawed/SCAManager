@@ -196,3 +196,34 @@ async def test_non_list_payload_is_rejected_not_silently_spread():
         with patch("src.github_client.repos.get_http_client", return_value=client):
             with pytest.raises((ValueError, TypeError)):
                 await list_webhooks("ghp_t", "owner/repo")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("pages", [19, 20])
+async def test_exactly_at_the_cap_returns_instead_of_raising(pages):
+    """🔴 경계 — 마지막 페이지에 next 가 없으면 상한과 **같아도** 정상 반환이다.
+
+    off-by-one 실측(Grok `01a039b2`): `if not url` 이 **다음 iteration 머리**에 있어
+    `range(20)` 의 20번째 순회 뒤에는 그 검사가 실행되지 않는다. 그래서 정확히
+    20페이지인 리포가 **멀쩡한데도 예외**가 났다.
+
+    내 첫 테스트는 「같은 URL 을 계속 주는」 경우만 봐서 이 경계를 못 봤다 —
+    상한 테스트가 상한 **직전/직후**를 안 보면 공허하다.
+    """
+    responses = []
+    for i in range(1, pages + 1):
+        last = i == pages
+        responses.append(_page(
+            [{"id": i}],
+            next_url=None if last else f"https://api.github.com/x?page={i + 1}",
+        ))
+    client = AsyncMock()
+    client.get = AsyncMock(side_effect=responses)
+
+    with patch("src.github_client.repos.get_http_client", return_value=client):
+        hooks = await list_webhooks("ghp_t", "owner/repo")
+
+    assert [h["id"] for h in hooks] == list(range(1, pages + 1)), (
+        f"{pages}페이지를 다 모으지 못했다"
+    )
+    assert client.get.await_count == pages

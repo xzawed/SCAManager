@@ -126,9 +126,12 @@ async def list_webhooks(token: str, repo_full_name: str) -> list[dict]:
     results: list[dict] = []
     url: str | None = f"{GITHUB_API}/repos/{_repo_path(repo_full_name)}/hooks"
     params: dict | None = {"per_page": 100}
+    # 🔴 종료 검사를 **루프 뒤**로 뺀다 (off-by-one). `if not url` 을 다음 순회
+    #   머리에 두면 마지막 순회 뒤에는 그 검사가 실행되지 않아, 정확히
+    #   `_MAX_WEBHOOK_PAGES` 페이지인 **멀쩡한** 리포가 예외를 맞는다(실측).
+    # Exit check after the loop: a head-of-next-iteration check never runs after the final
+    # trip, so a repo with exactly the cap number of pages raised spuriously.
     for _ in range(_MAX_WEBHOOK_PAGES):
-        if not url:
-            return results
         resp = await client.get(url, params=params, headers=_auth_headers(token))
         resp.raise_for_status()
         page = resp.json()
@@ -145,6 +148,8 @@ async def list_webhooks(token: str, repo_full_name: str) -> list[dict]:
         results.extend(page)
         url = resp.links.get("next", {}).get("url")
         params = None  # 두 번째 요청부터 URL 에 파라미터가 포함된다
+        if not url:
+            return results
 
     # 🔴 상한에 걸리면 **던진다** - 잘린 목록을 완전한 것처럼 주면 안 된다.
     #   `reinstall_webhook` 은 반환값을 「전부」라고 믿고 정리한 뒤 완전 성공을 보고한다.
