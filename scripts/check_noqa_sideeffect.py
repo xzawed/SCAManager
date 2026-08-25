@@ -31,11 +31,11 @@ from itertools import takewhile
 #   텍스트는 「import 문처럼 보이는 줄」과 「실제 import 문」을 구분하지 못해 양방향으로 틀린다:
 #     · 위양성 — docstring 안의 **인용**을 코드로 잡는다. 이 가드가 막으려는 거짓을
 #       문서화하려면 인용해야 하는데, 그 인용이 막힌다 (실측: #1508 이 CI 를 막았다).
-#     · 위음성 — 여러 줄 import 의 continuation(`    Repository,  # noqa: F401`)은
-#       이 패턴에 안 맞아 **그냥 통과**한다. 막으려던 형태가 그대로 들어온다.
+#     · 위음성 — backslash 로 이어진 줄(`import os, ` + \ + 다음 줄의 `# noqa: F401`)은
+#       이 패턴에 안 맞아 **그냥 통과**한다. flake8 은 그 noqa 를 실제로 적용한다(실측).
 #   같은 실패를 #1501 에서 겪고 AST 로 재작성한 선례가 있다.
 # Fallback only: text matching is wrong in both directions (blocks docstring quotations,
-# misses noqa on a multi-line import's continuation). AST is the primary judgment.
+# misses noqa on a backslash continuation). AST is the primary judgment.
 _IMPORT = re.compile(r"^\s*(?:import\s|from\s+\S+\s+import\s)")
 # `git diff -U0` 의 hunk 헤더 — `@@ -a,b +c,d @@` 에서 **새 파일** 시작 줄번호(c)를 잡는다.
 # Hunk header of `git diff -U0`; captures the NEW-file start line so ADDED lines get numbers.
@@ -64,12 +64,14 @@ _ADDED = re.compile(r"^\+(?!\+\+)")
 def noqa_hides_f401(line):
     """줄에 붙은 `# noqa` 가 F401 을 억제하면 True — **import 여부는 보지 않는다**.
 
-    🔴 import 판정과 noqa 판정을 분리한 이유 (#1509): 여러 줄 import 에서 noqa 는
-    continuation 줄에 붙는다(`    Repository,  # noqa: F401`). 그 줄은 import 문처럼
-    생기지 않았지만 flake8 은 거기서 F401 을 실제로 억제한다. 「어느 줄이 import 문에
-    속하는가」는 AST 가 답하고, 이 함수는 「그 줄이 F401 을 숨기는가」만 답한다.
-    Separated from the import-shape test: on a multi-line import the noqa sits on a
-    continuation line, which AST — not a line pattern — must attribute to the import.
+    🔴 import 판정과 noqa 판정을 분리한 이유 (#1509): backslash 로 이어진 줄에 붙은
+    noqa 는 import 문처럼 생기지 않았지만 flake8 이 실제로 F401 을 억제한다(실측).
+    「어느 줄이 그 import 에 귀속되는가」는 `import_line_numbers` 가 답하고, 이 함수는
+    「그 줄이 F401 을 숨기는가」만 답한다.
+    🔴 반대로 **괄호** 여러 줄 import 의 안쪽 줄은 귀속되지 **않는다** — flake8 이 그
+    noqa 를 적용하지 않기 때문이다. 그 비대칭은 `import_line_numbers` 가 처리한다.
+    Separated from the import-shape test: a backslash continuation's noqa does suppress F401
+    while a parenthesized import's inner line does not (measured).
     """
     m = _NOQA.search(line)
     if not m:
@@ -137,19 +139,45 @@ def added_lines_with_numbers(diff_text):
 
 
 def import_line_numbers(source):
-    """소스에서 **실제 import 문**이 차지하는 줄번호 집합. 파싱 실패 시 None.
+    """import 문의 noqa 가 **flake8 에서 실제로 F401 을 억제하는** 줄번호 집합.
+    파싱 실패 시 None.
 
-    여러 줄 import 는 `lineno..end_lineno` 전체를 차지한다 — continuation 에 붙은
-    noqa 를 그 import 에 귀속시키기 위해 구간 전체를 넣는다.
+    🔴 `lineno..end_lineno` 전체가 **아니다** — 그렇게 하면 오탐이 난다.
+    flake8 실측(7.x / pyflakes 3.x):
+
+    | 형태 | F401 보고 줄 | 억제되는 noqa 위치 |
+    |---|---|---|
+    | `from X import (` … `)` (괄호 여러 줄) | 1행 | **1행만** — 2·3행은 억제 **안 됨** |
+    | `import os ` + backslash + 다음 줄 | 1행 | **continuation 줄도 억제됨** |
+    | 한 줄 import | 그 줄 | 그 줄 |
+
+    즉 `from X import (` + `    Y,  # noqa: F401` 은 **noqa-은닉이 아니다** —
+    flake8 이 여전히 F401 을 보고하므로 `lint-changed-tests` 가 이미 잡는다.
+    그것을 이 가드가 막으면 **중복 오탐**이다. (초안은 그 자리를 「구 가드의 미탐」
+    이라고 잘못 읽었다 — 구 가드가 안 잡은 것이 옳았다. flake8 로 재고 정정했다.)
+
+    그래서 `node.lineno` + **backslash 로 이어지는 물리 줄**만 넣는다.
+
+    NOT the full lineno..end_lineno span: measured against real flake8, a noqa inside a
+    parenthesized import does NOT suppress F401 (still reported on the `from` line), while a
+    backslash continuation DOES. Including the whole span would over-report.
     """
     try:
         tree = ast.parse(source)
     except SyntaxError:
         return None
+    lines = source.splitlines()
     spans = set()
     for node in ast.walk(tree):
-        if isinstance(node, (ast.Import, ast.ImportFrom)):
-            spans.update(range(node.lineno, (node.end_lineno or node.lineno) + 1))
+        if not isinstance(node, (ast.Import, ast.ImportFrom)):
+            continue
+        start = node.lineno
+        spans.add(start)
+        # backslash 로 이어진 물리 줄까지 — flake8 은 그 줄의 noqa 도 적용한다.
+        i = start
+        while 1 <= i <= len(lines) and lines[i - 1].rstrip().endswith("\\"):
+            i += 1
+            spans.add(i)
     return spans
 
 
@@ -168,7 +196,7 @@ def find_violations(path, diff_text, source=None):
     | 입력 | AST | 텍스트 |
     |---|---|---|
     | docstring 안의 인용 | 0 | **1 (오탐)** |
-    | 여러 줄 import 의 continuation | 1 | **0 (미탐)** |
+    | backslash continuation | 1 | **0 (미탐)** |
     | TYPE_CHECKING · 함수 내부 · try/except · `__future__` | 1 | 1 |
 
     즉 폴백은 안전한 근사가 아니라 **정확도가 떨어지는 대체 경로**다. 그래도 두는

@@ -174,7 +174,8 @@ def test_testing_md_documents_tuple_pattern():
 #
 # 🔴 이 가드는 diff **원문 텍스트**에 정규식을 건다(`check_noqa_sideeffect.py:28`).
 #    AST 가 아니므로 「import 문처럼 보이는 줄」과 「실제 import 문」을 구조적으로
-#    구분하지 못한다. 그 결과가 양방향이다 — 산문을 막고, 진짜를 놓친다.
+#    구분하지 못한다. 그 결과가 양방향이다 — 산문(docstring 인용)을 막고,
+#    backslash continuation 의 진짜 noqa 는 놓친다. 둘 다 flake8 실물로 쟀다.
 #
 # 이 리포는 같은 실패를 #1501 에서 이미 겪었다: `"alias_httpx" in text` 가드가
 # **그 규칙을 설명하는 docstring 자체를 막았고** AST 로 재작성했다.
@@ -226,23 +227,58 @@ def test_commented_out_import_is_not_a_violation():
     assert not violations, f"주석 처리된 줄을 잡았다: {violations}"
 
 
-def test_multiline_import_with_noqa_on_continuation_is_caught():
-    """🔴 위음성 — 여러 줄 import 의 **continuation 줄**에 붙은 noqa 는 지금 안 잡힌다.
+def test_parenthesized_continuation_noqa_is_not_a_violation():
+    """🔴 **정정** — 괄호 여러 줄 import 의 continuation noqa 는 위반이 **아니다**.
 
-    정규식은 줄이 `import ` / `from X import ` 로 시작할 때만 본다. 아래처럼
-    괄호로 이어지는 형태에서는 noqa 가 붙은 줄이 그 패턴에 맞지 않아 **통과**한다.
-    막으려는 것(F401 이 억제된 side-effect import)이 그대로 들어온다.
+    초안은 이 자리를 「구 가드의 미탐」이라 읽고 「잡아야 한다」고 단언했다.
+    flake8 실물로 재니 틀렸다:
+
+        from src.models import (
+            Repository,  # noqa: F401
+        )
+        -> flake8 은 여전히 **1행에 F401 을 보고한다** (억제 안 됨)
+
+    억제되는 것은 **1행에 붙은 noqa 뿐**이다(2·3행은 무효). 즉 이 형태는 애초에
+    noqa-은닉이 아니고 `lint-changed-tests` 의 flake8 이 이미 잡는다. 이 가드가
+    추가로 막으면 **중복 오탐**이다 — 구 가드가 안 잡은 것이 옳았다.
+    Measured: flake8 still reports F401 on line 1, so this is not noqa-hidden at all.
     """
     src = (
-        "from src.models import (\n"
-        "    Repository,  # noqa: F401\n"
-        ")\n"
+        "from src.models import (" + chr(10)
+        + "    Repository,  # noqa: F401" + chr(10)
+        + ")" + chr(10)
     )
     violations = find_violations("tests/unit/x.py", *_diff_and_source(src))
-    assert violations, (
-        "여러 줄 import 의 continuation 에 붙은 noqa: F401 을 놓쳤다 — "
-        "이 가드가 막으려는 바로 그 형태다"
+    assert not violations, (
+        "괄호 continuation 의 noqa 를 위반으로 잡았다 — flake8 은 그것을 억제하지 "
+        f"않으므로 noqa-은닉이 아니다(중복 오탐): {violations}"
     )
+
+
+def test_first_line_noqa_of_a_multiline_import_is_a_violation():
+    """반대 축 — **1행**에 붙은 noqa 는 실제로 F401 을 억제하므로 위반이다.
+
+    실측: `from src.models import (  # noqa: F401` 은 flake8 이 보고하지 않는다.
+    """
+    src = (
+        "from src.models import (  # noqa: F401" + chr(10)
+        + "    Repository," + chr(10)
+        + ")" + chr(10)
+    )
+    violations = find_violations("tests/unit/x.py", *_diff_and_source(src))
+    assert violations, "1행 noqa 는 flake8 이 억제하므로 반드시 잡아야 한다"
+
+
+def test_backslash_continuation_noqa_is_a_violation():
+    """backslash continuation 의 noqa 는 flake8 이 **억제한다** — 그래서 잡아야 한다.
+
+    괄호와 정반대다(실측). 이 비대칭이 `import_line_numbers` 가 span 전체가 아니라
+    `lineno` + backslash 줄만 넣는 이유다.
+    """
+    backslash = chr(92)
+    src = "import os, " + backslash + chr(10) + "    sys  # noqa: F401" + chr(10)
+    violations = find_violations("tests/unit/x.py", *_diff_and_source(src))
+    assert violations, "backslash continuation 의 noqa 를 놓쳤다 — flake8 은 억제한다"
 
 
 def test_headerless_diff_does_not_silently_pass():
@@ -296,14 +332,16 @@ def test_fallback_is_degraded_not_stricter():
         diff = f"@@ -0,0 +1,{len(lines)} @@\n" + "".join("+" + l + "\n" for l in lines)
         return len(find_violations("x.py", diff, src)), len(parse_added_noqa_imports(diff))
 
-    # 텍스트가 **놓치는** 자리 — 폴백이 더 느슨하다
-    ast_n, txt_n = _both("from src.models import (\n    Repository,  # noqa: F401\n)\n")
+    # 텍스트가 **놓치는** 자리 — backslash continuation (폴백이 더 느슨)
+    ast_n, txt_n = _both("import os, " + chr(92) + chr(10) + "    sys  # noqa: F401" + chr(10))
     assert (ast_n, txt_n) == (1, 0), (
-        f"continuation 축이 바뀌었다 — AST={ast_n} 텍스트={txt_n}"
+        f"backslash continuation 축이 바뀌었다 — AST={ast_n} 텍스트={txt_n}"
     )
 
-    # 텍스트가 **오탐하는** 자리 — 폴백이 더 엄격하다
-    ast_n, txt_n = _both('"""예시:\n\n    import src.models  # noqa: F401\n\n"""\nx = 1\n')
+    # 텍스트가 **오탐하는** 자리 — docstring 인용 (폴백이 더 엄격)
+    ast_n, txt_n = _both('"""예시:' + chr(10) + chr(10)
+                         + "    import src.models  # noqa: F401" + chr(10) + chr(10)
+                         + '"""' + chr(10) + "x = 1" + chr(10))
     assert (ast_n, txt_n) == (0, 1), (
         f"산문 축이 바뀌었다 — AST={ast_n} 텍스트={txt_n}"
     )
