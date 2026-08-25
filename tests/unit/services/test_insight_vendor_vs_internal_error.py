@@ -45,17 +45,22 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-import src.models
 from src.database import Base
 from src.models.insight_narrative_cache import InsightNarrativeCache
 from src.models.repository import Repository
 from src.models.user import User
 
-# 🔴 side-effect import 를 튜플로 **참조**한다 — `# noqa: F401` 은 CodeQL
-#   py/unused-import 를 숨길 뿐이고, import 가 사라지면 조용히 깨진다.
-#   튜플 참조는 「쓰인다」로 인식되고 import 소실 시 NameError 로 시끄럽게 터진다.
-#   Tuple-reference instead of noqa: CodeQL sees it as used and a lost import fails loudly.
-_FK_TARGET_MODELS = (src.models, InsightNarrativeCache)
+# 🔴 side-effect import 를 튜플로 참조하고 **그 튜플을 읽는다** — 두 단계가 다 필요하다.
+#   `# noqa: F401` 은 flake8 만 억제하고 CodeQL py/unused-import 는 별도 룰이라 막지 못한다.
+#   그런데 튜플을 **정의만** 하면 이번엔 py/unused-global-variable 로 잡힌다(실측: alert #596).
+#   아래 단언이 튜플을 실제로 읽어 그 경고까지 닫고, import 부작용(테이블 등록)이
+#   깨지면 런타임에서 loud-fail 한다 — `tests/unit/ui/test_repo_detail_query.py:46` ·
+#   `alembic/env.py:72` 와 같은 패턴이다.
+#   Both steps are required: referencing the models silences py/unused-import, and READING
+#   the tuple silences py/unused-global-variable while loud-failing if registration breaks.
+_FK_TARGET_MODELS = (InsightNarrativeCache, Repository, User)
+if any(m.__tablename__ not in Base.metadata.tables for m in _FK_TARGET_MODELS):
+    raise RuntimeError("ORM import 소실 — 테이블 미등록 / ORM import lost, table unregistered")
 
 _KPI = {
     "analysis_count": 2, "avg_score": 60, "grade": "D", "score_delta": None,

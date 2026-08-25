@@ -137,6 +137,10 @@ def main(argv):
     print()
     print("해결 / Fix: side-effect(등록용) import 는 `# noqa: F401` 대신 튜플-참조 패턴을 쓰세요.")
     print("  _FK_TARGET_MODELS = (Model,)  # CodeQL 도 'used' 로 인식 + import 소실 시 loud-fail")
+    print("  정본은 docs/workflow/verify.md 의 「side-effect-only ORM import」 — **두 줄**이다.")
+    print("     정의만 두면 py/unused-import 대신 py/unused-global-variable 로 옮겨간다.")
+    print("     The canonical two-line form is in docs/workflow/verify.md; a define-only")
+    print("     tuple trips py/unused-global-variable instead.")
     print("  (참조 / see: tests/unit/ui/test_repo_detail_query.py, alembic/env.py _REGISTERED_MODELS)")
     return 1
 
