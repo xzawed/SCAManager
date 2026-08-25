@@ -89,15 +89,45 @@ async def create_webhook(token: str, repo_full_name: str, webhook_url: str, secr
     return resp.json()["id"]
 
 
+# 훅 페이지 순회 상한 — 실물 GitHub 은 next 를 반복하지 않지만 프록시·오설정·악의적
+# 응답이 같은 URL 을 계속 주면 이 함수 하나가 워커를 묶는다. 100개/페이지 × 20 = 2,000개로
+# 어떤 실사용 리포보다 크다.
+# Page-walk ceiling: a misbehaving proxy repeating `next` would otherwise pin a worker.
+_MAX_WEBHOOK_PAGES = 20
+
+
 async def list_webhooks(token: str, repo_full_name: str) -> list[dict]:
-    """리포의 모든 GitHub 웹훅 목록을 반환한다."""
+    """리포의 **모든** GitHub 웹훅 목록을 반환한다 (pagination 처리).
+
+    🔴 예전에는 단일 요청이라 docstring 이 거짓이었다 (#1504 B). GitHub 기본 페이지
+    크기는 30이라 훅이 그보다 많으면 뒤쪽은 **보이지도 않았다.** 결과가 호출부마다
+    다르게 나빴다:
+
+    - `_detect_stale_webhook` — 이 리포의 훅이 2페이지면 stale 배너가 영영 안 뜬다
+      (조회 실패 시 False 반환이라 조용하다).
+    - `reinstall_webhook` 정리 — 2페이지의 옛 훅이 정리되지 않는데 `cleanup_ok` 는
+      True 로 남아 **완전 성공으로 보고**된다. #1504 R1 이 방금 고친 결함이
+      이 경로로 그대로 되살아난다.
+
+    형제 `list_user_repos` 가 이미 같은 `resp.links["next"]` 순회를 쓴다 —
+    이것은 누락이지 설계 결정이 아니었다.
+
+    Previously a single unpaginated request, so the docstring's "every webhook" was false;
+    hooks past GitHub's default page size were invisible to both callers.
+    """
     client = get_http_client()  # 싱글톤
-    resp = await client.get(
-        f"{GITHUB_API}/repos/{_repo_path(repo_full_name)}/hooks",
-        headers=_auth_headers(token),
-    )
-    resp.raise_for_status()
-    return resp.json()
+    results: list[dict] = []
+    url: str | None = f"{GITHUB_API}/repos/{_repo_path(repo_full_name)}/hooks"
+    params: dict | None = {"per_page": 100}
+    for _ in range(_MAX_WEBHOOK_PAGES):
+        if not url:
+            break
+        resp = await client.get(url, params=params, headers=_auth_headers(token))
+        resp.raise_for_status()
+        results.extend(resp.json())
+        url = resp.links.get("next", {}).get("url")
+        params = None  # 두 번째 요청부터 URL 에 파라미터가 포함된다
+    return results
 
 
 async def delete_webhook(token: str, repo_full_name: str, webhook_id: int) -> bool:
