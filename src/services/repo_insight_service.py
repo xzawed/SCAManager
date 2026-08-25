@@ -352,9 +352,12 @@ def _record_narrative_error(
     db: Session, *, user_id: int | None, repo_id: int, days: int,
     language: str, error_type: str, now: datetime,
 ) -> None:
-    """user_id 가 있으면 내러티브 캐시에 에러 기록 (no_data/api_error 경로 공통).
+    """user_id 가 있으면 내러티브 캐시에 에러 기록 (no_data/api_error/internal_error 공통).
 
-    Record a narrative error in the cache when user_id is set (shared by no_data/api_error paths).
+    기록하는 것은 **예외 클래스명**(`error_type`)이지 반환 status 가 아니다 — #1458 의
+    벤더/우리코드 분류는 반환 dict 에만 있고 캐시 동작은 바뀌지 않는다.
+    Records the exception class name, not the returned status: the #1458 vendor/ours split
+    lives in the return dict only and does not change caching behaviour.
     """
     if user_id is None:
         return
@@ -381,7 +384,10 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
     """리포별 Claude AI 진단 내러티브 — 1h TTL 캐시 + refresh 지원.
 
     Repo-level Claude AI narrative — 1h TTL cache + refresh support.
-    Returns: {"text": str, "status": "success"|"no_api_key"|"no_data"|"api_error"|"disabled"}
+    Returns: {"text": str, "status": "success"|"no_api_key"|"no_data"|"api_error"
+                                |"internal_error"|"disabled"}
+      🔴 `api_error` = 벤더(`anthropic.APIError`), `internal_error` = 우리 코드.
+      api_error means the vendor failed; internal_error means our code did.
     """
     # 비용 제어 — INSIGHT_DISABLED=1 시 리포 내러티브 전면 차단(API 호출 0).
     # Cost control — INSIGHT_DISABLED=1 disables the per-repo narrative entirely.
@@ -489,6 +495,15 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
             **_tokens,
         )
     except Exception as exc:  # pylint: disable=broad-exception-caught  # noqa: BLE001
+        # 🔴 **벤더 실패와 우리 코드 버그를 다른 status 로 가른다** (#1458).
+        #   try 안에는 API 호출과 **그 뒤의 파싱**이 함께 있다(R63 — 2행 기록을 막느라
+        #   의도적으로 넣었다). 그래서 `json.loads` 실패도 여기로 오는데, 예전에는 전부
+        #   `api_error` 였다. 운영 실측 3건이 그랬다: `output_tokens=600` — **과금까지 된
+        #   뒤 우리 파서가 터진 것**을 벤더 장애로 집계했다.
+        #   판정 근거는 `anthropic.APIError` 하위 여부뿐이다(형제 호출부와 동일한 축).
+        # Split vendor failures from our own bugs: this try covers the API call AND the
+        # parsing that follows it, so a JSONDecodeError used to be recorded as api_error.
+        status = "api_error" if isinstance(exc, anthropic.APIError) else "internal_error"
         duration_ms = (time.perf_counter() - start) * 1000
         log_claude_api_call(
             model=settings.claude_insight_model,
@@ -499,12 +514,14 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
             user_id=user_id,
             **_tokens,
         )
-        logger.exception("repo_insight_narrative API call failed")
+        logger.exception(
+            "repo_insight_narrative failed (status=%s, exc=%s)", status, type(exc).__name__,
+        )
         _record_narrative_error(
             db, user_id=user_id, repo_id=repo_id, days=days,
             language=language, error_type=type(exc).__name__, now=_now,
         )
-        return {"text": "", "status": "api_error"}
+        return {"text": "", "status": status}
     finally:
         # 호출당 생성한 AsyncAnthropic httpx 커넥션 풀 해제 — 미종료 시 FD 누수 (WBS P1).
         # Close the per-call AsyncAnthropic httpx pool — leaks FDs/connections if left open.

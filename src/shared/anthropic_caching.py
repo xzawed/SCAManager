@@ -63,12 +63,15 @@ def first_text_block(response: object) -> str:
     그 관용구는 **첫 블록이 항상 text 라고 가정**한다. 그러나 Messages API 의 `content` 는
     블록 **배열**이고, thinking(확장 사고)·tool_use 가 앞설 수 있다. 그러면
     `.text` 접근이 `AttributeError` 로 떨어지는데, 이 리포의 호출부 4곳은 전부
-    `except Exception` 안에 있어 **조용히 `api_error` 로 삼켜진다** — 즉 모델이나 설정을
-    한 번 바꾸면 AI 리뷰·인사이트가 **전량 사망**하고 원인은 로그에만 남는다.
+    `except Exception` 안에 있어 **조용히 삼켜진다** — 즉 모델이나 설정을 한 번 바꾸면
+    AI 리뷰·인사이트가 **전량 사망**하고 원인은 로그에만 남는다.
+    🔴 라벨은 호출부마다 다르다(#1458): `repo_insight_service` 는 이제 `internal_error`
+    (벤더 아님이 드러난다), 나머지 3곳은 여전히 `api_error` 로 뭉뚱그린다.
 
     Do not use `response.content[0].text`: the first block is not guaranteed to be text
     (thinking / tool_use may precede it). All four call sites sit inside `except Exception`,
-    so the AttributeError would be swallowed into a silent `api_error`.
+    so the AttributeError is swallowed silently; repo_insight_service now labels it
+    `internal_error` (#1458) while the other three still collapse it into `api_error`.
 
     Args:
         response: Anthropic `Message` (또는 `.content` 를 갖는 동등 객체).
