@@ -44,7 +44,6 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-import httpx
 
 from src.gate.github_review import (
     get_pr_mergeable_state,
@@ -64,6 +63,7 @@ from src.github_client.graphql import (  # noqa: F401  # pylint: disable=unused-
     enable_pull_request_auto_merge,
     get_pr_node_id,
 )
+from src.shared.http_client import HTTPX_SEND_ERRORS
 
 
 # Phase 3 PR-B1 — path 상수 (호출자가 lifecycle state 라벨링용)
@@ -149,7 +149,7 @@ async def enable_or_fallback_with_path(
             _state, head_sha = await get_pr_mergeable_state(
                 github_token, repo_full_name, pr_number,
             )
-        except httpx.HTTPError as exc:
+        except HTTPX_SEND_ERRORS as exc:
             logger.warning("get_pr_mergeable_state 실패 (pr=%d): %s", pr_number, exc)
         # 🔴 fail-closed (감사 보안 #2 — 2026-06-23): head_sha 미확보(전달 X + 조회 실패/빈값) 시
         # SHA 원자성 가드 없이 enable/merge_pr 을 하면 expected_head_oid=None / expected_sha=None 으로

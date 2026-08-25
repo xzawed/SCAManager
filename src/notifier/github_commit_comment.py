@@ -1,13 +1,13 @@
 """GitHub Commit Comment 자동 게시 — Push 커밋에 AI 리뷰 댓글 첨부."""
 import logging
 
-import httpx
 
 from src.constants import GITHUB_API
 from src.github_client.helpers import github_api_headers
 from src.notifier.github_comment import _build_comment_from_result
 from src.shared.http_client import get_http_client
 from src.shared.log_safety import sanitize_for_log
+from src.shared.http_client import HTTPX_SEND_ERRORS
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ async def post_commit_comment(
             headers=github_api_headers(github_token),
         )
         resp.raise_for_status()
-    except httpx.HTTPError as exc:
+    except HTTPX_SEND_ERRORS as exc:
         logger.warning(
             "post_commit_comment 실패 (%s@%s): %s",
             sanitize_for_log(repo_name), sanitize_for_log(commit_sha), exc,

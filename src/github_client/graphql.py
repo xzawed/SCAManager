@@ -29,6 +29,7 @@ from src.constants import GITHUB_API
 from src.github_client.helpers import github_api_headers, repo_path
 from src.shared.http_client import get_http_client
 from src.shared.log_safety import sanitize_for_log
+from src.shared.http_client import HTTPX_SEND_ERRORS
 
 logger = logging.getLogger(__name__)
 
@@ -160,7 +161,7 @@ async def get_pr_node_id(
         r = await client.get(url, headers=github_api_headers(token))
         r.raise_for_status()
         return r.json().get("node_id")
-    except httpx.HTTPError as exc:
+    except HTTPX_SEND_ERRORS as exc:
         logger.warning(
             "get_pr_node_id 실패 (repo=%s, pr=%d): %s",
             sanitize_for_log(repo_full_name), pr_number, type(exc).__name__,
@@ -289,7 +290,7 @@ async def enable_pull_request_auto_merge(
             ENABLE_API_ERROR,
             f"HTTP {exc.response.status_code}: {exc}",
         )
-    except httpx.HTTPError as exc:
+    except HTTPX_SEND_ERRORS as exc:
         return EnableAutoMergeResult(ENABLE_API_ERROR, f"network: {exc}")
 
     # GraphQL-level errors

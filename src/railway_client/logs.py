@@ -1,7 +1,7 @@
 """Railway GraphQL API 로 deployment 로그를 조회한다."""
 import logging
-import httpx
 from src.shared.http_client import get_http_client
+from src.shared.http_client import HTTPX_SEND_ERRORS
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ async def fetch_deployment_logs(
         resp = await client.post(RAILWAY_GRAPHQL_URL, json=payload, headers=headers)
         resp.raise_for_status()
         data = resp.json()
-    except httpx.HTTPError as exc:
+    except HTTPX_SEND_ERRORS as exc:
         raise RailwayLogFetchError(f"HTTP 오류: {exc}") from exc
     except ValueError as exc:
         # resp.json() 의 JSONDecodeError(ValueError 하위) 래핑 — docstring Raises 계약 준수.

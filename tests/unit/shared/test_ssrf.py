@@ -159,7 +159,7 @@ def test_space_is_not_treated_as_a_control_char():
     assert is_safe_webhook_url("https://hooks.example.com/a b") is True
 
 
-def test_narrow_httpx_except_is_not_used_in_webhook_providers():
+def test_narrow_httpx_except_is_not_used_anywhere_in_src():
     """🔴 **배선 단언** — 공용 튜플을 정의만 하고 호출부가 안 쓰면 구멍은 그대로다.
 
     구조 가드(`covers_every_httpx_exception`)는 튜플만 본다. 호출부를 옛 좁은 절로
@@ -171,9 +171,12 @@ def test_narrow_httpx_except_is_not_used_in_webhook_providers():
     import ast  # noqa: PLC0415
     import pathlib  # noqa: PLC0415
 
-    root = pathlib.Path(__file__).resolve().parents[3] / "src" / "webhook" / "providers"
-    files = sorted(root.glob("*.py"))
-    assert files, f"webhook provider 를 찾지 못했다: {root}"
+    # #1498 — 범위를 `webhook/providers` 에서 **src/ 전체**로 넓혔다.
+    #   그전에는 3곳만 보고 나머지 24곳의 같은 구멍을 못 봤다.
+    #   Scope widened from webhook/providers to all of src/ (#1498).
+    root = pathlib.Path(__file__).resolve().parents[3] / "src"
+    files = sorted(root.rglob("*.py"))
+    assert len(files) > 100, f"src/ 에서 {len(files)}개 파일만 찾았다 — 스캐너 점검 필요"
 
     narrow: list[str] = []
     wired = 0
@@ -191,4 +194,4 @@ def test_narrow_httpx_except_is_not_used_in_webhook_providers():
     assert not narrow, (
         f"좁은 `except httpx.HTTPError` 가 남아 있다 — HTTPError 밖 7종이 빠져나간다: {narrow}"
     )
-    assert wired >= 3, f"HTTPX_SEND_ERRORS 를 쓰는 except 가 {wired}곳뿐이다 (기대 3곳 이상)"
+    assert wired >= 27, f"HTTPX_SEND_ERRORS 를 쓰는 except 가 {wired}곳뿐이다 (기대 27곳 이상)"
