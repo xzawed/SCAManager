@@ -168,3 +168,290 @@ def test_testing_md_documents_tuple_pattern():
     assert "_FK_TARGET_MODELS" in rules or "_SIDE_EFFECT_MODELS" in rules, (
         "verify.md 가 side-effect-only import 튜플-참조 패턴 미문서화 — CodeQL py/unused-import 재발 근본"
     )
+
+
+# ── #1509: 텍스트 판정의 양방향 오류 ──────────────────────────────────────
+#
+# 🔴 이 가드는 diff **원문 텍스트**에 정규식을 건다(`check_noqa_sideeffect.py:28`).
+#    AST 가 아니므로 「import 문처럼 보이는 줄」과 「실제 import 문」을 구조적으로
+#    구분하지 못한다. 그 결과가 양방향이다 — 산문(docstring 인용)을 막고,
+#    backslash continuation 의 진짜 noqa 는 놓친다. 둘 다 flake8 실물로 쟀다.
+#
+# 이 리포는 같은 실패를 #1501 에서 이미 겪었다: `"alias_httpx" in text` 가드가
+# **그 규칙을 설명하는 docstring 자체를 막았고** AST 로 재작성했다.
+
+
+def _diff_and_source(src: str) -> tuple[str, str]:
+    """파일 전체가 새로 추가된 상황의 `(diff, source)` 쌍.
+
+    🔴 AST 판정은 **소스**가 있어야 한다. diff 만 넘기면 텍스트 폴백으로 떨어져
+    이 테스트들이 검사하려는 축을 지나친다(공허해진다).
+    """
+    lines = src.splitlines()
+    header = (
+        "diff --git a/tests/unit/x.py b/tests/unit/x.py\n"
+        "+++ b/tests/unit/x.py\n"
+        f"@@ -0,0 +1,{len(lines)} @@\n"
+    )
+    return header + "".join("+" + line + "\n" for line in lines), src
+
+
+def test_docstring_quotation_is_not_a_violation():
+    """🔴 위양성 — docstring 안에서 그 관용구를 **인용**하는 것은 위반이 아니다.
+
+    실측(#1508): 새 가드 파일의 module docstring 이 제거 대상인 거짓 주석을 예시로
+    인용했는데 게이트가 그것을 실제 코드로 잡아 CI 를 막았다. 그 줄은 실행되지 않는다.
+
+    🔴 이것이 왜 치명적인가 — **이 가드가 막으려는 거짓을 문서화하려면 인용해야 한다.**
+    인용이 불가능하면 정정 기록과 주의문을 쓸 수 없다.
+    """
+    src = (
+        '"""세 테스트가 이런 주석을 달고 있었다:\n'
+        "\n"
+        "    import src.models  # noqa: F401  side-effect: populate Base.metadata\n"
+        "\n"
+        '그 부작용은 존재하지 않는다."""\n'
+        "x = 1\n"
+    )
+    violations = find_violations("tests/unit/x.py", *_diff_and_source(src))
+    assert not violations, (
+        "docstring 안의 인용을 실제 import 로 오판했다 — 산문을 막는 가드다. "
+        f"오탐: {violations}"
+    )
+
+
+def test_commented_out_import_is_not_a_violation():
+    """위양성 — 주석 처리된 import 는 실행되지 않으므로 위반이 아니다."""
+    src = "# import src.models  # noqa: F401  (예전에 이렇게 썼다)\ny = 2\n"
+    violations = find_violations("tests/unit/x.py", *_diff_and_source(src))
+    assert not violations, f"주석 처리된 줄을 잡았다: {violations}"
+
+
+def test_parenthesized_continuation_noqa_is_not_a_violation():
+    """🔴 **정정** — 괄호 여러 줄 import 의 continuation noqa 는 위반이 **아니다**.
+
+    초안은 이 자리를 「구 가드의 미탐」이라 읽고 「잡아야 한다」고 단언했다.
+    flake8 실물로 재니 틀렸다:
+
+        from src.models import (
+            Repository,  # noqa: F401
+        )
+        -> flake8 은 여전히 **1행에 F401 을 보고한다** (억제 안 됨)
+
+    억제되는 것은 **1행에 붙은 noqa 뿐**이다(2·3행은 무효). 즉 이 형태는 애초에
+    noqa-은닉이 아니고 `lint-changed-tests` 의 flake8 이 이미 잡는다. 이 가드가
+    추가로 막으면 **중복 오탐**이다 — 구 가드가 안 잡은 것이 옳았다.
+    Measured: flake8 still reports F401 on line 1, so this is not noqa-hidden at all.
+    """
+    src = (
+        "from src.models import (" + chr(10)
+        + "    Repository,  # noqa: F401" + chr(10)
+        + ")" + chr(10)
+    )
+    violations = find_violations("tests/unit/x.py", *_diff_and_source(src))
+    assert not violations, (
+        "괄호 continuation 의 noqa 를 위반으로 잡았다 — flake8 은 그것을 억제하지 "
+        f"않으므로 noqa-은닉이 아니다(중복 오탐): {violations}"
+    )
+
+
+def test_first_line_noqa_of_a_multiline_import_is_a_violation():
+    """반대 축 — **1행**에 붙은 noqa 는 실제로 F401 을 억제하므로 위반이다.
+
+    실측: `from src.models import (  # noqa: F401` 은 flake8 이 보고하지 않는다.
+    """
+    src = (
+        "from src.models import (  # noqa: F401" + chr(10)
+        + "    Repository," + chr(10)
+        + ")" + chr(10)
+    )
+    violations = find_violations("tests/unit/x.py", *_diff_and_source(src))
+    assert violations, "1행 noqa 는 flake8 이 억제하므로 반드시 잡아야 한다"
+
+
+def test_backslash_continuation_noqa_is_a_violation():
+    """backslash continuation 의 noqa 는 flake8 이 **억제한다** — 그래서 잡아야 한다.
+
+    괄호와 정반대다(실측). 이 비대칭이 `import_line_numbers` 가 span 전체가 아니라
+    `lineno` + backslash 줄만 넣는 이유다.
+    """
+    backslash = chr(92)
+    src = "import os, " + backslash + chr(10) + "    sys  # noqa: F401" + chr(10)
+    violations = find_violations("tests/unit/x.py", *_diff_and_source(src))
+    assert violations, "backslash continuation 의 noqa 를 놓쳤다 — flake8 은 억제한다"
+
+
+def test_headerless_diff_does_not_silently_pass():
+    """🔴 fail-open 바닥 — hunk 헤더가 없는 diff 를 조용히 「위반 0건」으로 만들지 않는다.
+
+    AST 판정은 ADDED 라인의 **새 파일 줄번호**를 hunk 헤더에서 얻는다. 헤더가 없으면
+    대조할 좌표가 없는데, 그 라인을 그냥 버리면 **입력을 못 읽었을 때 초록**이 된다.
+    `git diff -U0` 은 항상 헤더를 내지만, 가드에서 「조용한 0」은 두면 안 되는 형태다
+    (형제 가드들의 fail-closed 규율과 같은 축).
+    """
+    src = "from src.models.user import User  # noqa: F401\n"
+    headerless = "+from src.models.user import User  # noqa: F401\n"
+
+    violations = find_violations("tests/unit/x.py", headerless, src)
+    assert violations, (
+        "hunk 헤더 없는 diff 가 조용히 통과했다 — 좌표를 못 얻으면 텍스트 판정으로 "
+        "넘겨야 한다(fail-closed)"
+    )
+
+
+def test_hunk_arithmetic_across_diff_shapes():
+    """계기 자기검증 — 줄번호 산술이 git 이 실제로 내놓는 형태들에서 맞는가.
+
+    틀리면 ADDED 라인이 **엉뚱한 AST 구간**에 대조돼 양방향으로 오판한다.
+    """
+    from scripts.check_noqa_sideeffect import added_lines_with_numbers  # noqa: PLC0415
+
+    # 쉼표 없는 헤더
+    assert added_lines_with_numbers("@@ -1 +1 @@\n+aaa\n") == [(1, "aaa")]
+    # 여러 hunk — 각 헤더에서 다시 시작
+    assert added_lines_with_numbers(
+        "@@ -0,0 +3,1 @@\n+aaa\n@@ -5,0 +10,2 @@\n+bbb\n+ccc\n"
+    ) == [(3, "aaa"), (10, "bbb"), (11, "ccc")]
+    # 삭제 라인은 새 파일 줄번호를 소비하지 않는다
+    assert added_lines_with_numbers("@@ -3,1 +3,2 @@\n-old\n+new1\n+new2\n") == [
+        (3, "new1"), (4, "new2")
+    ]
+    # `+++` 파일 헤더는 ADDED 가 아니다
+    assert added_lines_with_numbers("+++ b/tests/x.py\n@@ -0,0 +7,1 @@\n+aaa\n") == [(7, "aaa")]
+
+
+def test_fallback_is_degraded_not_stricter():
+    """🔴 폴백이 「더 엄격」이 아님을 **고정한다** — 초안 주석의 거짓 주장을 재발 방지.
+
+    처음에는 「텍스트 폴백은 덜 정확하지만 더 엄격하다(fail-closed)」고 적었다.
+    실측하니 **양방향으로 열화**였다: 산문을 오탐하고 continuation 을 미탐한다.
+    이 테스트가 red 가 되면 그 관계가 바뀐 것이니 docstring 을 다시 재라.
+    """
+    def _both(src: str) -> tuple[int, int]:
+        lines = src.splitlines()
+        diff = f"@@ -0,0 +1,{len(lines)} @@\n" + "".join("+" + l + "\n" for l in lines)
+        return len(find_violations("x.py", diff, src)), len(parse_added_noqa_imports(diff))
+
+    # 텍스트가 **놓치는** 자리 — backslash continuation (폴백이 더 느슨)
+    ast_n, txt_n = _both("import os, " + chr(92) + chr(10) + "    sys  # noqa: F401" + chr(10))
+    assert (ast_n, txt_n) == (1, 0), (
+        f"backslash continuation 축이 바뀌었다 — AST={ast_n} 텍스트={txt_n}"
+    )
+
+    # 텍스트가 **오탐하는** 자리 — docstring 인용 (폴백이 더 엄격)
+    ast_n, txt_n = _both('"""예시:' + chr(10) + chr(10)
+                         + "    import src.models  # noqa: F401" + chr(10) + chr(10)
+                         + '"""' + chr(10) + "x = 1" + chr(10))
+    assert (ast_n, txt_n) == (0, 1), (
+        f"산문 축이 바뀌었다 — AST={ast_n} 텍스트={txt_n}"
+    )
+
+
+def test_ast_path_does_not_regress_normal_import_forms():
+    """회귀 방지 — 텍스트가 잡던 정상 형태를 AST 도 전부 잡는다.
+
+    판정기를 바꾸며 **막으려던 것을 놓치면** 이 PR 은 가드를 약화한 것이다.
+    """
+    def _ast(src: str) -> int:
+        lines = src.splitlines()
+        diff = f"@@ -0,0 +1,{len(lines)} @@\n" + "".join("+" + l + "\n" for l in lines)
+        return len(find_violations("x.py", diff, src))
+
+    forms = {
+        "module level": "import src.models.user  # noqa: F401\n",
+        "from import": "from src.models.user import User  # noqa: F401\n",
+        "TYPE_CHECKING": (
+            "from typing import TYPE_CHECKING\n"
+            "if TYPE_CHECKING:\n"
+            "    from src.models.user import User  # noqa: F401\n"
+        ),
+        "function scope": "def f():\n    from src.models.user import User  # noqa: F401\n",
+        "try/except": (
+            "try:\n"
+            "    import src.models.user  # noqa: F401\n"
+            "except ImportError:\n"
+            "    pass\n"
+        ),
+        "bare noqa": "import src.models.user  # noqa\n",
+    }
+    missed = [name for name, src in forms.items() if _ast(src) == 0]
+    assert not missed, f"AST 판정이 놓친 형태 — 가드 약화: {missed}"
+
+
+def test_changed_files_query_disables_quotepath(monkeypatch):
+    """🔴 비-ASCII 파일명이 **조용히 가드 밖으로 빠지는** 선행 결함을 막는다.
+
+    git 은 기본값 `core.quotepath=true` 로 비-ASCII 경로를 따옴표+8진 이스케이프로
+    내놓는다. 그 문자열은 `.py` 가 아니라 `.py"` 로 끝나 `_changed_test_files` 의
+    `endswith(".py")` 필터에 걸러진다 — **한글 이름의 테스트 파일이 통째로 무검사**다.
+
+    실측(이 PR): 한글 이름 파일에 noqa import 를 심었을 때
+      · 플래그 없음 → 대상 목록 `[]`, EXIT=0 (조용히 통과)
+      · 플래그 있음 → 대상 목록에 포함, EXIT=1 (잡힘)
+
+    🔴 **실제 인자를 본다 — 소스 텍스트가 아니라.** 첫 판은 `inspect.getsource` 에
+    문자열이 있는지만 봤는데, 바로 위 **주석에 같은 문자열이 있어** 플래그를 지워도
+    통과했다(뮤테이션으로 확인). 공허한 가드였다.
+    Asserts the actual argv, not the source text: a first version matched the explanatory
+    comment and stayed green when the flag was deleted.
+    """
+    from scripts import check_noqa_sideeffect as mod  # noqa: PLC0415
+
+    seen = []
+
+    def _fake_git(args):
+        seen.append(list(args))
+        return ""
+
+    monkeypatch.setattr(mod, "_git", _fake_git)
+    mod._changed_test_files("BASE", "HEAD")  # pylint: disable=protected-access
+
+    assert seen, "git 호출이 없었다 — 계기 고장"
+    argv = seen[0]
+    assert "-c" in argv and "core.quotepath=false" in argv, (
+        "_changed_test_files 가 core.quotepath 를 끄지 않는다 — 비-ASCII 경로가 "
+        f"따옴표로 감싸져 `.py` 필터에 걸러지고 그 파일은 무검사로 통과한다. argv={argv}"
+    )
+    # `-c` 바로 뒤에 와야 git 이 설정으로 받는다 (순서가 틀리면 무동작)
+    assert argv[argv.index("-c") + 1] == "core.quotepath=false", (
+        f"`-c` 다음 인자가 설정값이 아니다 — git 이 무시한다. argv={argv}"
+    )
+
+
+def test_comment_backslash_does_not_swallow_the_next_statement():
+    """🔴 과확장 방지 — 주석 안의 backslash 는 continuation 이 **아니다**.
+
+    주석 끝에 backslash 가 있는 import 는 문장이 그 줄에서 끝난다(`end_lineno == lineno`).
+    그런데 물리 줄만 보고 walk 하면 다음 줄까지 먹어, **무관한 문장**의 noqa 가
+    이 import 에 귀속된다 — 오탐이다.
+
+    실측(초판): 그 형태의 span 이 `[1, 2]` 였다. `end_lineno` 로 묶어 `[1]` 로 고쳤다.
+    (Grok 지적 → flake8/AST 로 재확인.)
+    """
+    backslash = chr(92)
+    src = (
+        "import os  # 뭔가 " + backslash + chr(10)
+        + "x = 1  # noqa: F401" + chr(10)
+    )
+    violations = find_violations("tests/unit/x.py", *_diff_and_source(src))
+    assert not violations, (
+        "주석 backslash 를 continuation 으로 착각해 다음 문장의 noqa 를 "
+        f"import 에 귀속시켰다(오탐): {violations}"
+    )
+
+
+def test_import_span_shapes_are_pinned():
+    """계기 자기검증 — 세 형태의 귀속 구간을 직접 고정한다.
+
+    `find_violations` 를 거치지 않고 구간 자체를 본다. 구간이 틀리면 위 단언들이
+    **다른 이유로** 통과할 수 있다.
+    """
+    from scripts.check_noqa_sideeffect import import_line_numbers  # noqa: PLC0415
+
+    backslash = chr(92)
+    assert import_line_numbers("import os  # 뭔가 " + backslash + chr(10) + "x = 1" + chr(10)) == {1}
+    assert import_line_numbers("import os, " + backslash + chr(10) + "    sys" + chr(10)) == {1, 2}
+    assert import_line_numbers(
+        "from src.models import (" + chr(10) + "    Y," + chr(10) + ")" + chr(10)
+    ) == {1}
+    assert import_line_numbers("import os" + chr(10)) == {1}
