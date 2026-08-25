@@ -4,7 +4,6 @@ import json
 import logging
 from urllib.parse import quote
 
-import httpx
 
 from src.constants import GITHUB_API
 from src.github_client.helpers import repo_path as _repo_path
@@ -315,7 +314,7 @@ async def is_public_repo(token: str, repo_full_name: str) -> bool | None:
         )
         resp.raise_for_status()
         payload = resp.json()
-    except (httpx.HTTPError, OSError, ValueError) as exc:
+    except (*HTTPX_SEND_ERRORS, OSError, ValueError) as exc:
         # 🔴 사용자 제어 값은 `sanitize_for_log` 경유 — 원문 보간은 py/log-injection.
         logger.warning(
             "repo visibility 조회 실패 (%s): %s", sanitize_for_log(repo_full_name), exc,

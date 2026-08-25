@@ -24,6 +24,7 @@ from src.config_manager.manager import get_repo_config
 import src.notifier  # noqa: F401 — 자동 등록 트리거  # pylint: disable=unused-import
 from src.notifier.registry import NotifyContext, REGISTRY
 from src.repositories import repository_repo, analysis_repo, analysis_attempt_repo
+from src.shared.http_client import HTTPX_SEND_ERRORS
 
 logger = logging.getLogger(__name__)
 
@@ -849,7 +850,7 @@ async def _save_and_gate(db: Session, params: _AnalysisSaveParams):
                 config=repo_config,
                 commit_sha=params.commit_sha,
             )
-        except (httpx.HTTPError, SQLAlchemyError, KeyError, ValueError, OSError):
+        except (*HTTPX_SEND_ERRORS, SQLAlchemyError, KeyError, ValueError, OSError):
             # Phase H PR-6A: logger.exception 으로 stack trace 보존
             logger.exception("Gate check failed")
         except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught

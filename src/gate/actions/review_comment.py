@@ -6,12 +6,12 @@ Sprint E-final: Implementation lives here directly (delegation to engine.py remo
 """
 import logging
 
-import httpx
 
 from src.database import WorkerSessionLocal as SessionLocal
 from src.gate.actions import GateAction, GateContext, register
 from src.notifier.github_comment import post_pr_comment_from_result as post_pr_comment
 from src.notifier._language import resolve_notification_language
+from src.shared.http_client import HTTPX_SEND_ERRORS
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ class ReviewCommentAction(GateAction):
                 result=ctx.result,
                 language=language,
             )
-        except (httpx.HTTPError, KeyError) as exc:
+        except (*HTTPX_SEND_ERRORS, KeyError) as exc:
             # 예외 타입만 기록 — exc 본문에 HTTP 응답 바디가 포함될 수 있음
             # Log only the exception type — exc body may contain HTTP response details.
             logger.error("PR Review Comment 실패: %s", type(exc).__name__)

@@ -186,12 +186,19 @@ def test_narrow_httpx_except_is_not_used_anywhere_in_src():
             if not isinstance(node, ast.ExceptHandler) or node.type is None:
                 continue
             src = ast.unparse(node.type)
-            if src == "httpx.HTTPError":
+            # 🔴 튜플 안에 숨은 것도 같은 구멍이다 — `except (httpx.HTTPError, KeyError)`
+            #   는 7종을 여전히 흘린다. 첫 판은 정확 일치만 봐서 19곳을 못 봤다(Grok Q5).
+            #   A tuple member is the same hole; exact-match missed 19 sites.
+            in_tuple = isinstance(node.type, ast.Tuple) and any(
+                ast.unparse(e) == "httpx.HTTPError" for e in node.type.elts
+            )
+            if src == "httpx.HTTPError" or in_tuple:
                 narrow.append(f"{f.name}:{node.lineno}")
             elif "HTTPX_SEND_ERRORS" in src:
                 wired += 1
 
     assert not narrow, (
-        f"좁은 `except httpx.HTTPError` 가 남아 있다 — HTTPError 밖 7종이 빠져나간다: {narrow}"
+        "좁은 `httpx.HTTPError` 가 남아 있다(단독 또는 튜플 원소) — "
+        f"HTTPError 밖 7종이 빠져나간다: {narrow}"
     )
-    assert wired >= 27, f"HTTPX_SEND_ERRORS 를 쓰는 except 가 {wired}곳뿐이다 (기대 27곳 이상)"
+    assert wired >= 46, f"HTTPX_SEND_ERRORS 를 쓰는 except 가 {wired}곳뿐이다 (기대 46곳 이상)"

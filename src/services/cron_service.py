@@ -7,7 +7,6 @@ import logging
 from datetime import datetime, timedelta, timezone
 from html import escape
 
-import httpx
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -24,6 +23,7 @@ from src.repositories import (
 )
 from src.services.analytics_service import moving_average, resolve_chat_id, weekly_summary
 from src.shared.time_utils import to_naive_utc
+from src.shared.http_client import HTTPX_SEND_ERRORS
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +69,7 @@ async def sweep_analysis_attempts(db: Session) -> int:
                 settings.telegram_chat_id,
                 {"text": _format_orphan_alert(orphans), "parse_mode": "HTML"},
             )
-        except (httpx.HTTPError, KeyError, ValueError) as exc:
+        except (*HTTPX_SEND_ERRORS, KeyError, ValueError) as exc:
             logger.warning("orphan sweep telegram alert failed: %s", type(exc).__name__)
     # 표면화 완료 → **표면화한 행 id 만** 삭제 (재알림·무한 누적 방지 + TOCTOU 봉인 — pipeline-reviewer P2).
     # Surfaced → delete exactly the surfaced ids (prevents re-alert/growth; closes the TOCTOU window).
@@ -161,7 +161,7 @@ async def run_weekly_reports(db: Session, *, now: datetime | None = None) -> int
             )
             sent += 1
 
-        except (httpx.HTTPError, SQLAlchemyError, KeyError, ValueError) as exc:
+        except (*HTTPX_SEND_ERRORS, SQLAlchemyError, KeyError, ValueError) as exc:
             # 리포별 예외 격리 — 한 리포 실패가 다른 리포 알림을 막지 않는다
             # Per-repo exception isolation — one failure does not block others
             # 🔴 계층1 근본통제 (security.md) — httpx.HTTPError 는 Telegram URL(bot<TOKEN>)을
@@ -273,7 +273,7 @@ async def run_trend_check(  # pylint: disable=too-many-locals
                 )
                 alerted += 1
 
-        except (httpx.HTTPError, SQLAlchemyError, KeyError, ValueError) as exc:
+        except (*HTTPX_SEND_ERRORS, SQLAlchemyError, KeyError, ValueError) as exc:
             # 리포별 예외 격리 — 한 리포 실패가 다른 리포 알림을 막지 않는다
             # Per-repo exception isolation — one failure does not block others
             # 🔴 계층1 근본통제 (security.md) — httpx.HTTPError 는 Telegram URL(bot<TOKEN>)을

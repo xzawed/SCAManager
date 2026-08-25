@@ -8,7 +8,6 @@ import logging
 from datetime import datetime, timezone
 from html import escape
 
-import httpx
 from sqlalchemy.orm import Session
 from src.config import settings
 from src.database import WorkerSessionLocal as SessionLocal  # 독립 세션 열기용 — asyncio.gather 공유 세션 오염 방지
@@ -155,7 +154,7 @@ async def _run_auto_merge(  # pylint: disable=too-many-arguments,too-many-locals
                 config, github_token, repo_name, pr_number, score,
                 analysis_id=analysis_id, db=db, analyzed_sha=analyzed_sha,
             )
-        except (httpx.HTTPError, KeyError, RuntimeError, ValueError) as exc:
+        except (*HTTPX_SEND_ERRORS, KeyError, RuntimeError, ValueError) as exc:
             logger.error(
                 "Auto Merge 실패 (repo=%s, pr=%d): %s",
                 repo_name, pr_number, type(exc).__name__,
@@ -553,7 +552,7 @@ async def _run_auto_merge_legacy(  # pylint: disable=too-many-arguments,too-many
                 )
     # Phase F QW4: RuntimeError/ValueError 도 포착해 알림 스킵 방지
     # Phase F QW4: also catch RuntimeError/ValueError to prevent notification skip.
-    except (httpx.HTTPError, KeyError, RuntimeError, ValueError) as exc:
+    except (*HTTPX_SEND_ERRORS, KeyError, RuntimeError, ValueError) as exc:
         logger.error(
             "Auto Merge 실패 (repo=%s, pr=%d): %s",
             repo_name, pr_number, type(exc).__name__,

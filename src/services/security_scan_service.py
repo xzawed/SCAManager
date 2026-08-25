@@ -19,7 +19,6 @@ import logging
 import os
 from typing import Any
 
-import httpx
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -236,7 +235,7 @@ async def scan_all_repos(db: Session) -> dict[str, int]:
             totals["code_scanning"] += counts["code_scanning"]
             totals["secret_scanning"] += counts["secret_scanning"]
             totals["skipped"] += counts["skipped"]
-        except (httpx.HTTPError, SQLAlchemyError, KeyError, ValueError) as exc:
+        except (*HTTPX_SEND_ERRORS, SQLAlchemyError, KeyError, ValueError) as exc:
             logger.warning(
                 "security_scan: repo=%s 처리 실패 err=%s",
                 sanitize_for_log(repo.full_name), type(exc).__name__,

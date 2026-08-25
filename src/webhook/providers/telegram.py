@@ -12,7 +12,6 @@ import hmac
 import logging
 from typing import Annotated
 
-import httpx
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -261,7 +260,7 @@ async def handle_gate_callback(  # pylint: disable=too-many-locals
                     chat_id,
                     {"text": text, "parse_mode": "HTML"},
                 )
-        except (httpx.HTTPError, KeyError, ValueError, RuntimeError, SQLAlchemyError):
+        except (*HTTPX_SEND_ERRORS, KeyError, ValueError, RuntimeError, SQLAlchemyError):
             # Phase H PR-6A: logger.exception 으로 stack trace 보존
             # RuntimeError 포함 — _run_auto_merge(legacy 경로)가 누출할 수 있어 콜백 격리 보강
             # Include RuntimeError — _run_auto_merge (legacy path) may leak it; isolate the callback
@@ -316,7 +315,7 @@ async def _notify_replay_blocked(db, chat_id, analysis_id):
                 "parse_mode": "HTML",
             },
         )
-    except (httpx.HTTPError, KeyError, ValueError, RuntimeError, SQLAlchemyError):
+    except (*HTTPX_SEND_ERRORS, KeyError, ValueError, RuntimeError, SQLAlchemyError):
         # 🔴 예외 본문은 로깅하지 않는다 — 형제 발신 경로가 URL 에 봇 토큰을 싣는다.
         # Type name only: sibling send paths embed the bot token in the URL.
         logger.warning(
@@ -382,7 +381,7 @@ async def _handle_gate_callback_guarded(
             telegram_user_id=telegram_user_id,
             chat_id=chat_id,
         )
-    except (httpx.HTTPError, SQLAlchemyError) as exc:
+    except (*HTTPX_SEND_ERRORS, SQLAlchemyError) as exc:
         logger.warning("telegram gate callback failed: %s", type(exc).__name__)
 
 

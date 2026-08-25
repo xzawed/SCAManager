@@ -12,7 +12,6 @@ import logging
 from datetime import datetime, timedelta, timezone
 from html import escape
 
-import httpx
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -103,7 +102,7 @@ async def process_pending_retries(
         _orig_tok = claim_tokens[row.id]
         try:
             await _process_single_retry(db, row, now, counts, claim_token=_orig_tok)
-        except (httpx.HTTPError, SQLAlchemyError) as exc:
+        except (*HTTPX_SEND_ERRORS, SQLAlchemyError) as exc:
             # 인프라 에러 — 클레임 해제, 짧은 백오프, attempts_count 미증가
             # Infra error — release claim, short backoff, do NOT bump attempts_count
             logger.warning(
