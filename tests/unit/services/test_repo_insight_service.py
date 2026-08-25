@@ -16,7 +16,6 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-import src.models  # noqa: F401  side-effect: populate Base.metadata
 from src.database import Base
 from src.models.analysis import Analysis
 from src.models.insight_narrative_cache import InsightNarrativeCache  # noqa: F401
