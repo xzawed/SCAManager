@@ -290,17 +290,22 @@ async def test_issues_event_queues_a_guarded_task(caplog):
 #    여기서는 그 else 분기가 `str(exc)` + 전체 트레이스백을 찍는 쪽이다 — 즉 확대가
 #    로그 표면을 **넓히는** 방향으로 새는 자리다(쓰는 쪽만 넓히면 읽는 쪽이 눈먼다).
 #
-# 실측: `httpx.InvalidURL` 메시지 자체는 URL 을 담지 않는다(`"Invalid non-printable
-# ASCII character in URL, '\x00' at position 57."` / `"Invalid port: 'notaport'"`).
-# 그래서 **지금은** 유출이 아니다. 아래 단언은 유출이 아니라 **분기 배선**을 고정한다 —
-# 메시지 포맷은 httpx 의 사정이고, 우리 계약은 「전송 오류는 타입명만 남긴다」다.
+# 실측(httpx 0.28.1 `_urlparse.py` 의 InvalidURL raise 12곳 전수):
+#   실리는 URL 유래 값은 **호스트·포트까지**다 — 361·376·392 가 `{host!r}`, 411 이
+#   `{port!r}`, 나머지는 문자 1개+위치 또는 컴포넌트 이름.
+#   🔴 **경로·쿼리·userinfo 는 어느 지점에서도 실리지 않는다** (실측:
+#   `"Invalid IPv6 address: '[::zz]'"` · `"Invalid port: 'notaport'"` — 경로 시크릿 미포함).
+#   n8n·custom 에서 credential 은 **경로**라 지금은 유출이 아니다. 호스트는 이 리포의
+#   리댁션 정책이 원래 남기는 값이다(호스트는 남기고 경로만 제거).
+# 따라서 아래 단언은 유출이 아니라 **분기 배선**을 고정한다 — 메시지 포맷은 httpx 의
+# 사정이고, 우리 계약은 「전송 오류는 타입명만 남긴다」다.
 
 
 async def test_notification_failure_log_treats_invalid_url_as_transport_error(caplog):
     """🔴 `httpx.InvalidURL` 도 전송 오류로 분류돼 **타입명만** 남는다.
 
     확대 전에는 `isinstance(exc, httpx.HTTPError)` 가 False → else 분기 →
-    `%s` + `exc_info` 트레이스백. 이 클래스가 URL 을 메시지에 담게 되는 날
+    `%s` + `exc_info` 트레이스백. 이 클래스가 **경로**를 메시지에 담게 되는 날
     (httpx 구현 사정) 유출로 바뀌는 자리라, 계약을 지금 못박는다.
     """
     from src.worker.pipeline import _send_notifications  # pylint: disable=import-outside-toplevel

@@ -886,8 +886,13 @@ async def _send_notifications(notify_tasks: list, task_names: list[str]) -> None
 
     전송 오류(`HTTPX_SEND_ERRORS`)가 **아닌** 예외만 트레이스백을 보존한다(진단 가치 유지).
     🔴 판정을 `httpx.HTTPError` 로 두면 안 된다 — `InvalidURL` 등 7종이 그 밖이라
-    수다스러운 분기로 떨어진다(#1498). 실측상 그 7종의 메시지는 URL 을 담지 않지만,
-    메시지 포맷은 httpx 의 사정이고 이쪽 계약은 「전송 오류는 타입명만」이다.
+    수다스러운 분기로 떨어진다(#1498).
+    실측(httpx 0.28.1 `_urlparse.py`): 그 메시지에 실리는 URL 유래 값은 **호스트·포트**
+    까지다 — `Invalid IPv6 address: '[::zz]'` · `Invalid port: 'notaport'`. **경로·쿼리·
+    userinfo 는 어느 raise 지점에서도 실리지 않는다**(361·376·392 는 `{host!r}`, 411 은
+    `{port!r}`, 나머지는 문자 1개+위치 또는 컴포넌트 이름). 여기서 지켜야 할 credential 은
+    **경로**이므로 지금은 유출이 아니다. 그래도 분기를 맞추는 이유는 메시지 포맷이 httpx 의
+    사정이고 이쪽 계약은 「전송 오류는 타입명만」이기 때문이다.
     Only non-transport exceptions keep their traceback; the isinstance check must use the
     same widened tuple as the except clauses, not httpx.HTTPError.
     """

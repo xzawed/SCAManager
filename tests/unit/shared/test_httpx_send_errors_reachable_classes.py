@@ -101,3 +101,73 @@ def test_streamerror_family_is_the_runtimeerror_tradeoff():
         "StreamError", "StreamClosed", "StreamConsumed",
         "RequestNotRead", "ResponseNotRead",
     }, f"삼켜지는 RuntimeError 범위가 예상과 다르다: {[c.__name__ for c in swallowed]}"
+
+
+def test_src_uses_no_streaming_api_so_the_runtimeerror_trade_is_theoretical():
+    """🔴 확대가 삼키는 `RuntimeError` 가 **실제로 도달하지 않는지** 재는 계기.
+
+    `StreamError` 계열은 `RuntimeError` 하위라, 확대는 「스트림 API 오용」이라는
+    프로그래밍 버그를 조용하게 만들 수 있다. 지금 그 트레이드가 무해한 이유는
+    `src/` 가 스트리밍 API 를 **한 번도 쓰지 않기** 때문이다(실측 0건) — 즉 이 5종은
+    프로덕션 경로에서 발생할 수 없다.
+
+    누군가 `client.stream(...)` / `aiter_bytes()` 를 도입하면 그 전제가 깨진다.
+    그때 이 테스트가 red 가 되어, 확대된 19곳의 핸들러가 스트림 오용 버그를 삼키기
+    시작한다는 사실을 **도입 시점에** 알린다. 도입을 금지하는 게 아니라, 도입하면
+    위 트레이드오프를 다시 판단하라는 신호다.
+
+    src/ uses no streaming API (measured: 0 sites), so the StreamError family is
+    unreachable in production. If streaming is introduced, revisit the widening.
+    """
+    import ast  # noqa: PLC0415
+    import pathlib  # noqa: PLC0415
+
+    root = pathlib.Path(__file__).resolve().parents[3] / "src"
+    files = sorted(root.rglob("*.py"))
+    assert len(files) > 100, f"src/ 에서 {len(files)}개 파일만 찾았다 — 스캐너 점검 필요"
+
+    # 스트림 오용 예외를 낳는 호출들 — httpx 의 스트리밍 표면.
+    STREAMING_CALLS = {
+        "stream", "aiter_bytes", "aiter_lines", "aiter_raw", "aiter_text",
+        "iter_bytes", "iter_lines", "iter_raw", "iter_text",
+    }
+    hits = []
+    for f in files:
+        for n in ast.walk(ast.parse(f.read_text(encoding="utf-8"))):
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute):
+                if n.func.attr in STREAMING_CALLS:
+                    hits.append(f"{f.relative_to(root).as_posix()}:{n.lineno} .{n.func.attr}()")
+            elif isinstance(n, ast.Call) and any(
+                kw.arg == "stream" and getattr(kw.value, "value", None) is True
+                for kw in n.keywords
+            ):
+                hits.append(f"{f.relative_to(root).as_posix()}:{n.lineno} stream=True")
+
+    assert not hits, (
+        "src/ 에 스트리밍 API 가 생겼다 — 이제 StreamError 계열이 프로덕션에서 발생할 수 "
+        "있고, 확대된 19곳의 핸들러가 그 프로그래밍 버그를 로그 한 줄로 삼킨다. "
+        f"해당 핸들러에서 StreamError 를 뺄지 판단하라 (#1498): {hits}"
+    )
+
+
+def test_streaming_scanner_actually_detects_a_planted_call():
+    """계기 자기검증 — 위 스캐너가 심은 호출을 잡는지 확인한다(공허한 초록 방지)."""
+    import ast  # noqa: PLC0415
+
+    planted = ast.parse("async with client.stream('GET', url) as r:\n    pass\n")
+    found = [
+        n for n in ast.walk(planted)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+        and n.func.attr == "stream"
+    ]
+    assert found, "심은 .stream() 호출을 못 잡았다 — 판정기 고장"
+
+    planted2 = ast.parse("r = client.get(url, stream=True)\n")
+    found2 = [
+        n for n in ast.walk(planted2)
+        if isinstance(n, ast.Call) and any(
+            kw.arg == "stream" and getattr(kw.value, "value", None) is True
+            for kw in n.keywords
+        )
+    ]
+    assert found2, "심은 stream=True 를 못 잡았다 — 판정기 고장"
