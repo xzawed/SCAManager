@@ -158,7 +158,10 @@ def _detect_initial_mode(config: RepoConfigData, railway_api_token_set: bool) ->
 
 
 @router.get("/repos/{repo_name:path}/settings", response_class=HTMLResponse)
-async def repo_settings(  # pylint: disable=too-many-positional-arguments,too-many-locals
+async def repo_settings(  # pylint: disable=too-many-positional-arguments,too-many-locals,too-many-arguments
+    # 인자 수는 FastAPI **쿼리 파라미터**라 자연스러운 형태다 — 묶으면 라우팅이
+    #   그 dataclass 를 쿼리로 인식하지 못해 오히려 배선이 깨진다.
+    # The arg count is FastAPI query params; bundling them breaks query binding.
     request: Request,
     repo_name: str,
     current_user: Annotated[CurrentUser, Depends(require_login)],
@@ -382,7 +385,7 @@ async def reinstall_hook(
 
 
 @router.post("/repos/{repo_name:path}/reinstall-webhook")
-async def reinstall_webhook(
+async def reinstall_webhook(  # pylint: disable=too-many-locals  # 3분기 보고(#1504 R1)로 +1
     request: Request,
     repo_name: str,
     current_user: Annotated[CurrentUser, Depends(require_login)],
