@@ -15,8 +15,6 @@
 
 🔴 이 리포는 required check **10종** + `enforce_admins: true` 를 쓰고 그중 pytest·e2e 는
 수 분이 걸린다 — (a)가 일상적으로 발생하는 구성이다.
-`src/gate/sensitive_paths.py:18~20` 이 이미 그 성질을 실측으로 기록해 뒀다:
-*"오히려 자동 머지를 죽인다 … 이 태그는 `_RETRIABLE_TAGS` 에 없다(실측) → 종결 실패"*.
 
 ## 이 파일이 고정하는 계약
 
@@ -108,3 +106,30 @@ def test_retry_budget_still_bounds_the_new_tag():
     source = __import__("pathlib").Path(retry_policy.__file__).read_text(encoding="utf-8")
     assert "is_expired" in source, "만료(max_age) 축이 사라졌다 — 무한 재시도 위험"
     assert "compute_next_retry_at" in source, "백오프가 사라졌다 — 즉시 재시도 폭주 위험"
+
+# ── ④ 인용문이 코드보다 오래 산다 ──────────────────────────────────────
+
+
+def test_sensitive_paths_docstring_does_not_restate_retriable_membership():
+    """`sensitive_paths` 모듈 docstring 은 재시도 가능 집합의 **내용**을 다시 적지 않는다.
+
+    R68 이 `BRANCH_PROTECTION_BLOCKED` 를 대기 가능으로 올린 바로 그 커밋에서,
+    근거로 인용된 `sensitive_paths` docstring 의 「그 태그는 재시도 집합에 없다(실측)」가
+    **거짓이 됐다.** 코드는 고쳐지고 인용문은 그대로 남았다 — 아무것도 red 가 되지 않았다.
+
+    멤버십의 정본은 `src/gate/merge_reasons.py` 한 곳이다. 다른 모듈 docstring 이 그것을
+    다시 적으면 조용히 늙는다. 적지 말고 가리킨다.
+
+    이 검사의 범위는 **이 한 가지뿐**이다 — 그 docstring 이 전반적으로 참인지는 재지 못한다.
+
+    The membership set has one owner; restating it in another module's docstring lets the
+    restatement outlive the fact. Scope of this check: that one restatement, nothing more.
+    """
+    from src.gate import sensitive_paths
+
+    doc = sensitive_paths.__doc__ or ""
+    assert "_RETRIABLE_TAGS" not in doc, (
+        "sensitive_paths 모듈 docstring 이 `_RETRIABLE_TAGS` 를 다시 적고 있다. "
+        "재시도 가능 여부는 src/gate/merge_reasons.py 와 retry_policy.should_retry 가 정본이다 "
+        "— 여기서는 그 모듈을 가리키기만 하라. 내용을 복사하면 R68 때처럼 조용히 거짓이 된다."
+    )
