@@ -137,6 +137,59 @@ _SIMPLE_MODE_FIELDS = frozenset({
 })
 
 
+# 🔴 폼이 보내지 않는 설정 — 저장 시 **현재 값에서 보존**한다.
+#
+# `upsert_repo_config` 는 `RepoConfigData` 의 전 필드를 무조건 덮어쓴다. 그래서 폼에
+# 없는 필드를 그냥 두면 dataclass 기본값(`None`·`[]`)이 저장된 값을 지우고, 라우트는
+# `?saved=1` 로 성공을 표시한다 — 사용자는 유실을 모른다(감사 A1, #1519 실측).
+#
+# 형제인 REST `PUT /api/repos/{repo}/config` 는 `model_dump(exclude_unset=True)` 로
+# 같은 문제를 이미 막고 있다. 이 목록은 그 관용구의 UI 판이다.
+#
+# 새 필드를 `RepoConfigData` 에 추가하면 **폼에서 받거나 여기 등재하거나** 해야 한다 —
+# 둘 다 안 하면 `test_every_config_field_is_either_posted_or_explicitly_preserved` 가 red 다.
+#
+# Fields the settings form never posts; preserved from the stored row on save.
+PRESERVED_CONFIG_FIELDS: tuple[str, ...] = (
+    "notification_language",
+    "disabled_tools",
+)
+
+
+def build_repo_config_from_form(db, repo_name: str, form) -> RepoConfigData:
+    """폼 + 보존 필드로 `RepoConfigData` 를 만든다 — 저장 경로의 단일 출처.
+
+    Build RepoConfigData from the form, carrying over fields the form does not post.
+    """
+    current = get_repo_config(db, repo_name)
+    preserved = {name: getattr(current, name) for name in PRESERVED_CONFIG_FIELDS}
+    return RepoConfigData(
+        repo_full_name=repo_name,
+        pr_review_comment=form.get("pr_review_comment") == "on",
+        # AI 리뷰 독립 토글 — 프리셋과 무관 (비용 제어, Task 2.4)
+        # Standalone AI-review toggle — independent of presets (cost control, Task 2.4)
+        ai_review_enabled=form.get("ai_review_enabled") == "on",
+        approve_mode=form.get("approve_mode", "disabled"),
+        approve_threshold=int(form.get("approve_threshold", GATE_DEFAULT_APPROVE_THRESHOLD)),
+        reject_threshold=int(form.get("reject_threshold", GATE_DEFAULT_REJECT_THRESHOLD)),
+        notify_chat_id=form.get("notify_chat_id") or None,
+        n8n_webhook_url=form.get("n8n_webhook_url") or None,
+        discord_webhook_url=form.get("discord_webhook_url", "") or None,
+        slack_webhook_url=form.get("slack_webhook_url", "") or None,
+        custom_webhook_url=form.get("custom_webhook_url", "") or None,
+        email_recipients=form.get("email_recipients", "") or None,
+        auto_merge=form.get("auto_merge") == "on",
+        merge_threshold=int(form.get("merge_threshold", GATE_DEFAULT_MERGE_THRESHOLD)),
+        commit_comment=form.get("commit_comment") == "on",
+        create_issue=form.get("create_issue") == "on",
+        railway_deploy_alerts=form.get("railway_deploy_alerts") == "on",
+        auto_merge_issue_on_failure=form.get("auto_merge_issue_on_failure") == "on",
+        review_model=form.get("review_model") or None,
+        # leaderboard_opt_in 폐기 (그룹 60 사용자 결정 정정 — alembic 0025)
+        **preserved,
+    )
+
+
 def _detect_initial_mode(config: RepoConfigData, railway_api_token_set: bool) -> str:
     """단순 모드 노출 5개 핵심 필드 외에 사용자가 한 번이라도 비-기본값으로 저장한 흔적이 있으면 'advanced' 반환.
     Return 'advanced' when any non-simple-mode field carries a non-default value.
@@ -296,30 +349,7 @@ async def update_repo_settings(
                 url=f"/repos/{safe_name}/settings?stale_form=1", status_code=303
             )
         try:
-            upsert_repo_config(db, RepoConfigData(
-                repo_full_name=repo_name,
-                pr_review_comment=form.get("pr_review_comment") == "on",
-                # AI 리뷰 독립 토글 — 프리셋과 무관 (비용 제어, Task 2.4)
-                # Standalone AI-review toggle — independent of presets (cost control, Task 2.4)
-                ai_review_enabled=form.get("ai_review_enabled") == "on",
-                approve_mode=form.get("approve_mode", "disabled"),
-                approve_threshold=int(form.get("approve_threshold", GATE_DEFAULT_APPROVE_THRESHOLD)),
-                reject_threshold=int(form.get("reject_threshold", GATE_DEFAULT_REJECT_THRESHOLD)),
-                notify_chat_id=form.get("notify_chat_id") or None,
-                n8n_webhook_url=form.get("n8n_webhook_url") or None,
-                discord_webhook_url=form.get("discord_webhook_url", "") or None,
-                slack_webhook_url=form.get("slack_webhook_url", "") or None,
-                custom_webhook_url=form.get("custom_webhook_url", "") or None,
-                email_recipients=form.get("email_recipients", "") or None,
-                auto_merge=form.get("auto_merge") == "on",
-                merge_threshold=int(form.get("merge_threshold", GATE_DEFAULT_MERGE_THRESHOLD)),
-                commit_comment=form.get("commit_comment") == "on",
-                create_issue=form.get("create_issue") == "on",
-                railway_deploy_alerts=form.get("railway_deploy_alerts") == "on",
-                auto_merge_issue_on_failure=form.get("auto_merge_issue_on_failure") == "on",
-                review_model=form.get("review_model") or None,
-                # leaderboard_opt_in 폐기 (그룹 60 사용자 결정 정정 — alembic 0025)
-            ))
+            upsert_repo_config(db, build_repo_config_from_form(db, repo_name, form))
             # railway_webhook_token, railway_api_token — RepoConfigData 외부 관리
             config_orm = repo_config_repo.find_by_full_name(db, repo_name)
             if config_orm and not config_orm.railway_webhook_token:
