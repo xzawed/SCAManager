@@ -31,6 +31,7 @@ JSON 경로 접근이 `JSON_EXTRACT` / `#>` 로 달라 오탐·미탐이 둘 다
 """
 from __future__ import annotations
 
+import re
 import json
 from unittest.mock import patch
 
@@ -162,15 +163,70 @@ def test_overview_does_not_parse_the_whole_result_blob(json_bytes):
     )
 
 
+# 렌더된 카드에서 **점수 자리**만 뽑는다. 페이지 전체를 문자열로 훑으면 CSS 가 걸린다.
+# Extract the score from its own element; scanning the whole page hits CSS.
+_SCORE_IN_CARD = re.compile(
+    r'<span class="repo-card__score">(\d+)<span'
+)
+
+
+def _rendered_average() -> str | None:
+    """카드에 실제로 그려진 평균 점수. 없으면 None."""
+    match = _SCORE_IN_CARD.search(_render().text)
+    return match.group(1) if match else None
+
+
+def test_the_score_element_is_actually_present(json_bytes):
+    """🔴 계기 자기검증 — 점수 자리를 못 찾으면 아래 단언이 공허하다.
+
+    템플릿 구조가 바뀌면 정규식이 못 맞추고, 그때 `None == "90"` 이 아니라
+    **여기가 먼저** red 가 되어 원인을 가리킨다.
+    """
+    assert _rendered_average() is not None, (
+        "`repo-card__score` 안의 점수를 못 찾았다 — 템플릿 구조가 바뀌었다면 "
+        "`_SCORE_IN_CARD` 를 함께 고쳐야 한다"
+    )
+
+
+def test_a_bare_substring_scan_would_be_vacuous(json_bytes):
+    """🔴 왜 부분문자열 스캔을 안 쓰는지 **실측으로** 고정한다 (감사 B4, #1519).
+
+    이 테스트의 옛 판은 `assert "90" in body` 였다. 페이지에는 점수와 무관한 `90` 이
+    여러 번 있어 **평균이 무엇이든 참**이었다 — 실측(이 픽스처):
+
+        페이지 내 '90' 발생: 3
+          ... 'rgba(180,190,254, 0.10)'      <- 색상값
+          ... 'max-width: 900px; margin: 60p' <- 레이아웃
+          ... 'max-width: 900px; margin: 48p'
+
+    🔴 감사 보고는 `linear-gradient(90deg, …)` 를 원인으로 적었는데, **이 렌더 경로에는
+    `90deg` 가 없다**(실측). 원인 문자열은 다르지만 결론은 같다 — 점수 자리 밖의 `90` 이
+    존재하는 한 부분문자열 스캔은 공허하다.
+
+    이 단언은 그 전제를 고정한다: 점수 자리 밖에도 `90` 이 있다.
+    """
+    body = _render().text
+    score = _SCORE_IN_CARD.search(body)
+    assert score is not None, "점수 자리를 못 찾았다 — 위 테스트가 먼저 red 여야 한다"
+    outside = body[:score.start()] + body[score.end():]
+    assert "90" in outside, (
+        "점수 자리 밖에 `90` 이 없다 — 옛 부분문자열 방식이 우연히 작동하기 시작했다. "
+        "이 파일의 서술이 낡았으니 다시 확인하라"
+    )
+
+
 def test_overview_average_excludes_every_unreliable_reason(json_bytes):
     """🔴 의미 비회귀 — 투영이 신뢰도 판정을 바꾸면 평균이 조용히 틀어진다.
 
     특히 캐시(`score_unreliable`)가 판정과 어긋나면 그 행이 집계에서 안 빠지고
     정규화하지 않으면 이 행이 집계에 남아 평균이 90 이 아니게 된다.
+
+    🔴 옛 판은 `assert "90" in body` 였고 **발화할 수 없었다** — CSS 의
+    `linear-gradient(90deg, …)` 에 맞았다. 이제 카드의 점수 자리만 본다.
     """
     _, _sess = json_bytes
-    body = _render().text
-    assert "90" in body, (
-        "평균이 90 이 아니다 — 신뢰 불가 행이 집계에 섞였다. "
+    rendered = _rendered_average()
+    assert rendered == "90", (
+        f"카드에 그려진 평균이 {rendered!r} 다 — 신뢰 불가 행이 집계에 섞였다. "
         f"신뢰 가능 행은 100·80 둘뿐이고 나머지 {_ROWS} 행은 전부 제외돼야 한다."
     )
