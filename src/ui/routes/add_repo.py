@@ -86,10 +86,28 @@ async def github_repos_list(
     else:
         try:
             all_repos = await list_user_repos(current_user.plaintext_token)
-        except Exception:  # pylint: disable=broad-exception-caught
-            # GitHub API 오류(401/403/429/timeout) 시 빈 목록 반환
-            # Return empty list on GitHub API error (401/403/429/timeout)
-            return []
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            # 🔴 실패를 «리포 없음» 으로 위장하지 않는다.
+            #
+            # 예전에는 모든 예외를 삼키고 200 + `[]` 를 돌려줬다. 그러면 클라이언트가
+            # `repos.length === 0` 을 보고 「모든 리포가 이미 등록되었거나 접근 가능한
+            # 리포가 없습니다」라고 **단정**한다 — 토큰 만료·rate limit 을 그렇게 말한다.
+            # 사용자는 재인증하면 될 일을 「등록할 게 없다」로 읽고 떠난다 (감사 A8, #1519).
+            #
+            # `add_repo.html` 에는 이미 오류 경로가 있다(`!resp.ok` -> `loadFailed`).
+            # 서버가 오류를 **오류로 알리기만** 하면 그 경로가 살아난다.
+            #
+            # 🔴 예외 본문은 응답에 싣지 않는다 — GitHub 오류 메시지가 토큰 일부나
+            # 저장소 이름을 담을 수 있다. 로그에만 남긴다.
+            # Report the failure; the client already knows how to show it.
+            logger.warning(
+                "GitHub repo list fetch failed for user %s: %s",
+                current_user.id, type(exc).__name__,
+            )
+            raise HTTPException(
+                status_code=502,
+                detail="github_unavailable",
+            ) from exc
         _store_user_repos(current_user.id, all_repos, now)
 
     with SessionLocal() as db:
