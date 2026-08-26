@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from starlette.datastructures import Headers
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -51,24 +52,89 @@ logger = logging.getLogger(__name__)
 _DEFAULT_SESSION_SECRET = "dev-secret-change-in-production"  # nosec B105
 
 
-class LimitBodySizeMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-methods
-    """요청 본문 크기를 제한한다 (DoS 방어).
-    Limits request body size to prevent DoS via oversized payloads."""
+class _BodyTooLarge(Exception):
+    """수신 중 한도를 넘었다 — 미들웨어가 잡아 413 으로 바꾼다."""
+
+
+class LimitBodySizeMiddleware:  # pylint: disable=too-few-public-methods
+    """요청 본문 크기를 제한한다 (DoS 방어) — **수신하면서** 센다.
+
+    🔴 예전 구현은 `Content-Length` 헤더만 봤다. 그런데 HTTP/1.1 에서
+    `Transfer-Encoding: chunked` 요청은 그 헤더를 **보내지 않는다**(RFC 9112 §6.1 —
+    둘을 함께 보내면 안 된다). 그래서 chunked 본문은 제한을 통째로 지나갔고,
+    이것이 리포의 **유일한** 본문 크기 가드였다(감사 A4, #1519 실측).
+
+    헤더는 클라이언트가 정하는 값이라 「작다」는 거짓말도 통했다. 그래서 두 층으로 막는다:
+
+    1. `Content-Length` 가 있고 한도를 넘으면 **읽기 전에** 거부한다(값싼 조기 차단).
+    2. 헤더 유무와 무관하게 **실제 수신 바이트**를 세고, 한도를 넘는 순간 끊는다.
+
+    ASGI 미들웨어인 이유: `BaseHTTPMiddleware` 로는 수신 채널을 감싸려면 private
+    속성(`request._receive`)을 건드려야 한다.
+
+    Counts bytes as they arrive; the header check is only a cheap early reject.
+    """
 
     _MAX_BODY = 10 * 1024 * 1024  # 10 MB
 
-    async def dispatch(self, request: Request, call_next) -> Response:
-        content_length = request.headers.get("content-length")
-        if content_length:
+    def __init__(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+
+        declared = Headers(scope=scope).get("content-length")
+        if declared:
             try:
-                body_size = int(content_length)
+                declared_size = int(declared)
             except ValueError:
                 # 비정형 Content-Length 헤더 — 500 전파 차단
                 # Malformed Content-Length header — prevent 500 propagation
-                return Response("Invalid Content-Length", status_code=400)
-            if body_size > self._MAX_BODY:
-                return Response("Request body too large", status_code=413)
-        return await call_next(request)
+                await Response("Invalid Content-Length", status_code=400)(scope, receive, send)
+                return
+            if declared_size > self._MAX_BODY:
+                await Response("Request body too large", status_code=413)(scope, receive, send)
+                return
+
+        received = 0
+        started = False
+
+        async def counting_receive():
+            nonlocal received
+            message = await receive()
+            if message.get("type") == "http.request":
+                received += len(message.get("body", b""))
+                if received > self._MAX_BODY:
+                    raise _BodyTooLarge()
+            return message
+
+        async def tracking_send(message):
+            nonlocal started
+            if message.get("type") == "http.response.start":
+                started = True
+            await send(message)
+
+        try:
+            await self.app(scope, counting_receive, tracking_send)
+        except _BodyTooLarge:
+            if started:
+                # 🔴 응답이 이미 시작됐으면 상태코드를 바꿀 수 없다 — **다시 올린다.**
+                # 삼키면 `http.response.body` 없이 반환해 응답이 미완결로 남는다.
+                # 올리면 ServerErrorMiddleware 가 처리한다(시끄럽지만 정확하다).
+                # Re-raise: swallowing would leave the response unterminated.
+                raise
+            # 읽지 않은 나머지 chunk 는 **서버가 처리한다.** uvicorn·hypercorn 모두
+            # h11/httptools 가 프레이밍을 소유하고, keep-alive 면 현재 본문을 끝까지
+            # 읽은 뒤에야 다음 요청을 파싱한다 — 앱이 배수하지 않아도 desync 는 없다
+            # (Grok 확인, session 01a03cdf).
+            #
+            # 🔴 그래서 `Connection: close` 를 **붙이지 않는다.** 첫 판은 desync 를 막는다며
+            # 붙였는데 그 전제가 틀렸고, 남는 것은 비용뿐이다 — 미수신 데이터가 있는 채로
+            # 닫으면 RST 가 나 **413 응답 자체가 유실될 수 있다.**
+            # The server owns framing; closing here would risk RST-dropping this response.
+            await Response("Request body too large", status_code=413)(scope, receive, send)
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-methods
