@@ -489,10 +489,102 @@ async def test_auto_merge_action_proceeds_when_ai_no_api_key():
 
 
 @pytest.mark.asyncio
-async def test_auto_merge_action_skips_when_score_below_threshold():
-    """score < merge_threshold이면 execute()가 내부 구현을 호출하지 않아야 한다."""
+async def test_auto_merge_action_delegates_to_the_engine():
+    """🔴 `execute()` 는 **엔진에 위임**한다 — 점수 판정은 엔진이 한다 (감사 B6, #1519).
+
+    이 테스트의 옛 판은 `_run_auto_merge_action_impl` 의 mock 에
+    `assert_not_awaited()` 를 걸었다. 그런데 `execute()` 는 그 함수를 **부르지 않는다** —
+    `engine._run_auto_merge` 를 직접 부른다. 그래서 단언이 **어떤 점수에서도 참**이었다
+    (실측: 70·95·100·999 전부 통과). 그 스텁은 이 테스트의 patch 대상이 해소되게
+    하려고만 살아 있었고, 소스 주석도 「더 이상 필요 없음」이라 적었다.
+
+    이제 위임 자체를 고정한다. **임계값 동작은 엔진 쪽 테스트가 봉인한다**
+    (`engine.py` 의 `score >= config.merge_threshold` 를 제거하면
+    `test_engine_verifier_guard.py::test_below_threshold_skips_verifier_guard` 가 red).
+
+    The old assertion targeted a function execute() never calls.
+    """
     from src.gate.actions.auto_merge import AutoMergeAction  # pylint: disable=import-outside-toplevel
-    ctx = _make_ctx(auto_merge=True, score=70)  # 70 < threshold(80)
-    with patch("src.gate.actions.auto_merge._run_auto_merge_action_impl", new=AsyncMock()) as mock_impl:
+
+    # 🔴 commit_sha 를 **비-None** 으로 준다 — 기본값 None 이면 `analyzed_sha` 단언이
+    # `None == None` 이라 kwarg 를 빼도 통과한다(공허). Grok 지적, session 01a03d89.
+    ctx = _make_ctx(auto_merge=True, score=70, commit_sha="deadbeef")
+    with patch("src.gate.engine._run_auto_merge", new=AsyncMock()) as mock_engine:
         await AutoMergeAction().execute(ctx)
-    mock_impl.assert_not_awaited()
+
+    mock_engine.assert_awaited_once()
+    args = mock_engine.await_args.args
+    assert args[4] == 70, (
+        f"엔진에 점수가 그대로 전달되지 않았다: {args[4]!r} — "
+        "판정을 엔진이 하려면 원본 점수가 가야 한다"
+    )
+    kwargs = mock_engine.await_args.kwargs
+    assert kwargs.get("analyzed_sha") == "deadbeef", (
+        f"analyzed_sha 가 전달되지 않았다({kwargs.get('analyzed_sha')!r}) — "
+        "엔진이 머지 직전 head 와 비교하지 못해 분석 중 push 된 커밋이 옛 점수로 머지된다"
+    )
+
+
+async def test_auto_merge_action_blocks_when_the_ai_review_could_not_be_parsed():
+    """🔴 AI 리뷰 파싱 실패(`parse_error`)도 차단한다 — `api_error` 와 같은 축이다.
+
+    Grok 이 새 4건이 `api_error` 만 덮는다고 짚었다(session 01a03d89).
+    """
+    from src.gate.actions.auto_merge import AutoMergeAction  # pylint: disable=import-outside-toplevel
+
+    ctx = _make_ctx(auto_merge=True, score=95)
+    ctx.result["ai_review_status"] = "parse_error"
+    with patch("src.gate.engine._run_auto_merge", new=AsyncMock()) as mock_engine:
+        await AutoMergeAction().execute(ctx)
+    mock_engine.assert_not_awaited()
+
+
+async def test_auto_merge_action_proceeds_on_an_intentional_ai_skip():
+    """🔴 대조군 — 의도된 skip(`no_api_key` 등)은 **차단이 아니다.**
+
+    실패와 skip 을 섞으면 AI 리뷰를 끈 리포에서 auto-merge 가 통째로 죽는다.
+    """
+    from src.gate.actions.auto_merge import AutoMergeAction  # pylint: disable=import-outside-toplevel
+
+    ctx = _make_ctx(auto_merge=True, score=95, commit_sha="cafe")
+    ctx.result["ai_review_status"] = "no_api_key"
+    with patch("src.gate.engine._run_auto_merge", new=AsyncMock()) as mock_engine:
+        await AutoMergeAction().execute(ctx)
+    mock_engine.assert_awaited_once()
+
+
+async def test_auto_merge_action_blocks_on_truncated_ai_review():
+    """🔴 AI 리뷰 diff 가 잘렸으면 엔진을 부르지 않는다 — 안 본 부분이 점수를 인플레한다."""
+    from src.gate.actions.auto_merge import AutoMergeAction  # pylint: disable=import-outside-toplevel
+
+    ctx = _make_ctx(auto_merge=True, score=95)
+    ctx.result["ai_review_truncated"] = True
+    with patch("src.gate.engine._run_auto_merge", new=AsyncMock()) as mock_engine:
+        await AutoMergeAction().execute(ctx)
+    mock_engine.assert_not_awaited()
+
+
+async def test_auto_merge_action_blocks_when_the_ai_review_failed():
+    """🔴 AI 리뷰가 실패했으면 엔진을 부르지 않는다 — 중립-고점 기본값이 점수를 올린다."""
+    from src.gate.actions.auto_merge import AutoMergeAction  # pylint: disable=import-outside-toplevel
+
+    ctx = _make_ctx(auto_merge=True, score=95)
+    ctx.result["ai_review_status"] = "api_error"
+    with patch("src.gate.engine._run_auto_merge", new=AsyncMock()) as mock_engine:
+        await AutoMergeAction().execute(ctx)
+    mock_engine.assert_not_awaited()
+
+
+async def test_auto_merge_action_blocks_when_static_analysis_is_incomplete():
+    """🔴 정적분석 불완전이면 **엔진을 부르지 않는다** — `execute()` 자신의 유일한 판정이다.
+
+    이것이 `execute()` 가 실제로 하는 결정이고, 옛 테스트는 이 축을 전혀 안 봤다.
+    """
+    from src.gate.actions.auto_merge import AutoMergeAction  # pylint: disable=import-outside-toplevel
+
+    ctx = _make_ctx(auto_merge=True, score=95)
+    ctx.result["static_analysis_incomplete"] = True
+    with patch("src.gate.engine._run_auto_merge", new=AsyncMock()) as mock_engine:
+        await AutoMergeAction().execute(ctx)
+
+    mock_engine.assert_not_awaited()
