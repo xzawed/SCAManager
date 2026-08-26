@@ -50,7 +50,6 @@ def test_branch_protection_blocked_is_retriable():
     이전 계약은 전부 (b)로 보고 **재시도 없이 영구 포기**했다. 이 리포는 required check
     **10종**(+`enforce_admins`)을 쓰고 pytest·e2e 는 수 분이 걸리므로 (a)가 일상적이다 —
     분석이 끝난 시점에 체크가 아직 돌고 있으면 정상 PR 이 버려졌다.
-    `sensitive_paths.py:18~20` 이 이미 이 성질을 실측으로 기록해 뒀다.
 
     🔴 **무조건 재시도가 아니다** — 여기서는 '대기 가능' 으로만 올리고, (b)의 배제는
     `should_retry` 가 **CI 가 도는 중일 때만** 확정하는 것으로 달성한다

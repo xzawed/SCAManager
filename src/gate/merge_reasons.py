@@ -123,10 +123,14 @@ def is_retriable_tag(tag: str) -> bool:
     """재시도 시스템이 대기할 수 있는 태그인지 확인.
     Check if the tag is one the retry system can wait out.
 
-    재시도 가능: UNSTABLE_CI, UNKNOWN_STATE_TIMEOUT
-    Retriable:  UNSTABLE_CI, UNKNOWN_STATE_TIMEOUT
+    🔴 어떤 태그가 재시도 가능인지는 **여기에 적지 않는다** — 위의 `_RETRIABLE_TAGS`
+    정의가 정본이고, 그 옆 주석이 각 태그가 거기 있는 근거를 갖는다. 여기에 옮겨
+    적으면 집합이 바뀔 때 이 문장만 남아 거짓이 된다.
 
-    그 외 모든 태그는 종결(terminal) 태그로 재시도 불가.
-    All other tags are terminal and not retriable.
+    🔴 「대기 가능」은 「재시도한다」가 아니다. 실제 판정은 타이밍까지 보는
+    `retry_policy.should_retry(tag, ci_status)` 가 확정한다.
+
+    The membership list lives in `_RETRIABLE_TAGS` above, not here; `should_retry` makes
+    the actual call.
     """
     return tag in _RETRIABLE_TAGS
