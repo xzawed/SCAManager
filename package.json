@@ -11,7 +11,7 @@
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.3",
     "tailwindcss": "^4.1.0",
-    "eslint": "^10.8.1",
+    "eslint": "^10.9.0",
     "eslint-plugin-html": "^8.1.1",
     "@typescript-eslint/parser": "^8.67.0",
     "typescript": "^6.0.3",
