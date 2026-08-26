@@ -408,7 +408,7 @@ async def _enqueue_merge_retry(  # pylint: disable=too-many-arguments
             initial_next_retry_seconds=settings.merge_retry_initial_backoff_seconds,
         )
         if enqueued.is_first_deferral:
-            # 3-layer 사용자 언어 결정 (User → RepoConfig → settings.default_locale)
+            # 3-layer 사용자 언어 결정 (RepoConfig → User → settings.default_locale)
             # 사이클 152 Sprint 2 — deferred 알림도 동기 경로 i18n 적용.
             # 3-layer language resolve; Cycle 152 Sprint 2 — localize deferred notice.
             from src.notifier._language import resolve_notification_language  # noqa: WPS433  # pylint: disable=import-outside-toplevel
@@ -513,7 +513,7 @@ async def _run_auto_merge_legacy(  # pylint: disable=too-many-arguments,too-many
             logger.info("PR #%d auto-merged: %s", pr_number, sanitize_for_log(repo_name))
             return
 
-        # Phase 3 PR-11 — 3-layer 사용자 언어 결정 (User → RepoConfig → settings.default_locale)
+        # Phase 3 PR-11 — 3-layer 사용자 언어 결정 (RepoConfig → User → settings.default_locale)
         # 사이클 149 Sprint 3 — get_advice 도 동일 언어 적용 (조언 텍스트 i18n)
         # Phase 3 PR-11 — 3-layer language resolve; Cycle 149 Sprint 3 — advice text also localized
         from src.notifier._language import resolve_notification_language  # noqa: WPS433  # pylint: disable=import-outside-toplevel
@@ -589,7 +589,7 @@ async def _handle_terminal_merge_failure(  # pylint: disable=too-many-arguments
         except Exception as log_exc:  # pylint: disable=broad-except
             logger.warning("merge_attempt 기록 실패: %s", log_exc)
 
-    # 3-layer 사용자 언어 결정 (User → RepoConfig → settings.default_locale)
+    # 3-layer 사용자 언어 결정 (RepoConfig → User → settings.default_locale)
     # 사이클 149 Sprint 3 — get_advice 도 동일 언어 적용 (조언 텍스트 i18n)
     # 3-layer language resolve; Cycle 149 Sprint 3 — advice text also localized
     from src.notifier._language import resolve_notification_language  # noqa: WPS433  # pylint: disable=import-outside-toplevel

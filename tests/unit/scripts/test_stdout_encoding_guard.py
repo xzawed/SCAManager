@@ -53,13 +53,46 @@ _GUARD_CALLS = ("reconfigure", "TextIOWrapper")
 
 
 def _script_files() -> list[Path]:
-    """검사 대상 = `scripts/*.py` + `.claude/hooks/*.py` (둘 다 standalone 실행·비-ASCII 출력).
-    Scope = both standalone-executed, non-ASCII-printing surfaces."""
+    """검사 대상 = `scripts/**/*.py` + `.claude/hooks/**/*.py` — **하위 디렉토리 포함**.
+
+    🔴 사고 3: 이 함수가 `d.glob("*.py")`(비재귀)였다. 그래서
+    `scripts/i18n_comments/` 4개가 **구조적으로 보이지 않았고**, 4개 전부 가드가 없었으며
+    2개는 실제로 cp949 에서 죽었다(감사 B3·B5, #1519 실측):
+
+        py -3 scripts/i18n_comments/check_bilingual.py src/config.py
+          -> UnicodeEncodeError: 'cp949' codec can't encode character '—'
+
+    위 「사고 2」가 **탐지 사각이 결함의 본체**라고 결론지었는데, 같은 클래스가 한
+    디렉토리 아래에서 재발했다 — 탐지 로직이 아니라 **스캔 범위**의 사각이었다.
+
+    Scope is recursive: a nested directory was structurally invisible to the old glob.
+    """
     return sorted(
         p
         for d in (_SCRIPTS, _HOOKS)
-        for p in d.glob("*.py")
-        if p.name != "__init__.py"
+        for p in d.rglob("*.py")
+        if p.name != "__init__.py" and "__pycache__" not in p.parts
+    )
+
+
+def test_the_scope_reaches_nested_directories():
+    """🔴 스캔 범위가 하위 디렉토리를 덮는가 — 비재귀로 되돌리면 red.
+
+    「예외 없음」이라 적는 파일이 정작 한 층 아래를 못 보고 있었다(감사 B3).
+    동작 테스트로는 이 성질을 잡을 수 없다 — 안 보이는 파일은 위반도 안 보인다.
+    """
+    scanned = {p.as_posix() for p in _script_files()}
+    nested = [
+        p.as_posix()
+        for p in _SCRIPTS.rglob("*.py")
+        if p.parent != _SCRIPTS and p.name != "__init__.py"
+        and "__pycache__" not in p.parts
+    ]
+    assert nested, "하위 디렉토리 스크립트가 하나도 없다 — 이 단언이 공허해졌다"
+    missing = [n for n in nested if n not in scanned]
+    assert not missing, (
+        f"하위 디렉토리 스크립트가 검사 범위 밖이다: {missing} — "
+        "`glob` 이 아니라 `rglob` 이어야 한다"
     )
 
 
