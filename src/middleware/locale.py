@@ -85,8 +85,8 @@ class LocaleMiddleware:  # pylint: disable=too-few-public-methods
 
         # 2. Accept-Language 헤더 (RFC 7231 q-weight 파싱)
         # 2. Accept-Language header (RFC 7231 q-weight parsing)
-        accept_locale = self._parse_accept_language(headers)
-        if accept_locale and accept_locale in self._supported:
+        accept_locale = self._parse_accept_language(headers, self._supported)
+        if accept_locale:
             return accept_locale
 
         # 3. 기본값 (settings.default_locale)
@@ -158,10 +158,20 @@ class LocaleMiddleware:  # pylint: disable=too-few-public-methods
         return items
 
     @classmethod
-    def _parse_accept_language(cls, headers: list) -> str | None:
-        """Accept-Language 헤더 RFC 7231 q-weight 파싱 후 최우선 locale 반환.
+    def _parse_accept_language(cls, headers: list, supported: frozenset | None = None) -> str | None:
+        """Accept-Language 를 RFC 7231 q-weight 로 파싱해 **수용 가능한** 최우선 locale 반환.
 
-        Parse Accept-Language header per RFC 7231 q-weights, return top locale.
+        🔴 `supported` 를 받는 이유: 예전 판은 최고 q 하나만 돌려줬고, 그것이 지원 목록에
+        없으면 호출부가 **그냥 버려** 기본 로케일로 갔다. 그래서 클라이언트가 지원 언어를
+        명시적으로 요청했는데도 영어가 나갔다(감사 C1, #1519 실측):
+
+            "zh-CN,ko;q=0.9"                   -> en   (ko 여야 한다)
+            "fr-FR,fr;q=0.9,ja;q=0.8,en;q=0.7" -> en   (ja q=0.8 > en q=0.7)
+
+        RFC 7231 §5.3.5 는 최고 q 의 **acceptable** 언어를 고르라고 한다 — 미지원 언어를
+        건너뛰고 다음을 본다. `supported` 가 None 이면 옛 동작(최고 q 그대로)이다.
+
+        Parse per RFC 7231 q-weights and return the top *acceptable* locale.
         예 (Example): "ko-KR,ko;q=0.9,en;q=0.8" → "ko"
         사이클 93 PR-B: S3776 (24→<15) — _parse_q_weight + _parse_lang_items 분리.
         """
@@ -178,5 +188,13 @@ class LocaleMiddleware:  # pylint: disable=too-few-public-methods
             # q-weight 내림차순 안정 정렬 (동일 q-weight 시 입력 순서 보존)
             # Stable sort by q-weight descending (preserves input order on ties)
             items.sort(key=lambda x: x[1], reverse=True)
-            return items[0][0]
+            if supported is None:
+                return items[0][0]
+            # 🔴 미지원 언어는 **건너뛴다** — 버리지 않는다. 버리면 그 아래의 지원
+            # 언어가 있어도 기본 로케일로 간다.
+            # Skip unsupported languages instead of discarding the whole header.
+            for lang, _weight in items:
+                if lang in supported:
+                    return lang
+            return None
         return None
