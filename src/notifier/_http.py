@@ -109,11 +109,22 @@ async def validate_external_url(url: str) -> bool:
     try:
         raw = await asyncio.to_thread(socket.getaddrinfo, hostname, None)
         addrs = [sockaddr[0] for _f, _t, _p, _c, sockaddr in raw]
-    except OSError as exc:
+    except (OSError, UnicodeError) as exc:
         # gaierror(이름 해석 실패) 외에 socket.timeout·일반 OSError(네트워크 실패) 도 fail-closed.
         # 이 분기가 gaierror 만 잡으면 DNS timeout/OSError 가 notify 태스크로 전파돼 크래시
         # (사이클 159 — 158 회고 P2). gaierror·timeout 모두 OSError 서브클래스라 한 번에 포섭.
-        # Catch gaierror plus socket.timeout / general OSError — all fail closed, never crash.
+        #
+        # 🔴 `UnicodeError` 도 잡는다 — **`OSError` 가 아니다**(실측). DNS 라벨이 63자를
+        # 넘으면 `getaddrinfo` 가 `idna` 코덱에서 `UnicodeEncodeError`(= `ValueError`)를
+        # 올린다. 해석도 차단도 하지 않으므로 이 핸들러를 그대로 빠져나가 알림 태스크
+        # 밖으로 전파됐다 — 저장 게이트는 도메인명을 「발신에서 최종 차단된다」는 근거로
+        # 통과시키는데, 그 최종 차단이 없었다 (감사 A6, #1519).
+        #
+        #     socket.getaddrinfo('a'*70 + '.example.com', None)
+        #       -> UnicodeEncodeError   OSError? False   ValueError? True
+        #
+        # 비-ASCII 호스트는 `gaierror`(= OSError) 라 이미 잡혔다 — 63자 라벨만 다른 축이다.
+        # UnicodeError is not an OSError: an over-long DNS label escapes the fail-closed path.
         logger.warning(
             "SSRF guard: DNS resolution failed for hostname '%s' (%s)", hostname, type(exc).__name__
         )
