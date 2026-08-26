@@ -134,3 +134,28 @@ def test_text_within_limit_is_returned_untouched():
     """대조군 — 한도 안이면 손대지 않는다."""
     text = "<b>short</b>"
     assert truncate_html_message(text, 1000) == text
+
+@pytest.mark.parametrize("max_length", [-5, -1, 0, 1, 2])
+def test_length_contract_holds_for_degenerate_limits(max_length):
+    """🔴 퇴화 입력 — 음수·영·접미사보다 짧은 한도에서도 계약을 지킨다.
+
+    음수를 그대로 슬라이스하면 `[:max_length]` 가 **뒤에서** 잘라 출력이 오히려
+    0 을 넘는다. 상한을 먼저 0 으로 묶어 닫았다.
+    """
+    out = truncate_html_message("<b>hello world</b>", max_length)
+    assert len(out) <= max(max_length, 0), f"max_length={max_length} 인데 {out!r}"
+    assert _unbalanced_reason(out) is None
+
+
+@pytest.mark.parametrize("max_length", [-5, -1, 0])
+def test_plain_truncate_also_holds_the_contract_on_negative_limits(max_length):
+    """🔴 같은 모듈의 `truncate_message` 도 같은 구멍이 있었다.
+
+    실측(고치기 전): `truncate_message("hello world", -1)` -> `".."` (길이 2).
+    그 함수의 docstring 이 「출력 길이 ≤ max_length 보장」이라고 적어 둔 채였다.
+    C4 검증 중 Grok 이 짚어 같은 PR 에서 닫았다 — 한 줄이고 같은 계약이다.
+    """
+    from src.notifier._common import truncate_message
+
+    out = truncate_message("hello world", max_length)
+    assert len(out) <= max(max_length, 0), f"max_length={max_length} 인데 {out!r}(len {len(out)})"

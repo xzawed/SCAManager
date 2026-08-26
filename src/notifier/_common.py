@@ -61,6 +61,12 @@ def truncate_message(text: str, max_length: int, suffix: str = "...") -> str:
 
     Truncate to <= max_length and append suffix (output length never exceeds max_length).
     """
+    # 🔴 음수는 먼저 0 으로 묶는다. 안 묶으면 마지막 `[:max_length]` 가 **뒤에서**
+    #   잘라 `truncate_message("hello world", -1)` 이 `".."`(길이 2)를 돌려줬다 — 계약이
+    #   「출력 ≤ max_length」인데 0 을 넘는다(#1519 C4 검증 중 실측).
+    #   호출부가 지금 음수를 안 넘길 뿐, 계약을 적어 둔 이상 그 적은 대로 지켜야 한다.
+    #   A negative max_length made the trailing clamp slice from the end; pin it to 0 first.
+    max_length = max(max_length, 0)
     if len(text) <= max_length:
         return text
     # max_length < len(suffix) 시 음수 슬라이스 방지 + 최종 클램프로 계약 보장 (감사 notifier-004)
@@ -130,6 +136,7 @@ def truncate_html_message(text: str, max_length: int, suffix: str = "…") -> st
     Shrink the body until the closed result fits, instead of reserving a guessed number of
     characters and clamping afterwards — that clamp could sever the closing tags themselves.
     """
+    max_length = max(max_length, 0)  # 음수 슬라이스 차단 / never slice from the end
     if len(text) <= max_length:
         return text
     if max_length < len(suffix):
