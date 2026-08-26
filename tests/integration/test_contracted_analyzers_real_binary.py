@@ -30,6 +30,8 @@ import textwrap
 import pytest
 
 from src.analyzer.io.tools.ktlint import json_array_payload
+from src.analyzer.io.tools.sqlfluff import _SqlfluffAnalyzer
+from src.analyzer.pure.registry import AnalyzeContext
 
 # 🔴 하니스 상한과 서브프로세스 허용치를 맞춘다 (2026-08-21 CI 실측).
 #    `pytest.ini` 의 `--timeout=30` 이 이 파일의 `_run(..., timeout=180)` 보다 **작아서**,
@@ -265,3 +267,168 @@ def test_tflint_output_starts_with_a_brace_and_carries_the_issues_envelope(tmp_p
         assert isinstance(issue.get("range", {}).get("start"), dict), (
             "`range.start` 가 객체가 아니다 — line 경로가 깨진다"
         )
+
+
+def test_sqlfluff_emits_a_document_even_when_clean_and_uses_start_line_no(tmp_path):
+    """🔴 실 sqlfluff 는 (a) 깨끗해도 JSON 문서를 내고 (b) `start_line_no` 를 쓴다.
+
+    (a) 때문에 「빈 출력 = 깨끗함」이 틀렸다 — 빈 출력은 분석이 시작조차 못 한 것이다.
+    (b) 때문에 `line_no` 만 읽으면 실물에서는 **모든 이슈의 line 이 0** 이 된다
+        (sqlfluff 3.0 의 키 rename, 핀은 4.3.0).
+
+    mock 은 이 둘을 원리적으로 못 잡는다 — 픽스처의 키와 빈값 여부를 **쓰는 사람이**
+    정하기 때문이다. 실제로 단위 테스트 픽스처가 `line_no` 를 써서 어긋남을 가리고 있었다.
+    A mock cannot catch either: the fixture author picks the key and the emptiness.
+    """
+    _require("sqlfluff")
+    clean = tmp_path / "clean.sql"
+    clean.write_text("SELECT 1;\n", encoding="utf-8")
+
+    proc = _run(["sqlfluff", "lint", "--format=json", "--dialect=ansi", str(clean)], tmp_path)
+    raw = proc.stdout.strip()
+    assert raw.startswith("["), (
+        f"깨끗한 실행도 JSON 배열을 내야 한다 — 「빈 출력 = 깨끗함」 가정의 근거가 사라진다: "
+        f"exit={proc.returncode} stdout={raw[:200]!r} stderr={(proc.stderr or '')[-200:]!r}"
+    )
+
+    dirty = tmp_path / "dirty.sql"
+    dirty.write_text("select  a,b   from t where  x=1\n", encoding="utf-8")
+    proc = _run(["sqlfluff", "lint", "--format=json", "--dialect=ansi", str(dirty)], tmp_path)
+    payload = json.loads(proc.stdout.strip())
+    violations = [v for f in payload for v in f.get("violations", [])]
+    assert violations, f"더러운 SQL 인데 위반 0건: {proc.stdout[:300]}"
+    assert any("start_line_no" in v or "line_no" in v for v in violations), (
+        f"어댑터가 읽는 줄번호 키가 둘 다 없다: {sorted(violations[0])}"
+    )
+
+
+def test_sqlfluff_adapter_reports_a_real_line_number(tmp_path):
+    """어댑터가 실 출력에서 **0 이 아닌 줄번호**를 뽑아낸다.
+
+    `line_no` 만 읽던 동안 이 단언은 실물에서 전건 0 이었다(mock 은 초록이었다).
+    """
+    _require("sqlfluff")
+    src = tmp_path / "dirty.sql"
+    src.write_text("select  a,b   from t where  x=1\n", encoding="utf-8")
+    ctx = AnalyzeContext(filename="dirty.sql", content="", language="sql",
+                         is_test=False, tmp_path=str(src))
+    try:
+        issues = _SqlfluffAnalyzer().run(ctx)
+    except OSError as exc:  # Windows shim 실행 불가만 완화 — `_run` 과 같은 규칙
+        if os.name == "nt":
+            _not_measured(f"Windows 가 sqlfluff shim 을 직접 실행 못 함 ({exc.__class__.__name__})")
+        raise
+    assert issues, "더러운 SQL 인데 어댑터가 이슈 0건을 냈다"
+    assert all(i.line > 0 for i in issues), (
+        f"줄번호가 0 이다 — 키 이름이 어긋났다: {[(i.line, i.message[:40]) for i in issues[:3]]}"
+    )
+
+
+def test_sqlfluff_crash_raises_instead_of_reporting_a_clean_file(tmp_path):
+    """🔴 sqlfluff 가 분석하지 못하면 어댑터는 **raise** 한다 — `[]` 가 아니다.
+
+    `sql` 은 provisioned 분석기가 sqlfluff 하나뿐인 유일한 언어라(실측, #1521)
+    여기서 `[]` 를 돌려주면 미분석 SQL 이 «이슈 0건 · 완전» 으로 기록되고
+    정적 만점을 받은 채 auto-merge 된다 — 대체 관측면이 없다.
+    """
+    _require("sqlfluff")
+    missing = tmp_path / "does_not_exist.sql"  # 실측: exit 2 · stdout 빈값
+    ctx = AnalyzeContext(filename="does_not_exist.sql", content="", language="sql",
+                         is_test=False, tmp_path=str(missing))
+    try:
+        with pytest.raises(RuntimeError, match="did not analyze"):
+            _SqlfluffAnalyzer().run(ctx)
+    except FileNotFoundError as exc:  # 바이너리 자체 부재는 이 테스트의 대상이 아니다
+        if os.name == "nt":
+            _not_measured(f"Windows 가 sqlfluff shim 을 직접 실행 못 함 ({exc.__class__.__name__})")
+        raise
+
+
+def test_sqlfluff_parse_failure_is_a_violation_not_a_crash(tmp_path):
+    """🔴 과탐 방어 — 어댑터를 fail-closed 로 바꿔도 **정상 PR 을 막지 않는다**.
+
+    어댑터는 `--dialect=ansi` 를 고정한다. 그러니 PostgreSQL·T-SQL 문법이나 아예
+    파싱 불가한 텍스트가 들어오면 「분석 실패」로 올라가 auto-merge 가 막히는 것 아닌가 —
+    이것이 fail-closed 전환의 유일한 실질 위험이다(가드의 자살).
+
+    실측(sqlfluff 4.2.2)은 아니라고 답한다. sqlfluff 는 파싱 실패를 **JSON 안의 `PRS`
+    위반으로 보고**하고 exit 1 로 끝낸다. 즉 stdout 은 여전히 JSON 배열이라 어댑터의
+    판별식을 통과한다. raise 가 나는 것은 sqlfluff 가 **실행조차 못 한** 경우뿐이다.
+
+    이 테스트가 red 가 되면 그 전제가 깨진 것이다 — 판별식을 바꾸기 전에 여기를 본다.
+    Measured: sqlfluff reports parse failures as a PRS violation inside the JSON document,
+    so hardening the adapter cannot turn ordinary SQL into a blocked merge.
+    """
+    _require("sqlfluff")
+    probes = {
+        "pg.sql": "SELECT a::text FROM t WHERE b @> ARRAY[1,2];\n",   # PostgreSQL 전용 문법
+        "tsql.sql": "SELECT TOP 10 [a] FROM [dbo].[t];\n",            # T-SQL 전용 문법
+        "garbage.sql": "this is not sql at all !!! ###\n",            # 파싱 불가
+        "truncated.sql": "SELECT * FROM\n",                           # 절단
+    }
+    for name, sql in probes.items():
+        src = tmp_path / name
+        src.write_text(sql, encoding="utf-8")
+        proc = _run(["sqlfluff", "lint", "--format=json", "--dialect=ansi", str(src)], tmp_path)
+        raw = proc.stdout.strip()
+        assert raw.startswith("["), (
+            f"{name}: 파싱 실패가 비-JSON 으로 나왔다 — 어댑터가 raise 하게 되어 "
+            f"정상 SQL PR 의 auto-merge 가 막힌다: exit={proc.returncode} {raw[:200]!r}"
+        )
+
+        ctx = AnalyzeContext(filename=name, content="", language="sql",
+                             is_test=False, tmp_path=str(src))
+        try:
+            issues = _SqlfluffAnalyzer().run(ctx)   # raise 하면 이 줄에서 터진다
+        except OSError as exc:
+            if os.name == "nt":
+                _not_measured(f"Windows 가 sqlfluff shim 을 직접 실행 못 함 ({exc.__class__.__name__})")
+            raise
+        assert isinstance(issues, list), f"{name}: 어댑터가 목록을 내지 않았다"
+
+
+def test_sqlfluff_silently_skips_large_files_and_the_adapter_refuses_to_call_it_clean(tmp_path):
+    """🔴 sqlfluff 는 큰 파일을 **분석하지 않고 건너뛴다** — 그리고 exit 0 으로 끝낸다.
+
+    `large_file_skip_byte_limit` 기본값은 20,000 바이트다. 넘으면 stdout 이 `[]`(엔트리 0개)
+    이고 종료코드는 **0** 이다. 어댑터가 그것을 「깨끗함」으로 읽으면 20KB 넘는 SQL 이
+    전부 정적 만점을 받고 auto-merge 된다 — `sql` 은 대체 관측면이 없는 유일한 언어다.
+
+    이 테스트는 **같은 내용을 길이만 바꿔** 두 번 돌린다. 내용이 같은데 판정이 갈리면
+    그것은 파일이 깨끗해서가 아니라 **재지 않았기 때문**이다. CLI 플래그로는 끌 수 없어
+    (`--large-file-skip-byte-limit` 는 존재하지 않는다) 어댑터가 raise 로 막는다.
+
+    Measured: identical content at 3.2KB yields violations, at 32KB yields `[]` with exit 0.
+    Same content, different verdict — that is not cleanliness, it is a skipped file.
+    """
+    _require("sqlfluff")
+    line = "select  a,b   from t where  x=1\n"          # 확정적으로 위반을 낸다
+
+    small = tmp_path / "small.sql"
+    small.write_text(line * 100, encoding="utf-8")       # ~3.2KB — 한도 아래
+    proc = _run(["sqlfluff", "lint", "--format=json", "--dialect=ansi", str(small)], tmp_path)
+    small_entries = json.loads(proc.stdout.strip())
+    assert small_entries and small_entries[0].get("violations"), (
+        f"한도 아래인데 위반 0건 — 프로브가 더러운 SQL 이 아니게 됐다: {proc.stdout[:200]}"
+    )
+
+    big = tmp_path / "big.sql"
+    big.write_text(line * 1000, encoding="utf-8")        # ~32KB — 한도 위
+    assert big.stat().st_size > 20_000, "프로브가 한도를 넘지 못했다 — 이 테스트가 공허하다"
+    proc = _run(["sqlfluff", "lint", "--format=json", "--dialect=ansi", str(big)], tmp_path)
+    big_entries = json.loads(proc.stdout.strip())
+    assert big_entries == [], (
+        "sqlfluff 가 큰 파일을 더 이상 건너뛰지 않는다 — 기본 한도가 바뀌었거나 설정이 끼었다. "
+        f"어댑터의 zero-entry 판정을 재검토하라: {proc.stdout[:200]}"
+    )
+
+    # 🔴 핵심 — 어댑터는 그 `[]` 를 «깨끗함» 으로 읽지 않는다.
+    ctx = AnalyzeContext(filename="big.sql", content="", language="sql",
+                         is_test=False, tmp_path=str(big))
+    try:
+        with pytest.raises(RuntimeError, match="did not analyze"):
+            _SqlfluffAnalyzer().run(ctx)
+    except FileNotFoundError as exc:
+        if os.name == "nt":
+            _not_measured(f"Windows 가 sqlfluff shim 을 직접 실행 못 함 ({exc.__class__.__name__})")
+        raise
