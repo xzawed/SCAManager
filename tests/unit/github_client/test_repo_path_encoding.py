@@ -22,7 +22,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from src.github_client.issues import close_issue, create_issue, get_issue_state
 from src.github_client.graphql import get_pr_node_id
 
-# 🔴 repo_path 가 화이트리스트(`[A-Za-z0-9._-]+/[A-Za-z0-9._-]+`)가 된 뒤로는
+# 🔴 repo_path 가 화이트리스트(`[A-Za-z0-9._-]{1,39}/[A-Za-z0-9._-]{1,100}`)가 된 뒤로는
 # 공백 같은 문자가 **인코딩되는 게 아니라 거부된다**. 허용 문자는 전부 unreserved 라
 # percent-encoding 이 일어날 여지 자체가 없다 — 그래서 이 파일의 봉인 축을
 # 「특수문자를 인코딩한다」에서 「부정 이름은 URL 에 닿기 전에 거부된다」로 옮긴다.
