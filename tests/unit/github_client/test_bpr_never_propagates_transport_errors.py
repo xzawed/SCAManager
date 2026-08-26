@@ -131,6 +131,65 @@ async def test_bpr_fetch_never_propagates_a_status_error():
     assert result == set()
 
 
+# ─── 구조: 죽은 handler 가 되살아나지 않는다 ─────────────────────────────────
+
+
+def _bpr_call_is_wrapped_in_a_send_error_handler(module_path: Path) -> str | None:
+    """`get_required_check_contexts` 호출을 감싼 `except HTTPX_SEND_ERRORS` 가 있으면 위치를."""
+    import ast  # noqa: PLC0415
+
+    tree = ast.parse(module_path.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Try):
+            continue
+        calls_bpr = any(
+            isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Name)
+            and n.func.id == "get_required_check_contexts"
+            for n in ast.walk(node)
+        )
+        if not calls_bpr:
+            continue
+        for handler in node.handlers:
+            if handler.type is None:
+                continue
+            if "HTTPX_SEND_ERRORS" in ast.unparse(handler.type):
+                return f"{module_path.name}:{handler.lineno}"
+    return None
+
+
+def test_neither_twin_wraps_the_bpr_fetch_in_a_dead_handler():
+    """🔴 `get_required_check_contexts` 를 `except HTTPX_SEND_ERRORS` 로 감싸지 않는다.
+
+    callee 가 전파하지 않으므로 그 handler 는 **절대 발화하지 않는다**(이 파일 위쪽이 그
+    사실을 잡는다). 발화하지 않는 handler 를 두면 「여기서 네트워크 오류를 다룬다」는
+    거짓 인상이 코드에 남고, 실제로 그 위에서 테스트 2건이 mock 으로 없는 경로를 만들어
+    초록을 내고 있었다.
+
+    🔴 **이 단언과 위쪽 근거 테스트는 한 쌍이다.** 누가 callee 를 전파하도록 바꾸면
+    위쪽이 먼저 red 가 된다. 그때는 handler 를 되살리고 **이 테스트를 지워야** 한다 —
+    둘 중 하나만 고치면 안 된다.
+
+    Neither twin may wrap the BPR fetch in a handler that cannot fire. This assertion and the
+    evidence tests above are a pair: if the callee starts propagating, restore the handler and
+    delete this test.
+    """
+    from pathlib import Path  # noqa: PLC0415
+
+    root = Path(__file__).resolve().parents[3]
+    offenders = [
+        where
+        for rel in ("src/gate/engine.py", "src/services/merge_retry_service.py")
+        if (where := _bpr_call_is_wrapped_in_a_send_error_handler(root / rel))
+    ]
+    assert not offenders, (
+        "도달 불가한 `except HTTPX_SEND_ERRORS` 가 BPR 조회를 감싸고 있다: "
+        + ", ".join(offenders)
+        + " — callee 가 삼키므로 발화하지 않는다. 지우거나, callee 를 바꿨다면 "
+        "이 파일 위쪽의 근거 테스트부터 고쳐라."
+    )
+
+
 # ─── 대조군 ──────────────────────────────────────────────────────────────────
 
 
