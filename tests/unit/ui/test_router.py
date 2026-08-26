@@ -2343,9 +2343,19 @@ def test_preset_threshold_values():
     )
 
 
-def test_api_github_repos_returns_empty_on_github_api_error():
-    """GitHub API 오류 시 빈 목록 반환 — 광범위 예외 처리 경로 검증.
-    Returns empty list when GitHub API call raises any exception.
+def test_api_github_repos_reports_github_api_error():
+    """🔴 GitHub API 오류를 **오류로** 알린다 — 빈 목록으로 위장하지 않는다 (감사 A8, #1519).
+
+    이 테스트의 옛 판은 `status_code == 200 and json() == []` 를 단언하며 그것을
+    「광범위 예외 처리 경로」라 불렀다. 실측으로 그 계약이 무엇을 만드는지 확인해
+    뒤집었다: 클라이언트(`add_repo.html`)는 `repos.length === 0` 을 보고
+    「모든 리포가 이미 등록되었거나 접근 가능한 리포가 없습니다」라고 **단정**한다 —
+    토큰 만료·rate limit·timeout 을 그렇게 말한다.
+
+    클라이언트에는 이미 오류 경로가 있다(`!resp.ok` -> `loadFailed`). 서버가 오류를
+    오류로 알리기만 하면 그 경로가 살아난다.
+
+    The old contract disguised a failure as "no repos"; the client already knows better.
     """
     import src.ui.routes.add_repo as _mod
 
@@ -2356,5 +2366,9 @@ def test_api_github_repos_returns_empty_on_github_api_error():
     with patch("src.ui.routes.add_repo.list_user_repos", new_callable=AsyncMock, side_effect=Exception("API error")):
         r = client.get("/api/github/repos")
 
-    assert r.status_code == 200
-    assert r.json() == []
+    assert r.status_code == 502, (
+        f"GitHub 오류가 {r.status_code} 로 나갔다 — 클라이언트의 오류 경로가 발화하지 않는다"
+    )
+    assert "API error" not in r.text, (
+        "예외 본문이 응답에 실렸다 — GitHub 오류 메시지는 토큰·저장소명을 담을 수 있다"
+    )
