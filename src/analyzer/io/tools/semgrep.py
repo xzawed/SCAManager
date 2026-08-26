@@ -15,6 +15,24 @@ from src.constants import STATIC_ANALYSIS_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
+_ERR_EXCERPT = 200
+
+
+def _fail(ctx, r) -> RuntimeError:
+    """실패를 예외로 만든다 — `static.py` 는 `run()` 이 **올릴 때만** `incomplete` 로 승격한다.
+
+    🔴 `[]` 를 돌려주면 그 실패가 «이슈 0건 · 완전» 이 되어 미분석 코드가 auto-merge 된다.
+    semgrep 은 java·scala·elixir·clojure 의 **유일한** 분석기라 그 언어에서는 대체 관측면도
+    없다(실측). 형제 `python.py::_fail` 과 같은 관용구다.
+
+    Returning [] would record the failure as a clean, complete run; semgrep is the only
+    analyzer for four languages, so nothing else would notice.
+    """
+    detail = str(getattr(r, "stderr", "") or r.stdout or "").strip()[:_ERR_EXCERPT]
+    return RuntimeError(
+        f"semgrep did not analyze {ctx.tmp_path} (exit={r.returncode}): {detail}"
+    )
+
 
 class _SemgrepAnalyzer:
     name = "semgrep"
@@ -49,9 +67,17 @@ class _SemgrepAnalyzer:
                  "--timeout", str(STATIC_ANALYSIS_TIMEOUT), ctx.tmp_path],
                 capture_output=True, text=True, timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
             )
+            # 🔴 stdout 이 JSON 이 아니면 semgrep 이 **분석하지 않은** 것이다.
+            # `--json` 의 정상 «이슈 없음» 도 `{"results": []}` 라 `{` 로 시작한다 —
+            # 비-`{` 가 정당한 «이슈 0건» 인 경우는 없다.
+            # Non-JSON stdout means semgrep did not analyze; a clean --json run still
+            # starts with '{'.
             if not r.stdout.strip().startswith("{"):
-                return []
-            data = json.loads(r.stdout)
+                raise _fail(ctx, r)
+            try:
+                data = json.loads(r.stdout)
+            except json.JSONDecodeError as exc:
+                raise _fail(ctx, r) from exc
             issues = []
             for item in data.get("results", []):
                 extra = item.get("extra", {})
@@ -76,8 +102,11 @@ class _SemgrepAnalyzer:
             ctx.timed_out = True
             logger.warning("semgrep timed out for %s", ctx.tmp_path)
             return []
-        except (json.JSONDecodeError, FileNotFoundError) as exc:
-            logger.warning("semgrep failed for %s: %s", ctx.tmp_path, exc)
+        except FileNotFoundError as exc:
+            # 바이너리 부재 — 크래시와 **다른 축**이다. `static.py` 가
+            # `unavailable_tools` 로 따로 보고하므로 여기서 예외로 올리지 않는다.
+            # Missing binary is reported separately via unavailable_tools.
+            logger.warning("semgrep binary missing for %s: %s", ctx.tmp_path, exc)
             return []
 
 
