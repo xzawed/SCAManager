@@ -107,29 +107,63 @@ def test_retry_budget_still_bounds_the_new_tag():
     assert "is_expired" in source, "만료(max_age) 축이 사라졌다 — 무한 재시도 위험"
     assert "compute_next_retry_at" in source, "백오프가 사라졌다 — 즉시 재시도 폭주 위험"
 
-# ── ④ 인용문이 코드보다 오래 산다 ──────────────────────────────────────
+# ── ④ 인용문이 코드보다 오래 산다 ─────────────────────
 
 
-def test_sensitive_paths_docstring_does_not_restate_retriable_membership():
-    """`sensitive_paths` 모듈 docstring 은 재시도 가능 집합의 **내용**을 다시 적지 않는다.
+def test_no_gate_docstring_enumerates_a_stale_retriable_set():
+    """`src/gate` 의 어떤 docstring 도 재시도 가능 집합을 **낡은 채로 열거**하지 않는다.
 
-    R68 이 `BRANCH_PROTECTION_BLOCKED` 를 대기 가능으로 올린 바로 그 커밋에서,
-    근거로 인용된 `sensitive_paths` docstring 의 「그 태그는 재시도 집합에 없다(실측)」가
-    **거짓이 됐다.** 코드는 고쳐지고 인용문은 그대로 남았다 — 아무것도 red 가 되지 않았다.
+    R68 이 `BRANCH_PROTECTION_BLOCKED` 를 대기 가능으로 올려 집합이 3개가 됐을 때,
+    그것을 이름으로 열거한 산문은 2개인 채로 남았다 — 한 곳은 정본 모듈
+    `merge_reasons.is_retriable_tag` 의 docstring 자신이었다. 아무것도 red 가 되지 않았다.
 
-    멤버십의 정본은 `src/gate/merge_reasons.py` 한 곳이다. 다른 모듈 docstring 이 그것을
-    다시 적으면 조용히 늙는다. 적지 말고 가리킨다.
+    규칙: docstring 은 태그를 **한 개까지** 이름으로 들 수 있다(어떤 기전을 설명하려면
+    그 태그를 불러야 한다). 두 개 이상을 들면 그것은 열거이고, `_RETRIABLE_TAGS` 와
+    **정확히 일치**해야 한다. 열거하지 않는 것이 안전한 상태다.
 
-    이 검사의 범위는 **이 한 가지뿐**이다 — 그 docstring 이 전반적으로 참인지는 재지 못한다.
+    이 검사의 범위: `src/gate` 아래 docstring 에 나타난 **태그 상수 이름**뿐이다.
+    주석·산문의 다른 주장이 참인지는 재지 못한다.
 
-    The membership set has one owner; restating it in another module's docstring lets the
-    restatement outlive the fact. Scope of this check: that one restatement, nothing more.
+    A docstring may name at most one tag; naming two or more is an enumeration and must
+    match `_RETRIABLE_TAGS` exactly. Scope: tag-constant names in src/gate docstrings.
     """
-    from src.gate import sensitive_paths
+    import ast
+    from pathlib import Path
 
-    doc = sensitive_paths.__doc__ or ""
-    assert "_RETRIABLE_TAGS" not in doc, (
-        "sensitive_paths 모듈 docstring 이 `_RETRIABLE_TAGS` 를 다시 적고 있다. "
-        "재시도 가능 여부는 src/gate/merge_reasons.py 와 retry_policy.should_retry 가 정본이다 "
-        "— 여기서는 그 모듈을 가리키기만 하라. 내용을 복사하면 R68 때처럼 조용히 거짓이 된다."
+    from src.gate import merge_reasons as mr
+
+    tag_names = {
+        n for n, v in vars(mr).items()
+        if n.isupper() and isinstance(v, str) and not n.startswith("_")
+    }
+    retriable_names = {n for n in tag_names if getattr(mr, n) in mr._RETRIABLE_TAGS}
+    assert retriable_names, "태그 상수를 하나도 못 찾았다 — 이 검사가 공허해졌다"
+
+    gate_dir = Path(mr.__file__).parent
+    offenders = []
+    for path in sorted(gate_dir.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        nodes = [tree] + [
+            n for n in ast.walk(tree)
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+        ]
+        for node in nodes:
+            doc = ast.get_docstring(node) or ""
+            # 식별자 경계로 자른다 — UNKNOWN 이 UNKNOWN_STATE_TIMEOUT 에 걸리지 않게
+            # Split on identifier boundaries so a prefix cannot match a longer constant
+            words = set(
+                "".join(c if (c.isalnum() or c == "_") else " " for c in doc).split()
+            )
+            named = tag_names & words
+            if len(named) >= 2 and named != retriable_names:
+                where = getattr(node, "name", "<module>")
+                offenders.append(
+                    f"{path.name}::{where} 가 {sorted(named)} 를 열거 "
+                    f"(정본은 {sorted(retriable_names)})"
+                )
+
+    assert not offenders, (
+        "재시도 가능 집합을 낡은 채로 열거한 docstring: "
+        + " / ".join(offenders)
+        + " — 정본은 merge_reasons._RETRIABLE_TAGS 다. 열거를 지우고 그것을 가리켜라."
     )
