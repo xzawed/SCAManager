@@ -42,7 +42,7 @@ _BASELINE = _ROOT / "e2e" / "EXPECTED_COUNT"
 # pytest `--collect-only -q` 마지막 줄: "121 tests collected in 0.04s"
 _COLLECTED = re.compile(r"(\d+)\s+tests?\s+collected")
 # 수집 오류 동반 표기 — "N tests collected, M errors" / "errors during collection"
-_COLLECT_ERROR = re.compile(r"errors?", re.IGNORECASE)
+_COLLECT_ERROR = re.compile(r"\berrors?\b", re.IGNORECASE)
 
 
 def read_baseline(path: Path = _BASELINE) -> int | None:
