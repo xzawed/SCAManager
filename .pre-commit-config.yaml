@@ -109,7 +109,7 @@ repos:
         entry: python scripts/check_memory_refs.py
         # 🔴 스크립트의 `_DOC_GLOBS` 와 같아야 한다 — 갈라지면 그 문서를 고친 커밋에서
         #    훅이 발화하지 않는다. `.claude/policies/` 는 삭제됐다.
-        files: "^(CLAUDE\\.md|docs/workflow/.*\\.md|docs/runbooks/.*\\.md)$"
+        files: "^(CLAUDE\\.md|docs/.*\\.md|\\.github/.*\\.ya?ml|\\.claude/.*\\.md|tests/.*\\.py|scripts/.*\\.py)$"
         pass_filenames: false
         stages: [pre-commit]
         description: CLAUDE.md/docs 의 메모리 슬러그 참조 ↔ 실제 메모리 파일 정합 (메모리 dir 부재 시 skip). 참조 0건이면 「안 쟀음」을 인쇄한다.

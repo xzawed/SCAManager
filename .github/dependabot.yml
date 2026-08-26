@@ -6,7 +6,9 @@
 # 정책 정합:
 # - 정책 12 (MCP scope): GitHub Settings UI 변경은 사용자 영역. 본 dependabot.yml 신설은 Claude scope.
 # - 정책 16 (단순화 default): 단일 ecosystem (pip) + weekly + open-PR 한도 = minimal config.
-# - 메모리 `feedback-log-first-debugging.md`: 추측 금지 — 5+1 다중 에이전트 검증 후 진행.
+# - 메모리 `feedback_line_drift_verification.md`: 추측 금지 — 인용은 실측값으로.
+#   (이전 판은 feedback-log-first-debugging.md 를 가리켰는데 그 파일은 존재하지 않는다 —
+#    감사 B7/#1519 에서 dangling 으로 검출됐다.)
 #
 # 운영 영향:
 # - Python 의존성 보안 알림 (Dependabot security updates) 자동 제공
