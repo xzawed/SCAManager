@@ -23,7 +23,10 @@ _ARGS = {"github_token": "t", "repo_name": "o/r", "pr_number": 7}
 # ── 분류 ────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("path", [
+# 🔴 이 목록은 아래 `test_every_pattern_has_a_fixture` 가 **전수 대조**한다 —
+#   패턴을 늘리고 여기에 예시를 안 넣으면 red 가 된다.
+#   Every pattern must be exercised by at least one entry here.
+_SENSITIVE_FIXTURES = [
     "src/auth/oauth.py", "app/auth/session.py",
     "src/api/auth.py", "lib/jwt.py",  # 🔴 파일명 토큰 (디렉토리 아님) — 세션5 회고 P1
     "alembic/versions/0050_add_col.py", "db/migrations/003_x.sql", "alembic.ini",
@@ -33,9 +36,46 @@ _ARGS = {"github_token": "t", "repo_name": "o/r", "pr_number": 7}
     # 🔴 공급망 형제 — 의존성 핀·빌드 설정 (세션5 회고 P2)
     "requirements.txt", "requirements-dev.txt", "railway.toml", "nixpacks.toml",
     "pyproject.toml", "package.json", "package-lock.json",
-])
+    # 🔴 SCAManager 고유 명시 리스트 — 파일명 토큰으로 안 잡히는 보안 파일들.
+    #   이 6줄이 없을 때 해당 패턴 6개가 테스트에서 한 번도 발화하지 않았다(감사 C5).
+    #   경로 접두사도 같이 재다 — 패턴이 `(^|/)` 로 시작하므로 중첩된 경로도 잡혀야 한다.
+    "src/webhook/validator.py", "src/shared/log_safety.py",
+    "src/shared/ssrf.py", "src/shared/secure_compare.py",
+    "src/logging_config.py", "src/main.py",
+]
+
+
+@pytest.mark.parametrize("path", _SENSITIVE_FIXTURES)
 def test_sensitive_paths_are_detected(path):
     assert sensitive_paths_in([path]) == [path], f"{path} 가 민감 경로로 잡히지 않는다"
+
+
+def test_every_pattern_has_a_fixture():
+    """🔴 모든 민감 패턴이 적어도 하나의 예시로 실제 발화하는가.
+
+    이 가드가 없을 때 패턴 16개 중 **6개가 테스트에서 한 번도 발화하지 않았다**
+    (감사 C5, #1519 실측 — 계수기를 끼워 돌렸다). 전부 SCAManager 고유 명시
+    리스트였다. 그 패턴을 오타로 망가뜨려도 아무것도 red 가 되지 않았고,
+    그 파일들은 무검토 auto-merge 를 그대로 통과했을 것이다.
+
+    🔴 생산 코드와 **같은 연산**(`p.search`)을 쓴다 — 다른 연산으로 재면
+    「커버된다」가 실제 분류와 갈라질 수 있다.
+
+    Every pattern must be exercised by at least one fixture, using the same matcher the
+    production classifier uses.
+    """
+    from src.gate.sensitive_paths import _SENSITIVE_PATTERNS  # noqa: PLC0415
+
+    assert _SENSITIVE_PATTERNS, "패턴이 비었다 — 이 파일 전체가 공허해졌다"
+    unexercised = [
+        pat.pattern for pat in _SENSITIVE_PATTERNS
+        if not any(pat.search(path) for path in _SENSITIVE_FIXTURES)
+    ]
+    assert not unexercised, (
+        f"예시가 없는 민감 패턴 {len(unexercised)}건 — 이 패턴은 오타가 나도 "
+        "아무것도 red 가 되지 않는다. _SENSITIVE_FIXTURES 에 해당 경로를 추가하라:\n  "
+        + (chr(92) + chr(110) + "  ").join(unexercised)
+    )
 
 
 @pytest.mark.parametrize("path", [
