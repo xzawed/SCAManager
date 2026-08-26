@@ -53,7 +53,19 @@ def _collect_file(
 
     content = ""
     if status != "D":
-        content_result = _git("show", "HEAD:" + filename, check=False)
+        # 🔴 분석 대상은 **patch 와 같은 판** 이어야 한다.
+        # `--staged` 면 patch 가 index 에서 오므로 content 도 index 에서 읽는다.
+        # HEAD 에서 읽으면 방금 스테이징한 변경이 통째로 분석을 빠져나가고, 신규 파일은
+        # `HEAD:` 조회가 실패해 빈 문자열이 된다 — 커밋 전 검사의 존재 이유가 사라진다
+        # (감사 A3, #1519 실측).
+        #
+        # 🔴 `:0:<path>` 를 쓴다 — 맨 `:<path>` 는 오파싱된다(실측). git 은 `:` 뒤의
+        # `[0-3]:` 를 **스테이지 번호**로 먹으므로, 경로가 `0:weird/f.py` 면
+        # `:0:weird/f.py` 로 해석돼 실제로는 `weird/f.py` 를 찾는다. `:/text` 도
+        # 커밋 메시지 검색이다. `:0:` 접두사 뒤는 전부 경로다.
+        # Use the explicit stage form; a bare `:<path>` misparses `[0-3]:` and `/`.
+        revision = ":0:" + filename if staged else "HEAD:" + filename
+        content_result = _git("show", revision, check=False)
         if content_result.returncode == 0:
             content = content_result.stdout
 
