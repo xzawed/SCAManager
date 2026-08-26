@@ -85,8 +85,18 @@ async def test_behavior_parity_happy_path(required_value, ci_value, expected):
     )
 
 
-async def test_behavior_parity_required_httperror_falls_back_to_none():
-    """get_required_check_contexts HTTPError → 양쪽 모두 required=None 으로 처리."""
+async def test_behavior_parity_required_empty_falls_back_to_none():
+    """get_required_check_contexts 가 빈 set → 양쪽 모두 required=None 으로 처리.
+
+    🔴 예전에는 `side_effect=httpx.ConnectError` 로 재었다. 그것은 **실제로는
+    일어나지 않는 경로**였다 — `get_required_check_contexts` 는 통신 오류를
+    자기 안에서 삼키고 빈 set 을 돌려준다. mock 이 없는 예외를 만들어
+    죽은 handler 를 살아 있는 것처럼 보이게 했다 (감사 C3, #1519).
+
+    진짜 경로로 바꿈: 통신 오류든 BPR 미설정이든 callee 는 빈 set 을 주고,
+    호출부가 그것을 `None`(모든 체크 고려)으로 통일한다. callee 가 정말 안
+    던지는지는 test_bpr_never_propagates_transport_errors.py 가 따로 잡는다.
+    """
     captured_engine = {}
     captured_worker = {}
 
@@ -99,10 +109,10 @@ async def test_behavior_parity_required_httperror_falls_back_to_none():
         return "passed"
 
     with patch("src.gate.engine.get_required_check_contexts",
-               new_callable=AsyncMock, side_effect=httpx.ConnectError("net")), \
+               new_callable=AsyncMock, return_value=set()), \
          patch("src.gate.engine.get_ci_status", new=_engine_ci), \
          patch("src.services.merge_retry_service.get_required_check_contexts",
-               new_callable=AsyncMock, side_effect=httpx.ConnectError("net")), \
+               new_callable=AsyncMock, return_value=set()), \
          patch("src.services.merge_retry_service.get_ci_status", new=_worker_ci):
         engine_result = await engine_get_ci_status_safe("tok", "owner/repo", "sha")
         worker_result = await worker_get_ci_status_safe("tok", "owner/repo", "sha")
