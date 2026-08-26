@@ -506,7 +506,9 @@ async def test_auto_merge_action_delegates_to_the_engine():
     """
     from src.gate.actions.auto_merge import AutoMergeAction  # pylint: disable=import-outside-toplevel
 
-    ctx = _make_ctx(auto_merge=True, score=70)
+    # 🔴 commit_sha 를 **비-None** 으로 준다 — 기본값 None 이면 `analyzed_sha` 단언이
+    # `None == None` 이라 kwarg 를 빼도 통과한다(공허). Grok 지적, session 01a03d89.
+    ctx = _make_ctx(auto_merge=True, score=70, commit_sha="deadbeef")
     with patch("src.gate.engine._run_auto_merge", new=AsyncMock()) as mock_engine:
         await AutoMergeAction().execute(ctx)
 
@@ -517,9 +519,38 @@ async def test_auto_merge_action_delegates_to_the_engine():
         "판정을 엔진이 하려면 원본 점수가 가야 한다"
     )
     kwargs = mock_engine.await_args.kwargs
-    assert kwargs.get("analyzed_sha") == ctx.commit_sha, (
-        "analyzed_sha 가 전달되지 않았다 — 엔진이 머지 직전 head 와 비교하지 못한다"
+    assert kwargs.get("analyzed_sha") == "deadbeef", (
+        f"analyzed_sha 가 전달되지 않았다({kwargs.get('analyzed_sha')!r}) — "
+        "엔진이 머지 직전 head 와 비교하지 못해 분석 중 push 된 커밋이 옛 점수로 머지된다"
     )
+
+
+async def test_auto_merge_action_blocks_when_the_ai_review_could_not_be_parsed():
+    """🔴 AI 리뷰 파싱 실패(`parse_error`)도 차단한다 — `api_error` 와 같은 축이다.
+
+    Grok 이 새 4건이 `api_error` 만 덮는다고 짚었다(session 01a03d89).
+    """
+    from src.gate.actions.auto_merge import AutoMergeAction  # pylint: disable=import-outside-toplevel
+
+    ctx = _make_ctx(auto_merge=True, score=95)
+    ctx.result["ai_review_status"] = "parse_error"
+    with patch("src.gate.engine._run_auto_merge", new=AsyncMock()) as mock_engine:
+        await AutoMergeAction().execute(ctx)
+    mock_engine.assert_not_awaited()
+
+
+async def test_auto_merge_action_proceeds_on_an_intentional_ai_skip():
+    """🔴 대조군 — 의도된 skip(`no_api_key` 등)은 **차단이 아니다.**
+
+    실패와 skip 을 섞으면 AI 리뷰를 끈 리포에서 auto-merge 가 통째로 죽는다.
+    """
+    from src.gate.actions.auto_merge import AutoMergeAction  # pylint: disable=import-outside-toplevel
+
+    ctx = _make_ctx(auto_merge=True, score=95, commit_sha="cafe")
+    ctx.result["ai_review_status"] = "no_api_key"
+    with patch("src.gate.engine._run_auto_merge", new=AsyncMock()) as mock_engine:
+        await AutoMergeAction().execute(ctx)
+    mock_engine.assert_awaited_once()
 
 
 async def test_auto_merge_action_blocks_on_truncated_ai_review():
