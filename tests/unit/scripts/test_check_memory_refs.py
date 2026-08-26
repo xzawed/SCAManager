@@ -387,3 +387,44 @@ def test_the_scope_is_not_empty_of_subjects():
         "스캔 범위 안에 슬러그 인용이 0건이다 — 이 가드는 아무것도 검증하지 않는다. "
         "참조를 되살리거나 범위를 넓히거나, 축을 폐기하라"
     )
+
+
+def test_precommit_hook_fires_wherever_the_guard_scans():
+    """🔴 pre-commit `files:` 패턴이 `_DOC_GLOBS` 를 덮는가 (감사 B7, #1519).
+
+    갈라지면 그 범위의 파일만 고친 커밋에서 **훅이 발화하지 않는다** — 가드는
+    넓어졌는데 실행되지 않아 dangling 슬러그가 그대로 랜딩한다.
+    설정 파일 자신의 주석도 「스크립트의 _DOC_GLOBS 와 같아야 한다」고 적는다.
+
+    Grok 이 이 갈라짐을 짚었다(session 01a03dac) — 넓힌 범위는 `.github`·`tests`·
+    `scripts` 인데 훅은 `CLAUDE.md`·`docs/workflow`·`docs/runbooks` 만 보고 있었다.
+    """
+    import io  # noqa: PLC0415
+    import re  # noqa: PLC0415
+
+    import yaml  # noqa: PLC0415
+
+    import scripts.check_memory_refs as M  # noqa: PLC0415
+
+    root = _repo_root()
+    config = yaml.safe_load(io.open(root / ".pre-commit-config.yaml", encoding="utf-8"))
+    pattern = None
+    for repo in config.get("repos", []):
+        for hook in repo.get("hooks", []):
+            if "check_memory_refs.py" in str(hook.get("entry", "")):
+                pattern = hook.get("files")
+    assert pattern, "check_memory_refs 훅을 pre-commit 설정에서 못 찾았다"
+
+    compiled = re.compile(pattern)
+    uncovered = []
+    for glob in M._DOC_GLOBS:  # noqa: SLF001
+        sample = next((p for p in root.glob(glob) if p.is_file()), None)
+        if sample is None:
+            continue
+        rel = sample.relative_to(root).as_posix()
+        if not compiled.search(rel):
+            uncovered.append((glob, rel))
+    assert not uncovered, (
+        f"가드는 스캔하는데 pre-commit 훅이 발화하지 않는 범위: {uncovered} — "
+        "그 파일만 고친 커밋에서 dangling 슬러그가 그대로 랜딩한다"
+    )

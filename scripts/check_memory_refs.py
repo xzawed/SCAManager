@@ -87,8 +87,10 @@ STALE_PATTERN = re.compile(
 def normalize(slug: str) -> str:
     """슬러그 비교 정규화 — 하이픈/언더스코어 표기 차이를 흡수한다.
 
-    🔴 실측(2026-07-31): 문서는 하이픈(`feedback-stale-blocker-policy.md`), 실제 파일은
-    언더스코어(`feedback_test_patterns.md`)를 쓴다. 정규화 없이는 **표기 불일치만으로**
+    🔴 실측(2026-07-31): 문서는 하이픈(feedback-stale-blocker-policy.md), 실제 파일은
+    언더스코어(feedback_test_patterns.md)를 쓴다. 정규화 없이는 **표기 불일치만으로**
+    (백틱을 뺀 이유: 이 파일이 스캔 범위에 들어와 예시가 **자기참조**로 잡힌다 —
+     Grok 지적 session 01a03dac. 헤더가 경고하는 그 함정이다.)
     전건 오탐(모든 참조가 '누락')·전건 미탐(모든 파일이 '미참조')이 갈린다.
     Docs use hyphens while files use underscores; without normalisation every reference
     reads as missing and every file as unreferenced.
