@@ -304,3 +304,127 @@ def test_main_fails_when_a_literal_doc_is_missing(tmp_path, monkeypatch, capsys)
     assert mod.main(project_root=tmp_path) == 1
     err = capsys.readouterr().err
     assert any(lit in err for lit in mod._DOC_LITERALS), err
+
+
+# ─── 스캔 범위 — 「안 쟀음」은 초록이 아니다 ───────────────────────────────────
+#
+# 🔴 실측. 이 가드는 `CLAUDE.md` + `docs/workflow/*.md` + `docs/runbooks/*.md`
+# **13파일**만 봤고, 그 범위에서 슬러그 인용이 0건이라 스스로
+# 「이 축은 아무것도 검증하지 않았다」고 보고했다(정직하다).
+#
+# 그런데 **범위 밖에 진짜 인용이 4건 있었고, 그중 1건이 dangling** 이었다:
+#
+#     .github/dependabot.yml:9   feedback-log-first-debugging.md    -> 파일 없음 (이 PR 이 교체)
+#     tests/unit/migrations/test_alembic_url_interpolation.py:108    -> 존재
+#     tests/unit/scripts/test_generate_illustrations.py:5            -> 존재
+#     tests/unit/scripts/test_plans_are_not_executable.py:99         -> 존재
+#
+# 이 파일 자신의 헤더가 「범위가 좁으면 …가드가 "✅ 전부 존재" 를 인쇄한다 —
+# 빈/좁은 범위 위의 초록은 fail-open 이다」라고 적고 있었는데, 바로 그 상태였다.
+# 감사 B7(#1519) — B3(stdout 가드 비재귀)와 같은 클래스다.
+
+
+def _repo_root():
+    from pathlib import Path  # noqa: PLC0415
+
+    return Path(__file__).resolve().parents[3]
+
+
+def test_scan_scope_covers_where_slugs_actually_appear():
+    """🔴 슬러그 인용이 실제로 있는 파일이 스캔 범위 안인가.
+
+    밖이면 그 인용이 dangling 이어도 가드가 초록을 인쇄한다.
+    """
+    import io  # noqa: PLC0415
+
+    import scripts.check_memory_refs as M  # noqa: PLC0415
+
+    root = _repo_root()
+    scope = set(M._doc_files(root))  # noqa: SLF001
+
+    cited = []
+    for path in root.rglob("*"):
+        if not path.is_file() or path.suffix not in (".md", ".py", ".yml", ".yaml", ".json"):
+            continue
+        rel = path.relative_to(root).as_posix()
+        if any(x in rel for x in (".git/", "node_modules", "__pycache__", "worktrees", "venv")):
+            continue
+        try:
+            text = io.open(path, encoding="utf-8", errors="ignore").read()
+        except OSError:
+            continue
+        if M.SLUG_PATTERN.search(text) or M.WIKI_PATTERN.search(text):
+            cited.append(rel)
+
+    # 가드 자신은 정규식 정의를 담고 있어 제외한다(자기 참조).
+    cited = [c for c in cited if c != "scripts/check_memory_refs.py"]
+    outside = sorted(c for c in cited if c not in scope)
+    assert not outside, (
+        f"슬러그를 인용하는데 스캔 범위 밖인 파일: {outside} — "
+        "그 인용이 dangling 이어도 가드가 초록을 인쇄한다. _DOC_GLOBS 를 넓혀라"
+    )
+
+
+def test_the_scope_is_not_empty_of_subjects():
+    """🔴 스캔 범위에 슬러그 인용이 **하나라도** 있어야 한다.
+
+    0건이면 이 가드는 아무것도 검증하지 않는다 — 초록이 아니라 '안 쟀음' 이다.
+    가드 자신이 그렇게 보고하지만, 그 상태가 영원히 조용히 유지되는 것을 막는다.
+    """
+    import io  # noqa: PLC0415
+
+    import scripts.check_memory_refs as M  # noqa: PLC0415
+
+    root = _repo_root()
+    total = 0
+    for rel in M._doc_files(root):  # noqa: SLF001
+        path = root / rel
+        if not path.is_file():
+            continue
+        text = io.open(path, encoding="utf-8", errors="ignore").read()
+        total += len(M.SLUG_PATTERN.findall(text)) + len(M.WIKI_PATTERN.findall(text))
+    assert total > 0, (
+        "스캔 범위 안에 슬러그 인용이 0건이다 — 이 가드는 아무것도 검증하지 않는다. "
+        "참조를 되살리거나 범위를 넓히거나, 축을 폐기하라"
+    )
+
+
+def test_precommit_hook_fires_wherever_the_guard_scans():
+    """🔴 pre-commit `files:` 패턴이 `_DOC_GLOBS` 를 덮는가 (감사 B7, #1519).
+
+    갈라지면 그 범위의 파일만 고친 커밋에서 **훅이 발화하지 않는다** — 가드는
+    넓어졌는데 실행되지 않아 dangling 슬러그가 그대로 랜딩한다.
+    설정 파일 자신의 주석도 「스크립트의 _DOC_GLOBS 와 같아야 한다」고 적는다.
+
+    Grok 이 이 갈라짐을 짚었다(session 01a03dac) — 넓힌 범위는 `.github`·`tests`·
+    `scripts` 인데 훅은 `CLAUDE.md`·`docs/workflow`·`docs/runbooks` 만 보고 있었다.
+    """
+    import io  # noqa: PLC0415
+    import re  # noqa: PLC0415
+
+    import yaml  # noqa: PLC0415
+
+    import scripts.check_memory_refs as M  # noqa: PLC0415
+
+    root = _repo_root()
+    config = yaml.safe_load(io.open(root / ".pre-commit-config.yaml", encoding="utf-8"))
+    pattern = None
+    for repo in config.get("repos", []):
+        for hook in repo.get("hooks", []):
+            if "check_memory_refs.py" in str(hook.get("entry", "")):
+                pattern = hook.get("files")
+    assert pattern, "check_memory_refs 훅을 pre-commit 설정에서 못 찾았다"
+
+    compiled = re.compile(pattern)
+    uncovered = []
+    for glob in M._DOC_GLOBS:  # noqa: SLF001
+        sample = next((p for p in root.glob(glob) if p.is_file()), None)
+        if sample is None:
+            continue
+        rel = sample.relative_to(root).as_posix()
+        if not compiled.search(rel):
+            uncovered.append((glob, rel))
+    assert not uncovered, (
+        f"가드는 스캔하는데 pre-commit 훅이 발화하지 않는 범위: {uncovered} — "
+        "그 파일만 고친 커밋에서 dangling 슬러그가 그대로 랜딩한다"
+    )

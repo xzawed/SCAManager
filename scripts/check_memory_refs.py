@@ -32,9 +32,24 @@ PROJECTS_ROOT = Path.home() / ".claude" / "projects"
 # (글롭은 존재하는 파일만 돌려준다 — 아래 리터럴과 달리 부재를 못 본다).
 # Scope = prescriptive docs only. Retired history trees are gone, so they are not
 # in the globs. The runbooks glob shrank when six campaign records were deleted.
+#
+# 🔴 2026-08-26 (감사 B7, #1519): 범위가 **13파일**뿐이라 그 안에서 인용이 0건이었고,
+# 가드는 「아무것도 검증하지 않았다」를 인쇄하며 통과했다. 그런데 **범위 밖에 진짜
+# 인용이 4건, 그중 1건이 dangling** 이었다(`.github/dependabot.yml` 의
+# feedback-log-first-debugging.md — 파일 없음). 위 주석이 예고한 fail-open 이
+# 그대로 일어난 것이다.
+#
+# 그래서 «슬러그를 인용할 수 있는 곳» 전부로 넓힌다 — 테스트·워크플로 설정도
+# 메모리를 근거로 인용한다. 좁히면 `test_scan_scope_covers_where_slugs_actually_appear`
+# 가 red 다.
+# Widened after an out-of-scope dangling reference slipped through.
 _DOC_GLOBS = (
-    "docs/workflow/*.md",
-    "docs/runbooks/*.md",
+    "docs/**/*.md",
+    ".github/**/*.yml",
+    ".github/**/*.yaml",
+    ".claude/**/*.md",
+    "tests/**/*.py",
+    "scripts/**/*.py",
 )
 # 🔴 리터럴은 `.is_file()` 로 걸러내지 않는다. 걸러내면 파일이 사라진 순간 스코프가
 #    조용히 줄어들고, `main()` 의 부재 검사가 그 이름을 보지 못해 초록이 된다.
@@ -72,8 +87,10 @@ STALE_PATTERN = re.compile(
 def normalize(slug: str) -> str:
     """슬러그 비교 정규화 — 하이픈/언더스코어 표기 차이를 흡수한다.
 
-    🔴 실측(2026-07-31): 문서는 하이픈(`feedback-stale-blocker-policy.md`), 실제 파일은
-    언더스코어(`feedback_test_patterns.md`)를 쓴다. 정규화 없이는 **표기 불일치만으로**
+    🔴 실측(2026-07-31): 문서는 하이픈(feedback-stale-blocker-policy.md), 실제 파일은
+    언더스코어(feedback_test_patterns.md)를 쓴다. 정규화 없이는 **표기 불일치만으로**
+    (백틱을 뺀 이유: 이 파일이 스캔 범위에 들어와 예시가 **자기참조**로 잡힌다 —
+     Grok 지적 session 01a03dac. 헤더가 경고하는 그 함정이다.)
     전건 오탐(모든 참조가 '누락')·전건 미탐(모든 파일이 '미참조')이 갈린다.
     Docs use hyphens while files use underscores; without normalisation every reference
     reads as missing and every file as unreferenced.
