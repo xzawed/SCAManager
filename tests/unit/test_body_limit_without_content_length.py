@@ -149,17 +149,26 @@ def test_the_limit_is_the_only_body_guard_in_the_repo():
 # ─── 연결 종료 — 읽지 않은 chunk 가 다음 요청을 오염시킨다 ─────────────────────
 
 
-def test_413_closes_the_connection(client: TestClient):
-    """🔴 413 응답이 연결을 닫는다 — 남은 chunk 를 읽지 않고 끊기 때문이다.
+def test_413_does_not_force_connection_close():
+    """🔴 413 이 `Connection: close` 를 **붙이지 않는다** — 근거가 반증됐다.
 
-    keep-alive 를 유지하면 다음 요청이 그 잔여 바이트를 **자기 본문의 일부로** 읽는다
-    (요청 desync). Grok 이 이 축을 짚었고(session 01a03cd1), 헤더 하나로 막는다.
+    첫 판은 「읽지 않은 chunk 가 다음 요청을 오염시킨다(desync)」며 붙였다.
+    Grok 실측 확인(session 01a03cdf): uvicorn·hypercorn 모두 h11/httptools 가
+    프레이밍을 소유하고, keep-alive 면 현재 본문을 끝까지 읽은 뒤에 다음 요청을
+    파싱한다 — **앱이 배수하지 않아도 desync 는 없다.**
+
+    남는 것은 비용뿐이다: 미수신 데이터가 있는 채로 닫으면 RST 가 나
+    **413 응답 자체가 클라이언트에 도달하지 못할 수 있다.**
+
+    이 테스트는 그 판단을 고정한다 — 다시 붙이려면 근거를 먼저 대야 한다.
     """
-    r = client.post("/echo", content=_chunks(_LIMIT + 4096))
+    app = Starlette(routes=[Route("/echo", _echo, methods=["POST"])])
+    app.add_middleware(LimitBodySizeMiddleware)
+    r = TestClient(app).post("/echo", content=_chunks(_LIMIT + 4096))
     assert r.status_code == 413
-    assert r.headers.get("connection", "").lower() == "close", (
-        f"413 이 연결을 닫지 않는다 — 읽지 않은 본문이 다음 요청으로 흘러간다: "
-        f"{dict(r.headers)}"
+    assert r.headers.get("connection", "").lower() != "close", (
+        "413 에 Connection: close 가 붙었다 — 서버가 프레이밍을 지키므로 불필요하고, "
+        "미수신 데이터와 겹치면 RST 로 응답이 유실될 수 있다"
     )
 
 

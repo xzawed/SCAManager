@@ -125,15 +125,16 @@ class LimitBodySizeMiddleware:  # pylint: disable=too-few-public-methods
                 # 올리면 ServerErrorMiddleware 가 처리한다(시끄럽지만 정확하다).
                 # Re-raise: swallowing would leave the response unterminated.
                 raise
-            # 🔴 `Connection: close` 를 붙인다 — 본문의 남은 chunk 를 읽지 않고 끊으므로
-            # keep-alive 를 유지하면 다음 요청이 그 잔여 바이트를 자기 것으로 읽는다
-            # (요청 desync). 연결을 닫는 것이 유일하게 안전한 종료다.
-            # Close the connection: the unread chunked tail would desync keep-alive.
-            await Response(
-                "Request body too large",
-                status_code=413,
-                headers={"Connection": "close"},
-            )(scope, receive, send)
+            # 읽지 않은 나머지 chunk 는 **서버가 처리한다.** uvicorn·hypercorn 모두
+            # h11/httptools 가 프레이밍을 소유하고, keep-alive 면 현재 본문을 끝까지
+            # 읽은 뒤에야 다음 요청을 파싱한다 — 앱이 배수하지 않아도 desync 는 없다
+            # (Grok 확인, session 01a03cdf).
+            #
+            # 🔴 그래서 `Connection: close` 를 **붙이지 않는다.** 첫 판은 desync 를 막는다며
+            # 붙였는데 그 전제가 틀렸고, 남는 것은 비용뿐이다 — 미수신 데이터가 있는 채로
+            # 닫으면 RST 가 나 **413 응답 자체가 유실될 수 있다.**
+            # The server owns framing; closing here would risk RST-dropping this response.
+            await Response("Request body too large", status_code=413)(scope, receive, send)
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-methods
