@@ -202,12 +202,18 @@ async def test_get_pr_data_returns_none_on_4xx_status():
 # ──────────────────────────────────────────────────────────────────────────
 
 
-async def test_get_ci_status_safe_required_httperror_falls_back_to_none():
-    """get_required_check_contexts HTTPError → required=None 으로 통일."""
+async def test_get_ci_status_safe_required_empty_falls_back_to_none():
+    """get_required_check_contexts 가 빈 set → required=None 으로 통일.
+
+    🔴 예전에는 `side_effect=httpx.ConnectError` 로 재었으나 그것은 실제로는
+    일어나지 않는 경로다 — callee 가 통신 오류를 삼키고 빈 set 을 준다
+    (감사 C3, #1519). 근거는
+    tests/unit/github_client/test_bpr_never_propagates_transport_errors.py.
+    """
     with patch(
         "src.services.merge_retry_service.get_required_check_contexts",
         new_callable=AsyncMock,
-        side_effect=httpx.ConnectError("net"),
+        return_value=set(),
     ), patch(
         "src.services.merge_retry_service.get_ci_status",
         new_callable=AsyncMock,

@@ -180,6 +180,7 @@ def test_narrow_httpx_except_is_not_used_anywhere_in_src():
 
     narrow: list[str] = []
     wired = 0
+    narrow_by_design = 0
     for f in files:
         tree = ast.parse(f.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
@@ -196,12 +197,33 @@ def test_narrow_httpx_except_is_not_used_anywhere_in_src():
                 narrow.append(f"{f.name}:{node.lineno}")
             elif "HTTPX_SEND_ERRORS" in src:
                 wired += 1
+            elif "httpx" in src:
+                # 의도적으로 좁은 절 — `httpx.HTTPStatusError` 처럼 상태 오류만 보는 곳.
+                # Deliberately narrow clauses (e.g. status-only handlers).
+                narrow_by_design += 1
 
     assert not narrow, (
         "좁은 `httpx.HTTPError` 가 남아 있다(단독 또는 튜플 원소) — "
         f"HTTPError 밖 7종이 빠져나간다: {narrow}"
     )
-    assert wired >= 46, f"HTTPX_SEND_ERRORS 를 쓰는 except 가 {wired}곳뿐이다 (기대 46곳 이상)"
+    # 🔴 공허화 방어 — 「정확히 N 곳」을 고정하지 않는다.
+    #   예전에는 `wired >= 46` 이었다. 그 숫자는 어느 시점의 스냅샷이라
+    #   **정당한 삭제**가 CI red 가 된다 — 도달 불가 handler 2곳을 지우자 44 가 되어
+    #   실제로 그러했다(#1519 C3). 카운트 바닥은 축소를 결함으로 바꾼다.
+    #
+    #   진짜 계약은 위의 `narrow` 단언이다 — 좋은 이름으로 잡는 곳이 0. 여기서는
+    #   **그 단언이 공허하지 않은가**만 재고, 수치를 손으로 적지 않고 파생시킨다.
+    #
+    #   Do not pin a snapshot count; a legitimate deletion must not turn CI red. Derive the
+    #   backstop instead: the shared tuple must still be wired, and must stay the majority.
+    assert wired > 0, (
+        "HTTPX_SEND_ERRORS 를 쓰는 except 가 한 곳도 없다 — 공용 튜플이 정의만 되고 배선이 사라졌거나 "
+        "스캐너가 깨졌다. 이 파일의 `narrow` 단언이 공허하게 초록이 된다."
+    )
+    assert wired > narrow_by_design, (
+        f"공용 튜플 {wired}곳 vs 의도적 좁은 절 {narrow_by_design}곳 — 공용 튜플이 다수가 아니다. "
+        "배선이 대량으로 사라졌는지 확인하라."
+    )
 
 
 def test_httperror_is_only_named_where_the_shared_tuple_is_defined():

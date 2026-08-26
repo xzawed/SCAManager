@@ -336,10 +336,13 @@ async def _get_ci_status_safe(
 
     INTENTIONAL DUPLICATE — keep both copies in sync; parity test enforces.
     """
-    try:
-        required = await get_required_check_contexts(github_token, repo_name, base_ref)
-    except HTTPX_SEND_ERRORS:
-        required = None  # None 이면 모든 체크 고려 / None means "consider all checks"
+    # BPR 조회는 통신 오류를 **전파하지 않는다** — 자기 안에서 삼키고 빈 set 을 준다.
+    # 그래서 여기 `except HTTPX_SEND_ERRORS` 를 두면 절대 발화하지 않는 죽은 코드가 된다.
+    # 그 사실은 tests/unit/github_client/test_bpr_never_propagates_transport_errors.py
+    # 가 잡는다 — 거기가 red 가 되면 여기에 handler 를 되살려야 한다.
+    #
+    # The BPR fetch swallows transport errors; a handler here would be unreachable.
+    required = await get_required_check_contexts(github_token, repo_name, base_ref)
 
     # 방어층: BPR Required 미설정으로 빈 set 이 반환되면 None 으로 통일
     # checks.py 의 fallback 과 이중 안전 — 호출 측에서도 명시적으로 처리

@@ -479,10 +479,12 @@ async def _get_ci_status_safe(
 
     INTENTIONAL DUPLICATE — keep both copies in sync; parity test enforces.
     """
-    try:
-        required = await get_required_check_contexts(token, repo_full_name, base_ref)
-    except HTTPX_SEND_ERRORS:
-        required = None
+    # BPR 조회는 통신 오류를 **전파하지 않는다** (engine.py 쌍둥이와 동일).
+    # handler 를 두면 죽은 코드다 — 근거는
+    # tests/unit/github_client/test_bpr_never_propagates_transport_errors.py.
+    #
+    # The BPR fetch swallows transport errors; a handler here would be unreachable.
+    required = await get_required_check_contexts(token, repo_full_name, base_ref)
 
     # 방어층: BPR Required 미설정으로 빈 set 이 반환되면 None 으로 통일
     # engine.py::_get_ci_status_safe 와 동일 패턴 — 단일/워커 경로 일관성 확보
