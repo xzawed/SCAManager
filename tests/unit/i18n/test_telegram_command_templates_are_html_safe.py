@@ -40,6 +40,7 @@ import pytest
 _TELEGRAM_TAGS = frozenset({
     "b", "strong", "i", "em", "u", "ins", "s", "strike", "del",
     "code", "pre", "a", "tg-spoiler", "blockquote", "span", "tg-emoji",
+    "tg-time",  # 최근 추가 — Grok 보정(session 01a03d37)
 })
 
 _ANY_ANGLE = re.compile(r"<[^>]*>")
