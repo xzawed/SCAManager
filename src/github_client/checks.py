@@ -35,6 +35,21 @@ _HEADERS = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "20
 # ── Required check contexts cache (5-minute TTL) ─────────────────────────
 # (repo_full_name, branch) → (contexts_set, cached_at_timestamp)
 _required_contexts_cache: dict[tuple[str, str], tuple[set[str], float]] = {}
+
+# 🔴 실패 쿨다운 — 성공 캐시와 **분리한다.**
+#
+# 실패를 성공 캐시에 넣으면 일시 장애가 TTL 동안 «필수 체크 없음» 으로 굳는다(감사 A5).
+# 그래서 캐시하지 않기로 했는데, 그 순간 새 위험이 생긴다: 429 를 받고도 다음 호출이
+# 곧바로 GitHub 을 다시 때린다 — **이미 rate limit 인데 계속 두드리는** 꼴이다
+# (Grok 지적, session 01a03ceb). 이전엔 5분 캐시가 우연히 쿨다운 노릇을 했다.
+#
+# 쿨다운은 «답» 이 아니라 «잠시 묻지 않는다» 이므로 값을 저장하지 않는다.
+# 쿨다운 중에는 빈 set 을 그대로 돌려주되(호출부 계약 유지) 요청은 보내지 않는다.
+# Separate failure cooldown: never store the failure, just stop asking for a while.
+_required_contexts_cooldown: dict[tuple[str, str], float] = {}
+_COOLDOWN_RATE_LIMIT = 60.0   # 429 — Retry-After 가 없을 때
+_COOLDOWN_AUTH = 30.0         # 401/403 — 토큰 문제는 사람이 고쳐야 한다
+_COOLDOWN_MAX = 300.0         # Retry-After 를 그대로 믿지 않는다
 _REQUIRED_CONTEXTS_TTL = 300  # seconds
 # 🔴 엔트리 상한 (종합감사 P2, services.md 메모리 캐시 상한 규약) — 상한 없이 (repo, branch) 쌍마다
 #   무한 누적하면 프로세스 수명 동안 메모리가 단조 증가한다(TTL 은 신선도만 관리·삭제 안 함).
@@ -240,21 +255,28 @@ def _classify_bpr_http_error(
     exc: httpx.HTTPStatusError,
     repo_full_name: str,
     branch: str,
-) -> set[str]:
-    """BPR 조회 HTTP 오류를 코드별로 분류해 로깅하고 빈 set 반환.
+) -> tuple[set[str], bool, float]:
+    """BPR 조회 HTTP 오류를 분류해 `(빈 set, 캐시해도 되는가)` 를 돌려준다.
 
-    - 404: 정상 — BPR 미설정. debug 로그.
-    - 401/403: 토큰 권한 부족. warning — auto-merge 진단 어려움 신호.
-    - 429: GitHub rate limit. warning — 잠시 후 캐시 만료 시 재시도.
-    - 그 외: 예상치 못한 응답. error.
+    - 404: **정상** — BPR 미설정. debug 로그. 캐시한다(안 하면 매 요청마다 GitHub 을 때린다).
+    - 401/403: 토큰 권한 부족. warning. **캐시하지 않는다.**
+    - 429: GitHub rate limit. warning. **캐시하지 않는다.**
+    - 그 외: 예상치 못한 응답. error. **캐시하지 않는다.**
 
-    Classify BPR-fetch HTTP errors and log accordingly. Always returns empty set
-    so callers proceed with the "no required checks" semantics (which now means
-    "consider all checks" after the empty-set fallback).
+    🔴 반환값이 tuple 인 이유: 빈 set 은 «필수 체크 없음» 과 «조회 실패» 두 가지를
+    뜻하는데, 호출부는 그것을 구분하지 못한다(그래서 반환 계약은 그대로 둔다).
+    구분이 필요한 곳은 **캐시** 다 — 실패를 5분 굳히면 그동안 머지 판정이 실제와
+    다른 근거로 내려진다 (감사 A5, #1519 실측).
+
+    Returns (empty set, cacheable, cooldown_seconds). The empty set means both
+    "no required checks" and "lookup failed"; only the cache needs to tell them apart.
+    cooldown_seconds > 0 means "stop asking for a while" (never a stored answer).
     """
     code = exc.response.status_code
     safe_repo = sanitize_for_log(repo_full_name)
     safe_branch = sanitize_for_log(branch)
+    cacheable = code == 404  # 404 만 «상태» 다. 나머지는 «장애» 이므로 굳히지 않는다.
+    cooldown = 0.0
     if code == 404:
         # 가장 흔한 정상 경로 — BPR 자체가 없거나 Required Status Checks 미설정
         # Most common normal case — no BPR or no Required Status Checks
@@ -269,19 +291,36 @@ def _classify_bpr_http_error(
             " / BPR fetch unauthorized — token review needed",
             code, safe_repo, safe_branch,
         )
+        cooldown = _COOLDOWN_AUTH
     elif code == 429:
         logger.warning(
-            "BPR 조회 rate limit (HTTP 429) — 빈 set 반환, 캐시 TTL 후 재조회 (%s/%s)"
-            " / BPR fetch rate-limited — returning empty set",
+            "BPR 조회 rate limit (HTTP 429) — 빈 set 반환, 쿨다운 후 재조회 (%s/%s)"
+            " / BPR fetch rate-limited — returning empty set, retried after cooldown",
             safe_repo, safe_branch,
         )
+        # GitHub 이 `Retry-After` 를 주면 그것을 쓰되 상한을 건다 — 값을 그대로 믿지 않는다.
+        # Honour Retry-After but cap it; never trust the value verbatim.
+        cooldown = _COOLDOWN_RATE_LIMIT
+        raw_retry = exc.response.headers.get("retry-after")
+        if raw_retry:
+            try:
+                cooldown = min(max(float(raw_retry), 0.0), _COOLDOWN_MAX)
+            except ValueError:
+                # 비정형 Retry-After — 기본 쿨다운을 그대로 쓴다. 조용히 넘기지 않고
+                # 남긴다: 벤더가 형식을 바꾸면 여기가 유일한 관측면이다.
+                # Malformed Retry-After: keep the default cooldown, but say so.
+                logger.warning(
+                    "BPR 429 의 Retry-After 를 읽지 못했다 (%r) — 기본 쿨다운 %.0fs 사용"
+                    " / unparsable Retry-After; using the default cooldown",
+                    raw_retry[:32], cooldown,
+                )
     else:
         logger.error(
             "BPR 조회 HTTP 오류 (HTTP %d) — 예상치 못한 응답 (%s/%s)"
             " / BPR fetch unexpected HTTP status",
             code, safe_repo, safe_branch,
         )
-    return set()
+    return set(), cacheable, cooldown
 
 
 async def get_required_check_contexts(
@@ -308,6 +347,15 @@ async def get_required_check_contexts(
         if now - cached_at < _REQUIRED_CONTEXTS_TTL:
             return cached_set
 
+    # 🔴 실패 쿨다운 — 값을 돌려주는 게 아니라 **묻지 않는다.**
+    # 이미 rate limit 인데 매 호출마다 다시 때리면 상황을 악화시킨다.
+    # Cooldown after a failure: do not ask again yet (this is not a cached answer).
+    until = _required_contexts_cooldown.get(cache_key)
+    if until is not None:
+        if now < until:
+            return set()
+        del _required_contexts_cooldown[cache_key]
+
     client = get_http_client()
 
     try:
@@ -321,21 +369,30 @@ async def get_required_check_contexts(
         resp.raise_for_status()
         data = resp.json()
         contexts: set[str] = set(data.get("contexts") or [])
+        cacheable, cooldown = True, 0.0
     except httpx.HTTPStatusError as exc:
         # HTTP 오류 분류 — 운영 진단을 위해 로그 레벨 분리
         # Classify HTTP error — separate log levels for ops diagnostics
-        contexts = _classify_bpr_http_error(exc, repo_full_name, branch)
+        contexts, cacheable, cooldown = _classify_bpr_http_error(exc, repo_full_name, branch)
     except HTTPX_SEND_ERRORS as exc:
-        # 네트워크/연결 오류 (DNS, timeout, ConnectError 등)
-        # Network/connection error (DNS, timeout, ConnectError, etc.)
+        # 네트워크/연결 오류 (DNS, timeout, ConnectError 등) — **캐시하지 않는다.**
+        # Network/connection error — never cached.
         logger.warning(
             "BPR 조회 네트워크 오류 (%s) — 빈 set 반환 (%s/%s)"
             " / BPR fetch network error — returning empty set",
             type(exc).__name__,
             sanitize_for_log(repo_full_name), sanitize_for_log(branch),
         )
-        contexts = set()
+        contexts, cacheable, cooldown = set(), False, _COOLDOWN_RATE_LIMIT
 
-    # 결과 캐시 저장 (엔트리 상한 강제) / Store result in cache (entry cap enforced)
-    _store_required_contexts(cache_key, contexts, now)
+    # 🔴 **실패는 캐시하지 않는다.** 빈 set 은 «필수 체크 없음» 과 «조회 실패» 를 함께
+    # 뜻하는데, 캐시에 넣으면 일시 장애 한 번이 TTL(5분) 동안 «필수 체크 없음» 으로
+    # 굳는다. 그 사이 호출부는 그것을 `None` 으로 바꿔 «모든 체크 고려» 로 넘어가고,
+    # 머지 판정이 실제와 다른 근거로 내려진다 (감사 A5, #1519 실측).
+    # 기존에 캐시된 **정상** 값이 있으면 그대로 둔다 — 실패가 그것을 밀어내면 안 된다.
+    # Never cache a failure; a good cached value must survive a transient error.
+    if cacheable:
+        _store_required_contexts(cache_key, contexts, now)
+    elif cooldown > 0:
+        _required_contexts_cooldown[cache_key] = now + cooldown
     return contexts
