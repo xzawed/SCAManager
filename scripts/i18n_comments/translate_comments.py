@@ -37,6 +37,22 @@ import sys
 import time
 from pathlib import Path
 
+
+def _make_stdout_safe() -> None:
+    """Windows 기본 stdout(cp949)에서 비-ASCII 출력이 크래시하는 것을 막는다.
+
+    🔴 이 디렉토리는 `tests/unit/scripts/test_stdout_encoding_guard.py` 의 스캔이
+    **비재귀** 였던 탓에 구조적으로 보이지 않았고, 4개 전부 가드가 없었다.
+    실제로 `check_bilingual.py` 는 cp949 콘솔에서 em dash 출력 시점에 죽었다
+    (감사 B3·B5, #1519 실측).
+
+    Keep non-ASCII output from crashing on a cp949 console.
+    """
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass  # 캡처된 stream 등 reconfigure 미지원 — 무시 / stream without reconfigure
+
 try:
     import anthropic
 except ImportError:
@@ -471,4 +487,5 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    _make_stdout_safe()
     sys.exit(main())
