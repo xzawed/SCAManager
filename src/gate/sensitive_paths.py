@@ -14,10 +14,14 @@
 
 1. **사람 검토를 전혀 추가하지 않는다.** 필수 체크는 경로를 모른다 — CI 가 green 인
    토큰 유출 PR 은 여전히 검토 0으로 머지된다. 두려워한 위험과 다른 위험을 막는 통제다.
-2. **오히려 자동 머지를 죽인다.** `mergeable_state="blocked"` →
-   `BRANCH_PROTECTION_BLOCKED` 이고 이 태그는 `_RETRIABLE_TAGS` 에 **없다**(실측) →
-   재시도 큐가 기다리지 못하는 **종결 실패**. 체크가 0건인 리포
-   (`claude-grok-build-plugin`)에 필수 컨텍스트를 걸면 모든 PR 이 영구 차단된다.
+2. **자동 머지를 죽이는 경로가 남는다.** `mergeable_state="blocked"` →
+   `BRANCH_PROTECTION_BLOCKED` 이고, 이 태그의 재시도는 **CI 가 도는 중일 때만**
+   확정된다(`retry_policy.should_retry`). 체크가 0건인 리포
+   (`claude-grok-build-plugin`)에 필수 컨텍스트를 걸면 **도는 CI 가 없으므로**
+   모든 PR 이 재시도 없는 종결 실패로 떨어진다.
+
+   재시도 가능 집합의 정본은 `src/gate/merge_reasons.py` 한 곳이다 — 여기에 옮겨
+   적지 않는다. 복사한 순간 그 문장은 코드보다 오래 산다.
 
 그래서 통제를 **경로 인지 + 우리 코드 안**에 둔다. GitHub 설정을 건드리지 않으므로
 종결 실패 경로가 생기지 않고, 막히는 것은 민감 경로 PR **하나뿐**이다.
