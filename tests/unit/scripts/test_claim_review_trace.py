@@ -103,7 +103,7 @@ def test_heading_without_fields_fails(monkeypatch):
 
 
 @pytest.mark.parametrize("drop", ["session", "claim", "verdict"])
-def test_each_required_field_is_load_bearing(monkeypatch, drop):
+def test_every_required_field_is_load_bearing(monkeypatch, drop):
     """필수 필드 3종 각각이 독립적으로 필요하다 — 하나라도 빠지면 red."""
     body = "봉인했다.\n\n" + "\n".join(
         line for line in _GOOD_TRACE.splitlines() if not line.strip().startswith(f"- {drop}:")
@@ -777,7 +777,7 @@ def test_empty_surface_list_still_says_no_change(monkeypatch, capsys):
     """대조군 — 실제로 변경이 없으면 그렇게 말해야 한다(위 단언이 문구를 죽이지 않았는지).
 
     🔴 함수명이 **정확히 40자**이면 안 된다 — TruffleHog 의 Lob 탐지기 정규식이
-    `((live|test)_[A-Za-z0-9_]{35})` 라 `test_` + 35자 식별자를 API 키로 오인하고,
+    `\b((live|test)_[A-Za-z0-9_]{35})\b` 라 `test_` + 35자 식별자를 API 키로 오인하고,
     Lob API 에 실제로 보내 403/422 를 받아 **"verified" 로 판정**한다(실측: 이 함수의
     초판 이름이 정확히 그랬고 required 인 secret-scan 이 red 였다).
     """
@@ -849,7 +849,7 @@ def test_no_new_identifier_matches_the_lob_pattern():
     """
     import re
 
-    pat = re.compile(r"(?:live|test)_[A-Za-z0-9_]{35}")
+    pat = re.compile(r"\b(?:live|test)_[A-Za-z0-9_]{35}\b")
     src = pathlib.Path(__file__).read_text(encoding="utf-8")
     hits = sorted({m.group(0) for m in pat.finditer(src)})
     assert not hits, (
