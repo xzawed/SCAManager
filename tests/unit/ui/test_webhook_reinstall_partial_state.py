@@ -330,3 +330,46 @@ def test_delete_returning_true_stays_full_success():
         resp = client.post("/repos/owner%2Frepo/reinstall-webhook", follow_redirects=False)
 
     assert "webhook_ok=1" in resp.headers["location"]
+
+
+def test_list_webhooks_value_error_is_reported_as_partial_not_500():
+    """🔴 배선 — `list_webhooks` 가 목록을 신뢰할 수 없다고 던지면 **부분 성공**이다.
+
+    `github_client/repos.py::list_webhooks` 는 페이지 상한 초과·비-list 본문에서
+    `ValueError` 를 던진다(#1504 B). 그 타입을 고른 이유가 바로 이 배선이다 —
+    두 호출부의 `except` 튜플에 `ValueError` 가 있고 `RuntimeError` 는 **없다**.
+
+    🔴 실측으로 확인한 것: `issubclass(RuntimeError, HTTPX_SEND_ERRORS)` 는 False 다
+    (`StreamError` 가 `RuntimeError` **하위**일 뿐 역은 아니다). `RuntimeError` 로
+    던졌다면 FastAPI 까지 올라가 **500** 이 됐고, 「부분 성공을 알린다」는 의도가
+    「페이지 전체가 깨진다」로 뒤집혔을 것이다.
+    """
+    db = _db()
+    with patch("src.ui.routes.settings.list_webhooks", new_callable=AsyncMock,
+               side_effect=ValueError("webhook page count exceeded 20")), \
+         patch("src.ui.routes.settings.delete_webhook", new_callable=AsyncMock), \
+         patch("src.ui.routes.settings.create_webhook",
+               new_callable=AsyncMock, return_value=12345), \
+         patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(db)):
+        resp = client.post("/repos/owner%2Frepo/reinstall-webhook", follow_redirects=False)
+
+    assert resp.status_code == 303, (
+        f"목록 신뢰 불가가 500 으로 터졌다 — 부분 성공으로 알려야 한다: {resp.status_code}"
+    )
+    assert "webhook_partial=1" in resp.headers["location"], (
+        f"부분 성공으로 보고하지 않았다: {resp.headers['location']}"
+    )
+
+
+def test_runtime_error_would_not_be_caught_by_the_caller():
+    """계기 자기검증 — 위 테스트의 전제(`RuntimeError` 는 안 잡힌다)를 직접 확인한다.
+
+    전제가 틀리면 「그래서 ValueError 를 골랐다」는 설계 근거가 사라진다.
+    """
+    from src.shared.http_client import HTTPX_SEND_ERRORS  # noqa: PLC0415
+
+    caught = (*HTTPX_SEND_ERRORS, KeyError, ValueError, OSError)
+    assert issubclass(ValueError, caught), "ValueError 가 호출부 except 에 안 잡힌다"
+    assert not issubclass(RuntimeError, caught), (
+        "RuntimeError 가 이제 잡힌다 — list_webhooks 의 예외 타입 선택 근거를 재검토하라"
+    )

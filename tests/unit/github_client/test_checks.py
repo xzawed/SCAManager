@@ -140,21 +140,39 @@ async def test_get_ci_status_passed_when_all_success():
 # ── WBS audit P2: URL path encoding consistency (matches repos.py _repo_path) ──
 
 
-async def test_get_ci_status_encodes_repo_and_sha_in_url():
-    """repo_full_name/commit_sha 특수문자가 URL 인코딩됨 (슬래시 보존, path injection 방어).
-    repo_full_name/commit_sha special chars are URL-encoded (slash preserved, path-injection defence).
+async def test_get_ci_status_rejects_repo_outside_the_whitelist():
+    """🔴 repo_full_name 이 owner/repo 화이트리스트 밖이면 요청 전에 거부된다.
+
+    repo_path() 가 인코딩(블랙리스트)에서 화이트리스트로 바뀐 뒤의 성질이다 —
+    공백은 `%20` 이 되는 게 아니라 아예 통과하지 못한다.
+
+    Whitelist rejects rather than encodes; no request is sent.
+    """
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock()
+
+    with patch("src.github_client.checks.get_http_client", return_value=mock_client):
+        with pytest.raises(ValueError, match="charset"):
+            await get_ci_status(TOKEN, "owner/re po", "abc123")
+
+    mock_client.get.assert_not_awaited()
+
+
+async def test_get_ci_status_encodes_sha_in_url():
+    """commit_sha 특수문자는 여전히 URL 인코딩된다 — sha 는 화이트리스트 대상이 아니다.
+
+    commit_sha is still percent-encoded; only repo_full_name moved to a whitelist.
     """
     body = {"check_runs": [_check_run("ci", "completed", "success")], "total_count": 1}
     mock_client = AsyncMock()
     mock_client.get = AsyncMock(return_value=_resp(200, body))
 
     with patch("src.github_client.checks.get_http_client", return_value=mock_client):
-        await get_ci_status(TOKEN, "owner/re po", "ab cd")
+        await get_ci_status(TOKEN, "owner/repo", "ab cd")
 
     called_url = mock_client.get.call_args[0][0]
-    assert "owner/re%20po" in called_url   # 슬래시 보존 + 공백 인코딩 / slash kept, space encoded
     assert "ab%20cd" in called_url
-    assert "re po" not in called_url       # raw 미인코딩 문자열 미포함 / no raw unencoded value
+    assert "ab cd" not in called_url       # raw 미인코딩 문자열 미포함 / no raw unencoded value
 
 
 async def test_get_required_check_contexts_encodes_branch_in_url():

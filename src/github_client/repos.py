@@ -89,15 +89,82 @@ async def create_webhook(token: str, repo_full_name: str, webhook_url: str, secr
     return resp.json()["id"]
 
 
+# 🔴 훅 페이지 순회 상한 — 실물 GitHub 은 next 를 반복하지 않지만 프록시·오설정·
+#   악의적 응답이 같은 URL 을 계속 주면 이 함수 하나가 워커를 묶는다.
+#   100개/페이지 × 20 = 2,000개로 어떤 실사용 리포보다 크다.
+# Page-walk ceiling: a misbehaving proxy repeating `next` would otherwise pin a worker.
+_MAX_WEBHOOK_PAGES = 20
+
+# 🔴 이 함수가 던지는 것은 **`ValueError`** 다 — 호출부가 실제로 잡는 타입이기
+#   때문이다. 두 호출부 모두 `except (*HTTPX_SEND_ERRORS, KeyError, ValueError, ...)`
+#   이고, `RuntimeError` 는 그 튜플에 **안 잡힌다**(`StreamError` 가 `RuntimeError`
+#   하위일 뿐 역은 아니다 — 실측). RuntimeError 로 던지면 FastAPI 까지 올라가 500 이
+#   되어, 「부분 성공을 알린다」는 의도가 「페이지 전체가 깨진다」로 뒤집힌다.
+# Raise ValueError: both call sites catch it, while RuntimeError would escape to a 500.
+
+
 async def list_webhooks(token: str, repo_full_name: str) -> list[dict]:
-    """리포의 모든 GitHub 웹훅 목록을 반환한다."""
+    """리포의 **모든** GitHub 웹훅 목록을 반환한다 (pagination 처리).
+
+    🔴 예전에는 단일 요청이라 docstring 이 거짓이었다 (#1504 B). GitHub 기본 페이지
+    크기는 30이라 훅이 그보다 많으면 뒤쪽은 **보이지도 않았다.** 결과가 호출부마다
+    다르게 나빴다:
+
+    - `_detect_stale_webhook` — 이 리포의 훅이 2페이지면 stale 배너가 영영 안 뜬다
+      (조회 실패 시 False 반환이라 조용하다).
+    - `reinstall_webhook` 정리 — 2페이지의 옛 훅이 정리되지 않는데 `cleanup_ok` 는
+      True 로 남아 **완전 성공으로 보고**된다. #1504 R1 이 방금 고친 결함이
+      이 경로로 그대로 되살아난다.
+
+    형제 `list_user_repos` 가 이미 같은 `resp.links["next"]` 순회를 쓴다 —
+    이것은 누락이지 설계 결정이 아니었다.
+
+    Previously a single unpaginated request, so the docstring's "every webhook" was false;
+    hooks past GitHub's default page size were invisible to both callers.
+    """
     client = get_http_client()  # 싱글톤
-    resp = await client.get(
-        f"{GITHUB_API}/repos/{_repo_path(repo_full_name)}/hooks",
-        headers=_auth_headers(token),
+    results: list[dict] = []
+    for page_num in range(1, _MAX_WEBHOOK_PAGES + 1):
+        # 🔴 **서버가 준 URL 을 요청하지 않는다.** `Link` 헤더의 next URL 을 그대로
+        #   따라가면 그 요청에 `Authorization: Bearer <토큰>` 이 실리고, 응답이 변조되면
+        #   토큰이 임의 호스트로 나간다 (CodeQL `py/partial-ssrf` alert #597 — 실제 위험).
+        #   origin 을 검증해 봤지만 CodeQL 은 그 비교를 sanitizer 로 인식하지 않았고,
+        #   **더 나은 답은 taint 를 아예 없애는 것**이었다: URL 은 우리가 만들고
+        #   (`base` + 정수 `page`), 서버에게서는 「더 있는가」라는 **신호만** 받는다.
+        # Never request a server-supplied URL: build it ourselves and read only the
+        # has-more signal from the Link header. Removes the taint instead of sanitizing it.
+        resp = await client.get(
+            f"{GITHUB_API}/repos/{_repo_path(repo_full_name)}/hooks",
+            params={"per_page": 100, "page": page_num},
+            headers=_auth_headers(token),
+        )
+        resp.raise_for_status()
+        page = resp.json()
+        # 🔴 200 인데 본문이 list 가 아니면 **거부**한다.
+        #   `extend` 는 dict 를 주면 조용히 **키**를 넣고(`['message']`), 문자열을 주면
+        #   글자로 쪼갠다(실측). 그 쓰레기가 정리 루프로 흘러가면 엉뚱한 곳에서 터지고
+        #   로그는 원인을 안 가리킨다.
+        # A non-list 200 body would be spread silently (dict -> its keys, str -> chars).
+        if not isinstance(page, list):
+            raise ValueError(
+                f"GitHub hooks 응답이 list 가 아니다 ({type(page).__name__}) - "
+                "목록을 신뢰할 수 없다"
+            )
+        results.extend(page)
+        # 다음 페이지 유무는 서버가 안다 — 그 **불리언**만 쓴다(URL 은 안 쓴다).
+        # Use only the boolean; never the URL.
+        if not resp.links.get("next"):
+            return results
+
+    # 🔴 상한에 걸리면 **던진다** - 잘린 목록을 완전한 것처럼 주면 안 된다.
+    #   `reinstall_webhook` 은 반환값을 「전부」라고 믿고 정리한 뒤 완전 성공을 보고한다.
+    #   잘린 목록이면 못 지운 훅이 있는데도 「다 정리했다」가 된다(#1504 R1 이 고친 결함).
+    #   던지면 그 호출부의 `except` 가 받아 **부분 성공**으로 보고한다 - 정확한 결과다.
+    # Raising beats returning a truncated list: the caller treats the list as complete.
+    raise ValueError(
+        f"webhook page count exceeded {_MAX_WEBHOOK_PAGES} - "
+        "목록이 잘렸을 수 있어 완전한 것으로 취급하지 않는다"
     )
-    resp.raise_for_status()
-    return resp.json()
 
 
 async def delete_webhook(token: str, repo_full_name: str, webhook_id: int) -> bool:

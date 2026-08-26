@@ -34,7 +34,7 @@ import httpx
 import pytest
 
 from src.constants import GITHUB_API
-from src.github_client.helpers import repo_path
+from src.github_client.helpers import REPO_FULL_NAME_RE, repo_path
 
 
 def _final_path(full_name: str) -> str:
@@ -97,3 +97,144 @@ def test_encoded_traversal_is_rejected_too():
     for encoded in ("owner/%2e%2e/admin", "owner/%2E%2E/admin"):
         with pytest.raises(ValueError, match="path"):
             repo_path(encoded)
+
+
+# ─── 화이트리스트 검증 ───────────────────────────────────────────────────────
+#
+# 🔴 `..` 세그먼트만 막는 것은 **블랙리스트**다. 실측으로 확인한 CodeQL
+# `py/partial-ssrf` 는 이 형태를 sanitizer 로 인정하지 않는다 — 인정하는 것은
+# `re.match`/`re.fullmatch` 가드와 `str.isalnum()` 계열뿐이다
+# (`ServerSideRequestForgeryCustomizations.qll::stringRestriction`, 실측).
+#
+# 게이트를 통과시키려고 넣는 것이 아니라, 화이트리스트가 실제로 더 강하기
+# 때문에 넣는다 — 블랙리스트는 다음 우회 문자를 매번 쫓아가야 한다.
+#
+# Whitelist validation: GitHub owner/repo names are `[A-Za-z0-9._-]+`.
+
+
+@pytest.mark.parametrize("bad", [
+    "owner/re po",          # 공백
+    "owner/repo?x=1",       # 쿼리 문자 — URL 구조를 바꾼다
+    "owner/repo#frag",      # fragment
+    "owner/repo/extra",     # 슬래시 2개 — owner/repo 형태가 아니다
+    "owner",                # 슬래시 없음
+    "owner/re%2Fpo",        # 인코딩된 슬래시
+    "owner/repo@host",      # authority 처럼 보이는 문자
+    "",                     # 빈 문자열
+])
+def test_names_outside_the_whitelist_are_rejected(bad):
+    """🔴 `owner/repo` 화이트리스트 밖의 이름은 전부 거부한다."""
+    with pytest.raises(ValueError):
+        repo_path(bad)
+
+
+def test_whitelist_uses_a_modeled_guard():
+    """🔴 검증이 `re.fullmatch` 가드로 이뤄진다 — 정적 분석이 읽는 형태다.
+
+    이 단언은 「어떤 API 로 검증하는가」를 고정한다. `..` in-check 로 되돌리면
+    동작은 같아 보여도 CodeQL 이 taint 를 못 끊어 alert 이 되살아난다(실측).
+    """
+    import re as _re
+
+    from src.github_client import helpers
+
+    pattern = getattr(helpers, "REPO_FULL_NAME_RE", None)
+    assert isinstance(pattern, _re.Pattern), (
+        "helpers.REPO_FULL_NAME_RE 가 컴파일된 정규식이 아니다 — "
+        f"{pattern!r}. re.fullmatch 가드가 없으면 CodeQL barrier 가 성립하지 않는다."
+    )
+    assert pattern.fullmatch("owner/repo"), f"정상 이름을 거부한다: {pattern.pattern}"
+    assert not pattern.fullmatch("owner/repo/extra"), "슬래시 2개를 통과시킨다"
+
+
+# ─── 길이 상한 (ReDoS) ───────────────────────────────────────────────────────
+#
+# 🔴 CodeQL `py/polynomial-redos`(alert #600) 가 무한 수량자 `+` 두 개를 지적했다.
+# 실측(400k 자 `-` 반복):
+#
+#   | 형태 | 무한 `+` | 바운드 `{1,n}` |
+#   |---|---|---|
+#   | `fullmatch` (실제 사용) | 1.088 ms | 0.002 ms |
+#   | `search` (비앵커) n=20k | 572.8 ms | 5.7 ms |
+#
+# `fullmatch` 는 앵커라 선형이라 실 익스플로잇은 아니었다. 그러나 바운드가
+# 200배 빠르고 GitHub 실제 한계(owner 39 · repo 100)와도 일치하므로 바꾼다 —
+# 억제가 아니라 더 정확한 명세다.
+
+
+def test_names_longer_than_github_allows_are_rejected():
+    """🔴 GitHub 한계를 넘는 길이는 거부한다 — 무한 수량자를 없애는 근거이기도 하다."""
+    assert repo_path("o" * 39 + "/" + "r" * 100), "한계값 자체는 통과해야 한다"
+
+    for too_long in ("o" * 40 + "/repo", "owner/" + "r" * 101):
+        with pytest.raises(ValueError, match="charset"):
+            repo_path(too_long)
+
+
+def test_the_pattern_has_no_unbounded_quantifier():
+    """🔴 패턴에 `+`/`*` 가 없다 — 되돌리면 polynomial-redos 가 되살아난다.
+
+    동작 테스트로는 이 성질을 잡을 수 없다(`fullmatch` 는 어느 쪽이든 통과한다).
+    되돌림을 막는 것이 목적이므로 패턴 문자열 자체를 본다.
+    """
+    from src.github_client.helpers import REPO_FULL_NAME_RE
+
+    src = REPO_FULL_NAME_RE.pattern
+    for quant in ("+", "*"):
+        assert quant not in src, (
+            f"패턴에 무한 수량자 {quant!r} 가 있다 — polynomial-redos 재발: {src}"
+        )
+
+
+# ─── 세그먼트 검사에 **실제로 도달하는** 입력 ─────────────────────────────────
+#
+# 🔴 화이트리스트가 앞에 생기면서 이 파일의 traversal 테스트 입력이 **하나도**
+# 세그먼트 검사에 도달하지 않게 됐다(실측). 전부 슬래시 개수나 `%` 때문에
+# 화이트리스트에서 먼저 걸린다:
+#
+#   '../../../user/repos'  -> 화이트리스트 거부 (슬래시 3개)
+#   'owner/%2e%2e/admin'   -> 화이트리스트 거부 (`%`, 슬래시 2개)
+#   'owner/..'             -> 화이트리스트 **통과** ← 여기만 세그먼트 검사로 간다
+#
+# 그 결과 세그먼트 검사를 통째로 지워도 이 파일 18건이 전부 초록이었다(실측).
+# 에러 메시지가 둘 다 "repo path ..." 라 `match="path"` 가 양쪽을 다 받은 탓이다.
+#
+# 아래는 화이트리스트를 통과하는 입력만 쓰고, `match="traversal"` 로 **어느
+# 가드가 발화했는지**까지 고정한다.
+#
+# The whitelist now short-circuits every previous traversal fixture; these are the
+# only inputs that still reach the dot-segment guard.
+
+
+@pytest.mark.parametrize("passes_whitelist,reached", [
+    ("owner/..", "/repos/hooks"),
+    ("owner/.", "/repos/owner/hooks"),
+    ("../repo", "/repo/hooks"),
+])
+def test_dot_segments_that_pass_the_whitelist_are_still_rejected(passes_whitelist, reached):
+    """🔴 화이트리스트를 통과하고도 경로를 벗어나는 입력을 세그먼트 검사가 잡는다.
+
+    막지 않으면 실제로 `{reached}` 로 나간다(아래 대조군이 그것을 실측한다).
+    `match="traversal"` 이라 화이트리스트가 대신 잡아주는 것으로는 통과하지 못한다.
+    """
+    assert REPO_FULL_NAME_RE.fullmatch(passes_whitelist), (
+        f"이 입력이 화이트리스트에서 걸리면 세그먼트 검사를 재는 게 아니다: {passes_whitelist!r}"
+    )
+    with pytest.raises(ValueError, match="traversal"):
+        repo_path(passes_whitelist)
+
+
+@pytest.mark.parametrize("passes_whitelist,reached", [
+    ("owner/..", "/repos/hooks"),
+    ("owner/.", "/repos/owner/hooks"),
+    ("../repo", "/repo/hooks"),
+])
+def test_those_inputs_really_escape_when_unguarded(passes_whitelist, reached):
+    """🔴 계기 자기검증 — 위 입력이 정말 다른 엔드포인트로 가는지 직접 잰다.
+
+    가지 않는다면 위 테스트는 **허구를 지키는** 것이 된다.
+    """
+    url = f"{GITHUB_API}/repos/{passes_whitelist}/hooks"
+    assert httpx.Request("GET", url).url.path == reached, (
+        f"전제가 바뀌었다 — {passes_whitelist!r} 가 {reached} 로 가지 않는다"
+    )

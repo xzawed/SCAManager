@@ -1,5 +1,18 @@
 """Shared helpers for GitHub API client modules."""
+import re
 from urllib.parse import quote, unquote
+
+# GitHub 소유자·저장소 이름에 허용되는 문자 — 화이트리스트.
+# 슬래시는 정확히 하나이고, `%`·공백·`?`·`#`·`@` 는 들어올 수 없다.
+#
+# 🔴 수량자는 **바운드여야 한다**(`+` 금지). 무한 `+` 두 개는 CodeQL
+# `py/polynomial-redos` 이고, 실측으로도 비앵커 형태에서 n² 이다
+# (20k 자 입력 572.8 ms vs 바운드 5.7 ms). 상한은 GitHub 실제 한계다:
+# 소유자 39자 · 저장소 100자.
+#
+# GitHub owner/repo charset; exactly one slash, no URL-structural characters,
+# and bounded quantifiers (unbounded `+` is polynomial — measured).
+REPO_FULL_NAME_RE = re.compile(r"[A-Za-z0-9._-]{1,39}/[A-Za-z0-9._-]{1,100}")
 
 
 def repo_path(full_name: str) -> str:
@@ -26,6 +39,16 @@ def repo_path(full_name: str) -> str:
     Encoding alone does not block path injection: `.` is unreserved and `/` is kept, so `../`
     survives and httpx normalizes it into a different endpoint reached with our token.
     """
+    # ① 화이트리스트 — 허용 문자 밖은 전부 거부한다.
+    # `re.fullmatch` 가드여야 한다: 정적 분석이 barrier 로 읽는 형태가 이것뿐이다(실측).
+    # Whitelist first; must be a `re.fullmatch` guard so analyzers treat it as a barrier.
+    if not REPO_FULL_NAME_RE.fullmatch(full_name):
+        raise ValueError(
+            "repo path charset - "
+            f"저장소 이름이 owner/repo 형식이 아니다: {full_name!r}"
+        )
+
+    # ② `.`/`..` 세그먼트 — 화이트리스트를 통과해도 `owner/..` 는 여전히 가능하다.
     # 이미 인코딩된 형태(%2e)도 디코드해서 본다 — 서버가 디코드하면 같은 결과다.
     # Decode first: a pre-encoded %2e would otherwise slip through.
     decoded = unquote(full_name)
