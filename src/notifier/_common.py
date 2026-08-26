@@ -77,36 +77,29 @@ def truncate_issue_msg(msg: str) -> str:
 # Telegram HTML 태그 매칭 — parse_mode=HTML 은 self-closing 없음(모두 열고 닫음).
 # Telegram HTML tag matcher (parse_mode=HTML has no self-closing tags).
 _HTML_TAG_RE = re.compile(r"<(/?)([a-zA-Z][a-zA-Z0-9-]*)(?:\s[^>]*)?>")
-# 닫는 태그가 더해질 여유 — cut 을 이만큼 보수적으로 잡아 최종 길이 계약(≤ max)을 지킨다.
-# Reserve for appended closing tags so the final length stays within max_length.
-_HTML_CLOSE_RESERVE = 40
 
 
-def truncate_html_message(text: str, max_length: int, suffix: str = "…") -> str:
-    """Telegram HTML(parse_mode=HTML) **안전** 절단 — 부분 엔티티/태그·미닫힌 태그로 인한 400 방지.
-
-    plain 슬라이스(`text[:n]`)는 절단점이 (a) 이스케이프 엔티티(`&lt;`→`&l`), (b) 태그(`<b`),
-    (c) 미닫힌 태그(`<b>...` 뒤 `</b>` 없음)를 남겨 Telegram 이 400(parse error) 반환 → 알림
-    전량 소실(종합감사 P1-8). 절단 후: 끝의 미완결 엔티티/태그 제거 + 열린 태그를 스택 역순으로 닫음.
-    Truncate Telegram HTML safely: strip a trailing partial entity/tag and close any unclosed tags,
-    so a cut never yields a parse error that drops the whole notification.
+def _drop_trailing_fragment(out: str) -> str:
+    """끝에 남은 미완결 엔티티/태그 조각을 잘라낸다.
+    Drop a trailing incomplete entity or tag.
     """
-    if len(text) <= max_length:
-        return text
-    cut = max(max_length - len(suffix) - _HTML_CLOSE_RESERVE, 0)
-    out = text[:cut]
-    # 1) 끝의 미완결 엔티티(마지막 '&' 이후 ';' 없음) 제거
-    # 1) Drop a trailing incomplete entity (last '&' with no following ';')
+    # 미완결 엔티티 — 마지막 '&' 뒤에 ';' 가 없다 (`&lt;` -> `&l`)
     amp = out.rfind("&")
     if amp != -1 and ";" not in out[amp:]:
         out = out[:amp]
-    # 2) 끝의 미완결 태그(마지막 '<' 이후 '>' 없음) 제거
-    # 2) Drop a trailing incomplete tag (last '<' with no following '>')
+    # 미완결 태그 — 마지막 '<' 뒤에 '>' 가 없다 (`<b`)
     lt = out.rfind("<")
     if lt != -1 and ">" not in out[lt:]:
         out = out[:lt]
-    # 3) 미닫힌 태그 닫기 — 템플릿 HTML 은 well-formed 이므로 절단점의 열린 태그 = 스택 잔여
-    # 3) Close unclosed tags — template HTML is well-formed, so the open tags at the cut = the stack
+    return out
+
+
+def _closing_tags_for(out: str) -> str:
+    """절단점에서 열려 있는 태그를 역순으로 닫는 문자열.
+    Closing tags for whatever is still open at the cut, innermost first.
+
+    템플릿 HTML 은 well-formed 이므로 절단점의 열린 태그 = 스택 잔여다.
+    """
     stack: list[str] = []
     for m in _HTML_TAG_RE.finditer(out):
         closing, name = m.group(1), m.group(2).lower()
@@ -115,8 +108,46 @@ def truncate_html_message(text: str, max_length: int, suffix: str = "…") -> st
                 stack.pop()
         else:
             stack.append(name)
-    out += "".join(f"</{n}>" for n in reversed(stack))
-    return (out + suffix)[:max_length]
+    return "".join(f"</{n}>" for n in reversed(stack))
+
+
+def truncate_html_message(text: str, max_length: int, suffix: str = "…") -> str:
+    """Telegram HTML(parse_mode=HTML) **안전** 절단 — 부분 엔티티/태그·미닫힌 태그로 인한 400 방지.
+
+    plain 슬라이스(`text[:n]`)는 절단점이 (a) 이스케이프 엔티티(`&lt;`→`&l`), (b) 태그(`<b`),
+    (c) 미닫힌 태그(`<b>...` 뒤 `</b>` 없음)를 남겨 Telegram 이 400(parse error) 반환 → 알림
+    전량 소실(종합감사 P1-8).
+
+    🔴 **닫는 태그를 붙인 뒤에 다시 자르지 않는다.** 예전 구현은 `_HTML_CLOSE_RESERVE = 40`
+    만큼 미리 빼 두고 마지막에 `[:max_length]` 로 클램프했다. 닫는 태그 줄이 40자를 넘으면
+    그 클램프가 **방금 붙인 닫는 태그 한가운데를 잘라** 막으려던 깨진 HTML 을 그대로 만들었다
+    (감사 C4, #1519 실측: `...</pre></blockquote` — `>` 없음).
+
+    대신 **결과가 들어갈 때까지 본문을 줄인다.** 넘친 만큼(최소 1자) 절단점을 당겨 다시 계산하고,
+    들어가면 그때 반환한다. 상한을 도박으로 잡지 않으므로 중첩이 깊어져도 계약이 깨지지 않고,
+    얕은 중첩에서는 예약분을 버리지 않아 본문이 더 들어간다.
+
+    Shrink the body until the closed result fits, instead of reserving a guessed number of
+    characters and clamping afterwards — that clamp could sever the closing tags themselves.
+    """
+    if len(text) <= max_length:
+        return text
+    if max_length < len(suffix):
+        # 접미사조차 안 들어가는 퇴화 케이스 — 태그를 만들지 않는다.
+        # Degenerate: not even the suffix fits; never emit a tag fragment.
+        return suffix[:max_length]
+
+    budget = max_length - len(suffix)
+    cut = budget
+    while True:
+        out = _drop_trailing_fragment(text[:cut])
+        closing = _closing_tags_for(out)
+        overflow = len(out) + len(closing) - budget
+        if overflow <= 0:
+            return out + closing + suffix
+        # 최소 1자는 줄여야 종료가 보장된다 — cut 이 0 이 되면 out·closing 이 모두 빈다.
+        # Always shrink by at least one so the loop terminates at cut == 0.
+        cut = max(cut - max(overflow, 1), 0)
 
 
 # GFM/CommonMark 활성 문자 — 링크/이미지/코드/강조/표/헤딩 인젝션 차단 대상
