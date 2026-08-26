@@ -23,9 +23,10 @@ _ARGS = {"github_token": "t", "repo_name": "o/r", "pr_number": 7}
 # ── 분류 ────────────────────────────────────────────────────────────────
 
 
-# 🔴 이 목록은 아래 `test_every_pattern_has_a_fixture` 가 **전수 대조**한다 —
-#   패턴을 늘리고 여기에 예시를 안 넣으면 red 가 된다.
-#   Every pattern must be exercised by at least one entry here.
+# 🔴 이 목록은 아래 `test_every_pattern_has_a_fixture` 가 본다 — 패턴을 늘리고
+#   여기에 예시를 안 넣으면 red 가 된다. 단, 그 가드가 보는 것은 「모든 패턴이
+#   적어도 하나의 예시로 발화하는가」뿐이고 패턴의 **정확성**은 재지 못한다.
+#   Every pattern must be exercised by at least one entry here (coverage, not correctness).
 _SENSITIVE_FIXTURES = [
     "src/auth/oauth.py", "app/auth/session.py",
     "src/api/auth.py", "lib/jwt.py",  # 🔴 파일명 토큰 (디렉토리 아님) — 세션5 회고 P1
@@ -55,11 +56,17 @@ def test_every_pattern_has_a_fixture():
 
     이 가드가 없을 때 패턴 16개 중 **6개가 테스트에서 한 번도 발화하지 않았다**
     (감사 C5, #1519 실측 — 계수기를 끼워 돌렸다). 전부 SCAManager 고유 명시
-    리스트였다. 그 패턴을 오타로 망가뜨려도 아무것도 red 가 되지 않았고,
+    리스트였다. 실측: `shared/ssrf.py` 패턴을 `shared/ssrff.py` 로 망가뜨렸을 때
+    이 파일이 **39 passed 로 전부 초록**이었고(지금은 2건 red),
     그 파일들은 무검토 auto-merge 를 그대로 통과했을 것이다.
 
     🔴 생산 코드와 **같은 연산**(`p.search`)을 쓴다 — 다른 연산으로 재면
     「커버된다」가 실제 분류와 갈라질 수 있다.
+
+    🔴 이 가드가 **못 재는 것**: 한 경로가 여러 패턴에 동시에 걸리면
+    (예: `src/auth/oauth.py` 는 auth 디렉토리와 파일명 토큰에 모두 걸린다)
+    전용 예시 없이도 초록이 된다. 「hits=0 이 아니다」만 보장하고 정규식의
+    의미나 고유성은 보장하지 않는다(Grok 적대 검토 지적).
 
     Every pattern must be exercised by at least one fixture, using the same matcher the
     production classifier uses.
