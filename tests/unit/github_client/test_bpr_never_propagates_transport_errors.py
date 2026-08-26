@@ -8,7 +8,13 @@
     except HTTPX_SEND_ERRORS as exc:       -> contexts = set()
 
 그리고 `HTTPX_SEND_ERRORS` 는 `httpx.HTTPError` 를 포함하므로 **모든 httpx 오류의
-상위 타입**이다. 요청은 통째로 그 try 안에 있다. 즉 빠져나갈 예외가 없다.
+상위 타입**이다. 요청과 응답 파싱은 통째로 그 try 안에 있다.
+
+🔴 정확히는: **httpx 예외가** 빠져나갈 수 없다는 뜻이지 「아무 예외도 안 난다」가
+아니다. try 밖의 `get_http_client()` 는 `RuntimeError` 를, f-string 안의 `repo_path()` 는
+`ValueError` 를 던질 수 있고 `CancelledError` 는 `BaseException` 이다. 그러나 그것들은
+**지운 handler 가 애초에 안 잡던** 타입이라 지우기 전에도 그대로 호출부 밖으로 나갔다.
+이 변경은 그 축을 건드리지 않는다. (Grok 적대 검토가 이 문장의 과대주장을 짚었다.)
 
 죽은 handler 를 남겨 두면 「여기서 네트워크 오류를 다룬다」는 거짓 인상이 남는다.
 그래서 handler 를 지우고, **지워도 되는 이유**를 이 파일이 잡는다 — 누가 callee 를
@@ -71,6 +77,8 @@ _TRANSPORT_ERRORS = [
     httpx.PoolTimeout("pool"),
     httpx.RemoteProtocolError("protocol"),
     httpx.InvalidURL("url"),
+    httpx.StreamError("stream"),
+    httpx.CookieConflict("cookie"),
 ]
 
 
@@ -91,7 +99,7 @@ def test_every_probe_error_is_actually_in_the_caught_tuple():
 def test_http_status_error_is_also_a_send_error():
     """🔴 전제 — `HTTPX_SEND_ERRORS` 가 `httpx.HTTPError` 를 포함하므로 상태 오류까지 덮는다.
 
-    이것이 「빠져나갈 예외가 없다」의 절반이다.
+    이것이 「빠져나갈 httpx 예외가 없다」의 절반이다.
     """
     assert isinstance(_status_error(500), HTTPX_SEND_ERRORS)
 
