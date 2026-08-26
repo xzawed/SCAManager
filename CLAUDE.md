@@ -51,7 +51,7 @@ py -3 -m pytest e2e/ -p no:asyncio  # E2E (tests/ 와 같이 돌리지 않는다
 - 스키마·API·권한·데이터모델 변경은 착수 전 확인받는다. 나머지는 진행하고 보고한다.
 - 시각 변경(`templates/`·`static/`)은 사람이 봐야 한다 — 정적 테스트 통과는 근거가 아니다.
 - MCP: SELECT 자율, INSERT·UPDATE·DELETE·DDL 과 PII·credential 조회는 사전 승인.
-- 문서 수치는 실행 결과를 옮긴다. `file:line` 은 `grep -n` 실측값.
+- 문서 수치는 실행 결과를 옮긴다. 코드 좌표는 **줄번호가 아니라 앵커**다 — `path::파일에 실재하는 문자열`(`scripts/check_doc_anchors.py` 가 강제).
 
 ## 파일 수정 제한
 

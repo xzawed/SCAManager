@@ -8,13 +8,13 @@ git config --unset-all core.hooksPath  # 설정돼 있으면 설치 거부
 py -3 -m pre_commit install  # 확인: check_precommit_installed.py
 ```
 
-**맨 `install` 이 두 타입(pre-commit·commit-msg)을 함께 설치한다** — `.pre-commit-config.yaml:22` `default_install_hook_types`. `--hook-type` 은 그 값을 덮어 한 타입만 남긴다. `pre-push` 타입은 리포 게이트를 밀어내 금지.
+**맨 `install` 이 두 타입(pre-commit·commit-msg)을 함께 설치한다** — `.pre-commit-config.yaml::default_install_hook_types:` `default_install_hook_types`. `--hook-type` 은 그 값을 덮어 한 타입만 남긴다. `pre-push` 타입은 리포 게이트를 밀어내 금지.
 
-같은 파일의 축: 코드 diff `gitleaks`:30·`check-secrets-in-diff`:56 / 커밋 메시지 `check-commit-msg-secrets`:38(Telegram 1종만) / `.env` staged `check-env-not-staged`:48. 3축 밖(내부 URL+인증정보)은 못 막는다.
+같은 파일의 축: 코드 diff `.pre-commit-config.yaml::id: gitleaks`·`.pre-commit-config.yaml::id: check-secrets-in-diff` / 커밋 메시지 `.pre-commit-config.yaml::id: check-commit-msg-secrets`(Telegram 1종만) / `.env` staged `.pre-commit-config.yaml::id: check-env-not-staged`. 3축 밖(내부 URL+인증정보)은 못 막는다.
 
 ## CI `ci.yml` secret-scan
 
-PR `base..head`(:48-49) · push `before..after`(:70-71) **diff 범위만**(`--only-verified --exclude-detectors=lob` :59·:81). 첫 push·force-push skip, 과거 커밋 미검사 — 전수는 손으로 trufflehog `git file:///pwd`(동일 플래그) · `gh api .../secret-scanning/alerts`.
+PR 은 `base..head`(`.github/workflows/ci.yml::base: ${{ github.event.pull_request.base.sha }}`) · push 는 `before..after`(`.github/workflows/ci.yml::base: ${{ github.event.before }}`) **diff 범위만**(`--only-verified --exclude-detectors=lob`). 첫 push·force-push skip, 과거 커밋 미검사 — 전수는 손으로 trufflehog `git file:///pwd`(동일 플래그) · `gh api .../secret-scanning/alerts`.
 
 ## 유출 시
 
