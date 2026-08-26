@@ -350,14 +350,27 @@ class TestSemgrepRunOutputParsing:
             issues = _SemgrepAnalyzer().run(ctx)
         assert issues == []
 
-    def test_run_returns_empty_list_for_empty_stdout(self, make_ctx):
-        # stdout이 빈 문자열이면 빈 이슈 목록을 반환해야 한다
-        # Empty stdout must return an empty issue list.
+    def test_run_raises_for_empty_stdout(self, make_ctx):
+        """🔴 빈 stdout 은 «이슈 0건» 이 아니라 **분석 안 됨** 이다 (감사 A2, #1519).
+
+        이 테스트의 옛 판은 `issues == []` 를 단언하며 그것을 «graceful degradation»
+        이라 불렀다. 실측으로 그 관용구가 무엇을 만드는지 확인해 뒤집었다:
+        `[]` 는 `static.py` 에서 `incomplete=False` 가 되고, semgrep 단독 언어
+        (java·scala·elixir·clojure)에서는 크래시가 정적 만점 + 등급 B 로 기록돼
+        `auto_merge` 의 `static_analysis_incomplete` 차단을 통과한다.
+
+        형제 `python.py::_fail` 의 docstring 이 같은 것을 적는다 —
+        「`[]` 를 돌려주면 그 실패가 «이슈 0건 · 완전» 이 된다」.
+
+        Empty stdout means "did not analyze", not "no findings".
+        """
+        import pytest as _pytest  # noqa: PLC0415
+
         from src.analyzer.io.tools.semgrep import _SemgrepAnalyzer
         ctx = make_ctx(language="python", tmp_path="/tmp/test.py")
         with patch("subprocess.run", return_value=_mock_semgrep_proc("")):
-            issues = _SemgrepAnalyzer().run(ctx)
-        assert issues == []
+            with _pytest.raises(RuntimeError, match="did not analyze"):
+                _SemgrepAnalyzer().run(ctx)
 
     def test_run_returns_multiple_issues_from_mixed_output(self, make_ctx):
         # 복수 이슈가 포함된 출력에서 모든 이슈를 반환해야 한다
@@ -402,21 +415,32 @@ class TestSemgrepRunGracefulDegradation:
             issues = _SemgrepAnalyzer().run(ctx)
         assert issues == []
 
-    def test_run_returns_empty_on_json_decode_error(self, make_ctx):
-        # stdout이 유효하지 않은 JSON → JSONDecodeError → 빈 이슈 목록 반환
+    def test_run_raises_on_json_decode_error(self, make_ctx):
+        """🔴 `{` 로 시작하지만 파싱이 깨지는 출력도 실패다 (감사 A2, #1519).
+
+        형제 `python.py` 는 pylint·bandit 에서 같은 경우를 `raise _fail(...)` 로 다룬다.
+        """
+        import pytest as _pytest  # noqa: PLC0415
+
         from src.analyzer.io.tools.semgrep import _SemgrepAnalyzer
         ctx = make_ctx(language="python", tmp_path="/tmp/test.py")
         with patch("subprocess.run", return_value=_mock_semgrep_proc("{broken json: [")):
-            issues = _SemgrepAnalyzer().run(ctx)
-        assert issues == []
+            with _pytest.raises(RuntimeError, match="did not analyze"):
+                _SemgrepAnalyzer().run(ctx)
 
-    def test_run_returns_empty_on_completely_invalid_json(self, make_ctx):
-        # stdout이 JSON 형식이 아닌 일반 텍스트 → 빈 이슈 목록 반환
+    def test_run_raises_on_completely_invalid_json(self, make_ctx):
+        """🔴 JSON 이 아닌 일반 텍스트 stdout 도 실패다 (감사 A2, #1519).
+
+        `--json` 의 정상 «이슈 없음» 은 `{"results": []}` 라 `{` 로 시작한다 —
+        비-`{` 가 정당한 «이슈 0건» 인 경우는 없다(Grok 확인).
+        """
+        import pytest as _pytest  # noqa: PLC0415
+
         from src.analyzer.io.tools.semgrep import _SemgrepAnalyzer
         ctx = make_ctx(language="python", tmp_path="/tmp/test.py")
         with patch("subprocess.run", return_value=_mock_semgrep_proc("not json at all")):
-            issues = _SemgrepAnalyzer().run(ctx)
-        assert issues == []
+            with _pytest.raises(RuntimeError, match="did not analyze"):
+                _SemgrepAnalyzer().run(ctx)
 
     def test_run_does_not_raise_on_nonzero_returncode(self, make_ctx):
         # semgrep이 비정상 종료코드 반환 시에도 예외 없이 파싱된 이슈를 반환해야 한다
