@@ -88,15 +88,39 @@ def test_single_dot_segment_is_also_rejected():
         repo_path("owner/./repo")
 
 
-def test_encoded_traversal_is_rejected_too():
-    """🔴 인코딩된 형태(`%2e%2e`)도 막는다 — 서버가 디코드하면 같은 결과다.
+def test_encoded_traversal_is_rejected_by_the_charset_guard():
+    """🔴 인코딩된 형태(`%2e%2e`)는 **화이트리스트**가 막는다 — 디코드 이전이다.
 
-    `quote` 는 이미 인코딩된 문자열을 다시 인코딩하지 않으므로(`%` 는 남는다)
-    이 형태가 그대로 흘러갈 수 있다.
+    이전 docstring 은 「`quote` 가 재인코딩하지 않으므로 이 형태가 흘러갈 수 있다」고
+    적고 `match="path"` 로 단언했는데, 두 에러 메시지가 모두 `repo path ...` 로
+    시작해 **어느 가드가 발화했는지 구분하지 못했다**(실측). 실제로 발화하는 것은
+    화이트리스트다 — `%` 는 허용 문자 65개에 없다.
+
+    `match="charset"` 이라 세그먼트 검사가 대신 잡아주는 것으로는 통과하지 못한다.
     """
     for encoded in ("owner/%2e%2e/admin", "owner/%2E%2E/admin"):
-        with pytest.raises(ValueError, match="path"):
+        with pytest.raises(ValueError, match="charset"):
             repo_path(encoded)
+
+
+def test_percent_cannot_pass_the_whitelist():
+    """🔴 이것이 「디코드가 필요 없다」의 **근거**다 — 넓히면 여기가 먼저 red 가 된다.
+
+    `repo_path` 는 세그먼트를 볼 때 원문을 그대로 쓴다. 그래도 안전한 이유는
+    화이트리스트가 `%` 를 통과시키지 않기 때문 하나뿐이다. 누가 문자 집합을
+    넓히면 `%2e%2e` traversal 이 조용히 되살아나므로, 그 불변식을 여기서 잡는다.
+
+    The whole reason no percent-decoding is needed: '%' is not an accepted character.
+    """
+    accepted = [chr(c) for c in range(0x110000) if REPO_FULL_NAME_RE.fullmatch(f"a/{chr(c)}")]
+    assert "%" not in accepted, (
+        "화이트리스트가 '%' 를 받는다 — 원문 세그먼트 검사가 `%2e%2e` 를 놓친다. "
+        "문자 집합을 넓혔다면 repo_path 에 unquote 디코드를 되살려야 한다."
+    )
+    assert len(accepted) == 65, (
+        f"허용 문자 수가 바뀌었다({len(accepted)}개) — 위 근거를 다시 확인하라: "
+        f"{''.join(sorted(accepted))}"
+    )
 
 
 # ─── 화이트리스트 검증 ───────────────────────────────────────────────────────
