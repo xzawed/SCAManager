@@ -43,6 +43,15 @@ _SENSITIVE_FIXTURES = [
     "src/webhook/validator.py", "src/shared/log_safety.py",
     "src/shared/ssrf.py", "src/shared/secure_compare.py",
     "src/logging_config.py", "src/main.py",
+    # 🔴 2026-08-27 실측으로 hold 밖이던 10파일 (#1543). 강한 보안 원시요소
+    #   (`hmac`·`secrets`·`src.crypto`·`src.shared.secure_compare`)를 실제로 import 하는
+    #   14파일 중 10개가 무검토 auto-merge 를 통과했다 — 웹훅 **서명 검증** 두 곳 포함.
+    # Measured gap: 10 of 14 strong-primitive files were outside the hold.
+    "src/webhook/providers/telegram.py", "src/webhook/providers/railway.py",
+    "src/api/hook.py", "src/api/internal_cron.py", "src/api/users.py",
+    "src/gate/telegram_gate.py", "src/models/user.py", "src/notifier/n8n.py",
+    "src/ui/routes/settings.py", "src/ui/routes/add_repo.py",
+    "src/api/repos.py", "src/notifier/_http.py",
 ]
 
 

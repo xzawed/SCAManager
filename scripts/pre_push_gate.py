@@ -78,6 +78,11 @@ _INTEGRITY = (
     # 실측: 머지 3건이 하루 만에 24건을 무효화했고 그때 red 는 0건이었다.
     # Doc coordinates must be anchors: line numbers go silently false on any insertion above.
     "check_doc_anchors.py",
+    # 🔴 민감 경로 hold 의 drift (2026-08-27). 그 목록은 손유지인데 강제자가
+    #   없었다 — 실측: 강한 보안 원시요소를 쓰는 14파일 중 **10개가 hold 밖**이었고
+    #   거기에 웹훅 서명 검증 두 곳이 있었다. auto_merge 는 4개 리포 중 3개에서 켜져 있다.
+    # The hold list had no enforcer; 10 of 14 strong-primitive files were outside it.
+    "check_sensitive_path_drift.py",
     "check_claim_review_trace.py",
     # lint-js job — 가드 자체는 순수 파이썬(eslint 검사 **범위**가 비었는지만 본다).
     # The guard itself is pure Python: it only checks the eslint scope is non-empty.

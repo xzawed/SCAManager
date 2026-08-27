@@ -80,6 +80,27 @@ _SENSITIVE_PATTERNS: tuple[re.Pattern, ...] = tuple(
         r"(^|/)shared/secure_compare\.py$",
         r"(^|/)logging_config\.py$",
         r"(^|/)main\.py$",
+        # 🔴 2026-08-27 실측 — 강한 보안 원시요소(`hmac`·`secrets`·`src.crypto`·
+        #   `src.shared.secure_compare`)를 **실제로 import 하는** 14파일 중 10개가 이 hold
+        #   밖이었다. 그 안에 웹훅 **서명 검증** 두 곳과 토큰 암호화가 있었다 — 가드가
+        #   존재하는 이유 그 자체가 가드 밖에 있었다.
+        #   목록은 여전히 손유지지만, 이제 `scripts/check_sensitive_path_drift.py` 가
+        #   drift 를 red 로 만든다(오라클 = import, 사람의 판단이 아니다).
+        # Measured gap: 10 of 14 files using a strong security primitive were unheld,
+        #   including both webhook signature verifiers. The drift check now enforces it.
+        r"(^|/)webhook/providers/[^/]+\.py$",
+        r"(^|/)api/hook\.py$",
+        r"(^|/)api/internal_cron\.py$",
+        r"(^|/)api/users\.py$",
+        r"(^|/)gate/telegram_gate\.py$",
+        r"(^|/)models/user\.py$",
+        r"(^|/)notifier/n8n\.py$",
+        r"(^|/)ui/routes/(settings|add_repo)\.py$",
+        # 🔴 SSRF 방어를 경유하는 아웃바운드 호출부 — 그 방어를 무력화할 수 있다.
+        #   오라클을 서드파티 암호까지 넓히자 드러났다(Grok 01a04342 Q1).
+        # Outbound callers behind the SSRF guard; they can neutralise it.
+        r"(^|/)api/repos\.py$",
+        r"(^|/)notifier/_http\.py$",
         # DB 마이그레이션 / DB migrations
         r"(^|/)(alembic|migrations?)/",
         r"(^|/)alembic\.ini$",
