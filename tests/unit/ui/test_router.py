@@ -25,8 +25,6 @@ _test_user = UserModel(id=1, github_id="12345", github_login="testuser", github_
 _test_current_user = CurrentUser(
     id=1, github_login="testuser", email="test@example.com", display_name="Test User", plaintext_token=""
 )
-app.dependency_overrides[require_login] = lambda: _test_user
-app.dependency_overrides[get_current_user] = lambda: _test_current_user
 
 client = TestClient(app)
 
@@ -2372,3 +2370,23 @@ def test_api_github_repos_reports_github_api_error():
     assert "API error" not in r.text, (
         "예외 본문이 응답에 실렸다 — GitHub 오류 메시지는 토큰·저장소명을 담을 수 있다"
     )
+
+
+@pytest.fixture(autouse=True)
+def _dependency_overrides():
+    """🔴 모듈 최상위에서 전역을 바꾸지 않는다 — 임포트 순서가 결과를 정한다 (#1551).
+
+    pytest 는 실행 전에 대상 모듈을 전부 임포트한다. 최상위에서 `dependency_overrides`
+    를 바꾸면 **나중에 임포트된 파일이 앞의 것을 덮어쓴다.** 실측: 이 파일과
+    `test_users_api.py` 를 함께 돌리면 로그인 사용자가 id=1 에서 id=42 로 바뀌어
+    소유권 검증이 404 를 냈다.
+
+    fixture 로 두면 창이 테스트 하나로 닫히고, 끝나면 되돌린다.
+    Module-level mutation lets the last import win; a fixture closes the window.
+    """
+    _saved_overrides = dict(app.dependency_overrides)
+    app.dependency_overrides[require_login] = lambda: _test_user
+    app.dependency_overrides[get_current_user] = lambda: _test_current_user
+    yield
+    app.dependency_overrides.clear()
+    app.dependency_overrides.update(_saved_overrides)

@@ -82,20 +82,26 @@ def test_repos_mode_no_repo_selected():
         "warning_repos": [],
     }
 
-    _prev = app.dependency_overrides.get(require_login)
+    _saved = dict(app.dependency_overrides)
     app.dependency_overrides[require_login] = lambda: fake_user
     try:
         with (
             patch("src.ui.routes.dashboard.SessionLocal", return_value=_ctx(mock_db)),
             patch("src.ui.routes.dashboard._build_repo_summary", return_value=fake_summary),
         ):
-            resp = client.get("/dashboard?mode=repos")
+            # 🔴 모듈 최상위의 `client` 를 쓰지 않는다. 그것은 **임포트 때의** app 을
+            #    감싸는데, 이 테스트는 **호출 때의** app 에 override 를 건다.
+            #    `tests/unit/test_main.py` 가 `importlib.reload(main_mod)` 로 app 객체를
+            #    갈아치우므로 둘이 다른 인스턴스가 되고, override 가 닿지 않아 실제
+            #    `require_login` 이 돌아 404 가 난다.
+            #    같은 객체로 클라이언트를 만들어 그 틈을 없앤다.
+            # The module-level client wraps the app captured at import; a reload elsewhere
+            # swaps `src.main.app`, so the override lands on a different instance.
+            resp = TestClient(app).get("/dashboard?mode=repos")
         assert resp.status_code in (200, 307)  # 307 = 로그인 리다이렉트 허용
     finally:
-        if _prev is not None:
-            app.dependency_overrides[require_login] = _prev
-        else:
-            app.dependency_overrides.pop(require_login, None)
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(_saved)
 
 
 def test_repos_mode_in_valid_modes_endpoint():
