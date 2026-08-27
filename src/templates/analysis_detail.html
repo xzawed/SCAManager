@@ -783,6 +783,7 @@
            data-analysis-id="{{ analysis.id }}"
            data-ai-suggestions='{{ (analysis.result or {}).get('ai_suggestions', []) | tojson }}'
            data-static-issues='{{ (analysis.result or {}).get('issues', []) | tojson }}'
+           data-ai-issue-keys='{{ (analysis.result or {}).get('ai_issue_keys', []) | tojson }}'
            data-i18n-suggestion-prefix="{{ 'analysis_detail.js_msg.suggestion_prefix' | i18n_args(locale | default('ko')) }}"
            data-i18n-status-resolved="{{ 'analysis_detail.js_msg.status_resolved' | i18n_args(locale | default('ko'), num='__N__') }}"
            data-i18n-status-open="{{ 'analysis_detail.js_msg.status_open' | i18n_args(locale | default('ko'), num='__N__') }}"
@@ -1013,6 +1014,12 @@
   var analysisId    = Number(panel.dataset.analysisId);
   var aiSuggestions = JSON.parse(panel.dataset.aiSuggestions || '[]');
   var staticIssues  = JSON.parse(panel.dataset.staticIssues  || '[]');
+  /* 🔴 AI 제안은 문자열 리스트라 키를 얹을 자리가 없어 나란한 배열로 온다.
+     길이가 어긋나면 인덱스가 밀려 **엉뚱한 제안에 배지가 붙는다** — 그때는 배지를
+     통째로 포기하는 편이 거짓 배지보다 낫다.
+     Parallel array: on length drift, drop the keys rather than mislabel. */
+  var aiIssueKeys   = JSON.parse(panel.dataset.aiIssueKeys   || '[]');
+  if (aiIssueKeys.length !== aiSuggestions.length) { aiIssueKeys = []; }
 
   /* ── i18n JS 동적 텍스트 (data-i18n-* + __VAR__ 치환) / i18n JS dynamic text ── */
   var I18N_JS = {
@@ -1048,7 +1055,11 @@
   /* ── 아이템 구성 / Build items ── */
   function buildAiItem(text, idx) {
     return {
-      key: 'ai:' + text.slice(0, 50),
+      /* 🔴 서버가 계산한 키를 그대로 쓴다. 예전엔 평문('ai:' + 앞 50자)이라
+         stateMap 이 담고 있는 SHA256 과 절대 만나지 않았고, 새로고침하면 배지가
+         사라졌다. JS 가 해시를 다시 구현하면 조용히 어긋난다 — 비교만 한다.
+         Use the server-computed key; a JS re-implementation would drift silently. */
+      key: aiIssueKeys[idx],
       label: text,
       type: 'ai_suggestion',
       suggestionText: text,
@@ -1058,10 +1069,11 @@
 
   function buildStaticItem(issue) {
     return {
-      /* 🔴 파일을 키에 넣는다 (#1499) — 빼면 서로 다른 파일의 같은 메시지가 한 항목으로
-         뭉쳐, 한 건을 등록했을 때 나머지까지 「등록됨」으로 칠해진다.
-         Include the file: without it, same-message findings in different files collapse. */
-      key: 'st:' + (issue.tool||'') + ':' + (issue.category||'') + ':' + (issue.message||'').slice(0, 200) + ':' + (issue.file||''),
+      /* 🔴 서버가 계산한 키를 그대로 쓴다 — 파일까지 들어간 그 키다(#1499).
+         브라우저가 조립하면 stateMap 이 담은 SHA256 과 만나지 못해, 로드 시 채운
+         항목이 한 번도 읽히지 않았다.
+         Server-computed key (file included, #1499); never rebuilt in the browser. */
+      key: issue.issue_key,
       label: (issue.tool||'') + ' — ' + (issue.message||''),
       type: 'static_issue',
       tool: issue.tool,
@@ -1201,7 +1213,11 @@
         return;
       }
       /* 성공 — 상태 맵 갱신 후 목록 다시 렌더링 / Success — update state map and re-render list */
-      stateMap[_currentItem.key] = {
+      /* 🔴 키가 없으면 쓰지 않는다. undefined 로 쓰면 키가 문자열 "undefined" 가
+         되어 **모든 AI 행이 배지 하나를 공유한다** — 나란한 배열 길이 가드가 발동한
+         뒤가 정확히 그 상황이다(Grok 01a042e5 Q3).
+         Never index stateMap with an undefined key: it becomes the shared "undefined" slot. */
+      if (_currentItem.key) stateMap[_currentItem.key] = {
         github_issue_number: res.data.github_issue_number,
         github_issue_state: 'open',
         github_issue_url: res.data.github_issue_url,
