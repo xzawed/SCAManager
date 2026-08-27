@@ -95,3 +95,16 @@ if any(m.__tablename__ not in Base.metadata.tables for m in _FK_TARGET_MODELS):
 ```
 
 이 이름은 `scripts/check_noqa_sideeffect.py` 가 찾는다(변경 금지).
+
+### 새 `scripts/check_*.py` 를 쓸 때
+
+1. 진입에 `_make_stdout_safe()` — 없으면 `test_stdout_encoding_guard.py` 가 red(면제 없음).
+2. `pre_push_gate.py` 의 `_INTEGRITY`·`_INTEGRITY_WITH_ARGS`·`_DIFF_SCOPED` 중 하나에 등재하고,
+   `ci.yml` **과** `claim-review-on-body-edit.yml` 양쪽에 스텝을 넣는다 — 같은 check 이름을
+   쓰므로 한쪽만 넣으면 `test_claim_review_body_edit_workflow.py` 가 red.
+3. 판정식은 **부분문자열이 상태를 대신하지 않게** — 개수·구조를 읽는다. `" failed" in out` 은
+   SUT 가 인쇄한 문자열에도 맞는다(실측). 정본 관용구는 `check_test_count_sync.py` —
+   **줄을 고른 뒤** 그 줄에서 센다.
+4. 「초록인데 거짓」 1건을 심어 red 를 확인한다. docstring 이 성질을 주장하면 그 성질이
+   거짓인데 통과하는 입력을 만든다 — 유일성을 약속했으면 다중 일치를, 존재를 약속했으면 삭제를.
+5. 아무것도 못 재면 **초록이 아니라 red** 다(「안 쟀음」과 「통과」를 구별한다).
