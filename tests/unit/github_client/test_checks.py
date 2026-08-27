@@ -8,13 +8,13 @@ os.environ.setdefault("TELEGRAM_BOT_TOKEN", "123:ABC")
 os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
 
 import pytest
+import httpx
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.github_client.checks import (
     get_ci_status,
     get_required_check_contexts,
     _legacy_state_to_ci_status,
-    _parse_link_next,
     _required_contexts_cache,
 )
 
@@ -35,6 +35,11 @@ def _resp(status_code: int, body: dict, headers: dict | None = None) -> MagicMoc
     r.status_code = status_code
     r.json.return_value = body
     r.headers = headers or {}
+    # 🔴 `links` 를 안 채우면 MagicMock 이 **truthy** 라 페이지네이션 루프가 끝나지 않는다
+    #   (실측: side_effect 소진 -> StopIteration). httpx 에게 직접 파싱시켜 더블이
+    #   실물과 어긋나지 않게 한다 — 내가 만든 정규식이면 내 허구를 검사하게 된다.
+    # Let httpx parse Link itself: an unset .links is truthy and never ends the loop.
+    r.links = httpx.Response(status_code, headers=headers or {}).links
     r.raise_for_status = MagicMock()
     return r
 
@@ -442,38 +447,6 @@ async def test_get_ci_status_uses_legacy_status_when_no_check_runs():
         result = await get_ci_status(TOKEN, REPO, SHA)
 
     assert result == "running"
-
-
-# ── _parse_link_next ──────────────────────────────────────────────────────
-
-
-def test_parse_link_next_extracts_url():
-    """Link 헤더에서 rel="next" URL을 정확히 추출.
-    Correctly extracts rel="next" URL from a Link header.
-    """
-    header = (
-        '<https://api.github.com/repos/owner/repo/commits/sha/check-runs?page=2>; rel="next", '
-        '<https://api.github.com/repos/owner/repo/commits/sha/check-runs?page=5>; rel="last"'
-    )
-    result = _parse_link_next(header)
-    assert result == "https://api.github.com/repos/owner/repo/commits/sha/check-runs?page=2"
-
-
-def test_parse_link_next_returns_none_when_no_next():
-    """rel="next"가 없으면 None 반환.
-    Returns None when rel="next" is absent from the Link header.
-    """
-    header = '<https://api.github.com/check-runs?page=1>; rel="first"'
-    result = _parse_link_next(header)
-    assert result is None
-
-
-def test_parse_link_next_returns_none_for_none_input():
-    """Link 헤더가 None이면 None 반환.
-    Returns None when the Link header itself is None.
-    """
-    result = _parse_link_next(None)
-    assert result is None
 
 
 # ── get_required_check_contexts ───────────────────────────────────────────

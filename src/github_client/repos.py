@@ -24,6 +24,17 @@ def _auth_headers(token: str) -> dict:
     return {**_HEADERS, "Authorization": f"Bearer {token}"}
 
 
+_MAX_USER_REPO_PAGES = 20
+
+# GitHub /user/repos 쿼리 — 매 페이지에 **전부** 다시 보낸다(위 주석 참조).
+# Resent on every page; a dropped key is silently replaced by a GitHub default.
+_USER_REPO_PARAMS = {
+    "per_page": 100,
+    "sort": "updated",
+    "affiliation": "owner,collaborator,organization_member",
+}
+
+
 async def list_user_repos(token: str) -> list[dict]:
     """사용자가 접근 가능한 리포 목록 반환 (public + private, pagination 처리).
 
@@ -31,38 +42,65 @@ async def list_user_repos(token: str) -> list[dict]:
     """
     client = get_http_client()  # 싱글톤
     results: list[dict] = []
-    # GitHub API pagination: Link 헤더의 next URL을 따라 모든 페이지 수집
-    # Follow Link header next URLs to collect all pages from GitHub API
-    url: str | None = f"{GITHUB_API}/user/repos"
     # 🔴 affiliation 3값 전부 필수 — organization_member 를 빼면 org 팀 권한으로만 접근하는
     # 저장소가 목록에서 사라진다. 이 목록은 `POST /repos/add` 의 소유권 획득 검증
     # (ui/routes/add_repo.py) 에도 쓰이므로, 누락 시 NULL-owner org 저장소를 영영 획득하지 못한다.
-    # 🔴 All three affiliation values are required — dropping organization_member hides repos the
-    # user reaches only via org team permissions. This list also gates ownership claim in
-    # `POST /repos/add`, so a missing value makes NULL-owner org repos permanently unclaimable.
-    params: dict | None = {
-        "per_page": 100,
-        "sort": "updated",
-        "affiliation": "owner,collaborator,organization_member",
-    }
-    while url:
-        resp = await client.get(url, params=params, headers=_auth_headers(token))
+    # 🔴 **매 페이지에 전부 다시 보낸다.** 예전에는 2페이지부터 `params=None` 이었다 —
+    # 서버가 준 URL 이 쿼리를 싣고 있었기 때문이다. 그 URL 을 더 이상 쓰지 않으므로
+    # 여기서 빠지는 값은 GitHub 기본값으로 조용히 대체된다:
+    #   sort 누락    -> full_name (페이지 간 정렬이 뒤섞여 중복·누락)
+    #   per_page 누락 -> 30 (page 오프셋이 어긋난다)
+    #   affiliation 누락 -> 같은 3값이라 **증상이 없다** = 가장 조용한 손실
+    # All params are resent every page: dropping one is silently replaced by a GitHub default.
+    for page_num in range(1, _MAX_USER_REPO_PAGES + 1):
+        # 🔴 **서버가 준 URL 을 요청하지 않는다.** `Link` 헤더의 next URL 을 그대로
+        #   따라가면 그 요청에 `Authorization: Bearer <토큰>` 이 실리고, 응답이 변조되면
+        #   토큰이 임의 호스트로 나간다 (#1515). origin 검증은 CodeQL 이 sanitizer 로
+        #   인식하지 않았다(#1514 에서 4회 실패) — **taint 를 아예 없애는 것**이 답이다:
+        #   URL 은 우리가 만들고(`base` + 정수 `page`), 서버에게서는 「더 있는가」라는
+        #   **신호만** 받는다. 형제 `list_webhooks` 와 같은 계약이다.
+        # Never request a server-supplied URL: build it ourselves and read only the
+        # has-more signal from the Link header. Removes the taint instead of sanitizing it.
+        resp = await client.get(
+            f"{GITHUB_API}/user/repos",
+            params={**_USER_REPO_PARAMS, "page": page_num},
+            headers=_auth_headers(token),
+        )
         resp.raise_for_status()
+        page = resp.json()
+        # 🔴 200 인데 본문이 list 가 아니면 **거부**한다. 제너레이터가 dict 를 받으면
+        #   조용히 **키**를 순회하고, 그 쓰레기가 소유권 획득 검증으로 흘러간다.
+        # A non-list 200 body would be iterated as keys and reach the ownership check.
+        if not isinstance(page, list):
+            raise ValueError(
+                f"GitHub user repos 응답이 list 가 아니다 ({type(page).__name__}) - "
+                "목록을 신뢰할 수 없다"
+            )
         results.extend(
             {
                 "full_name": r["full_name"],
                 "private": r["private"],
                 "description": r.get("description") or "",
             }
-            for r in resp.json()
+            for r in page
         )
-        # 다음 페이지 URL 추출 (없으면 None → 루프 종료)
-        # Extract next page URL (None = end of pages)
-        next_link = resp.links.get("next", {})
-        url = next_link.get("url")
-        params = None  # 두 번째 요청부터 URL에 파라미터 포함됨
-        # params already encoded in next URL from second request onward
-    return results
+        # 다음 페이지 유무는 서버가 안다 — 그 **불리언**만 쓴다(URL 은 안 쓴다).
+        # Use only the boolean; never the URL.
+        if not resp.links.get("next"):
+            return results
+
+    # 🔴 상한에 걸리면 **던진다** — 잘린 목록을 완전한 것처럼 주면 안 된다.
+    #   이 목록은 `POST /repos/add` 의 소유권 획득 검증에 쓰인다. 잘린 채로 주면
+    #   뒤쪽 페이지의 org 저장소가 「접근 권한 없음」으로 **거짓 거부**된다 —
+    #   호출부 2곳 모두 `except Exception` 이라 던지면 502(재시도 가능)로 정직하게 나간다.
+    #   그리고 이것은 liveness 상한이기도 하다: 서버가 `next` 를 영원히 준다고 해도
+    #   우리 URL 로 page=1,2,3… 을 무한히 돌지 않는다.
+    # Raising beats truncating: the caller treats the list as complete and would deny
+    # ownership for repos on later pages. It is also the liveness bound.
+    raise ValueError(
+        f"user repo page count exceeded {_MAX_USER_REPO_PAGES} - "
+        "목록을 신뢰할 수 없다"
+    )
 
 
 async def create_webhook(token: str, repo_full_name: str, webhook_url: str, secret: str) -> int:
@@ -116,8 +154,9 @@ async def list_webhooks(token: str, repo_full_name: str) -> list[dict]:
       True 로 남아 **완전 성공으로 보고**된다. #1504 R1 이 방금 고친 결함이
       이 경로로 그대로 되살아난다.
 
-    형제 `list_user_repos` 가 이미 같은 `resp.links["next"]` 순회를 쓴다 —
-    이것은 누락이지 설계 결정이 아니었다.
+    🔴 #1515 이후 형제 `list_user_repos` 도 **같은 계약**을 쓴다 — URL 은 우리가
+    조립하고 `resp.links["next"]` 는 **불리언으로만** 읽는다. 그 전에는 이쪽만
+    페이지네이션이 없었고(누락), 저쪽은 서버 URL 을 따라갔다(토큰 유출 경로).
 
     Previously a single unpaginated request, so the docstring's "every webhook" was false;
     hooks past GitHub's default page size were invisible to both callers.

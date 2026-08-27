@@ -88,11 +88,19 @@ async def test_list_user_repos_affiliation_includes_organization_member():
 
 
 @pytest.mark.asyncio
-async def test_list_user_repos_follows_pagination_and_drops_params_after_first_page():
-    """pagination 비회귀 — Link next 를 따라 전 페이지를 수집하고 2페이지부터 params=None.
+async def test_list_user_repos_resends_every_param_on_every_page():
+    """🔴 이 테스트는 **뒤집혔다** (#1515).
 
-    affiliation 수정이 pagination 루프(params 재사용 금지 규약)를 깨지 않는지 봉인.
-    Non-regression: the next URL already encodes the query, so params must not be re-sent.
+    예전 계약은 「2페이지부터 `params=None`」이었다 — 서버가 준 next URL 이 쿼리를
+    싣고 있었기 때문이다. 그 URL 을 따라가면 요청에 `Authorization: Bearer <토큰>` 이
+    실려 토큰이 임의 호스트로 나간다. 이제 URL 을 우리가 만들므로 **매 페이지에 전 파라미터를
+    다시 보내야** 한다. 빠지면 GitHub 기본값으로 조용히 대체된다:
+
+        sort 누락        -> full_name    (페이지 간 정렬이 뒤섞여 중복·누락)
+        per_page 누락    -> 30           (page 오프셋이 어긋난다)
+        affiliation 누락 -> 같은 3값      (**증상이 없다** = 가장 조용한 손실)
+
+    The old contract required params=None on page 2 because the server URL carried them.
     """
     from src.github_client.repos import list_user_repos
 
@@ -114,10 +122,18 @@ async def test_list_user_repos_follows_pagination_and_drops_params_after_first_p
     # description None is normalized to "".
     assert result[0]["description"] == ""
     assert mock_client.get.call_count == 2
-    assert mock_client.get.call_args_list[0].kwargs["params"] is not None
-    assert mock_client.get.call_args_list[1].kwargs["params"] is None, (
-        "2페이지 요청은 next URL 에 쿼리가 인코딩돼 있으므로 params=None 이어야 함"
-    )
+
+    expected_page = 1
+    for call in mock_client.get.call_args_list:
+        params = call.kwargs["params"]
+        assert params is not None, "params 를 다시 보내지 않으면 GitHub 기본값이 조용히 들어온다"
+        assert params["per_page"] == 100
+        assert params["sort"] == "updated"
+        assert params["affiliation"] == "owner,collaborator,organization_member"
+        assert params["page"] == expected_page, (
+            f"페이지 번호가 우리 쪽에서 증가하지 않는다: {params.get('page')}"
+        )
+        expected_page += 1
 
 
 @pytest.mark.asyncio
@@ -394,3 +410,97 @@ def test_install_hook_sh_no_claude_command_check():
     assert "command -v claude" not in _INSTALL_HOOK_SH, (
         "hook 스크립트에 'command -v claude' 발견 — claude CLI 불필요하므로 제거 필수"
     )
+
+
+# ─── 상한 경계 · 토큰 배치 (Grok 01a041d0 Q5 가 짚은 공백) ───────────────────
+
+
+@pytest.mark.asyncio
+async def test_exactly_at_the_page_cap_returns_instead_of_raising():
+    """🔴 정확히 상한만큼 페이지가 있고 더 없으면 **반환**한다 — 던지지 않는다.
+
+    `>= _MAX` 를 루프 안에 두는 흔한 실수는 2,000개(=20페이지×100) 저장소를 가진
+    사용자를 502 로 만든다. 경계는 「상한을 다 쓰고도 next 가 남았는가」다.
+    형제 `list_webhooks` 도 같은 경계 테스트를 갖는다.
+    """
+    from src.github_client.repos import _MAX_USER_REPO_PAGES, list_user_repos
+
+    pages = [
+        _repos_page(
+            [{"full_name": f"org/r{i}", "private": False, "description": ""}],
+            next_url=("https://api.github.com/user/repos?page=%d" % (i + 1)
+                      if i < _MAX_USER_REPO_PAGES else None),
+        )
+        for i in range(1, _MAX_USER_REPO_PAGES + 1)
+    ]
+    with patch("src.github_client.repos.get_http_client") as mock_get:
+        mock_client = AsyncMock()
+        mock_get.return_value = mock_client
+        mock_client.get = AsyncMock(side_effect=pages)
+        result = await list_user_repos("gho_test_token")
+
+    assert len(result) == _MAX_USER_REPO_PAGES, "상한과 같은 페이지 수에서 잘렸다"
+    assert mock_client.get.call_count == _MAX_USER_REPO_PAGES
+
+
+@pytest.mark.asyncio
+async def test_hitting_the_page_cap_raises_instead_of_returning_a_truncated_list():
+    """🔴 상한을 다 쓰고도 next 가 남으면 **던진다**.
+
+    잘린 목록을 완전한 것처럼 주면 뒤쪽 페이지의 org 저장소가 소유권 검증에서
+    「접근 권한 없음」으로 **거짓 거부**된다. 호출부 2곳 모두 `except Exception` 이라
+    던지면 502(재시도 가능)로 정직하게 나간다.
+    """
+    from src.github_client.repos import _MAX_USER_REPO_PAGES, list_user_repos
+
+    always_more = [
+        _repos_page(
+            [{"full_name": f"org/r{i}", "private": False, "description": ""}],
+            next_url="https://api.github.com/user/repos?page=99",
+        )
+        for i in range(1, _MAX_USER_REPO_PAGES + 2)
+    ]
+    with patch("src.github_client.repos.get_http_client") as mock_get:
+        mock_client = AsyncMock()
+        mock_get.return_value = mock_client
+        mock_client.get = AsyncMock(side_effect=always_more)
+        with pytest.raises(ValueError, match="page count exceeded"):
+            await list_user_repos("gho_test_token")
+
+    assert mock_client.get.call_count == _MAX_USER_REPO_PAGES, (
+        "상한을 넘겨 요청했다 — liveness 상한이 무너졌다"
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_bearer_token_only_ever_goes_to_our_own_host():
+    """🔴 호스트 단언만으로는 부족하다 — 토큰이 **어디에 실리는지**도 잰다.
+
+    적대 호스트 테스트는 URL 만 본다. 토큰이 쿼리 파라미터로 새는 회귀는 그 단언을
+    통과한다. 여기서는 (a) `Authorization` 이 우리 호스트 요청에만 붙고
+    (b) 어떤 params 값에도 토큰 문자열이 들어가지 않는지 본다.
+    """
+    from src.github_client.repos import list_user_repos
+
+    token = "gho_secret_token_value"
+    page1 = _repos_page(
+        [{"full_name": "org/r1", "private": False, "description": ""}],
+        next_url="https://evil.test/user/repos?page=2",
+    )
+    page2 = _repos_page([{"full_name": "org/r2", "private": False, "description": ""}])
+
+    with patch("src.github_client.repos.get_http_client") as mock_get:
+        mock_client = AsyncMock()
+        mock_get.return_value = mock_client
+        mock_client.get = AsyncMock(side_effect=[page1, page2])
+        await list_user_repos(token)
+
+    for call in mock_client.get.call_args_list:
+        url = str(call.args[0])
+        assert url.startswith("https://api.github.com/"), f"우리 호스트가 아니다: {url}"
+        auth = call.kwargs["headers"].get("Authorization", "")
+        assert token in auth, "토큰이 헤더에 없다 — 인증이 빠졌다"
+        params = call.kwargs.get("params") or {}
+        assert all(token not in str(v) for v in params.values()), (
+            f"토큰이 쿼리 파라미터로 샜다: {params}"
+        )
