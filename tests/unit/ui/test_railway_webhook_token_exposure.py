@@ -31,6 +31,7 @@ from fastapi.testclient import TestClient
 from src.auth.session import require_login
 from src.main import app
 from src.models.user import User as UserModel
+import pytest  # noqa: E402
 
 # test_router.py 와 동일 관용구 — require_login 은 UserModel 을 반환한다.
 # Same idiom as test_router.py — require_login returns a UserModel.
@@ -38,7 +39,6 @@ _TEST_USER = UserModel(
     id=1, github_id="12345", github_login="testuser",
     github_access_token="gho_test", email="test@example.com", display_name="Test User",
 )
-app.dependency_overrides[require_login] = lambda: _TEST_USER
 client = TestClient(app)
 
 _LIVE_TOKEN = "deadbeefcafe1234deadbeefcafe1234"  # nosec B105 — 테스트 픽스처
@@ -118,3 +118,22 @@ def test_null_owner_repo_shows_unclaimed_hint_not_pending():
     # 🔴 Jinja2 autoescape rewrites quotes, so compare a distinctive quote-free fragment.
     assert "has no registered owner" in body, "unclaimed 안내가 렌더되지 않았다"
     assert pending not in body, "pending 분기로 샜다 — 설정된 상태를 '미설정' 이라 안내하면 거짓"
+
+
+@pytest.fixture(autouse=True)
+def _dependency_overrides():
+    """🔴 모듈 최상위에서 전역을 바꾸지 않는다 — 임포트 순서가 결과를 정한다 (#1551).
+
+    pytest 는 실행 전에 대상 모듈을 전부 임포트한다. 최상위에서 `dependency_overrides`
+    를 바꾸면 **나중에 임포트된 파일이 앞의 것을 덮어쓴다.** 실측: 이 파일과
+    `test_users_api.py` 를 함께 돌리면 로그인 사용자가 id=1 에서 id=42 로 바뀌어
+    소유권 검증이 404 를 냈다.
+
+    fixture 로 두면 창이 테스트 하나로 닫히고, 끝나면 되돌린다.
+    Module-level mutation lets the last import win; a fixture closes the window.
+    """
+    _saved_overrides = dict(app.dependency_overrides)
+    app.dependency_overrides[require_login] = lambda: _TEST_USER
+    yield
+    app.dependency_overrides.clear()
+    app.dependency_overrides.update(_saved_overrides)
