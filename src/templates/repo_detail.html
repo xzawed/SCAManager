@@ -1379,7 +1379,13 @@ function _initRepoBulk() {
       suggestion_text: item.type === 'ai_suggestion' ? (item.suggestionText || null) : null,
       tool:     item.tool     || null,
       category: item.category || null,
+      /* 🔴 서버 dedup 키의 재료 (#1499). 이 모달은 오늘 도달 불가지만(_allItems 가
+         「등록 완료」만 담는다) 미등록 후보를 넣는 순간 이 줄이 없으면 조용히 옛
+         붕괴 키로 돌아간다.
+         Unreachable today, but keep the payload complete so adding candidates
+         does not silently restore the collapsing key. */
       message:  item.message  || null,
+      file:     item.file     || null,
       title:    document.getElementById('bulkTitle').value.trim(),
       body:     document.getElementById('bulkBody').value,
       labels:   document.getElementById('bulkLabels').value

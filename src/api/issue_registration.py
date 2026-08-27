@@ -5,7 +5,7 @@ import asyncio
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from sqlalchemy.orm import Session
 
 from src.auth.session import get_current_user
@@ -39,9 +39,34 @@ class RegisterRequest(BaseModel):
     tool: str | None = None
     category: str | None = None
     message: str | None = None
+    # 🔴 정적 이슈용 — 키에서 빠져 서로 다른 파일이 한 슬롯으로 붕괴했다 (#1499).
+    #    2026-08-25 이전 분석에는 이 값이 없어 None 이 온다(그때는 옛 동작 그대로).
+    # For static issues — absent from pre-2026-08-25 analyses, hence optional.
+    file: str | None = None
     title: str
     body: str
     labels: list[str]
+
+    @model_validator(mode="after")
+    def _static_issue_must_state_its_file(self):
+        """🔴 정적 이슈는 `file` 을 **말해야** 한다 — `null` 이라도 명시해야 한다.
+
+        `make_static_issue_key` 의 keyword-only 필수 인자는 Python 호출부만 막는다.
+        실제 호출자는 브라우저이고, 여기 기본값 `None` 이 그대로 「조용히 빈 file」
+        구멍이었다(Grok 01a0426a). 필드가 **빠진** 요청은 낡은 클라이언트라 거절하고,
+        **명시적 null** 은 받는다 — 파일 키가 없던 시절(2026-08-25 이전) 분석이다.
+
+        슬롯 스쿼팅은 되돌릴 수 없다. 422 는 페이지를 새로 고치면 풀리지만, 잘못 잡은
+        슬롯은 풀리지 않는다.
+
+        A static issue must state its file — explicit null is fine, omission is not.
+        """
+        if self.issue_type == "static_issue" and "file" not in self.model_fields_set:
+            raise ValueError(
+                "static_issue 는 file 을 명시해야 한다(값이 없으면 null) — "
+                "빠뜨리면 서로 다른 파일이 한 dedup 슬롯으로 붕괴한다"
+            )
+        return self
 
 
 def _get_analysis_and_repo(db: Session, analysis_id: int, *, current_user_id: int) -> tuple:
@@ -75,7 +100,7 @@ def _make_issue_key(req: RegisterRequest) -> str:
     tool = req.tool or ""
     category = req.category or ""
     message = req.message or req.title
-    return make_static_issue_key(tool, category, message)
+    return make_static_issue_key(tool, category, message, file=req.file)
 
 
 def _require_api_user(request: Request):

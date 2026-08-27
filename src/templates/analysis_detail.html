@@ -1058,12 +1058,16 @@
 
   function buildStaticItem(issue) {
     return {
-      key: 'st:' + (issue.tool||'') + ':' + (issue.category||'') + ':' + (issue.message||'').slice(0, 40),
+      /* 🔴 파일을 키에 넣는다 (#1499) — 빼면 서로 다른 파일의 같은 메시지가 한 항목으로
+         뭉쳐, 한 건을 등록했을 때 나머지까지 「등록됨」으로 칠해진다.
+         Include the file: without it, same-message findings in different files collapse. */
+      key: 'st:' + (issue.tool||'') + ':' + (issue.category||'') + ':' + (issue.message||'').slice(0, 200) + ':' + (issue.file||''),
       label: (issue.tool||'') + ' — ' + (issue.message||''),
       type: 'static_issue',
       tool: issue.tool,
       category: issue.category,
       message: issue.message,
+      file: issue.file || null,
       title: '🔴 [' + (issue.category||'') + '] ' + (issue.tool||'') + ': ' + (issue.message||'').slice(0, 50),
     };
   }
@@ -1173,6 +1177,8 @@
       tool: _currentItem.tool || null,
       category: _currentItem.category || null,
       message: _currentItem.message || null,
+      /* 🔴 서버 dedup 키의 재료 (#1499). 안 보내면 서버는 언제나 null 을 본다. */
+      file: _currentItem.file || null,
       title: document.getElementById('issueTitle').value.trim(),
       body: document.getElementById('issueBody').value,
       labels: document.getElementById('issueLabels').value
