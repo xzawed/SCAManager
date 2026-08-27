@@ -30,8 +30,16 @@ Kill-switch: When `is_disabled("I18N")`, skip detection + force scope locale = "
 (emergency disable — pairs with Cycle 78 NEW-P0-2 pattern).
 """
 import logging
+import re
 from src.config import settings
 from src.shared.feature_kill_switch import is_disabled
+
+# RFC 7231 §5.3.1 의 qvalue 문법 그대로:
+#     qvalue = ( "0" [ "." 0*3DIGIT ] ) / ( "1" [ "." 0*3DIGIT ] )
+# 🔴 「어떤 형식이 잘못됐나」를 열거하면 열거 밖은 전부 통과한다. 문법에 맞는지를
+# 묻는다 — 지수 표기·부호·선행 0·유니코드 숫자·범위 초과가 한 조건에 다 걸린다.
+# Match the grammar instead of enumerating malformed shapes.
+_QVALUE = re.compile(r"0(?:\.[0-9]{0,3})?|1(?:\.0{0,3})?")
 
 logger = logging.getLogger(__name__)
 
@@ -120,18 +128,28 @@ class LocaleMiddleware:  # pylint: disable=too-few-public-methods
         return None
 
     @staticmethod
-    def _parse_q_weight(seg: str) -> float:
-        """RFC 7231 q-weight 단일 segment 파싱 — 사이클 93 PR-B (S3776 분리).
+    def _parse_q_weight(seg: str) -> float | None:
+        """RFC 7231 q-weight 단일 segment 파싱. **None = 파싱 실패**(거부가 아니다).
 
-        Parse a single RFC 7231 q-weight segment (Cycle 93 PR-B — S3776 split).
+        🔴 예전 판은 파싱 실패에도 `0.0` 을 돌려줬다. 그런데 q=0 은 RFC 7231 §5.3.1
+        에서 「수용 불가(not acceptable)」라는 **뜻이 있는 값**이다. 두 뜻이 같은 값에
+        겹치면, 「거부된 언어를 뺀다」는 규칙이 **깨진 q 를 보낸 클라이언트의 언어까지**
+        뺀다 — `"ko;q=abc"` 가 `ko` 대신 기본 로케일이 된다.
+
+        🔴 무엇이 「진짜 0」인지는 **문법**이 정한다. `float()` 이 0.0 을 주는 것과
+        클라이언트가 0 을 쓴 것은 다르다 — `q=+0` · `q=00` · `q=.0` · `q=0e0` ·
+        `q=1e-400` · `q=\u0660`(아랍-인도 숫자) 는 전부 `float()` 에서 0.0 이지만
+        qvalue 가 아니다. 이것들을 거부로 읽으면 클라이언트가 거부한 적 없는 언어가
+        사라진다. 범위 밖(`q=1.5` · `q=inf`)과 NaN 도 같은 문법 하나에 걸린다.
+
+        Return None when the segment is unparseable — that is not a rejection.
         """
-        seg = seg.strip()
+        seg = seg.strip().lower()  # 파라미터명은 대소문자 무시 / case-insensitive per RFC
         if not seg.startswith("q="):
             return 1.0  # default per RFC 7231
-        try:
-            return float(seg[2:])
-        except (ValueError, IndexError):
-            return 0.0
+        if not _QVALUE.fullmatch(seg[2:]):
+            return None
+        return float(seg[2:])
 
     @classmethod
     def _parse_lang_items(cls, header_str: str) -> list[tuple[str, float]]:
@@ -148,10 +166,26 @@ class LocaleMiddleware:  # pylint: disable=too-few-public-methods
             # 첫 segment 외에서 q= 찾기 (default 1.0)
             # Find q= in non-first segments (default 1.0)
             q_weight = 1.0
+            rejected = False
             for seg in segments[1:]:
-                if seg.strip().startswith("q="):
-                    q_weight = cls._parse_q_weight(seg)
-                    break
+                if not seg.strip().lower().startswith("q="):
+                    continue
+                parsed = cls._parse_q_weight(seg)
+                if parsed is None:
+                    # 파싱 실패 — 최하위 우선순위로 두되 **후보로는 남긴다**.
+                    # Unparseable: rank last, but keep it as a candidate.
+                    q_weight = 0.0
+                elif parsed == 0:
+                    # 🔴 q=0 은 「수용 불가」 (RFC 7231 §5.3.1) — 항목을 만들지 않는다.
+                    # 선택 루프는 가중치를 다시 보지 않으므로, 여기서 빼지 않으면
+                    # 클라이언트가 명시적으로 거부한 언어가 그대로 뽑힌다.
+                    # A q of 0 means "not acceptable" — never emit it as a candidate.
+                    rejected = True
+                else:
+                    q_weight = parsed
+                break
+            if rejected:
+                continue
             # 정규화: "ko-KR" → "ko" (base lang only)
             # Normalize: "ko-KR" → "ko" (base lang only)
             items.append((lang.split("-")[0], q_weight))
