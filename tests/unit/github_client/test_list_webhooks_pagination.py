@@ -14,13 +14,14 @@
 두 번째가 특히 나쁘다 — #1504 R1 이 방금 고친 것이 바로 「부분 성공을 완전 성공으로
 보고하는」 결함인데, 이 경로로 그것이 그대로 되살아난다.
 
-🔴 **같은 파일에 이미 관용구가 있다.** `list_user_repos` 는 `resp.links["next"]` 를
-따라 모든 페이지를 모은다(`repos.py`). `list_webhooks` 만 그것을 안 한다 —
-누락이지 설계 결정이 아니다.
+🔴 **같은 파일에 이미 관용구가 있었다.** 당시 `list_user_repos` 는 `resp.links["next"]`
+의 **URL 을 따라** 모든 페이지를 모았고 `list_webhooks` 만 그것을 안 했다 — 누락이었다.
+그 URL 순회 자체가 토큰 유출 경로였고 #1515 가 양쪽을 「우리가 URL 을 만들고 서버에게서는
+불리언만 받는다」로 통일했다.
 
 The docstring promises every webhook but a single unpaginated request is made; GitHub's
-default page size is 30. The sibling `list_user_repos` in the same file already follows
-Link headers, so this is an omission rather than a decision.
+default page size is 30. Since #1515 both siblings build the URL themselves and read only
+the has-more boolean from the Link header.
 """
 from __future__ import annotations
 

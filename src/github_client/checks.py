@@ -2,7 +2,6 @@
 GitHub Check Runs / Status API — Phase 12 CI status queries.
 """
 import logging
-import re
 import time
 from urllib.parse import quote
 
@@ -84,21 +83,6 @@ def _auth_headers(token: str) -> dict:
     return {**_HEADERS, "Authorization": f"Bearer {token}"}
 
 
-def _parse_link_next(link_header: str | None) -> str | None:
-    """Link 헤더에서 rel="next" URL을 추출한다.
-    Extracts rel="next" URL from a Link header.
-
-    Example: '<https://api.github.com/...?page=2>; rel="next", ...' → 'https://...'
-    """
-    if link_header is None:
-        return None
-    # rel="next" 세그먼트에서 URL 추출 / Extract URL from rel="next" segment
-    match = re.search(r'<([^>]+)>\s*;\s*rel=["\']next["\']', link_header)
-    if match:
-        return match.group(1)
-    return None
-
-
 async def get_ci_status(
     token: str,
     repo_full_name: str,
@@ -133,30 +117,44 @@ async def get_ci_status(
     # ── 1. Check Runs API 페이지네이션 수집 ───────────────────────────
     # ── 1. Collect check runs via paginated API ────────────────────────
     all_check_runs: list[dict] = []
-    url: str | None = (
+    base_url = (
         f"{GITHUB_API}/repos/{repo_path(repo_full_name)}/commits/{quote(commit_sha, safe='')}/check-runs"
     )
-    page_count = 0
 
-    while url is not None:
-        page_count += 1
-        if page_count > _MAX_PAGES:
-            # 5페이지 초과 → 결과 불확실 / More than 5 pages → uncertain result
-            logger.warning(
-                "체크런 페이지 %d 초과 — 결과 불확실, 'unknown' 반환 (%s %s)"
-                " / check-run page count exceeded %d — returning 'unknown' (%s %s)",
-                _MAX_PAGES, sanitize_for_log(repo_full_name), sanitize_for_log(commit_sha),
-                _MAX_PAGES, sanitize_for_log(repo_full_name), sanitize_for_log(commit_sha),
-            )
-            return "unknown"
-
-        resp = await client.get(url, headers=_auth_headers(token))
+    for page_num in range(1, _MAX_PAGES + 1):
+        # 🔴 **서버가 준 URL 을 요청하지 않는다.** `Link` 헤더의 next URL 을 그대로
+        #   따라가면 그 요청에 `Authorization: Bearer <토큰>` 이 실리고, 응답이 변조되면
+        #   토큰이 임의 호스트로 나간다 (#1515). origin 검증은 CodeQL 이 sanitizer 로
+        #   인식하지 않았다(#1514 에서 4회 실패) — **taint 를 아예 없애는 것**이 답이다:
+        #   URL 은 우리가 만들고(`base` + 정수 `page`), 서버에게서는 「더 있는가」라는
+        #   **신호만** 받는다. 형제 `repos.py::list_webhooks` 와 같은 계약이다.
+        # Never request a server-supplied URL: build it ourselves and read only the
+        # has-more signal from the Link header. Removes the taint instead of sanitizing it.
+        resp = await client.get(
+            base_url, params={"page": page_num}, headers=_auth_headers(token))
         resp.raise_for_status()
         data = resp.json()
         all_check_runs.extend(data.get("check_runs", []))
 
-        # Link 헤더에서 다음 페이지 URL 추출 / Extract next page URL from Link header
-        url = _parse_link_next(resp.headers.get("Link"))
+        # 다음 페이지 유무는 서버가 안다 — 그 **불리언**만 쓴다(URL 은 안 쓴다).
+        # Use only the boolean; never the URL.
+        if not resp.links.get("next"):
+            break
+    else:
+        # 🔴 `_MAX_PAGES` 를 다 쓰고도 다음 페이지가 남았다 = 결과 불확실.
+        #   여기서는 던지지 않고 `unknown` 을 낸다 — 게이트 계약상 unknown 이 이미
+        #   「판정 보류」이고, 부분 목록으로 `passed` 를 내는 것보다 정직하다.
+        #   (형제 `list_webhooks` 가 던지는 이유는 그쪽 호출부가 목록을 「전부」라고
+        #    믿고 삭제하기 때문이다 — 여기는 판정만 한다.)
+        # Exhausted the cap with more pages left: uncertain, so 'unknown' (the gate's
+        # existing hold verdict) rather than a verdict from a partial list.
+        logger.warning(
+            "체크런 페이지 %d 초과 — 결과 불확실, 'unknown' 반환 (%s %s)"
+            " / check-run page count exceeded %d — returning 'unknown' (%s %s)",
+            _MAX_PAGES, sanitize_for_log(repo_full_name), sanitize_for_log(commit_sha),
+            _MAX_PAGES, sanitize_for_log(repo_full_name), sanitize_for_log(commit_sha),
+        )
+        return "unknown"
 
     # ── 2. 필터링 적용 ────────────────────────────────────────────────
     # ── 2. Apply required_contexts filter ─────────────────────────────
