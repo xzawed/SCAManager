@@ -10,6 +10,9 @@ GitHub Push/PR → 정적 분석 + AI 리뷰 → 점수·등급 → 알림(Teleg
    접두사: `feat/` `fix/` `chore/` `docs/`. **`main` 에 직접 커밋·push 하지 않는다.**
 2. **영역 문서를 연다** — 아래 표에서 건드릴 영역 하나. 세부 절차가 거기 있다.
 3. **테스트 먼저** — 구현 전에 실패하는 테스트를 쓴다.
+   `in`·`==`·집합 소속으로 **부류를 판정하는 식**을 쓰면 그 자리에서
+   **부분문자열≠상태 · 거짓초록 1건 심기 · 못 재면 red**.
+   정본은 [verify.md](docs/workflow/verify.md) 「판정식을 쓸 때」 3~5.
 4. **구현**
 5. **검증** — [verify.md](docs/workflow/verify.md) 의 절차를 그대로 따른다.
 6. **PR** — `gh pr create --body-file <임시파일>`. URL 안내 금지.
