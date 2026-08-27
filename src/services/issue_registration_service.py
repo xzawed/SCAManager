@@ -56,8 +56,14 @@ def make_static_issue_key(
     # JSON 은 각 필드를 따옴표로 감싸고 내부 따옴표를 이스케이프하므로 경계가 유일하고,
     # `None` 과 `""` 도 `null` / `""` 로 갈린다(예전엔 `file or ''` 로 뭉갰다).
     # Join via JSON: quoting makes field boundaries unforgeable and keeps None distinct from "".
-    content = json.dumps([tool, category, message[:200], file],
-                         ensure_ascii=False, separators=(",", ":"))
+    # 🔴 정규화는 **여기서만** 한다. 호출부가 각자 하면 같은 finding 이 서로 다른
+    #    키를 얻는다 — 실측(Grok 01a042e5): 등록 경로는 빈 message 를 title 로 대체하고
+    #    브라우저는 빈 file 을 null 로 보내는데, 렌더 경로는 둘 다 빈 문자열로 뒀다.
+    #    「없음」의 표기가 두 가지(None / "")인 것이 그 드리프트의 재료였다.
+    # Normalize here only; per-caller normalization is what made the two paths diverge.
+    content = json.dumps(
+        [tool or "", category or "", (message or "")[:200], file or None],
+        ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(content.encode()).hexdigest()[:64]
 
 

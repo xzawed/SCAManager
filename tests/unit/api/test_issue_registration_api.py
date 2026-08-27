@@ -162,15 +162,27 @@ def test_make_issue_key_static_path():
     assert len(key) == 64
 
 
-def test_make_issue_key_static_fallback_to_title():
-    # message=None이면 title 폴백
-    # Falls back to title when message is None
-    req = RegisterRequest(
-        analysis_id=1, issue_type="static_issue",
-        tool="", category="", message=None, title="fallback", body="B", labels=[], file=None,
+def test_make_issue_key_does_not_depend_on_the_user_edited_title():
+    """🔴 title 은 모달에서 사용자가 고칠 수 있다 — 키에 들어가면 안 된다.
+
+    예전에는 `message or req.title` 이라, message 가 빈 정적 이슈는 **입력한 제목에
+    따라 다른 슬롯**을 잡았다. 게다가 렌더 경로는 title 을 모르므로 두 경로가 같은
+    finding 에 다른 키를 만들었다(Grok 01a042e5 Q4).
+
+    이 테스트의 옛 판은 `len(key) == 64` 만 봤다 — 이름은 폴백을 말하는데 폴백이
+    사라져도 초록이었다. 공허한 단언을 실제 계약으로 바꾼다.
+    """
+    def _req(title):
+        return RegisterRequest(
+            analysis_id=1, issue_type="static_issue",
+            tool="ruff", category="F401", message=None, title=title,
+            body="B", labels=[], file="src/a.py",
+        )
+
+    assert _make_issue_key(_req("제목 A")) == _make_issue_key(_req("전혀 다른 제목")), (
+        "사용자가 고친 제목이 dedup 키를 바꾼다"
     )
-    key = _make_issue_key(req)
-    assert len(key) == 64
+    assert len(_make_issue_key(_req("제목 A"))) == 64
 
 
 # ── _get_analysis_and_repo — error paths (lines 44-54) ──

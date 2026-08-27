@@ -97,10 +97,11 @@ def _make_issue_key(req: RegisterRequest) -> str:
     if req.issue_type == "ai_suggestion":
         text = req.suggestion_text or req.title
         return make_ai_issue_key(text)
-    tool = req.tool or ""
-    category = req.category or ""
-    message = req.message or req.title
-    return make_static_issue_key(tool, category, message, file=req.file)
+    # 🔴 title 은 모달에서 **사용자가 고칠 수 있다**. 키에 넣으면 같은 finding 이
+    #    입력한 제목에 따라 다른 슬롯을 잡고, 렌더 경로가 만든 키와도 어긋난다.
+    #    정규화는 make_static_issue_key 가 한다 — 여기서 또 하면 다시 갈린다.
+    # The title is user-editable; a dedup key must not depend on it.
+    return make_static_issue_key(req.tool, req.category, req.message, file=req.file)
 
 
 def _require_api_user(request: Request):

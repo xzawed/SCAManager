@@ -15,9 +15,56 @@ from src.constants import CLAUDE_MODEL_PRICING, CLAUDE_PRICING_FALLBACK
 from src.database import SessionLocal
 from src.models.analysis import Analysis
 from src.repositories import analysis_feedback_repo
+from src.services.issue_registration_service import (
+    make_ai_issue_key,
+    make_static_issue_key,
+)
 from src.ui._helpers import get_accessible_repo, get_locale, templates
 
 router = APIRouter()
+
+
+def annotate_issue_keys(result: dict) -> dict:
+    """분석 결과에 **서버가 계산한** dedup 키를 얹은 사본을 돌려준다.
+
+    🔴 화면의 「등록됨」 배지가 새로고침하면 사라졌다. `stateMap` 은 서버가 준
+    SHA256 `issue_key` 로 채워지는데 조회는 브라우저가 만든 평문 키로 했다 — 변환이
+    없으니 로드 시 채운 항목은 **한 번도 읽히지 않았다**.
+
+    키 알고리즘은 서버 계약이다. JS 에서 SHA256 을 다시 구현하면 `json.dumps` 의
+    구분자·한글 처리·`[:200]` 절단이 조용히 어긋나고, 그 어긋남은 화면에서 「등록 안 됨」과
+    똑같이 보인다. 그래서 클라이언트는 계산하지 않고 **받은 문자열을 비교만** 한다.
+
+    🔴 저장된 dict 를 제자리에서 고치지 않는다. 해시를 `analyses.result` 에 굳히면
+    키 알고리즘이 바뀔 때마다 저장된 값이 낡는다 — 이 파일이 렌더 시점인 이유다.
+
+    AI 제안은 문자열 리스트라 키를 얹을 자리가 없어 **나란한 배열**(`ai_issue_keys`)로
+    준다. 인덱스가 밀면 엉뚱한 제안에 배지가 붙으므로 같은 리스트에서 한 번에 만든다.
+
+    Return a copy annotated with server-computed dedup keys; never mutate the stored dict.
+    """
+    annotated = dict(result)
+
+    # 🔴 없는 키를 **발명하지 않는다**. 빈 결과에 키를 얹으면 dict 가 truthy 가 되어
+    #    템플릿의 「분석 결과 없음」 화면(analysis_detail.html 바깥 if-r 가드)이
+    #    통째로 사라진다 — 배지 하나 고치려다 빈 상태 화면을 지우는 셈이다.
+    # Never invent keys: an empty result must stay falsy or the empty-state view vanishes.
+    if "issues" in result:
+        annotated["issues"] = [
+            {**issue,
+             "issue_key": make_static_issue_key(
+                 issue.get("tool"), issue.get("category"), issue.get("message"),
+                 file=issue.get("file"))}
+            for issue in (result.get("issues") or [])
+            if isinstance(issue, dict)
+        ]
+
+    if "ai_suggestions" in result:
+        suggestions = list(result.get("ai_suggestions") or [])
+        annotated["ai_suggestions"] = suggestions
+        annotated["ai_issue_keys"] = [make_ai_issue_key(str(s)) for s in suggestions]
+
+    return annotated
 
 
 def _calc_monthly_cost(rows: list) -> float:
@@ -122,7 +169,7 @@ def analysis_detail(
             "pr_number": analysis.pr_number,
             "score": analysis.score,
             "grade": analysis.grade,
-            "result": result,
+            "result": annotate_issue_keys(result),
             "source": source,
             "created_at": analysis.created_at.isoformat() if analysis.created_at else None,
         }

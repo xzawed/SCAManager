@@ -193,13 +193,27 @@ def test_a_quote_inside_a_field_cannot_forge_a_boundary():
     assert a != b, "따옴표가 JSON 경계를 위조했다"
 
 
-def test_an_absent_file_is_not_an_empty_one():
-    """🔴 `None` 과 `""` 는 다르다 — 예전 `file or ''` 는 둘을 뭉갰다.
+def test_an_absent_file_and_an_empty_one_are_the_same_slot():
+    """🔴 「없음」의 표기가 두 가지면 **두 호출부가 갈린다** — 실측으로 갈렸다.
 
-    「파일 키가 없던 시절의 분석」과 「도구가 빈 경로를 준 finding」은 다른 사건이다.
+    한때는 `None` 과 `""` 를 가르는 것이 정직해 보였다. 그런데 브라우저는 빈 file 을
+    `null` 로 보내고(`issue.file || null`) 저장된 분석은 `""` 를 그대로 들고 있어서,
+    등록 경로와 렌더 경로가 **같은 finding 에 다른 키**를 만들었다(Grok 01a042e5 Q4).
+
+    빈 경로는 경로가 아니다. 「없음」을 하나로 정하고 그 정규화를 키 함수 안에서만
+    하면, 호출부가 몇 개든 갈릴 수 없다. 운영 실측으로 전환 후 빈 문자열 file 은
+    **0건**이라 이 통합이 실제로 잃는 것도 없다.
     """
+    assert make_static_issue_key("t", "c", "m", file=None) == \
+        make_static_issue_key("t", "c", "m", file=""), "「없음」이 두 값으로 갈렸다"
     assert make_static_issue_key("t", "c", "m", file=None) != \
-        make_static_issue_key("t", "c", "m", file=""), "None 과 빈 문자열이 한 슬롯이다"
+        make_static_issue_key("t", "c", "m", file="src/a.py")
+
+
+def test_the_key_normalizes_inside_not_at_the_call_site():
+    """🔴 정규화가 키 함수 **안**에 있어야 한다 — 밖에 있으면 호출부마다 달라진다."""
+    assert make_static_issue_key(None, None, None, file=None) == \
+        make_static_issue_key("", "", "", file=""), "날것과 정규화된 값이 다른 키다"
 
 
 # ─── 방어는 HTTP 경계까지 간다 ──────────────────────────────────────────────
@@ -240,3 +254,53 @@ def test_an_ai_suggestion_does_not_need_a_file():
     req = RegisterRequest(analysis_id=1, issue_type="ai_suggestion",
                           suggestion_text="x", title="T", body="B", labels=[])
     assert req.issue_type == "ai_suggestion"
+
+
+# ─── 등록 경로와 렌더 경로는 같은 키를 만들어야 한다 ────────────────────────
+#
+# 🔴 이 절이 없었기 때문에 두 경로가 각자 정규화했고, 같은 finding 이 서로 다른
+# 슬롯을 잡았다. 배지는 「등록 안 됨」으로 보이고, 다시 누르면 서버가 중복이라고 거절한다.
+
+
+def _paths_agree(stored, posted):
+    """저장된 이슈에서 뽑은 키 == 등록 요청에서 뽑은 키."""
+    from src.api.issue_registration import RegisterRequest, _make_issue_key  # noqa: PLC0415
+    from src.ui.routes.detail import annotate_issue_keys  # noqa: PLC0415
+
+    render_key = annotate_issue_keys({"issues": [stored]})["issues"][0]["issue_key"]
+    req = RegisterRequest(analysis_id=1, issue_type="static_issue", body="B", labels=[],
+                          **posted)
+    return render_key == _make_issue_key(req)
+
+
+def test_the_render_path_and_the_register_path_agree():
+    """정상 경로 — 대조군. 여기서 어긋나면 아래 엣지 단언이 공허하다."""
+    assert _paths_agree(
+        {"tool": "ruff", "category": "F401", "message": "unused", "file": "src/a.py"},
+        {"tool": "ruff", "category": "F401", "message": "unused", "file": "src/a.py",
+          "title": "T"})
+
+
+def test_the_two_paths_agree_when_the_message_is_empty():
+    """🔴 브라우저는 빈 message 를 null 로 보낸다 — 예전엔 서버가 title 로 대체했다."""
+    assert _paths_agree(
+        {"tool": "ruff", "category": "F401", "message": "", "file": "src/a.py"},
+        {"tool": "ruff", "category": "F401", "message": None, "file": "src/a.py",
+          "title": "사용자가 고친 제목"})
+
+
+def test_the_two_paths_agree_when_the_file_is_empty():
+    """🔴 저장된 분석은 `""` 를 들고 있는데 브라우저는 `null` 을 보낸다."""
+    assert _paths_agree(
+        {"tool": "ruff", "category": "F401", "message": "unused", "file": ""},
+        {"tool": "ruff", "category": "F401", "message": "unused", "file": None,
+          "title": "T"})
+
+
+def test_a_non_mapping_issue_entry_does_not_kill_the_page():
+    """🔴 항목이 dict 가 아니면 `{**issue}` 가 TypeError 였다 — 상세 페이지가 500 이다."""
+    from src.ui.routes.detail import annotate_issue_keys  # noqa: PLC0415
+
+    out = annotate_issue_keys({"issues": ["문자열", None, {"tool": "ruff"}]})
+    assert len(out["issues"]) == 1, "mapping 아닌 항목을 걸러내지 않았다"
+    assert out["issues"][0]["issue_key"]
