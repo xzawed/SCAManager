@@ -74,6 +74,10 @@ _INTEGRITY = (
     "check_guard_fail_open.py",
     "check_env_vars_sync.py",
     "check_config_5way_sync.py",
+    # 문서 좌표 = 앵커 (2026-08-26). 줄번호는 위에 코드가 삽입되면 조용히 거짓이 된다 —
+    # 실측: 머지 3건이 하루 만에 24건을 무효화했고 그때 red 는 0건이었다.
+    # Doc coordinates must be anchors: line numbers go silently false on any insertion above.
+    "check_doc_anchors.py",
     "check_claim_review_trace.py",
     # lint-js job — 가드 자체는 순수 파이썬(eslint 검사 **범위**가 비었는지만 본다).
     # The guard itself is pure Python: it only checks the eslint scope is non-empty.
