@@ -452,3 +452,125 @@ def test_local_run_without_pr_env_is_silent(monkeypatch, capsys):
         monkeypatch.delenv(key, raising=False)
     assert gate.main() == 0
     assert "쉰다" in capsys.readouterr().out
+
+
+# ─── `_grade` — 부분문자열이 상태를 대신하면 안 된다 ─────────────────────────
+
+
+def _proc(out: str) -> subprocess.CompletedProcess:
+    return subprocess.CompletedProcess(args=[], returncode=1, stdout=out, stderr="")
+
+
+def test_grade_reads_the_count_prefixed_summary_not_a_bare_substring():
+    """🔴 `" failed" in out` 는 **상태가 아니라 문자열**을 본다.
+
+    `_grade` 는 이미 red 인 실행을 「단언 실패 / 수집 오류」로 가르고, 수집 오류일 때만
+    «결합은 증명하나 단언 내용은 증명하지 않는다» 는 단서를 붙인다. 그러니 오분류는
+    **약한 신호를 강해 보이게** 만든다 — 이 게이트가 잡으려는 바로 그 형태다.
+
+    아래는 실측 형태다(2026-08-27, 합성 리포에서 pytest 실행). 수집 오류의 트레이스백이
+    소스 줄을 인쇄하는데, 이 리포의 소스에는 `"… failed, proceeding"` 같은 로그 문구가 흔하다.
+    """
+    collection = _proc(
+        "ERROR test_x.py\n"
+        "E   ImportError: cannot import name 'thing'\n"
+        "test_x.py:3: in <module>\n"
+        '    logger.warning("Webhook cleanup failed, proceeding with reinstall")\n'
+        "!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!\n"
+        "1 error in 0.29s\n"
+    )
+    assert gate._grade(collection) == "collection", (
+        "수집 오류가 assertion 으로 등급됐다 — 트레이스백의 문자열을 상태로 읽었다"
+    )
+
+
+def test_grade_still_recognises_a_real_assertion_failure():
+    """대조군 — 진짜 단언 실패는 계속 assertion 이어야 한다(실측 형태)."""
+    real = _proc("FAILED test_fail.py::test_real_fail - assert 1 == 2\n1 failed in 0.17s\n")
+    assert gate._grade(real) == "assertion"
+
+
+def test_grade_reports_unknown_when_it_cannot_tell():
+    """🔴 못 재면 «unknown» 이다 — 모르는 것을 assertion 으로 반올림하지 않는다."""
+    assert gate._grade(_proc("no summary line here\n")) == "unknown"
+
+
+def test_grade_ignores_counts_printed_by_the_code_under_test():
+    """🔴 첫 수정은 **부분문자열만 좁혔고 blob 전체 검색은 그대로 뒀다.**
+
+    그래서 SUT 가 stdout 에 `3 failed of 10` 을 인쇄하면, 진짜 요약이 `1 error` 인
+    수집 오류가 여전히 assertion 으로 등급된다 — 원래 결함이 그대로다.
+    Grok 이 반증했고(session 01a040cc) 직접 재현했다.
+
+    판정은 **마지막 요약 줄 하나**에서만 읽는다. 요약 줄은 pytest 가 붙이는
+    `in <n>.<n>s` 로 식별한다(실측 5형태 전부 그 꼬리를 갖는다).
+    """
+    out = ("retry: 3 failed of 10\n"
+           "===== 1 error in 0.29s =====\n")
+    assert gate._grade(_proc(out)) == "collection", (
+        "SUT 가 인쇄한 숫자를 요약으로 읽었다 — blob 전체를 검색하고 있다"
+    )
+
+
+def test_grade_does_not_read_zero_as_a_status():
+    """🔴 `0 failed` 는 실패가 **없다**는 뜻이다. 개수를 상태로 읽으면 안 된다."""
+    assert gate._grade(_proc("===== 0 failed, 1 error in 0.12s =====\n")) == "collection"
+
+
+def test_grade_does_not_round_a_mixed_run_in_either_direction():
+    """🔴 혼합(`1 failed, 2 errors`)은 어느 쪽으로 내려도 단서가 거짓이 된다.
+
+    처음엔 `collection` 으로 내렸는데(약한 쪽), 그러면 «단언 내용은 증명하지 않는다» 가
+    거짓이다 — 단언은 실제로 발화했다. `assertion` 으로 올리면 일부가 실행조차 안 된
+    사실이 사라진다. Grok 이 반증했고(01a040dc Q3) **자기 이름**을 주는 것으로 고쳤다.
+    """
+    assert gate._grade(_proc("===== 1 failed, 2 errors in 0.15s =====\n")) == "mixed"
+
+
+def test_summary_line_picker_ignores_lines_the_code_under_test_printed():
+    """요약 줄 선택도 같은 규칙 — SUT 의 `1 passed` 를 요약으로 고르면 안 된다."""
+    out = "printed 1 passed from sut\n===== no tests ran in 0.01s =====\n"
+    picked = [l for l in out.splitlines() if gate._SUMMARY_LINE.search(l)]
+    assert picked and "no tests ran" in picked[-1], (
+        f"SUT 줄을 요약으로 골랐다: {picked[-1] if picked else None!r}"
+    )
+
+
+def test_mixed_run_gets_its_own_grade_not_a_false_disclaimer():
+    """🔴 `1 failed, 2 errors` 를 `collection` 으로 내리면 단서가 **거짓**이 된다.
+
+    호출부는 `collection` 에만 «결합은 증명하나 단언 내용은 증명하지 않는다» 를 붙인다.
+    그런데 혼합 실행에서는 단언이 **실제로 발화했다** — 그 문장은 과소주장이다.
+    반대로 `assertion` 으로 올리면 일부가 실행조차 안 된 사실이 사라진다(과대주장).
+    둘 다 이 게이트가 금지하는 형태이므로 **자기 이름**을 준다(Grok 01a040dc Q3).
+    """
+    assert gate._grade(_proc("===== 1 failed, 2 errors in 0.15s =====\n")) == "mixed"
+
+
+def test_mixed_grade_carries_its_own_caveat_in_the_report():
+    """등급에 이름만 주고 문구를 안 붙이면 `unknown` 과 구별되지 않는다."""
+    assert "mixed" in gate._GRADE_CAVEAT
+    assert gate._GRADE_CAVEAT["mixed"], "혼합 등급에 단서 문구가 비어 있다"
+    assert gate._GRADE_CAVEAT["collection"], "수집 오류 단서가 사라졌다"
+
+
+def test_summary_is_read_from_stdout_before_stderr():
+    """🔴 stderr 를 stdout 뒤에 이어 붙이면 **세션 이후 stderr 줄이 요약을 가로챈다**.
+
+    pytest 의 통계 줄은 stdout 에 있다. stdout 에 요약이 있으면 stderr 는 보지 않는다.
+    """
+    proc = subprocess.CompletedProcess(
+        args=[], returncode=1,
+        stdout="===== 1 error in 0.29s =====\n",
+        stderr="teardown: 2 failed in 1.23s\n",
+    )
+    assert gate._grade(proc) == "collection", (
+        "세션 이후 stderr 줄이 요약을 가로챘다"
+    )
+
+
+def test_stderr_is_still_used_when_stdout_has_no_summary():
+    """stdout 에 요약이 없으면 stderr 라도 본다 — 「안 쟀음」으로 흘리지 않는다."""
+    proc = subprocess.CompletedProcess(
+        args=[], returncode=1, stdout="", stderr="===== 1 failed in 0.17s =====\n")
+    assert gate._grade(proc) == "assertion"

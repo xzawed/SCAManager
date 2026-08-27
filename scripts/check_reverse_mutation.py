@@ -182,13 +182,65 @@ def _pytest(paths: list[str], cwd: Path) -> subprocess.CompletedProcess:
     return proc
 
 
+# 🔴 **요약 줄 하나에서만 읽는다.** blob 전체를 검색하면 SUT 가 인쇄한 숫자가 요약을
+#    대신한다 — 첫 수정은 부분문자열만 좁히고 이 축을 그대로 뒀고, `retry: 3 failed of 10`
+#    이 있는 수집 오류가 여전히 assertion 으로 등급됐다(Grok 반증 01a040cc, 직접 재현).
+#    요약 줄은 pytest 가 붙이는 **지속시간 꼬리**로 식별한다. 실측 5형태 전부 갖는다:
+#      `1 passed in 0.01s` · `1 failed in 0.17s` · `1 error in 0.29s`
+#      `10 passed, 14 warnings in 0.37s` · `7535 passed, 5 skipped, … in 317.37s`
+#    SUT 가 인쇄한 줄에는 그 꼬리가 없다.
+#    관용구 정본: `check_test_count_sync.py` 는 **줄을 고른 뒤** 그 줄에서 센다.
+# Read one summary line, identified by pytest's duration tail; a whole-blob search lets the
+# code under test print the verdict.
+_SUMMARY_LINE = re.compile(r"\bin \d+(?:\.\d+)?s\b")
+_FAILED_COUNT = re.compile(r"(?<![\w.-])(\d[\d,_]*)\s+failed\b", re.IGNORECASE)
+_ERROR_COUNT = re.compile(r"(?<![\w.-])(\d[\d,_]*)\s+errors?\b", re.IGNORECASE)
+
+# 등급마다 **자기 단서**를 갖는다. 단서를 공유하면 라벨이 과·소주장한다 —
+# 혼합 실행을 `collection` 으로 내리면 「단언 내용은 증명하지 않는다」가 거짓이 되고
+# (단언은 실제로 발화했다), `assertion` 으로 올리면 일부가 실행조차 안 된 사실이 사라진다.
+# Each grade carries its own caveat; sharing one makes the label over- or under-claim.
+_GRADE_CAVEAT = {
+    "collection": "  (수집 오류 — 결합은 증명하나 단언 내용은 증명하지 않는다)",
+    "mixed": "  (일부는 단언 발화, 일부는 실행조차 안 됨 — 관측 범위가 부분적이다)",
+    "unknown": "  (요약 줄을 못 찾았다 — 등급을 **안 쟀다**)",
+}
+
+
+def _summary_count(rx: "re.Pattern[str]", line: str) -> int:
+    """요약 줄에서 개수 하나. 🔴 `0 failed` 는 **실패가 없다**는 뜻이므로 0 을 그대로 낸다."""
+    m = rx.search(line)
+    return int(m.group(1).replace(",", "").replace("_", "")) if m else 0
+
+
+def _summary_line(proc: subprocess.CompletedProcess) -> str | None:
+    """마지막 요약 줄. 🔴 **stdout 을 먼저 본다** — 이어 붙이면 세션 이후 stderr 줄이
+    요약을 가로챈다(Grok 01a040dc Q2). pytest 의 통계 줄은 stdout 에 있다.
+    """
+    for stream in (proc.stdout, proc.stderr):
+        hits = [l for l in (stream or "").splitlines() if _SUMMARY_LINE.search(l)]
+        if hits:
+            return hits[-1]
+    return None
+
+
 def _grade(proc: subprocess.CompletedProcess) -> str:
-    """red 의 등급 — assertion 실패인가, 수집 오류인가."""
-    out = (proc.stdout or "") + (proc.stderr or "")
-    if " failed" in out:
-        return "assertion"
-    if "error" in out.lower():
+    """red 의 등급 — `assertion` · `collection` · `mixed` · `unknown`.
+
+    혼합은 **자기 이름**을 갖는다. 어느 쪽으로 반올림해도 단서가 거짓이 되기 때문이다.
+    A mixed run gets its own name: rounding it either way makes the caveat lie.
+    """
+    line = _summary_line(proc)
+    if line is None:
+        return "unknown"
+    failed = _summary_count(_FAILED_COUNT, line)
+    errors = _summary_count(_ERROR_COUNT, line)
+    if failed and errors:
+        return "mixed"
+    if errors:
         return "collection"
+    if failed:
+        return "assertion"
     return "unknown"
 
 
@@ -256,17 +308,17 @@ def evaluate(base_sha: str, head_sha: str, repo: Path | None = None) -> tuple[in
                 return 1, ["🔴 되돌림이 **no-op** — 뮤테이션이 무효라 아무것도 증명하지 못한다."]
 
             after = _pytest(present, wt)
+            # 요약 줄도 같은 규칙 — 개수 접두가 있는 줄만 요약으로 본다.
+            # Same rule for the summary line: only count-prefixed lines qualify.
             tail = [l for l in (after.stdout or "").splitlines()
-                    if "passed" in l or "failed" in l or "error" in l]
+                    if _SUMMARY_LINE.search(l)]
             summary = tail[-1] if tail else "?"
 
             if after.returncode != 0:
                 grade = _grade(after)
                 lines.append(
                     f"✅ 역-뮤테이션 red — 이 PR 의 테스트가 변경을 관측한다 ({summary})")
-                lines.append(f"   신호 등급: **{grade}**"
-                             + ("  (수집 오류 — 결합은 증명하나 단언 내용은 증명하지 않는다)"
-                                if grade == "collection" else ""))
+                lines.append(f"   신호 등급: **{grade}**" + _GRADE_CAVEAT.get(grade, ""))
                 lines.append(f"   되돌린 생산 파일 {len(prod)}건 · 실행 테스트 {len(present)}건")
                 return 0, lines
 
