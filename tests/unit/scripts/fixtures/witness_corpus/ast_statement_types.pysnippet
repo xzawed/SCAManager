@@ -1,0 +1,31 @@
+"""🔴 실제로 일어난 결함 — 이 가드가 이것을 잡는지로 비공허성을 증명한다.
+
+    출처   48dd03a5:tests/unit/test_no_global_dependency_override.py:84
+    무엇   임포트 시점 변경 판정을 문장 **타입**으로 열거
+    놓친 것 helper 호출 · `for` · `while` · 클래스 본문 · `setattr` (6종 중 5종)
+    발견   Grok 01a0437a
+
+내가 만든 예제가 아니라 사건에서 떼어 온 것이다 — 검사의 정당성을 검사 밖에서
+가져오는 것이 이 가드의 요지이고, 그 원칙을 가드 자신에게 먼저 적용한다.
+
+A predicate as it actually shipped and failed; the guard's non-vacuity is proven
+against real incidents, not against examples the author invented.
+"""
+def _module_level_mutations(path: pathlib.Path) -> list[int]:
+    """모듈 **최상위 문장**에서 전역을 바꾸는 줄 번호 — 함수 안은 세지 않는다."""
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8", errors="ignore"))
+    except SyntaxError:
+        return []
+    lines: list[int] = []
+    for node in tree.body:
+        if isinstance(node, ast.Assign | ast.Expr | ast.AugAssign):
+            if _touches_global_state(node):
+                lines.append(node.lineno)
+        elif isinstance(node, ast.With | ast.If | ast.Try):
+            lines += [
+                inner.lineno for inner in ast.walk(node)
+                if isinstance(inner, ast.Assign | ast.Expr)
+                and _touches_global_state(inner)
+            ]
+    return sorted(set(lines))

@@ -1,0 +1,44 @@
+"""🔴 실제로 일어난 결함 — 이 가드가 이것을 잡는지로 비공허성을 증명한다.
+
+    출처   1d28a879:src/middleware/locale.py:139
+    무엇   `"e" in raw` — 지수 표기만 막아 `+0`·`00`·`.0`·`-0`·`٠` 를 놓쳤다
+    놓친 것 "+0" · "00" · ".0" · "-0" · "\u0660" (전부 float 에서 0.0)
+    발견   Grok 01a0426a
+
+내가 만든 예제가 아니라 사건에서 떼어 온 것이다 — 검사의 정당성을 검사 밖에서
+가져오는 것이 이 가드의 요지이고, 그 원칙을 가드 자신에게 먼저 적용한다.
+
+A predicate as it actually shipped and failed; the guard's non-vacuity is proven
+against real incidents, not against examples the author invented.
+"""
+def _parse_q_weight(seg: str) -> float | None:
+    """RFC 7231 q-weight 단일 segment 파싱. **None = 파싱 실패**(거부가 아니다).
+
+    🔴 예전 판은 파싱 실패에도 `0.0` 을 돌려줬다. 그런데 q=0 은 RFC 7231 §5.3.1
+    에서 「수용 불가(not acceptable)」라는 **뜻이 있는 값**이다. 두 뜻이 같은 값에
+    겹치면, 「거부된 언어를 뺀다」는 규칙이 **깨진 q 를 보낸 클라이언트의 언어까지**
+    뺀다 — `"ko;q=abc"` 가 `ko` 대신 기본 로케일이 된다.
+
+    NaN·음수도 유효한 qvalue 가 아니므로(§5.3.1 은 0~1) 거부로 읽지 않는다.
+
+    Return None when the segment is unparseable — that is not a rejection.
+    """
+    seg = seg.strip().lower()  # 파라미터명은 대소문자 무시 / case-insensitive per RFC
+    if not seg.startswith("q="):
+        return 1.0  # default per RFC 7231
+    raw = seg[2:]
+    if "e" in raw:
+        # 🔴 지수 표기는 qvalue 가 아니다. `q=1e-400` 은 float 에서 정확히 0.0 으로
+        # 언더플로해 「양수를 보냈는데 거부로 읽히는」 자리를 만든다.
+        # Exponent form is not a qvalue; 1e-400 underflows to exactly 0.0.
+        return None
+    try:
+        weight = float(raw)
+    except (ValueError, IndexError):
+        return None
+    # 유효 범위 밖(음수·1 초과·NaN)은 qvalue 가 아니다 — NaN 은 두 비교가 모두
+    # False 라 여기서 함께 걸린다. 걸러내지 않으면 `q=inf` 가 유효한 `q=1` 을 이긴다.
+    # Out of range (or NaN) is not a qvalue; NaN fails both comparisons.
+    if not 0 <= weight <= 1:
+        return None
+    return weight
