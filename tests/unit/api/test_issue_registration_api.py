@@ -156,7 +156,7 @@ def test_make_issue_key_static_path():
     req = RegisterRequest(
         analysis_id=1, issue_type="static_issue",
         tool="bandit", category="B101", message="SQL injection",
-        title="T", body="B", labels=[],
+        title="T", body="B", labels=[], file="src/db/query.py",
     )
     key = _make_issue_key(req)
     assert len(key) == 64
@@ -167,7 +167,7 @@ def test_make_issue_key_static_fallback_to_title():
     # Falls back to title when message is None
     req = RegisterRequest(
         analysis_id=1, issue_type="static_issue",
-        tool="", category="", message=None, title="fallback", body="B", labels=[],
+        tool="", category="", message=None, title="fallback", body="B", labels=[], file=None,
     )
     key = _make_issue_key(req)
     assert len(key) == 64

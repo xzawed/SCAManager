@@ -2,6 +2,7 @@
 issue_registration_service — Issue registration and GitHub state sync logic.
 """
 import hashlib
+import json
 import logging
 from datetime import datetime, timezone
 
@@ -27,11 +28,36 @@ def make_ai_issue_key(suggestion_text: str) -> str:
     return hashlib.sha256(suggestion_text[:500].encode()).hexdigest()[:64]
 
 
-def make_static_issue_key(tool: str, category: str, message: str) -> str:
-    """정적 분석 이슈 중복 판별 키 생성 — 라인 번호 제외 (커밋 간 drift 방지).
-    Generate dedup key for static issues — excludes line number to prevent cross-commit drift.
+def make_static_issue_key(
+    tool: str, category: str, message: str, *, file: str | None
+) -> str:
+    """정적 분석 이슈 중복 판별 키 — 라인은 빼고 **파일은 넣는다**.
+
+    🔴 `file` 이 빠져 있어서 서로 다른 파일의 동일 메시지가 한 키로 붕괴했다(#1499).
+    `register()` 는 dedup 슬롯 스쿼팅을 되돌릴 수 없으므로, A파일 이슈가 먼저 등록되면
+    B파일의 진짜 finding 은 **영구히 등록 불가**가 된다. 운영 실측(2026-08-27): 키 630개
+    중 200개(31.7%)가 2개 이상 파일을 삼켰고 최악은 파일 35개, 등록 불가가 될 findings
+    519건(error 303 + warning 216).
+
+    라인은 여전히 뺀다 — 커밋마다 흔들려 같은 결함이 매번 새 키가 된다. 파일명 변경은
+    훨씬 드물고 결과도 다르다(중복 이슈 하나이지 **차단은 아니다**). 되돌릴 수 없는
+    쪽만 닫는다.
+
+    🔴 `file` 은 keyword-only **필수**다. 기본값을 주면 호출부가 조용히 빠뜨려
+    「영원히 빈 file」이 되고, 위 붕괴가 그대로 남는다. `None` 은 허용한다 — 파일 키가
+    없던 시절(2026-08-25 이전) 분석에서 등록할 때다.
+
+    Include the file path; keep excluding the line number. `file` is keyword-only and
+    required so a caller cannot silently fall back to the collapsing key.
     """
-    content = f"{tool}:{category}:{message[:200]}"
+    # 🔴 콜론으로 잇지 않는다 — 필드 안의 콜론이 **경계를 위조**한다(Grok 01a0426a):
+    #     ("ruff","F401","msg:src/b.py","src/a.py")  와
+    #     ("ruff","F401","msg","src/b.py:src/a.py")  가 같은 문자열이 됐다.
+    # JSON 은 각 필드를 따옴표로 감싸고 내부 따옴표를 이스케이프하므로 경계가 유일하고,
+    # `None` 과 `""` 도 `null` / `""` 로 갈린다(예전엔 `file or ''` 로 뭉갰다).
+    # Join via JSON: quoting makes field boundaries unforgeable and keeps None distinct from "".
+    content = json.dumps([tool, category, message[:200], file],
+                         ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(content.encode()).hexdigest()[:64]
 
 

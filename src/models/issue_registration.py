@@ -32,8 +32,8 @@ class IssueRegistration(Base):
     )
     # "ai_suggestion" | "static_issue"
     issue_type = Column(String, nullable=False)
-    # SHA256 해시 — AI: suggestion_text[:500] / 정적: tool:category:message[:200]
-    # SHA256 hash — AI: suggestion_text[:500] / static: tool:category:message[:200]
+    # SHA256 해시 — AI: suggestion_text[:500] / 정적: JSON[tool, category, message[:200], file]
+    # SHA256 hash — AI: suggestion_text[:500] / static: JSON[tool, category, message[:200], file]
     issue_key = Column(String(64), nullable=False)
     github_issue_number = Column(Integer, nullable=False)
     # "open" | "closed" — TTL 5분 캐시로 GitHub API 동기화

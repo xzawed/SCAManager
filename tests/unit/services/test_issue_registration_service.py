@@ -50,14 +50,14 @@ def test_make_ai_issue_key_deterministic_and_pinned():
 
 
 def test_make_static_issue_key_excludes_line():
-    k1 = make_static_issue_key("bandit", "security", "SQL injection")
-    k2 = make_static_issue_key("bandit", "security", "SQL injection")
+    k1 = make_static_issue_key("bandit", "security", "SQL injection", file="src/a.py")
+    k2 = make_static_issue_key("bandit", "security", "SQL injection", file="src/a.py")
     assert k1 == k2
 
 
 def test_make_static_issue_key_differs_by_tool():
-    k1 = make_static_issue_key("bandit", "security", "msg")
-    k2 = make_static_issue_key("pylint", "security", "msg")
+    k1 = make_static_issue_key("bandit", "security", "msg", file="src/a.py")
+    k2 = make_static_issue_key("pylint", "security", "msg", file="src/a.py")
     assert k1 != k2
 
 
