@@ -54,13 +54,14 @@ class _SlitherAnalyzer:
                 ["slither", ctx.tmp_path, "--json", "-"],
                 capture_output=True, text=True, timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
             )
-            # 🔴 exit code 는 판별식이 **아니다** — 실측(이 리포 개발 호스트):
-            #      유효한 .sol   exit=**127** · stdout 2437자 · `{"success": true, ...}`
-            #      구문 오류      exit=1   · stdout **0자**
-            #      없는 파일      exit=1   · stdout **0자**
-            #    성공해도 exit 이 0 이 아니므로 exit 으로 판정하면 정상 실행이 차단된다.
+            # 🔴 exit code 는 판별식이 **아니다** — 성공해도 0 이 아니다(실측: 같은 성공을
+            #    두 호스트에서 재니 127 과 4294967295 로 **달랐다**. 값은 우연이고 불변식은
+            #    「성공도 비-0 일 수 있다」 하나뿐이라 exit 으로 판정하면 정상 실행이 차단된다).
+            #      유효한 .sol   비-0 · stdout 에 `{"success": true, ...}`
+            #      구문 오류·없는 파일   stdout **0자**
             #    성공하면 항상 JSON 을 내므로 판별식은 **빈 stdout** 이다.
-            # Measured: a successful slither run exits 127 with JSON; a crash writes nothing.
+            # Measured: a successful slither run exits nonzero (the value varies by host) but
+            # always writes JSON; a crash writes nothing.
             if not r.stdout.strip():
                 raise analysis_failed("slither", ctx, r, "produced no output")
             return _parse_slither_json(r.stdout, ctx.language)

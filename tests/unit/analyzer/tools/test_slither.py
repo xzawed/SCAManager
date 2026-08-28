@@ -269,11 +269,11 @@ def test_run_raises_on_empty_stdout():
 class TestSlitherCrashIsNotACleanRun:
     """🔴 실측(slither, 이 호스트):
 
-        유효한 .sol      exit=**127** · stdout=2437자 · JSON success=true
-        구문 오류        exit=1   · stdout=**0자**
-        없는 파일        exit=1   · stdout=**0자**
+        유효한 .sol      exit **비-0** · stdout 에 JSON success=true
+        구문 오류·없는 파일  stdout=**0자**
 
     성공해도 exit 이 0 이 아니다 — **exit code 는 판별식이 될 수 없다**.
+    (같은 성공을 두 호스트에서 재니 127 과 4294967295 였다. 값은 우연이다.)
     성공하면 항상 JSON 을 내므로 판별식은 **빈 stdout** 이다.
     Measured: a successful slither run exits 127 with JSON; a crash writes nothing.
     """

@@ -115,9 +115,11 @@ class TestClippyAnalyzer:
     def test_module_registers_clippy(self):
         # 모듈 임포트 시 REGISTRY에 clippy가 자동 등록된다
         # Module import must auto-register clippy in REGISTRY
+        # 🔴 plain `import src…` 를 쓰지 않는다 — 이 파일이 `from src… import` 도 쓰므로
+        #    공존하면 CodeQL py/import-and-import-from 을 자초한다(`check_dual_import.py`).
+        # Use the string path: a plain import alongside `from X import` self-inflicts the alert.
         import importlib
-        import src.analyzer.io.tools.clippy  # noqa: F401
-        importlib.reload(src.analyzer.io.tools.clippy)
+        importlib.reload(importlib.import_module("src.analyzer.io.tools.clippy"))
         names = [a.name for a in REGISTRY]
         assert "clippy" in names
 
@@ -133,10 +135,9 @@ class TestClippyAnalyzer:
 class TestClippyCrashIsNotACleanRun:
     """🔴 실측(clippy 0.1.97, 임시 cargo 프로젝트):
 
-        깨끗          exit=0   · stdout 3줄 (compiler-artifact · build-finished)
-        린트 있음      exit=0   · stdout 5줄
-        컴파일 오류    exit=**101** · stdout 3줄 (build-finished success=false)
-        크래시(Cargo.toml 없음) exit=**101** · stdout **0줄**
+        깨끗 · 린트 있음        exit=0   · stdout **비지 않음** (줄 수는 캐시 상태에 따라 다르다)
+        컴파일 오류(정당)        exit=**101** · stdout **비지 않음**
+        크래시(Cargo.toml 없음)  exit=**101** · stdout **0줄**
 
     정당한 컴파일 오류와 크래시가 **둘 다 exit 101** 이다 — exit 은 판별식이 아니다.
     성공하면 깨끗해도 JSONL 을 내므로 판별식은 **빈 stdout** 이다.

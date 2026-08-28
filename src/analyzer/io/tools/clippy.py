@@ -109,13 +109,14 @@ class _ClippyAnalyzer:
                 cwd=tmp_dir,
             )
             # 🔴 exit code 는 판별식이 **아니다** — 실측(clippy 0.1.97, 임시 cargo 프로젝트):
-            #      깨끗          exit=0   · stdout 3줄 (compiler-artifact · build-finished)
-            #      린트 있음      exit=0   · stdout 5줄
-            #      컴파일 오류    exit=**101** · stdout 3줄 (build-finished success=false)
-            #      Cargo.toml 없음 exit=**101** · stdout **0줄**
-            #    정당한 컴파일 오류와 크래시가 같은 exit 을 낸다. 성공하면 깨끗해도 JSONL 을
-            #    내므로 판별식은 **빈 stdout** 이다.
-            # Measured: a legitimate compile error and a crash share exit 101; only stdout differs.
+            #      깨끗 · 린트 있음        exit=0   · stdout **비지 않음**(compiler-artifact ·
+            #                                        build-finished. 줄 수는 캐시 상태에 따라 다르다)
+            #      컴파일 오류(정당한 발견)  exit=**101** · stdout **비지 않음**
+            #      Cargo.toml 없음(크래시)  exit=**101** · stdout **0줄**
+            #    정당한 컴파일 오류와 크래시가 같은 exit 을 낸다. 줄 수도 세지 않는다 —
+            #    불변식은 「성공하면 무언가를 낸다」 하나이므로 판별식은 **빈 stdout** 이다.
+            # Measured: a legitimate compile error and a crash share exit 101; line counts vary
+            # with cache state; only emptiness separates them.
             if not (r.stdout or "").strip():
                 raise analysis_failed("clippy", ctx, r, "produced no output")
             issues = []

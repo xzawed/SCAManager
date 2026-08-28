@@ -34,7 +34,8 @@ from unittest.mock import patch, MagicMock  # noqa: E402
 def _isolate_registry():
     """테스트 간 REGISTRY 오염 방지 — 테스트 전후 REGISTRY를 격리한다."""
     try:
-        import src.analyzer.io.tools.python  # noqa: F401 — Python 도구 먼저 등록
+        import importlib  # noqa: PLC0415
+        importlib.import_module("src.analyzer.io.tools.python")  # Python 도구 먼저 등록
         from src.analyzer.pure.registry import REGISTRY
         original = list(REGISTRY)
         REGISTRY.clear()
@@ -216,8 +217,10 @@ def test_rubocop_analyzer_registered():
     # 모듈 import 시 REGISTRY 에 _RuboCopAnalyzer 가 자동 등록되어야 한다
     import importlib
     from src.analyzer.pure.registry import REGISTRY
-    import src.analyzer.io.tools.rubocop  # noqa: F401
-    importlib.reload(src.analyzer.io.tools.rubocop)
+    # 🔴 plain `import src…` 금지 — `from src… import` 와 공존하면 CodeQL
+    #    py/import-and-import-from 을 자초한다(`check_dual_import.py`).
+    #    `reload` 는 유지한다 — `import_module` 만으로는 캐시라 register() 가 재실행되지 않는다.
+    importlib.reload(importlib.import_module("src.analyzer.io.tools.rubocop"))
     names = [a.name for a in REGISTRY]
     assert "rubocop" in names
 
