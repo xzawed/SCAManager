@@ -16,6 +16,7 @@ import shutil
 import subprocess  # nosec B404
 
 from src.analyzer.pure.registry import AnalyzeContext, AnalysisIssue, Category, Severity, register
+from src.analyzer.io.tools._common import analysis_failed
 from src.constants import STATIC_ANALYSIS_TIMEOUT
 
 logger = logging.getLogger(__name__)
@@ -53,18 +54,32 @@ class _SlitherAnalyzer:
                 ["slither", ctx.tmp_path, "--json", "-"],
                 capture_output=True, text=True, timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
             )
+            # 🔴 exit code 는 판별식이 **아니다** — 성공해도 0 이 아니다(실측: 같은 성공을
+            #    두 호스트에서 재니 127 과 4294967295 로 **달랐다**. 값은 우연이고 불변식은
+            #    「성공도 비-0 일 수 있다」 하나뿐이라 exit 으로 판정하면 정상 실행이 차단된다).
+            #      유효한 .sol   비-0 · stdout 에 `{"success": true, ...}`
+            #      구문 오류·없는 파일   stdout **0자**
+            #    성공하면 항상 JSON 을 내므로 판별식은 **빈 stdout** 이다.
+            # Measured: a successful slither run exits nonzero (the value varies by host) but
+            # always writes JSON; a crash writes nothing.
             if not r.stdout.strip():
-                return []
+                raise analysis_failed("slither", ctx, r, "produced no output")
             return _parse_slither_json(r.stdout, ctx.language)
         except subprocess.TimeoutExpired:
             ctx.timed_out = True
             logger.warning("slither timed out for %s", ctx.tmp_path)
             return []
-        except (OSError, json.JSONDecodeError, ValueError,
-                AttributeError, TypeError) as exc:
-            # slither JSON 스키마 변형(results 가 list 등)에 대비한 방어
-            logger.warning("slither failed for %s: %s", ctx.tmp_path, exc)
+        except FileNotFoundError as exc:
+            # which() 통과 뒤 사라진 바이너리 — 조달 축(`unavailable_tools`)이 담당한다.
+            # A binary that vanished after the which() gate; procurement owns it.
+            logger.warning("slither unavailable for %s: %s", ctx.tmp_path, exc)
             return []
+        except (json.JSONDecodeError, ValueError,
+                AttributeError, TypeError) as exc:
+            # slither 가 JSON 을 냈는데 이 어댑터가 읽을 수 있는 모양이 아니다 = 미분석이다.
+            # Output that this adapter cannot read is unanalyzed, not clean.
+            raise analysis_failed(
+                "slither", ctx, r, "produced JSON this adapter cannot read") from exc
 
 
 def _map_severity(impact: str) -> Severity:
@@ -95,11 +110,17 @@ def _parse_slither_json(json_text: str, language: str) -> list[AnalysisIssue]:
     """slither JSON 결과를 AnalysisIssue 목록으로 변환한다.
 
     subprocess mock 없이 JSON 픽스처만으로 검증 가능하도록 분리된 모듈 레벨 함수.
-    success=false (Solidity 컴파일 실패) 인 경우 빈 목록 반환.
+
+    🔴 `success=false` 는 slither 가 **분석하지 못했다**는 자기 보고다 — 그것을 `[]` 로
+    돌려주면 미분석이 «이슈 0건 · 완전» 이 된다. `ValueError` 로 올리면 `run()` 의
+    핸들러가 `analysis_failed` 로 바꿔 `static.py` 가 incomplete 로 승격한다.
+    `success=false` is slither reporting that it did not analyze; returning [] would record
+    that silence as a clean file.
     """
     data = json.loads(json_text)
     if not data.get("success", False):
-        return []
+        raise ValueError(
+            f"slither reported success=false: {str(data.get('error'))[:200]}")
     detectors = data.get("results", {}).get("detectors", []) or []
     issues: list[AnalysisIssue] = []
     for det in detectors:

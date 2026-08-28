@@ -115,8 +115,57 @@ class TestClippyAnalyzer:
     def test_module_registers_clippy(self):
         # 모듈 임포트 시 REGISTRY에 clippy가 자동 등록된다
         # Module import must auto-register clippy in REGISTRY
+        # 🔴 plain `import src…` 를 쓰지 않는다 — 이 파일이 `from src… import` 도 쓰므로
+        #    공존하면 CodeQL py/import-and-import-from 을 자초한다(`check_dual_import.py`).
+        # Use the string path: a plain import alongside `from X import` self-inflicts the alert.
         import importlib
-        import src.analyzer.io.tools.clippy  # noqa: F401
-        importlib.reload(src.analyzer.io.tools.clippy)
+        importlib.reload(importlib.import_module("src.analyzer.io.tools.clippy"))
         names = [a.name for a in REGISTRY]
         assert "clippy" in names
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 크래시가 «이슈 0건» 이 되던 자리 (#1557 W2 — 실측 기반)
+#
+# 🔴 판별식은 도구마다 다르다. 이 리포의 관용구(「비-JSON stdout 이면 raise」)를
+#    그대로 복사하면 이 도구의 크래시를 **못 잡는다** — 아래 실측이 그것을 보여준다.
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class TestClippyCrashIsNotACleanRun:
+    """🔴 실측(clippy 0.1.97, 임시 cargo 프로젝트):
+
+        깨끗 · 린트 있음        exit=0   · stdout **비지 않음** (줄 수는 캐시 상태에 따라 다르다)
+        컴파일 오류(정당)        exit=**101** · stdout **비지 않음**
+        크래시(Cargo.toml 없음)  exit=**101** · stdout **0줄**
+
+    정당한 컴파일 오류와 크래시가 **둘 다 exit 101** 이다 — exit 은 판별식이 아니다.
+    성공하면 깨끗해도 JSONL 을 내므로 판별식은 **빈 stdout** 이다.
+    Measured: a legitimate compile error and a crash share exit 101; only stdout differs.
+    """
+
+    def test_empty_stdout_is_a_crash(self):
+        from src.analyzer.io.tools.clippy import _ClippyAnalyzer
+        proc = MagicMock(stdout="", stderr="error: could not find `Cargo.toml`", returncode=101)
+        with patch("src.analyzer.io.tools.clippy._build_temp_cargo_project", return_value="/tmp/x"):
+            with patch("subprocess.run", return_value=proc):
+                with pytest.raises(RuntimeError, match="clippy"):
+                    _ClippyAnalyzer().run(_make_ctx("rust", "main.rs"))
+
+    def test_compile_error_at_exit_101_is_not_a_crash(self):
+        """🔴 부정 통제 — 컴파일 오류는 **정당한 발견**이다. exit 으로 판정하면 차단된다."""
+        from src.analyzer.io.tools.clippy import _ClippyAnalyzer
+        # 🔴 리스트 안에서 인접 문자열 리터럴을 붙이지 않는다 — 쉼표 누락과 구별되지 않아
+        #    CodeQL py/implicit-string-concatenation-in-list 가 발화한다(#608, 자초).
+        # Build the line first: implicit concatenation inside a list reads as a missing comma.
+        compiler_message = json.dumps({
+            "reason": "compiler-message",
+            "message": {"level": "error", "message": "mismatched types",
+                        "code": None, "spans": []},
+        })
+        build_finished = json.dumps({"reason": "build-finished", "success": False})
+        jsonl = compiler_message + "\n" + build_finished + "\n"
+        proc = MagicMock(stdout=jsonl, stderr="", returncode=101)
+        with patch("src.analyzer.io.tools.clippy._build_temp_cargo_project", return_value="/tmp/x"):
+            with patch("subprocess.run", return_value=proc):
+                _ClippyAnalyzer().run(_make_ctx("rust", "main.rs"))  # raise 하지 않는다

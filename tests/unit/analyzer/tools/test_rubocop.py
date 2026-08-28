@@ -34,7 +34,8 @@ from unittest.mock import patch, MagicMock  # noqa: E402
 def _isolate_registry():
     """테스트 간 REGISTRY 오염 방지 — 테스트 전후 REGISTRY를 격리한다."""
     try:
-        import src.analyzer.io.tools.python  # noqa: F401 — Python 도구 먼저 등록
+        import importlib  # noqa: PLC0415
+        importlib.import_module("src.analyzer.io.tools.python")  # Python 도구 먼저 등록
         from src.analyzer.pure.registry import REGISTRY
         original = list(REGISTRY)
         REGISTRY.clear()
@@ -216,8 +217,10 @@ def test_rubocop_analyzer_registered():
     # 모듈 import 시 REGISTRY 에 _RuboCopAnalyzer 가 자동 등록되어야 한다
     import importlib
     from src.analyzer.pure.registry import REGISTRY
-    import src.analyzer.io.tools.rubocop  # noqa: F401
-    importlib.reload(src.analyzer.io.tools.rubocop)
+    # 🔴 plain `import src…` 금지 — `from src… import` 와 공존하면 CodeQL
+    #    py/import-and-import-from 을 자초한다(`check_dual_import.py`).
+    #    `reload` 는 유지한다 — `import_module` 만으로는 캐시라 register() 가 재실행되지 않는다.
+    importlib.reload(importlib.import_module("src.analyzer.io.tools.rubocop"))
     names = [a.name for a in REGISTRY]
     assert "rubocop" in names
 
@@ -358,36 +361,94 @@ def test_rubocop_handles_timeout(make_ctx):
 # Test 8 — JSON 파싱 실패 시 빈 리스트
 # ──────────────────────────────────────────────────────────────────────────────
 
-def test_rubocop_handles_invalid_json(make_ctx):
-    # stdout 이 유효하지 않은 JSON → JSONDecodeError → 빈 리스트 반환
+def test_rubocop_raises_on_invalid_json(make_ctx):
+    # 🔴 계약 변경(#1557 W2) — 읽을 수 없는 출력은 «이슈 0건» 이 아니라 미분석이다.
     from src.analyzer.io.tools.rubocop import _RuboCopAnalyzer
     ctx = make_ctx(language="ruby")
     with patch(
         "src.analyzer.io.tools.rubocop.subprocess.run",
         return_value=_mock_rubocop_proc("{not valid json"),
     ):
-        assert _RuboCopAnalyzer().run(ctx) == []
+        with pytest.raises(RuntimeError, match="rubocop"):
+            _RuboCopAnalyzer().run(ctx)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Test 9 — 빈 stdout → 빈 리스트
 # ──────────────────────────────────────────────────────────────────────────────
 
-def test_rubocop_empty_stdout_returns_empty(make_ctx):
-    # stdout 이 빈 문자열 혹은 offenses=[] 이면 빈 리스트 반환
+def test_rubocop_empty_stdout_is_a_crash_but_zero_offenses_is_clean(make_ctx):
+    """🔴 계약 변경(#1557 W2) — 두 「빈 것」을 가른다.
+
+    빈 stdout      = rubocop 이 아무것도 못 냈다 → **미분석**
+    offenses = []  = 대상 파일을 분석했고 위반이 없다 → 깨끗함
+    """
     from src.analyzer.io.tools.rubocop import _RuboCopAnalyzer
     ctx = make_ctx(language="ruby")
 
-    # 완전히 빈 stdout
+    # 완전히 빈 stdout — 미분석
     with patch(
         "src.analyzer.io.tools.rubocop.subprocess.run",
         return_value=_mock_rubocop_proc(""),
     ):
-        assert _RuboCopAnalyzer().run(ctx) == []
+        with pytest.raises(RuntimeError, match="rubocop"):
+            _RuboCopAnalyzer().run(ctx)
 
-    # offenses 가 빈 배열인 정상 JSON
+    # 🔴 부정 통제 — `files` 항목이 있고 offenses 가 빈 배열이면 **분석된 것**이다.
     with patch(
         "src.analyzer.io.tools.rubocop.subprocess.run",
         return_value=_mock_rubocop_proc(SAMPLE_OUTPUT_EMPTY),
     ):
         assert _RuboCopAnalyzer().run(ctx) == []
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 크래시가 «이슈 0건» 이 되던 자리 (#1557 W2 — 실측 기반)
+#
+# 🔴 판별식은 도구마다 다르다. 이 리포의 관용구(「비-JSON stdout 이면 raise」)를
+#    그대로 복사하면 이 도구의 크래시를 **못 잡는다** — 아래 실측이 그것을 보여준다.
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class TestRubocopCrashIsNotACleanRun:
+    """🔴 실측(rubocop 1.90.0, 없는 파일):
+
+        exit=2 · stdout=231자 · **유효한 JSON** · files=[] · offense_count=0
+
+    즉 `json.loads` 가 성공한다 — 「비-JSON 이면 raise」 는 이 크래시를 통과시킨다.
+    실제 분석은 대상 파일마다 `files` 항목을 하나 만든다(위반 0건이어도).
+    그래서 판별식은 파싱 가능 여부가 아니라 **`files` 가 비었는가**다.
+    Measured: rubocop emits valid JSON with an empty `files` array when it cannot analyze.
+    """
+
+    def test_empty_files_array_is_a_crash(self, make_ctx):
+        from src.analyzer.io.tools.rubocop import _RuboCopAnalyzer
+        crash = json.dumps({"metadata": {"rubocop_version": "1.90.0"},
+                            "files": [], "summary": {"offense_count": 0,
+                                                     "target_file_count": 1}})
+        proc = MagicMock(stdout=crash, stderr="Errno::ENOENT", returncode=2)
+        with patch("subprocess.run", return_value=proc):
+            with pytest.raises(RuntimeError, match="rubocop"):
+                _RuboCopAnalyzer().run(make_ctx())
+
+    def test_analyzed_file_with_zero_offenses_is_clean(self, make_ctx):
+        """🔴 부정 통제 — 위반 0건은 **분석된 것**이다. 여기서 raise 하면 과차단이다."""
+        from src.analyzer.io.tools.rubocop import _RuboCopAnalyzer
+        clean = json.dumps({"metadata": {}, "files": [{"path": "example.rb",
+                                                       "offenses": []}],
+                            "summary": {"offense_count": 0, "target_file_count": 1}})
+        proc = MagicMock(stdout=clean, stderr="", returncode=0)
+        with patch("subprocess.run", return_value=proc):
+            assert _RuboCopAnalyzer().run(make_ctx()) == []
+
+    def test_offenses_still_parse(self, make_ctx):
+        """부정 통제 — 위반이 있으면 그대로 파싱된다(exit 1 은 정상이다)."""
+        from src.analyzer.io.tools.rubocop import _RuboCopAnalyzer
+        found = json.dumps({"metadata": {}, "files": [{"path": "example.rb", "offenses": [
+            {"severity": "convention", "message": "Style/FrozenStringLiteralComment",
+             "cop_name": "Style/FrozenStringLiteralComment",
+             "location": {"line": 1, "column": 1}}]}],
+            "summary": {"offense_count": 1, "target_file_count": 1}})
+        proc = MagicMock(stdout=found, stderr="", returncode=1)
+        with patch("subprocess.run", return_value=proc):
+            assert len(_RuboCopAnalyzer().run(make_ctx())) == 1

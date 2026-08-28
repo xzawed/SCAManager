@@ -12,8 +12,8 @@
     뮤테이션: 눈먼 형태로 새 어댑터 2개 투입 → 가드 exit 0 (5 passed)
 
 그래서 `KNOWN_FAIL_OPEN` 에 적혀 있던 14개는 **실제 집합이 아니라 눈먼 탐지기의 출력**이었다.
-재집계 20 → W1 5개(관측면 0)와 W3 3개(스폰 축)를 fail-closed 로 돌려 현재 **12개**다 — 남은 것은
-전부 W2(전담 축 소실)다. 형태 7종은 `tests/unit/analyzer/fixtures/` 에 픽스처로 박혀 있고,
+재집계 20 → W1 5개(관측면 0)·W3 3개(스폰 축)·W2 3개(실측 판별식)를 fail-closed 로 돌려
+현재 **9개**다. 형태 7종은 `tests/unit/analyzer/fixtures/` 에 픽스처로 박혀 있고,
 각 파일 docstring 이 그 형태를 쓰는 실물 어댑터 좌표를 든다.
 
 ## 판정을 관용구에서 파생값으로 바꿨다
@@ -63,9 +63,11 @@ _NARROW_AXES = ("TimeoutExpired", "FileNotFoundError")
 # 고친 어댑터는 이 목록에서 빼면 된다.
 KNOWN_FAIL_OPEN: frozenset[str] = frozenset({
     # 분석 축이 통째로 fail-open — 크래시가 «이슈 0건 · 완전» 이 된다.
-    # 남은 12개는 #1557 W2 다: semgrep 이 같은 언어를 덮지만 **전담 축은 사라진다**.
-    "clippy", "cppcheck", "dotnet_format", "golangci_lint", "hadolint",
-    "htmlhint", "ktlint", "phpstan", "rubocop", "shellcheck", "slither",
+    # 남은 9개는 #1557 W2 잔여다: semgrep 이 같은 언어를 덮지만 **전담 축은 사라진다**.
+    # 🔴 판별식은 도구마다 다르다 — 실측으로 정한 것만 전환한다. rubocop 은 크래시해도
+    #    유효한 JSON 을 내므로 「비-JSON 이면 raise」 관용구가 통하지 않았다.
+    "cppcheck", "dotnet_format", "golangci_lint", "hadolint",
+    "htmlhint", "ktlint", "phpstan", "shellcheck",
     "swiftlint",
 })
 
