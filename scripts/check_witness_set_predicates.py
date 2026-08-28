@@ -47,6 +47,17 @@ import re
 import subprocess
 import sys
 
+# 🔴 PR 본문은 **단일 리더**를 통해서만 읽는다 — 원문을 정규식에 넘기면 HTML 주석 안
+# 마커가 "리뷰어 비가시 + 게이트 통과" 를 성립시킨다(회고 N-P0-1 · backlog R20 결함 1).
+# 스크립트 간 공유 관용구는 `retro_scope.py:34` 선례를 따른다(standalone 실행이라
+# sys.path 조작이 필요하다). 단일성 강제: `tests/unit/scripts/test_pr_body_single_reader.py`.
+# Read the PR body only through the single hardened reader; see the guard test.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+
+from check_claim_review_trace import (  # noqa: E402  # pylint: disable=wrong-import-position
+    read_pr_body,
+)
+
 
 def _make_stdout_safe() -> None:
     """Windows(cp949) 콘솔에서 한국어 출력이 UnicodeEncodeError 로 죽는 것을 막는다.
@@ -365,13 +376,33 @@ def _report_missing(new, values, needles, outside) -> int:
     return 1
 
 
-def main() -> int:
-    """새 술어가 있는데 **검사 바깥의** 반례가 부족하면 1."""
-    base = sys.argv[1] if len(sys.argv) > 1 else "origin/main"
-    body = subprocess.run(
+def _pr_body() -> str:
+    """PR 본문 — **워크플로가 넘긴 `PR_BODY`**(단일 리더 경유)가 우선, `gh pr view` 는 로컬 대체.
+
+    🔴 CI 에서 `gh pr view` 는 쓸 수 없다. 이 스텝에는 `GH_TOKEN` 이 없고, Actions 의
+    체크아웃은 detached HEAD 라 `gh` 가 PR 을 고를 셀렉터도 없다. 그래서 조회는 실패하고
+    본문이 빈 문자열이 되어 **면제가 영영 매치되지 않았다** — 실패 메시지가 안내하는
+    `witness-corpus-not-applicable:` 을 그대로 적어도 red 인 거짓 빨강이었다.
+    로컬 `pre_push_gate` 는 `gh` 가 인증돼 있어 초록이라 이 갈림이 보이지 않았다.
+
+    🔴 환경은 `read_pr_body()` 로만 읽는다 — 원문을 정규식에 넘기면 HTML 주석 안의 마커가
+    「리뷰어 비가시 + 게이트 통과」를 성립시킨다. 면제가 도달 가능해지는 순간 이 축이
+    처음으로 실재하므로, 도달성과 하드닝은 같은 변경에 들어가야 한다.
+    Read the env only through the single hardened reader; `gh` is the local fallback.
+    """
+    from_env = read_pr_body()
+    if from_env:
+        return from_env
+    return subprocess.run(
         ["gh", "pr", "view", "--json", "body", "--jq", ".body"],
         capture_output=True, check=False, encoding="utf-8", errors="replace",
     ).stdout or ""
+
+
+def main() -> int:
+    """새 술어가 있는데 **검사 바깥의** 반례가 부족하면 1."""
+    base = sys.argv[1] if len(sys.argv) > 1 else "origin/main"
+    body = _pr_body()
     if EXEMPT.search(body):
         print("✅ 면제 선언 — witness-corpus-not-applicable (사유 있음)")
         return 0
