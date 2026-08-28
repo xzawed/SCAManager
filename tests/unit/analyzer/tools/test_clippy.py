@@ -120,3 +120,46 @@ class TestClippyAnalyzer:
         importlib.reload(src.analyzer.io.tools.clippy)
         names = [a.name for a in REGISTRY]
         assert "clippy" in names
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 크래시가 «이슈 0건» 이 되던 자리 (#1557 W2 — 실측 기반)
+#
+# 🔴 판별식은 도구마다 다르다. 이 리포의 관용구(「비-JSON stdout 이면 raise」)를
+#    그대로 복사하면 이 도구의 크래시를 **못 잡는다** — 아래 실측이 그것을 보여준다.
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class TestClippyCrashIsNotACleanRun:
+    """🔴 실측(clippy 0.1.97, 임시 cargo 프로젝트):
+
+        깨끗          exit=0   · stdout 3줄 (compiler-artifact · build-finished)
+        린트 있음      exit=0   · stdout 5줄
+        컴파일 오류    exit=**101** · stdout 3줄 (build-finished success=false)
+        크래시(Cargo.toml 없음) exit=**101** · stdout **0줄**
+
+    정당한 컴파일 오류와 크래시가 **둘 다 exit 101** 이다 — exit 은 판별식이 아니다.
+    성공하면 깨끗해도 JSONL 을 내므로 판별식은 **빈 stdout** 이다.
+    Measured: a legitimate compile error and a crash share exit 101; only stdout differs.
+    """
+
+    def test_empty_stdout_is_a_crash(self):
+        from src.analyzer.io.tools.clippy import _ClippyAnalyzer
+        proc = MagicMock(stdout="", stderr="error: could not find `Cargo.toml`", returncode=101)
+        with patch("src.analyzer.io.tools.clippy._build_temp_cargo_project", return_value="/tmp/x"):
+            with patch("subprocess.run", return_value=proc):
+                with pytest.raises(RuntimeError, match="clippy"):
+                    _ClippyAnalyzer().run(_make_ctx("rust", "main.rs"))
+
+    def test_compile_error_at_exit_101_is_not_a_crash(self):
+        """🔴 부정 통제 — 컴파일 오류는 **정당한 발견**이다. exit 으로 판정하면 차단된다."""
+        from src.analyzer.io.tools.clippy import _ClippyAnalyzer
+        jsonl = "\n".join([
+            '{"reason":"compiler-message","message":{"level":"error",'
+            '"message":"mismatched types","code":null,"spans":[]}}',
+            '{"reason":"build-finished","success":false}',
+        ]) + "\n"
+        proc = MagicMock(stdout=jsonl, stderr="", returncode=101)
+        with patch("src.analyzer.io.tools.clippy._build_temp_cargo_project", return_value="/tmp/x"):
+            with patch("subprocess.run", return_value=proc):
+                _ClippyAnalyzer().run(_make_ctx("rust", "main.rs"))  # raise 하지 않는다

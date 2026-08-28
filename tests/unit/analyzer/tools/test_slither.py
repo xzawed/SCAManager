@@ -10,6 +10,7 @@ os.environ.setdefault("TELEGRAM_BOT_TOKEN", "123:ABC")
 os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
 
 import subprocess  # noqa: E402
+import pytest  # noqa: E402
 from unittest.mock import MagicMock, patch  # noqa: E402
 
 from src.analyzer.pure.registry import AnalyzeContext  # noqa: E402
@@ -181,8 +182,11 @@ def test_parse_json_missing_elements_defaults_line_to_zero():
     assert issues[0].line == 0
 
 
-def test_parse_json_returns_empty_when_compilation_failed():
-    assert _parse_slither_json(_JSON_COMPILATION_FAILED, language="solidity") == []
+def test_parse_json_raises_when_compilation_failed():
+    """🔴 계약 변경(#1557 W2) — `success=false` 는 slither 자신이 「분석 못 했다」고
+    보고한 것이다. `[]` 로 돌려주면 그 침묵이 «이슈 0건 · 완전» 이 된다."""
+    with pytest.raises(ValueError, match="success=false"):
+        _parse_slither_json(_JSON_COMPILATION_FAILED, language="solidity")
 
 
 # ── _SlitherAnalyzer.run (subprocess mock) ─────────────────────────────
@@ -196,15 +200,27 @@ def test_run_returns_empty_on_timeout():
         assert _SlitherAnalyzer().run(_ctx()) == []
 
 
-def test_run_returns_empty_on_oserror():
+def test_run_propagates_non_filenotfound_oserror():
+    """🔴 계약 변경(#1557 W2) — which() 통과 후의 실행 실패는 미분석이라 올라간다.
+    바이너리 부재(FileNotFoundError)만 조달 축으로 `[]` 다."""
     with patch(
         "src.analyzer.io.tools.slither.subprocess.run",
-        side_effect=OSError("not found"),
+        side_effect=PermissionError("permission denied"),
+    ):
+        with pytest.raises(OSError):
+            _SlitherAnalyzer().run(_ctx())
+
+
+def test_run_returns_empty_on_binary_missing():
+    """부정 통제 — 바이너리 부재는 조달 축이므로 그대로 `[]`."""
+    with patch(
+        "src.analyzer.io.tools.slither.subprocess.run",
+        side_effect=FileNotFoundError("slither not found"),
     ):
         assert _SlitherAnalyzer().run(_ctx()) == []
 
 
-def test_run_returns_empty_on_json_decode_error():
+def test_run_raises_on_json_decode_error():
     mock_result = MagicMock()
     mock_result.stdout = "not valid json {{{"
     mock_result.stderr = ""
@@ -212,11 +228,12 @@ def test_run_returns_empty_on_json_decode_error():
         "src.analyzer.io.tools.slither.subprocess.run",
         return_value=mock_result,
     ):
-        assert _SlitherAnalyzer().run(_ctx()) == []
+        with pytest.raises(RuntimeError, match="slither"):
+            _SlitherAnalyzer().run(_ctx())
 
 
-def test_run_returns_empty_on_schema_variant_results_list():
-    """slither JSON 스키마가 변형되어 results 가 list 면 AttributeError → []."""
+def test_run_raises_on_schema_variant_results_list():
+    """🔴 스키마 변형은 **미분석**이다 — 읽을 수 없는 출력을 «이슈 0건» 으로 기록하지 않는다."""
     mock_result = MagicMock()
     mock_result.stdout = '{"success": true, "results": ["unexpected list shape"]}'
     mock_result.stderr = ""
@@ -224,10 +241,12 @@ def test_run_returns_empty_on_schema_variant_results_list():
         "src.analyzer.io.tools.slither.subprocess.run",
         return_value=mock_result,
     ):
-        assert _SlitherAnalyzer().run(_ctx()) == []
+        with pytest.raises(RuntimeError, match="slither"):
+            _SlitherAnalyzer().run(_ctx())
 
 
-def test_run_empty_stdout_returns_empty():
+def test_run_raises_on_empty_stdout():
+    """🔴 성공하면 항상 JSON 을 낸다(실측) — 빈 stdout 은 미분석이다."""
     mock_result = MagicMock()
     mock_result.stdout = ""
     mock_result.stderr = ""
@@ -235,4 +254,41 @@ def test_run_empty_stdout_returns_empty():
         "src.analyzer.io.tools.slither.subprocess.run",
         return_value=mock_result,
     ):
-        assert _SlitherAnalyzer().run(_ctx()) == []
+        with pytest.raises(RuntimeError, match="slither"):
+            _SlitherAnalyzer().run(_ctx())
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 크래시가 «이슈 0건» 이 되던 자리 (#1557 W2 — 실측 기반)
+#
+# 🔴 판별식은 도구마다 다르다. 이 리포의 관용구(「비-JSON stdout 이면 raise」)를
+#    그대로 복사하면 이 도구의 크래시를 **못 잡는다** — 아래 실측이 그것을 보여준다.
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class TestSlitherCrashIsNotACleanRun:
+    """🔴 실측(slither, 이 호스트):
+
+        유효한 .sol      exit=**127** · stdout=2437자 · JSON success=true
+        구문 오류        exit=1   · stdout=**0자**
+        없는 파일        exit=1   · stdout=**0자**
+
+    성공해도 exit 이 0 이 아니다 — **exit code 는 판별식이 될 수 없다**.
+    성공하면 항상 JSON 을 내므로 판별식은 **빈 stdout** 이다.
+    Measured: a successful slither run exits 127 with JSON; a crash writes nothing.
+    """
+
+    def test_empty_stdout_is_a_crash(self):
+        from src.analyzer.io.tools.slither import _SlitherAnalyzer
+        proc = MagicMock(stdout="", stderr="Traceback ...", returncode=1)
+        with patch("subprocess.run", return_value=proc):
+            with pytest.raises(RuntimeError, match="slither"):
+                _SlitherAnalyzer().run(_ctx())
+
+    def test_nonzero_exit_with_json_is_not_a_crash(self):
+        """🔴 부정 통제 — 성공이 exit 127 이다. exit 으로 판정하면 정상 실행이 차단된다."""
+        from src.analyzer.io.tools.slither import _SlitherAnalyzer
+        ok = '{"success": true, "results": {"detectors": []}}'
+        proc = MagicMock(stdout=ok, stderr="", returncode=127)
+        with patch("subprocess.run", return_value=proc):
+            assert _SlitherAnalyzer().run(_ctx()) == []

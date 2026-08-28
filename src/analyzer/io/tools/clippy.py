@@ -17,6 +17,7 @@ import tempfile
 from src.analyzer.pure.registry import (
     AnalyzeContext, AnalysisIssue, Category, Severity, register,
 )
+from src.analyzer.io.tools._common import analysis_failed
 from src.constants import STATIC_ANALYSIS_TIMEOUT
 
 logger = logging.getLogger(__name__)
@@ -107,6 +108,16 @@ class _ClippyAnalyzer:
                 timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
                 cwd=tmp_dir,
             )
+            # 🔴 exit code 는 판별식이 **아니다** — 실측(clippy 0.1.97, 임시 cargo 프로젝트):
+            #      깨끗          exit=0   · stdout 3줄 (compiler-artifact · build-finished)
+            #      린트 있음      exit=0   · stdout 5줄
+            #      컴파일 오류    exit=**101** · stdout 3줄 (build-finished success=false)
+            #      Cargo.toml 없음 exit=**101** · stdout **0줄**
+            #    정당한 컴파일 오류와 크래시가 같은 exit 을 낸다. 성공하면 깨끗해도 JSONL 을
+            #    내므로 판별식은 **빈 stdout** 이다.
+            # Measured: a legitimate compile error and a crash share exit 101; only stdout differs.
+            if not (r.stdout or "").strip():
+                raise analysis_failed("clippy", ctx, r, "produced no output")
             issues = []
             for line in (r.stdout or "").splitlines():
                 issue = _parse_clippy_line(line, ctx)
@@ -117,8 +128,11 @@ class _ClippyAnalyzer:
             ctx.timed_out = True
             logger.warning("clippy timed out for %s", ctx.tmp_path)
             return []
-        except OSError as exc:
-            logger.warning("clippy failed for %s: %s", ctx.tmp_path, exc)
+        except FileNotFoundError as exc:
+            # which() 통과 뒤 사라진 바이너리 — 조달 축(`unavailable_tools`)이 담당한다.
+            # 그 밖의 OSError(깨진 shebang · 권한)는 미분석이므로 올라간다.
+            # A binary that vanished after the which() gate; procurement owns it.
+            logger.warning("clippy unavailable for %s: %s", ctx.tmp_path, exc)
             return []
         finally:
             # 임시 Cargo 프로젝트 정리 — OSError는 무시

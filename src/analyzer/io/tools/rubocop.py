@@ -22,6 +22,7 @@ import shutil
 import subprocess  # nosec B404
 
 from src.analyzer.pure.registry import AnalyzeContext, AnalysisIssue, Category, Severity, register
+from src.analyzer.io.tools._common import analysis_failed
 from src.constants import STATIC_ANALYSIS_TIMEOUT
 
 logger = logging.getLogger(__name__)
@@ -50,16 +51,34 @@ class _RuboCopAnalyzer:
                 ["rubocop", "--format", "json", ctx.tmp_path],
                 capture_output=True, text=True, timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
             )
+            # 🔴 판별식은 「파싱되는가」가 아니다 — rubocop 은 **크래시해도 유효한 JSON** 을 낸다.
+            #    실측(1.90.0, 없는 파일): exit=2 · stdout 231자 · `{"files": [], "summary":
+            #    {"offense_count": 0, "target_file_count": 1}}`. `json.loads` 가 성공하므로
+            #    「비-JSON 이면 raise」 관용구는 이 크래시를 그대로 통과시킨다.
+            #    실제 분석은 대상 파일마다 `files` 항목을 만든다(위반 0건이어도). 그래서
+            #    판별식은 **`files` 가 비었는가**다. `target_file_count` 는 크래시에도 1 이라 못 쓴다.
+            # Measured: rubocop emits valid JSON with an empty `files` array when it cannot
+            # analyze, so "unparseable JSON" is not the crash signal — an empty `files` is.
             if not r.stdout.strip():
-                return []
+                raise analysis_failed("rubocop", ctx, r, "produced no output")
+            try:
+                payload = json.loads(r.stdout)
+            except json.JSONDecodeError as exc:
+                raise analysis_failed(
+                    "rubocop", ctx, r, "produced unparseable JSON") from exc
+            if not payload.get("files"):
+                raise analysis_failed(
+                    "rubocop", ctx, r, "analyzed no file (empty `files`)")
             return _parse_rubocop_json(r.stdout, ctx.language)
         except subprocess.TimeoutExpired:
             ctx.timed_out = True
             logger.warning("rubocop timed out for %s", ctx.tmp_path)
             return []
-        except (OSError, json.JSONDecodeError, ValueError,
-                AttributeError, TypeError) as exc:
-            logger.warning("rubocop failed for %s: %s", ctx.tmp_path, exc)
+        except FileNotFoundError as exc:
+            # which() 통과 뒤 사라진 바이너리 — 조달 축(`unavailable_tools`)이 담당한다.
+            # 그 밖의 OSError(깨진 shebang · 권한)는 미분석이므로 올라간다.
+            # A binary that vanished after the which() gate; procurement owns it.
+            logger.warning("rubocop unavailable for %s: %s", ctx.tmp_path, exc)
             return []
 
 
