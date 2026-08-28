@@ -155,11 +155,16 @@ class TestClippyCrashIsNotACleanRun:
     def test_compile_error_at_exit_101_is_not_a_crash(self):
         """🔴 부정 통제 — 컴파일 오류는 **정당한 발견**이다. exit 으로 판정하면 차단된다."""
         from src.analyzer.io.tools.clippy import _ClippyAnalyzer
-        jsonl = "\n".join([
-            '{"reason":"compiler-message","message":{"level":"error",'
-            '"message":"mismatched types","code":null,"spans":[]}}',
-            '{"reason":"build-finished","success":false}',
-        ]) + "\n"
+        # 🔴 리스트 안에서 인접 문자열 리터럴을 붙이지 않는다 — 쉼표 누락과 구별되지 않아
+        #    CodeQL py/implicit-string-concatenation-in-list 가 발화한다(#608, 자초).
+        # Build the line first: implicit concatenation inside a list reads as a missing comma.
+        compiler_message = json.dumps({
+            "reason": "compiler-message",
+            "message": {"level": "error", "message": "mismatched types",
+                        "code": None, "spans": []},
+        })
+        build_finished = json.dumps({"reason": "build-finished", "success": False})
+        jsonl = compiler_message + "\n" + build_finished + "\n"
         proc = MagicMock(stdout=jsonl, stderr="", returncode=101)
         with patch("src.analyzer.io.tools.clippy._build_temp_cargo_project", return_value="/tmp/x"):
             with patch("subprocess.run", return_value=proc):
