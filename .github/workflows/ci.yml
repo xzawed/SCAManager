@@ -198,8 +198,6 @@ jobs:
       - name: 민감 경로 hold drift (check_sensitive_path_drift)
         run: python scripts/check_sensitive_path_drift.py
 
-      - name: 증거집합 술어의 외부 반례 코퍼스 (check_witness_set_predicates)
-        run: python scripts/check_witness_set_predicates.py
       # 🔴 **이 조회는 본문을 읽는 모든 스텝 앞에 있어야 한다** (2026-08-22 실측).
       #    최초 도입(#1464)은 「테스트 수치」 스텝 하나만 이 값으로 바꿨고, 같은 본문을 읽는
       #    정책 19(claim-review)·역-뮤테이션 두 스텝은 `github.event.pull_request.body`
@@ -221,6 +219,16 @@ jobs:
             printf '%s\n' "$body"
             echo "__PR_BODY_EOF__"
           } >> "$GITHUB_OUTPUT"
+
+      # 🔴 이 스텝은 본문 조회 **뒤**여야 한다. 앞에 두면 면제 채널
+      #    (`witness-corpus-not-applicable:`)이 읽을 본문이 아직 없다 — 스크립트가 스스로
+      #    `gh pr view` 를 부르던 판은 이 스텝에 `GH_TOKEN` 이 없어 늘 빈 본문을 받았고,
+      #    안내대로 면제를 적어도 영영 red 였다(거짓 빨강). 형제 스텝과 같은 env 관용구로 맞춘다.
+      #    Must run after the body lookup: otherwise the exemption channel has nothing to read.
+      - name: 증거집합 술어의 외부 반례 코퍼스 (check_witness_set_predicates)
+        env:
+          PR_BODY: ${{ steps.prbody.outputs.body }}
+        run: python scripts/check_witness_set_predicates.py
 
       - name: 정책 19 — seal 주장 시 claim-review 흔적 강제
         if: github.event_name == 'pull_request'

@@ -114,7 +114,14 @@ jobs:
       - name: 민감 경로 hold drift (check_sensitive_path_drift)
         run: python scripts/check_sensitive_path_drift.py
 
+      # 🔴 본문을 env 로 넘긴다 — 스크립트가 스스로 `gh pr view` 를 부르던 판은 이 스텝에
+      #    `GH_TOKEN` 이 없어(그리고 이 워크플로 권한에 `pull-requests: read` 도 없어)
+      #    늘 빈 본문을 받았고, 면제 채널이 영영 매치되지 않았다. 이 워크플로는 `edited` 로
+      #    발화하므로 페이로드 본문이 곧 최신값이다(ci.yml 은 rerun 때문에 조회 스텝을 쓴다).
+      #    Hand the body in via env; the script's own `gh pr view` could never authenticate here.
       - name: 증거집합 술어의 외부 반례 코퍼스 (check_witness_set_predicates)
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: python scripts/check_witness_set_predicates.py
 
       # 🔴 본문은 신뢰할 수 없는 입력 — `run:` 에 보간하지 않고 env 로 전달한다(명령 인젝션 차단).

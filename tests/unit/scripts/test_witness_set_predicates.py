@@ -278,3 +278,125 @@ def test_an_exemption_needs_a_reason():
     from scripts.check_witness_set_predicates import MIN_REASON  # noqa: PLC0415
 
     assert MIN_REASON >= 16
+
+
+# ─── 면제 채널의 도달성 ─────────────────────────────────────────────────────
+#
+# 🔴 이 채널은 **CI 에서 한 번도 도달할 수 없었다.** 가드는 실패 메시지에서 「해당 없으면 PR 본문에
+#    `witness-corpus-not-applicable: <사유>`」 라고 안내하는데, `main()` 은 그 본문을 `gh pr view`
+#    로 스스로 조회했고 두 워크플로 스텝 어디에도 `GH_TOKEN` 이 없었다. 조회가 실패하면 본문이
+#    빈 문자열이 되어 면제가 영영 매치되지 않는다 — 안내대로 해도 red 인 **거짓 빨강**이다.
+#    (로컬 `pre_push_gate` 는 `gh` 가 인증돼 있어 초록이라, 로컬과 CI 가 갈렸다.)
+#    이 절 이전에는 이 채널을 건드리는 테스트가 **0건**이었다 — 도달 불가라 발현하지 않았다.
+
+_VALID_REASON = "이 PR 은 술어가 아니라 배선만 옮긴다"   # 16자 이상
+
+
+def test_pr_body_comes_from_the_environment_first(monkeypatch):
+    """🔴 워크플로가 넘긴 `PR_BODY` 를 쓴다 — CI 에서 `gh pr view` 는 인증이 없어 실패한다."""
+    from scripts.check_witness_set_predicates import _pr_body  # noqa: PLC0415
+
+    monkeypatch.setenv("PR_BODY", f"witness-corpus-not-applicable: {_VALID_REASON}")
+    assert "witness-corpus-not-applicable" in _pr_body(), "env 로 받은 본문을 버렸다"
+
+
+def test_pr_body_goes_through_the_hardened_reader(monkeypatch):
+    """🔴 HTML 주석에 숨긴 면제는 통하지 않는다 — 단일 리더가 주석을 걷어낸다.
+
+    도달 가능해지기 전에는 이 축이 발현할 수 없었다. 도달성만 고치고 하드닝을 빠뜨리면
+    「리뷰어에게 안 보이는 곳에 한 줄 적어 가드 끄기」가 성립한다(회고 N-P0-1).
+    """
+    from scripts.check_witness_set_predicates import EXEMPT, _pr_body  # noqa: PLC0415
+
+    hidden = f"## 요약\n\n<!--\nwitness-corpus-not-applicable: {_VALID_REASON}\n-->\n"
+    monkeypatch.setenv("PR_BODY", hidden)
+    assert EXEMPT.search(hidden), "픽스처가 마커를 잘못 적었다 — 대조군 붕괴"
+    assert not EXEMPT.search(_pr_body()), "은닉 마커가 면제로 인정됐다"
+
+
+# --- 새로 도달 가능해진 입력 클래스 (verify.md 「판정식을 쓸 때」 · 완화 절차 7) ---
+
+def test_reachable_class_valid_exemption_matches():
+    """클래스 1 — 사유 16자 이상의 면제 선언이 이제 실제로 발화한다."""
+    from scripts.check_witness_set_predicates import EXEMPT  # noqa: PLC0415
+
+    assert EXEMPT.search(f"witness-corpus-not-applicable: {_VALID_REASON}")
+
+
+def test_reachable_class_short_reason_is_rejected():
+    """클래스 2 — 사유가 짧으면 면제가 아니다(한 줄로 가드를 끄는 것을 막는다)."""
+    from scripts.check_witness_set_predicates import EXEMPT  # noqa: PLC0415
+
+    assert not EXEMPT.search("witness-corpus-not-applicable: 없음")
+
+
+def test_reachable_class_quoted_marker_is_rejected():
+    """클래스 3 — 인용/코드 표기로 **설명**하는 줄은 면제가 아니다.
+
+    본문이 이 마커의 사용법을 적기만 해도 면제되면, 안내문 자체가 가드를 끈다.
+    """
+    from scripts.check_witness_set_predicates import EXEMPT  # noqa: PLC0415
+
+    assert not EXEMPT.search(f"`witness-corpus-not-applicable: {_VALID_REASON}`")
+    assert not EXEMPT.search(f'"witness-corpus-not-applicable: {_VALID_REASON}"')
+
+
+def test_reachable_class_mid_sentence_marker_is_rejected():
+    """클래스 4 — 산문 한가운데의 언급은 면제가 아니다(열 0 요구)."""
+    from scripts.check_witness_set_predicates import EXEMPT  # noqa: PLC0415
+
+    assert not EXEMPT.search(f"필요하면 witness-corpus-not-applicable: {_VALID_REASON}")
+
+
+def test_exemption_actually_fires_end_to_end():
+    """🔴 통합 — 정본 스크립트를 `PR_BODY` 와 함께 태우면 **면제 배너**가 나온다.
+
+    수정 전에는 env 를 보지 않았으므로 배너가 「새 증거집합 술어 없음」이었다.
+    두 배너 모두 exit 0 이라, 종료코드만 보면 이 축은 측정되지 않는다.
+    """
+    env = {**os.environ, "PR_BODY": f"witness-corpus-not-applicable: {_VALID_REASON}"}
+    proc = subprocess.run(
+        [sys.executable, str(_SCRIPT)], capture_output=True, text=True,
+        encoding="utf-8", errors="replace", cwd=str(_ROOT), check=False, env=env)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "면제 선언" in proc.stdout, (
+        f"PR_BODY 의 면제가 발화하지 않았다 — 출력:\n{proc.stdout}")
+
+
+# --- 배선: 두 워크플로가 본문을 실제로 넘기는가 (배치 회귀 가드) ---
+
+def _repo_integrity_steps(workflow: str) -> list[dict]:
+    """`Repo integrity guards` job 의 step 목록을 **구조로** 읽는다(문자열 검색 아님)."""
+    import yaml  # noqa: PLC0415
+
+    doc = yaml.safe_load((_ROOT / ".github" / "workflows" / workflow).read_text(encoding="utf-8"))
+    for job in doc["jobs"].values():
+        steps = job.get("steps") or []
+        if any("check_witness_set_predicates.py" in str(s.get("run", "")) for s in steps):
+            return steps
+    raise AssertionError(f"{workflow} 에서 witness 가드를 부르는 job 을 못 찾았다")
+
+
+@pytest.mark.parametrize("workflow", ["ci.yml", "claim-review-on-body-edit.yml"])
+def test_both_workflows_hand_the_body_to_the_guard(workflow):
+    """🔴 두 워크플로 모두 `PR_BODY` 를 이 스텝에 넘겨야 한다 — 없으면 면제가 도달 불가다."""
+    steps = _repo_integrity_steps(workflow)
+    step = next(s for s in steps if "check_witness_set_predicates.py" in str(s.get("run", "")))
+    assert "PR_BODY" in (step.get("env") or {}), (
+        f"{workflow}: witness 스텝에 PR_BODY 가 없다 — CI 에서 면제가 영영 매치되지 않는다")
+
+
+def test_ci_reads_the_body_before_the_guard_uses_it():
+    """🔴 `ci.yml` 에서 본문 조회 스텝이 witness 스텝보다 **앞**에 와야 한다.
+
+    이 순서가 뒤집힌 것이 원래 결함이다 — 같은 파일의 주석이 「이 조회는 본문을 읽는 모든
+    스텝 앞에 있어야 한다」고 적어 두었는데 witness 스텝만 그 앞에 있었다.
+    """
+    steps = _repo_integrity_steps("ci.yml")
+    ids = [s.get("id") for s in steps]
+    runs = [str(s.get("run", "")) for s in steps]
+    body_at = ids.index("prbody")
+    guard_at = next(i for i, r in enumerate(runs) if "check_witness_set_predicates.py" in r)
+    assert body_at < guard_at, (
+        f"본문 조회(idx {body_at})가 witness 가드(idx {guard_at}) 뒤에 있다 — "
+        "가드가 읽을 때 본문이 아직 없다")

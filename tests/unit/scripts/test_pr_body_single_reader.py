@@ -50,6 +50,10 @@ _SOLE_READER = "check_claim_review_trace.py"
 _MARKER_GATES = {
     "check_reverse_mutation": ("_EXEMPT", "reverse-mutation-not-applicable"),
     "check_test_count_sync": ("_DEFERRED", "STATE-sync-deferred"),
+    # 이 면제는 도입 시점부터 CI 에서 **도달 불가**였다(스텝에 GH_TOKEN 이 없어 본문이 늘 빈
+    # 문자열). 도달 가능해지는 순간 은닉 마커 축이 처음으로 실재하므로 같은 변경에서 등재한다.
+    # Unreachable in CI until the body was handed in; hardening lands with reachability.
+    "check_witness_set_predicates": ("EXEMPT", "witness-corpus-not-applicable"),
 }
 
 
