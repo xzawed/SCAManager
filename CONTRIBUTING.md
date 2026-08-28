@@ -30,7 +30,7 @@ cannot see (CodeQL, Codecov, TruffleHog, pip-audit, integration tests): green he
 
 Commits: `type(scope): summary`, imperative, ~72 chars, Korean fine; no real token/key/chat
 ID (`<REDACTED>`). Comments: Korean first, English next line (`# TODO`-style tags excepted);
-`scripts/check_bilingual_comments.py` reports.
+`scripts/i18n_comments/check_bilingual.py src/ --report` measures the rate.
 
 ## PR
 

@@ -112,29 +112,40 @@ def check_lines(added_comment_lines: list[str]) -> tuple[bool, list[str]]:
     return (not msgs), msgs
 
 
-def _added_comment_lines(files: list[str]) -> list[str]:
-    """git diff --cached 에서 추가된(+) 주석 라인 추출 (파일 목록 한정).
-    Extract added (+) comment lines from git diff --cached (limited to given files).
+def _staged_diff_text(files: list[str]) -> str:
+    """staged diff 원문. 빈 문자열 = **측정 대상 자체가 없다**(위반 없음과 다르다).
+    Raw staged diff; empty means nothing was measured — not that nothing was wrong.
     """
     if not files:
-        return []
-    # staged diff에서 추가 라인만 수집
-    # Collect only added lines from staged diff
+        return ""
     # 🔴 encoding="utf-8" 명시 의무 — text=True 단독은 플랫폼 로케일(Windows cp949)로 디코딩해
     # 한국어 UTF-8 diff 에서 UnicodeDecodeError 크래시 → stdout None. errors="replace" + `or ""` 로 견고화.
     # encoding="utf-8" is mandatory — bare text=True decodes with the platform locale (Windows cp949)
     # and crashes on Korean UTF-8 diffs. errors="replace" + `or ""` harden against decode/None.
-    out = subprocess.run(  # nosec B603 B607
+    return subprocess.run(  # nosec B603 B607
         ["git", "diff", "--cached", "--unified=0", "--", *files],
         capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
     ).stdout or ""
+
+
+def _added_from_diff(diff: str) -> list[str]:
+    """diff 원문에서 추가된(+) 라인 추출.
+    Extract added (+) lines from a raw diff.
+    """
     added = []
-    for ln in out.splitlines():
+    for ln in diff.splitlines():
         # '+' 로 시작하되 '+++' (파일 헤더) 제외
         # Lines starting with '+' but not '+++' (file header)
         if ln.startswith("+") and not ln.startswith("+++"):
             added.append(ln[1:])
     return added
+
+
+def _added_comment_lines(files: list[str]) -> list[str]:
+    """git diff --cached 에서 추가된(+) 주석 라인 추출 (파일 목록 한정).
+    Extract added (+) comment lines from git diff --cached (limited to given files).
+    """
+    return _added_from_diff(_staged_diff_text(files))
 
 
 def main() -> int:
@@ -144,8 +155,24 @@ def main() -> int:
     # .py 파일만 대상 (pre-commit이 전달한 인수 필터링)
     # Target .py files only (filter args passed by pre-commit)
     files = [a for a in sys.argv[1:] if a.endswith(".py")]
-    ok, msgs = check_lines(_added_comment_lines(files))
+    diff = _staged_diff_text(files)
     print("=== 이중언어 주석 점검 / Bilingual Comment Check ===\n")
+
+    # 🔴 「못 쟀음」과 「위반 없음」을 가른다 (verify.md 「판정식을 쓸 때」 5).
+    #    이 체커는 **staged 추가 라인**만 본다. 손으로 인자 없이 돌리면 측정 대상이 0 이고,
+    #    그때 ✅ 를 찍으면 그 초록이 「이중언어 규칙 지켜짐」의 근거로 읽힌다 — 실제로는
+    #    아무것도 재지 않았다. 리포 전체 비율은 아래 명령이 잰다.
+    #    Distinguish "measured nothing" from "no violations": a manual run stages nothing,
+    #    so a green banner there would be read as compliance while measuring zero lines.
+    if not diff.strip():
+        reason = ("인자에 .py 파일이 없다" if not files else "staged 변경이 없다")
+        print(f"⚠️  아무것도 재지 않았다 — {reason} (초록이 아니라 '안 쟀음')")
+        print("    Nothing was measured — this is not a pass.")
+        print("\n이 체커는 **staged 추가 주석**만 본다. 리포 전체 비율은:")
+        print("    py -3 scripts/i18n_comments/check_bilingual.py src/ --report")
+        return 2
+
+    ok, msgs = check_lines(_added_from_diff(diff))
     if ok:
         print("✅ 추가 주석 라인에 한글-only(영어 병행 없음) 위반 없음")
         print("✅ No Korean-only (without English) comment violations in added lines")

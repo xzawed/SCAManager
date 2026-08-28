@@ -64,7 +64,7 @@ py -3 -m pytest e2e/ -p no:asyncio  # E2E (tests/ 와 같이 돌리지 않는다
 ## 코드 주석
 
 한국어를 먼저 쓰고 다음 줄에 영어를 붙인다. `# TODO`·`# type: ignore` 같은 표준 태그는 영어 단독.
-관행이지 게이트는 아니다 — `py -3 scripts/check_bilingual_comments.py` 가 보고만 한다.
+관행이지 게이트는 아니다 — `py -3 scripts/i18n_comments/check_bilingual.py src/ --report` 가 비율을 잰다.
 
 ## 문서 규칙
 

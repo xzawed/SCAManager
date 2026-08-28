@@ -47,6 +47,18 @@ import re
 import subprocess
 import sys
 
+# 🔴 PR 본문은 **단일 리더**를 통해서만 읽는다 — 원문을 정규식에 넘기면 HTML 주석 안
+# 마커가 "리뷰어 비가시 + 게이트 통과" 를 성립시킨다(회고 N-P0-1 · backlog R20 결함 1).
+# 스크립트 간 공유 관용구는 `retro_scope.py:34` 선례를 따른다(standalone 실행이라
+# sys.path 조작이 필요하다). 단일성 강제: `tests/unit/scripts/test_pr_body_single_reader.py`.
+# Read the PR body only through the single hardened reader; see the guard test.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+
+from check_claim_review_trace import (  # noqa: E402  # pylint: disable=wrong-import-position
+    read_pr_body,
+    strip_html_comments,
+)
+
 
 def _make_stdout_safe() -> None:
     """Windows(cp949) 콘솔에서 한국어 출력이 UnicodeEncodeError 로 죽는 것을 막는다.
@@ -241,16 +253,28 @@ def outside_witness(values: list[str], *, needles: set[str]) -> list[str]:
 
 
 def _git(*args: str) -> str:
-    """🔴 git 출력을 **UTF-8 로** 읽는다.
+    """git 서브프로세스 → stdout. 실패 시 **loud 종료**(fail-CLOSED).
 
-    `text=True` 만 주면 로케일(Windows cp949)로 디코드해 한국어가 든 diff 에서
-    `UnicodeDecodeError` 로 죽고, 그때 `stdout` 은 None 이라 뒤에서 또 터진다.
-    실제로 이 가드의 첫 판이 그렇게 죽었다.
+    🔴 git 출력을 **UTF-8 로** 읽는다. `text=True` 만 주면 로케일(Windows cp949)로
+    디코드해 한국어가 든 diff 에서 `UnicodeDecodeError` 로 죽고, 그때 `stdout` 은
+    None 이라 뒤에서 또 터진다. 실제로 이 가드의 첫 판이 그렇게 죽었다.
 
-    Decode git output as UTF-8; the locale codec dies on Korean diffs.
+    🔴 fail-OPEN 금지 (회고 2026-07-19 P1) — 이 함수의 첫 판은 `returncode` 를 버리고
+    `""` 를 돌려줬다. `main()` 은 새 술어가 없으면 `✅ 새 증거집합 술어 없음` 으로 exit 0
+    하므로, git 실패가 곧 **성공 배너**였다. 형제 3종은 같은 결함을 2026-07-19 에 봉인했는데
+    이 네 번째 사본은 그 뒤에 들어와 봉인 밖에 있었다.
+    Fail-closed git helper; a silent "" made any git failure print the success banner.
+
+    🔴 **PARITY GUARD** — 동일 계약이 `check_dead_code.py`·`check_dual_import.py`·
+    `check_noqa_sideeffect.py` 에도 있다(`tests/unit/scripts/test_guard_git_failclosed.py`
+    가 동작 동등성 강제 — 분류 대상은 AST 로 파생한다).
     """
     proc = subprocess.run(["git", *args], capture_output=True, check=False,
                           encoding="utf-8", errors="replace")
+    if proc.returncode != 0:
+        print(f"🔴 git 실패 — 가드 실행 불가 (fail-closed): git {' '.join(args)}")
+        print(f"   {(proc.stderr or '').strip()[:300]}")
+        sys.exit(2)
     return proc.stdout or ""
 
 
@@ -345,21 +369,48 @@ def _report_missing(new, values, needles, outside) -> int:
     print(f"   {MIN_OUTSIDE}개 이상 두고, 그 컬렉션 위에 표기하세요:")
     print("     # witness-corpus: <왜 이것들이 같은 부류인가 — 16자 이상>")
     print("   그 값은 검사에서 뽑지 마세요 — 이슈·코퍼스·실사건에서 가져옵니다.")
-    print("   해당 없으면 PR 본문 열 0 에 "
+    # 「열 0」이라 적었으나 판정은 `^[ \t]*` 다 — 들여쓰기를 허용한다. 안내가 판정보다
+    # 좁으면 사람이 되는 형태를 안 된다고 읽는다(Grok claim-review 지적).
+    # The help text said column 0; the predicate allows leading whitespace.
+    print("   해당 없으면 PR 본문에서 **줄 맨 앞**(들여쓰기 허용, 인용부호 없이) "
           "`witness-corpus-not-applicable: <사유 16자 이상>`.")
+    print("   HTML 주석 안은 인정되지 않는다 — 리뷰어에게 보이는 곳에 적어야 한다.")
     print()
     print("   실측 근거: 조용한 결함 발견율 13% vs 시끄러운 결함 89% · "
           "기전 인지 후 재발 62%.")
     return 1
 
 
+def _pr_body() -> str:
+    """PR 본문 — **워크플로가 넘긴 `PR_BODY`**(단일 리더 경유)가 우선, `gh pr view` 는 로컬 대체.
+
+    🔴 CI 에서 `gh pr view` 는 쓸 수 없다. 이 스텝에는 `GH_TOKEN` 이 없고, Actions 의
+    체크아웃은 detached HEAD 라 `gh` 가 PR 을 고를 셀렉터도 없다. 그래서 조회는 실패하고
+    본문이 빈 문자열이 되어 **면제가 영영 매치되지 않았다** — 실패 메시지가 안내하는
+    `witness-corpus-not-applicable:` 을 그대로 적어도 red 인 거짓 빨강이었다.
+    로컬 `pre_push_gate` 는 `gh` 가 인증돼 있어 초록이라 이 갈림이 보이지 않았다.
+
+    🔴 환경은 `read_pr_body()` 로만 읽는다 — 원문을 정규식에 넘기면 HTML 주석 안의 마커가
+    「리뷰어 비가시 + 게이트 통과」를 성립시킨다. 면제가 도달 가능해지는 순간 이 축이
+    처음으로 실재하므로, 도달성과 하드닝은 같은 변경에 들어가야 한다.
+    Read the env only through the single hardened reader; `gh` is the local fallback.
+    """
+    from_env = read_pr_body()
+    if from_env:
+        return from_env
+    # 🔴 로컬 대체 경로도 같은 하드닝을 받는다 — 여기만 원문이면 「로컬에서는 은닉 마커로
+    # 통과, CI 에서는 red」 라는 두 번째 로컬/CI 갈림이 생긴다(Grok claim-review 지적).
+    # The local fallback gets the same stripping; otherwise local and CI diverge again.
+    return strip_html_comments(subprocess.run(
+        ["gh", "pr", "view", "--json", "body", "--jq", ".body"],
+        capture_output=True, check=False, encoding="utf-8", errors="replace",
+    ).stdout or "")
+
+
 def main() -> int:
     """새 술어가 있는데 **검사 바깥의** 반례가 부족하면 1."""
     base = sys.argv[1] if len(sys.argv) > 1 else "origin/main"
-    body = subprocess.run(
-        ["gh", "pr", "view", "--json", "body", "--jq", ".body"],
-        capture_output=True, check=False, encoding="utf-8", errors="replace",
-    ).stdout or ""
+    body = _pr_body()
     if EXEMPT.search(body):
         print("✅ 면제 선언 — witness-corpus-not-applicable (사유 있음)")
         return 0
