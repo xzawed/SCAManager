@@ -32,8 +32,9 @@
 정하면 다르게 명명된 헬퍼에 눈멀고, 그것은 관용구 열거와 같은 실패다.
 
 `except OSError` 는 B 로 걸린다 — `shutil.which` 를 통과한 뒤의 ENOEXEC(깨진 shebang)·
-PermissionError·TOCTOU 는 「바이너리 부재」가 아니라 미분석이다. `FileNotFoundError` 로
-좁힌 `semgrep.py`·`python.py` 만 이 구별을 갖고 있다.
+PermissionError·TOCTOU 는 「바이너리 부재」가 아니라 미분석이다. 이 구별은 `FileNotFoundError`
+로 좁힌 어댑터만 갖는다(실측 10/23). 어느 것이 남았는지는 이 파일이 아니라 **탐지기**가
+말한다 — 아래 목록은 그 출력과 대조될 뿐이고, 목록을 손으로 읽어 판단하지 않는다.
 
 ## 이 파일이 하는 것
 

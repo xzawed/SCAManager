@@ -133,10 +133,12 @@ class _ESLintAnalyzer:
         when eslint died on a missing config or an invalid flag, making a dead analyzer
         indistinguishable from "zero issues" and inflating scores into the gate.
 
-        예외: 타임아웃(`ctx.timed_out`)과 바이너리 부재(`OSError`)는 **의도적 미수행** 경로라
-        기존 계약대로 `[]` 를 반환한다 (`static.py` 의 opt-out 경계).
-        Exceptions: timeout and a missing binary are *intentional* non-execution paths and keep
-        returning [] per the existing contract (static.py's opt-out boundary).
+        예외: 타임아웃(`ctx.timed_out`)과 바이너리 부재(`FileNotFoundError`)는 **의도적 미수행**
+        경로라 기존 계약대로 `[]` 를 반환한다 (`static.py` 의 opt-out 경계). 그 밖의 `OSError`
+        (깨진 shebang · 권한)는 which() 를 통과한 뒤의 실행 실패라 미분석이고 올라간다.
+        Exceptions: timeout and a missing binary (FileNotFoundError) are *intentional*
+        non-execution paths and keep returning []; any other OSError is a spawn failure after
+        the which() gate — unanalyzed, so it propagates.
         """
         # JSX/TSX 파일은 React 설정 사용, 그 외는 기본 설정 사용
         # Use React config for JSX/TSX files, base config otherwise
