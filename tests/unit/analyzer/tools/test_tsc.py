@@ -87,3 +87,37 @@ class TestTscAnalyzer:
         # TypeScript 언어 감지기는 .tsx도 "typescript"로 감지함
         # The language detector classifies .tsx as "typescript"
         assert a.supports(_make_ctx("typescript", "component.tsx"))
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 스폰 축 fail-closed (#1557 W3)
+#
+# 🔴 `except OSError` 는 두 가지를 한 갈래로 보냈다: 「바이너리가 없다」(조달 축)와
+#    「which() 를 통과했는데 실행이 실패했다」(미분석). 후자는 깨진 shebang·권한·TOCTOU 이고
+#    분석이 **안 된** 것이므로 `[]` 로 돌려주면 그 침묵이 «이슈 0건 · 완전» 이 된다.
+#    `FileNotFoundError` 로 좁히면 앞은 그대로 `[]`, 뒤는 올라가 `static.py` 가 incomplete 로 승격한다.
+# A spawn failure after which() succeeded is unanalyzed, not "binary absent".
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class TestTscSpawnAxisFailClosed:
+    def test_file_not_found_still_returns_empty(self):
+        """대조군 — 바이너리 부재는 조달 축이다."""
+        from src.analyzer.io.tools.tsc import _TscAnalyzer
+        ctx = _make_ctx("typescript", "app.ts")
+        with patch("subprocess.run", side_effect=FileNotFoundError("tsc not found")):
+            with patch("shutil.which", return_value="/usr/bin/tsc"):
+                assert _TscAnalyzer().run(ctx) == []
+
+    @pytest.mark.parametrize("exc", [
+        PermissionError("permission denied"),
+        OSError(8, "Exec format error"),
+    ], ids=["permission", "enoexec"])
+    def test_spawn_failure_is_not_a_clean_run(self, exc):
+        """🔴 which() 통과 후의 실행 실패는 미분석 — 올라가야 한다."""
+        from src.analyzer.io.tools.tsc import _TscAnalyzer
+        ctx = _make_ctx("typescript", "app.ts")
+        with patch("subprocess.run", side_effect=exc):
+            with patch("shutil.which", return_value="/usr/bin/tsc"):
+                with pytest.raises(OSError):
+                    _TscAnalyzer().run(ctx)

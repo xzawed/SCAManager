@@ -12,7 +12,8 @@
     뮤테이션: 눈먼 형태로 새 어댑터 2개 투입 → 가드 exit 0 (5 passed)
 
 그래서 `KNOWN_FAIL_OPEN` 에 적혀 있던 14개는 **실제 집합이 아니라 눈먼 탐지기의 출력**이었다.
-재집계 21 → W1 5개를 fail-closed 로 돌려 현재 15개다. 형태 7종은 `tests/unit/analyzer/fixtures/` 에 픽스처로 박혀 있고,
+재집계 20 → W1 5개(관측면 0)와 W3 3개(스폰 축)를 fail-closed 로 돌려 현재 **12개**다 — 남은 것은
+전부 W2(전담 축 소실)다. 형태 7종은 `tests/unit/analyzer/fixtures/` 에 픽스처로 박혀 있고,
 각 파일 docstring 이 그 형태를 쓰는 실물 어댑터 좌표를 든다.
 
 ## 판정을 관용구에서 파생값으로 바꿨다
@@ -31,8 +32,9 @@
 정하면 다르게 명명된 헬퍼에 눈멀고, 그것은 관용구 열거와 같은 실패다.
 
 `except OSError` 는 B 로 걸린다 — `shutil.which` 를 통과한 뒤의 ENOEXEC(깨진 shebang)·
-PermissionError·TOCTOU 는 「바이너리 부재」가 아니라 미분석이다. `FileNotFoundError` 로
-좁힌 `semgrep.py`·`python.py` 만 이 구별을 갖고 있다.
+PermissionError·TOCTOU 는 「바이너리 부재」가 아니라 미분석이다. 이 구별은 `FileNotFoundError`
+로 좁힌 어댑터만 갖는다(실측 10/23). 어느 것이 남았는지는 이 파일이 아니라 **탐지기**가
+말한다 — 아래 목록은 그 출력과 대조될 뿐이고, 목록을 손으로 읽어 판단하지 않는다.
 
 ## 이 파일이 하는 것
 
@@ -61,12 +63,10 @@ _NARROW_AXES = ("TimeoutExpired", "FileNotFoundError")
 # 고친 어댑터는 이 목록에서 빼면 된다.
 KNOWN_FAIL_OPEN: frozenset[str] = frozenset({
     # 분석 축이 통째로 fail-open — 크래시가 «이슈 0건 · 완전» 이 된다.
+    # 남은 12개는 #1557 W2 다: semgrep 이 같은 언어를 덮지만 **전담 축은 사라진다**.
     "clippy", "cppcheck", "dotnet_format", "golangci_lint", "hadolint",
     "htmlhint", "ktlint", "phpstan", "rubocop", "shellcheck", "slither",
     "swiftlint",
-    # 분석 축은 fail-closed 인데 **spawn 축**이 fail-open — `except OSError` 가
-    # 실행 실패까지 삼킨다. `FileNotFoundError` 로 좁히면 빠진다.
-    "eslint", "tsc", "yamllint",
 })
 
 

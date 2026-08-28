@@ -156,9 +156,17 @@ def _run_analyzers(ctx: AnalyzeContext, result: StaticAnalysisResult) -> tuple[i
             # 🔴 감사 ④ (옵션 B): 도구가 내부에서 못 잡은 예상외 crash 는 이슈를 무음 폐기하므로
             # incomplete 로 승격 — 타임아웃(ctx.timed_out)과 동일하게 fail-closed 처리해 미분석
             # 코드의 auto-merge/auto-approve 를 차단한다(이전엔 로깅만 하고 삼켜 fail-open).
-            # 의도적 미설치는 이 분기에 도달하지 않아 현행(opt-out) 유지 — 도구들이 내부에서 (1)
-            # `shutil.which` 게이트(supports/is_enabled) 또는 (2) `except (json.JSONDecodeError, OSError)`
-            # (FileNotFoundError 는 OSError 서브클래스)로 [] 를 반환하기 때문(옵션 B 경계).
+            # 의도적 미설치는 이 분기에 도달하지 않는다 — 도구가 (1) `shutil.which`
+            # 게이트(supports/is_enabled)에서 걸러지거나 (2) 스폰이 `FileNotFoundError` 를
+            # 내면 어댑터가 `[]` 를 돌려주기 때문이다(조달 축 = `unavailable_tools`).
+            # 🔴 그 밖의 `OSError`(깨진 shebang · 권한 · which 통과 후 TOCTOU)는 **미분석**이므로
+            # 여기로 올라와야 한다. 그것은 계약이지 아직 트리 전체의 사실이 아니다 —
+            # `FileNotFoundError` 로 좁힌 어댑터만 이 구별을 갖고, 남은 12개(#1557 W2)는
+            # 여전히 `except OSError` 로 삼켜 이 분기에 도달하지 않는다. 재고는
+            # `tests/unit/analyzer/test_adapter_fail_open_inventory.py::KNOWN_FAIL_OPEN`.
+            # Deliberate non-install never reaches here: the which() gate or a FileNotFoundError
+            # returns []. Any other OSError *should* promote — that is the contract, not yet a
+            # tree-wide fact: the W2 adapters still swallow OSError and never arrive here.
             # Audit ④ (option B): an unexpected crash a tool failed to catch silently drops its issues,
             # so promote to incomplete — fail-closed like the timeout path (ctx.timed_out).
             logger.warning("analyzer %s failed for %s: %s", analyzer.name, ctx.filename, exc)
