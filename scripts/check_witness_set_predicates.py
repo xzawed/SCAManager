@@ -241,16 +241,28 @@ def outside_witness(values: list[str], *, needles: set[str]) -> list[str]:
 
 
 def _git(*args: str) -> str:
-    """🔴 git 출력을 **UTF-8 로** 읽는다.
+    """git 서브프로세스 → stdout. 실패 시 **loud 종료**(fail-CLOSED).
 
-    `text=True` 만 주면 로케일(Windows cp949)로 디코드해 한국어가 든 diff 에서
-    `UnicodeDecodeError` 로 죽고, 그때 `stdout` 은 None 이라 뒤에서 또 터진다.
-    실제로 이 가드의 첫 판이 그렇게 죽었다.
+    🔴 git 출력을 **UTF-8 로** 읽는다. `text=True` 만 주면 로케일(Windows cp949)로
+    디코드해 한국어가 든 diff 에서 `UnicodeDecodeError` 로 죽고, 그때 `stdout` 은
+    None 이라 뒤에서 또 터진다. 실제로 이 가드의 첫 판이 그렇게 죽었다.
 
-    Decode git output as UTF-8; the locale codec dies on Korean diffs.
+    🔴 fail-OPEN 금지 (회고 2026-07-19 P1) — 이 함수의 첫 판은 `returncode` 를 버리고
+    `""` 를 돌려줬다. `main()` 은 새 술어가 없으면 `✅ 새 증거집합 술어 없음` 으로 exit 0
+    하므로, git 실패가 곧 **성공 배너**였다. 형제 3종은 같은 결함을 2026-07-19 에 봉인했는데
+    이 네 번째 사본은 그 뒤에 들어와 봉인 밖에 있었다.
+    Fail-closed git helper; a silent "" made any git failure print the success banner.
+
+    🔴 **PARITY GUARD** — 동일 계약이 `check_dead_code.py`·`check_dual_import.py`·
+    `check_noqa_sideeffect.py` 에도 있다(`tests/unit/scripts/test_guard_git_failclosed.py`
+    가 동작 동등성 강제 — 분류 대상은 AST 로 파생한다).
     """
     proc = subprocess.run(["git", *args], capture_output=True, check=False,
                           encoding="utf-8", errors="replace")
+    if proc.returncode != 0:
+        print(f"🔴 git 실패 — 가드 실행 불가 (fail-closed): git {' '.join(args)}")
+        print(f"   {(proc.stderr or '').strip()[:300]}")
+        sys.exit(2)
     return proc.stdout or ""
 
 
