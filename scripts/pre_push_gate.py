@@ -113,6 +113,11 @@ _INTEGRITY_WITH_ARGS = (
 # PR-diff 한정 가드 — base sha 를 인자로 받는다.
 # Diff-scoped guards; each takes the base sha.
 _DIFF_SCOPED = (
+    # 🔴 새 증거집합 술어에 외부 반례 코퍼스 강제 (2026-08-27 원인분석의 처방).
+    #   실측: 조용한 결함 발견율 13% vs 시끄러운 결함 89% · 기전 인지 후 재발 62%.
+    #   교훈을 적어 두는 채널은 62% 실패한다 — 결정 지점에 fail-closed 로 둔다.
+    # Forces an external counterexample corpus for new finite-witness-set predicates.
+    "check_witness_set_predicates.py",
     "check_dual_import.py",
     "check_noqa_sideeffect.py",
     "check_dead_code.py",

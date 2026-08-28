@@ -1,0 +1,45 @@
+"""🔴 실제로 일어난 결함 — 이 가드가 이것을 잡는지로 비공허성을 증명한다.
+
+    출처   705cbb17:scripts/check_sensitive_path_drift.py:57
+    무엇   보안 원시요소를 stdlib 2 + 우리 모듈 2 로 열거
+    놓친 것 `cryptography.fernet` · `src.shared.ssrf` · `import src.crypto` (점 표기)
+    발견   Grok 01a04342
+
+내가 만든 예제가 아니라 사건에서 떼어 온 것이다 — 검사의 정당성을 검사 밖에서
+가져오는 것이 이 가드의 요지이고, 그 원칙을 가드 자신에게 먼저 적용한다.
+
+A predicate as it actually shipped and failed; the guard's non-vacuity is proven
+against real incidents, not against examples the author invented.
+"""
+_STRONG_MODULES: frozenset[str] = frozenset({"hmac", "secrets"})
+_STRONG_FROM: frozenset[str] = frozenset({"src.crypto", "src.shared.secure_compare"})
+
+# 🔴 강한 원시요소를 쓰지만 머지 hold 대상이 **아닌** 것 — 사유를 적어야 한다.
+#   사유 없이 면제되면 이 목록이 다시 손유지 리스트가 된다.
+# Exemptions must carry a reason, or this becomes another hand-maintained list.
+REVIEWED_NOT_SENSITIVE: dict[str, str] = {}
+
+# 스캔이 0건이면 「통과」가 아니라 「안 쟀음」이다 — 그때는 red.
+# 실측 2026-08-27: 14개. 원시요소 이름이 바뀌거나 경로가 어긋나면 이 바닥이 잡는다.
+_MIN_EXPECTED = 10
+
+
+def _imports_strong_primitive(path: pathlib.Path) -> set[str]:
+    """파일이 강한 보안 원시요소를 import 하는지 — AST 로 본다(문자열 검색이 아니라)."""
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8", errors="ignore"))
+    except SyntaxError:
+        return set()
+    hits: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                root = alias.name.split(".")[0]
+                if root in _STRONG_MODULES:
+                    hits.add(root)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            if node.module.split(".")[0] in _STRONG_MODULES:
+                hits.add(node.module.split(".")[0])
+            if node.module in _STRONG_FROM:
+                hits.add(node.module)
+    return hits
