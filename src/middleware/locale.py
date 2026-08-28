@@ -44,6 +44,15 @@ _QVALUE = re.compile(r"0(?:\.[0-9]{0,3})?|1(?:\.0{0,3})?")
 logger = logging.getLogger(__name__)
 
 
+# `*` 는 태그가 아니라 **언어 범위**다 (RFC 7231 §5.3.5).
+# The wildcard is a language *range*, never a literal tag.
+_WILDCARD = "*"
+
+# 「범위가 비어 다음 항목을 보라」— `None`(기본값을 써라)과 구별해야 한다.
+# Sentinel: empty range. Must not collide with None, which means "use the default".
+_NO_RANGE = object()
+
+
 class LocaleMiddleware:  # pylint: disable=too-few-public-methods
     """ASGI middleware — locale detection + scope.state.locale injection.
 
@@ -93,7 +102,8 @@ class LocaleMiddleware:  # pylint: disable=too-few-public-methods
 
         # 2. Accept-Language 헤더 (RFC 7231 q-weight 파싱)
         # 2. Accept-Language header (RFC 7231 q-weight parsing)
-        accept_locale = self._parse_accept_language(headers, self._supported)
+        accept_locale = self._parse_accept_language(
+            headers, self._supported, settings.default_locale)
         if accept_locale:
             return accept_locale
 
@@ -152,12 +162,20 @@ class LocaleMiddleware:  # pylint: disable=too-few-public-methods
         return float(seg[2:])
 
     @classmethod
-    def _parse_lang_items(cls, header_str: str) -> list[tuple[str, float]]:
-        """Accept-Language 본문 → (base_lang, q_weight) tuple list.
+    def _parse_lang_items(
+        cls, header_str: str
+    ) -> tuple[list[tuple[str, float]], set[str]]:
+        """Accept-Language 본문 → (후보 목록, **명시된 태그 집합**).
 
-        Decompose header into (base_lang, q_weight) tuples (Cycle 93 PR-B — S3776 split).
+        🔴 명시 집합에는 `q=0` 으로 거부된 태그도 들어간다. 후보 목록에서는
+        빠지지만 「사용자가 이 언어를 언급했다」는 사실은 남아야 한다 — `*` 의
+        범위를 후보 목록에서 뽑으면 거부된 언어가 `*` 를 타고 되살아난다.
+
+        Returns candidates plus every explicitly mentioned tag (q=0 included):
+        the wildcard range must not re-admit a language the client rejected.
         """
         items: list[tuple[str, float]] = []
+        mentioned: set[str] = set()
         for part in header_str.split(","):
             segments = part.split(";")
             lang = segments[0].strip().lower()
@@ -184,15 +202,43 @@ class LocaleMiddleware:  # pylint: disable=too-few-public-methods
                 else:
                     q_weight = parsed
                 break
-            if rejected:
-                continue
             # 정규화: "ko-KR" → "ko" (base lang only)
             # Normalize: "ko-KR" → "ko" (base lang only)
-            items.append((lang.split("-")[0], q_weight))
-        return items
+            base = lang.split("-")[0]
+            if base != _WILDCARD:
+                mentioned.add(base)
+            if rejected:
+                continue
+            items.append((base, q_weight))
+        return items, mentioned
 
     @classmethod
-    def _parse_accept_language(cls, headers: list, supported: frozenset | None = None) -> str | None:
+    def _resolve_wildcard(
+        cls, supported: frozenset, mentioned: set[str], default: str | None
+    ) -> str | None | object:
+        """`*` 의 범위를 풀어 고른다. 범위가 비면 `_NO_RANGE` (호출부가 다음 항목으로).
+
+        RFC 7231 §5.3.5 에서 `*` 는 **헤더에 명시되지 않은 나머지 전부**를 가리킨다.
+        그 안에서는 우열이 없으므로:
+
+        - 기본값이 범위 안이면 `None` — 기본값이 이미 클라이언트를 만족시킨다.
+        - 기본값이 범위 밖이면(거부됐거나 더 낮은 q 를 받았으면) 범위에서 고른다.
+          🔴 `sorted()` 로 고른다 — `supported` 는 frozenset 이라 순회 순서가
+          실행마다 다를 수 있고, `settings.supported_locales` 의 나열 순서에
+          결합하면 설정을 재배열하는 것만으로 화면 언어가 바뀐다.
+
+        Resolve the wildcard range; the default wins when it is inside the range.
+        """
+        candidates = supported - mentioned
+        if not candidates:
+            return _NO_RANGE
+        if default in candidates:
+            return None
+        return sorted(candidates)[0]
+
+    @classmethod
+    def _parse_accept_language(cls, headers: list, supported: frozenset | None = None,
+                               default: str | None = None) -> str | None:
         """Accept-Language 를 RFC 7231 q-weight 로 파싱해 **수용 가능한** 최우선 locale 반환.
 
         🔴 `supported` 를 받는 이유: 예전 판은 최고 q 하나만 돌려줬고, 그것이 지원 목록에
@@ -216,7 +262,7 @@ class LocaleMiddleware:  # pylint: disable=too-few-public-methods
                 header_str = value.decode("utf-8", errors="ignore")
             except (AttributeError, UnicodeDecodeError):
                 continue
-            items = cls._parse_lang_items(header_str)
+            items, mentioned = cls._parse_lang_items(header_str)
             if not items:
                 continue
             # q-weight 내림차순 안정 정렬 (동일 q-weight 시 입력 순서 보존)
@@ -228,6 +274,11 @@ class LocaleMiddleware:  # pylint: disable=too-few-public-methods
             # 언어가 있어도 기본 로케일로 간다.
             # Skip unsupported languages instead of discarding the whole header.
             for lang, _weight in items:
+                if lang == _WILDCARD:
+                    picked = cls._resolve_wildcard(supported, mentioned, default)
+                    if picked is _NO_RANGE:
+                        continue
+                    return picked
                 if lang in supported:
                     return lang
             return None
