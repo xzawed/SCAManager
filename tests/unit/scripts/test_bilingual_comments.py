@@ -85,3 +85,55 @@ def test_added_comment_lines_survives_none_stdout(monkeypatch):
         stdout = None
     monkeypatch.setattr(mod.subprocess, "run", lambda *a, **k: _R())
     assert mod._added_comment_lines(["x.py"]) == []
+
+
+# --- 「못 쟀음」 != 「위반 없음」 (verify.md 「판정식을 쓸 때」 5) ---
+# "nothing measured" must not be reported as "no violations".
+#
+# 🔴 결함: `main()` 은 측정 대상이 없을 때도 `✅ 위반 없음` 을 찍고 exit 0 했다. CLAUDE.md 와
+#    CONTRIBUTING.md 가 이 명령을 **사람이 손으로 돌리는 점검**으로 처방하는데, 손으로 돌리면
+#    staged 가 비어 있는 것이 정상이므로 **항상 초록**이었다 — 실제 미번역 328줄을 보고도
+#    「위반 없음」이라 읽힌다. 초록이 규칙 준수의 근거로 읽히는 자리가 관측 거짓말이다.
+
+def _run_main(monkeypatch, argv: list[str], diff_text: str) -> int:
+    """`main()` 을 argv·staged diff 를 고정해 실행한다 — 정본 진입점을 그대로 태운다."""
+    monkeypatch.setattr(sys, "argv", ["check_bilingual_comments.py", *argv])
+
+    class _R:
+        stdout = diff_text
+
+    monkeypatch.setattr(mod.subprocess, "run", lambda *a, **k: _R())
+    return mod.main()
+
+
+def test_no_args_is_not_measured(monkeypatch, capsys):
+    """인자 없이 손으로 돌리면 **못 쟀음**(exit 2) — 초록이 아니다."""
+    rc = _run_main(monkeypatch, [], "")
+    out = capsys.readouterr().out
+    assert rc == 2, f"인자가 없으면 측정 대상이 없다 — exit 2 여야 한다(실제 {rc})"
+    assert "✅" not in out, "아무것도 재지 않고 ✅ 를 찍으면 그 초록이 준수의 근거로 읽힌다"
+
+
+def test_empty_staged_diff_is_not_measured(monkeypatch, capsys):
+    """파일을 줘도 staged 가 비면 **못 쟀음**(exit 2)."""
+    rc = _run_main(monkeypatch, ["src/x.py"], "")
+    out = capsys.readouterr().out
+    assert rc == 2, f"staged 변경이 없으면 exit 2 여야 한다(실제 {rc})"
+    assert "✅" not in out
+
+
+def test_measured_and_clean_is_green(monkeypatch, capsys):
+    """🔴 부정 통제 — **쟀는데** 위반이 없으면 초록이다(과차단 차단).
+
+    이 단언이 없으면 위 두 테스트는 「항상 exit 2」로도 통과한다.
+    """
+    rc = _run_main(monkeypatch, ["src/x.py"], "@@ -0,0 +1 @@\n+x = 1\n")
+    out = capsys.readouterr().out
+    assert rc == 0, f"staged 추가 라인이 있고 위반이 없으면 exit 0(실제 {rc})"
+    assert "✅" in out
+
+
+def test_measured_violation_still_exits_1(monkeypatch):
+    """위반 발견은 그대로 exit 1 — 「못 쟀음」(2)과 구별된다."""
+    rc = _run_main(monkeypatch, ["src/x.py"], "@@ -0,0 +1 @@\n+    # 한글만 있는 주석이다\n")
+    assert rc == 1, f"한글-only 추가 주석은 exit 1 이어야 한다(실제 {rc})"

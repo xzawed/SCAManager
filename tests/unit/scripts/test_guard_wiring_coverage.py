@@ -34,7 +34,8 @@ _ADVISORY_ALLOWLIST: dict[str, str] = {
     # 2026-07-29 사용자 결정 — pre-commit 차단 해제, 스크립트는 수동 점검용으로 보존.
     # 이 훅은 커밋을 막을 수 있는 유일한 **스타일** 규칙이었고 구체적 제품 결함 사례를 인용하지
     # 않았다(다른 모든 가드와 달리 사고 기반이 아님). CLAUDE.md 의 이중언어 주석 **원칙 자체는
-    # 유효**하며, 해제된 것은 기계 차단뿐이다 → `python scripts/check_bilingual_comments.py` 수동 실행.
+    # 유효**하며, 해제된 것은 기계 차단뿐이다 → 비율은 `scripts/i18n_comments/check_bilingual.py src/ --report`
+    #   (이 스크립트는 staged 추가분 전용이라 손으로 돌리면 잴 것이 없다 — 그때 exit 2).
     # User decision 2026-07-29: unblocked but kept for manual runs. It was the only *style* rule able
     # to fail a commit and cited no concrete defect; the CLAUDE.md principle itself still stands.
     # 🔴 키는 파일 경로가 아니라 **stem**(확장자 없는 파일명) — `_guard_files()` 가 `path.stem` 으로 대조한다.
