@@ -14,6 +14,7 @@ import subprocess  # nosec B404
 from src.analyzer.pure.registry import (
     AnalyzeContext, AnalysisIssue, Category, Severity, register,
 )
+from src.analyzer.io.tools._common import analysis_failed, empty_output_is_a_crash
 from src.constants import STATIC_ANALYSIS_TIMEOUT
 
 logger = logging.getLogger(__name__)
@@ -59,8 +60,11 @@ class _BufLintAnalyzer:
                     continue
                 try:
                     obj = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
+                except json.JSONDecodeError as exc:
+                    # 🔴 건너뛰면 그 줄이 들고 있던 이슈가 조용히 사라진다.
+                    #    Skipping would silently drop whatever that line reported.
+                    raise analysis_failed(
+                        "buf_lint", ctx, r, "produced a malformed JSONL line") from exc
                 issues.append(AnalysisIssue(
                     tool="buf_lint",
                     severity=Severity.WARNING,
@@ -69,13 +73,19 @@ class _BufLintAnalyzer:
                     category=Category.CODE_QUALITY,
                     language=ctx.language,
                 ))
+            if empty_output_is_a_crash(issues, r):
+                # buf 는 JSONL 이라 깨끗하면 빈 출력이다 — 빈 출력 자체는 실패가 아니다.
+                # 아무것도 못 읽었는데 비정상 종료일 때만 미분석으로 본다.
+                raise analysis_failed("buf_lint", ctx, r, "produced no output")
             return issues
         except subprocess.TimeoutExpired:
             ctx.timed_out = True
             logger.warning("buf_lint timed out for %s", ctx.tmp_path)
             return []
-        except OSError as exc:
-            logger.warning("buf_lint failed for %s: %s", ctx.tmp_path, exc)
+        except FileNotFoundError as exc:
+            # which() 통과 뒤 사라진 바이너리 — 조달 축이 담당한다.
+            # 그 밖의 OSError(깨진 shebang · 권한)는 미분석이므로 올라간다.
+            logger.warning("buf_lint unavailable for %s: %s", ctx.tmp_path, exc)
             return []
 
 

@@ -36,6 +36,9 @@ def _isolate_registry():
 
 
 class TestBufLintAnalyzer:
+    # 🔴 실패 계약(빈 출력·비-봉투·깨진 JSON·OSError)은 어댑터마다 베끼지 않는다 —
+    #    `test_sole_observer_fail_closed.py` 가 5개 어댑터에 같은 시험을 건다.
+    #    여기 있던 `returns_empty_on_*` 는 그 계약의 **반대**를 보증하고 있었다.
     def test_supports_protobuf(self):
         # protobuf 언어는 supports()가 True를 반환해야 한다
         # supports() must return True for protobuf language
@@ -89,25 +92,7 @@ class TestBufLintAnalyzer:
         with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("buf", 30)):
             assert _BufLintAnalyzer().run(ctx) == []
 
-    def test_returns_empty_on_oserror(self):
-        # OSError 시 빈 목록을 반환해야 한다
-        # Must return empty list on OSError
-        from src.analyzer.io.tools.buf_lint import _BufLintAnalyzer
-        ctx = _make_ctx()
-        with patch("subprocess.run", side_effect=OSError("not found")):
-            assert _BufLintAnalyzer().run(ctx) == []
 
-    def test_skips_invalid_jsonl_lines(self):
-        # JSONL 중 유효하지 않은 줄은 조용히 무시해야 한다
-        # Invalid JSONL lines must be silently skipped
-        from src.analyzer.io.tools.buf_lint import _BufLintAnalyzer
-        ctx = _make_ctx()
-        line1 = json.dumps({"start_line": 3, "message": "Valid issue"})
-        stdout = f"{line1}\nnot-json-at-all\n\n"
-        with patch("subprocess.run", return_value=_mock_proc(stdout)):
-            issues = _BufLintAnalyzer().run(ctx)
-        assert len(issues) == 1
-        assert issues[0].line == 3
 
     def test_returns_empty_on_empty_output(self):
         # 빈 stdout은 빈 이슈 목록을 반환해야 한다

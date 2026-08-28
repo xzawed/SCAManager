@@ -63,6 +63,9 @@ def _isolate_registry():
 
 
 class TestStylelintAnalyzer:
+    # 🔴 실패 계약(빈 출력·비-봉투·깨진 JSON·OSError)은 어댑터마다 베끼지 않는다 —
+    #    `test_sole_observer_fail_closed.py` 가 5개 어댑터에 같은 시험을 건다.
+    #    여기 있던 `returns_empty_on_*` 는 그 계약의 **반대**를 보증하고 있었다.
     def test_supports_css(self):
         # css 언어는 supports()가 True를 반환해야 한다
         # supports() must return True for css language
@@ -135,29 +138,8 @@ class TestStylelintAnalyzer:
         with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("stylelint", 30)):
             assert _StylelintAnalyzer().run(ctx) == []
 
-    def test_returns_empty_on_oserror(self):
-        # OSError 발생 시 빈 목록을 반환해야 한다
-        # Must return empty list on OSError
-        from src.analyzer.io.tools.stylelint import _StylelintAnalyzer
-        ctx = _make_ctx()
-        with patch("subprocess.run", side_effect=OSError("not found")):
-            assert _StylelintAnalyzer().run(ctx) == []
 
-    def test_returns_empty_on_non_array_output(self):
-        # JSON 배열이 아닌 출력('[' 미시작)은 빈 목록을 반환해야 한다
-        # Non-JSON-array output (not starting with '[') must return empty list
-        from src.analyzer.io.tools.stylelint import _StylelintAnalyzer
-        ctx = _make_ctx()
-        with patch("subprocess.run", return_value=_mock_proc("No files found")):
-            assert _StylelintAnalyzer().run(ctx) == []
 
-    def test_returns_empty_on_json_decode_error(self):
-        # JSONDecodeError가 발생하면 빈 리스트를 반환한다
-        # Returns empty list when JSONDecodeError occurs
-        from src.analyzer.io.tools.stylelint import _StylelintAnalyzer
-        ctx = _make_ctx()
-        with patch("subprocess.run", side_effect=json.JSONDecodeError("", "", 0)):
-            assert _StylelintAnalyzer().run(ctx) == []
 
     def test_module_registers_stylelint(self):
         # 모듈 임포트 시 REGISTRY에 stylelint가 자동 등록된다
