@@ -56,6 +56,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from check_claim_review_trace import (  # noqa: E402  # pylint: disable=wrong-import-position
     read_pr_body,
+    strip_html_comments,
 )
 
 
@@ -368,8 +369,12 @@ def _report_missing(new, values, needles, outside) -> int:
     print(f"   {MIN_OUTSIDE}개 이상 두고, 그 컬렉션 위에 표기하세요:")
     print("     # witness-corpus: <왜 이것들이 같은 부류인가 — 16자 이상>")
     print("   그 값은 검사에서 뽑지 마세요 — 이슈·코퍼스·실사건에서 가져옵니다.")
-    print("   해당 없으면 PR 본문 열 0 에 "
+    # 「열 0」이라 적었으나 판정은 `^[ \t]*` 다 — 들여쓰기를 허용한다. 안내가 판정보다
+    # 좁으면 사람이 되는 형태를 안 된다고 읽는다(Grok claim-review 지적).
+    # The help text said column 0; the predicate allows leading whitespace.
+    print("   해당 없으면 PR 본문에서 **줄 맨 앞**(들여쓰기 허용, 인용부호 없이) "
           "`witness-corpus-not-applicable: <사유 16자 이상>`.")
+    print("   HTML 주석 안은 인정되지 않는다 — 리뷰어에게 보이는 곳에 적어야 한다.")
     print()
     print("   실측 근거: 조용한 결함 발견율 13% vs 시끄러운 결함 89% · "
           "기전 인지 후 재발 62%.")
@@ -393,10 +398,13 @@ def _pr_body() -> str:
     from_env = read_pr_body()
     if from_env:
         return from_env
-    return subprocess.run(
+    # 🔴 로컬 대체 경로도 같은 하드닝을 받는다 — 여기만 원문이면 「로컬에서는 은닉 마커로
+    # 통과, CI 에서는 red」 라는 두 번째 로컬/CI 갈림이 생긴다(Grok claim-review 지적).
+    # The local fallback gets the same stripping; otherwise local and CI diverge again.
+    return strip_html_comments(subprocess.run(
         ["gh", "pr", "view", "--json", "body", "--jq", ".body"],
         capture_output=True, check=False, encoding="utf-8", errors="replace",
-    ).stdout or ""
+    ).stdout or "")
 
 
 def main() -> int:
