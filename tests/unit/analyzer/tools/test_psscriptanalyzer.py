@@ -52,6 +52,9 @@ def _isolate_registry():
 
 
 class TestPSScriptAnalyzer:
+    # 🔴 실패 계약(빈 출력·비-봉투·깨진 JSON·OSError)은 어댑터마다 베끼지 않는다 —
+    #    `test_sole_observer_fail_closed.py` 가 5개 어댑터에 같은 시험을 건다.
+    #    여기 있던 `returns_empty_on_*` 는 그 계약의 **반대**를 보증하고 있었다.
     def test_supports_powershell(self):
         # powershell 언어는 supports()가 True를 반환해야 한다
         # supports() must return True for powershell language
@@ -65,12 +68,18 @@ class TestPSScriptAnalyzer:
         assert not _PSScriptAnalyzer().supports(_make_ctx("app.py", "python"))
 
     def test_is_enabled_when_installed(self):
-        # pwsh 바이너리가 있으면 is_enabled()는 True를 반환한다
-        # is_enabled() must return True when pwsh binary is present
-        from src.analyzer.io.tools.psscriptanalyzer import _PSScriptAnalyzer
+        # 🔴 pwsh 존재만으로는 부족하다 — PSScriptAnalyzer 모듈은 별도 설치다.
+        #    모듈 축의 시험은 `test_sole_observer_fail_closed.py` 에 있다.
+        # The pwsh binary alone is not the capability; the module ships separately.
+        from src.analyzer.io.tools import psscriptanalyzer as m
         ctx = _make_ctx()
-        with patch("shutil.which", return_value="/usr/bin/pwsh"):
-            assert _PSScriptAnalyzer().is_enabled(ctx) is True
+        m.psscriptanalyzer_module_available.cache_clear()
+        try:
+            with patch("shutil.which", return_value="/usr/bin/pwsh"):
+                with patch("subprocess.run", return_value=_mock_proc("PSScriptAnalyzer\n", 0)):
+                    assert m._PSScriptAnalyzer().is_enabled(ctx) is True
+        finally:
+            m.psscriptanalyzer_module_available.cache_clear()
 
     def test_is_enabled_false_when_missing(self):
         # pwsh 바이너리가 없으면 is_enabled()는 False를 반환한다
@@ -116,40 +125,9 @@ class TestPSScriptAnalyzer:
         with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("pwsh", 30)):
             assert _PSScriptAnalyzer().run(ctx) == []
 
-    def test_returns_empty_on_oserror(self):
-        # OSError 시 빈 목록을 반환해야 한다
-        # Must return empty list on OSError
-        from src.analyzer.io.tools.psscriptanalyzer import _PSScriptAnalyzer
-        ctx = _make_ctx()
-        with patch("subprocess.run", side_effect=OSError("not found")):
-            assert _PSScriptAnalyzer().run(ctx) == []
 
-    def test_returns_empty_on_json_decode_error(self):
-        # JSONDecodeError 시 빈 목록을 반환해야 한다
-        # Must return empty list on JSONDecodeError
-        from src.analyzer.io.tools.psscriptanalyzer import _PSScriptAnalyzer
-        ctx = _make_ctx()
-        with patch("subprocess.run", return_value=_mock_proc("[not valid json]")):
-            assert _PSScriptAnalyzer().run(ctx) == []
 
-    def test_returns_empty_on_json_decode_error_explicit(self):
-        """JSONDecodeError가 발생하면 빈 리스트를 반환한다.
-        Returns empty list when JSONDecodeError occurs.
-        """
-        from src.analyzer.io.tools.psscriptanalyzer import _PSScriptAnalyzer
-        ctx = _make_ctx()
-        with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = json.JSONDecodeError("", "", 0)
-            result = _PSScriptAnalyzer().run(ctx)
-        assert result == []
 
-    def test_returns_empty_on_non_array_output(self):
-        # [로 시작하지 않는 출력은 빈 목록을 반환해야 한다
-        # Output not starting with [ must return empty list
-        from src.analyzer.io.tools.psscriptanalyzer import _PSScriptAnalyzer
-        ctx = _make_ctx()
-        with patch("subprocess.run", return_value=_mock_proc("No results.", 0)):
-            assert _PSScriptAnalyzer().run(ctx) == []
 
     def test_module_registers_psscriptanalyzer(self):
         # 모듈 임포트 시 REGISTRY에 psscriptanalyzer가 자동 등록된다

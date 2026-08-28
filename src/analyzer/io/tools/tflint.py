@@ -15,6 +15,7 @@ import subprocess  # nosec B404
 from src.analyzer.pure.registry import (
     AnalyzeContext, AnalysisIssue, Category, Severity, register,
 )
+from src.analyzer.io.tools._common import analysis_failed
 from src.constants import STATIC_ANALYSIS_TIMEOUT
 
 logger = logging.getLogger(__name__)
@@ -55,10 +56,14 @@ class _TflintAnalyzer:
                 timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
             )
             raw = r.stdout.strip()
-            # JSON 오브젝트가 아닌 경우(빈 출력 등) 빈 목록 반환
-            # Return empty list for non-JSON-object output (empty or error text)
-            if not raw or not raw.startswith("{"):
-                return []
+            # 🔴 봉투가 아니면 미분석이다 — tflint 은 이슈 0건이어도
+            #    JSON 객체 봉투를 낸다. 빈 출력은 「깨끗함」이 아니라 「돌지 않았음」이다.
+            #    exit code 로는 가를 수 없다 — 린터는 이슈를 찾으면 비-0 으로 끝난다.
+            # Non-container stdout means tflint never analyzed the file; a clean run
+            # still emits the JSON object. The exit code cannot tell these apart.
+            if not raw.startswith("{"):
+                raise analysis_failed(
+                    "tflint", ctx, r, "did not produce a JSON object")
             data = json.loads(raw)
             issues = []
             for issue in data.get("issues", []):
@@ -78,8 +83,14 @@ class _TflintAnalyzer:
             ctx.timed_out = True
             logger.warning("tflint timed out for %s", ctx.tmp_path)
             return []
-        except (json.JSONDecodeError, OSError) as exc:
-            logger.warning("tflint failed for %s: %s", ctx.tmp_path, exc)
+        except json.JSONDecodeError as exc:
+            raise analysis_failed(
+                "tflint", ctx, r, "produced malformed JSON") from exc
+        except FileNotFoundError as exc:
+            # which() 통과 뒤 사라진 바이너리 — 조달 축(`unavailable_tools`)이 담당한다.
+            # 그 밖의 OSError(깨진 shebang · 권한)는 미분석이므로 올라간다.
+            # A binary that vanished after the which() gate; procurement owns it.
+            logger.warning("tflint unavailable for %s: %s", ctx.tmp_path, exc)
             return []
 
 

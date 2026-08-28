@@ -43,6 +43,9 @@ def _isolate_registry():
 
 
 class TestTflintAnalyzer:
+    # 🔴 실패 계약(빈 출력·비-봉투·깨진 JSON·OSError)은 어댑터마다 베끼지 않는다 —
+    #    `test_sole_observer_fail_closed.py` 가 5개 어댑터에 같은 시험을 건다.
+    #    여기 있던 `returns_empty_on_*` 는 그 계약의 **반대**를 보증하고 있었다.
     def test_supports_terraform(self):
         # terraform 언어는 supports()가 True를 반환해야 한다
         # supports() must return True for terraform language
@@ -101,13 +104,6 @@ class TestTflintAnalyzer:
             with patch("shutil.which", return_value="/usr/bin/tflint"):
                 assert _TflintAnalyzer().run(ctx) == []
 
-    def test_returns_empty_on_empty_output(self):
-        # 빈 stdout은 빈 이슈 목록을 반환해야 한다
-        # Empty stdout must return an empty issue list
-        from src.analyzer.io.tools.tflint import _TflintAnalyzer
-        ctx = _make_ctx("terraform", "main.tf")
-        with patch("subprocess.run", return_value=_mock_proc("", 0)):
-            assert _TflintAnalyzer().run(ctx) == []
 
     def test_module_registers_tflint(self):
         # 모듈 임포트 시 REGISTRY에 tflint가 자동 등록된다
