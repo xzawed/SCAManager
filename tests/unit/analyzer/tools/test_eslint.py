@@ -698,3 +698,35 @@ def test_fatal_parse_error_is_still_kept(tmp_path):
     ]}]
     issues = _to_issues(data, _ctx(tmp_path))
     assert len(issues) == 1 and "Parsing error" in issues[0].message
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 스폰 축 fail-closed (#1557 W3)
+#
+# 🔴 `except OSError` 는 두 가지를 한 갈래로 보냈다: 「바이너리가 없다」(조달 축)와
+#    「which() 를 통과했는데 실행이 실패했다」(미분석). 후자는 깨진 shebang·권한·TOCTOU 이고
+#    분석이 **안 된** 것이므로 `[]` 로 돌려주면 그 침묵이 «이슈 0건 · 완전» 이 된다.
+#    `FileNotFoundError` 로 좁히면 앞은 그대로 `[]`, 뒤는 올라가 `static.py` 가 incomplete 로 승격한다.
+# A spawn failure after which() succeeded is unanalyzed, not "binary absent".
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class TestESLintSpawnAxisFailClosed:
+    def test_file_not_found_still_returns_empty(self, make_ctx):
+        """대조군 — 바이너리 부재는 조달 축이다. 과차단하면 그 배포가 통째로 막힌다."""
+        from src.analyzer.io.tools.eslint import _ESLintAnalyzer
+        ctx = make_ctx(language="javascript", tmp_path="/tmp/app.js")
+        with patch("subprocess.run", side_effect=FileNotFoundError("eslint not found")):
+            assert _ESLintAnalyzer().run(ctx) == []
+
+    @pytest.mark.parametrize("exc", [
+        PermissionError("permission denied"),
+        OSError(8, "Exec format error"),
+    ], ids=["permission", "enoexec"])
+    def test_spawn_failure_is_not_a_clean_run(self, make_ctx, exc):
+        """🔴 which() 통과 후의 실행 실패는 미분석 — 올라가야 한다."""
+        from src.analyzer.io.tools.eslint import _ESLintAnalyzer
+        ctx = make_ctx(language="javascript", tmp_path="/tmp/app.js")
+        with patch("subprocess.run", side_effect=exc):
+            with pytest.raises(OSError):
+                _ESLintAnalyzer().run(ctx)

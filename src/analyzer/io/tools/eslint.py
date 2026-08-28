@@ -160,7 +160,10 @@ class _ESLintAnalyzer:
             ctx.timed_out = True
             logger.warning("eslint timed out for %s", ctx.tmp_path)
             return []
-        except OSError as exc:
+        except FileNotFoundError as exc:
+            # which() 통과 뒤 사라진 바이너리 — 조달 축(`unavailable_tools`)이 담당한다.
+            # 그 밖의 OSError(깨진 shebang · 권한)는 미분석이므로 올라간다.
+            # A binary that vanished after the which() gate; procurement owns it.
             logger.warning("eslint unavailable for %s: %s", ctx.tmp_path, exc)
             return []
 

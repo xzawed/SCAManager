@@ -156,9 +156,13 @@ def _run_analyzers(ctx: AnalyzeContext, result: StaticAnalysisResult) -> tuple[i
             # 🔴 감사 ④ (옵션 B): 도구가 내부에서 못 잡은 예상외 crash 는 이슈를 무음 폐기하므로
             # incomplete 로 승격 — 타임아웃(ctx.timed_out)과 동일하게 fail-closed 처리해 미분석
             # 코드의 auto-merge/auto-approve 를 차단한다(이전엔 로깅만 하고 삼켜 fail-open).
-            # 의도적 미설치는 이 분기에 도달하지 않아 현행(opt-out) 유지 — 도구들이 내부에서 (1)
-            # `shutil.which` 게이트(supports/is_enabled) 또는 (2) `except (json.JSONDecodeError, OSError)`
-            # (FileNotFoundError 는 OSError 서브클래스)로 [] 를 반환하기 때문(옵션 B 경계).
+            # 의도적 미설치는 이 분기에 도달하지 않는다 — 도구가 (1) `shutil.which`
+            # 게이트(supports/is_enabled)에서 걸러지거나 (2) 스폰이 `FileNotFoundError` 를
+            # 내면 어댑터가 `[]` 를 돌려주기 때문이다(조달 축 = `unavailable_tools`).
+            # 🔴 그 밖의 `OSError`(깨진 shebang · 권한 · which 통과 후 TOCTOU)는 **미분석**이라
+            # 여기로 올라와야 한다 — `except OSError` 로 넓게 삼키면 그 구별이 사라진다(#1557).
+            # Deliberate non-install never reaches here: the which() gate or a FileNotFoundError
+            # returns []. Any other OSError is unanalyzed and must promote to incomplete.
             # Audit ④ (option B): an unexpected crash a tool failed to catch silently drops its issues,
             # so promote to incomplete — fail-closed like the timeout path (ctx.timed_out).
             logger.warning("analyzer %s failed for %s: %s", analyzer.name, ctx.filename, exc)
