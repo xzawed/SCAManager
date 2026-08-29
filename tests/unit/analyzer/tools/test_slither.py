@@ -499,10 +499,13 @@ def test_a_block_comment_pragma_does_not_enable_an_unsatisfiable_contract(monkey
 
 @pytestmark_semver
 def test_a_trailing_block_comment_does_not_win(monkeypatch):
-    """🔴 「마지막 pragma 를 취한다」는 오답을 잡는다.
+    """🔴 실물 pragma 뒤에 오는 블록주석이 판정을 뒤집지 않는다.
 
-    첫 매치를 마지막 매치로 바꾸는 수정은 가림 방향을 고치지만 이 자리를 깬다.
-    Guards the "take the LAST pragma" wrong fix.
+    🔴 이 시험은 「마지막 매치를 쓴다」는 오답을 **잡지 못한다**(실측: 그 뮤턴트에서 GREEN).
+    주석을 먼저 지우므로 남는 pragma 가 하나뿐이라 첫 매치와 마지막 매치가 같아진다.
+    실물 pragma 가 여럿인 파일(flatten 된 계약)에서만 둘이 갈리는데, 그때 무엇이 옳은지는
+    이 PR 이 정하지 않았다.
+    Does not discriminate the take-LAST variant: after stripping there is only one pragma left.
     """
     src = ("pragma solidity ^0.8.0;\n"
            "contract V {}\n"
