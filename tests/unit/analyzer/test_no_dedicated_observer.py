@@ -56,12 +56,14 @@ def test_exactly_one_generic_analyzer_is_declared():
 
     이 수가 늘면 「전담 관측면」의 정의가 바뀐 것이므로 그 자리에서 red 가 된다.
     """
-    # `src.analyzer.io.static` 을 임포트하면 어댑터 23종이 전부 등록된다(그 모듈의 상단
-    # side-effect import 들). 여기서 다시 임포트하지 않는다 — `# noqa: F401` 로 가린
-    # 미사용 import 는 `scripts/check_noqa_sideeffect.py` 가 막는 형태다.
-    import src.analyzer.io.static  # noqa: PLC0415  # pylint: disable=unused-import,import-outside-toplevel
+    # `src.analyzer.io.static` 을 임포트하면 어댑터 23종이 전부 등록된다(그 모듈 상단의
+    # side-effect import 들). 🔴 plain `import src…` 를 쓰지 않는다 — 이 파일이
+    # `from src… import` 도 쓰므로 공존하면 CodeQL py/import-and-import-from 을
+    # 자초한다(`scripts/check_dual_import.py`). `# noqa: F401` 로 가리는 것도 막힌다
+    # (`scripts/check_noqa_sideeffect.py`). string-path 가 두 가드를 모두 통과하는 형태다.
+    import importlib  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
-    assert src.analyzer.io.static.PROVISIONED_ANALYZERS, "등록 전제 붕괴"
+    assert importlib.import_module("src.analyzer.io.static").PROVISIONED_ANALYZERS, "등록 전제 붕괴"
     generic = sorted(a.name for a in REGISTRY if getattr(a, "is_generic", False))
     assert generic == ["semgrep"], (
         f"범용 분석기 선언이 {generic} — 전담 관측면 판정의 전제가 바뀌었다"
