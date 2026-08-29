@@ -43,6 +43,21 @@ def _build_temp_cargo_project(rs_content: str) -> str:
     return tmp_dir
 
 
+
+def _parse_clippy_json(line: str) -> bool:
+    """이 줄이 JSONL 로 읽히는가 — 읽힌 **내용**이 아니라 읽혔는지만 본다.
+
+    `_parse_clippy_line` 은 「compiler-message 가 아니면 None」도 돌려주므로 그것만으로는
+    「깨진 출력」과 「깨끗한 빌드」를 가를 수 없다. 이 함수가 그 둘을 가른다.
+    Did this line parse as JSON at all — regardless of what it contained.
+    """
+    try:
+        json.loads(line)
+        return True
+    except json.JSONDecodeError:
+        return False
+
+
 def _parse_clippy_line(line: str, ctx: AnalyzeContext) -> AnalysisIssue | None:
     """cargo clippy JSON 행 1개를 AnalysisIssue 로 파싱 (compiler-message 아니면 None).
 
@@ -120,10 +135,27 @@ class _ClippyAnalyzer:
             if not (r.stdout or "").strip():
                 raise analysis_failed("clippy", ctx, r, "produced no output")
             issues = []
+            parsed_any = False
             for line in (r.stdout or "").splitlines():
+                if not line.strip():
+                    continue
+                parsed_any = _parse_clippy_json(line) or parsed_any
                 issue = _parse_clippy_line(line, ctx)
                 if issue is not None:
                     issues.append(issue)
+            # 🔴 stdout 이 **비어 있지 않은데** 한 줄도 JSONL 로 읽히지 않았다 = 미분석이다.
+            #    위 빈-stdout 가드는 이 입력을 건드리지 않는다(내용은 있으니까). 그래서
+            #    깨진 출력이 그대로 「이슈 0건 · 깨끗함」이 됐다 — `_parse_clippy_line` 이
+            #    `json.JSONDecodeError` 를 `None` 으로 삼키기 때문이다(조용한 누산기).
+            #    실측: 재고 탐지기 축 C 가 이 자리를 지목했고, 축 A·B 는 못 봤다.
+            #    🔴 「JSONL 은 읽혔는데 compiler-message 가 0건」은 **정상**이다 —
+            #    깨끗한 빌드가 그렇다(compiler-artifact · build-finished 만 나온다).
+            #    그래서 판별식은 「이슈 0건」이 아니라 「**읽어 낸 JSON 0건**」이다.
+            # Non-empty stdout that yields no parsable JSONL at all is unanalyzed; zero
+            # compiler-messages with valid JSONL is a clean build and must stay clean.
+            if not parsed_any:
+                raise analysis_failed(
+                    "clippy", ctx, r, "produced output that is not JSONL")
             return issues
         except subprocess.TimeoutExpired:
             ctx.timed_out = True

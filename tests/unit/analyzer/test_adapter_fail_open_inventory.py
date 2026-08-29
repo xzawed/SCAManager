@@ -110,6 +110,109 @@ def _empty_return_guards(fn: ast.FunctionDef) -> list[tuple[int, str]]:
     return out
 
 
+
+def _swallows_without_raising(handler: ast.ExceptHandler) -> bool:
+    """이 `except` 가 **아무것도 올리지 않고** 흐름만 이어가는가 (`continue`/`pass`/`return None`)."""
+    if any(isinstance(n, ast.Raise) for n in ast.walk(handler)):
+        return False
+    return any(
+        isinstance(n, (ast.Continue, ast.Pass))
+        or (isinstance(n, ast.Return)
+            and (n.value is None
+                 or (isinstance(n.value, ast.Constant) and n.value.value is None)))
+        for n in ast.walk(handler)
+    )
+
+
+def _accumulating_loops(tree: ast.AST) -> list[ast.For | ast.While]:
+    """이슈를 모으는 루프들 — `for`/`while` 안에 `.append(...)` 가 있는 것."""
+    return [
+        node for node in ast.walk(tree)
+        if isinstance(node, (ast.For, ast.While))
+        and any(isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
+                and c.func.attr == "append" for c in ast.walk(node))
+    ]
+
+
+def _names_the_loop_writes(loops: list[ast.For | ast.While]) -> set[str]:
+    """누산 루프가 **실제로 쓰는** 이름들 — 대입 대상과 `.append` 수신자.
+
+    이 집합이 완화 판정의 정의역이다. 무관한 `if not <아무 이름>: raise` 하나로 축이
+    꺼지지 않게 한다 — 그러면 그 어댑터의 침묵이 통째로 투명해진다.
+    Names the accumulating loop actually writes: assignment targets and `.append` receivers.
+    """
+    names: set[str] = set()
+    for loop in loops:
+        for n in ast.walk(loop):
+            if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store):
+                names.add(n.id)
+            elif (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                    and n.func.attr == "append" and isinstance(n.func.value, ast.Name)):
+                names.add(n.func.value.id)
+    return names
+
+
+def _functions_the_loop_calls(loops: list[ast.For | ast.While]) -> set[str]:
+    """누산 루프가 부르는 함수 이름들 — 삼킴이 **그 루프를 먹이는지** 판정하는 정의역."""
+    names: set[str] = set()
+    for loop in loops:
+        for n in ast.walk(loop):
+            if isinstance(n, ast.Call):
+                if isinstance(n.func, ast.Name):
+                    names.add(n.func.id)
+                elif isinstance(n.func, ast.Attribute):
+                    names.add(n.func.attr)
+    return names
+
+
+def _swallow_feeds_the_loop(tree: ast.AST, loops: list[ast.For | ast.While]) -> bool:
+    """삼키는 `except` 가 **그 누산 루프를 먹이는가** — 루프 안이거나, 루프가 부르는 함수 안.
+
+    🔴 모듈 어딘가의 `except: pass` 를 세면 안 된다. 정리 코드의 무관한 삼킴 하나로
+    fail-closed 어댑터가 결함으로 잡히고, 거짓 양성이 나오면 사람이 가드를 끈다.
+    🔴 「루프 안」만 봐도 안 된다 — 실물 형태는 헬퍼 급여다
+    (`clippy.py::def _parse_clippy_line(line: str, ctx: AnalyzeContext) -> AnalysisIssue | None:`).
+    Does the swallow actually feed the accumulator: inside the loop, or inside a callee of it.
+    """
+    def _swallows(scope: ast.AST) -> bool:
+        return any(_swallows_without_raising(h)
+                   for n in ast.walk(scope) if isinstance(n, ast.Try) for h in n.handlers)
+
+    if any(_swallows(loop) for loop in loops):
+        return True
+    called = _functions_the_loop_calls(loops)
+    return any(
+        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name in called and _swallows(node)
+        for node in ast.walk(tree)
+    )
+
+
+def _raises_on_empty_accumulator(tree: ast.AST, written: set[str]) -> bool:
+    """읽은 것이 0건일 때 올리는 자리가 있는가 — 이 형태의 **완화**다.
+
+    `python.py::            if not issues and r.returncode != 0:` 가 그 예다.
+    공용 헬퍼 `empty_output_is_a_crash` 를 부르는 것도 같은 완화다.
+
+    🔴 `written` 은 누산 루프가 실제로 쓰는 이름들이다. 그 밖의 이름에 걸린 `raise` 는
+    이 형태의 완화가 아니다 — 정의역을 좁히지 않으면 무관한 가드 하나가 축 C 를 끈다.
+    """
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)                 and node.func.id == "empty_output_is_a_crash":
+            return True
+        # 🔴 이름이 아니라 **구조**로 본다 — `if not <지역이름>: … raise`.
+        #    첫 판은 식별자 `issues` 를 찾았고, 누산 여부를 `parsed_any` 같은 다른 이름으로
+        #    추적하는 어댑터를 놓쳤다(실측: clippy 를 고쳤는데도 계속 잡혔다).
+        #    부분문자열이 상태를 대신하지 않게 한다.
+        # Structure, not identifier: `if not <local>: … raise` is the mitigation shape.
+        if isinstance(node, ast.If) and any(isinstance(n, ast.Raise) for n in ast.walk(node)):
+            if any(isinstance(t, ast.UnaryOp) and isinstance(t.op, ast.Not)
+                   and isinstance(t.operand, ast.Name) and t.operand.id in written
+                   for t in ast.walk(node.test)):
+                return True
+    return False
+
+
 def _fail_open_reasons(path: Path) -> list[str]:
     """어댑터 한 개가 fail-open 인 사유들. 빈 리스트면 fail-closed 다."""
     tree = ast.parse(io.open(path, encoding="utf-8").read())
@@ -121,6 +224,23 @@ def _fail_open_reasons(path: Path) -> list[str]:
         for lineno, guard in _empty_return_guards(fn):
             if not any(axis in guard for axis in _NARROW_AXES):
                 reasons.append(f"B: L{lineno} `return []` under `{guard}`")
+    # 🔴 축 C — **조용한 누산기.** 이슈를 모으는 루프 안에서 파싱 실패를 삼키고, 읽은 것이
+    #    0건이어도 그대로 내보내는 형태다. `return []` 을 쓰지 않으므로 **B 가 못 본다.**
+    #    그리고 모듈이 다른 이유로 `raise` 를 하나 얻으면 **A 도 꺼진다** — 그때 이 형태는
+    #    통째로 투명해진다. `ba1e0955` 가 clippy 에서 정확히 그렇게 했다(실측).
+    #
+    #    🔴 컷: 루프 뒤에 「읽은 것이 0건이면 올린다」가 있으면 **완화된 것**이라 잡지 않는다.
+    #    그 컷이 없으면 `python.py`(pylint·flake8·bandit — 전부 조달됨)가 잡혀 잔여 집합이
+    #    5에서 8로 뛴다. 완화를 결함으로 세는 것은 거짓 양성이고, 그러면 사람이 가드를 끈다.
+    # Axis C: a parse failure swallowed inside an accumulating loop, with no raise-on-empty
+    # afterwards. B cannot see it (no `return []`) and A goes dark once any raise exists.
+    loops = _accumulating_loops(tree)
+    if (loops
+            and _swallow_feeds_the_loop(tree, loops)
+            and not _raises_on_empty_accumulator(tree, _names_the_loop_writes(loops))):
+        reasons.append(
+            "C: 누산 루프 안에서 파싱 실패를 삼키고, 읽은 것이 0건이어도 그대로 내보낸다"
+        )
     return reasons
 
 

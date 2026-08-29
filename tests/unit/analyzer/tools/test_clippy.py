@@ -169,3 +169,47 @@ class TestClippyCrashIsNotACleanRun:
         with patch("src.analyzer.io.tools.clippy._build_temp_cargo_project", return_value="/tmp/x"):
             with patch("subprocess.run", return_value=proc):
                 _ClippyAnalyzer().run(_make_ctx("rust", "main.rs"))  # raise 하지 않는다
+
+
+# ── 깨진 출력이 「깨끗함」이 되던 자리 (재고 탐지기 축 C 가 지목) ──────────────
+#
+# 🔴 빈-stdout 가드는 **내용이 있는** 깨진 출력을 건드리지 않는다. `_parse_clippy_line` 이
+#    `json.JSONDecodeError` 를 `None` 으로 삼키므로, JSONL 이 아닌 stdout 은 조용히
+#    「이슈 0건」이 됐다 — 축 A·B 는 이 형태를 못 보고 축 C 가 지목했다.
+#
+# 🔴 판별식은 「이슈 0건」이 **아니다.** 깨끗한 빌드도 이슈 0건이다(compiler-artifact ·
+#    build-finished 만 나온다). 판별식은 「**읽어 낸 JSON 0건**」이다.
+
+
+class TestClippyBrokenOutputIsNotACleanRun:
+    def test_non_jsonl_stdout_raises(self):
+        """🔴 내용은 있는데 한 줄도 JSONL 이 아니다 = 미분석."""
+        from src.analyzer.io.tools.clippy import _ClippyAnalyzer
+        proc = _mock_proc("error: could not compile `tmpclippy`\nsome trailing noise\n", 101)
+        with patch("src.analyzer.io.tools.clippy._build_temp_cargo_project", return_value="/tmp/x"):
+            with patch("subprocess.run", return_value=proc):
+                with pytest.raises(RuntimeError, match="clippy"):
+                    _ClippyAnalyzer().run(_make_ctx("rust", "main.rs"))
+
+    def test_clean_build_with_zero_compiler_messages_stays_clean(self):
+        """🔴 부정 통제 — 깨끗한 빌드는 이슈 0건이지만 JSONL 은 나온다. 여기서 raise 하면 과차단."""
+        from src.analyzer.io.tools.clippy import _ClippyAnalyzer
+        clean = "\n".join([
+            json.dumps({"reason": "compiler-artifact", "target": {"name": "tmpclippy"}}),
+            json.dumps({"reason": "build-finished", "success": True}),
+        ]) + "\n"
+        with patch("src.analyzer.io.tools.clippy._build_temp_cargo_project", return_value="/tmp/x"):
+            with patch("subprocess.run", return_value=_mock_proc(clean, 0)):
+                assert _ClippyAnalyzer().run(_make_ctx("rust", "main.rs")) == []
+
+    def test_partially_broken_output_still_parses(self):
+        """🔴 부정 통제 — 일부 줄이 깨져도 읽힌 줄이 있으면 미분석이 아니다."""
+        from src.analyzer.io.tools.clippy import _ClippyAnalyzer
+        mixed = ("not json at all\n"
+                 + json.dumps({"reason": "compiler-message", "message": {
+                     "message": "unused variable: `x`", "level": "warning",
+                     "spans": [{"line_start": 3}]}}) + "\n")
+        with patch("src.analyzer.io.tools.clippy._build_temp_cargo_project", return_value="/tmp/x"):
+            with patch("subprocess.run", return_value=_mock_proc(mixed, 101)):
+                issues = _ClippyAnalyzer().run(_make_ctx("rust", "main.rs"))
+        assert len(issues) == 1
