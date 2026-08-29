@@ -10,6 +10,7 @@ os.environ.setdefault("TELEGRAM_BOT_TOKEN", "123:ABC")
 os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
 
 import subprocess  # noqa: E402
+import importlib.util  # noqa: E402
 import pytest  # noqa: E402
 from unittest.mock import MagicMock, patch  # noqa: E402
 
@@ -366,3 +367,90 @@ def test_falls_back_to_which_when_solc_select_is_absent(monkeypatch):
 
     monkeypatch.setattr(builtins, "__import__", _no_solc_select)
     assert _SlitherAnalyzer().is_enabled(_ctx()) is True
+
+
+# ── pragma 사전 점검: 핀된 컴파일러가 못 맞추는 계약은 **벽이 아니라 skip** (#1568 B) ──
+#
+# `railway.toml` 은 solc **0.8.20 하나만** 핀한다. 그 컴파일러가 만족하지 못하는 pragma 를
+# 가진 `.sol` 은 slither 가 **빈 stdout** 을 내고, #1564 가 그것을 미분석으로 올리므로
+# 모든 Solidity PR 이 `incomplete` 로 막힌다 — 리뷰 대상 코드의 결함이 아니라 **환경 핀**이
+# 만든 벽이다.
+#
+# 🔴 빈 stdout 은 구문 오류·크래시와 구별되지 않으므로 사후 판정이 불가능하다.
+#    실행 **전에** pragma 와 설치된 컴파일러를 대조해야 한다.
+#
+# 실측(semantic_version NpmSpec, 설치 0.8.20):
+#     ^0.8.0 True · >=0.7.0 <0.9.0 True · 0.8.20 True · >=0.4.22 True
+#     ^0.4.24 False · ^0.6.0 False · 0.8.19 False · >=0.5.0 <0.6.0 False
+#
+# 🔴 `packaging` 은 쓸 수 없다 — `SpecifierSet("^0.8.0")` 이 `InvalidSpecifier` 다(실측).
+# 🔴 crytic-compile 의 pragma 정규식도 재사용하지 않는다 — 그것은 범위 판정이 아니라
+#    **정확 버전 추측**이라 `>=0.7.0 <0.9.0` 의 상한을 버린다(실측).
+
+_INSTALLED_0820 = ["0.8.20"]
+
+# 🔴 이 절은 `semantic_version` 을 **실제로** 쓴다. 없으면 판정이 폴백(True)을 타므로
+#    테스트가 「틀린 이유로」 초록/빨강이 된다. 가짜 모듈을 끼우면 NpmSpec 의미론이 아니라
+#    내 가짜를 재게 되므로, 부재 시에는 건너뛴다.
+#    CI 는 Python 3.12 + semgrep(전이 의존 semantic-version~=2.10.0)이라 여기서 돈다 — 실측.
+#    로컬 3.14 에는 semgrep 이 없어 건너뛴다.
+# This block exercises real NpmSpec semantics; a fake module would measure the fake.
+pytestmark_semver = pytest.mark.skipif(
+    importlib.util.find_spec("semantic_version") is None,
+    reason="semantic_version 부재 — pragma 판정이 폴백을 타 측정 불가(CI 3.12 에서 실행)",
+)
+
+
+def _enabled_with_pragma(monkeypatch, content: str, installed=None):
+    """`is_enabled` 를 pragma·설치버전만 바꿔 태운다 — 네트워크를 타지 않는다."""
+    import sys as _sys
+    import types
+    monkeypatch.setattr("src.analyzer.io.tools.slither.shutil.which",
+                        lambda name: f"/usr/bin/{name}")
+    mod = types.ModuleType("solc_select.solc_select")
+    mod.installed_versions = lambda: (_INSTALLED_0820 if installed is None else installed)
+    monkeypatch.setitem(_sys.modules, "solc_select", types.ModuleType("solc_select"))
+    monkeypatch.setitem(_sys.modules, "solc_select.solc_select", mod)
+    ctx = AnalyzeContext(filename="V.sol", content=content, language="solidity",
+                         is_test=False, tmp_path="/tmp/V.sol")  # nosec B108
+    return _SlitherAnalyzer().is_enabled(ctx)
+
+
+@pytestmark_semver
+@pytest.mark.parametrize("pragma", ["^0.4.24", "^0.6.0", "0.8.19", ">=0.5.0 <0.6.0"])
+def test_unsatisfiable_pragma_skips_instead_of_walling(monkeypatch, pragma):
+    """🔴 핀된 컴파일러가 못 맞추면 실행하지 않는다 — 실행하면 빈 stdout 이 벽이 된다."""
+    src = f"// SPDX-License-Identifier: MIT\npragma solidity {pragma};\ncontract V {{}}\n"
+    assert _enabled_with_pragma(monkeypatch, src) is False
+
+
+@pytest.mark.parametrize("pragma", ["^0.8.0", ">=0.7.0 <0.9.0", "0.8.20", ">=0.4.22"])
+def test_satisfiable_pragma_still_runs(monkeypatch, pragma):
+    """🔴 부정 통제 — 맞출 수 있으면 그대로 돈다. 과차단하면 Solidity 분석이 사라진다."""
+    src = f"// SPDX-License-Identifier: MIT\npragma solidity {pragma};\ncontract V {{}}\n"
+    assert _enabled_with_pragma(monkeypatch, src) is True
+
+
+def test_missing_pragma_still_runs(monkeypatch):
+    """🔴 pragma 가 없으면 판단할 근거가 없다 — 막지 않는다(기존 동작 유지)."""
+    assert _enabled_with_pragma(monkeypatch, "contract V {}\n") is True
+
+
+def test_unparsable_pragma_still_runs(monkeypatch):
+    """🔴 파싱 실패는 「못 맞춘다」가 아니다 — 실행하고 결과로 판정한다."""
+    src = "pragma solidity 이건범위가아니다;\ncontract V {}\n"
+    assert _enabled_with_pragma(monkeypatch, src) is True
+
+
+@pytestmark_semver
+def test_pragma_in_a_comment_is_not_the_pragma(monkeypatch):
+    """🔴 주석 안의 버전 문자열이 판정을 바꾸면 안 된다 — 부분문자열≠상태."""
+    src = ("// 이 계약은 예전에 0.8.20 으로 빌드했다\n"
+           "pragma solidity ^0.4.24;\ncontract V {}\n")
+    assert _enabled_with_pragma(monkeypatch, src) is False
+
+
+def test_no_installed_compiler_is_still_the_procurement_gate(monkeypatch):
+    """기존 계약 유지 — 아티팩트가 0건이면 pragma 와 무관하게 꺼진다(#1567)."""
+    src = "pragma solidity ^0.8.0;\ncontract V {}\n"
+    assert _enabled_with_pragma(monkeypatch, src, installed=[]) is False

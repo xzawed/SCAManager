@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import shutil
 import subprocess  # nosec B404
 
@@ -31,6 +32,51 @@ _SECURITY_DETECTORS: frozenset[str] = frozenset({
     "unchecked-transfer", "unchecked-send", "unchecked-lowlevel",
     "weak-prng", "timestamp",
 })
+
+
+
+# `pragma solidity <범위>;` 의 범위 부분만 뽑는다. 주석 안의 버전 문자열은 잡지 않는다 —
+# 부분문자열이 상태를 대신하지 않게 **선언문 형태**로 고정한다.
+# Capture only the range of a real `pragma solidity …;` statement, never a version in a comment.
+_PRAGMA_RE = re.compile(r"^\s*pragma\s+solidity\s+([^;]+);", re.MULTILINE)
+
+
+def _pragma_is_satisfiable(content: str, installed: list[str]) -> bool:
+    """설치된 solc 중 하나라도 이 계약의 pragma 범위를 만족하는가.
+
+    🔴 왜 **실행 전**에 보는가 — slither 는 pragma 를 못 맞추면 **빈 stdout** 을 내는데,
+    그것은 구문 오류·크래시와 구별되지 않는다(실측: 셋 다 exit 1 · stdout 0자).
+    사후 판정이 원리적으로 불가능하므로 사전 점검만이 「환경 핀 때문에 못 돌렸다」와
+    「이 코드가 분석에 실패했다」를 가른다. `railway.toml` 은 solc **0.8.20 하나만** 핀한다.
+
+    🔴 못 맞추면 `is_enabled` 가 False → 조달 축으로 간다. `run()` 을 태우면 그 빈 출력이
+    `incomplete` 가 되어 리뷰 대상 코드와 무관한 이유로 PR 이 막힌다(#1568 B).
+    그 파일은 semgrep 만 보게 되므로 `static.py::no_dedicated_observer` 가 그 사실을 기록한다.
+
+    🔴 판단 근거가 없으면 **막지 않는다** — pragma 부재·파싱 실패는 True 를 돌려
+    기존 동작(실행 후 결과로 판정)을 유지한다. 여기서 False 를 내면 판정 못 한 파일이
+    조용히 건너뛰어진다.
+
+    🔴 `packaging` 은 쓸 수 없다 — `SpecifierSet("^0.8.0")` 이 `InvalidSpecifier` 다(실측).
+    `semantic_version` 은 semgrep 의 전이 의존이라 프로덕션에 있으나 로컬 3.14 에는 없어
+    **지연 임포트**한다. 없으면 True(막지 않음).
+
+    Pre-flight only: an unsatisfiable pragma yields empty stdout, indistinguishable from a
+    crash, so the distinction must be made before running.
+    """
+    match = _PRAGMA_RE.search(content or "")
+    if not match:
+        return True
+    try:
+        from semantic_version import (  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+            NpmSpec, Version,
+        )
+        spec = NpmSpec(match.group(1).strip())
+        return any(Version(v) in spec for v in installed)
+    except (ImportError, ValueError, TypeError):
+        # 파싱 실패는 「못 맞춘다」가 아니다 — 판단 못 했으므로 실행하고 결과로 본다.
+        # An unparsable range is not "unsatisfiable"; run and judge by the outcome.
+        return True
 
 
 class _SlitherAnalyzer:
@@ -74,7 +120,10 @@ class _SlitherAnalyzer:
             from solc_select.solc_select import (  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
                 installed_versions,
             )
-            return bool(installed_versions())
+            installed = installed_versions()
+            if not installed:
+                return False
+            return _pragma_is_satisfiable(ctx.content, installed)
         except (ImportError, OSError):
             # solc-select 가 없는 환경(네이티브 solc) — 그때는 바이너리 존재가 최선의 신호다.
             # Without solc-select (a native solc install), presence is the best available signal.
