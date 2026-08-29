@@ -68,7 +68,10 @@ class _SlitherAnalyzer:
         if shutil.which("slither") is None:
             return False
         try:
-            from solc_select.solc_select import (  # noqa: PLC0415
+            # 지연 임포트 — solc-select 는 slither 의 전이 의존이라 여기서만 필요하고,
+            # 없는 환경(네이티브 solc)에서도 이 모듈이 임포트되어야 한다.
+            # Lazy: solc-select is a transitive dep; this module must import without it.
+            from solc_select.solc_select import (  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
                 installed_versions,
             )
             return bool(installed_versions())
