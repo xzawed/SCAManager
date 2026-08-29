@@ -37,6 +37,13 @@ def _fail(ctx, r) -> RuntimeError:
 class _SemgrepAnalyzer:
     name = "semgrep"
     category = Category.CODE_QUALITY
+    # 🔴 **범용 대체 관측면** — 한 언어의 전담 분석기가 아니라 22개 언어의 폭넓은 fallback 이다.
+    #    그래서 「전담 관측면이 돌았는가」를 셀 때 이것은 세지 않는다
+    #    (`static.py::no_dedicated_observer`). 규칙 밀도가 언어마다 크게 다르므로
+    #    (자체 보고: elixir 0 · cpp 0 · swift 2 · rust 4) semgrep 이 돌았다는 사실만으로
+    #    그 언어를 봤다고 말할 수 없다 — 그 판단이 이 표식의 이유다.
+    # The generic multi-language fallback: running it does not mean the language was observed.
+    is_generic = True
 
     SUPPORTED_LANGUAGES: frozenset[str] = frozenset({
         # Tier 1

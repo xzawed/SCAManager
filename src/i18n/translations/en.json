@@ -779,7 +779,8 @@
       "category_test": "Tests",
       "file_feedback_header": "### Per-file Feedback",
       "ai_suggestions_header": "### Suggestions",
-      "issues_header": "### Static Analysis Issues (top {count})"
+      "issues_header": "### Static Analysis Issues (top {count})",
+      "static_no_dedicated_observer_warning": "> ℹ️ **Only the generic scanner saw these languages: {languages}** — no dedicated analyzer ran for them in this deployment, so the code-quality and security scores lean on a broad multi-language fallback whose rule coverage varies sharply by language. A full mark here means \"barely inspected\", not \"clean\" — rely on the AI review and manual inspection."
     },
     "github_issue": {
       "title_prefix_low_score": "[SCAManager] Low score commit: {sha} ({score}pt)",

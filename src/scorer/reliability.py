@@ -64,6 +64,13 @@ def score_is_unreliable(result: dict | None) -> bool:
     uncovered = result.get("static_uncovered_languages") or []
     if uncovered:
         return True
+    # 🔴 지원은 되는데 전담 관측면이 하나도 안 돌았다 — 범용 semgrep 하나만 본 결과다.
+    #    실측(2026-08-29): 그런 언어 6개에서 취약 코드가 이슈 0건·정적 만점으로 나온다.
+    #    「검사됨」과 구별되지 않으면 그 만점이 신뢰 가능으로 취급된다.
+    #    `uncovered` 와 같은 계약 — 점수 신뢰도만 뒤집고 게이트는 건드리지 않는다.
+    # Only the generic fallback saw these languages; a full mark there is not "clean".
+    if result.get("static_no_dedicated_observers") or []:
+        return True
     return False
 
 

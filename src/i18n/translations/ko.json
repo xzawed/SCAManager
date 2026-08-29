@@ -779,7 +779,8 @@
       "category_test": "테스트",
       "file_feedback_header": "### 파일별 피드백",
       "ai_suggestions_header": "### 개선 제안",
-      "issues_header": "### 정적 분석 이슈 (상위 {count}건)"
+      "issues_header": "### 정적 분석 이슈 (상위 {count}건)",
+      "static_no_dedicated_observer_warning": "> ℹ️ **범용 검사기만 본 언어 포함: {languages}** — 이 배포에서 해당 언어의 전담 분석기가 하나도 실행되지 않아, 다언어 범용 분석기 하나에만 기대었습니다. 그 규칙 밀도는 언어마다 편차가 큽니다 — 여기서의 만점은 \"깨끗함\" 이 아니라 \"거의 검사 안 됨\" 입니다 — AI 리뷰와 수동 검토로 보완하세요."
     },
     "github_issue": {
       "title_prefix_low_score": "[SCAManager] Low score commit: {sha} ({score}pt)",
