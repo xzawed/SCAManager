@@ -292,3 +292,77 @@ class TestSlitherCrashIsNotACleanRun:
         proc = MagicMock(stdout=ok, stderr="", returncode=127)
         with patch("subprocess.run", return_value=proc):
             assert _SlitherAnalyzer().run(_ctx()) == []
+
+
+# ── 조달 축: solc 컴파일러 (#1566 회고 P1) ──────────────────────────────────
+#
+# 🔴 slither 는 pip 패키지라 `which("slither")` 는 solc 유무와 무관하게 참이다.
+#    `railway.toml` 은 `solc-select install` 이 실패하면 「slither analyzer will be
+#    disabled」라고 적지만 그 비활성화가 구현된 적이 없다. 그래서 solc 가 없으면
+#    slither 가 **실행되어** 빈 stdout 을 내고, 그것을 미분석으로 올리는 순간
+#    모든 Solidity 파일이 `incomplete` 가 된다 — 조달 실패가 게이트가 아니라 벽이 된다.
+#
+# 실측 (slither 0.11.5, `--solc` 로 컴파일러만 격리):
+#     정상 solc      exit=127 · stdout 1773자 · success=true
+#     solc 사용 불가  exit=1   · stdout **0자**      ← `success:false` 가 아니다
+#
+# 🔴 그리고 `shutil.which("solc")` 는 프로브가 **될 수 없다** — `solc` 는
+#    solc-select 1.2.0 이 까는 콘솔 스크립트(`solc_select.__main__:solc`)이고
+#    `slither-analyzer → crytic-compile → solc-select` 의존이라 pip 설치만으로
+#    항상 PATH 에 생긴다. 컴파일러 아티팩트 유무를 봐야 한다.
+
+
+def _enabled_with(monkeypatch, *, slither_path, installed):
+    """`is_enabled` 를 조달 상태만 바꿔 태운다 — 네트워크를 타지 않는다."""
+    import sys as _sys
+    import types
+    monkeypatch.setattr("src.analyzer.io.tools.slither.shutil.which",
+                        lambda name: slither_path if name == "slither" else "/usr/bin/solc")
+    mod = types.ModuleType("solc_select.solc_select")
+    mod.installed_versions = lambda: installed
+    pkg = types.ModuleType("solc_select")
+    monkeypatch.setitem(_sys.modules, "solc_select", pkg)
+    monkeypatch.setitem(_sys.modules, "solc_select.solc_select", mod)
+    return _SlitherAnalyzer().is_enabled(_ctx())
+
+
+def test_disabled_when_no_solc_version_is_installed(monkeypatch):
+    """🔴 조달 실패 — 컴파일러 아티팩트가 없으면 실행하지 않는다(벽이 아니라 게이트)."""
+    assert _enabled_with(monkeypatch, slither_path="/usr/bin/slither", installed=[]) is False
+
+
+def test_enabled_when_a_solc_version_is_installed(monkeypatch):
+    """🔴 부정 통제 — 아티팩트가 있으면 그대로 돈다. 과차단하면 Solidity 분석이 사라진다."""
+    assert _enabled_with(monkeypatch, slither_path="/usr/bin/slither",
+                         installed=["0.8.20"]) is True
+
+
+def test_which_solc_alone_is_not_the_gate(monkeypatch):
+    """🔴 이 단언이 원래 내가 쓰려던 오답을 잡는다.
+
+    `shutil.which("solc")` 는 프로덕션에서 **항상 참**이다(solc-select shim).
+    위 헬퍼는 solc 경로를 늘 돌려주므로, 이 테스트가 통과한다는 것은 판정이
+    shim 이 아니라 **설치된 버전**을 보고 있다는 뜻이다.
+    """
+    assert _enabled_with(monkeypatch, slither_path="/usr/bin/slither", installed=[]) is False
+
+
+def test_still_disabled_when_slither_binary_is_absent(monkeypatch):
+    """기존 계약 유지 — slither 자체가 없으면 당연히 꺼진다."""
+    assert _enabled_with(monkeypatch, slither_path=None, installed=["0.8.20"]) is False
+
+
+def test_falls_back_to_which_when_solc_select_is_absent(monkeypatch):
+    """solc-select 가 없는 환경(네이티브 solc)에서는 `which` 로 떨어진다."""
+    import builtins
+    monkeypatch.setattr("src.analyzer.io.tools.slither.shutil.which",
+                        lambda name: f"/usr/bin/{name}")
+    real_import = builtins.__import__
+
+    def _no_solc_select(name, *a, **k):
+        if name.startswith("solc_select"):
+            raise ImportError("no solc_select")
+        return real_import(name, *a, **k)
+
+    monkeypatch.setattr(builtins, "__import__", _no_solc_select)
+    assert _SlitherAnalyzer().is_enabled(_ctx()) is True
