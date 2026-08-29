@@ -41,42 +41,78 @@ _SECURITY_DETECTORS: frozenset[str] = frozenset({
 _PRAGMA_RE = re.compile(r"^\s*pragma\s+solidity\s+([^;]+);", re.MULTILINE)
 
 
-def _pragma_is_satisfiable(content: str, installed: list[str]) -> bool:
-    """설치된 solc 중 하나라도 이 계약의 pragma 범위를 만족하는가.
 
-    🔴 왜 **실행 전**에 보는가 — slither 는 pragma 를 못 맞추면 **빈 stdout** 을 내는데,
+def _installed_solc_versions() -> tuple[str, ...]:
+    """설치된 solc 버전 — 없거나 solc-select 가 없으면 빈 튜플.
+
+    🔴 `list` 가 아니라 `tuple` 을 돌려준다. 재고 탐지기
+    (`tests/unit/analyzer/test_adapter_fail_open_inventory.py`)는 어댑터 모듈의
+    `return []` 를 「분석 못 했는데 깨끗하다고 보고」로 판정한다 — 옳은 판정이다.
+    여기서 도는 것은 **이슈 목록이 아니라 버전 목록**이고 빈 값은 「설치본이 없다」는
+    정상 관측이므로, 그 축과 형태가 겹치지 않게 컨테이너를 바꿔 뜻을 분리한다.
+
+    `is_enabled` 와 같은 지연 임포트를 쓴다(로컬 3.14 에는 solc-select 가 없다).
+    A version list, not an issue list: the empty case is a real observation, not silence.
+    """
+    try:
+        from solc_select.solc_select import (  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+            installed_versions,
+        )
+        return tuple(installed_versions())
+    except (ImportError, OSError):
+        return ()
+
+
+def _matching_solc(content: str, installed) -> str | None:
+    """이 계약의 pragma 를 만족하는 설치본 중 **가장 높은 것** — 없으면 None.
+
+    🔴 bool 이 아니라 **버전을 돌려준다.** `run()` 이 그 값을 `--solc-solcs-select` 로
+    넘기기 때문이다. 넘기지 않으면 slither 는 전역 핀(`global-version`)만 보고, `install` 은
+    됐는데 `use` 가 실패한 상태에서 **빈 stdout** 을 내 모든 Solidity 가 `incomplete` 가 된다.
+    실측(상태 U): 기본 호출 stdout **0자** · `--solc-solcs-select 0.8.36` stdout 16069자.
+    조달을 넓혀도 이 값을 넘기지 않으면 추가 컴파일러가 놀게 된다.
+
+    🔴 `is_enabled` 를 `current_version()` 으로 게이트하지 **않는다** — 아티팩트가 있으면
+    컴파일러는 돌 수 있고, 그 함수는 `argparse.ArgumentTypeError` 를 내는데 그것은
+    `ImportError`·`OSError` 가 아니라 `is_enabled` 밖으로 샌다. 그러면 `pipeline.py` 가
+    파일 단위로 삼켜 미분석 Solidity 가 **깨끗함**으로 채점된다 — 벽보다 나쁘다.
+
+    🔴 왜 **실행 전**에 고르는가 — slither 는 pragma 를 못 맞추면 **빈 stdout** 을 내는데,
     그것은 구문 오류·크래시와 구별되지 않는다(실측: 셋 다 exit 1 · stdout 0자).
     사후 판정이 원리적으로 불가능하므로 사전 점검만이 「환경 핀 때문에 못 돌렸다」와
     「이 코드가 분석에 실패했다」를 가른다. `railway.toml` 은 solc **0.8.20 하나만** 핀한다.
+    못 고르면 `is_enabled` 가 False → 조달 축으로 가고, 그 파일은 semgrep 만 보게 되므로
+    `static.py::no_dedicated_observer` 가 그 사실을 기록한다.
 
-    🔴 못 맞추면 `is_enabled` 가 False → 조달 축으로 간다. `run()` 을 태우면 그 빈 출력이
-    `incomplete` 가 되어 리뷰 대상 코드와 무관한 이유로 PR 이 막힌다(#1568 B).
-    그 파일은 semgrep 만 보게 되므로 `static.py::no_dedicated_observer` 가 그 사실을 기록한다.
-
-    🔴 판단 근거가 없으면 **막지 않는다** — pragma 부재·파싱 실패는 True 를 돌려
-    기존 동작(실행 후 결과로 판정)을 유지한다. 여기서 False 를 내면 판정 못 한 파일이
+    🔴 판단 근거가 없으면 **막지 않는다** — pragma 부재·파싱 실패는 최신 설치본을 돌려
+    기존 동작(실행 후 결과로 판정)을 유지한다. 여기서 None 을 내면 판정하지 못한 파일이
     조용히 건너뛰어진다.
 
     🔴 `packaging` 은 쓸 수 없다 — `SpecifierSet("^0.8.0")` 이 `InvalidSpecifier` 다(실측).
     `semantic_version` 은 semgrep 의 전이 의존이라 프로덕션에 있으나 로컬 3.14 에는 없어
-    **지연 임포트**한다. 없으면 True(막지 않음).
+    **지연 임포트**한다.
 
-    Pre-flight only: an unsatisfiable pragma yields empty stdout, indistinguishable from a
-    crash, so the distinction must be made before running.
+    Pick the newest installed compiler satisfying the pragma; None when none can.
     """
+    if not installed:
+        return None
     match = _PRAGMA_RE.search(content or "")
-    if not match:
-        return True
     try:
         from semantic_version import (  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
             NpmSpec, Version,
         )
+        parsed = sorted((Version(v) for v in installed), reverse=True)
+        if not match:
+            # pragma 가 없으면 판단 근거가 없다 — 막지 않고 최신 설치본으로 돈다.
+            # No pragma: nothing to judge against; run with the newest installed compiler.
+            return str(parsed[0])
         spec = NpmSpec(match.group(1).strip())
-        return any(Version(v) in spec for v in installed)
+        return next((str(v) for v in parsed if v in spec), None)
     except (ImportError, ValueError, TypeError):
-        # 파싱 실패는 「못 맞춘다」가 아니다 — 판단 못 했으므로 실행하고 결과로 본다.
-        # An unparsable range is not "unsatisfiable"; run and judge by the outcome.
-        return True
+        # 파싱 실패·의존 부재는 「못 맞춘다」가 아니다 — 판단하지 못했을 뿐이다.
+        # 그때는 최신 설치본으로 돈다(막지 않는다). 결과는 실행 후 판정한다.
+        # Unparsable or missing dep is not "unsatisfiable": run with the newest installed one.
+        return installed[0]
 
 
 class _SlitherAnalyzer:
@@ -123,7 +159,7 @@ class _SlitherAnalyzer:
             installed = installed_versions()
             if not installed:
                 return False
-            return _pragma_is_satisfiable(ctx.content, installed)
+            return _matching_solc(ctx.content, installed) is not None
         except (ImportError, OSError):
             # solc-select 가 없는 환경(네이티브 solc) — 그때는 바이너리 존재가 최선의 신호다.
             # Without solc-select (a native solc install), presence is the best available signal.
@@ -132,8 +168,15 @@ class _SlitherAnalyzer:
     def run(self, ctx: AnalyzeContext) -> list[AnalysisIssue]:
         """slither JSON 출력을 파싱해 이슈 목록 반환."""
         try:
+            # 🔴 고른 컴파일러를 **명시**한다 — 안 넘기면 slither 는 전역 핀만 보고,
+            # `install` 성공 + `use` 실패 상태에서 빈 stdout 을 내 벽이 된다(실측).
+            # Pass the matched compiler explicitly; the global pin alone walls in state U.
+            argv = ["slither", ctx.tmp_path, "--json", "-"]
+            chosen = _matching_solc(ctx.content, _installed_solc_versions())
+            if chosen:
+                argv += ["--solc-solcs-select", chosen]
             r = subprocess.run(  # nosec B603 B607
-                ["slither", ctx.tmp_path, "--json", "-"],
+                argv,
                 capture_output=True, text=True, timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
             )
             # 🔴 exit code 는 판별식이 **아니다** — 성공해도 0 이 아니다(실측: 같은 성공을
