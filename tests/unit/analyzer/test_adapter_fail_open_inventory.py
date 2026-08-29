@@ -218,3 +218,106 @@ def test_delete_this_file_when_the_list_empties():
         "이 파일을 지우고 `test_fail_open_set_does_not_grow` 를 "
         "「fail-open 어댑터는 0개다」 단언으로 바꿔라."
     )
+
+
+# ── 잔여 부채 중 **배포본에서 실제로 도는 것** (회고 2026-08-29 P1) ─────────────
+#
+# 🔴 사고: 이 사이클이 닫은 11개 중 **5개는 배포 이미지에서 실행조차 되지 않았다**
+#    (buf_lint · clippy · dart_analyze · psscriptanalyzer · stylelint). 반대로 잔여 9개 중
+#    5개는 **돈다**. 투입의 약 45%가 도달 불가능한 위험에 갔고, 그동안 C/C++·Go·
+#    Dockerfile·Kotlin·shell 파일이 크래시를 «이슈 0건 · 완전» 으로 기록하는 경로는 그대로였다.
+#    우선순위를 조달과 대조한 적이 한 번도 없었기 때문이다.
+#
+# 이 가드는 그 대조를 **파생값**으로 만든다. 손으로 적은 두 번째 목록을 두지 않는다 —
+# 그러면 세 번째 SSOT 가 되고, 그 목록이 늙는 순간 이 가드가 거짓을 보증한다.
+#
+# 🔴 조인을 **등록명**(`name = "..."`)으로 한다. 파일 stem 으로 교집합을 내면
+#    `golangci_lint.py` 가 등록하는 `"golangci-lint"` 를 **조용히 떨어뜨려** 5를 4로 만든다
+#    (실측). 그것이 바로 이 리포가 반복해 온 거짓 집행자다. 두 조인이 어긋나면 red 다.
+
+_REACHABLE_CEILING = 5
+"""잔여 fail-open ∩ 조달의 상한 — **파생 개수**의 래칫이지 손으로 적은 목록이 아니다.
+
+부채를 닫아 줄면 같은 PR 에서 이 수를 내린다. 늘어나면 red — 새로 조달한 도구가
+이미 fail-open 이라는 뜻이고, 그것이 다음 W 패키지의 선별 입력이다.
+"""
+
+
+def _registered_names(stem: str) -> set[str]:
+    """어댑터 파일이 **실제로 등록하는 이름** — stem 추측이 아니라 AST 로 읽는다."""
+    tree = ast.parse((_TOOLS / f"{stem}.py").read_text(encoding="utf-8"))
+    return {
+        st.value.value
+        for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
+        for st in node.body
+        if isinstance(st, ast.Assign)
+        and any(isinstance(t, ast.Name) and t.id == "name" for t in st.targets)
+        and isinstance(st.value, ast.Constant) and isinstance(st.value.value, str)
+    }
+
+
+def test_reachable_fail_open_does_not_grow():
+    """🔴 배포본에서 **실제로 도는** 잔여 fail-open 이 늘면 red.
+
+    세 축을 함께 단언한다 — 하나만 두면 조인이 눈멀어도 초록이 된다.
+    """
+    from src.analyzer.io.static import PROVISIONED_ANALYZERS  # noqa: PLC0415
+
+    stems = sorted(_fail_open_adapters())
+
+    unmapped = [s for s in stems if not _registered_names(s)]
+    assert not unmapped, (
+        f"등록명을 못 읽은 어댑터: {unmapped} — 조인이 그만큼 눈먼다"
+    )
+
+    by_name = {n for s in stems for n in _registered_names(s)}
+    live = sorted(by_name & PROVISIONED_ANALYZERS)
+    by_hyphen = sorted({s.replace("_", "-") for s in stems} & PROVISIONED_ANALYZERS)
+
+    assert by_hyphen == live, (
+        f"🔴 두 조인이 어긋난다 — hyphen={by_hyphen} name={live}. "
+        "어느 한쪽이 조용히 떨어뜨리고 있다는 뜻이므로 개수를 믿으면 안 된다."
+    )
+    assert live, (
+        "도달 가능한 fail-open 이 0건 — 조인이 눈멀었거나 부채가 사라졌다. "
+        "후자면 이 테스트를 지워라(위 `test_delete_this_file_when_the_list_empties` 와 같은 신호)."
+    )
+    # 🔴 상한 자체를 파생값으로 묶는다 — 안 묶으면 이 래칫은 상한을 올리는 것만으로
+    #    조용히 꺼진다(뮤테이션 실측: 999 로 바꿔도 초록이었다). 조달된 도구 수보다 많은
+    #    「도달 가능한 fail-open」은 존재할 수 없으므로 그것이 자연스러운 천장이다.
+    #    부채를 닫아 줄일 때는 이 단언이 막지 않는다(위로만 묶는다).
+    # Bound the ceiling itself: otherwise raising it silently disarms the ratchet.
+    assert _REACHABLE_CEILING <= len(PROVISIONED_ANALYZERS), (
+        f"상한 {_REACHABLE_CEILING} 이 조달 도구 수 "
+        f"{len(PROVISIONED_ANALYZERS)} 를 넘는다 — "
+        "그 값으로는 아무것도 막지 못한다."
+    )
+    assert len(live) <= _REACHABLE_CEILING, (
+        f"🔴 배포본에서 도는 fail-open 이 {len(live)}개로 늘었다: {live}\n"
+        f"   (상한 {_REACHABLE_CEILING}) — 새로 조달한 도구가 이미 fail-open 이다.\n"
+        "   이 목록이 다음 W 패키지의 선별 입력이다. `LIVE_FAIL_OPEN` 같은 두 번째 목록을\n"
+        "   만들지 마라 — 세 번째 SSOT 가 되고 그것이 늙으면 이 가드가 거짓을 보증한다."
+    )
+
+
+def test_the_naive_stem_join_would_undercount():
+    """🔴 계기 자기검사 — stem 교집합이 실제로 떨어뜨리는지 확인한다.
+
+    이 단언이 없으면 위 `by_hyphen == live` 가 「둘 다 같은 방식으로 틀린」 경우를 못 가른다.
+    실측: stem 조인은 `golangci-lint` 를 놓쳐 5 대신 4를 낸다.
+    """
+    from src.analyzer.io.static import PROVISIONED_ANALYZERS  # noqa: PLC0415
+
+    stems = set(_fail_open_adapters())
+    naive = stems & PROVISIONED_ANALYZERS
+    by_name = {n for s in stems for n in _registered_names(s)} & PROVISIONED_ANALYZERS
+    dropped = sorted(by_name - naive)
+    # 🔴 무엇이 떨어지는지를 **이름으로** 단언한다. `naive < by_name` 만 두면 그 줄을
+    #    `True or ...` 로 바꿔도 아무도 모른다(뮤테이션 실측: 초록이었다).
+    #    자기검사가 스스로를 지키지 못하면 그것도 거짓 집행자다.
+    # Assert *which* member the stem join drops, not merely that it drops something.
+    assert dropped == ["golangci-lint"], (
+        f"stem 조인이 떨어뜨리는 것: {dropped} (기대: ['golangci-lint'])\n"
+        "   달라졌다면 (a) golangci-lint 부채가 닫혔거나 (b) 이름이 갈리는 어댑터가 새로 생겼다.\n"
+        "   (a) 면 이 자기검사를 지우고, (b) 면 위 조인이 그것도 잡는지 확인하라."
+    )
