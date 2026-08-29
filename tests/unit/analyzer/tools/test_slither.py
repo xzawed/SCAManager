@@ -556,6 +556,32 @@ def test_an_unterminated_block_comment_does_not_decide(monkeypatch):
     assert _enabled_with_pragma(monkeypatch, src) is True
 
 
+@pytestmark_semver
+def test_a_block_opener_inside_a_line_comment_does_not_eat_the_pragma(monkeypatch):
+    """🔴 줄 주석 안의 `/*` 가 블록 시작으로 읽히면 실물 pragma 가 통째로 사라진다.
+
+    사라지면 「pragma 없음」이 되어 최신 설치본으로 **실행**되고, 못 맞추는 컴파일러가
+    빈 stdout 을 내 그 파일이 `incomplete` 가 된다 — #1571 이 없앤 벽이 되돌아온다.
+    실측: 줄 주석을 안 지우면 0.8.20, 지우면 None(옳다).
+    A `/*` inside a line comment must not open a block that swallows the real pragma.
+    """
+    src = ("// 참고 /* 예전에는 0.4.x 였다\n"
+           "pragma solidity ^0.4.24;\n"
+           "contract V {}\n")
+    assert _enabled_with_pragma(monkeypatch, src) is False
+
+
+@pytestmark_semver
+def test_a_line_comment_inside_a_block_comment_is_still_comment(monkeypatch):
+    """🔴 부정 통제 — 블록 안의 `//` 가 블록을 조각내면 안 된다."""
+    src = ("/* 머리말 // 안쪽 줄주석\n"
+           "pragma solidity ^0.4.24;\n"
+           "*/\n"
+           "pragma solidity ^0.8.0;\n"
+           "contract V {}\n")
+    assert _enabled_with_pragma(monkeypatch, src) is True
+
+
 def test_no_installed_compiler_is_still_the_procurement_gate(monkeypatch):
     """기존 계약 유지 — 아티팩트가 0건이면 pragma 와 무관하게 꺼진다(#1567)."""
     src = "pragma solidity ^0.8.0;\ncontract V {}\n"
