@@ -26,12 +26,17 @@ class _Analyzer:
 
 
 def _cleanup(tmp):
-    """정리 실패는 분석 결과와 무관하다 — 여기 삼킴은 누산과 아무 관계가 없다."""
+    """정리 실패는 분석 결과와 무관하다 — 여기 삼킴은 누산과 아무 관계가 없다.
+
+    🔴 `pass` 가 아니라 `return None` 이다 — CodeQL `py/empty-except` 를 자초하지 않으면서
+    같은 삼킴 형태를 유지한다. 축 C 의 `_swallows_without_raising` 는 둘을 구별하지 않는다.
+    """
     import shutil
     try:
         shutil.rmtree(tmp)
     except OSError:
-        pass
+        return None
+    return None
 
 
 def _row(line):
