@@ -44,8 +44,38 @@ class _SlitherAnalyzer:
         return ctx.language in self.SUPPORTED_LANGUAGES
 
     def is_enabled(self, ctx: AnalyzeContext) -> bool:  # pylint: disable=unused-argument
-        """slither 바이너리 설치 여부 확인."""
-        return shutil.which("slither") is not None
+        """slither 와 **solc 컴파일러 아티팩트**가 모두 있는지 확인.
+
+        🔴 컴파일러가 없으면 실행하지 않는다 — 조달 실패는 벽이 아니라 게이트여야 한다.
+        slither 는 pip 패키지라 `which("slither")` 는 solc 유무와 무관하게 참이다.
+        `railway.toml` 은 `solc-select install` 이 실패하면 「slither analyzer will be
+        disabled」라고 적지만 그 비활성화가 구현된 적이 없었다. 그래서 solc 가 없으면
+        slither 가 실행되어 **빈 stdout** 을 내고, 그것을 미분석으로 올리는 순간
+        모든 Solidity 파일이 `incomplete` 가 된다.
+
+        실측(slither 0.11.5, `--solc` 로 컴파일러만 격리): 정상 solc → JSON `success=true`,
+        solc 사용 불가 → stdout **0자**. 즉 `success=false` 가 아니라 빈 출력이다.
+
+        🔴 `shutil.which("solc")` 는 프로브가 될 수 없다 — `solc` 는 solc-select 가 까는
+        콘솔 스크립트이고 `slither-analyzer → crytic-compile → solc-select` 의존이라
+        pip 설치만으로 항상 PATH 에 생긴다(실측: `solc_select.__main__:solc`). 그것을
+        프로브로 쓰면 프로덕션에서 무동작인 채 테스트만 초록이 된다.
+        🔴 `solc --version` 도 부르지 않는다 — shim 은 아티팩트가 없으면 최신판을
+        **자동 내려받는다**(`always_install=True`). 파일마다 네트워크를 타게 된다.
+
+        Gate on installed compiler artifacts, not on the pip-installed `solc` shim.
+        """
+        if shutil.which("slither") is None:
+            return False
+        try:
+            from solc_select.solc_select import (  # noqa: PLC0415
+                installed_versions,
+            )
+            return bool(installed_versions())
+        except (ImportError, OSError):
+            # solc-select 가 없는 환경(네이티브 solc) — 그때는 바이너리 존재가 최선의 신호다.
+            # Without solc-select (a native solc install), presence is the best available signal.
+            return shutil.which("solc") is not None
 
     def run(self, ctx: AnalyzeContext) -> list[AnalysisIssue]:
         """slither JSON 출력을 파싱해 이슈 목록 반환."""
