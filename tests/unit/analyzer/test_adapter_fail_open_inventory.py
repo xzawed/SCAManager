@@ -152,6 +152,42 @@ def _names_the_loop_writes(loops: list[ast.For | ast.While]) -> set[str]:
     return names
 
 
+def _functions_the_loop_calls(loops: list[ast.For | ast.While]) -> set[str]:
+    """누산 루프가 부르는 함수 이름들 — 삼킴이 **그 루프를 먹이는지** 판정하는 정의역."""
+    names: set[str] = set()
+    for loop in loops:
+        for n in ast.walk(loop):
+            if isinstance(n, ast.Call):
+                if isinstance(n.func, ast.Name):
+                    names.add(n.func.id)
+                elif isinstance(n.func, ast.Attribute):
+                    names.add(n.func.attr)
+    return names
+
+
+def _swallow_feeds_the_loop(tree: ast.AST, loops: list[ast.For | ast.While]) -> bool:
+    """삼키는 `except` 가 **그 누산 루프를 먹이는가** — 루프 안이거나, 루프가 부르는 함수 안.
+
+    🔴 모듈 어딘가의 `except: pass` 를 세면 안 된다. 정리 코드의 무관한 삼킴 하나로
+    fail-closed 어댑터가 결함으로 잡히고, 거짓 양성이 나오면 사람이 가드를 끈다.
+    🔴 「루프 안」만 봐도 안 된다 — 실물 형태는 헬퍼 급여다
+    (`clippy.py::def _parse_clippy_line(line: str, ctx: AnalyzeContext) -> AnalysisIssue | None:`).
+    Does the swallow actually feed the accumulator: inside the loop, or inside a callee of it.
+    """
+    def _swallows(scope: ast.AST) -> bool:
+        return any(_swallows_without_raising(h)
+                   for n in ast.walk(scope) if isinstance(n, ast.Try) for h in n.handlers)
+
+    if any(_swallows(loop) for loop in loops):
+        return True
+    called = _functions_the_loop_calls(loops)
+    return any(
+        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name in called and _swallows(node)
+        for node in ast.walk(tree)
+    )
+
+
 def _raises_on_empty_accumulator(tree: ast.AST, written: set[str]) -> bool:
     """읽은 것이 0건일 때 올리는 자리가 있는가 — 이 형태의 **완화**다.
 
@@ -198,10 +234,9 @@ def _fail_open_reasons(path: Path) -> list[str]:
     #    5에서 8로 뛴다. 완화를 결함으로 세는 것은 거짓 양성이고, 그러면 사람이 가드를 끈다.
     # Axis C: a parse failure swallowed inside an accumulating loop, with no raise-on-empty
     # afterwards. B cannot see it (no `return []`) and A goes dark once any raise exists.
-    handlers = [h for n in ast.walk(tree) if isinstance(n, ast.Try) for h in n.handlers]
     loops = _accumulating_loops(tree)
-    if (any(_swallows_without_raising(h) for h in handlers)
-            and loops
+    if (loops
+            and _swallow_feeds_the_loop(tree, loops)
             and not _raises_on_empty_accumulator(tree, _names_the_loop_writes(loops))):
         reasons.append(
             "C: 누산 루프 안에서 파싱 실패를 삼키고, 읽은 것이 0건이어도 그대로 내보낸다"
