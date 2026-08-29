@@ -524,6 +524,35 @@ def test_comment_shapes_that_already_missed_keep_missing(monkeypatch, comment):
     assert _enabled_with_pragma(monkeypatch, src) is True
 
 
+@pytestmark_semver
+def test_a_second_block_comment_does_not_swallow_the_real_pragma(monkeypatch):
+    """🔴 탐욕 매칭 오답을 잡는다 — `.*?` 를 `.*` 로 바꾸면 두 주석 사이가 통째로 사라진다.
+
+    그러면 실물 pragma 가 지워져 「pragma 없음」이 되고, 못 맞추는 계약이 조용히 돈다.
+    Guards the greedy-regex wrong fix: it would delete everything between two block comments,
+    erasing the real pragma and silently enabling an unsatisfiable contract.
+    """
+    src = ("/* 머리말 */\n"
+           "pragma solidity ^0.4.24;\n"
+           "/* 꼬리말 */\n"
+           "contract V {}\n")
+    assert _enabled_with_pragma(monkeypatch, src) is False
+
+
+@pytestmark_semver
+def test_an_unterminated_block_comment_does_not_decide(monkeypatch):
+    """🔴 미종결 `/*` 뒤는 전부 주석이다 — 컴파일러가 그렇게 읽는다.
+
+    그 안의 pragma 로 판정하면 「못 맞춘다」가 되어 분석을 잃는다. 판단 근거가 없는 것이
+    맞으므로 막지 않고 설치본으로 돈다.
+    Everything after an unterminated `/*` is comment; a pragma inside it must not decide.
+    """
+    src = ("/*\n"
+           "pragma solidity ^0.4.24;\n"
+           "contract V {}\n")
+    assert _enabled_with_pragma(monkeypatch, src) is True
+
+
 def test_no_installed_compiler_is_still_the_procurement_gate(monkeypatch):
     """기존 계약 유지 — 아티팩트가 0건이면 pragma 와 무관하게 꺼진다(#1567)."""
     src = "pragma solidity ^0.8.0;\ncontract V {}\n"
