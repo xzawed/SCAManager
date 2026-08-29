@@ -69,7 +69,7 @@ def score_is_unreliable(result: dict | None) -> bool:
     #    「검사됨」과 구별되지 않으면 그 만점이 신뢰 가능으로 취급된다.
     #    `uncovered` 와 같은 계약 — 점수 신뢰도만 뒤집고 게이트는 건드리지 않는다.
     # Only the generic fallback saw these languages; a full mark there is not "clean".
-    if result.get("static_no_dedicated_observers") or []:
+    if result.get("static_no_dedicated_observers"):
         return True
     return False
 
