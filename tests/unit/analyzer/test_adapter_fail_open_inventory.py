@@ -311,7 +311,13 @@ def test_the_naive_stem_join_would_undercount():
     stems = set(_fail_open_adapters())
     naive = stems & PROVISIONED_ANALYZERS
     by_name = {n for s in stems for n in _registered_names(s)} & PROVISIONED_ANALYZERS
-    assert naive < by_name, (
-        "stem 조인이 이름 조인과 같아졌다 — 이름이 갈리는 어댑터가 사라졌다면 "
-        "이 자기검사를 지워라. 아직 있다면 조인 하나가 눈멀었다."
+    dropped = sorted(by_name - naive)
+    # 🔴 무엇이 떨어지는지를 **이름으로** 단언한다. `naive < by_name` 만 두면 그 줄을
+    #    `True or ...` 로 바꿔도 아무도 모른다(뮤테이션 실측: 초록이었다).
+    #    자기검사가 스스로를 지키지 못하면 그것도 거짓 집행자다.
+    # Assert *which* member the stem join drops, not merely that it drops something.
+    assert dropped == ["golangci-lint"], (
+        f"stem 조인이 떨어뜨리는 것: {dropped} (기대: ['golangci-lint'])\n"
+        "   달라졌다면 (a) golangci-lint 부채가 닫혔거나 (b) 이름이 갈리는 어댑터가 새로 생겼다.\n"
+        "   (a) 면 이 자기검사를 지우고, (b) 면 위 조인이 그것도 잡는지 확인하라."
     )
