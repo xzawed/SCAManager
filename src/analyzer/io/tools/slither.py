@@ -35,9 +35,47 @@ _SECURITY_DETECTORS: frozenset[str] = frozenset({
 
 
 
-# `pragma solidity <범위>;` 의 범위 부분만 뽑는다. 주석 안의 버전 문자열은 잡지 않는다 —
-# 부분문자열이 상태를 대신하지 않게 **선언문 형태**로 고정한다.
-# Capture only the range of a real `pragma solidity …;` statement, never a version in a comment.
+# 🔴 주석을 먼저 지우고 찾는다 — `_PRAGMA_RE` 는 주석 문법을 모르고 `search()` 는 **첫 매치**만
+#    보기 때문이다. `*` 접두가 없는 `/* … */` 가 실물 pragma 앞에 있고 그 안의 한 줄이
+#    `pragma solidity …;` 로 시작하면 그 줄이 판정을 가로챈다.
+#    실측(py 3.12 · semantic_version 2.10.0 · 설치 0.8.20):
+#      `/*\npragma solidity ^0.4.24;\n*/\npragma solidity ^0.8.0;` → 지우기 전 None · 후 0.8.20
+#      반대 배치(주석이 맞춤·실물이 못 맞춤)      → 지우기 전 0.8.20 · 후 None
+#    한쪽은 Solidity 분석을 잃고 다른 쪽은 못 맞추는 컴파일러로 돌아 빈 stdout(벽)이 된다.
+#
+# 🔴 줄 주석도 **같은 교차에서** 지운다. `^\s*pragma` 는 `//` 뒤를 매치하지 않으므로 줄 주석
+#    자체는 후보가 아니지만, 줄 주석 **안에 `/*` 가 있으면** 그것이 블록 시작으로 읽혀
+#    닫는 `*/` 나 파일 끝까지를 삼킨다 — 그 사이의 **실물 pragma 가 사라진다.**
+#    실측: `// 참고 /* 예전에는 0.4.x 였다\npragma solidity ^0.4.24;` 에서
+#      줄 주석 미포함 → 0.8.20 (못 맞추는 컴파일러로 실행 → 빈 stdout → 벽)
+#      줄 주석 포함   → None   (옳다 — 못 맞추므로 건너뛴다)
+#    교차 하나로 왼쪽부터 훑으므로 `//` 가 먼저 오면 그 줄이, `/*` 가 먼저 오면 그 블록이 먹는다.
+#
+# 🔴 **마지막 매치로 바꾸는 것은 오답이다** — 실물 pragma 뒤에 남은 주석이 판정을 뒤집는다.
+# 🔴 미종결 `/*` 는 파일 끝까지 지운다 — 컴파일러가 그렇게 읽는다. 그 결과 실물 pragma 가
+#    사라지면 판단 근거가 없어져 최신 설치본으로 돈다(막지 않는다). 안전한 방향이다.
+#    🔴 그 갈래를 `(?:\*/|\Z)` 로 합치지 않는다 — `.*?` 뒤에 폭 0인 `\Z` 가 오면 정적 분석이
+#    「0회만 매치한다」로 읽는다(SonarCloud S6019, 실측: new_maintainability_rating 3). 동작은
+#    같지만 읽는 쪽이 갈리므로 갈래를 풀어 쓴다 — 닫힌 블록을 먼저 시도하고, 실패하면
+#    미종결 갈래가 끝까지 먹는다.
+# 🔴 문자열 리터럴 안의 `/*`·`//` 는 구별하지 못한다 — 그러려면 렉서가 필요하다. pragma 는
+#    SPDX 다음 최상단이라 그 앞에 문자열이 오는 일이 사실상 없어 남겨 둔다(알려진 잔여).
+# Strip comments before matching: the regex is comment-blind and takes the first match. Line
+# comments are stripped too, because a `/*` inside one would otherwise open a block that eats
+# the real pragma. String literals are not distinguished — that would need a lexer.
+_COMMENT_RE = re.compile(
+    r"//[^\n]*"        # 줄 주석 — 줄 끝까지 / line comment, to end of line
+    r"|/\*.*?\*/"      # 닫힌 블록 — 가장 가까운 `*/` 까지 / closed block, nearest `*/`
+    r"|/\*.*",         # 미종결 블록 — 파일 끝까지 / unterminated block, to EOF
+    re.DOTALL,
+)
+
+
+# `pragma solidity <범위>;` 의 범위 부분만 뽑는다. 줄 앞에 오는 **선언문 형태**만 후보다 —
+# 부분문자열이 상태를 대신하지 않게 고정한다. 🔴 이 정규식만으로는 주석 안의 선언문을
+# 가려내지 못한다. 그것은 위 `_COMMENT_RE` 가 담당한다.
+# Only a statement-shaped `pragma solidity …;` at line start is a candidate; comments are removed
+# beforehand — this regex alone cannot tell one from a real statement.
 _PRAGMA_RE = re.compile(r"^\s*pragma\s+solidity\s+([^;]+);", re.MULTILINE)
 
 
@@ -96,7 +134,7 @@ def _matching_solc(content: str, installed) -> str | None:
     """
     if not installed:
         return None
-    match = _PRAGMA_RE.search(content or "")
+    match = _PRAGMA_RE.search(_COMMENT_RE.sub("", content or ""))
     try:
         from semantic_version import (  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
             NpmSpec, Version,
@@ -110,8 +148,16 @@ def _matching_solc(content: str, installed) -> str | None:
         return next((str(v) for v in parsed if v in spec), None)
     except (ImportError, ValueError, TypeError):
         # 파싱 실패·의존 부재는 「못 맞춘다」가 아니다 — 판단하지 못했을 뿐이다.
-        # 그때는 최신 설치본으로 돈다(막지 않는다). 결과는 실행 후 판정한다.
-        # Unparsable or missing dep is not "unsatisfiable": run with the newest installed one.
+        # 그때는 막지 않고 설치본 하나로 돈다. 결과는 실행 후 판정한다.
+        # 🔴 이것은 「최신」이 **아니다.** solc-select 1.2.0 정본 실측:
+        #      `[f.replace("solc-","") for f in sorted(os.listdir(ARTIFACTS_DIR)) …]`
+        #    디렉터리명 **사전순**이라 설치본이 {0.4.24, 0.8.20} 이면 `installed[0]` 은
+        #    **0.4.24**(가장 낮은 것)다. 여기서는 버전을 파싱할 수단(`semantic_version`)이
+        #    없어서 이 갈래에 들어온 것이므로 정렬할 수 없다 — 손으로 파싱하면 그것이
+        #    두 번째 판정식이 된다.
+        # Not "the newest": solc-select sorts directory names lexically, and this branch exists
+        # precisely because version parsing is unavailable — sorting here would be a second,
+        # hand-rolled version predicate.
         return installed[0]
 
 

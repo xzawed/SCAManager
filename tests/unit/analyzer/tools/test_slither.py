@@ -444,11 +444,184 @@ def test_unparsable_pragma_still_runs(monkeypatch):
 
 
 @pytestmark_semver
-def test_pragma_in_a_comment_is_not_the_pragma(monkeypatch):
-    """🔴 주석 안의 버전 문자열이 판정을 바꾸면 안 된다 — 부분문자열≠상태."""
+def test_a_bare_version_number_in_a_comment_is_not_a_pragma(monkeypatch):
+    """🔴 주석 안의 **맨 버전 숫자**가 판정을 바꾸면 안 된다.
+
+    🔴 이 시험은 이름이 주장하던 것보다 좁다 — `_PRAGMA_RE` 는 `pragma solidity` 라는
+    **선언문 형태**를 찾으므로 맨 숫자는 애초에 후보가 아니다. 어떤 구현으로도 통과한다.
+    주석 인지 자체는 아래 `test_a_block_comment_pragma_does_not_mask_the_real_one` 이 잰다.
+    A bare version number was never a candidate for this regex; this case is a weak control.
+    """
     src = ("// 이 계약은 예전에 0.8.20 으로 빌드했다\n"
            "pragma solidity ^0.4.24;\ncontract V {}\n")
     assert _enabled_with_pragma(monkeypatch, src) is False
+
+
+# ── 주석 안의 pragma 는 pragma 가 아니다 ─────────────────────────────────────
+#
+# 🔴 `_PRAGMA_RE` 는 주석 문법을 모르고 `search()` 는 **첫 매치**만 본다. `*` 접두가 없는
+#    `/* … */` 블록이 실물 pragma 보다 앞에 있고 그 안의 한 줄이 `pragma solidity …;` 로
+#    시작하면 그 줄이 판정을 가로챈다. 정규식 위 주석은 정반대를 선언하고 있었다.
+#
+# 🔴 양방향으로 잰다 — 한쪽만 재면 둘 중 하나만 고쳐도 초록이 된다.
+#      가림    : 주석이 못 맞춤 · 실물이 맞춤 → 돌아야 하는데 안 돈다
+#      역방향  : 주석이 맞춤 · 실물이 못 맞춤 → 못 맞추는 컴파일러로 돌아 빈 stdout → 벽
+#
+# Both directions: a comment must not mask a satisfiable pragma, nor enable an unsatisfiable one.
+
+
+@pytestmark_semver
+def test_a_block_comment_pragma_does_not_mask_the_real_one(monkeypatch):
+    """🔴 가림 방향 — 실물 pragma 가 맞출 수 있으면 돈다."""
+    src = ("/*\n"
+           "pragma solidity ^0.4.24;\n"
+           "*/\n"
+           "// SPDX-License-Identifier: MIT\n"
+           "pragma solidity ^0.8.0;\n"
+           "contract V {}\n")
+    assert _enabled_with_pragma(monkeypatch, src) is True
+
+
+@pytestmark_semver
+def test_a_block_comment_pragma_does_not_enable_an_unsatisfiable_contract(monkeypatch):
+    """🔴 역방향 — 주석이 맞춰도 실물이 못 맞추면 돌지 않는다.
+
+    돌면 slither 가 맞지 않는 컴파일러로 실행돼 빈 stdout 을 내고, `run()` 이 그것을
+    미분석으로 올려 그 파일이 통째로 `incomplete` 가 된다 — #1571 이 없앤 벽이다.
+    """
+    src = ("/*\n"
+           "pragma solidity ^0.8.0;\n"
+           "*/\n"
+           "pragma solidity ^0.4.24;\n"
+           "contract V {}\n")
+    assert _enabled_with_pragma(monkeypatch, src) is False
+
+
+@pytestmark_semver
+def test_a_trailing_block_comment_does_not_win(monkeypatch):
+    """🔴 실물 pragma 뒤에 오는 블록주석이 판정을 뒤집지 않는다.
+
+    🔴 이 시험은 「마지막 매치를 쓴다」는 오답을 **잡지 못한다**(실측: 그 뮤턴트에서 GREEN).
+    주석을 먼저 지우므로 남는 pragma 가 하나뿐이라 첫 매치와 마지막 매치가 같아진다.
+    실물 pragma 가 여럿인 파일(flatten 된 계약)에서만 둘이 갈리는데, 그때 무엇이 옳은지는
+    이 PR 이 정하지 않았다.
+    Does not discriminate the take-LAST variant: after stripping there is only one pragma left.
+    """
+    src = ("pragma solidity ^0.8.0;\n"
+           "contract V {}\n"
+           "/*\n"
+           "pragma solidity ^0.4.24;\n"
+           "*/\n")
+    assert _enabled_with_pragma(monkeypatch, src) is True
+
+
+@pytestmark_semver
+@pytest.mark.parametrize("comment", [
+    "/* pragma solidity ^0.4.24; */",
+    " * pragma solidity ^0.4.24;",
+    "// pragma solidity ^0.4.24;",
+])
+def test_comment_shapes_that_already_missed_keep_missing(monkeypatch, comment):
+    """🔴 부정 통제 — 원래도 안 걸리던 형태가 수정 뒤에도 안 걸린다."""
+    src = comment + "\npragma solidity ^0.8.0;\ncontract V {}\n"
+    assert _enabled_with_pragma(monkeypatch, src) is True
+
+
+@pytestmark_semver
+def test_a_second_block_comment_does_not_swallow_the_real_pragma(monkeypatch):
+    """🔴 탐욕 매칭 오답을 잡는다 — `.*?` 를 `.*` 로 바꾸면 두 주석 사이가 통째로 사라진다.
+
+    그러면 실물 pragma 가 지워져 「pragma 없음」이 되고, 못 맞추는 계약이 조용히 돈다.
+    Guards the greedy-regex wrong fix: it would delete everything between two block comments,
+    erasing the real pragma and silently enabling an unsatisfiable contract.
+    """
+    src = ("/* 머리말 */\n"
+           "pragma solidity ^0.4.24;\n"
+           "/* 꼬리말 */\n"
+           "contract V {}\n")
+    assert _enabled_with_pragma(monkeypatch, src) is False
+
+
+@pytestmark_semver
+def test_an_unterminated_block_comment_does_not_decide(monkeypatch):
+    """🔴 미종결 `/*` 뒤는 전부 주석이다 — 컴파일러가 그렇게 읽는다.
+
+    그 안의 pragma 로 판정하면 「못 맞춘다」가 되어 분석을 잃는다. 판단 근거가 없는 것이
+    맞으므로 막지 않고 설치본으로 돈다.
+    Everything after an unterminated `/*` is comment; a pragma inside it must not decide.
+    """
+    src = ("/*\n"
+           "pragma solidity ^0.4.24;\n"
+           "contract V {}\n")
+    assert _enabled_with_pragma(monkeypatch, src) is True
+
+
+@pytestmark_semver
+def test_a_block_opener_inside_a_line_comment_does_not_eat_the_pragma(monkeypatch):
+    """🔴 줄 주석 안의 `/*` 가 블록 시작으로 읽히면 실물 pragma 가 통째로 사라진다.
+
+    사라지면 「pragma 없음」이 되어 최신 설치본으로 **실행**되고, 못 맞추는 컴파일러가
+    빈 stdout 을 내 그 파일이 `incomplete` 가 된다 — #1571 이 없앤 벽이 되돌아온다.
+    실측: 줄 주석을 안 지우면 0.8.20, 지우면 None(옳다).
+    A `/*` inside a line comment must not open a block that swallows the real pragma.
+    """
+    src = ("// 참고 /* 예전에는 0.4.x 였다\n"
+           "pragma solidity ^0.4.24;\n"
+           "contract V {}\n")
+    assert _enabled_with_pragma(monkeypatch, src) is False
+
+
+@pytestmark_semver
+def test_a_line_comment_inside_a_block_comment_is_still_comment(monkeypatch):
+    """🔴 부정 통제 — 블록 안의 `//` 가 블록을 조각내면 안 된다."""
+    src = ("/* 머리말 // 안쪽 줄주석\n"
+           "pragma solidity ^0.4.24;\n"
+           "*/\n"
+           "pragma solidity ^0.8.0;\n"
+           "contract V {}\n")
+    assert _enabled_with_pragma(monkeypatch, src) is True
+
+
+# 🔴 이 정규식이 **못 알아보는** 값들 — 문자열 리터럴 안의 주석 토큰이다. 렉서가 아니므로
+#    `/*` 가 주석 시작인지 문자열 내용인지 구별하지 못한다. 값은 실물 Solidity 관용구에서
+#    가져왔다(파일 수준 `string constant`, `revert` 문구). 두 경우 모두 pragma 가 그 뒤에
+#    오는 배치인데, 관용적이지 않을 뿐 문법상 적법하다.
+#    실측(설치 0.8.20): 옳은 답은 둘 다 None(못 맞춤 → 건너뜀)인데 0.8.20 이 나온다.
+# witness-corpus: 문자열 리터럴 안의 주석 토큰 — 렉서 없이는 주석과 구별할 수 없는 부류다
+_COMMENT_TOKENS_INSIDE_STRINGS = (
+    'string constant GLOB = "/*";\npragma solidity ^0.4.24;\ncontract V {}\n',
+    'contract V { function f() public pure { revert("bad /* token"); } }\n'
+    'pragma solidity ^0.4.24;\n',
+)
+
+
+@pytestmark_semver
+@pytest.mark.parametrize("src", _COMMENT_TOKENS_INSIDE_STRINGS)
+def test_a_comment_token_inside_a_string_is_a_known_residual(monkeypatch, src):
+    """🔴 이 시험은 **옳은 동작이 아니라 알려진 한계**를 고정한다.
+
+    문자열 안의 `/*` 가 블록 시작으로 읽혀 뒤따르는 실물 pragma 를 삼킨다. 그러면
+    「pragma 없음」이 되어 못 맞추는 계약이 그대로 실행된다(빈 stdout → 벽).
+    고치려면 문자열 리터럴을 아는 렉서가 필요하고, 그것은 이 수정의 범위가 아니다.
+    누군가 렉서를 넣으면 이 시험이 red 가 된다 — 그때 기대값을 None 으로 바꾸면 된다.
+    Characterizes a known limitation, not desired behaviour: a lexer would be required.
+    """
+    assert _enabled_with_pragma(monkeypatch, src) is True
+
+
+@pytestmark_semver
+@pytest.mark.parametrize("src,expected", [
+    # 실물 배치 — pragma 가 먼저 오므로 뒤쪽 문자열이 판정에 닿지 않는다.
+    ('pragma solidity ^0.4.24;\ncontract V { string constant G = "/*"; }\n', False),
+    # NFT baseURI 의 `//` — 줄 끝까지만 먹으므로 다음 줄의 pragma 는 무사하다.
+    ('pragma solidity ^0.4.24;\ncontract V { string constant U = "https://x.io/t/"; }\n', False),
+    # flatten 관용구 — 첫 pragma 가 결정하고, 뒤쪽 문자열은 그 뒤를 먹을 뿐이다.
+    ('pragma solidity ^0.8.0;\ncontract A { string constant G = "/*"; }\n'
+     'pragma solidity ^0.4.24;\ncontract B {}\n', True),
+])
+def test_realistic_string_placements_are_unaffected(monkeypatch, src, expected):
+    """🔴 위 한계가 실물 배치에는 닿지 않는다 — 그것이 이 잔여를 남겨 두는 근거다."""
+    assert _enabled_with_pragma(monkeypatch, src) is expected
 
 
 def test_no_installed_compiler_is_still_the_procurement_gate(monkeypatch):
