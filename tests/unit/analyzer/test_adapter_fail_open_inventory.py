@@ -282,6 +282,16 @@ def test_reachable_fail_open_does_not_grow():
         "도달 가능한 fail-open 이 0건 — 조인이 눈멀었거나 부채가 사라졌다. "
         "후자면 이 테스트를 지워라(위 `test_delete_this_file_when_the_list_empties` 와 같은 신호)."
     )
+    # 🔴 상한 자체를 파생값으로 묶는다 — 안 묶으면 이 래칫은 상한을 올리는 것만으로
+    #    조용히 꺼진다(뮤테이션 실측: 999 로 바꿔도 초록이었다). 조달된 도구 수보다 많은
+    #    「도달 가능한 fail-open」은 존재할 수 없으므로 그것이 자연스러운 천장이다.
+    #    부채를 닫아 줄일 때는 이 단언이 막지 않는다(위로만 묶는다).
+    # Bound the ceiling itself: otherwise raising it silently disarms the ratchet.
+    assert _REACHABLE_CEILING <= len(PROVISIONED_ANALYZERS), (
+        f"상한 {_REACHABLE_CEILING} 이 조달 도구 수 "
+        f"{len(PROVISIONED_ANALYZERS)} 를 넘는다 — "
+        "그 값으로는 아무것도 막지 못한다."
+    )
     assert len(live) <= _REACHABLE_CEILING, (
         f"🔴 배포본에서 도는 fail-open 이 {len(live)}개로 늘었다: {live}\n"
         f"   (상한 {_REACHABLE_CEILING}) — 새로 조달한 도구가 이미 fail-open 이다.\n"
