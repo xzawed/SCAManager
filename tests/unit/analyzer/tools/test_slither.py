@@ -582,6 +582,48 @@ def test_a_line_comment_inside_a_block_comment_is_still_comment(monkeypatch):
     assert _enabled_with_pragma(monkeypatch, src) is True
 
 
+# 🔴 이 정규식이 **못 알아보는** 값들 — 문자열 리터럴 안의 주석 토큰이다. 렉서가 아니므로
+#    `/*` 가 주석 시작인지 문자열 내용인지 구별하지 못한다. 값은 실물 Solidity 관용구에서
+#    가져왔다(파일 수준 `string constant`, `revert` 문구). 두 경우 모두 pragma 가 그 뒤에
+#    오는 배치인데, 관용적이지 않을 뿐 문법상 적법하다.
+#    실측(설치 0.8.20): 옳은 답은 둘 다 None(못 맞춤 → 건너뜀)인데 0.8.20 이 나온다.
+# witness-corpus: 문자열 리터럴 안의 주석 토큰 — 렉서 없이는 주석과 구별할 수 없는 부류다
+_COMMENT_TOKENS_INSIDE_STRINGS = (
+    'string constant GLOB = "/*";\npragma solidity ^0.4.24;\ncontract V {}\n',
+    'contract V { function f() public pure { revert("bad /* token"); } }\n'
+    'pragma solidity ^0.4.24;\n',
+)
+
+
+@pytestmark_semver
+@pytest.mark.parametrize("src", _COMMENT_TOKENS_INSIDE_STRINGS)
+def test_a_comment_token_inside_a_string_is_a_known_residual(monkeypatch, src):
+    """🔴 이 시험은 **옳은 동작이 아니라 알려진 한계**를 고정한다.
+
+    문자열 안의 `/*` 가 블록 시작으로 읽혀 뒤따르는 실물 pragma 를 삼킨다. 그러면
+    「pragma 없음」이 되어 못 맞추는 계약이 그대로 실행된다(빈 stdout → 벽).
+    고치려면 문자열 리터럴을 아는 렉서가 필요하고, 그것은 이 수정의 범위가 아니다.
+    누군가 렉서를 넣으면 이 시험이 red 가 된다 — 그때 기대값을 None 으로 바꾸면 된다.
+    Characterizes a known limitation, not desired behaviour: a lexer would be required.
+    """
+    assert _enabled_with_pragma(monkeypatch, src) is True
+
+
+@pytestmark_semver
+@pytest.mark.parametrize("src,expected", [
+    # 실물 배치 — pragma 가 먼저 오므로 뒤쪽 문자열이 판정에 닿지 않는다.
+    ('pragma solidity ^0.4.24;\ncontract V { string constant G = "/*"; }\n', False),
+    # NFT baseURI 의 `//` — 줄 끝까지만 먹으므로 다음 줄의 pragma 는 무사하다.
+    ('pragma solidity ^0.4.24;\ncontract V { string constant U = "https://x.io/t/"; }\n', False),
+    # flatten 관용구 — 첫 pragma 가 결정하고, 뒤쪽 문자열은 그 뒤를 먹을 뿐이다.
+    ('pragma solidity ^0.8.0;\ncontract A { string constant G = "/*"; }\n'
+     'pragma solidity ^0.4.24;\ncontract B {}\n', True),
+])
+def test_realistic_string_placements_are_unaffected(monkeypatch, src, expected):
+    """🔴 위 한계가 실물 배치에는 닿지 않는다 — 그것이 이 잔여를 남겨 두는 근거다."""
+    assert _enabled_with_pragma(monkeypatch, src) is expected
+
+
 def test_no_installed_compiler_is_still_the_procurement_gate(monkeypatch):
     """기존 계약 유지 — 아티팩트가 0건이면 pragma 와 무관하게 꺼진다(#1567)."""
     src = "pragma solidity ^0.8.0;\ncontract V {}\n"
