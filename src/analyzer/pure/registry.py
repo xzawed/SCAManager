@@ -63,7 +63,17 @@ class AnalyzeContext:
 
 @runtime_checkable
 class Analyzer(Protocol):
-    """정적 분석 도구가 구현해야 하는 프로토콜."""
+    """정적 분석 도구가 구현해야 하는 프로토콜.
+
+    🔴 선택 속성 `is_generic: bool` — 한 언어의 전담 분석기가 아니라 다언어 fallback 이면
+    클래스에 `is_generic = True` 를 둔다(현재 semgrep 하나). 「전담 관측면이 하나라도
+    돌았는가」 판정에서 제외된다(`src/analyzer/io/static.py::no_dedicated_observer`).
+    🔴 **이것을 프로토콜 속성으로 선언하지 않는다** — `runtime_checkable` Protocol 에
+    비-메서드 속성을 넣으면 `isinstance` 가 그 속성을 인스턴스에 **요구**해, 선언하지 않은
+    어댑터 전부가 프로토콜 검사에서 떨어진다(실측: 그렇게 해서 3건이 red 가 됐다).
+    읽는 쪽이 `getattr(analyzer, "is_generic", False)` 로 본다.
+    Optional `is_generic` marks the generic fallback; declaring it here would break isinstance.
+    """
     name: str
     category: Category
 

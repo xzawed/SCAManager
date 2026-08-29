@@ -22,7 +22,11 @@
 
 - `static_analysis_incomplete`(`::result_dict["static_analysis_incomplete"] = True`) — deadline 초과 · 전량 실패 · 도구 타임아웃 · fetch 실패.
 - `ai_review_truncated`(`::ai_review_truncated"`) — 입출력 절단. 점수는 유지한다.
-- `static_uncovered_languages`(`::static_uncovered_languages`) — 지원 분석기 없음. 차단하지 않고 가시화만.
+- `static_uncovered_languages`(`::"static_uncovered_languages": sorted({`) — 지원 분석기 없음. 차단하지 않고 가시화만.
+- `static_no_dedicated_observers`(`::def _aggregate_no_dedicated_observers`) — 지원은 되나 전담 분석기가
+  하나도 안 돎(범용 semgrep 만). 같은 계약 — 차단하지 않고 가시화만. 새 분석기가 범용이면
+  클래스에 선언한다(`src/analyzer/io/tools/semgrep.py::is_generic = True`). 프로토콜 속성으로는
+  선언하지 않는다 — `runtime_checkable` 이 인스턴스에 요구해 미선언 어댑터가 전부 떨어진다(실측 3건 red).
 - 신뢰도 판정 = `src/scorer/reliability.py` — `should_null_persist_score`(AI 실패만 컬럼 NULL) / `score_is_unreliable`(그 외는 집계만 제외).
 
 ## 분석기 추가 (25종)

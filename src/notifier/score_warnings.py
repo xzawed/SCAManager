@@ -68,6 +68,17 @@ def unreliable_score_warning_lines(
         ))
         codes.append("static_uncovered")
 
+    # 🔴 지원은 되는데 전담 관측면이 하나도 안 돈 언어 — 범용 하나만 봤다.
+    # `static_uncovered`(분석기 0개)와 다른 축이라 문구도 따로 둔다.
+    # Only the generic fallback saw these; distinct from "no analyzer at all".
+    no_dedicated = result.get("static_no_dedicated_observers") or []
+    if no_dedicated:
+        raw.append(get_text(
+            f"{_KEY_PREFIX}.static_no_dedicated_observer_warning", language,
+            languages=", ".join(no_dedicated),
+        ))
+        codes.append("static_no_dedicated_observer")
+
     if not raw:
         return []
 

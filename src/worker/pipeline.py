@@ -61,6 +61,19 @@ class _AnalysisSaveParams:  # pylint: disable=too-many-instance-attributes
 # ---------------------------------------------------------------------------
 
 
+
+def _aggregate_no_dedicated_observers(analysis_results: list) -> list[str]:
+    """전담 관측면이 하나도 돌지 않은 언어를 실행 단위로 모은다(정렬·중복 제거).
+
+    `static_uncovered_languages` 와 같은 형태 — 게이트가 아니라 가시화 축이다.
+    Collect languages whose files were seen only by the generic fallback.
+    """
+    return sorted({
+        lang for r in analysis_results
+        if (lang := getattr(r, "no_dedicated_observer", None))
+    })
+
+
 def build_analysis_result_dict(
     ai_review,
     score_result,
@@ -119,6 +132,12 @@ def build_analysis_result_dict(
             lang for r in analysis_results
             if (lang := getattr(r, "uncovered_language", None))
         }),
+        # 🔴 지원은 되는데 **전담 관측면이 하나도 안 돈** 언어 — 범용 semgrep 하나만 봤다.
+        # 실측(2026-08-29): 배포본에 전담 분석기가 없는 언어가 6개(rust·swift·php·csharp·
+        # scala·elixir)이고, 그 언어의 취약 코드가 이슈 0건·만점으로 auto-merge 에 도달한다.
+        # `static_uncovered_languages` 와 같은 계약이다 — **게이트를 건드리지 않고 알린다.**
+        # Supported but observed only by the generic fallback. Informational, never gates.
+        "static_no_dedicated_observers": _aggregate_no_dedicated_observers(analysis_results),
         "ai_summary": ai_review.summary,
         "ai_suggestions": ai_review.suggestions,
         "commit_message_feedback": ai_review.commit_message_feedback,

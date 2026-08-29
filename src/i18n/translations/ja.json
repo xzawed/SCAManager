@@ -779,7 +779,8 @@
       "category_test": "テスト",
       "file_feedback_header": "### ファイル別フィードバック",
       "ai_suggestions_header": "### 改善提案",
-      "issues_header": "### 静的解析の問題 (上位 {count}件)"
+      "issues_header": "### 静的解析の問題 (上位 {count}件)",
+      "static_no_dedicated_observer_warning": "> ℹ️ **汎用スキャナーのみが見た言語を含みます: {languages}** — このデプロイでは専用アナライザーが一つも実行されず、言語ごとにルール密度の差が大きい多言語汎用アナライザーのみに依存しています。ここでの満点は「クリーン」ではなく「ほぼ未検査」です — AI レビューと手動確認で補ってください。"
     },
     "github_issue": {
       "title_prefix_low_score": "[SCAManager] Low score commit: {sha} ({score}pt)",
