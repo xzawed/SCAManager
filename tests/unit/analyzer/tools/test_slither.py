@@ -11,6 +11,7 @@ os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
 
 import subprocess  # noqa: E402
 import importlib.util  # noqa: E402
+import sys  # noqa: E402
 import pytest  # noqa: E402
 from unittest.mock import MagicMock, patch  # noqa: E402
 
@@ -454,3 +455,70 @@ def test_no_installed_compiler_is_still_the_procurement_gate(monkeypatch):
     """기존 계약 유지 — 아티팩트가 0건이면 pragma 와 무관하게 꺼진다(#1567)."""
     src = "pragma solidity ^0.8.0;\ncontract V {}\n"
     assert _enabled_with_pragma(monkeypatch, src, installed=[]) is False
+
+
+# ── 고른 컴파일러를 slither 에 실제로 넘긴다 (#1568 A — 형태 변경) ──────────────
+#
+# 🔴 원안(`is_enabled` 를 `current_version()` 으로 게이트)은 **틀렸다.** 두 가지 이유로:
+#    (1) 아티팩트가 디스크에 있으면 컴파일러는 **돌 수 있다** — 전역 핀이 없다고 건너뛰는 것은
+#        있는 관측면을 버리는 것이다.
+#    (2) `current_version()` 은 `argparse.ArgumentTypeError` 를 낸다. 그것은 `ImportError`·
+#        `OSError` 가 아니고 `is_enabled` 는 `_run_analyzers` 의 `try` **바깥**이라 예외가
+#        `analyze_file` 밖으로 샌다 → `pipeline.py` 가 파일 단위로 삼켜 빈 결과를 만든다.
+#        혼합 PR 이면 미분석 Solidity 가 **깨끗함**으로 채점된다 — 지금의 벽보다 나쁘다.
+#
+# 실측(상태 U = 아티팩트 있음 · global-version 없음, slither 0.11.5):
+#     기본 호출                       exit=1   · stdout **0자**   ← 벽
+#     --solc-solcs-select 0.8.36     exit=127 · stdout 16069자 · success:true
+#
+# #1571 이 이미 「어느 설치본이 pragma 를 만족하는가」를 고른다. 그 값을 **넘기기만** 하면
+# 전역 핀에 의존하지 않게 되고, 조달을 넓혔을 때 추가 컴파일러가 놀지 않는다.
+
+
+@pytestmark_semver
+def test_matched_version_is_passed_to_slither(monkeypatch):
+    """🔴 고른 컴파일러를 argv 로 넘긴다 — 전역 핀이 없어도 돈다."""
+    import types
+    captured = {}
+
+    def _fake_run(cmd, *a, **k):
+        captured["cmd"] = cmd
+        return MagicMock(stdout='{"success": true, "results": {"detectors": []}}',
+                         stderr="", returncode=0)
+
+    mod = types.ModuleType("solc_select.solc_select")
+    mod.installed_versions = lambda: ["0.7.6", "0.8.20"]
+    monkeypatch.setitem(sys.modules, "solc_select", types.ModuleType("solc_select"))
+    monkeypatch.setitem(sys.modules, "solc_select.solc_select", mod)
+    monkeypatch.setattr("src.analyzer.io.tools.slither.subprocess.run", _fake_run)
+
+    ctx = AnalyzeContext(filename="V.sol", content="pragma solidity ^0.8.0;\ncontract V {}",
+                         language="solidity", is_test=False, tmp_path="/tmp/V.sol")  # nosec B108
+    _SlitherAnalyzer().run(ctx)
+    cmd = captured["cmd"]
+    assert "--solc-solcs-select" in cmd, f"고른 버전을 안 넘긴다: {cmd}"
+    assert cmd[cmd.index("--solc-solcs-select") + 1] == "0.8.20", (
+        f"pragma ^0.8.0 인데 0.8.20 이 아닌 것을 넘겼다: {cmd}"
+    )
+
+
+def test_no_flag_when_no_version_matches(monkeypatch):
+    """🔴 부정 통제 — 고를 수 없으면 플래그를 붙이지 않는다(기존 호출 형태 유지).
+
+    이 경로는 `is_enabled` 가 이미 막지만, `run()` 이 단독으로도 안전해야 한다.
+    """
+    import types
+    captured = {}
+    monkeypatch.setattr("src.analyzer.io.tools.slither.subprocess.run",
+                        lambda cmd, *a, **k: (captured.update(cmd=cmd),
+                                              MagicMock(stdout='{"success": true, "results": {}}',
+                                                        stderr="", returncode=0))[1])
+    mod = types.ModuleType("solc_select.solc_select")
+    mod.installed_versions = lambda: []
+    monkeypatch.setitem(sys.modules, "solc_select", types.ModuleType("solc_select"))
+    monkeypatch.setitem(sys.modules, "solc_select.solc_select", mod)
+
+    ctx = AnalyzeContext(filename="V.sol", content="contract V {}", language="solidity",
+                         is_test=False, tmp_path="/tmp/V.sol")  # nosec B108
+    _SlitherAnalyzer().run(ctx)
+    assert "--solc-solcs-select" not in captured["cmd"]
