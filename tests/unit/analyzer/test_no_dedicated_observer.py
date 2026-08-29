@@ -56,8 +56,12 @@ def test_exactly_one_generic_analyzer_is_declared():
 
     이 수가 늘면 「전담 관측면」의 정의가 바뀐 것이므로 그 자리에서 red 가 된다.
     """
-    import src.analyzer.io.tools  # noqa: F401,PLC0415 — 전 어댑터 등록
+    # `src.analyzer.io.static` 을 임포트하면 어댑터 23종이 전부 등록된다(그 모듈의 상단
+    # side-effect import 들). 여기서 다시 임포트하지 않는다 — `# noqa: F401` 로 가린
+    # 미사용 import 는 `scripts/check_noqa_sideeffect.py` 가 막는 형태다.
+    import src.analyzer.io.static  # noqa: PLC0415  # pylint: disable=unused-import,import-outside-toplevel
 
+    assert src.analyzer.io.static.PROVISIONED_ANALYZERS, "등록 전제 붕괴"
     generic = sorted(a.name for a in REGISTRY if getattr(a, "is_generic", False))
     assert generic == ["semgrep"], (
         f"범용 분석기 선언이 {generic} — 전담 관측면 판정의 전제가 바뀌었다"
@@ -127,3 +131,40 @@ def test_score_is_unreliable_when_no_dedicated_observer(payload, expected):
     from src.scorer.reliability import score_is_unreliable  # noqa: PLC0415
 
     assert score_is_unreliable(payload) is expected
+
+
+# ── 🔴 범용조차 돌지 않은 경우는 이 축이 아니다 (Grok claim-review 정정) ──────────
+#
+# 첫 판 조건은 `supported > 0 and dedicated_ran == 0` 이었다. 그러면 semgrep 이 지원하지
+# 않는 언어(css·dart·powershell·protobuf)까지 잡혀 「범용 검사기만 봤다」는 경고가 **거짓**이
+# 된다 — 아무것도 안 봤기 때문이다. 그 자리는 `uncovered_language`(실행 0개)가 담당한다.
+# 운영자가 전부 끈 경우도 같은 이유로 빠진다.
+
+
+def test_axis_does_not_fire_when_nothing_ran():
+    """🔴 실행 0개면 이 축이 아니다 — 경고 문구가 거짓이 되고 `uncovered_language` 와 겹친다."""
+    from src.analyzer.io.static import _run_analyzers, StaticAnalysisResult  # noqa: PLC0415
+
+    ctx = _ctx("css", "a.css")   # semgrep 미지원 · 전담(stylelint)은 이 호스트에 없다
+    result = StaticAnalysisResult(filename="a.css")
+    ran, _opted, _supported = _run_analyzers(ctx, result)
+    assert ran == 0, f"전제 붕괴 — css 에서 무언가 돌았다(ran={ran}). 이 대조군은 무효다"
+    assert result.no_dedicated_observer is None, (
+        "아무것도 안 돌았는데 「범용만 봤다」로 표시됐다"
+    )
+
+
+def test_axis_does_not_fire_when_operator_disabled_everything():
+    """🔴 운영자가 전부 끈 것은 「내가 껐다」다 — 결함으로 되돌려주지 않는다(기존 opt-out 규칙)."""
+    from src.analyzer.io.static import _run_analyzers, StaticAnalysisResult  # noqa: PLC0415
+
+    class _Cfg:
+        disabled_tools = ["semgrep", "pylint", "flake8", "bandit"]
+
+    ctx = AnalyzeContext(filename="v.py", content="x", language="python",
+                         is_test=False, tmp_path="/tmp/v.py",  # nosec B108
+                         repo_config=_Cfg())
+    result = StaticAnalysisResult(filename="v.py")
+    ran, opted, _supported = _run_analyzers(ctx, result)
+    assert ran == 0 and opted > 0, f"전제 붕괴 — ran={ran} opted={opted}"
+    assert result.no_dedicated_observer is None

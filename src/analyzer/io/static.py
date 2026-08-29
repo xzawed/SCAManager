@@ -119,16 +119,20 @@ class StaticAnalysisResult:
     # Language name when NO registered analyzer supports it at all. Distinct from unavailable_tools
     # (absent binary → blocks): this means the product never covered the language — surface, don't block.
     uncovered_language: str | None = None
-    # 🔴 지원은 되는데 **전담 관측면이 하나도 돌지 않은** 경우 그 언어명 —
-    # `uncovered_language`(지원 분석기 0개)와 `incomplete`(미분석) 사이의 빈칸.
-    # 실측(2026-08-29, 프로덕션 `supports()` 역인덱싱 × `PROVISIONED_ANALYZERS`):
-    # 배포본에 전담 분석기가 **하나도 없는 언어가 6개**다 — rust·swift(미조달) ·
-    # php·csharp(미조달) · scala·elixir(전담 어댑터 자체가 없음). 거기서는 범용 semgrep
-    # 하나만 도는데 규칙 편차가 커(자체 보고: elixir 0 · cpp 0 · swift 2 · rust 4)
-    # 취약 코드에도 이슈 0건이 나온다. 아래 `ran > 0` 주석이 「semgrep 이 커버한다」고
-    # 적은 것은 **선언상 참이고 실효로 거짓**이다 — 커버는 되는데 못 본다.
+    # 🔴 범용은 돌았는데 **전담 관측면이 하나도 돌지 않은** 경우 그 언어명 —
+    # `uncovered_language`(실행 0개)와 `incomplete`(미분석) 사이의 빈칸.
+    #
+    # 실측(2026-08-29 · `detect_language` 가 낼 수 있는 언어 × 프로덕션 `supports()` ×
+    # `PROVISIONED_ANALYZERS`): 배포 이미지에서 **9개 언어**가 여기 걸린다 —
+    #   clojure · csharp · elixir · html · java · php · rust · scala · swift
+    # 그중 clojure·elixir·java·scala 는 전담 어댑터 자체가 없고, 나머지는 있으나 미조달이다.
+    # 거기서는 범용 semgrep 하나만 도는데 규칙 밀도가 언어마다 크게 달라
+    # (semgrep 자체 보고: elixir 0 · cpp 0 · swift 2 · rust 4) 취약 코드에도 이슈 0건이 나온다.
+    # 실측: `analyze_file("vuln.ex", <System.cmd 주입>)` → issues=0 · incomplete=False.
+    # 아래 `ran > 0` 주석이 「semgrep 이 커버한다」고 적은 것은 **선언상 참이고 실효로 거짓**이다.
+    #
     # 🔴 차단하지 않는다(가시화만) — 차단하면 조달 실패가 다시 벽이 된다(#1568).
-    # Supported, but no dedicated analyzer ran — only the generic fallback did. Surface, never block.
+    # Supported and observed only by the generic fallback. 9 languages on the deployed image.
     no_dedicated_observer: str | None = None
 
 
@@ -148,14 +152,12 @@ def _run_analyzers(ctx: AnalyzeContext, result: StaticAnalysisResult) -> tuple[i
     #    판정은 선언에서 파생한다(목록을 손으로 적지 않는다). 선언이 정확히 하나임은
     #    `tests/unit/analyzer/test_no_dedicated_observer.py` 가 강제한다.
     # Did any *dedicated* analyzer run? The generic fallback does not count.
-    dedicated_supported = dedicated_ran = 0
+    dedicated_ran = 0
     for analyzer in REGISTRY:
         if not analyzer.supports(ctx):
             continue
         supported += 1
         is_generic = getattr(analyzer, "is_generic", False)
-        if not is_generic:
-            dedicated_supported += 1
         if not analyzer.is_enabled(ctx):
             # 바이너리 부재 = 배포 이미지에 조달되지 않음. 기록만 하고 계속 — 승격 판정은
             # 호출부가 한다. 🔴 조달 계약(`PROVISIONED_ANALYZERS`) 안 도구면 `ran` 과 무관하게
@@ -193,12 +195,20 @@ def _run_analyzers(ctx: AnalyzeContext, result: StaticAnalysisResult) -> tuple[i
             logger.warning("analyzer %s failed for %s: %s", analyzer.name, ctx.filename, exc)
             result.incomplete = True
 
-    # 🔴 전담 관측면이 하나도 돌지 않았다 — 범용 하나만 본 결과를 「완전」으로 기록하지 않는다.
-    #    `dedicated_supported == 0` (전담 어댑터가 아예 없는 언어: scala·elixir)도,
-    #    있지만 하나도 못 돈 경우(조달 실패·opt-out·크래시)도 같은 축이다.
+    # 🔴 **범용은 돌았는데** 전담 관측면이 하나도 돌지 않았다 — 그 결과를 「완전」으로
+    #    기록하지 않는다. 전담 어댑터가 아예 없는 언어(scala·elixir·java·clojure)도,
+    #    있지만 조달 실패로 못 돈 경우(rust·swift·php·csharp·html)도 같은 축이다.
+    #
+    # 🔴 조건이 `supported > 0` 이 아니라 **`ran > 0`** 인 이유 — 첫 판은 전자였고 틀렸다.
+    #    범용조차 돌지 않은 언어(css·dart·powershell·protobuf: semgrep 이 지원 안 함)까지
+    #    잡아서 「범용 검사기만 봤다」는 경고가 **거짓**이 됐다. 그 자리는 이미
+    #    `uncovered_language` 가 담당한다(실행 0개). 운영자가 전부 끈 경우(`ran == 0`)도
+    #    같은 이유로 빠진다 — 「내가 껐다」를 결함으로 되돌려주지 않는 위 opt-out 규칙과 일치한다.
+    #
     #    🔴 차단하지 않는다 — 이것은 가시화 축이고, 차단은 `incomplete` 가 한다.
-    # No dedicated analyzer ran: only the generic fallback saw this file. Surface, never block.
-    if supported > 0 and dedicated_ran == 0:
+    # Only when the generic fallback actually ran: otherwise the warning would be false and
+    # `uncovered_language` already owns that case.
+    if ran > 0 and dedicated_ran == 0:
         result.no_dedicated_observer = ctx.language
     return ran, opted_out, supported
 
