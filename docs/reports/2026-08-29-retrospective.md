@@ -25,22 +25,32 @@
 
 ## P1 — 이 사이클이 만든 것
 
-### 1. slither `success=false` → raise 가 Solidity 를 영구 차단할 수 있다
+### 1. solc 조달 실패가 Solidity 를 통째로 차단했다 — **#1567 로 절반 닫음**
 
-`src/analyzer/io/tools/slither.py::slither reported success=false` 로 `ValueError` 를 올리게 바꿨다(#1564, 머지됨).
-그런데 `success=false` 의 주된 원인은 크래시가 아니라 **solc 부재/버전 불일치**다.
+#1564 가 slither 를 fail-closed 로 돌리면서 solc 없는 배포에서 모든 `.sol` 이 `incomplete` 가
+됐다. `is_enabled` 가 `which("slither")` 만 봤고 slither 는 pip 패키지라 solc 없이도 통과한다.
+`railway.toml` 의 「solc-select failed — slither analyzer will be disabled」는 **구현된 적이
+없는 문장**이었다.
 
-```
-railway.toml   "solc-select failed — slither analyzer will be disabled"
-실제 is_enabled  return shutil.which("slither") is not None      ← solc 를 안 본다
-```
+🔴 **이 회고가 처음 적은 기전은 틀렸다.** 「solc 부재 → `success:false`」라고 썼으나 실측은
+**빈 stdout** 이다. 그래서 이 회고가 권한 처방(`error` 를 조달 축으로)은 발화할 수 없다 —
+JSON 자체가 없다. 좌표는 맞고 인과가 틀린, 이 회고가 오탐 16건에서 뽑아낸 바로 그 형태다.
 
-slither 는 pip 설치라 solc 가 없어도 `which` 를 통과한다. 즉 조달이 실패해도 **비활성화되지 않고
-실행되어 전량 `incomplete`** 가 된다. 조달 실패가 「게이트가 아니라 벽」이 되는 형태이고,
-`PROVISIONED_ANALYZERS` 가 없애려던 상태의 재발이다.
+#1567 이 `is_enabled` 를 **설치된 solc 아티팩트**(`installed_versions()`)로 게이트했다.
+`shutil.which("solc")` 는 프로브가 될 수 없다 — `solc` 는 solc-select 가 까는 shim 이고
+`slither-analyzer → crytic-compile → solc-select` 의존이라 pip 설치만으로 항상 생긴다.
 
-처방: 「도구가 크래시했다」와 「툴체인이 없다」를 가른다 — `is_enabled` 에 solc 확인을 넣거나
-`error` 를 조달 축(`unavailable_tools`)으로 보낸다.
+**남은 구멍 (5회 다각도 검증에서 실측):**
+
+| 경로 | 지금 | 근거 |
+|---|---|---|
+| solc 아티팩트 0건 | 건너뜀(`unavailable_tools`) · `incomplete=False` | 의도대로 동작 |
+| **pragma 불일치**(0.8.20 핀 vs `^0.4`/`^0.9`) | 빈 stdout → **`incomplete=True`** | 벽이 남아 있다 |
+| **`install` 성공 + `use` 실패** | `installed_versions()` 는 비어 있지 않아 게이트 통과 → 벽 | `current_version()` 을 안 본다 |
+| slither 건너뛴 뒤의 관측면 | semgrep 이 **돌지만 이슈 0건** · `uncovered_language` 미발화 | 재진입 취약 계약에서 slither 3건 vs semgrep 0건 |
+
+마지막 줄이 가장 나쁘다 — 언어는 선언상 덮이는데 **실효 관측면이 0** 이고, 그 상태가
+「분석됨 · 이슈 0건 · 완전」으로 기록된다. W1 이 닫은 형태가 선언 뒤에 숨어 되살아난 것이다.
 
 ### 2. clippy 는 fail-closed 로 집계됐으나 실패한 빌드는 여전히 «이슈 0건»
 
