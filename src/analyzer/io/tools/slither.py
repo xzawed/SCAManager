@@ -54,12 +54,21 @@ _SECURITY_DETECTORS: frozenset[str] = frozenset({
 # 🔴 **마지막 매치로 바꾸는 것은 오답이다** — 실물 pragma 뒤에 남은 주석이 판정을 뒤집는다.
 # 🔴 미종결 `/*` 는 파일 끝까지 지운다 — 컴파일러가 그렇게 읽는다. 그 결과 실물 pragma 가
 #    사라지면 판단 근거가 없어져 최신 설치본으로 돈다(막지 않는다). 안전한 방향이다.
+#    🔴 그 갈래를 `(?:\*/|\Z)` 로 합치지 않는다 — `.*?` 뒤에 폭 0인 `\Z` 가 오면 정적 분석이
+#    「0회만 매치한다」로 읽는다(SonarCloud S6019, 실측: new_maintainability_rating 3). 동작은
+#    같지만 읽는 쪽이 갈리므로 갈래를 풀어 쓴다 — 닫힌 블록을 먼저 시도하고, 실패하면
+#    미종결 갈래가 끝까지 먹는다.
 # 🔴 문자열 리터럴 안의 `/*`·`//` 는 구별하지 못한다 — 그러려면 렉서가 필요하다. pragma 는
 #    SPDX 다음 최상단이라 그 앞에 문자열이 오는 일이 사실상 없어 남겨 둔다(알려진 잔여).
 # Strip comments before matching: the regex is comment-blind and takes the first match. Line
 # comments are stripped too, because a `/*` inside one would otherwise open a block that eats
 # the real pragma. String literals are not distinguished — that would need a lexer.
-_COMMENT_RE = re.compile(r"//[^\n]*|/\*.*?(?:\*/|\Z)", re.DOTALL)
+_COMMENT_RE = re.compile(
+    r"//[^\n]*"        # 줄 주석 — 줄 끝까지 / line comment, to end of line
+    r"|/\*.*?\*/"      # 닫힌 블록 — 가장 가까운 `*/` 까지 / closed block, nearest `*/`
+    r"|/\*.*",         # 미종결 블록 — 파일 끝까지 / unterminated block, to EOF
+    re.DOTALL,
+)
 
 
 # `pragma solidity <범위>;` 의 범위 부분만 뽑는다. 줄 앞에 오는 **선언문 형태**만 후보다 —
