@@ -400,13 +400,18 @@ class TestShellCheckRunGracefulDegradation:
             issues = _ShellCheckAnalyzer().run(ctx)
         assert issues == []
 
-    def test_run_returns_empty_on_json_decode_error(self, make_ctx):
-        # stdout이 유효하지 않은 JSON → JSONDecodeError → 빈 이슈 목록 반환
+    def test_run_raises_on_json_decode_error(self, make_ctx):
+        """🔴 뒤집힌 계약 (#1557 W2) — 읽을 수 없는 출력은 미분석이다.
+
+        이전 판은 `[]` 를 돌려줘 그 침묵이 «이슈 0건 · 완전» 이 됐다. `shell` 은 조달된
+        전담 관측면이 shellcheck 하나뿐이라 대체 관측이 없다.
+        Output we cannot read is unanalyzed, not clean.
+        """
         from src.analyzer.io.tools.shellcheck import _ShellCheckAnalyzer
         ctx = make_ctx(language="shell", tmp_path="/tmp/script.sh")
         with patch("subprocess.run", return_value=_mock_shellcheck_proc("{broken json")):
-            issues = _ShellCheckAnalyzer().run(ctx)
-        assert issues == []
+            with pytest.raises(RuntimeError, match="shellcheck"):
+                _ShellCheckAnalyzer().run(ctx)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -438,3 +443,111 @@ class TestShellCheckRegistration:
         from src.analyzer.pure.registry import Analyzer
         from src.analyzer.io.tools.shellcheck import _ShellCheckAnalyzer
         assert isinstance(_ShellCheckAnalyzer(), Analyzer)
+
+
+# ── 크래시가 «이슈 0건» 이 되던 자리 (#1557 W2 — CI 실측 기반) ──────────────────
+#
+# 🔴 shellcheck 은 **크래시해도 깨끗과 똑같은 stdout 을 낸다.** CI 실바이너리 실측
+#    (#1580 `W2-SHAPE`):
+#
+#      깨끗              exit=0 · stdout `[]`
+#      발견              exit=1 · stdout JSON(`SC2148` 등)
+#      없는 경로(크래시)  exit=**2** · stdout **`[]`** · stderr `openBinaryFile: does not exist`
+#
+#    즉 **stdout 모양만으로는 원리적으로 가를 수 없다** — cppcheck·hadolint 와 다른 부류다.
+#    판별식은 「읽어 낸 이슈가 0건인데 비정상 종료했다」이고, 그것이 공용 헬퍼
+#    `_common.py::def empty_output_is_a_crash` 다(정본: `python.py` 의 flake8 갈래 · `tsc.py`).
+#
+# 🔴 과차단 위험 검토: shellcheck 종료코드는 0=깨끗 · 1=발견 · 2=파일을 읽지 못함이다.
+#    프로덕션은 `static.py::        tmp_path = os.path.join(tmpdir, f"analyze{suffix}")` 로
+#    **파일을 먼저 쓴 뒤** 부르므로 exit=2 는 정상 입력에서 나올 수 없다.
+#    발견이 있으면 `issues` 가 비지 않아 헬퍼가 False 다 — 평범한 PR 은 막히지 않는다.
+#
+# 🔴 `shell` 은 조달된 전담 관측면이 shellcheck **하나뿐**이다. `[]` 를 돌려주면 미분석
+#    셸 스크립트가 «이슈 0건 · 완전» 으로 기록된다 — `no_dedicated_observer` 축도 못 잡는다
+#    (어댑터가 「돌긴 했다」로 세어진다).
+#
+# Measured: shellcheck's crash stdout is byte-identical to its clean stdout, so the discriminant
+# must be "no issues parsed AND nonzero exit" — the shared helper, not an output shape.
+
+
+_SC_SRC = "#!/bin/sh" + chr(10) + "echo hi" + chr(10)
+
+
+def _sc_ctx(filename: str = "deploy.sh"):
+    """이 절 전용 컨텍스트 — 이 파일의 기존 픽스처 팩토리는 fixture 로만 쓸 수 있다."""
+    import importlib  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    registry = importlib.import_module("src.analyzer.pure.registry")
+    return registry.AnalyzeContext(
+        filename=filename, content=_SC_SRC, language="shell",
+        is_test=False, tmp_path="/tmp/" + filename)  # nosec B108
+
+
+def _sc_proc(stdout: str = "", stderr: str = "", returncode: int = 0):
+    return subprocess.CompletedProcess(args=["shellcheck"], returncode=returncode,
+                                       stdout=stdout, stderr=stderr)
+
+
+def _shellcheck():
+    """등록부에서 꺼낸다 — `from … import` 를 늘리지 않는다(이중 import 회피).
+
+    `REGISTRY` 는 이 파일에서 모듈 수준 이름이 아니라 픽스처 안에서만 임포트된다.
+    The registry is not a module-level name in this file.
+    """
+    import importlib  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    module = importlib.import_module("src.analyzer.io.tools.shellcheck")
+    return module._ShellCheckAnalyzer()  # pylint: disable=protected-access
+
+
+class TestShellcheckCrashIsNotACleanFile:
+    def test_crash_with_clean_looking_stdout_raises(self):
+        """🔴 **이 PR 의 핵심** — stdout 이 `[]` 로 깨끗해 보여도 exit=2 면 미분석이다.
+
+        실측: 없는 경로 → exit=2 · stdout `[]`. 깨끗(exit=0 · `[]`)과 **바이트가 같다.**
+        """
+        crash = _sc_proc(stdout="[]\n", stderr="openBinaryFile: does not exist\n", returncode=2)
+        with patch("subprocess.run", return_value=crash):
+            with pytest.raises(RuntimeError, match="shellcheck"):
+                _shellcheck().run(_sc_ctx())
+
+    def test_clean_is_still_clean(self):
+        """🔴 부정 통제 — exit=0 · `[]` 는 깨끗함이다. 여기서 raise 하면 모든 셸이 막힌다."""
+        with patch("subprocess.run", return_value=_sc_proc(stdout="[]\n", returncode=0)):
+            assert _shellcheck().run(_sc_ctx()) == []
+
+    def test_findings_are_not_a_crash(self):
+        """🔴 부정 통제 — 발견은 exit=1 이지만 이슈가 있으므로 크래시가 아니다."""
+        payload = json.dumps([{"file": "d.sh", "line": 1, "level": "error",
+                               "code": 2148, "message": "Tips depend on target shell"}])
+        with patch("subprocess.run", return_value=_sc_proc(stdout=payload, returncode=1)):
+            issues = _shellcheck().run(_sc_ctx())
+        assert len(issues) == 1 and issues[0].tool == "shellcheck"
+
+    def test_empty_stdout_with_nonzero_exit_raises(self):
+        """🔴 아무것도 안 냈는데 비정상 종료 = 미분석이다."""
+        with patch("subprocess.run", return_value=_sc_proc(stdout="", returncode=2)):
+            with pytest.raises(RuntimeError, match="shellcheck"):
+                _shellcheck().run(_sc_ctx())
+
+    def test_empty_stdout_with_zero_exit_is_clean(self):
+        """🔴 부정 통제 — 빈 출력 + exit=0 은 깨끗함이다(헬퍼의 정의역)."""
+        with patch("subprocess.run", return_value=_sc_proc(stdout="", returncode=0)):
+            assert _shellcheck().run(_sc_ctx()) == []
+
+    def test_unparsable_json_raises(self):
+        """🔴 무언가를 냈는데 읽을 수 없다 = 미분석이다."""
+        with patch("subprocess.run", return_value=_sc_proc(stdout="not json", returncode=1)):
+            with pytest.raises(RuntimeError, match="shellcheck"):
+                _shellcheck().run(_sc_ctx())
+
+    def test_missing_binary_is_procurement_not_crash(self):
+        """🔴 which() 통과 뒤 사라진 바이너리는 조달 축이 담당한다 — `[]` 유지."""
+        with patch("subprocess.run", side_effect=FileNotFoundError("shellcheck")):
+            assert _shellcheck().run(_sc_ctx()) == []
+
+    def test_timeout_is_not_a_crash(self):
+        """🔴 타임아웃은 `ctx.timed_out` 이 담당한다."""
+        ctx = _sc_ctx()
+        with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("shellcheck", 30)):
+            assert _shellcheck().run(ctx) == []
+        assert ctx.timed_out is True
