@@ -538,6 +538,26 @@ def _w2_record(tool: str, case: str, seen, verdict, exc) -> str:
     return line
 
 
+# ── 실측 결과 (CI ubuntu-latest, 실바이너리, 2026-08-30) ──────────────────────
+#
+# 🔴 **넷 중 둘이 크래시해도 파싱 가능한 출력을 낸다.** 「파싱 불가 = 미분석」 하나로
+#    일괄 전환했으면 절반에 틀린 판별식을 실었다 — #1564 가 rubocop 에서 배운 것 그대로다.
+#
+#   도구            깨끗                     크래시(없는 경로)                    판별식 후보
+#   ─────────────────────────────────────────────────────────────────────────────────────
+#   cppcheck        exit=0 · stderr 에 XML   exit=1 · stdout 평문, XML **없음**   stderr XML 부재
+#   hadolint        exit=0 · stdout `[]`     exit=1 · stdout **빈값**             빈 stdout
+#   golangci-lint   exit=0 · JSON            **exit=7 · 유효 JSON `Issues:[]`**   🔴 exit / stderr 필요
+#   shellcheck      exit=0 · stdout `[]`     **exit=2 · stdout `[]`**             🔴 exit / stderr 필요
+#
+#   깨진 입력(`junk`)은 셋에서 **발견**으로 나온다(syntaxError · DL1000 · SC2148) —
+#   크래시가 아니다. golangci-lint 만 exit=5 · 빈 stdout 이다.
+#
+# 즉 cppcheck·hadolint 는 출력 모양만으로 가를 수 있고, golangci-lint·shellcheck 는
+# **종료코드 또는 stderr 를 함께 봐야 한다.** 전환 PR 은 도구별로 갈라서 한다.
+# Measured in CI: two of four emit parsable output when they crash.
+
+
 @pytest.mark.parametrize("tool", sorted(_W2_TOOLS))
 def test_w2_crash_shape_is_recorded_and_is_still_fail_open(tool, tmp_path):
     """🔴 네 도구의 **크래시 모양을 실측으로 기록**하고, 오늘의 fail-open 을 단언한다.
@@ -581,9 +601,17 @@ def test_w2_crash_shape_is_recorded_and_is_still_fail_open(tool, tmp_path):
             "`pytest.raises` 로 바꾸고 **어떤 판별식으로 잡았는지** 적어라. (%r)"
             % (tool, case, exc)
         )
-        assert verdict == [], (
-            "%s/%s: 예상 밖 결과 %r — 판별식 전제가 깨졌다" % (tool, case, verdict)
-        )
+        if case == "junk":
+            # 🔴 **깨진 입력은 크래시가 아니다** — 실측(CI): cppcheck 는 `syntaxError` 를,
+            #    hadolint 는 `DL1000` 을, shellcheck 는 `SC2148` 을 **발견으로 보고**한다.
+            #    그것은 도구가 정상 동작한 것이므로 개수를 단언하지 않는다.
+            # Broken input is a finding, not a crash: three of four report it as a rule hit.
+            assert isinstance(verdict, list), (
+                "%s/%s: 목록이 아니다 — %r" % (tool, case, verdict))
+        else:
+            assert verdict == [], (
+                "%s/%s: 예상 밖 결과 %r — 판별식 전제가 깨졌다" % (tool, case, verdict)
+            )
 
 
 @pytest.mark.parametrize("tool", sorted(_W2_TOOLS))
