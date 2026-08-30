@@ -11,6 +11,7 @@ import logging
 import shutil
 import subprocess  # nosec B404
 
+from src.analyzer.io.tools._common import analysis_failed
 from src.analyzer.pure.registry import (
     AnalyzeContext, AnalysisIssue, Category, Severity, register,
 )
@@ -51,8 +52,15 @@ class _HadolintAnalyzer:
                 timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
             )
             raw = r.stdout.strip()
+            # 🔴 **성공하면 항상 JSON 배열을 낸다** — 깨끗해도 `[]` 다. 그래서 빈 stdout 이
+            #    판별식이다. CI 실바이너리 실측(#1580 `W2-SHAPE`):
+            #      깨끗              exit=0 · stdout `[]`
+            #      깨진 Dockerfile   exit=1 · stdout JSON + `DL1000`  ← **발견**이다
+            #      없는 경로(크래시) exit=1 · stdout **0자** · stderr `withBinaryFile: …`
+            #    exit code 는 판별식이 아니다 — 발견도 크래시도 exit=1 이다.
+            # Measured: a successful run always emits a JSON array, `[]` when clean.
             if not raw:
-                return []
+                raise analysis_failed("hadolint", ctx, r, "produced no output")
             data = json.loads(raw)
             issues = []
             for item in data:
@@ -71,9 +79,16 @@ class _HadolintAnalyzer:
             ctx.timed_out = True
             logger.warning("hadolint timed out for %s", ctx.tmp_path)
             return []
-        except (json.JSONDecodeError, OSError, KeyError) as exc:
-            logger.warning("hadolint failed for %s: %s", ctx.tmp_path, exc)
+        except FileNotFoundError as exc:
+            # which() 통과 뒤 사라진 바이너리 — 조달 축이 담당한다.
+            # A binary that vanished after the which() gate; procurement owns it.
+            logger.warning("hadolint unavailable for %s: %s", ctx.tmp_path, exc)
             return []
+        except (json.JSONDecodeError, KeyError) as exc:
+            # 무언가를 냈는데 읽을 수 없다 = 미분석이다 — 조용히 `[]` 로 흘리지 않는다.
+            # Output we cannot read is unanalyzed, not clean.
+            raise analysis_failed(
+                "hadolint", ctx, r, "produced output this adapter cannot read") from exc
 
 
 register(_HadolintAnalyzer())

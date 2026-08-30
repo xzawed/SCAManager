@@ -66,9 +66,8 @@ KNOWN_FAIL_OPEN: frozenset[str] = frozenset({
     # 남은 9개는 #1557 W2 잔여다: semgrep 이 같은 언어를 덮지만 **전담 축은 사라진다**.
     # 🔴 판별식은 도구마다 다르다 — 실측으로 정한 것만 전환한다. rubocop 은 크래시해도
     #    유효한 JSON 을 내므로 「비-JSON 이면 raise」 관용구가 통하지 않았다.
-    "cppcheck", "dotnet_format", "golangci_lint", "hadolint",
-    "htmlhint", "ktlint", "phpstan", "shellcheck",
-    "swiftlint",
+    "dotnet_format", "golangci_lint", "htmlhint", "ktlint",
+    "phpstan", "shellcheck", "swiftlint",
 })
 
 
@@ -355,7 +354,7 @@ def test_delete_this_file_when_the_list_empties():
 #    `golangci_lint.py` 가 등록하는 `"golangci-lint"` 를 **조용히 떨어뜨려** 5를 4로 만든다
 #    (실측). 그것이 바로 이 리포가 반복해 온 거짓 집행자다. 두 조인이 어긋나면 red 다.
 
-_REACHABLE_CEILING = 5
+_REACHABLE_CEILING = 3
 """잔여 fail-open ∩ 조달의 상한 — **파생 개수**의 래칫이지 손으로 적은 목록이 아니다.
 
 부채를 닫아 줄면 같은 PR 에서 이 수를 내린다. 늘어나면 red — 새로 조달한 도구가

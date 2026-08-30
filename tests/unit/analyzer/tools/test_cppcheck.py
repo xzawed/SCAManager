@@ -10,6 +10,7 @@ os.environ.setdefault("TELEGRAM_BOT_TOKEN", "123:ABC")
 os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
 
 import subprocess  # noqa: E402
+import pytest  # noqa: E402
 from unittest.mock import MagicMock, patch  # noqa: E402
 
 from src.analyzer.pure.registry import AnalyzeContext  # noqa: E402
@@ -129,28 +130,46 @@ def test_run_returns_empty_on_timeout():
         assert _CppCheckAnalyzer().run(_ctx()) == []
 
 
-def test_run_returns_empty_on_oserror():
-    with patch(
-        "src.analyzer.io.tools.cppcheck.subprocess.run",
-        side_effect=OSError("not found"),
-    ):
-        assert _CppCheckAnalyzer().run(_ctx()) == []
+def test_run_raises_on_generic_oserror():
+    """🔴 뒤집힌 계약 (#1557 W2) — `FileNotFoundError` **가 아닌** OSError 는 미분석이다.
+
+    바이너리 부재는 조달 축(`unavailable_tools`)이 담당하고 그것만 `[]` 로 남는다.
+    깨진 shebang·권한 같은 그 밖의 OSError 는 「분석하지 못했다」이므로 올라가야 한다.
+    이전 판은 둘을 같은 갈래로 보내 미분석을 «이슈 0건 · 완전» 으로 기록했다.
+    Only a vanished binary stays []; any other OSError is unanalyzed.
+    """
+    with patch("src.analyzer.io.tools.cppcheck.subprocess.run",
+               side_effect=OSError(13, "Permission denied")):
+        with pytest.raises(OSError):
+            _CppCheckAnalyzer().run(_ctx())
 
 
-def test_run_returns_empty_on_xml_parse_error():
+def test_run_raises_on_xml_parse_error():
+    """🔴 뒤집힌 계약 (#1557 W2) — 봉투는 있는데 읽을 수 없으면 미분석이다.
+
+    이전 판은 `[]` 를 돌려줘 그 침묵이 «이슈 0건 · 완전» 이 됐다. `c`·`cpp` 는
+    조달된 전담 관측면이 cppcheck 하나뿐이라 대체 관측이 없다.
+    """
     mock_result = MagicMock()
     mock_result.stderr = "not xml at all <<<"
     mock_result.stdout = ""
     with patch("src.analyzer.io.tools.cppcheck.subprocess.run", return_value=mock_result):
-        assert _CppCheckAnalyzer().run(_ctx()) == []
+        with pytest.raises(RuntimeError, match="cppcheck"):
+            _CppCheckAnalyzer().run(_ctx())
 
 
-def test_run_empty_stderr_returns_empty():
+def test_run_raises_when_stderr_is_empty():
+    """🔴 뒤집힌 계약 (#1557 W2) — 봉투가 아예 없으면 분석하지 못한 것이다.
+
+    CI 실바이너리 실측: 성공하면 항상 `<results …>` 봉투를 내고, 없는 경로에서만
+    stderr 가 0자다(#1580 `W2-SHAPE`). 이전 판은 그것을 「깨끗함」으로 읽었다.
+    """
     mock_result = MagicMock()
     mock_result.stderr = ""
     mock_result.stdout = ""
     with patch("src.analyzer.io.tools.cppcheck.subprocess.run", return_value=mock_result):
-        assert _CppCheckAnalyzer().run(_ctx()) == []
+        with pytest.raises(RuntimeError, match="cppcheck"):
+            _CppCheckAnalyzer().run(_ctx())
 
 
 # ── 크래시가 «이슈 0건» 이 되던 자리 (#1557 W2 — CI 실측 기반) ──────────────────
