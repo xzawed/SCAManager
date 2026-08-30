@@ -692,7 +692,23 @@ def test_w2_ordinary_dirty_input_must_not_look_like_a_crash(tool, tmp_path):
 # 🔴 이 시험은 **판단하지 않는다.** 오늘의 동작(`[]`)을 단언하고 모양을 `W2-SHAPE` 로 기록한다.
 #    CI 로그에서 그 줄을 읽어 (A)/(B) 를 가른 뒤에 전환 여부를 정한다.
 #
-# The only unmeasured fact that decides whether converting golangci-lint walls Go.
+# 🔴 **실측 결과 (CI, 2026-08-30) — (B) 였다.**
+#      exit=3 · stdout **0바이트** · stderr `level=warning "[runner] Can't run linter
+#      goanalysis_metalinter: buildir: failed to load package : could not load export data"`
+#      · adapter `issues=0`
+#    JSON 봉투가 **아예 안 나왔다** — 즉 「돌 수 있는 린터가 아무것도 못 찾았다」가 아니라
+#    기본 린터 전체(v1.55.2 는 errcheck·gosimple·govet·ineffassign·staticcheck·unused·
+#    typecheck 가 모두 `goanalysis_metalinter` 안이다)가 실패한 것이고, `issues=0` 은
+#    `golangci_lint.py::            if not r.stdout.strip():` 갈래에서 나온 값이다.
+#    (Grok claim-review `01a05124` Q4.)
+#
+# 🔴 그래서 **golangci-lint 는 전환하지 않는다.** `empty_output_is_a_crash` 를 걸면
+#    형제를 참조하는 모든 Go 파일이 `incomplete` 가 된다. 종료코드 허용목록(3 은 봐주고
+#    5·7 은 올린다)은 이 리포가 반복해 다친 **얼어붙은 목록**이고, stderr 를 보는 것은
+#    헬퍼의 계약(「stderr 는 보지 않는다」)을 깬다.
+#
+# The measured answer is (B): converting would wall every Go file that references anything
+# outside itself.
 
 
 def test_w2_golangci_sibling_import_shape_is_recorded(tmp_path):
@@ -726,3 +742,62 @@ def test_w2_golangci_sibling_import_shape_is_recorded(tmp_path):
     assert isinstance(verdict, list), "목록이 아니다 — %r" % verdict
     # 🔴 개수를 단언하지 않는다. (A) 면 비지 않고 (B) 면 빈다 — **그것이 측정 대상**이다.
     #    `W2-SHAPE` 줄의 `adapter=issues=N` 과 `exit=` 를 CI 로그에서 읽어 판단한다.
+
+
+# ── golangci-lint: 같은 패키지의 다른 파일을 참조하는 모양 (#1557 W2) ──────────
+#
+# 🔴 형제 **패키지** 임포트는 이미 쟀고 결과는 (B) 였다 — `exit=3` · stdout **0바이트** ·
+#    `issues=0`(#1582 의 `W2-SHAPE`). 그래서 `empty_output_is_a_crash` 로 전환하면
+#    형제를 참조하는 모든 Go 파일이 `incomplete` 가 된다. **전환하지 않기로 했다.**
+#
+# 🔴 그런데 그보다 **훨씬 흔한** 모양이 하나 더 있다. Go 는 같은 패키지의 다른 파일에
+#    있는 심볼을 **임포트 없이** 그냥 쓴다. 어댑터는 파일 하나를 임시 디렉터리에 떼어
+#    놓으므로 그 심볼이 정의되지 않은 상태가 된다 — 실제 리포의 대다수 파일이 이 모양이다.
+#
+#    Grok claim-review `01a05124` 의 지적: 형제 임포트는 **패키지 적재** 실패
+#    (`buildir` · export data 없음)이고, 같은 패키지 참조는 **경로가 다르다** —
+#    한 파일짜리 패키지는 적재에 성공하고 `typecheck` 가 그것을 `Issues` 에 담을 수 있다.
+#    둘을 같은 것으로 취급하면 안 된다.
+#
+#      (A) `Issues` 에 typecheck 항목이 담긴다 -> golangci-lint 는 이 모양에서 **동작한다**
+#      (B) `Issues:[]` + 비-0                  -> 대부분의 실물 Go 파일에서 **무동작**이고,
+#                                                 그것은 #1565(dotnet_format) 부류다
+#
+# 🔴 이 시험은 **판단하지 않는다.** 오늘의 동작을 단언하고 모양을 `W2-SHAPE` 로 기록한다.
+#
+# Same-package references need no import; the one-file package may still load, so this is a
+# different code path from the sibling-package case. Measure it before concluding.
+
+
+def test_w2_golangci_same_package_reference_shape_is_recorded(tmp_path):
+    """🔴 같은 패키지의 다른 파일에 있는 심볼을 부르는 파일 — 실물 리포의 대다수 모양이다.
+
+    임포트가 없다. `_ensure_go_mod` 가 만드는 `module tempmod` 안에서 한 파일짜리
+    패키지가 되고, `helper()` 는 정의되지 않은 이름이 된다.
+    """
+    _require("golangci-lint")
+    adapter = _w2_adapter("golangci_lint", "_GolangciLintAnalyzer")
+    src = tmp_path / "probe.go"
+    src.write_text(
+        "package tempmod" + chr(10) + chr(10)
+        + "func Use() {" + chr(10)
+        + chr(9) + "helper()" + chr(10)
+        + "}" + chr(10),
+        encoding="utf-8")
+
+    ctx = AnalyzeContext(filename="probe.go", content=src.read_text(encoding="utf-8"),
+                         language="go", is_test=False, tmp_path=str(src))
+    try:
+        seen, verdict, exc = _w2_observe(adapter, ctx)
+    except OSError as os_exc:
+        if os.name == "nt":
+            _not_measured("Windows 가 golangci-lint 를 직접 실행 못 함 (%s)"
+                          % type(os_exc).__name__)
+        raise
+    _w2_record("golangci-lint", "same_package_ref", seen, verdict, exc)
+
+    assert exc is None, (
+        "golangci-lint 가 같은 패키지 참조에서 이미 raise 한다 — 전환된 것이다. (%r)" % exc)
+    assert isinstance(verdict, list), "목록이 아니다 — %r" % verdict
+    # 🔴 개수를 단언하지 않는다 — (A)/(B) 를 가르는 것이 이 시험의 목적이다.
+    #    `W2-SHAPE` 줄의 `adapter=issues=N` 과 `exit=` 를 CI 로그에서 읽는다.
