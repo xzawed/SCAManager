@@ -65,10 +65,26 @@ class _KtlintAnalyzer:
         return ctx.language in self.SUPPORTED_LANGUAGES
 
     def is_enabled(self, ctx: AnalyzeContext) -> bool:  # pylint: disable=unused-argument
-        """ktlint 바이너리 설치 여부 확인.
-        Check whether the ktlint binary is installed.
+        """ktlint **와 JVM** 이 모두 있는지 확인.
+
+        🔴 `which("ktlint")` 만으로는 능력을 재지 못한다. `railway.toml` 이 받는 릴리스
+        에셋은 네이티브 실행파일이 아니라 **셸 래퍼**다 — 첫 줄이 `#!/bin/sh` 이고 Java
+        메이저 버전을 탐지해 내장 JAR 를 실행한다(실측: 에셋 첫 바이트 직접 조회).
+        그런데 조달에 java 가 없다(`nixpacks.toml::aptPkgs` · `railway.toml` 둘 다 0건).
+        그래서 파일은 있고 실행은 안 되는 상태가 되고, `run()` 이 JSON 배열을 못 얻어
+        `[]` 를 돌려주면 **모든 Kotlin 파일이 「이슈 0건 · 완전」** 이 된다.
+
+        🔴 **벽이 아니라 게이트다.** 여기서 False 를 내면 `unavailable_tools` 로 가고,
+        ktlint 바이너리 자체는 있으므로 `static.py::def _binary_is_absent` 가 조달 회귀로
+        승격하지 않는다 — kotlin 은 `no_dedicated_observer` 로 표면화된다. `run()` 에서
+        예외로 올리면 그 대신 모든 `.kt` 가 `incomplete` 가 된다(#1564 가 slither 에서
+        낸 사고와 같은 형태).
+
+        Gate on the JVM too: the shipped asset is a /bin/sh wrapper around a JAR and the image
+        provisions no java, so presence of the file does not mean the tool can run.
         """
-        return shutil.which("ktlint") is not None
+        return (shutil.which("ktlint") is not None
+                and shutil.which("java") is not None)
 
     def run(self, ctx: AnalyzeContext) -> list[AnalysisIssue]:
         """ktlint --reporter=json 출력을 파싱해 이슈 반환.

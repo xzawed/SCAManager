@@ -106,7 +106,83 @@ class TestKtlintAnalyzer:
         # 모듈 임포트 시 REGISTRY에 ktlint가 자동 등록된다
         # Module import must auto-register ktlint in REGISTRY
         import importlib
-        import src.analyzer.io.tools.ktlint  # noqa: F401
-        importlib.reload(src.analyzer.io.tools.ktlint)
+        # 🔴 string-path 로 가져온다 — `import src…` 는 같은 파일의 `from src… import` 와
+        #    이중 형태가 되어 CodeQL `py/import-and-import-from` 을 자초한다
+        #    (`scripts/check_dual_import.py`). `# noqa: F401` 로 가리는 것도 막힌다.
+        # String path: avoids pairing with the from-imports in this file.
+        mod = importlib.import_module("src.analyzer.io.tools.ktlint")
+        importlib.reload(mod)
         names = [a.name for a in REGISTRY]
         assert "ktlint" in names
+
+
+# ── ktlint 는 JVM 을 요구한다 (#1578) ─────────────────────────────────────────
+#
+# 🔴 `railway.toml` 이 받는 릴리스 에셋은 네이티브 실행파일이 아니라 **셸 래퍼**다 —
+#    첫 줄이 `#!/bin/sh` 이고 Java 메이저 버전을 탐지해 내장 JAR 를 실행한다(실측: 에셋
+#    첫 바이트 직접 조회). 그런데 `nixpacks.toml` 의 `aptPkgs` 에 java 가 없다
+#    (`grep -ci "java|jdk|jre"` → railway.toml 0 · nixpacks.toml 0).
+#
+# 🔴 `which("ktlint")` 는 **참**이다(파일은 있다). 그래서 조달 축이 발화하지 않고 `run()` 이
+#    호출되며, JSON 배열이 안 나와 `[]` 로 떨어진다 — 모든 Kotlin 파일이 「이슈 0건 · 완전」.
+#    `no_dedicated_observer` 축도 못 잡는다: 어댑터가 `[]` 를 돌려주면 `_run_analyzers` 가
+#    정상 실행으로 세기 때문이다.
+#
+# 🔴 **벽이 아니라 게이트로 만든다.** `#1567` 이 slither/solc 에 한 것과 같은 형태다.
+#    fail-closed 로 돌리면 CI(JRE 있음)는 초록이고 프로덕션의 모든 `.kt` 가 `incomplete` 가 된다.
+#
+# The release asset is a /bin/sh wrapper that requires a JVM; the image provisions none.
+# Gate on java so procurement surfaces it instead of silently reporting a clean file.
+
+
+
+def _ktlint():
+    """등록부에서 꺼낸다 — `from … import` 를 쓰면 같은 파일의 `import …` 와 이중 형태가 되어
+    CodeQL `py/import-and-import-from` 을 자초한다(`scripts/check_dual_import.py`).
+    Fetch from the registry: a from-import here would pair with the module import above.
+    """
+    return next(a for a in REGISTRY if a.name == "ktlint")
+
+def _which(present):
+    """이름 집합만 PATH 에 있는 `shutil.which` — 나머지는 None."""
+    return lambda name: f"/usr/bin/{name}" if name in present else None
+
+
+class TestKtlintNeedsAJvm:
+    def test_ktlint_without_java_is_not_enabled(self):
+        """🔴 ktlint 는 있는데 java 가 없다 = 실행할 수 없다."""
+        with patch("src.analyzer.io.tools.ktlint.shutil.which", _which({"ktlint"})):
+            assert _ktlint().is_enabled(_make_ctx("kotlin", "Main.kt")) is False
+
+    def test_both_present_still_enabled(self):
+        """🔴 부정 통제 — 둘 다 있으면 지금처럼 돈다. 과차단이 이 수정의 위험이다."""
+        with patch("src.analyzer.io.tools.ktlint.shutil.which", _which({"ktlint", "java"})):
+            assert _ktlint().is_enabled(_make_ctx("kotlin", "Main.kt")) is True
+
+    def test_java_without_ktlint_is_not_enabled(self):
+        """🔴 부정 통제 — java 만 있는 것으로는 켜지지 않는다(게이트가 java 만 보면 안 된다)."""
+        with patch("src.analyzer.io.tools.ktlint.shutil.which", _which({"java"})):
+            assert _ktlint().is_enabled(_make_ctx("kotlin", "Main.kt")) is False
+
+    def test_missing_jvm_surfaces_and_does_not_wall(self):
+        """🔴 **가장 중요한 단언** — 게이트는 표면화하지 벽이 되면 안 된다.
+
+        `incomplete=True` 가 되면 모든 Kotlin PR 의 auto-merge 가 막힌다. 그것이 #1564 가
+        slither 에서 낸 사고이고 세 PR 이 뒤처리에 들어갔다.
+        """
+        import importlib  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+        static = importlib.import_module("src.analyzer.io.static")
+        # 🔴 `src…ktlint.shutil` 은 전역 `shutil` 과 **같은 객체**다 — 두 번 패치하면
+        #    서로를 덮는다. 한 번만 패치하고 java 만 빼서 그 상태를 만든다.
+        # Patch once: the adapter's `shutil` is the global module, not a copy.
+        with patch("shutil.which", _which({"ktlint", "semgrep"})), \
+                patch("src.analyzer.io.tools.semgrep.subprocess.run",
+                      return_value=_mock_proc(json.dumps({"results": [], "errors": []}), 0)):
+            result = static.analyze_file("Main.kt", "fun main() {}\n")
+        assert result.unavailable_tools == ["ktlint"], (
+            f"조달 축으로 가야 한다 — unavailable={result.unavailable_tools}"
+        )
+        assert result.incomplete is False, "🔴 벽이 됐다 — 모든 Kotlin 이 incomplete 다"
+        assert result.no_dedicated_observer == "kotlin", (
+            "전담이 하나도 안 돌았음이 기록돼야 한다"
+        )
