@@ -163,8 +163,10 @@ class TestKtlintNeedsAJvm:
         """
         import importlib  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
         static = importlib.import_module("src.analyzer.io.static")
+        # 🔴 `src…ktlint.shutil` 은 전역 `shutil` 과 **같은 객체**다 — 두 번 패치하면
+        #    서로를 덮는다. 한 번만 패치하고 java 만 빼서 그 상태를 만든다.
+        # Patch once: the adapter's `shutil` is the global module, not a copy.
         with patch("shutil.which", _which({"ktlint", "semgrep"})), \
-                patch("src.analyzer.io.tools.ktlint.shutil.which", _which({"ktlint"})), \
                 patch("src.analyzer.io.tools.semgrep.subprocess.run",
                       return_value=_mock_proc(json.dumps({"results": [], "errors": []}), 0)):
             result = static.analyze_file("Main.kt", "fun main() {}\n")
