@@ -439,13 +439,17 @@ def test_sqlfluff_silently_skips_large_files_and_the_adapter_refuses_to_call_it_
 # ══════════════════════════════════════════════════════════════════════════════
 #
 # 배포본에서 **실제로 도는** 잔여 fail-open 은 5개였고 ktlint 는 #1578·#1579 가 처리했다.
-# 남은 4개는 각각 자기 언어의 **유일한 조달 전담 관측면**이다(프로덕션 `supports()` ×
+# 넷은 각각 자기 언어의 **유일한 조달 전담 관측면**이다(프로덕션 `supports()` ×
 # `PROVISIONED_ANALYZERS` 실측):
 #
 #     cppcheck -> c · cpp      golangci-lint -> go
 #     hadolint -> dockerfile   shellcheck    -> shell
 #
-# 넷 다 크래시하면 `[]` 를 돌려주고, `static.py::            result.issues.extend(analyzer.run(ctx))`
+# 🔴 그중 `cppcheck` · `hadolint` 는 **이미 전환됐다**(`_W2_CONVERTED` 참조). 남은 것은
+#    `golangci-lint` · `shellcheck` 이고, 둘은 **크래시해도 파싱 가능한 출력을 낸다**(아래 표) —
+#    stdout 만 보는 판별식이 원리적으로 불가능한 쪽이다.
+#
+# 전환 전에는 크래시가 `[]` 를 돌려주고, `static.py::            result.issues.extend(analyzer.run(ctx))`
 # 다음 줄의 `ran += 1` 이 그것을 **정상 실행으로 센다**. 그래서 #1570 의
 # `no_dedicated_observer` 축도 이 자리를 못 잡는다 — 결과는 「이슈 0건 · 완전」이다.
 #
