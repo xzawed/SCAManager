@@ -400,13 +400,18 @@ class TestShellCheckRunGracefulDegradation:
             issues = _ShellCheckAnalyzer().run(ctx)
         assert issues == []
 
-    def test_run_returns_empty_on_json_decode_error(self, make_ctx):
-        # stdout이 유효하지 않은 JSON → JSONDecodeError → 빈 이슈 목록 반환
+    def test_run_raises_on_json_decode_error(self, make_ctx):
+        """🔴 뒤집힌 계약 (#1557 W2) — 읽을 수 없는 출력은 미분석이다.
+
+        이전 판은 `[]` 를 돌려줘 그 침묵이 «이슈 0건 · 완전» 이 됐다. `shell` 은 조달된
+        전담 관측면이 shellcheck 하나뿐이라 대체 관측이 없다.
+        Output we cannot read is unanalyzed, not clean.
+        """
         from src.analyzer.io.tools.shellcheck import _ShellCheckAnalyzer
         ctx = make_ctx(language="shell", tmp_path="/tmp/script.sh")
         with patch("subprocess.run", return_value=_mock_shellcheck_proc("{broken json")):
-            issues = _ShellCheckAnalyzer().run(ctx)
-        assert issues == []
+            with pytest.raises(RuntimeError, match="shellcheck"):
+                _ShellCheckAnalyzer().run(ctx)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

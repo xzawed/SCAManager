@@ -485,6 +485,7 @@ _W2_TOOLS = {
 _W2_CONVERTED = {
     "cppcheck": "빈 stderr — 성공하면 항상 결과 XML 봉투를 낸다",
     "hadolint": "빈 stdout — 성공하면 항상 JSON 배열을 낸다(깨끗해도 `[]`)",
+    "shellcheck": "읽어 낸 이슈 0건 + 비정상 종료 — 크래시 stdout 이 깨끗과 동일해 모양으로는 못 가른다",
 }
 
 _W2_DIRTY = {
@@ -669,3 +670,59 @@ def test_w2_ordinary_dirty_input_must_not_look_like_a_crash(tool, tmp_path):
         "%s: 평범한 지저분한 입력에서 raise 했다 — 전환하면 과차단이다 (%r)" % (tool, exc)
     )
     assert isinstance(verdict, list), "%s: 목록이 아니다 — %r" % (tool, verdict)
+
+
+# ── golangci-lint 전환의 유일한 미측정 축 (#1557 W2) ──────────────────────────
+#
+# 🔴 #1580 이 잰 두 크래시 모양(없는 경로 · 널바이트)은 **프로덕션에서 발생하지 않는다**:
+#      `static.py::        tmp_path = os.path.join(tmpdir, f"analyze{suffix}")` 가 파일을 먼저 쓰고,
+#      `golangci_lint.py::def _ensure_go_mod` 가 `module tempmod` 를 자동 생성한다.
+#    그래서 그 둘로는 전환 판단을 할 수 없다.
+#
+# 🔴 프로덕션에서 실제로 일어나는 것은 **형제 패키지를 임포트하는 파일**이다. 이 어댑터는
+#    파일 하나를 임시 디렉터리에 떼어 놓고 부르므로, 원본 리포에서 옆 파일을 참조하던
+#    코드는 타입체크가 되지 않는다. 그때 golangci-lint 가
+#
+#      (A) `Issues` 에 typecheck 항목을 담아 준다   -> `issues` 가 비지 않는다 -> 헬퍼 False -> 안전
+#      (B) `Issues:[]` + 비-0 종료로 끝낸다          -> 헬퍼 True -> **모든 다중파일 Go PR 이 `incomplete`**
+#
+#    (B) 이면 전환은 벽이 된다 — #1564 가 slither 에서 낸 사고와 같은 부류다.
+#    Grok plan-review `01a050d8` 이 이 축을 「전환 전에 반드시 재야 하는 유일한 사실」로 지목했다.
+#
+# 🔴 이 시험은 **판단하지 않는다.** 오늘의 동작(`[]`)을 단언하고 모양을 `W2-SHAPE` 로 기록한다.
+#    CI 로그에서 그 줄을 읽어 (A)/(B) 를 가른 뒤에 전환 여부를 정한다.
+#
+# The only unmeasured fact that decides whether converting golangci-lint walls Go.
+
+
+def test_w2_golangci_sibling_import_shape_is_recorded(tmp_path):
+    """🔴 형제 패키지를 임포트하는 파일 — 프로덕션에서 실제로 오는 모양이다.
+
+    `_ensure_go_mod` 가 만드는 `module tempmod` 안에서 `tempmod/helper` 는 해석되지만
+    그 디렉터리가 없다. 원본 리포의 파일을 하나만 떼어 온 상황과 같다.
+    """
+    _require("golangci-lint")
+    adapter = _w2_adapter("golangci_lint", "_GolangciLintAnalyzer")
+    src = tmp_path / "probe.go"
+    src.write_text(
+        "package main" + chr(10) + chr(10)
+        + 'import "tempmod/helper"' + chr(10) + chr(10)
+        + "func main() { helper.Do() }" + chr(10),
+        encoding="utf-8")
+
+    ctx = AnalyzeContext(filename="probe.go", content=src.read_text(encoding="utf-8"),
+                         language="go", is_test=False, tmp_path=str(src))
+    try:
+        seen, verdict, exc = _w2_observe(adapter, ctx)
+    except OSError as os_exc:
+        if os.name == "nt":
+            _not_measured("Windows 가 golangci-lint 를 직접 실행 못 함 (%s)"
+                          % type(os_exc).__name__)
+        raise
+    _w2_record("golangci-lint", "sibling_import", seen, verdict, exc)
+
+    assert exc is None, (
+        "golangci-lint 가 형제 임포트에서 이미 raise 한다 — 전환된 것이다. (%r)" % exc)
+    assert isinstance(verdict, list), "목록이 아니다 — %r" % verdict
+    # 🔴 개수를 단언하지 않는다. (A) 면 비지 않고 (B) 면 빈다 — **그것이 측정 대상**이다.
+    #    `W2-SHAPE` 줄의 `adapter=issues=N` 과 `exit=` 를 CI 로그에서 읽어 판단한다.
