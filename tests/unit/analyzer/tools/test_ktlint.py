@@ -106,8 +106,12 @@ class TestKtlintAnalyzer:
         # 모듈 임포트 시 REGISTRY에 ktlint가 자동 등록된다
         # Module import must auto-register ktlint in REGISTRY
         import importlib
-        import src.analyzer.io.tools.ktlint  # noqa: F401
-        importlib.reload(src.analyzer.io.tools.ktlint)
+        # 🔴 string-path 로 가져온다 — `import src…` 는 같은 파일의 `from src… import` 와
+        #    이중 형태가 되어 CodeQL `py/import-and-import-from` 을 자초한다
+        #    (`scripts/check_dual_import.py`). `# noqa: F401` 로 가리는 것도 막힌다.
+        # String path: avoids pairing with the from-imports in this file.
+        mod = importlib.import_module("src.analyzer.io.tools.ktlint")
+        importlib.reload(mod)
         names = [a.name for a in REGISTRY]
         assert "ktlint" in names
 
@@ -131,6 +135,14 @@ class TestKtlintAnalyzer:
 # Gate on java so procurement surfaces it instead of silently reporting a clean file.
 
 
+
+def _ktlint():
+    """등록부에서 꺼낸다 — `from … import` 를 쓰면 같은 파일의 `import …` 와 이중 형태가 되어
+    CodeQL `py/import-and-import-from` 을 자초한다(`scripts/check_dual_import.py`).
+    Fetch from the registry: a from-import here would pair with the module import above.
+    """
+    return next(a for a in REGISTRY if a.name == "ktlint")
+
 def _which(present):
     """이름 집합만 PATH 에 있는 `shutil.which` — 나머지는 None."""
     return lambda name: f"/usr/bin/{name}" if name in present else None
@@ -139,21 +151,18 @@ def _which(present):
 class TestKtlintNeedsAJvm:
     def test_ktlint_without_java_is_not_enabled(self):
         """🔴 ktlint 는 있는데 java 가 없다 = 실행할 수 없다."""
-        from src.analyzer.io.tools.ktlint import _KtlintAnalyzer
         with patch("src.analyzer.io.tools.ktlint.shutil.which", _which({"ktlint"})):
-            assert _KtlintAnalyzer().is_enabled(_make_ctx("kotlin", "Main.kt")) is False
+            assert _ktlint().is_enabled(_make_ctx("kotlin", "Main.kt")) is False
 
     def test_both_present_still_enabled(self):
         """🔴 부정 통제 — 둘 다 있으면 지금처럼 돈다. 과차단이 이 수정의 위험이다."""
-        from src.analyzer.io.tools.ktlint import _KtlintAnalyzer
         with patch("src.analyzer.io.tools.ktlint.shutil.which", _which({"ktlint", "java"})):
-            assert _KtlintAnalyzer().is_enabled(_make_ctx("kotlin", "Main.kt")) is True
+            assert _ktlint().is_enabled(_make_ctx("kotlin", "Main.kt")) is True
 
     def test_java_without_ktlint_is_not_enabled(self):
         """🔴 부정 통제 — java 만 있는 것으로는 켜지지 않는다(게이트가 java 만 보면 안 된다)."""
-        from src.analyzer.io.tools.ktlint import _KtlintAnalyzer
         with patch("src.analyzer.io.tools.ktlint.shutil.which", _which({"java"})):
-            assert _KtlintAnalyzer().is_enabled(_make_ctx("kotlin", "Main.kt")) is False
+            assert _ktlint().is_enabled(_make_ctx("kotlin", "Main.kt")) is False
 
     def test_missing_jvm_surfaces_and_does_not_wall(self):
         """🔴 **가장 중요한 단언** — 게이트는 표면화하지 벽이 되면 안 된다.
