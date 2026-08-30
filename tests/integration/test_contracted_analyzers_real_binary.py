@@ -432,3 +432,219 @@ def test_sqlfluff_silently_skips_large_files_and_the_adapter_refuses_to_call_it_
         if os.name == "nt":
             _not_measured(f"Windows 가 sqlfluff shim 을 직접 실행 못 함 ({exc.__class__.__name__})")
         raise
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# W2 크래시 판별식 실측 (#1557) — **측정 먼저, 전환은 그 다음**
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# 배포본에서 **실제로 도는** 잔여 fail-open 은 5개였고 ktlint 는 #1578·#1579 가 처리했다.
+# 남은 4개는 각각 자기 언어의 **유일한 조달 전담 관측면**이다(프로덕션 `supports()` ×
+# `PROVISIONED_ANALYZERS` 실측):
+#
+#     cppcheck -> c · cpp      golangci-lint -> go
+#     hadolint -> dockerfile   shellcheck    -> shell
+#
+# 넷 다 크래시하면 `[]` 를 돌려주고, `static.py::            result.issues.extend(analyzer.run(ctx))`
+# 다음 줄의 `ran += 1` 이 그것을 **정상 실행으로 센다**. 그래서 #1570 의
+# `no_dedicated_observer` 축도 이 자리를 못 잡는다 — 결과는 「이슈 0건 · 완전」이다.
+#
+# 🔴 **왜 바로 전환하지 않는가.** #1564 가 rubocop 에서 배운 것: **크래시해도 유효 JSON 을
+#    내는 도구가 있다.** 그러면 「파싱 불가 = 미분석」 판별식이 그 도구에서 조용히 빗나간다.
+#    반대로 「빈 출력 = 미분석」으로 잡으면 깨끗한 파일이 통째로 차단된다(#1564 → #1567).
+#    판별식은 **도구마다 실측해야** 하는데 이 개발 PC 에는 네 바이너리가 하나도 없다.
+#    CI 는 넷 다 설치한다 — 그래서 여기가 계기다.
+#
+# 🔴 **이 절은 오늘의 fail-open 을 단언한다.** 크래시 행의 `[]` 는 **기록 중인 결함**이지
+#    바라는 동작이 아니다. 어떤 도구를 fail-closed 로 돌리면 그 행이 red 가 되고, 그때
+#    `pytest.raises` 로 바꾸면서 **어떤 판별식으로 잡았는지**를 여기 남긴다.
+#
+# Measure before converting: the crash discriminant differs per tool (rubocop emits valid JSON
+# when it crashes), and none of these four binaries exist on the dev PC. CI is the instrument.
+
+
+_W2_TOOLS = {
+    # 등록명: (어댑터 모듈, 클래스, 언어, 확장자, 깨끗한 원본)
+    "cppcheck": ("cppcheck", "_CppCheckAnalyzer", "cpp", ".cpp",
+                 "int main() { return 0; }\n"),
+    "golangci-lint": ("golangci_lint", "_GolangciLintAnalyzer", "go", ".go",
+                      "package main\n\nfunc main() {}\n"),
+    "hadolint": ("hadolint", "_HadolintAnalyzer", "dockerfile", "",
+                 "FROM scratch\n"),
+    "shellcheck": ("shellcheck", "_ShellCheckAnalyzer", "shell", ".sh",
+                   "#!/bin/sh\necho hi\n"),
+}
+
+_W2_DIRTY = {
+    "cppcheck": "int main(){int *p=0;*p=1;return 0;}\n",
+    "golangci-lint": "package main\n\nfunc main() { x := 1; _ = x }\n",
+    "hadolint": "FROM ubuntu:latest\nRUN apt-get update\nADD x /x\n",
+    "shellcheck": "#!/bin/sh\nrm -rf $1\necho $UNQUOTED\n",
+}
+
+
+def _w2_adapter(module_name: str, class_name: str):
+    """어댑터를 string-path 로 가져온다 — 이 파일의 `from src… import` 와 이중 형태를 만들지 않는다."""
+    import importlib  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    module = importlib.import_module("src.analyzer.io.tools." + module_name)
+    return getattr(module, class_name)()
+
+
+def _w2_observe(adapter, ctx):
+    """어댑터를 **프로덕션 경로로** 한 번 태우고, 그 안에서 실제로 돈 서브프로세스를 그대로 본다.
+
+    🔴 argv 를 손으로 옮겨 적지 않는다 — 그러면 어댑터가 argv 를 바꾸는 순간 이 측정이
+    조용히 다른 것을 재게 된다. `subprocess.run` 을 tee 해서 **어댑터가 실제로 부른 것**을 잡는다.
+    Tee the real subprocess instead of re-typing argv, so the measurement cannot drift.
+    """
+    from unittest.mock import patch  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    seen = []
+    real = subprocess.run
+
+    def _tee(*args, **kwargs):
+        proc = real(*args, **kwargs)
+        seen.append(((args[0] if args else kwargs.get("args")), proc))
+        return proc
+
+    with patch("subprocess.run", _tee):
+        try:
+            return seen, adapter.run(ctx), None
+        except Exception as exc:  # noqa: BLE001 — 무엇이 올라오는지가 측정 대상이다
+            return seen, None, exc
+
+
+def _w2_record(tool: str, case: str, seen, verdict, exc) -> str:
+    """관측을 한 줄로 만들고 **경고로 띄운다** — pytest 경고 요약이 CI 로그에 남는다.
+
+    통과한 테스트의 stdout 은 CI 로그에 나오지 않는다. 「쟀는데 안 보인다」를 피하려고
+    경고 채널을 쓴다(`pytest.ini::filterwarnings` 는 이 부류를 거르지 않는다).
+    """
+    import warnings  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    if seen:
+        argv, proc = seen[-1]
+        out, err = (proc.stdout or ""), (proc.stderr or "")
+        shape = "exit={0} stdout[{1}]={2!r} stderr[{3}]={4!r}".format(
+            proc.returncode, len(out), out[:160], len(err), err[:160])
+        argv_s = " ".join(str(x) for x in (argv or []))[:120]
+    else:
+        shape, argv_s = "서브프로세스 미실행", ""
+    outcome = ("raise " + type(exc).__name__) if exc else "issues=%d" % len(verdict or [])
+    line = "W2-SHAPE tool={0} case={1} | argv={2} | {3} | adapter={4}".format(
+        tool, case, argv_s, shape, outcome)
+    warnings.warn(line, UserWarning, stacklevel=2)
+    print("\n" + line, file=sys.stderr)
+    return line
+
+
+# ── 실측 결과 (CI ubuntu-latest, 실바이너리, 2026-08-30) ──────────────────────
+#
+# 🔴 **넷 중 둘이 크래시해도 파싱 가능한 출력을 낸다.** 「파싱 불가 = 미분석」 하나로
+#    일괄 전환했으면 절반에 틀린 판별식을 실었다 — #1564 가 rubocop 에서 배운 것 그대로다.
+#
+#   도구            깨끗                     크래시(없는 경로)                    판별식 후보
+#   ─────────────────────────────────────────────────────────────────────────────────────
+#   cppcheck        exit=0 · stderr 에 XML   exit=1 · stdout 평문, XML **없음**   stderr XML 부재
+#   hadolint        exit=0 · stdout `[]`     exit=1 · stdout **빈값**             빈 stdout
+#   golangci-lint   exit=0 · JSON            **exit=7 · 유효 JSON `Issues:[]`**   🔴 exit / stderr 필요
+#   shellcheck      exit=0 · stdout `[]`     **exit=2 · stdout `[]`**             🔴 exit / stderr 필요
+#
+#   깨진 입력(`junk`)은 셋에서 **발견**으로 나온다(syntaxError · DL1000 · SC2148) —
+#   크래시가 아니다. golangci-lint 만 exit=5 · 빈 stdout 이다.
+#
+# 즉 cppcheck·hadolint 는 출력 모양만으로 가를 수 있고, golangci-lint·shellcheck 는
+# **종료코드 또는 stderr 를 함께 봐야 한다.** 전환 PR 은 도구별로 갈라서 한다.
+# Measured in CI: two of four emit parsable output when they crash.
+
+
+@pytest.mark.parametrize("tool", sorted(_W2_TOOLS))
+def test_w2_crash_shape_is_recorded_and_is_still_fail_open(tool, tmp_path):
+    """🔴 네 도구의 **크래시 모양을 실측으로 기록**하고, 오늘의 fail-open 을 단언한다.
+
+    세 경우를 잰다 — 깨끗 / 없는 경로 / 도구가 못 읽는 내용. 셋 다 어댑터는 지금 `[]` 를
+    돌려준다. 깨끗은 옳고 **나머지 둘은 결함**이다(미분석이 「완전」으로 기록된다).
+
+    관측은 `W2-SHAPE` 로 시작하는 줄로 경고에 남는다 — CI 로그에서 그것을 읽어 도구별
+    판별식을 정한다. 그 판별식 없이 전환하면 #1564(rubocop: 크래시해도 유효 JSON) 또는
+    slither(#1567: 깨끗한 파일까지 차단)를 재생산한다.
+    """
+    module_name, class_name, language, ext, clean = _W2_TOOLS[tool]
+    _require(tool)
+    adapter = _w2_adapter(module_name, class_name)
+
+    stem = "Dockerfile" if tool == "hadolint" else "probe" + ext
+    good = tmp_path / stem
+    good.write_text(clean, encoding="utf-8")
+    junk = tmp_path / (("junk" + ext) if ext else "Dockerfile.junk")
+    junk.write_bytes(b"\x00\x01\x02\xff\xfe not a program at all \x00\n")
+
+    cases = {
+        "clean": good,
+        "missing": tmp_path / (("nope" + ext) if ext else "Dockerfile.nope"),
+        "junk": junk,
+    }
+    for case, path in cases.items():
+        ctx = AnalyzeContext(filename=path.name, content=clean, language=language,
+                             is_test=False, tmp_path=str(path))
+        try:
+            seen, verdict, exc = _w2_observe(adapter, ctx)
+        except OSError as os_exc:                      # shim 실행 불가 = 플랫폼 한계
+            if os.name == "nt":
+                _not_measured("Windows 가 %s shim 을 직접 실행 못 함 (%s)"
+                              % (tool, type(os_exc).__name__))
+            raise
+        _w2_record(tool, case, seen, verdict, exc)
+
+        assert exc is None, (
+            "%s/%s: 어댑터가 이미 raise 한다 — fail-closed 로 전환된 것이다. 이 절을 "
+            "`pytest.raises` 로 바꾸고 **어떤 판별식으로 잡았는지** 적어라. (%r)"
+            % (tool, case, exc)
+        )
+        if case == "junk":
+            # 🔴 **깨진 입력은 크래시가 아니다** — 실측(CI): cppcheck 는 `syntaxError` 를,
+            #    hadolint 는 `DL1000` 을, shellcheck 는 `SC2148` 을 **발견으로 보고**한다.
+            #    그것은 도구가 정상 동작한 것이므로 개수를 단언하지 않는다.
+            # Broken input is a finding, not a crash: three of four report it as a rule hit.
+            assert isinstance(verdict, list), (
+                "%s/%s: 목록이 아니다 — %r" % (tool, case, verdict))
+        else:
+            assert verdict == [], (
+                "%s/%s: 예상 밖 결과 %r — 판별식 전제가 깨졌다" % (tool, case, verdict)
+            )
+
+
+@pytest.mark.parametrize("tool", sorted(_W2_TOOLS))
+def test_w2_ordinary_dirty_input_must_not_look_like_a_crash(tool, tmp_path):
+    """🔴 **과차단 방어** — fail-closed 로 바꿔도 평범한 PR 을 막지 않는지 미리 잰다.
+
+    `test_sqlfluff_parse_failure_is_a_violation_not_a_crash` 와 같은 축이다. 지저분하지만
+    정상인 입력에서 도구가 **컨테이너를 내는지**가 판별식의 안전 여부를 가른다 — 안 내면
+    「파싱 불가 = 미분석」 판별식이 정상 PR 을 통째로 막는다(#1564 → #1567 의 경로).
+
+    여기가 red 면 그 도구는 **아직 전환하면 안 된다.**
+    """
+    module_name, class_name, language, ext, _clean = _W2_TOOLS[tool]
+    _require(tool)
+    adapter = _w2_adapter(module_name, class_name)
+
+    dirty = _W2_DIRTY[tool]
+    name = "Dockerfile" if tool == "hadolint" else "dirty" + ext
+    src = tmp_path / name
+    src.write_text(dirty, encoding="utf-8")
+
+    ctx = AnalyzeContext(filename=name, content=dirty, language=language,
+                         is_test=False, tmp_path=str(src))
+    try:
+        seen, verdict, exc = _w2_observe(adapter, ctx)
+    except OSError as os_exc:
+        if os.name == "nt":
+            _not_measured("Windows 가 %s shim 을 직접 실행 못 함 (%s)"
+                          % (tool, type(os_exc).__name__))
+        raise
+    _w2_record(tool, "dirty", seen, verdict, exc)
+
+    assert exc is None, (
+        "%s: 평범한 지저분한 입력에서 raise 했다 — 전환하면 과차단이다 (%r)" % (tool, exc)
+    )
+    assert isinstance(verdict, list), "%s: 목록이 아니다 — %r" % (tool, verdict)
