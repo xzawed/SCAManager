@@ -12,8 +12,8 @@
     뮤테이션: 눈먼 형태로 새 어댑터 2개 투입 → 가드 exit 0 (5 passed)
 
 그래서 `KNOWN_FAIL_OPEN` 에 적혀 있던 14개는 **실제 집합이 아니라 눈먼 탐지기의 출력**이었다.
-재집계 20 → W1 5개(관측면 0)·W3 3개(스폰 축)·W2 3개(실측 판별식)를 fail-closed 로 돌려
-현재 **9개**다. 형태 7종은 `tests/unit/analyzer/fixtures/` 에 픽스처로 박혀 있고,
+재집계 20 → W1 5개(관측면 0)·W3 3개(스폰 축)·W2 5개(실측 판별식)를 fail-closed 로 돌려
+현재 **7개**다. 형태 7종은 `tests/unit/analyzer/fixtures/` 에 픽스처로 박혀 있고,
 각 파일 docstring 이 그 형태를 쓰는 실물 어댑터 좌표를 든다.
 
 ## 판정을 관용구에서 파생값으로 바꿨다
@@ -63,12 +63,13 @@ _NARROW_AXES = ("TimeoutExpired", "FileNotFoundError")
 # 고친 어댑터는 이 목록에서 빼면 된다.
 KNOWN_FAIL_OPEN: frozenset[str] = frozenset({
     # 분석 축이 통째로 fail-open — 크래시가 «이슈 0건 · 완전» 이 된다.
-    # 남은 9개는 #1557 W2 잔여다: semgrep 이 같은 언어를 덮지만 **전담 축은 사라진다**.
+    # 남은 7개는 #1557 W2 잔여다: semgrep 이 같은 언어를 덮지만 **전담 축은 사라진다**.
+    # 그중 배포본에서 실제로 도는 것은 **3개**(golangci_lint · ktlint · shellcheck) —
+    # `_REACHABLE_CEILING` 이 그 수를 파생값으로 래칫한다.
     # 🔴 판별식은 도구마다 다르다 — 실측으로 정한 것만 전환한다. rubocop 은 크래시해도
     #    유효한 JSON 을 내므로 「비-JSON 이면 raise」 관용구가 통하지 않았다.
-    "cppcheck", "dotnet_format", "golangci_lint", "hadolint",
-    "htmlhint", "ktlint", "phpstan", "shellcheck",
-    "swiftlint",
+    "dotnet_format", "golangci_lint", "htmlhint", "ktlint",
+    "phpstan", "shellcheck", "swiftlint",
 })
 
 
@@ -343,8 +344,8 @@ def test_delete_this_file_when_the_list_empties():
 # ── 잔여 부채 중 **배포본에서 실제로 도는 것** (회고 2026-08-29 P1) ─────────────
 #
 # 🔴 사고: 이 사이클이 닫은 11개 중 **5개는 배포 이미지에서 실행조차 되지 않았다**
-#    (buf_lint · clippy · dart_analyze · psscriptanalyzer · stylelint). 반대로 잔여 9개 중
-#    5개는 **돈다**. 투입의 약 45%가 도달 불가능한 위험에 갔고, 그동안 C/C++·Go·
+#    (buf_lint · clippy · dart_analyze · psscriptanalyzer · stylelint). 반대로 잔여 7개 중
+#    3개는 **돈다**(cppcheck·hadolint 는 #1557 W2 로 전환됐다). 투입의 약 45%가 도달 불가능한 위험에 갔고, 그동안 C/C++·Go·
 #    Dockerfile·Kotlin·shell 파일이 크래시를 «이슈 0건 · 완전» 으로 기록하는 경로는 그대로였다.
 #    우선순위를 조달과 대조한 적이 한 번도 없었기 때문이다.
 #
@@ -355,7 +356,7 @@ def test_delete_this_file_when_the_list_empties():
 #    `golangci_lint.py` 가 등록하는 `"golangci-lint"` 를 **조용히 떨어뜨려** 5를 4로 만든다
 #    (실측). 그것이 바로 이 리포가 반복해 온 거짓 집행자다. 두 조인이 어긋나면 red 다.
 
-_REACHABLE_CEILING = 5
+_REACHABLE_CEILING = 3
 """잔여 fail-open ∩ 조달의 상한 — **파생 개수**의 래칫이지 손으로 적은 목록이 아니다.
 
 부채를 닫아 줄면 같은 PR 에서 이 수를 내린다. 늘어나면 red — 새로 조달한 도구가

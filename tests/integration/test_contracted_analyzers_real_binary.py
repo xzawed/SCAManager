@@ -439,13 +439,17 @@ def test_sqlfluff_silently_skips_large_files_and_the_adapter_refuses_to_call_it_
 # ══════════════════════════════════════════════════════════════════════════════
 #
 # 배포본에서 **실제로 도는** 잔여 fail-open 은 5개였고 ktlint 는 #1578·#1579 가 처리했다.
-# 남은 4개는 각각 자기 언어의 **유일한 조달 전담 관측면**이다(프로덕션 `supports()` ×
+# 넷은 각각 자기 언어의 **유일한 조달 전담 관측면**이다(프로덕션 `supports()` ×
 # `PROVISIONED_ANALYZERS` 실측):
 #
 #     cppcheck -> c · cpp      golangci-lint -> go
 #     hadolint -> dockerfile   shellcheck    -> shell
 #
-# 넷 다 크래시하면 `[]` 를 돌려주고, `static.py::            result.issues.extend(analyzer.run(ctx))`
+# 🔴 그중 `cppcheck` · `hadolint` 는 **이미 전환됐다**(`_W2_CONVERTED` 참조). 남은 것은
+#    `golangci-lint` · `shellcheck` 이고, 둘은 **크래시해도 파싱 가능한 출력을 낸다**(아래 표) —
+#    stdout 만 보는 판별식이 원리적으로 불가능한 쪽이다.
+#
+# 전환 전에는 크래시가 `[]` 를 돌려주고, `static.py::            result.issues.extend(analyzer.run(ctx))`
 # 다음 줄의 `ran += 1` 이 그것을 **정상 실행으로 센다**. 그래서 #1570 의
 # `no_dedicated_observer` 축도 이 자리를 못 잡는다 — 결과는 「이슈 0건 · 완전」이다.
 #
@@ -473,6 +477,14 @@ _W2_TOOLS = {
                  "FROM scratch\n"),
     "shellcheck": ("shellcheck", "_ShellCheckAnalyzer", "shell", ".sh",
                    "#!/bin/sh\necho hi\n"),
+}
+
+# 🔴 **이미 fail-closed 로 전환된 도구와 그 판별식.** 전환하면 이 표에 한 줄을 더한다 —
+#    「어떤 판별식으로 잡았는지」가 여기 남아야 다음 사람이 근거 없이 흉내내지 않는다.
+# Tools already converted, with the discriminant each one uses.
+_W2_CONVERTED = {
+    "cppcheck": "빈 stderr — 성공하면 항상 결과 XML 봉투를 낸다",
+    "hadolint": "빈 stdout — 성공하면 항상 JSON 배열을 낸다(깨끗해도 `[]`)",
 }
 
 _W2_DIRTY = {
@@ -596,9 +608,18 @@ def test_w2_crash_shape_is_recorded_and_is_still_fail_open(tool, tmp_path):
             raise
         _w2_record(tool, case, seen, verdict, exc)
 
+        if tool in _W2_CONVERTED and case == "missing":
+            # 🔴 전환된 도구는 크래시에서 **올린다** — 그것이 이 작업의 목적이다.
+            assert exc is not None, (
+                "%s: fail-closed 인데 크래시에서 `[]` 를 돌려줬다 — 판별식(%s)이 "
+                "이 크래시 모양을 놓쳤다" % (tool, _W2_CONVERTED[tool])
+            )
+            assert isinstance(exc, RuntimeError), (
+                "%s: 올라온 것이 RuntimeError 가 아니다 — %r" % (tool, exc))
+            continue
         assert exc is None, (
             "%s/%s: 어댑터가 이미 raise 한다 — fail-closed 로 전환된 것이다. 이 절을 "
-            "`pytest.raises` 로 바꾸고 **어떤 판별식으로 잡았는지** 적어라. (%r)"
+            "`_W2_CONVERTED` 에 등록하고 **어떤 판별식으로 잡았는지** 적어라. (%r)"
             % (tool, case, exc)
         )
         if case == "junk":

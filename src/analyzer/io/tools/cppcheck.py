@@ -13,6 +13,7 @@ import subprocess  # nosec B404
 
 from defusedxml import ElementTree as ET  # pylint: disable=import-error
 
+from src.analyzer.io.tools._common import analysis_failed
 from src.analyzer.pure.registry import AnalyzeContext, AnalysisIssue, Category, Severity, register
 from src.constants import STATIC_ANALYSIS_TIMEOUT
 
@@ -53,15 +54,33 @@ class _CppCheckAnalyzer:
                 ],
                 capture_output=True, text=True, timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
             )
+            # 🔴 **성공하면 항상 봉투를 낸다** — 그래서 빈 stderr 가 판별식이다.
+            #    CI 실바이너리 실측(cppcheck 2.13.0, #1580 `W2-SHAPE`):
+            #      깨끗             exit=0 · stderr `<results …><errors></errors></results>`
+            #      구문 오류(발견)   exit=0 · 같은 봉투 + `<error id="syntaxError" …>`
+            #      없는 경로(크래시) exit=1 · stderr **0자** · stdout 평문
+            #    exit code 는 판별식이 아니다 — 발견도 크래시도 비-0 이 될 수 있다.
+            #    깨진 입력은 발견으로 나오므로 이 판별식에 걸리지 않는다(과차단 없음).
+            # Measured: a successful run always emits the XML envelope on stderr.
             if not r.stderr.strip():
-                return []
-            return _parse_cppcheck_xml(r.stderr, ctx.language)
+                raise analysis_failed("cppcheck", ctx, r, "produced no XML on stderr")
+            try:
+                return _parse_cppcheck_xml(r.stderr, ctx.language)
+            except ET.ParseError as exc:
+                # 봉투는 있는데 읽을 수 없다 = 미분석이다. `[]` 로 흘리면 그 침묵이
+                # «이슈 0건 · 완전» 이 된다 — `c`·`cpp` 는 대체 전담 관측면이 없다.
+                # Output we cannot read is unanalyzed, not clean.
+                raise analysis_failed(
+                    "cppcheck", ctx, r, "produced XML this adapter cannot read") from exc
         except subprocess.TimeoutExpired:
             ctx.timed_out = True
             logger.warning("cppcheck timed out for %s", ctx.tmp_path)
             return []
-        except (OSError, ET.ParseError) as exc:
-            logger.warning("cppcheck failed for %s: %s", ctx.tmp_path, exc)
+        except FileNotFoundError as exc:
+            # which() 통과 뒤 사라진 바이너리 — 조달 축(`unavailable_tools`)이 담당한다.
+            # 그 밖의 OSError(깨진 shebang · 권한)는 미분석이므로 올라간다.
+            # A binary that vanished after the which() gate; procurement owns it.
+            logger.warning("cppcheck unavailable for %s: %s", ctx.tmp_path, exc)
             return []
 
 

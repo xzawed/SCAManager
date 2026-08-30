@@ -10,6 +10,7 @@ os.environ.setdefault("TELEGRAM_BOT_TOKEN", "123:ABC")
 os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
 
 import subprocess  # noqa: E402
+import pytest  # noqa: E402
 from unittest.mock import MagicMock, patch  # noqa: E402
 
 from src.analyzer.pure.registry import AnalyzeContext  # noqa: E402
@@ -129,25 +130,119 @@ def test_run_returns_empty_on_timeout():
         assert _CppCheckAnalyzer().run(_ctx()) == []
 
 
-def test_run_returns_empty_on_oserror():
-    with patch(
-        "src.analyzer.io.tools.cppcheck.subprocess.run",
-        side_effect=OSError("not found"),
-    ):
-        assert _CppCheckAnalyzer().run(_ctx()) == []
+def test_run_raises_on_generic_oserror():
+    """🔴 뒤집힌 계약 (#1557 W2) — `FileNotFoundError` **가 아닌** OSError 는 미분석이다.
+
+    바이너리 부재는 조달 축(`unavailable_tools`)이 담당하고 그것만 `[]` 로 남는다.
+    깨진 shebang·권한 같은 그 밖의 OSError 는 「분석하지 못했다」이므로 올라가야 한다.
+    이전 판은 둘을 같은 갈래로 보내 미분석을 «이슈 0건 · 완전» 으로 기록했다.
+    Only a vanished binary stays []; any other OSError is unanalyzed.
+    """
+    with patch("src.analyzer.io.tools.cppcheck.subprocess.run",
+               side_effect=OSError(13, "Permission denied")):
+        with pytest.raises(OSError):
+            _CppCheckAnalyzer().run(_ctx())
 
 
-def test_run_returns_empty_on_xml_parse_error():
+def test_run_raises_on_xml_parse_error():
+    """🔴 뒤집힌 계약 (#1557 W2) — 봉투는 있는데 읽을 수 없으면 미분석이다.
+
+    이전 판은 `[]` 를 돌려줘 그 침묵이 «이슈 0건 · 완전» 이 됐다. `c`·`cpp` 는
+    조달된 전담 관측면이 cppcheck 하나뿐이라 대체 관측이 없다.
+    """
     mock_result = MagicMock()
     mock_result.stderr = "not xml at all <<<"
     mock_result.stdout = ""
     with patch("src.analyzer.io.tools.cppcheck.subprocess.run", return_value=mock_result):
-        assert _CppCheckAnalyzer().run(_ctx()) == []
+        with pytest.raises(RuntimeError, match="cppcheck"):
+            _CppCheckAnalyzer().run(_ctx())
 
 
-def test_run_empty_stderr_returns_empty():
+def test_run_raises_when_stderr_is_empty():
+    """🔴 뒤집힌 계약 (#1557 W2) — 봉투가 아예 없으면 분석하지 못한 것이다.
+
+    CI 실바이너리 실측: 성공하면 항상 `<results …>` 봉투를 내고, 없는 경로에서만
+    stderr 가 0자다(#1580 `W2-SHAPE`). 이전 판은 그것을 「깨끗함」으로 읽었다.
+    """
     mock_result = MagicMock()
     mock_result.stderr = ""
     mock_result.stdout = ""
     with patch("src.analyzer.io.tools.cppcheck.subprocess.run", return_value=mock_result):
-        assert _CppCheckAnalyzer().run(_ctx()) == []
+        with pytest.raises(RuntimeError, match="cppcheck"):
+            _CppCheckAnalyzer().run(_ctx())
+
+
+# ── 크래시가 «이슈 0건» 이 되던 자리 (#1557 W2 — CI 실측 기반) ──────────────────
+#
+# 🔴 cppcheck 는 **stderr 가 결과 채널**이다(그 관례 때문에 어댑터도 stderr 를 읽는다).
+#    CI 실바이너리 실측(cppcheck 2.13.0, `tests/integration/…::W2-SHAPE`):
+#
+#      깨끗              exit=0 · stderr = `<results version="2">…<errors></errors></results>`
+#      구문 오류(발견)    exit=0 · stderr = 같은 봉투 + `<error id="syntaxError" …>`
+#      없는 경로(크래시)  exit=1 · stderr **0자** · stdout 평문
+#                        `cppcheck: error: could not find or open any of the paths given.`
+#
+#    즉 **성공하면 항상 봉투를 낸다.** 그래서 판별식은 「stderr 가 비었다」이고,
+#    깨진 입력은 크래시가 아니라 **발견**이라 이 판별식에 걸리지 않는다(과차단 없음).
+#
+# 🔴 `c`·`cpp` 는 조달된 전담 관측면이 cppcheck **하나뿐**이다. 여기서 `[]` 를 돌려주면
+#    미분석 C/C++ 가 «이슈 0건 · 완전» 으로 기록되고 정적 만점으로 auto-merge 된다 —
+#    `no_dedicated_observer` 축도 못 잡는다(어댑터가 「돌긴 했다」로 세어진다).
+#
+# Measured in CI: a successful run always emits the XML envelope on stderr, so empty stderr
+# is the discriminant; broken input is reported as a finding, not a crash.
+
+_XML_CLEAN = ('<?xml version="1.0" encoding="UTF-8"?>\n'
+              '<results version="2">\n  <cppcheck version="2.13.0"/>\n'
+              '  <errors>\n  </errors>\n</results>\n')
+_XML_FINDING = ('<?xml version="1.0" encoding="UTF-8"?>\n'
+                '<results version="2">\n  <cppcheck version="2.13.0"/>\n'
+                '  <errors>\n'
+                '    <error id="nullPointer" severity="error" msg="Null pointer dereference">\n'
+                '      <location file="a.cpp" line="3"/>\n'
+                '    </error>\n'
+                '  </errors>\n</results>\n')
+
+
+def _proc(stdout: str = "", stderr: str = "", returncode: int = 0):
+    return subprocess.CompletedProcess(args=["cppcheck"], returncode=returncode,
+                                       stdout=stdout, stderr=stderr)
+
+
+class TestCppcheckCrashIsNotACleanFile:
+    def test_empty_stderr_raises(self):
+        """🔴 봉투가 없다 = 분석하지 못했다. 실측: 없는 경로 → exit=1 · stderr 0자."""
+        crash = _proc(stdout="cppcheck: error: could not find or open any of the paths given.\n",
+                      returncode=1)
+        with patch("subprocess.run", return_value=crash):
+            with pytest.raises(RuntimeError, match="cppcheck"):
+                _CppCheckAnalyzer().run(_ctx("cpp"))
+
+    def test_clean_envelope_is_still_clean(self):
+        """🔴 부정 통제 — 깨끗한 봉투는 `[]` 다. 여기서 raise 하면 모든 C/C++ 가 막힌다."""
+        with patch("subprocess.run", return_value=_proc(stderr=_XML_CLEAN, returncode=0)):
+            assert _CppCheckAnalyzer().run(_ctx("cpp")) == []
+
+    def test_findings_still_parse(self):
+        """🔴 부정 통제 — 발견은 그대로 읽힌다."""
+        with patch("subprocess.run", return_value=_proc(stderr=_XML_FINDING, returncode=0)):
+            issues = _CppCheckAnalyzer().run(_ctx("cpp"))
+        assert len(issues) == 1 and issues[0].tool == "cppcheck"
+
+    def test_unparsable_xml_raises(self):
+        """🔴 봉투가 있는데 읽을 수 없다 = 미분석이다 — 조용히 `[]` 로 흘리지 않는다."""
+        with patch("subprocess.run", return_value=_proc(stderr="<results version=", returncode=0)):
+            with pytest.raises(RuntimeError, match="cppcheck"):
+                _CppCheckAnalyzer().run(_ctx("cpp"))
+
+    def test_missing_binary_is_procurement_not_crash(self):
+        """🔴 which() 통과 뒤 사라진 바이너리는 조달 축이 담당한다 — `[]` 유지."""
+        with patch("subprocess.run", side_effect=FileNotFoundError("cppcheck")):
+            assert _CppCheckAnalyzer().run(_ctx("cpp")) == []
+
+    def test_timeout_is_not_a_crash(self):
+        """🔴 타임아웃은 `ctx.timed_out` 이 담당한다 — 기존 계약 유지."""
+        ctx = _ctx("cpp")
+        with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("cppcheck", 30)):
+            assert _CppCheckAnalyzer().run(ctx) == []
+        assert ctx.timed_out is True

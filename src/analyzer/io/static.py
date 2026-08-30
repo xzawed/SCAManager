@@ -184,7 +184,7 @@ def _run_analyzers(ctx: AnalyzeContext, result: StaticAnalysisResult) -> tuple[i
             # 내면 어댑터가 `[]` 를 돌려주기 때문이다(조달 축 = `unavailable_tools`).
             # 🔴 그 밖의 `OSError`(깨진 shebang · 권한 · which 통과 후 TOCTOU)는 **미분석**이므로
             # 여기로 올라와야 한다. 그것은 계약이지 아직 트리 전체의 사실이 아니다 —
-            # `FileNotFoundError` 로 좁힌 어댑터만 이 구별을 갖고, 남은 12개(#1557 W2)는
+            # `FileNotFoundError` 로 좁힌 어댑터만 이 구별을 갖고, 남은 7개(#1557 W2)는
             # 여전히 `except OSError` 로 삼켜 이 분기에 도달하지 않는다. 재고는
             # `tests/unit/analyzer/test_adapter_fail_open_inventory.py::KNOWN_FAIL_OPEN`.
             # Deliberate non-install never reaches here: the which() gate or a FileNotFoundError
