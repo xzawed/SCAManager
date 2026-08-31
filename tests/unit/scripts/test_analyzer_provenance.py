@@ -7,7 +7,7 @@
 **"등록은 됐는데 바이너리가 아예 조달되지 않는 analyzer"** 를 구조적으로 볼 수 없다.
 buildCommand 에 언급조차 없으면 검사 대상에 들어오지 않기 때문이다.
 
-실측(2026-07-19): `src/analyzer/io/static.py` 가 **23종**을 register 하는데 그중 **9종**의
+실측: `src/analyzer/io/static.py` 가 **24종**을 register 하는데 그중 **8종**의
 바이너리가 buildCommand·aptPkgs·requirements 어디에도 없다 — tflint 실패 모드의 **9배 일반화**다.
 `#1119` 는 이 클래스를 "봉인했다" 고 선언했으나 1/10 만 고친 상태였다.
 
@@ -50,7 +50,6 @@ _PROVENANCE = {
     "clippy": ("cargo", OPTIONAL, "Rust 툴체인 미탑재 — cargo 설치 시 이미지 크게 증가"),
     "cppcheck": ("cppcheck", APT, ""),
     "dart_analyze": ("dart", OPTIONAL, "Dart SDK 미탑재"),
-    "dotnet_format": ("dotnet", OPTIONAL, ".NET SDK 미탑재 — 이미지 크기 부담"),
     "eslint": ("eslint", BUILD, ""),
     "golangci_lint": ("golangci-lint", BUILD, ""),
     "hadolint": ("hadolint", BUILD, ""),

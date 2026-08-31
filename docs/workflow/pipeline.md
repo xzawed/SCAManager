@@ -29,7 +29,7 @@
   선언하지 않는다 — `runtime_checkable` 이 인스턴스에 요구해 미선언 어댑터가 전부 떨어진다(실측 3건 red).
 - 신뢰도 판정 = `src/scorer/reliability.py` — `should_null_persist_score`(AI 실패만 컬럼 NULL) / `score_is_unreliable`(그 외는 집계만 제외).
 
-## 분석기 추가 (25종)
+## 분석기 추가 (24종)
 
 1. `src/analyzer/io/tools/<도구>.py` 작성 — `name`·`category` + `supports(ctx)`·`is_enabled(ctx)`(`shutil.which`)·`run(ctx)`. 본보기 `src/analyzer/io/tools/eslint.py::did not produce JSON`(`shellcheck.py` 는 `[]` 를 반환하는 구식이라 따르지 않는다).
 2. `run` 은 `subprocess.run(..., timeout=STATIC_ANALYSIS_TIMEOUT, check=False)`. `TimeoutExpired` 는 `ctx.timed_out = True` 후 `[]` 반환(예외 금지). 비-JSON stdout 은 `RuntimeError`.

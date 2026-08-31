@@ -5,7 +5,7 @@
 `PROVISIONED_ANALYZERS` 와 대조하면 **전담 분석기가 배포본에 하나도 없는 언어가 6개**다:
 
     rust     clippy 미조달        swift   swiftlint 미조달
-    php      phpstan 미조달       csharp  dotnet_format 미조달
+    php      phpstan 미조달       csharp  전담 어댑터 없음 (#1565 로 지웠다)
     scala    전담 어댑터 없음      elixir  전담 어댑터 없음
 
 이 언어들에서는 semgrep 하나만 돈다. 그런데 semgrep 의 규칙은 언어마다 편차가 크고
@@ -56,7 +56,7 @@ def test_exactly_one_generic_analyzer_is_declared():
 
     이 수가 늘면 「전담 관측면」의 정의가 바뀐 것이므로 그 자리에서 red 가 된다.
     """
-    # `src.analyzer.io.static` 을 임포트하면 어댑터 23종이 전부 등록된다(그 모듈 상단의
+    # `src.analyzer.io.static` 을 임포트하면 어댑터가 전부 등록된다(그 모듈 상단의
     # side-effect import 들). 🔴 plain `import src…` 를 쓰지 않는다 — 이 파일이
     # `from src… import` 도 쓰므로 공존하면 CodeQL py/import-and-import-from 을
     # 자초한다(`scripts/check_dual_import.py`). `# noqa: F401` 로 가리는 것도 막힌다
@@ -170,3 +170,68 @@ def test_axis_does_not_fire_when_operator_disabled_everything():
     ran, opted, _supported = _run_analyzers(ctx, result)
     assert ran == 0 and opted > 0, f"전제 붕괴 — ran={ran} opted={opted}"
     assert result.no_dedicated_observer is None
+
+
+# ── C# 은 전담 관측면이 **없다** — dotnet_format 은 지웠다 (#1565) ──────────────
+#
+# 🔴 `dotnet format` 은 프로젝트/솔루션을 요구하는데 `static.py` 는 파일 하나를 임시
+#    디렉터리에 떼어 놓는다. 실측(세 입력 전부): `exit=1 · 이슈 0건 · stderr 749바이트`
+#    (「유효한 프로젝트 또는 솔루션 파일이 아님」) — **한 번도 동작한 적이 없다.**
+#
+# 🔴 그런데 등록돼 있으면 그 무동작이 「돌았다」로 세어져 이 축을 **지웠다**. 실측:
+#      dotnet 있음   unavailable=[]                no_dedicated=None      ← 「완전 · 깨끗」
+#      dotnet 없음   unavailable=['dotnet_format'] no_dedicated='csharp'  ← 사실
+#    **설치돼 있으면 보고가 더 나빴다.**
+#
+# 🔴 임시 `.csproj` 로 감싸도 살아나지 않는다(#1586 인코딩 수정 이후 재측정):
+#      full format(proj)    dirty 5건 / clean 0 / **broken 0** · 5.3s
+#      whitespace --folder  dirty 5건 / clean 0 / **broken 0** · 1.7s
+#    `broken` 은 문법이 깨졌는데 공백만 정돈된 C# 이다 — 둘 다 「깨끗」으로 본다.
+#    `dotnet format` 은 서식 도구이지 분석기가 아니고, 진단도 `.cs` 가 아니라
+#    프로젝트/폴더에 귀속돼 줄번호가 소스의 것이 아니다.
+#
+# 🔴 `is_enabled` 를 항상 False 로 두는 것은 **오답이었다**(Grok claim-review `01a05733`).
+#    그 갈래의 뜻은 「바이너리 부재」이고 `_binary_is_absent` 는 `dotnet` 이 아니라
+#    **`dotnet_format` 이라는 이름의 바이너리**를 찾는다 — 누가 그 이름을
+#    `PROVISIONED_ANALYZERS` 에 넣으면 모든 `.cs` 가 `incomplete` 가 되고 dotnet 을 깔아도
+#    안 풀린다. 그리고 그 선택은 `test_supported_languages_are_reachable.py` 의
+#    도달가능성 가드를 **피하는** 것이었다 — 그 가드가 제 일을 한 것이다. 그래서 지웠다.
+#
+# C# has no dedicated observer: the adapter never analysed anything, and keeping it registered
+# merely erased this axis.
+
+
+def test_csharp_has_no_dedicated_observer():
+    """🔴 C# 은 semgrep 만 본다 — 그 사실이 기록되어야 한다.
+
+    🔴 `_run_analyzers` 가 아니라 **`analyze_file`** 로 잰다. 전자는 축 하나만 세우고
+    `uncovered_language`·`incomplete` 는 호출부가 정한다 — 그 둘을 안 보면 「가시화만 하고
+    차단하지 않는다」는 이 절의 주장이 검사되지 않는다(Grok claim-review `01a05742`).
+    Measure through the production entry point: the axis is only half the claim.
+    """
+    from src.analyzer.io.static import analyze_file  # noqa: PLC0415
+
+    result = analyze_file("Program.cs", "class A\n{\n    public int X;\n}\n")
+    assert result.no_dedicated_observer == "csharp", (
+        "C# 에 전담 관측면이 생겼다 — 조달이 바뀌었다면 이 절 전체를 다시 쓸 것"
+    )
+    assert result.incomplete is False, "가시화 축이 차단으로 바뀌었다 — 이 절의 계약 위반"
+    assert getattr(result, "uncovered_language", None) is None, (
+        "semgrep 이 지원하는데 `uncovered_language` 가 섰다 — 두 축이 뒤섞였다"
+    )
+
+
+def test_no_adapter_claims_to_be_a_dedicated_csharp_observer():
+    """🔴 위 축이 **어댑터 부재**에서 오는지 확인한다 — 「돌긴 했는데 0건」과 가른다.
+
+    `supports("csharp")` 가 참인 전담 어댑터가 하나라도 등록돼 있으면, 그것이 무동작이어도
+    `dedicated_ran` 을 올려 축을 지운다. 그 자리가 정확히 `#1565` 였다.
+    """
+    dedicated = sorted(
+        a.name for a in REGISTRY
+        if not getattr(a, "is_generic", False) and a.supports(_ctx("csharp", "Program.cs"))
+    )
+    assert dedicated == [], (
+        f"C# 전담 어댑터가 등록돼 있다: {dedicated}. 그것이 실제로 분석하는지 먼저 재라 — "
+        "무동작이면 이 축을 지우고 그 파일은 「완전 · 깨끗」이 된다(#1565)."
+    )
