@@ -55,7 +55,7 @@ class _GolangciLintAnalyzer:
         try:
             r = subprocess.run(  # nosec B603 B607
                 ["golangci-lint", "run", "--out-format", "json", ctx.tmp_path],
-                capture_output=True, text=True,
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
                 timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
                 cwd=work_dir,
             )

@@ -50,7 +50,7 @@ def psscriptanalyzer_module_available() -> bool:
     try:
         r = subprocess.run(  # nosec B603 B607
             ["pwsh", "-NonInteractive", "-Command", _MODULE_PROBE],
-            capture_output=True, text=True,
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
             timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
         )
     except (OSError, subprocess.SubprocessError) as exc:
@@ -96,7 +96,7 @@ class _PSScriptAnalyzer:
                     "pwsh", "-NonInteractive", "-Command",
                     "Invoke-ScriptAnalyzer -Path $env:PSSA_PATH -Severity Error,Warning | ConvertTo-Json -AsArray",
                 ],
-                capture_output=True, text=True,
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
                 timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
                 env=env,
             )

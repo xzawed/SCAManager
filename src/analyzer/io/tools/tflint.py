@@ -52,7 +52,7 @@ class _TflintAnalyzer:
             chdir = os.path.dirname(ctx.tmp_path)
             r = subprocess.run(  # nosec B603 B607
                 ["tflint", "--format=json", "--chdir", chdir],
-                capture_output=True, text=True,
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
                 timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
             )
             raw = r.stdout.strip()

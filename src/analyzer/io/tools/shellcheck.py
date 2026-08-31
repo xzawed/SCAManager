@@ -36,7 +36,8 @@ class _ShellCheckAnalyzer:
         try:
             r = subprocess.run(  # nosec B603 B607
                 ["shellcheck", "-f", "json", ctx.tmp_path],
-                capture_output=True, text=True, timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
             )
             # 🔴 **stdout 모양은 판별식이 될 수 없다** — CI 실바이너리 실측
             #    (#1580 `W2-SHAPE`): 없는 경로에서 exit=2 인데 stdout 은 `[]` 로

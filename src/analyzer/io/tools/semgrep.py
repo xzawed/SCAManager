@@ -72,7 +72,8 @@ class _SemgrepAnalyzer:
             r = subprocess.run(  # nosec B603 B607
                 ["semgrep", "scan", "--config=p/default", "--json",
                  "--timeout", str(STATIC_ANALYSIS_TIMEOUT), ctx.tmp_path],
-                capture_output=True, text=True, timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
             )
             # 🔴 stdout 이 JSON 이 아니면 semgrep 이 **분석하지 않은** 것이다.
             # `--json` 의 정상 «이슈 없음» 도 `{"results": []}` 라 `{` 로 시작한다 —

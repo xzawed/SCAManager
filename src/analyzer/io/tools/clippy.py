@@ -119,7 +119,7 @@ class _ClippyAnalyzer:
             tmp_dir = _build_temp_cargo_project(ctx.content)
             r = subprocess.run(  # nosec B603 B607
                 ["cargo", "clippy", "--message-format=json", "--quiet"],
-                capture_output=True, text=True,
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
                 timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
                 cwd=tmp_dir,
             )
