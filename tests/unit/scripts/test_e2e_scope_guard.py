@@ -171,3 +171,78 @@ def test_min_passed_option_exists_in_conftest():
              if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
     assert "pytest_addoption" in names, "--e2e-min-passed 옵션 정의가 없다"
     assert "pytest_sessionfinish" in names, "하한을 판정하는 훅이 없다"
+
+
+# ── 세 번째 공허화 경로: 무조건 skip (#1587) ──────────────────────────────────
+#
+# 🔴 위 두 봉인은 「전건 skip」과 「범위 축소」를 막지만, **개별 시험 하나가 무조건 skip**
+#    되는 것은 둘 다 통과한다(실측): `e2e/EXPECTED_COUNT` 는 **수집** 건수라 skip 도 세고,
+#    `--e2e-min-passed=100` 은 121-1=120 이라 하한에 걸리지 않는다.
+#    그 시험은 로컬·CI 어디서도 실행된 적이 없고, 재활성화가 사람 기억에만 달려 있다.
+#
+# 🔴 개수를 못박지 않는다 — 「무조건 skip 이 있으면 red」라는 **형태 판정**이다.
+#    개수 스냅샷은 정당한 시험 추가를 벌한다.
+#    `skipif`(조건부)와 함수 본문의 `pytest.skip(...)`(런타임 조건부)은 허용한다 —
+#    조건이 참이 되면 스스로 깨어나기 때문이다.
+# The third emptiness path: a single unconditionally-skipped test passes both existing seals.
+
+
+def _unconditional_skips(root: Path) -> list[str]:
+    """`@pytest.mark.skip` / `pytestmark = pytest.mark.skip` 을 쓰는 자리들.
+
+    🔴 이름이 아니라 **구조**로 본다 — 데코레이터 표현식의 끝 속성이 `skip` 인가.
+    `skipif` 는 다른 이름이라 걸리지 않는다(조건부이므로 허용).
+    """
+    def _ends_in_skip(node: ast.AST) -> bool:
+        target = node.func if isinstance(node, ast.Call) else node
+        return isinstance(target, ast.Attribute) and target.attr == "skip"
+
+    def _label(path: Path) -> str:
+        # 자기검사는 `tmp_path` 를 쓰므로 리포 밖 경로가 온다 — 그때는 그대로 적는다.
+        try:
+            return path.relative_to(_ROOT).as_posix()
+        except ValueError:
+            return path.as_posix()
+
+    out: list[str] = []
+    for path in sorted(root.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                for dec in node.decorator_list:
+                    if _ends_in_skip(dec):
+                        out.append(f"{_label(path)}:{dec.lineno} ({node.name})")
+            elif isinstance(node, ast.Assign) and any(
+                    isinstance(t, ast.Name) and t.id == "pytestmark" for t in node.targets):
+                if _ends_in_skip(node.value):
+                    out.append(f"{_label(path)}:{node.lineno} (pytestmark)")
+    return out
+
+
+def test_the_skip_detector_is_not_vacuous(tmp_path):
+    """🔴 탐지기가 0건만 낼 줄 알면 아래 단언이 공허하다 — 심어서 잡히는지 본다."""
+    (tmp_path / "probe.py").write_text(
+        "import pytest\n\n\n"
+        "@pytest.mark.skip(reason='x')\n"
+        "def test_a():\n    pass\n\n\n"
+        "@pytest.mark.skipif(True, reason='조건부는 허용')\n"
+        "def test_b():\n    pass\n",
+        encoding="utf-8",
+    )
+    found = _unconditional_skips(tmp_path)
+    assert len(found) == 1, f"무조건 skip 1건만 잡아야 한다: {found}"
+    assert "test_a" in found[0], found
+
+
+def test_no_test_is_unconditionally_skipped():
+    """🔴 무조건 skip 은 **한 번도 실행되지 않는 시험**이고 두 봉인을 다 빠져나간다.
+
+    조건부로 바꿔라 — 재활성화 조건을 산문이 아니라 코드에 적으면 조건이 참이 되는 순간
+    스스로 깨어난다. 정말 필요 없어진 시험이면 지우고 `e2e/EXPECTED_COUNT` 를 맞춰라.
+    """
+    offenders = _unconditional_skips(_ROOT / "tests") + _unconditional_skips(_ROOT / "e2e")
+    assert not offenders, (
+        f"무조건 skip {len(offenders)}건: {offenders}\n"
+        "  `e2e/EXPECTED_COUNT`(수집 건수)도 `--e2e-min-passed`(하한)도 이것을 못 잡는다.\n"
+        "  런타임 조건부(`pytest.skip(...)` in body) 또는 `skipif` 로 바꾸거나, 지워라."
+    )
