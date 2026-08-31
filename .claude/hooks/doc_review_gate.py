@@ -98,23 +98,17 @@ _IMPORTANT = [
     r"^\.github/PULL_REQUEST_TEMPLATE\.md$",
     r"^SECURITY(\.[a-z]{2})?\.md$",   # 취약점 보고 절차 = 보안 지시문
     r"^scripts/i18n_comments/glossary\.md$",  # "번역 시 아래 용어를 반드시 사용" = 번역 계약
-    # 2026-08-13 승격분 — 3층 분리(프로세스·함정·규칙)로 신설된 지시 표면.
-    # 🔴 `docs/process/**` 는 *어떻게 수행하는가* 를 단계로 규정한다 = 지시문이다.
-    #    `.claude/traps.md` 는 서술 같지만 각 항목이 "→ 이렇게 하라" 로 끝난다.
-    #    둘 다 등재하지 않으면 심의 게이트가 **지시 표면 자체의 편집을 통과**시킨다
-    #    (2026-08-01 에 정확히 이 클래스로 25 파일이 false coverage 였다).
+    # "Production code MUST NOT import from `src/scripts/`" — 지시문이라 등재한다.
+    r"^src/scripts/README\.md$",
 ]
 
-# 🔴 의도적으로 `skip` 으로 남긴 것 (판단 기록 — 다음 세션이 재검토를 반복하지 않도록):
-#   · `docs/README.md` — 순수 색인이다(지시문 없음). 🔴 `src/scripts/README.md` 는 여기 있었으나
-#     "Production code MUST NOT import from src/scripts/" 라는 **실제 지시문**이 있어 승격했다
-#     (2026-08-01 Grok claim-review `019fbd1e` 적발 — "지시 밀도가 낮다" 는 내 판단이 틀렸다).
-#   · `docs/reports/**` — 워크플로 산출물 착지. 현재 계약이 아니다.
-# Deliberately left `skip`, with the reasoning recorded so it is not re-litigated every session.
+# 🔴 의도적으로 `skip` — `docs/README.md`(순수 색인) · `docs/reports/**`(워크플로 산출물).
+# 등재 판단은 **지시문을 담는가** 하나다. 담지 않으면 심의 비용만 늘고, 담는데 빠지면
+# 게이트가 지시 표면 자체의 편집을 통과시킨다.
+# The single criterion is whether the file carries directives agents must follow.
 #
-# 2026-08-16: `_LOW_RISK` 의 `docs/reports/artifacts/` · `docs/history/` 를 비웠다.
-# 두 경로 모두 디스크에 없다. 빈 패턴을 남기면 분모가 조용히 0 이다.
-# Emptied: those trees are gone, so a leftover pattern would measure nothing.
+# 🔴 디스크에 없는 경로를 패턴으로 남기지 않는다 — 빈 분모를 채점하면 커버리지가 조용히 0 이다.
+# A pattern for a deleted tree grades an empty set.
 
 _LOW_RISK: list[str] = []
 
@@ -407,11 +401,18 @@ def _emit_advisory(message: str) -> None:
 
 def _read_agent_prompt(agent: str) -> str:
     """에이전트 .md 파일에서 시스템 프롬프트를 읽는다 (YAML frontmatter 제거).
-    Reads system prompt from agent .md file, stripping YAML frontmatter."""
+
+    🔴 파일이 없으면 **터진다.** 이전 판은 한 줄짜리 범용 프롬프트로 대체했는데, 그러면
+    에이전트 파일을 옮기거나 이름을 바꾼 순간 게이트가 *다른 검토자*로 조용히 바뀐다 —
+    이 리포의 지배 결함(「심의 못 했다」와 「심의해서 통과시켰다」가 같은 값)의 그 모양이다.
+    호출부가 `except Exception` 으로 받아 `_inoperative` 로 표기하므로, 터지는 쪽이
+    관측 가능하다.
+    Missing agent file raises: a generic substitute would silently swap the reviewer.
+    """
     suffix = "analyzer" if agent == "impact" else "reviewer"
     md_file = _AGENTS_DIR / f"doc-{agent}-{suffix}.md"
     if not md_file.exists():
-        return f"당신은 문서 {agent} 검토자입니다. JSON {{decision, reason, detail}}으로 응답하세요."
+        raise FileNotFoundError(f"에이전트 프롬프트 없음: {md_file} — 심의 불가")
     content = md_file.read_text(encoding="utf-8")
     if content.startswith("---"):
         end = content.find("---", 3)
@@ -858,7 +859,13 @@ async def _call_single_agent(
     #    였음이 드러났다. httpx 가 요청 본문을 인코딩할 때 터지므로 **3 에이전트가 동시에** 죽고,
     #    원장은 엉뚱하게 "키 만료/크레딧 재확인" 을 요청하고 있었다.
     # Sanitise lone surrogates: this is what actually killed the gate for two sessions.
-    system_prompt = _scrub_surrogates(_read_agent_prompt(agent))
+    # 🔴 프롬프트 파일이 없으면 **심의가 없는 것**으로 표기한다 — 범용 프롬프트로 대체하면
+    #    검토자가 조용히 바뀌고, 그 결과는 「심의해서 통과」와 구별되지 않는다.
+    # A missing prompt file is *not reviewed*, never a substituted reviewer.
+    try:
+        system_prompt = _scrub_surrogates(_read_agent_prompt(agent))
+    except OSError as exc:
+        return _inoperative(agent, "에이전트 프롬프트 없음 — 미심의", str(exc))
     diff = _scrub_surrogates(diff)
     context = _scrub_surrogates(context)
     # 🔴 프롬프트 캐시 — 렌더 순서는 tools → system → messages 이고, cache_control 은
