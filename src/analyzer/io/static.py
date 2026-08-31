@@ -10,7 +10,6 @@ import src.analyzer.io.tools.buf_lint  # noqa: F401 — 모듈 로드 시 자동
 import src.analyzer.io.tools.clippy  # noqa: F401 — 모듈 로드 시 자동 등록  # pylint: disable=unused-import
 import src.analyzer.io.tools.cppcheck  # noqa: F401 — 모듈 로드 시 자동 등록  # pylint: disable=unused-import
 import src.analyzer.io.tools.dart_analyze  # noqa: F401 — 모듈 로드 시 자동 등록  # pylint: disable=unused-import
-import src.analyzer.io.tools.dotnet_format  # noqa: F401 — 모듈 로드 시 자동 등록  # pylint: disable=unused-import
 import src.analyzer.io.tools.eslint  # noqa: F401 — 모듈 로드 시 자동 등록  # pylint: disable=unused-import
 import src.analyzer.io.tools.golangci_lint  # noqa: F401 — 모듈 로드 시 자동 등록  # pylint: disable=unused-import
 import src.analyzer.io.tools.hadolint  # noqa: F401 — 모듈 로드 시 자동 등록  # pylint: disable=unused-import
@@ -76,7 +75,7 @@ def _binary_is_absent(tool: str) -> bool:
     ## 🔴 왜 필요한가
 
     `_run_analyzers` 는 `is_enabled()` 가 False 이면 무조건 `unavailable_tools` 에 넣는데,
-    그 메서드는 두 가지를 **구별하지 않는다**(실측: 어댑터 25개 중 24개는 순수 `which`,
+    그 메서드는 두 가지를 **구별하지 않는다**(실측: 어댑터 24개 중 23개는 순수 `which`,
     나머지 하나가 아래 복합 판정이다):
 
     - `python.py::        return shutil.which("bandit") is not None` = **바이너리 부재** — 조달 회귀다
@@ -126,7 +125,8 @@ class StaticAnalysisResult:
     # 실측(2026-08-29 · `detect_language` 가 낼 수 있는 언어 × 프로덕션 `supports()` ×
     # `PROVISIONED_ANALYZERS`): 배포 이미지에서 **9개 언어**가 여기 걸린다 —
     #   clojure · csharp · elixir · html · java · php · rust · scala · swift
-    # 그중 clojure·elixir·java·scala 는 전담 어댑터 자체가 없고, 나머지는 있으나 미조달이다.
+    # 그중 clojure·csharp·elixir·java·scala 는 전담 어댑터 자체가 없고(csharp 은 #1565 로
+    # 지웠다), 나머지는 있으나 미조달이다.
     # 거기서는 범용 semgrep 하나만 도는데 규칙 밀도가 언어마다 크게 달라
     # (semgrep 자체 보고: elixir 0 · cpp 0 · swift 2 · rust 4) 취약 코드에도 이슈 0건이 나온다.
     # 실측: `analyze_file("vuln.ex", <System.cmd 주입>)` → issues=0 · incomplete=False.
@@ -198,7 +198,8 @@ def _run_analyzers(ctx: AnalyzeContext, result: StaticAnalysisResult) -> tuple[i
 
     # 🔴 **범용은 돌았는데** 전담 관측면이 하나도 돌지 않았다 — 그 결과를 「완전」으로
     #    기록하지 않는다. 전담 어댑터가 아예 없는 언어(scala·elixir·java·clojure)도,
-    #    있지만 조달 실패로 못 돈 경우(rust·swift·php·csharp·html)도 같은 축이다.
+    #    있지만 조달 실패로 못 돈 경우(rust·swift·php·html)도 같은 축이다.
+    #    (csharp 은 전자다 — dotnet_format 은 단일 `.cs` 를 분석할 수 없어 지웠다, #1565)
     #
     # 🔴 조건이 `supported > 0` 이 아니라 **`ran > 0`** 인 이유 — 첫 판은 전자였고 틀렸다.
     #    범용조차 돌지 않은 언어(css·dart·powershell·protobuf: semgrep 이 지원 안 함)까지
@@ -324,10 +325,10 @@ def analyze_file(  # pylint: disable=too-many-locals
         # 🔴 **조달 계약으로 갈라친다** (backlog R21, 사용자 결정 2026-08-01 — 옵션 C).
         # `unavailable_tools`(바이너리 부재)를 무조건 incomplete 로 올리면, 배포 이미지가
         # **애초에 설치하지 않는** 도구의 언어는 auto-merge 가 **영구 불가**가 된다. 실측:
-        # 등록 25 분석기 중 10종(clippy·dart_analyze·dotnet_format·phpstan·psscriptanalyzer·
-        # stylelint·swiftlint·buf_lint·htmlhint …)이 railway.toml·nixpacks.toml·requirements.txt·
-        # package.json 어디에도 조달 흔적이 없다 → rust·dart·C#·php·powershell·css/scss·swift·
-        # protobuf·html 리포는 손댈 수 없는 이유로 영구 차단이었다. `#1245` 본문이 스스로
+        # 등록 24 분석기 중 8종(buf_lint·clippy·dart_analyze·htmlhint·phpstan·psscriptanalyzer·
+        # stylelint·swiftlint)이 railway.toml·nixpacks.toml·requirements.txt·package.json
+        # 어디에도 조달 흔적이 없다 → rust·dart·php·powershell·css·swift·protobuf·html
+        # 리포는 손댈 수 없는 이유로 영구 차단이었다. (C# 은 전담 어댑터가 아예 없다 — #1565) `#1245` 본문이 스스로
         # "차단 없이 가시화만" 이라 적은 것과 정면 모순이기도 하다.
         #
         # 갈라치는 기준은 **의도**다:

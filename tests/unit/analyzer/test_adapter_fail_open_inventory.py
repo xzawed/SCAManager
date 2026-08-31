@@ -13,7 +13,7 @@
 
 그래서 `KNOWN_FAIL_OPEN` 에 적혀 있던 14개는 **실제 집합이 아니라 눈먼 탐지기의 출력**이었다.
 재집계 20 → W1 5개(관측면 0)·W3 3개(스폰 축)·W2 5개(실측 판별식)를 fail-closed 로 돌려
-현재 **6개**다. 형태 7종은 `tests/unit/analyzer/fixtures/` 에 픽스처로 박혀 있고,
+현재 **5개**다. 형태들은 `tests/unit/analyzer/fixtures/` 에 픽스처로 박혀 있고,
 각 파일 docstring 이 그 형태를 쓰는 실물 어댑터 좌표를 든다.
 
 ## 판정을 관용구에서 파생값으로 바꿨다
@@ -70,12 +70,13 @@ _NARROW_AXES = ("TimeoutExpired", "FileNotFoundError")
 # 고친 어댑터는 이 목록에서 빼면 된다.
 KNOWN_FAIL_OPEN: frozenset[str] = frozenset({
     # 분석 축이 통째로 fail-open — 크래시가 «이슈 0건 · 완전» 이 된다.
-    # 남은 6개는 #1557 W2 잔여다: semgrep 이 같은 언어를 덮지만 **전담 축은 사라진다**.
+    # 남은 5개는 #1557 W2 잔여다: semgrep 이 같은 언어를 덮지만 **전담 축은 사라진다**.
+    # (dotnet_format 은 어댑터째 지웠다 — 단일 .cs 를 분석할 수 없었다, #1565)
     # 그중 배포본에서 실제로 도는 것은 **2개**(golangci_lint · ktlint) —
     # `_REACHABLE_CEILING` 이 그 수를 파생값으로 래칫한다.
     # 🔴 판별식은 도구마다 다르다 — 실측으로 정한 것만 전환한다. rubocop 은 크래시해도
     #    유효한 JSON 을 내므로 「비-JSON 이면 raise」 관용구가 통하지 않았다.
-    "dotnet_format", "golangci_lint", "htmlhint", "ktlint",
+    "golangci_lint", "htmlhint", "ktlint",
     "phpstan", "swiftlint",
 })
 
@@ -413,7 +414,7 @@ def test_delete_this_file_when_the_list_empties():
 # ── 잔여 부채 중 **배포본에서 실제로 도는 것** (회고 2026-08-29 P1) ─────────────
 #
 # 🔴 사고: 이 사이클이 닫은 11개 중 **5개는 배포 이미지에서 실행조차 되지 않았다**
-#    (buf_lint · clippy · dart_analyze · psscriptanalyzer · stylelint). 반대로 잔여 6개 중
+#    (buf_lint · clippy · dart_analyze · psscriptanalyzer · stylelint). 반대로 잔여 5개 중
 #    2개는 **돈다**(cppcheck·hadolint·shellcheck 는 #1557 W2 로 전환됐다). 투입의 약 45%가 도달 불가능한 위험에 갔고, 그동안 C/C++·Go·
 #    Dockerfile·Kotlin·shell 파일이 크래시를 «이슈 0건 · 완전» 으로 기록하는 경로는 그대로였다.
 #    우선순위를 조달과 대조한 적이 한 번도 없었기 때문이다.

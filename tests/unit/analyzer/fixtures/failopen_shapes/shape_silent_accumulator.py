@@ -1,6 +1,6 @@
 """형태 4 — 조용한 누산기. 크래시하면 파싱 루프가 0건이 되어 **`return []` 없이**
 빈 리스트가 나간다. 구 탐지기는 `return []` 을 찾으므로 원리적으로 못 본다.
-실물: `buf_lint.py` · `clippy.py` · `dotnet_format.py`.
+실물: `buf_lint.py` · `clippy.py`.
 Shape 4: silent accumulator — an empty result with no `return []` at the parse site.
 """
 from __future__ import annotations

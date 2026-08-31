@@ -3,10 +3,10 @@
 ## 왜 (backlog R21, 사용자 결정 2026-08-01 — 옵션 C)
 
 `unavailable_tools`(바이너리 부재)를 무조건 `incomplete` 로 올리면, 배포 이미지가 **애초에
-설치하지 않는** 도구의 언어는 auto-merge 가 **영구 불가**가 된다. 실측: 등록 25 분석기 중
-**9종**(clippy·dart_analyze·dotnet_format·phpstan·psscriptanalyzer·stylelint·swiftlint·
-buf_lint·htmlhint)이 조달 파일 어디에도 없다 → rust·dart·C#·php·powershell·css/scss·
-swift·protobuf·html 리포는 손댈 수 없는 이유로 차단됐다.
+설치하지 않는** 도구의 언어는 auto-merge 가 **영구 불가**가 된다. 실측: 등록 24 분석기 중
+**8종**(buf_lint·clippy·dart_analyze·htmlhint·phpstan·psscriptanalyzer·stylelint·
+swiftlint)이 조달 파일 어디에도 없다 → rust·dart·php·powershell·css·swift·protobuf·
+html 리포는 손댈 수 없는 이유로 차단됐다.
 
 그래서 **조달 계약**(`PROVISIONED_ANALYZERS`)으로 갈라친다:
   · 계약 안 도구가 없다 → 실제 배포 회귀 → 차단 (fail-closed 보존)

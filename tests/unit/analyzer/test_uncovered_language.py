@@ -12,9 +12,9 @@ Surface languages that have no registered analyzer at all — visibility, never 
 
 🔴 **2026-08-01 정정 (backlog R21, 사용자 결정 = 옵션 C)** — 아래 표의 2행이 바뀌었다.
 이전 판은 "바이너리 부재 = 조달 문제라 고칠 수 있음 → 차단" 이었는데, **실측 결과 등록
-25 분석기 중 9종이 배포 파일 어디에도 조달 흔적이 없었다**(clippy·dart_analyze·
-dotnet_format·phpstan·psscriptanalyzer·stylelint·swiftlint·buf_lint·htmlhint).
-"고칠 수 있다" 는 전제가 거짓이었고, 그 결과 rust·dart·C#·php·powershell·css/scss·
+24 분석기 중 8종이 배포 파일 어디에도 조달 흔적이 없다**(buf_lint·clippy·dart_analyze·
+htmlhint·phpstan·psscriptanalyzer·stylelint·swiftlint).
+"고칠 수 있다" 는 전제가 거짓이었고, 그 결과 rust·dart·php·powershell·css·
 swift·protobuf·html 리포는 **이 문서가 막으려던 바로 그 영구 차단**에 걸려 있었다.
 
 | 상황 | 필드 | 게이트 |
