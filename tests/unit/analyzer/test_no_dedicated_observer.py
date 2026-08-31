@@ -5,7 +5,7 @@
 `PROVISIONED_ANALYZERS` 와 대조하면 **전담 분석기가 배포본에 하나도 없는 언어가 6개**다:
 
     rust     clippy 미조달        swift   swiftlint 미조달
-    php      phpstan 미조달       csharp  dotnet_format 미조달
+    php      phpstan 미조달       csharp  전담 어댑터 없음 (#1565 로 지웠다)
     scala    전담 어댑터 없음      elixir  전담 어댑터 없음
 
 이 언어들에서는 semgrep 하나만 돈다. 그런데 semgrep 의 규칙은 언어마다 편차가 크고
@@ -56,7 +56,7 @@ def test_exactly_one_generic_analyzer_is_declared():
 
     이 수가 늘면 「전담 관측면」의 정의가 바뀐 것이므로 그 자리에서 red 가 된다.
     """
-    # `src.analyzer.io.static` 을 임포트하면 어댑터 23종이 전부 등록된다(그 모듈 상단의
+    # `src.analyzer.io.static` 을 임포트하면 어댑터가 전부 등록된다(그 모듈 상단의
     # side-effect import 들). 🔴 plain `import src…` 를 쓰지 않는다 — 이 파일이
     # `from src… import` 도 쓰므로 공존하면 CodeQL py/import-and-import-from 을
     # 자초한다(`scripts/check_dual_import.py`). `# noqa: F401` 로 가리는 것도 막힌다
@@ -202,14 +202,22 @@ def test_axis_does_not_fire_when_operator_disabled_everything():
 
 
 def test_csharp_has_no_dedicated_observer():
-    """🔴 C# 은 semgrep 만 본다 — 그 사실이 기록되어야 한다."""
-    from src.analyzer.io.static import _run_analyzers, StaticAnalysisResult  # noqa: PLC0415
+    """🔴 C# 은 semgrep 만 본다 — 그 사실이 기록되어야 한다.
 
-    ctx = _ctx("csharp", "Program.cs")
-    result = StaticAnalysisResult(filename="Program.cs")
-    _run_analyzers(ctx, result)
+    🔴 `_run_analyzers` 가 아니라 **`analyze_file`** 로 잰다. 전자는 축 하나만 세우고
+    `uncovered_language`·`incomplete` 는 호출부가 정한다 — 그 둘을 안 보면 「가시화만 하고
+    차단하지 않는다」는 이 절의 주장이 검사되지 않는다(Grok claim-review `01a05742`).
+    Measure through the production entry point: the axis is only half the claim.
+    """
+    from src.analyzer.io.static import analyze_file  # noqa: PLC0415
+
+    result = analyze_file("Program.cs", "class A\n{\n    public int X;\n}\n")
     assert result.no_dedicated_observer == "csharp", (
         "C# 에 전담 관측면이 생겼다 — 조달이 바뀌었다면 이 절 전체를 다시 쓸 것"
+    )
+    assert result.incomplete is False, "가시화 축이 차단으로 바뀌었다 — 이 절의 계약 위반"
+    assert getattr(result, "uncovered_language", None) is None, (
+        "semgrep 이 지원하는데 `uncovered_language` 가 섰다 — 두 축이 뒤섞였다"
     )
 
 

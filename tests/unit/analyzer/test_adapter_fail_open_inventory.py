@@ -13,7 +13,7 @@
 
 그래서 `KNOWN_FAIL_OPEN` 에 적혀 있던 14개는 **실제 집합이 아니라 눈먼 탐지기의 출력**이었다.
 재집계 20 → W1 5개(관측면 0)·W3 3개(스폰 축)·W2 5개(실측 판별식)를 fail-closed 로 돌려
-현재 **6개**다. 형태 7종은 `tests/unit/analyzer/fixtures/` 에 픽스처로 박혀 있고,
+현재 **5개**다. 형태들은 `tests/unit/analyzer/fixtures/` 에 픽스처로 박혀 있고,
 각 파일 docstring 이 그 형태를 쓰는 실물 어댑터 좌표를 든다.
 
 ## 판정을 관용구에서 파생값으로 바꿨다
@@ -414,7 +414,7 @@ def test_delete_this_file_when_the_list_empties():
 # ── 잔여 부채 중 **배포본에서 실제로 도는 것** (회고 2026-08-29 P1) ─────────────
 #
 # 🔴 사고: 이 사이클이 닫은 11개 중 **5개는 배포 이미지에서 실행조차 되지 않았다**
-#    (buf_lint · clippy · dart_analyze · psscriptanalyzer · stylelint). 반대로 잔여 6개 중
+#    (buf_lint · clippy · dart_analyze · psscriptanalyzer · stylelint). 반대로 잔여 5개 중
 #    2개는 **돈다**(cppcheck·hadolint·shellcheck 는 #1557 W2 로 전환됐다). 투입의 약 45%가 도달 불가능한 위험에 갔고, 그동안 C/C++·Go·
 #    Dockerfile·Kotlin·shell 파일이 크래시를 «이슈 0건 · 완전» 으로 기록하는 경로는 그대로였다.
 #    우선순위를 조달과 대조한 적이 한 번도 없었기 때문이다.
