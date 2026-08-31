@@ -27,8 +27,15 @@
 
     A. 모듈 안 어느 함수에도 `raise` 가 없다      → 크래시 판별식이 아예 없다
     B. 위 두 축 밖의 `return []` 이 하나라도 있다  → 그 자리가 미분석을 삼킨다
+    D. `except` 밖에 `if …: raise` 가 없다        → 장식용 raise 만 있다
 
-두 축 모두 **모듈의 모든 함수**를 본다. 「`run` 과 `_parse*` 만」처럼 이름으로 범위를
+축 D 는 축 A 의 사각을 닫는다. `except` 갈래의 `raise` 하나면 A 가 꺼지는데, 그것이 잡는 것은
+「파싱이 예외를 냈다」뿐이다. 크래시 stdout 이 깨끗한 것과 **바이트가 같으면**(shellcheck 의 `[]`)
+파싱은 성공하고 0건이 «완전» 으로 기록된다 — #1582 가 실측으로 닫은 자리가 정확히 그것이다.
+그 한 줄을 지우는 뮤테이션에 이전 판은 눈멀었다: fail-closed 17개 중 **13개**가 A·B·C 를
+전부 빠져나갔고, 그 안에 이 파일 자신의 경성 대조군 `semgrep` 이 있었다(#1585).
+
+위 축들 모두 **모듈의 모든 함수**를 본다. 「`run` 과 `_parse*` 만」처럼 이름으로 범위를
 정하면 다르게 명명된 헬퍼에 눈멀고, 그것은 관용구 열거와 같은 실패다.
 
 `except OSError` 는 B 로 걸린다 — `shutil.which` 를 통과한 뒤의 ENOEXEC(깨진 shebang)·
@@ -40,7 +47,7 @@ PermissionError·TOCTOU 는 「바이너리 부재」가 아니라 미분석이�
 
 1. 현재 fail-open 인 어댑터 집합을 명시한다. 목록 밖 어댑터가 fail-open 이면 **red**.
 2. 목록이 **비면 red** — 부채가 사라졌으니 이 파일을 지우라는 신호다.
-3. 탐지기가 다시 눈멀면 **red** — 픽스처 7종을 전부 봐야 한다.
+3. 탐지기가 다시 눈멀면 **red** — 픽스처를 전부 봐야 한다.
 
 The debt is inventoried, not hidden: the set may shrink but never grow, and the detector is
 derived from the two legitimate axes rather than from a list of idioms it might fail to list.
@@ -64,7 +71,7 @@ _NARROW_AXES = ("TimeoutExpired", "FileNotFoundError")
 KNOWN_FAIL_OPEN: frozenset[str] = frozenset({
     # 분석 축이 통째로 fail-open — 크래시가 «이슈 0건 · 완전» 이 된다.
     # 남은 6개는 #1557 W2 잔여다: semgrep 이 같은 언어를 덮지만 **전담 축은 사라진다**.
-    # 그중 배포본에서 실제로 도는 것은 **3개**(golangci_lint · ktlint) —
+    # 그중 배포본에서 실제로 도는 것은 **2개**(golangci_lint · ktlint) —
     # `_REACHABLE_CEILING` 이 그 수를 파생값으로 래칫한다.
     # 🔴 판별식은 도구마다 다르다 — 실측으로 정한 것만 전환한다. rubocop 은 크래시해도
     #    유효한 JSON 을 내므로 「비-JSON 이면 raise」 관용구가 통하지 않았다.
@@ -214,6 +221,52 @@ def _raises_on_empty_accumulator(tree: ast.AST, written: set[str]) -> bool:
     return False
 
 
+def _has_crash_predicate(tree: ast.AST) -> bool:
+    """도구가 **기대한 형식의 출력을 냈는가**를 보고 올리는 자리가 있는가.
+
+    🔴 `except` 갈래 **안**의 `raise` 는 세지 않는다. 그것이 잡는 것은 「파싱이 예외를 냈다」
+    뿐이고, 「도구가 조용히 죽어 깨끗한 것과 바이트가 같은 출력을 냈다」는 못 잡는다.
+    후자를 잡는 것이 크래시 판별식이고, `#1581`·`#1582` 가 도구마다 실측으로 정한 것이
+    바로 그 한 줄이다(`_common.py::def empty_output_is_a_crash` · `eslint.py` 의 컨테이너 검사).
+
+    🔴 판별식의 **내용**을 규정하지 않는다 — 형태만 본다(`except` 밖의 `if …: raise`).
+    내용을 규정하면 도구마다 다른 판별식을 열거하게 되고, 그것이 이 파일의 이전 판을
+    거짓 집행자로 만든 관용구 열거와 같은 실패다. 「그 판별식이 실제로 크래시를 잡는가」는
+    CI 실바이너리(`tests/integration/test_contracted_analyzers_real_binary.py` 의 `W2-SHAPE`)가
+    잰다 — 로컬에 바이너리가 없는 여기서 의미를 판정하면 그것이 또 하나의 거짓 집행자다.
+
+    Shape only, not content: an `if …: raise` outside any except handler. What that predicate
+    actually catches is measured against real binaries in CI, not asserted here.
+
+    🔴 판정은 **`raise` 쪽**에 건다 — 「`if` 가 except 밖인가」가 아니라
+    「**`raise` 가** except 밖이고 어떤 `if` 아래인가」다. 앞의 것으로 물으면
+    `if True:` 로 기존 try/except 를 감싸는 것만으로 통과한다(그 raise 는 여전히 except 안인데
+    `ast.walk(If)` 가 그것을 본다). 들여쓰기 한 번짜리 우회이고, 이 파일이 적은 규칙과도 어긋난다.
+    `raise` 가 except 밖이면 그것을 감싼 `if` 도 반드시 except 밖이므로 한 조건이면 족하다.
+
+    🔴 `empty_output_is_a_crash` **호출 자체를 신호로 세지 않는다.** 실물 3곳
+    (`buf_lint` · `psscriptanalyzer` · `shellcheck`)이 전부 `if empty_output_is_a_crash(…): … raise`
+    라 일반 규칙이 이미 덮는다. 호출을 따로 세면 **헬퍼 호출은 남기고 `raise` 만 지우는 되돌림**에
+    눈먼다 — 이 래칫이 잡아야 할 바로 그 편집이다(Grok claim-review `01a05521` 실측).
+
+    Anchor on the raise, not the if: `if True:` wrapping an except-raise would otherwise pass.
+    """
+    inside_except: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ExceptHandler):
+            inside_except.update(id(n) for n in ast.walk(node))
+    under_if: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.If):
+            under_if.update(id(n) for n in ast.walk(node) if n is not node)
+    return any(
+        isinstance(node, ast.Raise)
+        and id(node) not in inside_except
+        and id(node) in under_if
+        for node in ast.walk(tree)
+    )
+
+
 def _fail_open_reasons(path: Path) -> list[str]:
     """어댑터 한 개가 fail-open 인 사유들. 빈 리스트면 fail-closed 다."""
     tree = ast.parse(io.open(path, encoding="utf-8").read())
@@ -242,11 +295,27 @@ def _fail_open_reasons(path: Path) -> list[str]:
         reasons.append(
             "C: 누산 루프 안에서 파싱 실패를 삼키고, 읽은 것이 0건이어도 그대로 내보낸다"
         )
+    # 🔴 축 D — **장식용 raise.** `except` 갈래의 raise 하나가 축 A 를 끄지만, 그것은
+    #    「파싱이 예외를 냈다」만 잡는다. 크래시 stdout 이 깨끗한 것과 바이트가 같으면
+    #    (shellcheck 의 `[]`) 파싱은 성공하고 0건이 «완전» 으로 기록된다.
+    #
+    #    🔴 이 축이 없으면 이 파일은 **자기가 세운 축이 되돌아가는 것을 못 본다.**
+    #    뮤테이션 실측(`0017a3eb`): `except` 밖의 `if …: raise` 를 지우면 fail-closed 17개 중
+    #    **13개**가 A·B·C 를 전부 빠져나갔다 — 경성 대조군 `semgrep` 을 포함해서다.
+    #    #1581·#1582 가 도구별 실측으로 세운 판별식을 지우는 것이 그 뮤테이션이므로,
+    #    이 축은 전환된 어댑터를 지키는 래칫이다.
+    # Axis D: a decorative raise in an except handler turns axis A off while catching only
+    # "the parse threw" — never "the tool died and emitted bytes identical to clean".
+    if fns and not _has_crash_predicate(tree):
+        reasons.append(
+            "D: 크래시 판별식이 없다 — 도구가 기대한 형식의 출력을 냈는지 보고 "
+            "올리는 자리(except 밖의 `if …: raise`)가 없다"
+        )
     return reasons
 
 
 def _fail_open_adapters(root: Path = _TOOLS) -> set[str]:
-    """분석 실패를 `[]` 로 삼키는 어댑터 이름 — 판정은 모듈 docstring 의 A·B 축."""
+    """분석 실패를 `[]` 로 삼키는 어댑터 이름 — 판정은 모듈 docstring 의 A·B·C·D 축."""
     return {
         path.stem for path in sorted(root.glob("*.py"))
         if not path.name.startswith("_") and path.name != "__init__.py"
