@@ -13,6 +13,7 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "123:ABC")
 os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
 
+from types import SimpleNamespace  # noqa: E402
 from unittest.mock import AsyncMock, MagicMock, patch  # noqa: E402
 
 import pytest  # noqa: E402
@@ -217,6 +218,13 @@ async def test_gate_callback_approve_threads_japanese_to_review_body():
     ), patch(
         "src.webhook.providers.telegram.gate_decision_repo.claim_decision"
     ), patch(
+        # 🔴 게시 클레임도 패치한다 — 안 하면 mock 세션의 `query()` 를 그대로 타서
+        #    `claimed.decision` 이 MagicMock 이 되고 body 가 reject 쪽으로 간다 (#1504 R2).
+        "src.webhook.providers.telegram.gate_decision_repo.claim_post_attempt",
+        return_value=SimpleNamespace(decision="approve", decided_by=None),
+    ), patch(
+        "src.webhook.providers.telegram.gate_decision_repo.mark_posted"
+    ), patch(
         "src.webhook.providers.telegram.user_repo.find_by_telegram_user_id", return_value=MagicMock(id=1)
     ), patch(
         "src.webhook.providers.telegram.post_github_review", new_callable=AsyncMock
@@ -248,6 +256,13 @@ async def test_gate_callback_reject_threads_english_no_korean():
     ), patch(
         "src.webhook.providers.telegram.gate_decision_repo.claim_decision"
     ), patch(
+        # 🔴 게시 클레임도 패치한다 — 안 하면 mock 세션의 `query()` 를 그대로 타서
+        #    `claimed.decision` 이 MagicMock 이 되고 body 가 reject 쪽으로 간다 (#1504 R2).
+        "src.webhook.providers.telegram.gate_decision_repo.claim_post_attempt",
+        return_value=SimpleNamespace(decision="reject", decided_by=None),
+    ), patch(
+        "src.webhook.providers.telegram.gate_decision_repo.mark_posted"
+    ), patch(
         "src.webhook.providers.telegram.user_repo.find_by_telegram_user_id", return_value=MagicMock(id=1)
     ), patch(
         "src.webhook.providers.telegram.post_github_review", new_callable=AsyncMock
@@ -276,6 +291,13 @@ async def test_gate_callback_approve_threads_korean_default():
         "src.webhook.providers.telegram.resolve_notification_language", return_value="ko"
     ), patch(
         "src.webhook.providers.telegram.gate_decision_repo.claim_decision"
+    ), patch(
+        # 🔴 게시 클레임도 패치한다 — 안 하면 mock 세션의 `query()` 를 그대로 타서
+        #    `claimed.decision` 이 MagicMock 이 되고 body 가 reject 쪽으로 간다 (#1504 R2).
+        "src.webhook.providers.telegram.gate_decision_repo.claim_post_attempt",
+        return_value=SimpleNamespace(decision="approve", decided_by=None),
+    ), patch(
+        "src.webhook.providers.telegram.gate_decision_repo.mark_posted"
     ), patch(
         "src.webhook.providers.telegram.user_repo.find_by_telegram_user_id", return_value=MagicMock(id=1)
     ), patch(
