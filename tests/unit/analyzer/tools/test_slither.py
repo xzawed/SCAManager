@@ -374,8 +374,12 @@ def test_disabled_when_neither_solc_select_nor_solc_is_present(monkeypatch):
     """🔴 폴백의 **반대쪽** — solc-select 도 없고 `which("solc")` 도 None 이면 꺼진다.
 
     위 시험 하나만 두면 폴백은 한쪽만 재어진다. 뮤테이션 실측(#1568 잔여3):
-    `return shutil.which("solc") is not None` 을 `return True` 로 바꿔도 **55 passed** —
+    `return shutil.which("solc") is not None` 을 `return True` 로 바꿔도 **55개 전건 통과** —
     아무도 안 잡았다. `return False` 로 바꿔야 겨우 위 시험 하나가 걸렸다.
+
+    🔴 그 수치를 「N passed」로 적지 않는다. pytest 요약을 **전체 텍스트에서** 찾는 계기는
+    SUT 가 인쇄한 이 docstring 에 맞는다 — 이 시험을 쓰다가 실제로 그렇게 틀렸다.
+    계기는 요약 **줄을 고른 뒤** 그 줄에서 세야 한다(`check_test_count_sync.py` 관용구).
 
     🔴 기존 헬퍼(`_enabled_with`·`_enabled_with_pragma`)로는 잴 수 없다 — 둘 다 `solc` 에
     대해 **항상 경로를 돌려준다**. 이름별로 가르는 패치를 따로 쓴다.
