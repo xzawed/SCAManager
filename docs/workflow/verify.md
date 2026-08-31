@@ -21,10 +21,8 @@
    gh api repos/xzawed/SCAManager/pulls/<n> -q '.head.sha, .commits'   # 🔴 머지 **직전에도**
    ```
 
-   🔴 **두 확인은 서로를 대신하지 못한다.** `ls-remote` 는 ref 가 갔는지만 본다 — GitHub 이
-   503/429 를 내는 구간에서는 ref 가 갔는데도 **PR 객체가 그 커밋을 집지 않고**, push 가 닿지
-   못했는데 출력은 `remote:` 한 줄만 남는다. 그때 CI 는 **옛 커밋**을 초록으로 통과시키고
-   머지는 그 옛 커밋만 담아 커밋이 통째로 사라진다. 따라서
+   🔴 **두 확인은 서로를 대신하지 못한다.** `ls-remote` 는 ref 만 본다 — ref 가 갔어도 PR 객체가
+   그 커밋을 집지 않으면 CI 는 **옛 커밋**을 초록으로 통과시킨다. 그래서
    `head.sha == git rev-parse HEAD` 를 **머지를 누르기 직전에** 다시 본다.
    ⚠️ `mergeStateStatus=UNKNOWN` 이 지속되면 「계산 중」이 아니라 이 상태를 의심한다.
    🔴 본문 수치가 틀렸으면 본문을 고치고 `gh run rerun --failed` 한다. 본문을 읽는 세 스텝은
@@ -90,7 +88,8 @@ if any(m.__tablename__ not in Base.metadata.tables for m in _FK_TARGET_MODELS):
     raise RuntimeError("side-effect ORM import 소실 — 테이블 미등록")
 ```
 
-이 이름은 `scripts/check_noqa_sideeffect.py` 가 찾는다(변경 금지).
+`scripts/check_noqa_sideeffect.py` 가 막는 것은 `tests/` 에 **새로 추가된 noqa-은닉 import** 다
+(`# noqa` 단독 포함). 튜플 이름은 그 스크립트가 출력하는 처방 예시일 뿐 — 강제하는 가드는 없다.
 
 ### 판정식을 쓸 때 — 3~5 는 **모든 파일**에 적용(1~2 는 새 `scripts/check_*.py` 한정)
 
