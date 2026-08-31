@@ -40,6 +40,16 @@ class IssueRegistration(Base):
     # "open" | "closed" — synced from GitHub API with 5-minute TTL cache
     github_issue_state = Column(String, nullable=False, default="open", server_default="open")
     github_issue_synced_at = Column(DateTime, nullable=True)
+    # 🔴 마지막 동기화가 **실패**했으면 그 원인 클래스 이름, 성공했으면 None (#1504 R3).
+    #    이전에는 실패를 `pass` 로 삼켜 「마지막으로 알던 상태」를 그대로 보여 줬는데,
+    #    일시 오류(5xx·타임아웃)에는 그것이 맞고 **영구 오류**(`InvalidURL` 등)에는 틀리다 —
+    #    UI 에는 낡은 open/closed 가 성공적으로 동기화된 것처럼 보였다.
+    #    `github_issue_synced_at` 은 실패 시 갱신되지 않으므로 TTL 마다 재시도는 하지만,
+    #    **사용자는 그 상태가 낡았다는 사실을 알 수 없었다.**
+    # Why the last sync failed (exception class name), or None on success: keeping the last
+    # known state is right for transient errors and wrong for permanent ones, and the UI
+    # could not tell the two apart.
+    sync_error = Column(String, nullable=True)
     created_at = Column(
         DateTime,
         default=lambda: datetime.now(timezone.utc),

@@ -10,6 +10,8 @@ os.environ.setdefault("TELEGRAM_WEBHOOK_SECRET", "test-tg-webhook-secret-for-tes
 import contextlib
 import logging
 
+from types import SimpleNamespace
+
 import pytest
 import httpx
 from fastapi import BackgroundTasks
@@ -68,15 +70,35 @@ def _authorize_gate_owner():
 
 @pytest.fixture(autouse=True)
 def _gate_decision_claim_succeeds():
-    """기본적으로 게이트 결정 claim 이 성공(first-writer)하도록 패치 (#11 리플레이 가드).
+    """기본적으로 게이트 결정 claim 과 **게시 클레임**이 성공하도록 패치 (#11 · #1504 R2).
 
-    handle_gate_callback 의 원자적 claim(gate_decision_repo.claim_decision)을 True 로 패치해
-    기존 테스트의 최초-결정 정상 경로를 보존한다. 리플레이/동시패자 케이스는 개별 테스트가 False 로 덮어쓴다.
-    Patch claim_decision → True by default so the first decision proceeds; replay/concurrent-loser
-    cases override this (return False) in individual tests.
+    🔴 `claim_post_attempt` 도 함께 패치한다. 그것이 게시 권한의 **단일 관문**이라
+    패치하지 않으면 mock 세션의 `query()` 를 그대로 타서 시험이 다른 것을 재게 된다
+    (실측: `StopIteration` — mock 의 side_effect 시퀀스가 고갈됐다).
+
+    🔴 돌려주는 행의 `decision` 은 **직전 `claim_decision` 이 받은 값**을 반향한다.
+    프로덕션은 「클레임된 결정을 게시한다」이므로 스텁도 그래야 한다 — 고정값을 쓰면
+    approve/reject 를 가르는 시험이 전부 한쪽으로 쏠린다.
+
+    리플레이/동시패자 케이스는 개별 테스트가 `claim_post_attempt → None` 으로 덮는다 —
+    `claim_decision → False` 는 더 이상 리플레이를 뜻하지 않는다(게시 실패 후 재시도가 그 상태다).
+    Patch both claims; the stub echoes the claimed decision because production posts that one.
     """
+    seen: dict = {}
+
+    def _claim(_db, _analysis_id, decision, _mode, decided_by=None):
+        seen["decision"] = decision
+        seen["decided_by"] = decided_by
+        return True
+
+    def _claim_post(_db, _analysis_id, **_kwargs):
+        return SimpleNamespace(
+            decision=seen.get("decision", "approve"), decided_by=seen.get("decided_by")
+        )
+
     with patch("src.webhook.providers.telegram.gate_decision_repo.claim_decision",
-               return_value=True):
+               side_effect=_claim),          patch("src.webhook.providers.telegram.gate_decision_repo.claim_post_attempt",
+               side_effect=_claim_post),          patch("src.webhook.providers.telegram.gate_decision_repo.mark_posted"),          patch("src.webhook.providers.telegram.gate_decision_repo.release_post_claim"):
         yield
 
 
@@ -288,8 +310,11 @@ async def test_handle_gate_callback_replay_claim_lost_skips_side_effects():
     mock_db.query.return_value.filter_by.return_value.first.side_effect = [mock_analysis, mock_repo]
     config = RepoConfigData(repo_full_name="owner/repo", auto_merge=True, merge_threshold=75)
     with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
-        with patch("src.webhook.providers.telegram.gate_decision_repo.claim_decision",
-                   return_value=False) as mock_claim:  # 동시/순차 리플레이 패자
+        # 🔴 리플레이는 이제 **게시 클레임 실패**로 표현한다 (#1504 R2).
+        #    `claim_decision → False` 는 「이미 결정됨」일 뿐이고, 그중 게시가 실패한 행은
+        #    **재시도 대상**이다. 부수효과를 가르는 관문은 `claim_post_attempt` 다.
+        with patch("src.webhook.providers.telegram.gate_decision_repo.claim_post_attempt",
+                   return_value=None) as mock_claim:  # 이미 게시됨 또는 게시 중
             with patch("src.webhook.providers.telegram.post_github_review",
                        new_callable=AsyncMock) as mock_review:
                 with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
@@ -326,8 +351,8 @@ async def test_handle_gate_callback_replay_notifies_clicker():
                 return_value="ko",
             ):
                 with patch(
-                    "src.webhook.providers.telegram.gate_decision_repo.claim_decision",
-                    return_value=False,
+                    "src.webhook.providers.telegram.gate_decision_repo.claim_post_attempt",
+                    return_value=None,
                 ) as mock_claim:
                     with patch(
                         "src.webhook.providers.telegram.post_github_review",
@@ -368,8 +393,8 @@ async def test_handle_gate_callback_replay_without_chat_id_stays_silent():
     with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
         with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
             with patch(
-                "src.webhook.providers.telegram.gate_decision_repo.claim_decision",
-                return_value=False,
+                "src.webhook.providers.telegram.gate_decision_repo.claim_post_attempt",
+                return_value=None,
             ):
                 with patch(
                     "src.webhook.providers.telegram._post_message_guarded",
@@ -415,8 +440,8 @@ async def test_handle_gate_callback_replay_notice_failure_does_not_lie(boom):
                 return_value="ko",
             ):
                 with patch(
-                    "src.webhook.providers.telegram.gate_decision_repo.claim_decision",
-                    return_value=False,
+                    "src.webhook.providers.telegram.gate_decision_repo.claim_post_attempt",
+                    return_value=None,
                 ):
                     with patch(
                         "src.webhook.providers.telegram._post_message_guarded",
@@ -487,7 +512,11 @@ async def test_handle_gate_callback_reject_does_not_merge():
     config = RepoConfigData(repo_full_name="owner/repo", auto_merge=True, merge_threshold=75)
     with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
         with patch("src.webhook.providers.telegram.post_github_review", new_callable=AsyncMock):
-            with patch("src.webhook.providers.telegram.gate_decision_repo.claim_decision") as mock_save:
+            # 🔴 게시할 결정을 **명시**한다 — 프로덕션은 클레임된 결정을 게시하므로
+            #    (#1504 R2), 클릭의 `decision` 만 주면 이 시험이 reject 를 재지 못한다.
+            #    `claim_decision` 을 갈아치우면 autouse 픽스처의 반향이 끊기기 때문이다.
+            with patch("src.webhook.providers.telegram.gate_decision_repo.claim_post_attempt",
+                       return_value=SimpleNamespace(decision="reject", decided_by="john")),                  patch("src.webhook.providers.telegram.gate_decision_repo.claim_decision") as mock_save:
                 with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
                     with patch("src.gate.engine._run_auto_merge", new_callable=AsyncMock) as mock_am:
                         await handle_gate_callback(analysis_id=42, decision="reject", decided_by="john", telegram_user_id="1")
@@ -1389,3 +1418,86 @@ async def test_not_posted_notice_still_says_not_posted_when_the_review_failed():
                                 telegram_user_id="1", chat_id="-100999",
                             )
     assert "미게시" in mock_post.call_args[0][2]["text"]
+
+
+# ── 게시 실패 뒤 재클릭이 **재시도된다** (#1504 R2) ───────────────────────────
+#
+# 🔴 이것이 `#1504` R2 가 고치려던 것이다. 이전에는 `claim_decision` 이 False 를 돌리면
+#    무조건 리플레이로 막혀, 전송 오류로 리뷰가 안 붙은 결정은 **자동 복구 수단이 없었다**
+#    (새 푸시로 새 analysis_id 를 만드는 것이 유일한 우회였다).
+#
+# 🔴 위 리플레이 시험들과 **짝**이다. 그쪽은 `claim_post_attempt → None`(이미 게시됨)이고
+#    이쪽은 행을 돌려준다(미게시). 둘이 함께 있어야 「관문이 실제로 가른다」가 성립한다 —
+#    한쪽만 두면 「항상 막는다」 또는 「항상 통과」와 구별되지 않는다.
+
+
+async def test_a_decision_whose_post_failed_is_retried_on_the_next_click():
+    """🔴 결정은 기록됐는데 게시가 실패한 행은 다시 누르면 **게시된다**."""
+    from src.webhook.router import handle_gate_callback
+    mock_analysis = MagicMock(id=42, repo_id=1, pr_number=5, score=85, result={"score": 85})
+    mock_repo = MagicMock(id=1, full_name="owner/repo", user_id=1)
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter_by.return_value.first.side_effect = [mock_analysis, mock_repo]
+    config = RepoConfigData(repo_full_name="owner/repo", auto_merge=False, merge_threshold=75)
+    with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)), \
+         patch("src.webhook.providers.telegram.gate_decision_repo.claim_decision",
+               return_value=False), \
+         patch("src.webhook.providers.telegram.gate_decision_repo.claim_post_attempt",
+               return_value=SimpleNamespace(decision="approve", decided_by="john")), \
+         patch("src.webhook.providers.telegram.gate_decision_repo.mark_posted") as mock_mark, \
+         patch("src.webhook.providers.telegram.post_github_review",
+               new_callable=AsyncMock) as mock_review, \
+         patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
+        await handle_gate_callback(analysis_id=42, decision="approve",
+                                   decided_by="john", telegram_user_id="1")
+    mock_review.assert_called_once()   # 🔴 이전에는 여기가 0회였다 — 재시도 불가
+    mock_mark.assert_called_once()     # 성공했으면 못 박는다
+
+
+async def test_the_retry_posts_the_claimed_decision_not_the_new_click():
+    """🔴 재시도는 **클레임된 결정**을 게시한다 — approve→reject 뒤집기를 되살리지 않는다.
+
+    HMAC 은 `gate:{analysis_id}` 만 서명하므로 같은 버튼으로 다른 결정을 보낼 수 있다.
+    재시도가 새 클릭의 결정을 따르면 `claim_decision` 이 막던 뒤집기가 그대로 돌아온다.
+    """
+    from src.webhook.router import handle_gate_callback
+    mock_analysis = MagicMock(id=42, repo_id=1, pr_number=5, score=85, result={"score": 85})
+    mock_repo = MagicMock(id=1, full_name="owner/repo", user_id=1)
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter_by.return_value.first.side_effect = [mock_analysis, mock_repo]
+    config = RepoConfigData(repo_full_name="owner/repo", auto_merge=False, merge_threshold=75)
+    with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)), \
+         patch("src.webhook.providers.telegram.gate_decision_repo.claim_decision",
+               return_value=False), \
+         patch("src.webhook.providers.telegram.gate_decision_repo.claim_post_attempt",
+               return_value=SimpleNamespace(decision="approve", decided_by="john")), \
+         patch("src.webhook.providers.telegram.gate_decision_repo.mark_posted"), \
+         patch("src.webhook.providers.telegram.post_github_review",
+               new_callable=AsyncMock) as mock_review, \
+         patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
+        # 클릭은 reject 인데 클레임된 결정은 approve 다.
+        await handle_gate_callback(analysis_id=42, decision="reject",
+                                   decided_by="mallory", telegram_user_id="1")
+    assert mock_review.call_args.args[3] == "approve", (
+        f"재시도가 새 클릭의 결정을 게시했다 — 뒤집기가 되살아났다: {mock_review.call_args.args}"
+    )
+
+
+async def test_a_failed_post_releases_the_lease_so_the_next_click_can_retry():
+    """🔴 알려진 실패는 리스를 푼다 — 사람을 리스 길이만큼 기다리게 하지 않는다."""
+    from src.webhook.router import handle_gate_callback
+    mock_analysis = MagicMock(id=42, repo_id=1, pr_number=5, score=85, result={"score": 85})
+    mock_repo = MagicMock(id=1, full_name="owner/repo", user_id=1)
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter_by.return_value.first.side_effect = [mock_analysis, mock_repo]
+    config = RepoConfigData(repo_full_name="owner/repo", auto_merge=False, merge_threshold=75)
+    with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)), \
+         patch("src.webhook.providers.telegram.gate_decision_repo.claim_post_attempt",
+               return_value=SimpleNamespace(decision="approve", decided_by="john")), \
+         patch("src.webhook.providers.telegram.gate_decision_repo.release_post_claim") as mock_rel, \
+         patch("src.webhook.providers.telegram.post_github_review",
+               new_callable=AsyncMock, side_effect=ValueError("transport")), \
+         patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
+        await handle_gate_callback(analysis_id=42, decision="approve",
+                                   decided_by="john", telegram_user_id="1")
+    mock_rel.assert_called_once()

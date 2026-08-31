@@ -146,9 +146,20 @@ async def handle_gate_callback(  # pylint: disable=too-many-locals
             # replay (double-click / Telegram retry) loses with IntegrityError→False and skips side
             # effects. The HMAC signs only gate:{analysis_id} (no nonce), so the claim is the single
             # synchronization point — insert-only (no flip), mirroring #780/#787 race-safe pattern.
-            if not gate_decision_repo.claim_decision(db, analysis_id, decision, "manual", decided_by):
+            gate_decision_repo.claim_decision(db, analysis_id, decision, "manual", decided_by)
+            # 🔴 클레임에 **졌다고 곧바로 리플레이가 아니다** (#1504 R2). 결정은 기록됐는데
+            #    게시가 전송 오류로 실패한 행(`pending_post`)이 있고, 그때는 **재시도가 맞다**.
+            #    게시 여부를 가르는 것은 아래 in-flight 클레임이다:
+            #      얻으면   → 아직 안 붙었고 다른 클릭도 게시 중이 아니다 → 게시한다
+            #      못 얻으면 → 이미 붙었거나(`posted`) 다른 클릭이 게시 중이다 → 리플레이
+            # 🔴 `state == pending_post` 만 보고 게시하면 두 클릭이 둘 다 POST 해 **중복 리뷰**가
+            #    난다 — 배타적 클레임이라야 한다(Grok claim-review `01a05767`).
+            # Losing the decision claim is not by itself a replay: a decision whose post failed is
+            # retryable. The exclusive begin-post claim below is what separates the two.
+            claimed = gate_decision_repo.claim_post_attempt(db, analysis_id)
+            if claimed is None:
                 logger.info(
-                    "handle_gate_callback: analysis %d already decided — skipping replay",
+                    "handle_gate_callback: analysis %d already posted or posting — skipping replay",
                     analysis_id,
                 )
                 # 🔴 부수효과는 skip 하되 **무음이면 안 된다** (#1431). 이 분기에 도달하는 가장 흔한
@@ -172,12 +183,18 @@ async def handle_gate_callback(  # pylint: disable=too-many-locals
             # The PR Review body is permanently visible to all collaborators — i18n it (Cycle 154 P0)
             config = get_repo_config(db, repo.full_name)
             language = resolve_notification_language(db, config=config)
+            # 🔴 **클레임된 결정**을 게시한다 — 이 클릭의 `decision` 이 아니다 (#1504 R2).
+            #    HMAC 은 `gate:{analysis_id}` 만 서명하므로, 재시도가 새 클릭의 결정을
+            #    게시하면 `claim_decision` 이 막던 approve→reject **뒤집기**가 되살아난다.
+            # Post the CLAIMED decision, never the new click's: the HMAC carries no decision,
+            # so honouring it on retry would re-open the flip the claim exists to prevent.
+            decision = claimed.decision
             body_key = (
                 "notifier.gate.manual_approve_body"
                 if decision == "approve"
                 else "notifier.gate.manual_reject_body"
             )
-            body = get_text(body_key, language, decided_by=decided_by)
+            body = get_text(body_key, language, decided_by=claimed.decided_by or decided_by)
             await post_github_review(
                 github_token, repo.full_name,
                 analysis.pr_number, decision, body,
@@ -192,6 +209,9 @@ async def handle_gate_callback(  # pylint: disable=too-many-locals
             #    «게시되지 않았습니다» 로 알리면 거짓이다.
             # Past this point the review is live on GitHub; a "not posted" notice would be a lie.
             review_posted = True
+            # 🔴 auto-merge **전에** 못 박는다 — 그 뒤가 터져도 리뷰는 붙어 있으므로
+            #    재시도 대상이 아니다. `review_posted = True` 와 같은 경계다 (#1504 R2).
+            gate_decision_repo.mark_posted(db, analysis_id)
             # 결정은 위 claim 단계에서 이미 원자적으로 기록됨 (별도 저장 불필요)
             # The decision was already recorded atomically by the claim above (no save needed)
             result_dict = analysis.result if isinstance(analysis.result, dict) else {}
@@ -248,6 +268,10 @@ async def handle_gate_callback(  # pylint: disable=too-many-locals
             )
             # 갈래 A: claim 은 유지(철회 없음). 버튼 누른 사람에게 리뷰 미게시만 알린다.
             # Branch A: keep the claim (no retraction). Only tell the clicker the review was NOT posted.
+            # 🔴 in-flight 리스만 푼다 — 결정은 남기고 **재시도만** 열어 준다 (#1504 R2).
+            #    head 가 되돌아올 일은 없으니 다음 클릭도 같은 곳에서 빠르게 실패하지만,
+            #    리스만큼 기다리게 하지 않는 것이 맞다. `state` 는 건드리지 않는다.
+            gate_decision_repo.release_post_claim(db, analysis_id)
             # 🔴 예외 문자열은 사용자 메시지에 넣지 않는다 — httpx 형제 경로가 URL 에 토큰을 실음.
             # 🔴 Never put exception text in the user message — sibling httpx paths embed the bot token.
             if chat_id is not None:
@@ -272,6 +296,12 @@ async def handle_gate_callback(  # pylint: disable=too-many-locals
             #    만든다. 게이트가 조용한 것보다 **틀린 말을 하는 것이 나쁘다**.
             # Branch A: keep claim + failure notice. The wording depends on whether the review
             # actually landed — telling the user "not posted" when it is posted causes a duplicate.
+            # 🔴 리스를 푼다 — 게시 **전**에 터졌으면 재시도가 열리고, 게시 **후**(auto-merge
+            #    실패)라면 `mark_posted` 가 이미 `posted` 로 못 박아 `release_post_claim` 이
+            #    아무것도 되돌리지 않는다. 두 경우가 같은 호출로 옳게 갈린다 (#1504 R2).
+            # Releasing is correct on both sides: a post-success already moved the row to
+            # "posted", which release_post_claim refuses to resurrect.
+            gate_decision_repo.release_post_claim(db, analysis_id)
             if chat_id is not None:
                 text = get_text(
                     "notifier.gate.callback_posted_then_failed" if review_posted

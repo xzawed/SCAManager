@@ -78,4 +78,19 @@ def update_state(db: Session, *, record: IssueRegistration, state: str) -> None:
     """
     record.github_issue_state = state
     record.github_issue_synced_at = datetime.now(timezone.utc)
+    # 🔴 성공했으면 이전 실패 표시를 **지운다** — 안 지우면 한 번 실패한 항목이
+    #    영원히 「동기화 실패」로 보인다(#1504 R3).
+    record.sync_error = None
+    db.commit()
+
+
+def record_sync_error(db: Session, *, record: IssueRegistration, reason: str) -> None:
+    """동기화 실패를 기록한다 — 상태와 `synced_at` 은 **건드리지 않는다** (#1504 R3).
+
+    🔴 마지막으로 알던 상태를 유지하는 것은 옳다(일시 오류에서 낡은 값이 없는 값보다 낫다).
+    바뀌는 것은 **그 사실을 감추지 않는다**는 것뿐이다. `synced_at` 을 갱신하지 않으므로
+    TTL 재시도 주기도 그대로다.
+    Keep the last known state and the stale timestamp; only stop hiding the failure.
+    """
+    record.sync_error = reason
     db.commit()

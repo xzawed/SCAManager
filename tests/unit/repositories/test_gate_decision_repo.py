@@ -7,6 +7,8 @@ os.environ.setdefault("GITHUB_TOKEN", "ghp_test")
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "123:ABC")
 os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -105,3 +107,159 @@ def test_claim_decision_absorbs_non_unique_integrity_error(db_session):
     assert won is False
     # 아무 행도 영속되지 않아야 한다 (rollback)
     assert db_session.query(GateDecision).count() == 0
+
+
+# ── 게시 상태 · in-flight 클레임 (#1504 R2) ──────────────────────────────────
+#
+# 🔴 오늘의 결함: `claim_decision` 이 **먼저 커밋**되고 그 다음 `post_github_review` 가 돈다.
+#    POST 가 전송 오류로 실패하면 claim 은 남고 리뷰는 없고, 같은 버튼을 다시 눌러도
+#    `claim_decision` 이 False 를 돌려 부수효과가 skip 된다 — **재시도 수단이 없다.**
+#    콜백 HMAC 은 `gate:{analysis_id}` 만 서명하고 만료가 없어 그 버튼은 영원히 살아 있다.
+#
+# 🔴 `state == 'pending_post'` 는 **잠금이 아니다**(Grok claim-review `01a05767`).
+#    두 클릭이 둘 다 그것을 보고 둘 다 POST 하면 **중복 리뷰**가 생긴다 — 원래 가드가
+#    막으려던 바로 그것이다. 그래서 POST 직전에 **배타적 in-flight 클레임**이 필요하다.
+#
+# 🔴 리스를 `decided_at` 으로 잡으면 안 된다. HMAC 이 만료되지 않으므로 몇 시간 뒤 클릭은
+#    `decided_at` 이 이미 낡았고, 그러면 리스가 **진입하는 순간 만료로 보여** CAS 가 무력해진다 —
+#    이 버그가 다루는 바로 그 늦은 클릭 경로에서. 별도 `post_claimed_at` 을 둔다.
+#    집 패턴은 `merge_retry_repo::def claim_batch` 다.
+
+_PENDING, _POSTED = "pending_post", "posted"
+
+
+def test_claim_decision_starts_pending_post(db_session):
+    """🔴 클레임은 「결정했다」이지 「게시했다」가 아니다."""
+    a = _seed_analysis(db_session)
+    assert gate_decision_repo.claim_decision(db_session, a.id, "approve", "manual") is True
+    row = gate_decision_repo.find_by_analysis_id(db_session, a.id)
+    assert row.state == _PENDING, f"클레임 직후 상태가 {row.state!r} — 아직 게시 전이다"
+    assert row.post_claimed_at is None, "in-flight 클레임이 미리 잡혀 있다"
+
+
+def test_upsert_records_posted(db_session):
+    """🔴 자동 경로는 **게시 성공 뒤에** 기록한다 — 그 행은 재시도 대상이 아니다.
+
+    `server_default` 에 기대지 않고 **명시**한다. ORM 속성을 안 채우면 INSERT 가 NULL 을
+    보내고, 그러면 새 재시도 갈래가 그 행을 「미게시」로 읽는다.
+    """
+    a = _seed_analysis(db_session)
+    row = gate_decision_repo.upsert(db_session, a.id, "approve", "auto")
+    assert row.state == _POSTED, f"자동 경로가 {row.state!r} 로 기록했다 — 재시도 대상이 된다"
+
+
+def test_post_attempt_is_claimed_once(db_session):
+    """🔴 **배타적** in-flight 클레임 — 동시 재클릭 둘 중 하나만 POST 한다."""
+    a = _seed_analysis(db_session)
+    gate_decision_repo.claim_decision(db_session, a.id, "approve", "manual")
+    first = gate_decision_repo.claim_post_attempt(db_session, a.id)
+    second = gate_decision_repo.claim_post_attempt(db_session, a.id)
+    assert first is not None, "첫 클레임이 실패했다"
+    assert second is None, "두 번째도 클레임됐다 — 중복 리뷰가 난다"
+
+
+def test_post_attempt_returns_the_claimed_decision(db_session):
+    """🔴 재시도는 **클레임된 결정**을 게시한다 — 새 클릭의 결정이 아니다.
+
+    HMAC 은 `gate:{analysis_id}` 만 서명한다. 재시도가 새 클릭의 결정을 게시하면
+    `claim_decision` 이 막던 approve→reject **뒤집기**가 되살아난다.
+    """
+    a = _seed_analysis(db_session)
+    gate_decision_repo.claim_decision(db_session, a.id, "approve", "manual")
+    row = gate_decision_repo.claim_post_attempt(db_session, a.id)
+    assert row.decision == "approve", f"클레임된 결정이 {row.decision!r} 로 바뀌었다"
+
+
+def test_a_posted_decision_is_never_reclaimed(db_session):
+    """🔴 게시된 결정은 재시도 대상이 아니다 — 리스가 아무리 낡아도."""
+    a = _seed_analysis(db_session)
+    gate_decision_repo.claim_decision(db_session, a.id, "approve", "manual")
+    gate_decision_repo.claim_post_attempt(db_session, a.id)
+    gate_decision_repo.mark_posted(db_session, a.id)
+    ancient = datetime.now(timezone.utc) + timedelta(days=365)
+    assert gate_decision_repo.claim_post_attempt(db_session, a.id, now=ancient) is None, (
+        "게시된 결정이 다시 클레임됐다 — 중복 리뷰"
+    )
+
+
+def test_a_stale_claim_is_reclaimable(db_session):
+    """🔴 클레임한 프로세스가 죽으면 그 행이 영원히 갇히면 안 된다 — 리스로 되찾는다."""
+    a = _seed_analysis(db_session)
+    gate_decision_repo.claim_decision(db_session, a.id, "approve", "manual")
+    assert gate_decision_repo.claim_post_attempt(db_session, a.id) is not None
+    later = datetime.now(timezone.utc) + timedelta(seconds=gate_decision_repo.POST_LEASE_SECONDS + 1)
+    assert gate_decision_repo.claim_post_attempt(db_session, a.id, now=later) is not None, (
+        "리스가 지났는데 되찾지 못했다 — 죽은 클레임이 버튼을 영구히 막는다"
+    )
+
+
+def test_a_fresh_claim_is_not_reclaimable(db_session):
+    """🔴 부정 통제 — 리스 안에서는 되찾히면 안 된다. 없으면 위 시험이 「항상 클레임」과 같다."""
+    a = _seed_analysis(db_session)
+    gate_decision_repo.claim_decision(db_session, a.id, "approve", "manual")
+    gate_decision_repo.claim_post_attempt(db_session, a.id)
+    within = datetime.now(timezone.utc) + timedelta(seconds=gate_decision_repo.POST_LEASE_SECONDS - 1)
+    assert gate_decision_repo.claim_post_attempt(db_session, a.id, now=within) is None
+
+
+def test_release_lets_the_next_click_retry_immediately(db_session):
+    """🔴 알려진 실패(전송 오류·head 이동)는 리스를 풀어 준다 — 사람을 기다리게 하지 않는다."""
+    a = _seed_analysis(db_session)
+    gate_decision_repo.claim_decision(db_session, a.id, "approve", "manual")
+    gate_decision_repo.claim_post_attempt(db_session, a.id)
+    gate_decision_repo.release_post_claim(db_session, a.id)
+    assert gate_decision_repo.claim_post_attempt(db_session, a.id) is not None
+
+
+def test_release_does_not_resurrect_a_posted_decision(db_session):
+    """🔴 부정 통제 — 게시 뒤 release 가 불려도 상태는 `posted` 로 남는다."""
+    a = _seed_analysis(db_session)
+    gate_decision_repo.claim_decision(db_session, a.id, "approve", "manual")
+    gate_decision_repo.claim_post_attempt(db_session, a.id)
+    gate_decision_repo.mark_posted(db_session, a.id)
+    gate_decision_repo.release_post_claim(db_session, a.id)
+    row = gate_decision_repo.find_by_analysis_id(db_session, a.id)
+    assert row.state == _POSTED, f"게시된 결정이 {row.state!r} 로 되돌아갔다"
+    assert gate_decision_repo.claim_post_attempt(db_session, a.id) is None
+
+
+def test_the_claim_predicate_rides_on_the_update_not_on_a_prior_select(db_session):
+    """🔴 판정은 **DB 가 쓰기 시점에** 한다 — 파이썬이 읽고 나서가 아니다.
+
+    SELECT 후 행을 고쳐 커밋하면 SQLAlchemy 가 `UPDATE … WHERE id = :pk` 를 내보낸다.
+    그러면 조건이 쓰기에 실리지 않아, PG 기본 격리(READ COMMITTED)에서 두 세션이 둘 다
+    SELECT 를 통과하고 둘 다 커밋한다 — **중복 리뷰**다.
+
+    🔴 위 순차 시험들(`test_post_attempt_is_claimed_once` 등)은 같은 세션에서 차례로 부르므로
+    그 결함을 **통과시킨다**(실측: 첫 판이 정확히 그랬다). 이 시험이 그 사각을 덮는다 —
+    조건이 UPDATE 문에 실제로 실렸는지 **발화된 SQL** 로 확인한다.
+
+    The predicate must be evaluated by the database at write time; a prior SELECT cannot make
+    this exclusive, and same-session sequential tests cannot tell the difference.
+    """
+    from sqlalchemy import event  # noqa: PLC0415
+
+    a = _seed_analysis(db_session)
+    gate_decision_repo.claim_decision(db_session, a.id, "approve", "manual")
+
+    statements: list[str] = []
+
+    def _record(_conn, _cursor, statement, *_args):
+        statements.append(" ".join(statement.split()))
+
+    engine = db_session.get_bind()
+    event.listen(engine, "before_cursor_execute", _record)
+    try:
+        assert gate_decision_repo.claim_post_attempt(db_session, a.id) is not None
+    finally:
+        event.remove(engine, "before_cursor_execute", _record)
+
+    updates = [s for s in statements if s.upper().startswith("UPDATE GATE_DECISIONS")]
+    assert len(updates) == 1, f"클레임이 UPDATE 를 1회 내보내야 한다: {updates}"
+    where = updates[0].upper().split(" WHERE ", 1)[-1]
+    assert "STATE" in where, (
+        f"UPDATE 의 WHERE 에 상태 조건이 없다 — 판정이 파이썬에서 일어났다: {updates[0]}"
+    )
+    assert "POST_CLAIMED_AT" in where, (
+        f"UPDATE 의 WHERE 에 리스 조건이 없다 — 죽은 클레임 회수가 쓰기에 실리지 않았다: {updates[0]}"
+    )

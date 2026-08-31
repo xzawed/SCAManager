@@ -170,8 +170,18 @@ async def _sync_state_if_stale(
     try:
         state = await get_issue_state(github_token, repo_full_name, rec.github_issue_number)
         issue_registration_repo.update_state(db, record=rec, state=state)
-    except (*HTTPX_SEND_ERRORS, KeyError, ValueError):
-        # 동기화 실패 시 기존 상태 유지 — 사용자에게 오류 미노출.
+    except (*HTTPX_SEND_ERRORS, KeyError, ValueError) as exc:
+        # 🔴 기존 상태는 유지하되 **실패를 감추지 않는다** (#1504 R3).
+        #    일시 오류(5xx·타임아웃)에는 「마지막으로 알던 상태 유지」가 맞지만, `InvalidURL`
+        #    같은 **영구 오류**도 같은 `pass` 로 처리돼 UI 에는 낡은 open/closed 가
+        #    성공적으로 동기화된 것처럼 보였다. `synced_at` 은 갱신하지 않으므로 TTL 재시도
+        #    주기는 그대로이고, 바뀌는 것은 그 사실이 보인다는 것뿐이다.
+        # Keep the last known state, but stop hiding the failure: a permanent error looked
+        # exactly like a successful sync in the UI.
+        issue_registration_repo.record_sync_error(
+            db, record=rec, reason=type(exc).__name__
+        )
+        # 동기화 실패 시 기존 상태 유지 — 오류를 라우트로 전파하지 않는다.
         # 전송 오류(5xx/네트워크/InvalidURL) 외에 GitHub 응답이 malformed 면 get_issue_state 의
         # resp.json()["state"] 가 KeyError/JSONDecodeError(ValueError) 를 던질 수 있어 함께 포착
         # (동기화 실패가 API 라우트 500 으로 전파되지 않도록 — silent fallback 의도 일관, 감사 P2).
@@ -179,7 +189,6 @@ async def _sync_state_if_stale(
         # (5xx/network), a malformed GitHub response makes get_issue_state's
         # resp.json()["state"] raise KeyError/JSONDecodeError(ValueError); catch those too
         # so a sync failure never surfaces as a 500 from the API route.
-        pass
 
 
 async def get_analysis_issue_status(
@@ -201,6 +210,8 @@ async def get_analysis_issue_status(
             "issue_key": rec.issue_key,
             "github_issue_number": rec.github_issue_number,
             "github_issue_state": rec.github_issue_state,
+            # 🔴 마지막 동기화 실패 사유 — None 이면 최신이다 (#1504 R3).
+            "sync_error": rec.sync_error,
             "github_issue_url": (
                 f"https://github.com/{repo_full_name}/issues/{rec.github_issue_number}"
             ),
@@ -228,6 +239,8 @@ async def get_repo_issue_summary(
             "issue_type": rec.issue_type,
             "github_issue_number": rec.github_issue_number,
             "github_issue_state": rec.github_issue_state,
+            # 🔴 마지막 동기화 실패 사유 — None 이면 최신이다 (#1504 R3).
+            "sync_error": rec.sync_error,
             "github_issue_url": (
                 f"https://github.com/{repo_full_name}/issues/{rec.github_issue_number}"
             ),
