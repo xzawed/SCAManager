@@ -27,11 +27,14 @@ class _StylelintAnalyzer:
 
     name = "stylelint"
     category = Category.CODE_QUALITY
-    SUPPORTED_LANGUAGES: frozenset[str] = frozenset({"css", "scss"})
+    # 🔴 `"scss"` 는 여기 없다 — `detect_language()` 가 결코 내지 않는다.
+    # `.scss`·`.sass`·`.less` 는 정본 맵에서 전부 `css` 로 접힌다(제품 결정, #1577).
+    # `scss` is absent on purpose: `detect_language()` folds it into `css`.
+    SUPPORTED_LANGUAGES: frozenset[str] = frozenset({"css"})
 
     def supports(self, ctx: AnalyzeContext) -> bool:
-        """CSS 또는 SCSS 파일 여부 확인.
-        Check whether the file is a CSS or SCSS file.
+        """CSS 계열 파일 여부 확인 — `.scss`·`.sass`·`.less` 도 `css` 로 들어온다.
+        Check whether the file is a CSS-family file (scss/sass/less all detect as `css`).
         """
         return ctx.language in self.SUPPORTED_LANGUAGES
 

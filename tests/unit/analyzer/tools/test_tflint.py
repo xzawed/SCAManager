@@ -52,11 +52,19 @@ class TestTflintAnalyzer:
         from src.analyzer.io.tools.tflint import _TflintAnalyzer
         assert _TflintAnalyzer().supports(_make_ctx("terraform", "main.tf"))
 
-    def test_supports_hcl(self):
-        # hcl 언어도 supports()가 True를 반환해야 한다
-        # supports() must return True for hcl language too
+    def test_supports_terraform_family_files_through_detect_language(self):
+        # 🔴 언어 문자열을 손으로 먹이지 않는다 — 정본 `detect_language()` 를 거친다.
+        #    옛 판은 `_make_ctx("hcl", "vars.hcl")` 로 **프로덕션에서 결코 발생하지 않는**
+        #    입력을 단언해, 도달 불가한 선언(`"hcl"`)을 초록으로 지켰다 (#1577).
+        # Route through the canonical detector: hand-feeding "hcl" asserted an input that
+        # production never produces, and kept a dead declaration green.
         from src.analyzer.io.tools.tflint import _TflintAnalyzer
-        assert _TflintAnalyzer().supports(_make_ctx("hcl", "vars.hcl"))
+        from src.analyzer.pure.language import detect_language
+        analyzer = _TflintAnalyzer()
+        for filename in ("vars.hcl", "main.tf"):
+            language = detect_language(filename, "")
+            assert language == "terraform", f"{filename} -> {language}"
+            assert analyzer.supports(_make_ctx(language, filename)), filename
 
     def test_does_not_support_python(self):
         # python 언어는 supports()가 False를 반환해야 한다
