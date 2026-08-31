@@ -42,9 +42,12 @@ os.environ.setdefault("SESSION_SECRET", "0123456789abcdef0123456789abcdef")
 
 from pathlib import Path  # noqa: E402
 
+import pytest  # noqa: E402
+
 _ROOT = Path(__file__).resolve().parents[3]
 
-def _alembic_heads() -> list[str]:
+
+def _alembic_heads(*, root: Path = _ROOT) -> list[str]:
     """head 를 **alembic 자신에게** 묻는다 — 정규식으로 파일을 훑지 않는다.
 
     🔴 첫 판은 `revision =`·`down_revision =` 을 정규식으로 긁어 `set(revs) - set(downs)` 를
@@ -52,13 +55,30 @@ def _alembic_heads() -> list[str]:
     머지 리비전의 튜플 `down_revision`, 리터럴이 아닌 `revision`, 다른 형태의 타입 주석이
     전부 **조용히 통과**한다. alembic 은 모듈을 exec 하고 나는 텍스트만 봤다.
     Ask alembic, not a regex fork: tuple down_revisions and non-literal revisions slip past text.
+
+    🔴 그리고 이 계기는 **아무것도 못 봐도 raise 하지 않는다** — `versions/` 를 못 찾으면
+    `get_heads()` 가 조용히 `[]` 를 준다(`alembic.script.base._load_revisions` 가 없는 경로를
+    버린다). 그러면 「문서가 head 를 못박지 않았다」가 자동으로 참이 된다.
+    빈 계기를 초록으로 보고하는 것이 거짓 집행자다 — 여기서 한 번 막는다
+    (Grok claim-review `01a05816`).
     """
     from alembic.config import Config  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
     from alembic.script import ScriptDirectory  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
-    cfg = Config(str(_ROOT / "alembic.ini"))
-    cfg.set_main_option("script_location", str(_ROOT / "alembic"))
-    return list(ScriptDirectory.from_config(cfg).get_heads())
+    cfg = Config(str(root / "alembic.ini"))
+    cfg.set_main_option("script_location", str(root / "alembic"))
+    script = ScriptDirectory.from_config(cfg)
+    heads = list(script.get_heads())
+
+    on_disk = {p.name for p in (root / "alembic" / "versions").glob("*.py")} - {"__init__.py"}
+    walked = len(list(script.walk_revisions())) if heads else 0
+    assert walked == len(on_disk), (
+        f"alembic 이 읽은 리비전 {walked}개 != 디스크의 {len(on_disk)}개.\n"
+        "  계기가 다른 트리를 보고 있다(`version_locations` 나 script_location) — "
+        "이 상태의 초록은 '없음'이지 '괜찮음'이 아니다."
+    )
+    assert heads, "head 를 하나도 못 읽었다 — 계기가 빈 트리를 봤다(이 시험 전부가 공허해진다)"
+    return heads
 
 
 def test_the_migration_dag_has_exactly_one_head():
@@ -68,8 +88,7 @@ def test_the_migration_dag_has_exactly_one_head():
     잡는 곳은 `e2e/conftest.py::def _get_alembic_head` 뿐이고 `pre_push_gate.py` 는 e2e 를 돌리지
     않는다 — 그래서 로컬에서 잡을 관측면이 여기 필요하다.
     """
-    heads = sorted(_alembic_heads())
-    assert heads, "head 를 하나도 못 읽었다 — 이 시험이 공허하다"
+    heads = sorted(_alembic_heads())  # 비면 헬퍼가 먼저 죽는다
     assert len(heads) == 1, (
         f"alembic head 가 {len(heads)}개다: {heads}\n"
         "  분기다. 새 리비전의 `down_revision` 은 **직전 head** 여야 한다 —\n"
@@ -93,6 +112,56 @@ def test_db_workflow_does_not_pin_a_head_number():
         f"db.md 에 현재 head 값이 박혀 있다: {pinned}. 다음 리비전에서 거짓이 된다 — "
         "번호 대신 `py -3 -m alembic heads` 를 적어라."
     )
+
+
+def test_the_head_probe_refuses_an_empty_version_tree(tmp_path: Path):
+    """🔴 부정 통제 — 계기가 **아무것도 못 봤을 때** 초록이 아니라 red 여야 한다.
+
+    빈 `versions/` 에서 `get_heads()` 는 raise 하지 않고 `[]` 를 준다. 그 `[]` 를 그냥 쓰면
+    `test_db_workflow_does_not_pin_a_head_number` 는 비교할 값이 없어 **항상 통과**한다 —
+    문서가 head 를 못박아도 초록이다. 이 시험이 그 경로를 막고 있음을 실측한다.
+    """
+    (tmp_path / "alembic" / "versions").mkdir(parents=True)
+    (tmp_path / "alembic.ini").write_text(
+        "[alembic]\nscript_location = alembic\n", encoding="utf-8"
+    )
+    with pytest.raises(AssertionError):
+        _alembic_heads(root=tmp_path)
+
+
+def test_the_head_probe_refuses_a_tree_it_did_not_actually_read(tmp_path: Path):
+    """🔴 부정 통제 2 — `version_locations` 가 다른 곳을 가리키면 head 는 **딴 그래프**의 값이다.
+
+    `script_location` 만 덮어써도 `version_locations` 는 여전히 `alembic.ini` 에서 온다.
+    그 상태에서 나온 head 로 문서를 대조하면 계기가 안 본 트리를 보증하는 셈이다.
+    딴 트리가 **비어 있으면** `heads` 가 비어 앞 가드가 먼저 잡는다 — 그건 이 축의 시험이 아니다.
+    그래서 딴 트리에도 리비전을 둔다: head 는 `bbb1` 로 **비어 있지 않게** 나오고,
+    오직 「읽은 수 != 디스크의 수」만이 그것을 거짓으로 판정한다.
+    """
+
+    def _write(path: Path, rev: str, down: str) -> None:
+        path.write_text(
+            f'revision = "{rev}"\ndown_revision = {down}\n'
+            "branch_labels = None\ndepends_on = None\n"
+            "def upgrade(): pass\ndef downgrade(): pass\n",
+            encoding="utf-8",
+        )
+
+    (tmp_path / "alembic" / "versions").mkdir(parents=True)
+    (tmp_path / "elsewhere").mkdir()
+    _write(tmp_path / "elsewhere" / "bbb1.py", "bbb1", "None")
+    for rev, down in (("aaa1", "None"), ("aaa2", '"aaa1"')):
+        _write(tmp_path / "alembic" / "versions" / f"{rev}.py", rev, down)
+    ini = "[alembic]\nscript_location = alembic\n"
+    (tmp_path / "alembic.ini").write_text(
+        ini + f"version_locations = {(tmp_path / 'elsewhere').as_posix()}\n", encoding="utf-8"
+    )
+    with pytest.raises(AssertionError):
+        _alembic_heads(root=tmp_path)
+
+    # 대조군 — 같은 트리를 올바로 가리키면 head 가 나온다(위 red 가 '항상 red' 가 아님을 보인다)
+    (tmp_path / "alembic.ini").write_text(ini, encoding="utf-8")
+    assert _alembic_heads(root=tmp_path) == ["aaa2"]
 
 
 def _registry_size() -> int:
