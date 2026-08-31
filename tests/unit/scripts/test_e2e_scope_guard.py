@@ -173,30 +173,74 @@ def test_min_passed_option_exists_in_conftest():
     assert "pytest_sessionfinish" in names, "하한을 판정하는 훅이 없다"
 
 
-# ── 세 번째 공허화 경로: 무조건 skip (#1587) ──────────────────────────────────
+# ── ③ 세 번째 공허화 경로: 무조건 skip (#1587) ────────────────────────────────
 #
 # 🔴 위 두 봉인은 「전건 skip」과 「범위 축소」를 막지만, **개별 시험 하나가 무조건 skip**
 #    되는 것은 둘 다 통과한다(실측): `e2e/EXPECTED_COUNT` 는 **수집** 건수라 skip 도 세고,
-#    `--e2e-min-passed=100` 은 121-1=120 이라 하한에 걸리지 않는다.
+#    `--e2e-min-passed=100` 은 122-1=121 이라 하한에 걸리지 않는다.
 #    그 시험은 로컬·CI 어디서도 실행된 적이 없고, 재활성화가 사람 기억에만 달려 있다.
 #
 # 🔴 개수를 못박지 않는다 — 「무조건 skip 이 있으면 red」라는 **형태 판정**이다.
 #    개수 스냅샷은 정당한 시험 추가를 벌한다.
-#    `skipif`(조건부)와 함수 본문의 `pytest.skip(...)`(런타임 조건부)은 허용한다 —
-#    조건이 참이 되면 스스로 깨어나기 때문이다.
-# The third emptiness path: a single unconditionally-skipped test passes both existing seals.
+#    허용: 조건이 **상수가 아닌** `skipif`, 그리고 함수 본문의 `pytest.skip(...)` —
+#    둘 다 조건이 참이 되면 스스로 깨어난다.
+# The third emptiness path: one unconditionally-skipped test passes both existing seals.
+
+_SKIP_ATTRS = ("skip", "skipif")
+
+
+def _mark_tail(node: ast.AST) -> str | None:
+    """마커 표현식의 끝 속성 이름 — `pytest.mark.skip(...)` → `"skip"`."""
+    target = node.func if isinstance(node, ast.Call) else node
+    return target.attr if isinstance(target, ast.Attribute) else None
+
+
+def _never_wakes(node: ast.AST, aliases: set[str]) -> bool:
+    """이 마커가 **결코 깨어나지 않는가** — 무조건 skip 이거나 상수 참 `skipif` 인가.
+
+    🔴 이름을 푼다. `_SKIP = pytest.mark.skip(...)` 뒤 `@_SKIP` 은 데코레이터가 `Name` 이라
+    속성만 보면 통째로 눈먼다 — 그런데 그것이 **이 리포의 집 스타일**이다
+    (`@_requires_postgres` · `@pytestmark_semver` · `@_SKIP`, 전부 실재).
+    🔴 `skipif(True, …)` 도 잡는다 — 형태만 조건부이고 사실은 무조건이다.
+    조건이 상수가 아니면(`shutil.which(...) is None` 등) 깨어날 수 있으므로 허용한다.
+    Resolve names: the repo's own idiom puts the marker in a module-level constant.
+    """
+    if isinstance(node, ast.Name):
+        return node.id in aliases
+    tail = _mark_tail(node)
+    if tail == "skip":
+        return True
+    if tail == "skipif" and isinstance(node, ast.Call) and node.args:
+        cond = node.args[0]
+        return isinstance(cond, ast.Constant) and bool(cond.value)
+    return False
+
+
+def _skip_aliases(tree: ast.AST) -> set[str]:
+    """모듈 최상위에서 「결코 깨어나지 않는」 마커를 담은 이름들."""
+    out: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        if _mark_tail(node.value) in _SKIP_ATTRS and _never_wakes(node.value, set()):
+            out.update(t.id for t in node.targets if isinstance(t, ast.Name))
+    return out
+
+
+def _flatten(node: ast.AST):
+    """리스트/튜플이면 원소를, 아니면 자신을 낸다 — `pytestmark = [mark]` 도 유효하다."""
+    if isinstance(node, (ast.List, ast.Tuple)):
+        yield from node.elts
+    else:
+        yield node
 
 
 def _unconditional_skips(root: Path) -> list[str]:
-    """`@pytest.mark.skip` / `pytestmark = pytest.mark.skip` 을 쓰는 자리들.
+    """결코 실행되지 않는 시험을 만드는 자리들 — 적용 지점 넷을 모두 본다.
 
-    🔴 이름이 아니라 **구조**로 본다 — 데코레이터 표현식의 끝 속성이 `skip` 인가.
-    `skipif` 는 다른 이름이라 걸리지 않는다(조건부이므로 허용).
+    데코레이터 · `pytestmark` · `pytest.param(marks=…)` · `add_marker`/`applymarker`.
+    (Grok claim-review `01a05661` 이 앞의 셋을 구멍으로 짚었다.)
     """
-    def _ends_in_skip(node: ast.AST) -> bool:
-        target = node.func if isinstance(node, ast.Call) else node
-        return isinstance(target, ast.Attribute) and target.attr == "skip"
-
     def _label(path: Path) -> str:
         # 자기검사는 `tmp_path` 를 쓰므로 리포 밖 경로가 온다 — 그때는 그대로 적는다.
         try:
@@ -207,31 +251,76 @@ def _unconditional_skips(root: Path) -> list[str]:
     out: list[str] = []
     for path in sorted(root.rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
+        aliases = _skip_aliases(tree)
+
+        def _flag(node, where, *, p=path, a=aliases, o=out):
+            for item in _flatten(node):
+                if _never_wakes(item, a):
+                    o.append(f"{_label(p)}:{item.lineno} ({where})")
+
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 for dec in node.decorator_list:
-                    if _ends_in_skip(dec):
-                        out.append(f"{_label(path)}:{dec.lineno} ({node.name})")
+                    _flag(dec, node.name)
             elif isinstance(node, ast.Assign) and any(
                     isinstance(t, ast.Name) and t.id == "pytestmark" for t in node.targets):
-                if _ends_in_skip(node.value):
-                    out.append(f"{_label(path)}:{node.lineno} (pytestmark)")
+                _flag(node.value, "pytestmark")
+            elif isinstance(node, ast.Call):
+                for kw in node.keywords:
+                    if kw.arg == "marks":
+                        _flag(kw.value, "marks=")
+                if _mark_tail(node) in ("add_marker", "applymarker"):
+                    for arg in node.args:
+                        _flag(arg, "add_marker")
     return out
 
 
+_PROBE = '''import pytest
+
+pytestmark = [pytest.mark.skip(reason="리스트 pytestmark 도 유효하다")]
+
+_ALIAS = pytest.mark.skip(reason="집 스타일 — 마커를 이름에 담는다")
+_OK_ALIAS = pytest.mark.skipif(SOME_RUNTIME_CONDITION, reason="깨어날 수 있다")
+
+
+@pytest.mark.skip(reason="직접")
+def test_a():
+    pass
+
+
+@_ALIAS
+def test_b():
+    pass
+
+
+@pytest.mark.skipif(True, reason="형태만 조건부")
+def test_c():
+    pass
+
+
+@_OK_ALIAS
+def test_d():
+    pass
+
+
+@pytest.mark.skipif(SOME_RUNTIME_CONDITION, reason="허용")
+def test_e():
+    pass
+'''
+
+
 def test_the_skip_detector_is_not_vacuous(tmp_path):
-    """🔴 탐지기가 0건만 낼 줄 알면 아래 단언이 공허하다 — 심어서 잡히는지 본다."""
-    (tmp_path / "probe.py").write_text(
-        "import pytest\n\n\n"
-        "@pytest.mark.skip(reason='x')\n"
-        "def test_a():\n    pass\n\n\n"
-        "@pytest.mark.skipif(True, reason='조건부는 허용')\n"
-        "def test_b():\n    pass\n",
-        encoding="utf-8",
-    )
+    """🔴 탐지기가 0건만 낼 줄 알면 아래 단언이 공허하다 — 네 모양을 심어 잡히는지 본다.
+
+    심는 것: 직접 데코레이터 · **별칭**(집 스타일) · 상수 참 `skipif` · 리스트 `pytestmark`.
+    안 잡혀야 하는 것: 조건이 상수가 아닌 `skipif` 두 건(직접·별칭).
+    """
+    (tmp_path / "probe.py").write_text(_PROBE, encoding="utf-8")
     found = _unconditional_skips(tmp_path)
-    assert len(found) == 1, f"무조건 skip 1건만 잡아야 한다: {found}"
-    assert "test_a" in found[0], found
+    where = sorted(f.split("(")[-1].rstrip(")") for f in found)
+    assert where == ["pytestmark", "test_a", "test_b", "test_c"], (
+        f"네 모양을 정확히 잡아야 하고 깨어날 수 있는 skipif 는 잡으면 안 된다: {found}"
+    )
 
 
 def test_no_test_is_unconditionally_skipped():
@@ -242,7 +331,7 @@ def test_no_test_is_unconditionally_skipped():
     """
     offenders = _unconditional_skips(_ROOT / "tests") + _unconditional_skips(_ROOT / "e2e")
     assert not offenders, (
-        f"무조건 skip {len(offenders)}건: {offenders}\n"
+        f"결코 실행되지 않는 시험 {len(offenders)}건: {offenders}\n"
         "  `e2e/EXPECTED_COUNT`(수집 건수)도 `--e2e-min-passed`(하한)도 이것을 못 잡는다.\n"
-        "  런타임 조건부(`pytest.skip(...)` in body) 또는 `skipif` 로 바꾸거나, 지워라."
+        "  런타임 조건부(`pytest.skip(...)` in body) 또는 상수 아닌 `skipif` 로 바꾸거나, 지워라."
     )
