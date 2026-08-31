@@ -644,7 +644,7 @@
       "info_li2": "운영 활성화 미들웨어 = `src/middleware/rls_session.py` (사이클 66 #228)",
       "info_li3": "contextvars bridge = `src/shared/rls_context.py` + DB event listener (`SET LOCAL app.user_id`)",
       "info_li4": "2-layer 안전망 = (1) 앱 레벨 filter (`_apply_*_user_filter`) + (2) DB RLS policy (PG/Supabase) — ⚠️ FORCE 미설정 시 owner 연결은 (2) 우회 가능",
-      "info_li5": "legacy 행 = 정책의 `user_id IS NULL` 절이 살려 둔다 — 그 절을 빼면 조회에서 사라진다",
+      "info_li5": "legacy(user_id NULL) 행을 내줄지는 <strong>테이블마다 다르다</strong> — 위 표의 패턴 열이 정본이고, `NULL 허용 X` 인 테이블에 그 절을 넣으면 가시 범위가 넓어진다",
       "force_warning_title": "⚠️ FORCE ROW LEVEL SECURITY 미설정 — 2차 안전망 우회 가능",
       "force_warning_body": "FORCE ROW LEVEL SECURITY 가 11개 RLS 테이블 전부에 적용된 것으로 확인되지 않았습니다 (pg_class 실측 — alembic 0041 미적용/부분 적용 또는 비-PostgreSQL 환경). 앱 연결 role 이 테이블 owner 이면 PostgreSQL 이 RLS 를 owner-bypass 하므로, 위 '적용' 매트릭스에도 불구하고 DB 레벨 2차 안전망이 실제로는 우회될 수 있습니다. `alembic upgrade head` 적용 + 비-BYPASSRLS 앱 role 전환(docs/runbooks/rls-role-separation.md) 여부를 확인하세요.",
       "bypass_warning_title": "⚠️ 접속 role 이 RLS 우회 중 — FORCE 적용에도 2차 안전망 미실효",
