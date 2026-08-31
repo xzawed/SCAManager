@@ -52,9 +52,20 @@ if not REGISTRY:
 def _detectable_languages() -> frozenset[str]:
     """`detect_language()` 의 치역 — **손으로 나열하지 않는다.**
 
-    정본의 네 맵에서 파생한다. 나열하면 맵이 바뀔 때 이 가드가 조용히 낡는다.
+    정본의 네 맵 값에서 파생하고, **폴백은 정본을 실제로 불러서** 얻는다.
+
+    🔴 네 맵 값만 모으면 치역이 **좁다** — `detect_language()` 는 어디에도 안 맞으면
+    하드코딩 폴백을 낸다(`language.py::    return "unknown"`). 맵에 없는 그 이름을 어댑터가
+    선언하면 이 가드가 **살아 있는 이름을 죽었다고** 잡는다 — 거짓양성이고, 거짓양성이 나오면
+    사람이 가드를 끈다. 폴백 문자열을 여기 적지 않고 함수를 불러 받는 이유다
+    (Grok claim-review `01a055df` Q1 적발).
+
+    맵이 하나 더 늘면 이 치역은 그만큼 좁아져 **red** 가 된다 — 조용히 넓어져 죽은 이름을
+    통과시키는 반대 방향보다 안전하다. 사설 이름이 바뀌면 `AttributeError` 로 시끄럽게 죽는다.
+
+    The fallback is obtained by calling the canonical function, not by copying its literal.
     """
-    return frozenset().union(*(
+    from_maps = frozenset().union(*(
         set(m.values()) for m in (
             _language._EXTENSION_MAP,        # noqa: SLF001
             _language._FILENAME_MAP,         # noqa: SLF001
@@ -62,11 +73,14 @@ def _detectable_languages() -> frozenset[str]:
             _language._SHEBANG_MAP,          # noqa: SLF001
         )
     ))
+    # 어떤 맵에도 걸리지 않는 입력 — 정본이 무엇을 내든 그것이 폴백이다.
+    fallback = _language.detect_language("no-such-name-and-no-extension", None)
+    return from_maps | {fallback}
 
 
-def _ctx(language: str) -> AnalyzeContext:
+def _ctx(language: str, *, is_test: bool = False) -> AnalyzeContext:
     return AnalyzeContext(
-        filename="probe", content="", language=language, is_test=False, tmp_path="probe",
+        filename="probe", content="", language=language, is_test=is_test, tmp_path="probe",
     )
 
 
@@ -103,9 +117,20 @@ def test_every_registered_analyzer_is_reachable_by_some_language(analyzer):
     🔴 **행동 파생이다** — `SUPPORTED_LANGUAGES` 속성 유무를 묻지 않고 `supports()` 를 부른다.
     속성으로 물으면 미선언 어댑터(`pylint`·`flake8`·`bandit`)가 검사에서 빠지고,
     「미선언 이름 == {…}」 스냅샷으로 물으면 정당한 선언 추가가 red 가 된다.
+
+    🔴 `is_test` 를 **양쪽으로** 돈다. `supports()` 가 언어만 읽는다고 가정하면 안 된다 —
+    실측: `python.py::        return ctx.language == "python" and not ctx.is_test` (bandit) 는 `is_test` 도 읽는다.
+    한쪽 값만 먹이면 이 시험의 판정이 언어 축이 아니라 **픽스처 상수의 산물**이 된다
+    (Grok claim-review `01a055df` Q2 적발).
     """
-    hit = sorted(lang for lang in _detectable_languages() if analyzer.supports(_ctx(lang)))
+    hit = sorted(
+        (lang, is_test)
+        for lang in _detectable_languages()
+        for is_test in (False, True)
+        if analyzer.supports(_ctx(lang, is_test=is_test))
+    )
     assert hit, (
-        f"`{analyzer.name}` 은 `detect_language()` 치역의 어떤 언어로도 도달할 수 없다 — "
+        f"`{analyzer.name}` 은 `detect_language()` 치역의 어떤 언어로도 "
+        "(`is_test` 양쪽 어디서도) 도달할 수 없다 — "
         "등록돼 있지만 프로덕션에서 결코 실행되지 않는다."
     )
