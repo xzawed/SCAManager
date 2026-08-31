@@ -55,17 +55,22 @@ class TestDotnetFormatAnalyzer:
         from src.analyzer.io.tools.dotnet_format import _DotnetFormatAnalyzer
         assert not _DotnetFormatAnalyzer().supports(_make_ctx("app.py", "python"))
 
-    def test_is_enabled_when_installed(self):
-        # dotnet 바이너리가 있으면 is_enabled()는 True를 반환한다
-        # is_enabled() must return True when dotnet binary is present
+    def test_is_enabled_is_false_even_when_dotnet_is_installed(self):
+        # 🔴 계약 변경(#1565) — `dotnet` 이 있어도 꺼진다.
+        #    `dotnet format` 은 프로젝트/솔루션을 요구하는데 어댑터는 단일 `.cs` 를 넘긴다.
+        #    실측(세 입력 전부): exit=1 · 이슈 0건 · stderr 「유효한 프로젝트가 아님」.
+        #    켜 두면 그 무동작이 「돌았다」로 세어져 `no_dedicated_observer` 를 지우고,
+        #    dotnet 이 **없는** 머신보다 보고가 나빠진다.
+        # Contract change: on even where dotnet exists, because it cannot analyse one .cs.
         from src.analyzer.io.tools.dotnet_format import _DotnetFormatAnalyzer
         ctx = _make_ctx()
         with patch("shutil.which", return_value="/usr/bin/dotnet"):
-            assert _DotnetFormatAnalyzer().is_enabled(ctx) is True
+            assert _DotnetFormatAnalyzer().is_enabled(ctx) is False
 
     def test_is_enabled_false_when_missing(self):
-        # dotnet 바이너리가 없으면 is_enabled()는 False를 반환한다
-        # is_enabled() must return False when dotnet binary is absent
+        # 부정 통제 — 부재 시에도 당연히 False. 위 시험이 「which 가 None 이라서」
+        # 통과하는 것이 아님을 두 시험이 함께 가른다.
+        # Negative control: the pair separates "always off" from "off because absent".
         from src.analyzer.io.tools.dotnet_format import _DotnetFormatAnalyzer
         ctx = _make_ctx()
         with patch("shutil.which", return_value=None):
