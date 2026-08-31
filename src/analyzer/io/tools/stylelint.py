@@ -51,7 +51,7 @@ class _StylelintAnalyzer:
         try:
             r = subprocess.run(  # nosec B603 B607
                 ["stylelint", "--formatter=json", ctx.tmp_path],
-                capture_output=True, text=True,
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
                 timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
             )
             raw = r.stdout.strip()

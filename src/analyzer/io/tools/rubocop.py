@@ -49,7 +49,8 @@ class _RuboCopAnalyzer:
         try:
             r = subprocess.run(  # nosec B603 B607
                 ["rubocop", "--format", "json", ctx.tmp_path],
-                capture_output=True, text=True, timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
             )
             # 🔴 판별식은 「파싱되는가」가 아니다 — rubocop 은 **크래시해도 유효한 JSON** 을 낸다.
             #    실측(1.90.0, 없는 파일): exit=2 · stdout 231자 · `{"files": [], "summary":

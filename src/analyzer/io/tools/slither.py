@@ -223,7 +223,8 @@ class _SlitherAnalyzer:
                 argv += ["--solc-solcs-select", chosen]
             r = subprocess.run(  # nosec B603 B607
                 argv,
-                capture_output=True, text=True, timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
             )
             # 🔴 exit code 는 판별식이 **아니다** — 성공해도 0 이 아니다(실측: 같은 성공을
             #    두 호스트에서 재니 127 과 4294967295 로 **달랐다**. 값은 우연이고 불변식은

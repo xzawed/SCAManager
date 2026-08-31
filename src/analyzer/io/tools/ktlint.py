@@ -93,7 +93,7 @@ class _KtlintAnalyzer:
         try:
             r = subprocess.run(  # nosec B603 B607
                 ["ktlint", "--reporter=json", ctx.tmp_path],
-                capture_output=True, text=True,
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
                 timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
             )
             # 🔴 로그 프리앰블을 걷어낸다 — `startswith("[")` 는 ktlint 1.8.0 에서
