@@ -29,9 +29,15 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parents[3]
 _TRANSLATIONS = _ROOT / "src" / "i18n" / "translations"
 
-# 백틱 안의 리포 경로 — 확장자가 있는 것만. 디렉토리·플레이스홀더는 대상이 아니다.
+# 리포 경로 — 확장자가 있는 것만. 디렉토리·플레이스홀더는 대상이 아니다.
+# 🔴 백틱을 요구하지 않는다. 초판은 요구했고, 같은 화면의 `force_warning_body` ·
+#    `bypass_warning_body` 가 `docs/runbooks/rls-role-separation.md` 를 **백틱 없이**
+#    문장 안에 적어 6건이 통째로 안 보였다(Grok claim-review `01a0583d`).
+#    읽는 쪽을 넓히지 않으면 같은 결함이 그 형태로 그대로 돌아온다.
+# Do not require backticks: the guard must see the citation form the defect actually used.
 _CITATION = re.compile(
-    r"`((?:docs|src|scripts|tests|e2e|alembic|\.github|\.claude)/[^`\s]+\.[A-Za-z0-9]+)`"
+    r"(?<![\w/])((?:docs|src|scripts|tests|e2e|alembic|\.github|\.claude)"
+    r"/[A-Za-z0-9_./-]+\.[A-Za-z0-9]+)"
 )
 
 
