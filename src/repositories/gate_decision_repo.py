@@ -137,7 +137,18 @@ def claim_post_attempt(
     #    (`test_naive_utc_datetime_consistency.py` 가 우회를 잡는다).
     _now = to_naive_utc(now) if now is not None else now_naive_utc()
     cutoff = _now - timedelta(seconds=stale_after_seconds)
-    row = (
+    # 🔴 **조건부 UPDATE 다** — SELECT 후 파이썬에서 고쳐 커밋하면 안 된다.
+    #    그러면 SQLAlchemy 가 `UPDATE … WHERE id = :pk` 를 내보내 **판정식이 쓰기에 실리지
+    #    않는다**. PG 의 기본 격리(READ COMMITTED)에서 두 세션이 둘 다 SELECT 를 통과하고
+    #    둘 다 커밋해 **중복 리뷰**가 난다 — 이 함수가 막으려던 바로 그것이다.
+    #    (Grok claim-review `01a05789` 적발. 첫 판이 정확히 그 모양이었고, 같은 세션 순차
+    #     시험은 그것을 **거짓 초록**으로 통과시켰다.)
+    #
+    #    조건을 UPDATE 의 WHERE 에 실으면 DB 가 쓰기 시점에 다시 판정한다 — 두 번째 세션은
+    #    행 잠금에서 기다렸다가 **새로 커밋된 값**을 보고 0행이 된다. SQLite 에서도 같다.
+    # A conditional UPDATE, not SELECT-then-mutate: the latter emits `WHERE id = :pk`, so the
+    # claim predicates never reach the write and PG READ COMMITTED lets both sessions through.
+    updated = (
         db.query(GateDecision)
         .filter(
             GateDecision.analysis_id == analysis_id,
@@ -145,14 +156,12 @@ def claim_post_attempt(
             (GateDecision.post_claimed_at.is_(None))
             | (GateDecision.post_claimed_at < cutoff),
         )
-        .first()
+        .update({"post_claimed_at": _now}, synchronize_session=False)
     )
-    if row is None:
-        return None
-    row.post_claimed_at = _now
     db.commit()
-    db.refresh(row)
-    return row
+    if updated != 1:
+        return None
+    return find_by_analysis_id(db, analysis_id)
 
 
 def mark_posted(db: Session, analysis_id: int) -> None:

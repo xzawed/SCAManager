@@ -221,3 +221,45 @@ def test_release_does_not_resurrect_a_posted_decision(db_session):
     row = gate_decision_repo.find_by_analysis_id(db_session, a.id)
     assert row.state == _POSTED, f"게시된 결정이 {row.state!r} 로 되돌아갔다"
     assert gate_decision_repo.claim_post_attempt(db_session, a.id) is None
+
+
+def test_the_claim_predicate_rides_on_the_update_not_on_a_prior_select(db_session):
+    """🔴 판정은 **DB 가 쓰기 시점에** 한다 — 파이썬이 읽고 나서가 아니다.
+
+    SELECT 후 행을 고쳐 커밋하면 SQLAlchemy 가 `UPDATE … WHERE id = :pk` 를 내보낸다.
+    그러면 조건이 쓰기에 실리지 않아, PG 기본 격리(READ COMMITTED)에서 두 세션이 둘 다
+    SELECT 를 통과하고 둘 다 커밋한다 — **중복 리뷰**다.
+
+    🔴 위 순차 시험들(`test_post_attempt_is_claimed_once` 등)은 같은 세션에서 차례로 부르므로
+    그 결함을 **통과시킨다**(실측: 첫 판이 정확히 그랬다). 이 시험이 그 사각을 덮는다 —
+    조건이 UPDATE 문에 실제로 실렸는지 **발화된 SQL** 로 확인한다.
+
+    The predicate must be evaluated by the database at write time; a prior SELECT cannot make
+    this exclusive, and same-session sequential tests cannot tell the difference.
+    """
+    from sqlalchemy import event  # noqa: PLC0415
+
+    a = _seed_analysis(db_session)
+    gate_decision_repo.claim_decision(db_session, a.id, "approve", "manual")
+
+    statements: list[str] = []
+
+    def _record(_conn, _cursor, statement, *_args):
+        statements.append(" ".join(statement.split()))
+
+    engine = db_session.get_bind()
+    event.listen(engine, "before_cursor_execute", _record)
+    try:
+        assert gate_decision_repo.claim_post_attempt(db_session, a.id) is not None
+    finally:
+        event.remove(engine, "before_cursor_execute", _record)
+
+    updates = [s for s in statements if s.upper().startswith("UPDATE GATE_DECISIONS")]
+    assert len(updates) == 1, f"클레임이 UPDATE 를 1회 내보내야 한다: {updates}"
+    where = updates[0].upper().split(" WHERE ", 1)[-1]
+    assert "STATE" in where, (
+        f"UPDATE 의 WHERE 에 상태 조건이 없다 — 판정이 파이썬에서 일어났다: {updates[0]}"
+    )
+    assert "POST_CLAIMED_AT" in where, (
+        f"UPDATE 의 WHERE 에 리스 조건이 없다 — 죽은 클레임 회수가 쓰기에 실리지 않았다: {updates[0]}"
+    )
