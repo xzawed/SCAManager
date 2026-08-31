@@ -28,11 +28,14 @@ class _TflintAnalyzer:
 
     name = "tflint"
     category = Category.CODE_QUALITY
-    SUPPORTED_LANGUAGES: frozenset[str] = frozenset({"terraform", "hcl"})
+    # 🔴 `"hcl"` 은 여기 없다 — `detect_language()` 가 결코 내지 않는다.
+    # `.hcl` 은 정본 맵에서 `.tf` 와 함께 `terraform` 으로 접힌다(제품 결정, #1577).
+    # `hcl` is absent on purpose: `detect_language()` folds it into `terraform`.
+    SUPPORTED_LANGUAGES: frozenset[str] = frozenset({"terraform"})
 
     def supports(self, ctx: AnalyzeContext) -> bool:
-        """Terraform/HCL 파일 여부 확인.
-        Check whether the file is a Terraform or HCL file.
+        """Terraform 계열 파일 여부 확인 — `.hcl` 도 `terraform` 으로 들어온다.
+        Check whether the file is a Terraform-family file (`.hcl` detects as `terraform`).
         """
         return ctx.language in self.SUPPORTED_LANGUAGES
 
