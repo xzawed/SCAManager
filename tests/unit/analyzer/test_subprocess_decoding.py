@@ -48,6 +48,14 @@ _SRC = Path("src")
 # Invalid in BOTH cp949 and UTF-8: a one-sided choice would make this vacuous on the other host.
 _UNDECODABLE = b"\xff\xfe\xfd"
 
+# 🔴 값까지 못 박는다 — **키만** 보면 세 가지가 통과하면서 결함을 되살린다(실측, cp949):
+#     errors="ignore"           → stdout ''      옛 버그가 옷만 갈아입은 것
+#     encoding="latin-1"        → stdout 'ÿþý'   안 죽지만 **틀리게** 읽는다
+#     encoding 없이 errors 만    → 로케일로 회귀   호스트마다 값이 갈린다
+# Pinned by value: key-only checks let `ignore` and a wrong codec through.
+_ENCODING = "utf-8"
+_ERRORS = "replace"
+
 
 def _decoding_run_calls() -> list[tuple[str, int, ast.Call]]:
     """`src/` 전체의 `*.run(...)` 호출 — `(경로, 줄번호, 노드)`.
@@ -86,18 +94,19 @@ def test_the_scan_actually_finds_calls():
 
 
 def test_every_call_pins_encoding_and_errors():
-    """🔴 `text=True` 인 호출은 `encoding=` 과 `errors=` 를 함께 준다.
+    """🔴 `text=True` 인 호출은 `encoding="utf-8"`·`errors="replace"` 를 **값으로** 준다.
 
-    `encoding=` 만으로는 부족하다 — 지정한 인코딩으로도 못 읽는 바이트에서 다시 죽는다.
+    키만 보면 `errors="ignore"`·`encoding="latin-1"` 이 통과한다 — 위 `_ENCODING` 주석의
+    실측 표를 보라. (Grok claim-review `01a055a5` 가 그 구멍을 지적했다.)
     """
     offenders = [
-        f"{name}:{lineno} ({sorted(kw)})"
+        f"{name}:{lineno} (encoding={kw.get('encoding')!r}, errors={kw.get('errors')!r})"
         for name, lineno, call in _decoding_run_calls()
         if (kw := _decoding_kwargs(call)).get("text") is True
-        and not ("encoding" in kw and "errors" in kw)
+        and (kw.get("encoding"), kw.get("errors")) != (_ENCODING, _ERRORS)
     ]
     assert not offenders, (
-        f"{len(offenders)}곳이 로케일에 디코딩을 맡긴다: {offenders}\n"
+        f"{len(offenders)}곳이 디코딩을 못 박지 않았다: {offenders}\n"
         "  `text=True` 는 `locale.getpreferredencoding(False)` 를 쓴다 — 비-UTF-8 호스트에서\n"
         "  도구가 비-ASCII 를 내면 `r.stdout` 이 **None** 이 되고 출력이 통째로 유실된다.\n"
         '  `encoding="utf-8", errors="replace"` 를 함께 넘겨라.'
@@ -126,32 +135,39 @@ def test_the_kwargs_the_code_actually_uses_can_read_undecodable_bytes():
             [sys.executable, "-c", probe], capture_output=True, check=False,
             timeout=30, **kwargs,
         )
-        assert r.stdout is not None, (
-            f"kwargs={kwargs} 로는 도구 출력을 읽지 못한다 — `r.stdout` 이 None 이다.\n"
-            "  리더 스레드가 UnicodeDecodeError 로 죽었다는 뜻이고, 어댑터는 그 결과를\n"
-            "  「출력 없음」으로 판정한다(= 크래시 판별식 오발화 또는 AttributeError)."
+        assert r.stdout, (
+            f"kwargs={kwargs} 로는 도구 출력을 읽지 못한다 — `r.stdout`={r.stdout!r}.\n"
+            "  None 이면 리더 스레드가 UnicodeDecodeError 로 죽은 것이고,\n"
+            "  '' 이면 `errors='ignore'` 가 바이트를 통째로 버린 것이다 — 둘 다 유실이다.\n"
+            "  어댑터는 그 결과를 「출력 없음」으로 판정한다(크래시 판별식 오발화·AttributeError).\n"
+            "  🔴 `is not None` 만 단언하면 `ignore` 가 통과한다(실측)."
         )
 
 
 @pytest.mark.parametrize(
-    ("kwargs", "reason"),
+    ("kwargs", "expected", "reason"),
     [
-        ({"text": True}, "로케일에 맡긴다"),
-        ({"text": True, "encoding": "utf-8"}, "`errors=` 가 없으면 UTF-8 도 못 읽는 바이트에서 죽는다"),
+        ({"text": True}, None, "로케일에 맡긴다"),
+        ({"text": True, "encoding": "utf-8"}, None,
+         "`errors=` 가 없으면 UTF-8 도 못 읽는 바이트에서 죽는다"),
+        # 🔴 이것은 `is not None` 만 보는 단언을 **통과한다** — 그래서 여기서 못 박는다.
+        ({"text": True, "encoding": "utf-8", "errors": "ignore"}, "",
+         "`ignore` 는 바이트를 버린다 — 유실은 그대로인데 「도구가 조용했다」로 보인다"),
     ],
 )
-def test_negative_control_the_shapes_we_rejected_really_do_fail(kwargs, reason):
-    """🔴 부정 통제 — 우리가 거부한 두 모양이 **실제로** 출력을 잃는지 확인한다.
+def test_negative_control_the_shapes_we_rejected_really_do_fail(kwargs, expected, reason):
+    """🔴 부정 통제 — 거부한 세 모양이 **실제로** 출력을 잃는지 확인한다.
 
     이것이 없으면 위 단언이 무엇을 막는지 알 수 없다. 이 시험이 초록이라는 것은
-    `encoding=`+`errors=` 조합이 **공짜 초록이 아니라는** 뜻이다.
+    `encoding="utf-8"`+`errors="replace"` 가 **공짜 초록이 아니라는** 뜻이다.
     """
     probe = f"import sys; sys.stdout.buffer.write({_UNDECODABLE!r})"
     r = subprocess.run(  # nosec B603
         [sys.executable, "-c", probe], capture_output=True, check=False,
         timeout=30, **kwargs,
     )
-    assert r.stdout is None, (
-        f"{kwargs} 가 출력을 읽어냈다 ({reason}) — 이 인터프리터/로케일에서는 이 축이 "
-        "판별력이 없다. `_UNDECODABLE` 이 정말 양쪽에서 불법인지 다시 재라."
+    assert r.stdout == expected, (
+        f"{kwargs} 의 결과가 {r.stdout!r} 다 — {expected!r} 를 기대했다 ({reason}).\n"
+        "  이 인터프리터/로케일에서 이 축이 판별력을 잃었다는 뜻이다.\n"
+        "  `_UNDECODABLE` 이 정말 cp949·UTF-8 양쪽에서 불법인지 다시 재라."
     )
