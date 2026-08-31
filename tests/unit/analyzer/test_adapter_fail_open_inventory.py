@@ -237,19 +237,34 @@ def _has_crash_predicate(tree: ast.AST) -> bool:
 
     Shape only, not content: an `if …: raise` outside any except handler. What that predicate
     actually catches is measured against real binaries in CI, not asserted here.
+
+    🔴 판정은 **`raise` 쪽**에 건다 — 「`if` 가 except 밖인가」가 아니라
+    「**`raise` 가** except 밖이고 어떤 `if` 아래인가」다. 앞의 것으로 물으면
+    `if True:` 로 기존 try/except 를 감싸는 것만으로 통과한다(그 raise 는 여전히 except 안인데
+    `ast.walk(If)` 가 그것을 본다). 들여쓰기 한 번짜리 우회이고, 이 파일이 적은 규칙과도 어긋난다.
+    `raise` 가 except 밖이면 그것을 감싼 `if` 도 반드시 except 밖이므로 한 조건이면 족하다.
+
+    🔴 `empty_output_is_a_crash` **호출 자체를 신호로 세지 않는다.** 실물 3곳
+    (`buf_lint` · `psscriptanalyzer` · `shellcheck`)이 전부 `if empty_output_is_a_crash(…): … raise`
+    라 일반 규칙이 이미 덮는다. 호출을 따로 세면 **헬퍼 호출은 남기고 `raise` 만 지우는 되돌림**에
+    눈먼다 — 이 래칫이 잡아야 할 바로 그 편집이다(Grok claim-review `01a05521` 실측).
+
+    Anchor on the raise, not the if: `if True:` wrapping an except-raise would otherwise pass.
     """
     inside_except: set[int] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.ExceptHandler):
             inside_except.update(id(n) for n in ast.walk(node))
+    under_if: set[int] = set()
     for node in ast.walk(tree):
-        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-                and node.func.id == "empty_output_is_a_crash"):
-            return True
-        if (isinstance(node, ast.If) and id(node) not in inside_except
-                and any(isinstance(n, ast.Raise) for n in ast.walk(node))):
-            return True
-    return False
+        if isinstance(node, ast.If):
+            under_if.update(id(n) for n in ast.walk(node) if n is not node)
+    return any(
+        isinstance(node, ast.Raise)
+        and id(node) not in inside_except
+        and id(node) in under_if
+        for node in ast.walk(tree)
+    )
 
 
 def _fail_open_reasons(path: Path) -> list[str]:
@@ -293,8 +308,8 @@ def _fail_open_reasons(path: Path) -> list[str]:
     # "the parse threw" — never "the tool died and emitted bytes identical to clean".
     if fns and not _has_crash_predicate(tree):
         reasons.append(
-            "D: 크래시 판별식이 없다 — raise 는 except 갈래에만 있어 "
-            "「파싱이 예외를 냈다」만 잡고 조용한 크래시는 못 잡는다"
+            "D: 크래시 판별식이 없다 — 도구가 기대한 형식의 출력을 냈는지 보고 "
+            "올리는 자리(except 밖의 `if …: raise`)가 없다"
         )
     return reasons
 
