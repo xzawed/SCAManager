@@ -162,7 +162,20 @@ def _matching_solc(content: str, installed) -> str | None:
         )
         parsed = sorted((Version(v) for v in installed), reverse=True)
     except (ImportError, ValueError, TypeError):
-        # 파싱 실패·의존 부재는 「못 맞춘다」가 아니다 — 판단하지 못했을 뿐이다.
+        # 🔴 이 갈래에 **실제로 닿는 것은 `ImportError` 뿐이다**(Grok claim-review `01a0563d`).
+        #    pragma 파싱은 더 이상 여기 없다 — 아래 두 번째 try 로 옮겼다. 남은 것은
+        #    「semantic_version 이 없다」와, solc-select 가 `Version()` 이 거부할 문자열을
+        #    낼 경우뿐이다. 후자는 실측상 일어나지 않는다(`installed_versions()` 는
+        #    `solc-N.N.N` 디렉터리명에서 접두사를 뗀 `N.N.N` 만 낸다, solc-select 1.2.0).
+        #
+        # 🔴 그래도 `ValueError`·`TypeError` 를 떼지 않는다 — `is_enabled` 는
+        #    `static.py::_run_analyzers` 의 try **밖**에서 불린다(그 try 는 `run()` 만 감싼다).
+        #    여기서 새는 예외는 파이프라인까지 올라간다. 방어 폭이 죽은 코드처럼 보여도
+        #    떼는 쪽이 더 비싸다.
+        # Only ImportError reaches this in practice; the other two are defensive because
+        # `is_enabled` is called OUTSIDE the caller's try — an escape would hit the pipeline.
+        #
+        # 의존 부재는 「못 맞춘다」가 아니다 — 판단하지 못했을 뿐이다.
         # 그때는 막지 않고 설치본 하나로 돈다. 결과는 실행 후 판정한다.
         # 🔴 이것은 「최신」이 **아니다.** solc-select 1.2.0 정본 실측:
         #      `[f.replace("solc-","") for f in sorted(os.listdir(ARTIFACTS_DIR)) …]`
