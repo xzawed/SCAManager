@@ -436,16 +436,24 @@ class TestClassifyFileGrade:
         주석은 이 규칙을 두 번 적어 뒀지만 강제하는 곳이 없었다. 개수를 못박지 않고
         **집합이 비었는가**만 본다 — 정당한 삭제(패턴까지 함께 지움)는 벌하지 않는다.
         Enforce the rule the comments state: a pattern whose tree is gone measures nothing.
+
+        🔴 분모는 **git 이 아는 파일**이다. 초판은 작업 트리를 `rglob` 했는데, 그러면 추적되지
+        않는 잔여 파일 하나가 죽은 패턴을 초록으로 살려 둔다 — 빈 분모 가드가 거꾸로 뒤집힌다
+        (Grok claim-review `01a0589d`). git 이 없으면 폴백하지 않고 red 다.
+        The denominator is what git tracks; an untracked leftover must not revive a zombie pattern.
         """
+        import subprocess  # noqa: PLC0415
+
         from doc_review_gate import _CRITICAL, _IMPORTANT, _LOW_RISK  # noqa: PLC0415
 
         root = Path(__file__).resolve().parents[3]
-        every = [
-            p.relative_to(root).as_posix()
-            for p in root.rglob("*")
-            if p.is_file() and ".git" not in p.parts and "node_modules" not in p.parts
-        ]
-        assert every, "리포에서 파일을 하나도 못 읽었다 — 이 시험이 공허하다"
+        listed = subprocess.run(  # noqa: S603
+            ["git", "ls-files"], cwd=root, capture_output=True, text=True,
+            encoding="utf-8", errors="replace", check=False,
+        )
+        assert listed.returncode == 0, f"git ls-files 실패 — 분모를 못 구했다: {listed.stderr[:200]}"
+        every = [line for line in listed.stdout.splitlines() if line]
+        assert every, "git 이 아는 파일이 0개다 — 이 시험이 공허하다"
         empty = [
             pattern
             for pattern in (*_CRITICAL, *_IMPORTANT, *_LOW_RISK)
