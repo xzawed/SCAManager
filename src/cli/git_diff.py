@@ -21,6 +21,12 @@ def _git(*args: str, check: bool = True) -> subprocess.CompletedProcess:
             ["git", *args],
             capture_output=True,
             text=True,
+            # 🔴 로케일에 맡기지 않는다 — 이 리포의 diff 는 한국어를 담는다. cp949 머신에서
+            # `text=True` 만 주면 리더가 UnicodeDecodeError 로 죽어 `stdout` 이 None 이 되고,
+            # CLI 는 그것을 「변경 없음」으로 읽는다 (#1586).
+            # git output here is Korean; locale decoding would silently yield stdout=None.
+            encoding="utf-8",
+            errors="replace",
             timeout=_TIMEOUT,
             check=check,
         )

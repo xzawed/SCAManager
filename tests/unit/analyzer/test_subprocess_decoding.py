@@ -1,4 +1,4 @@
-"""어댑터가 도구 출력을 **읽을 수 있는가** — 로케일 독립 디코딩 계약 (#1586).
+"""외부 도구의 출력을 **읽을 수 있는가** — 로케일 독립 디코딩 계약 (#1586).
 
 `subprocess.run(..., text=True)` 는 `locale.getpreferredencoding(False)` 로 디코딩한다.
 비-UTF-8 로케일에서 도구가 비-ASCII 를 내면 리더 스레드가 `UnicodeDecodeError` 로 죽고
@@ -16,8 +16,9 @@
 
 ## 이 파일이 하는 것
 
-1. **파생 판정** — `src/analyzer/io/tools/*.py` 의 모든 `subprocess.run` 이 `text=True` 면
-   `encoding=` 과 `errors=` 를 함께 준다. 손으로 센 목록을 두지 않는다.
+1. **파생 판정** — `src/` 의 모든 `subprocess.run` 이 `text=True` 면 `encoding=` 과 `errors=` 를
+   함께 준다. 손으로 센 목록을 두지 않는다. 🔴 어댑터로 좁히지 않는다 — 같은 결함이
+   `src/cli/git_diff.py` 에도 있었다(이 리포의 diff 는 한국어를 담는다).
 2. **행동 판정** — 그 호출들이 실제로 쓰는 kwargs 를 AST 에서 뽑아 **그대로** 진짜
    subprocess 에 먹인다. 손으로 베낀 사본을 재면 사본만 옳고 실물은 틀린 상태가 초록이 된다.
 
@@ -26,7 +27,7 @@
 `encoding="utf-8"` 만으로는 부족하다는 것이 이 축의 부정 통제다.
 
 Locale-independent decoding: `text=True` without `encoding=` yields `stdout is None` on a
-non-UTF-8 host. The kwargs under test are read from the adapters' AST, not copied by hand.
+non-UTF-8 host. The kwargs under test are read from the real call sites' AST, not copied by hand.
 """
 from __future__ import annotations
 
@@ -37,7 +38,9 @@ from pathlib import Path
 
 import pytest
 
-_TOOLS = Path("src/analyzer/io/tools")
+# 🔴 어댑터만 보지 않는다 — 같은 결함이 `src/cli/git_diff.py` 에도 있었다(실측).
+#    쓰는 쪽을 넓히면서 읽는 쪽을 안 넓히면 그 자리는 조용히 남는다.
+_SRC = Path("src")
 
 # 🔴 cp949 · UTF-8 **양쪽에서 불법**인 바이트. 한쪽에서만 불법인 값을 쓰면 다른 호스트에서
 #    이 시험이 조용히 공허해진다(CI 는 UTF-8 이다).
@@ -46,23 +49,21 @@ _TOOLS = Path("src/analyzer/io/tools")
 _UNDECODABLE = b"\xff\xfe\xfd"
 
 
-def _adapter_run_calls() -> list[tuple[str, int, ast.Call]]:
-    """어댑터의 모든 `*.run(...)` 호출 — `(파일명, 줄번호, 노드)`.
+def _decoding_run_calls() -> list[tuple[str, int, ast.Call]]:
+    """`src/` 전체의 `*.run(...)` 호출 — `(경로, 줄번호, 노드)`.
 
     🔴 이름으로 좁히지 않는다(`subprocess.run` 만 찾기). 별칭 임포트나 래퍼를 쓰면 그 자리에
     눈멀고, 그것은 이 리포가 반복해 온 관용구 열거와 같은 실패다. `.run(` 을 전부 모은 뒤
     `text=` 를 넘기는 것만 대상으로 좁힌다 — 그 kwarg 가 디코딩을 켜는 스위치다.
     """
     out: list[tuple[str, int, ast.Call]] = []
-    for path in sorted(_TOOLS.glob("*.py")):
-        if path.name.startswith("_") or path.name == "__init__.py":
-            continue
+    for path in sorted(_SRC.rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
                     and node.func.attr == "run"
                     and any(kw.arg == "text" for kw in node.keywords)):
-                out.append((path.name, node.lineno, node))
+                out.append((path.as_posix(), node.lineno, node))
     return out
 
 
@@ -75,23 +76,23 @@ def _decoding_kwargs(call: ast.Call) -> dict[str, object]:
     return out
 
 
-def test_the_scan_actually_finds_adapter_calls():
+def test_the_scan_actually_finds_calls():
     """🔴 호출을 0건 찾으면 이 파일 전체가 공허하다."""
-    calls = _adapter_run_calls()
+    calls = _decoding_run_calls()
     assert calls, (
-        "어댑터에서 `text=` 를 넘기는 `.run(...)` 을 하나도 못 찾았다 — "
-        "AST 탐색이 깨졌거나 어댑터가 다른 기전으로 옮겼다. 후자면 이 파일을 다시 써라."
+        "`src/` 에서 `text=` 를 넘기는 `.run(...)` 을 하나도 못 찾았다 — "
+        "AST 탐색이 깨졌거나 코드가 다른 기전으로 옮겼다. 후자면 이 파일을 다시 써라."
     )
 
 
-def test_every_adapter_call_pins_encoding_and_errors():
+def test_every_call_pins_encoding_and_errors():
     """🔴 `text=True` 인 호출은 `encoding=` 과 `errors=` 를 함께 준다.
 
     `encoding=` 만으로는 부족하다 — 지정한 인코딩으로도 못 읽는 바이트에서 다시 죽는다.
     """
     offenders = [
         f"{name}:{lineno} ({sorted(kw)})"
-        for name, lineno, call in _adapter_run_calls()
+        for name, lineno, call in _decoding_run_calls()
         if (kw := _decoding_kwargs(call)).get("text") is True
         and not ("encoding" in kw and "errors" in kw)
     ]
@@ -103,7 +104,7 @@ def test_every_adapter_call_pins_encoding_and_errors():
     )
 
 
-def test_the_kwargs_adapters_actually_use_can_read_undecodable_bytes():
+def test_the_kwargs_the_code_actually_uses_can_read_undecodable_bytes():
     """🔴 행동 판정 — AST 에서 뽑은 **실물 kwargs** 로 진짜 subprocess 를 태운다.
 
     손으로 베낀 kwargs 를 재면 사본만 옳고 실물은 틀린 상태가 초록이 된다.
@@ -112,7 +113,7 @@ def test_the_kwargs_adapters_actually_use_can_read_undecodable_bytes():
     """
     signatures = {
         tuple(sorted(_decoding_kwargs(call).items()))
-        for _, _, call in _adapter_run_calls()
+        for _, _, call in _decoding_run_calls()
     }
     assert signatures, "kwargs 시그니처가 0건 — 위 공허화 가드가 먼저 잡았어야 한다"
 
