@@ -531,7 +531,8 @@ def test_a_bare_version_number_in_a_comment_is_not_a_pragma(monkeypatch):
 
 # ── 주석 안의 pragma 는 pragma 가 아니다 ─────────────────────────────────────
 #
-# 🔴 `_PRAGMA_RE` 는 주석 문법을 모르고 `search()` 는 **첫 매치**만 본다. `*` 접두가 없는
+# 🔴 `_PRAGMA_RE` 는 주석 문법을 모른다. 주석을 안 지우면 그 안의 pragma 가 실물로 세어져
+#    교집합에 들어간다(#1576 이후 `findall`). `*` 접두가 없는
 #    `/* … */` 블록이 실물 pragma 보다 앞에 있고 그 안의 한 줄이 `pragma solidity …;` 로
 #    시작하면 그 줄이 판정을 가로챈다. 정규식 위 주석은 정반대를 선언하고 있었다.
 #
@@ -767,3 +768,73 @@ def test_no_flag_when_no_version_matches(monkeypatch):
                          is_test=False, tmp_path="/tmp/V.sol")  # nosec B108
     _SlitherAnalyzer().run(ctx)
     assert "--solc-solcs-select" not in captured["cmd"]
+
+
+# ── flatten 된 계약의 다중 pragma — 판정이 **연결 순서**에 달려 있었다 (#1576) ──
+#
+# 🔴 `search()` 는 첫 매치만 본다. flatten 산출물(`hardhat flatten` · `truffle-flattener` ·
+#    Etherscan 검증 업로드)은 각 원본 파일의 pragma 를 그대로 이어붙이므로 실물 pragma 가
+#    여럿이다. solc 는 그 **전부**를 만족해야 하므로 옳은 판정은 교집합이다.
+#
+#    실측(수정 전, installed=["0.8.20"]):
+#      A `^0.8.0` 먼저, `^0.4.24` 나중  -> '0.8.20'  실행 → `^0.4.24` 부분이 컴파일 실패
+#                                                     → 빈 stdout → incomplete = **벽**
+#      B `^0.4.24` 먼저, `^0.8.0` 나중  -> None      통째로 건너뜀
+#    🔴 A 와 B 는 **같은 계약 집합**이고 연결 순서만 다르다. 하나는 벽이 되고 하나는 skip 이다.
+#
+# 🔴 `NpmSpec` 에는 교집합 연산자가 없다(`&` → TypeError). 교집합 **객체를 만들지 말고**
+#    `all(v in spec for spec in specs)` 로 설치본을 거른다 — 같은 의미이고 구현 가능하다.
+#
+# A flattened contract carries several real pragmas; solc must satisfy them all, so the
+# verdict must not depend on the order the flattener concatenated them.
+
+_P_08 = "pragma solidity ^0.8.0;"
+_P_04 = "pragma solidity ^0.4.24;"
+_P_08_RANGE = "pragma solidity >=0.8.0 <0.9.0;"
+
+
+def _flattened(*pragmas: str) -> str:
+    return ("// SPDX-License-Identifier: MIT" + chr(10)
+            + chr(10).join(pragmas) + chr(10) + "contract V {}" + chr(10))
+
+
+@pytestmark_semver
+@pytest.mark.parametrize("first,second", [(_P_08, _P_04), (_P_04, _P_08)])
+def test_flattened_pragmas_are_order_independent(monkeypatch, first, second):
+    """🔴 **양방향** — 같은 pragma 집합은 순서를 뒤집어도 같은 판정이어야 한다.
+
+    핀된 0.8.20 은 `^0.4.24` 를 만족하지 못하므로 둘 다 skip 이다. 한쪽만 단언하면
+    「A 는 벽 · B 는 skip」이라는 옛 비대칭을 그대로 통과시킨다.
+    """
+    assert _enabled_with_pragma(monkeypatch, _flattened(first, second)) is False
+
+
+@pytestmark_semver
+@pytest.mark.parametrize("first,second", [(_P_08, _P_08_RANGE), (_P_08_RANGE, _P_08)])
+def test_compatible_multiple_pragmas_still_run(monkeypatch, first, second):
+    """🔴 부정 통제 — 교집합이 비지 않으면 **그대로 돈다.**
+
+    이것이 없으면 위 시험은 「다중 pragma 면 무조건 skip」과 구별되지 않는다.
+    그 과차단은 flatten 된 계약의 Solidity 전담 관측면을 통째로 없앤다.
+    """
+    assert _enabled_with_pragma(monkeypatch, _flattened(first, second)) is True
+
+
+@pytestmark_semver
+def test_a_single_pragma_is_unchanged(monkeypatch):
+    """회귀 — pragma 가 하나면 옛 동작 그대로다(`#1571` 이 세운 계약)."""
+    assert _enabled_with_pragma(monkeypatch, _flattened(_P_08)) is True
+    assert _enabled_with_pragma(monkeypatch, _flattened(_P_04)) is False
+
+
+@pytestmark_semver
+def test_a_commented_out_pragma_does_not_join_the_intersection(monkeypatch):
+    """🔴 주석 안의 pragma 는 교집합에 **들어가지 않는다** (`#1575` 계약 유지).
+
+    `finditer` 로 전부 모으면 주석 인지가 더 중요해진다 — 하나만 새어 들어가도
+    교집합이 비어 skip 이 된다(과차단). 주석 제거가 먼저 도는지 확인한다.
+    """
+    src = ("// SPDX-License-Identifier: MIT" + chr(10)
+           + "/*" + chr(10) + _P_04 + chr(10) + "*/" + chr(10)
+           + _P_08 + chr(10) + "contract V {}" + chr(10))
+    assert _enabled_with_pragma(monkeypatch, src) is True
