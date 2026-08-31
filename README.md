@@ -159,10 +159,10 @@ not analyze what it was given should not be able to score well.
 <br>
 
 Claude reviews **49 languages**, each against its own checklist. **27** of those also have a static
-analyzer behind them. There are **25 registered analyzers**; **16** ship in every deployment as the
+analyzer behind them. There are **24 registered analyzers**; **16** ship in every deployment as the
 contract described above, and the rest run when their binary happens to be on `PATH`.
 
-A local `make run` will not have all 25 available, and that is fine — a missing *optional* analyzer
+A local `make run` will not have all 24 available, and that is fine — a missing *optional* analyzer
 is skipped quietly. [docs/STATE.md](docs/STATE.md) carries the current counts.
 
 Languages with static analysis:

@@ -4,9 +4,7 @@
 2. 신규 모델 파일이면 `alembic/env.py::from src.models.repository import Repository` 의 import 목록에 추가한다. 빠지면 autogenerate 가 그 테이블에 `drop_table` 을 만든다.
 3. 초안을 만든다 — `alembic revision --autogenerate -m "설명"` (`make revision m="..."`).
 4. 생성 파일을 `alembic/versions/NNNN_<slug>.py` 로 옮기고 `revision = "NNNN"`,
-   `down_revision` 은 `py -3 -m alembic heads` 가 내는 값으로 적는다 — 번호를 여기 적지 않는다.
-   틀리면 DAG 가 분기하고, 단위 시험은 통과한 채 pre-deploy 에서 터진다
-   (`tests/unit/scripts/test_doc_distinguished_values.py::def test_the_migration_dag_has_exactly_one_head` 가 잡는다).
+   `down_revision` 은 `py -3 -m alembic heads` 출력으로 적는다(번호를 문서에 적지 않는다).
 4-1. 기존 테이블에 `nullable=False` 컬럼을 넣으면 `server_default` 를 함께 준다 —
    행이 있는 운영 테이블에서 pre-deploy 의 `alembic upgrade head` 가 실패한다.
    SQLite 단위 테스트는 `create_all` 이라 `add_column` 을 안 돌리고 CI PG 는 빈 DB 라

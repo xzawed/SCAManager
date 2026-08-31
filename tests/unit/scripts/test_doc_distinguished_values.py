@@ -44,23 +44,21 @@ from pathlib import Path  # noqa: E402
 
 _ROOT = Path(__file__).resolve().parents[3]
 
-_REVISION = re.compile(r"^revision\s*(?::\s*str)?\s*=\s*['\"]([^'\"]+)['\"]", re.MULTILINE)
-_DOWN = re.compile(r"^down_revision\s*(?::[^=]*)?=\s*['\"]([^'\"]+)['\"]", re.MULTILINE)
+def _alembic_heads() -> list[str]:
+    """head 를 **alembic 자신에게** 묻는다 — 정규식으로 파일을 훑지 않는다.
 
+    🔴 첫 판은 `revision =`·`down_revision =` 을 정규식으로 긁어 `set(revs) - set(downs)` 를
+    head 라 불렀다. 그것은 alembic 이 계산하는 것과 **다르다**(Grok claim-review `01a057fd`):
+    머지 리비전의 튜플 `down_revision`, 리터럴이 아닌 `revision`, 다른 형태의 타입 주석이
+    전부 **조용히 통과**한다. alembic 은 모듈을 exec 하고 나는 텍스트만 봤다.
+    Ask alembic, not a regex fork: tuple down_revisions and non-literal revisions slip past text.
+    """
+    from alembic.config import Config  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    from alembic.script import ScriptDirectory  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
-def _revision_graph() -> tuple[dict[str, str], set[str]]:
-    """`(revision -> 파일명, 부모로 지목된 revision 들)` — 디스크에서 읽는다."""
-    revs: dict[str, str] = {}
-    downs: set[str] = set()
-    for path in sorted((_ROOT / "alembic" / "versions").glob("*.py")):
-        text = path.read_text(encoding="utf-8")
-        rev = _REVISION.search(text)
-        down = _DOWN.search(text)
-        if rev:
-            revs[rev.group(1)] = path.name
-        if down:
-            downs.add(down.group(1))
-    return revs, downs
+    cfg = Config(str(_ROOT / "alembic.ini"))
+    cfg.set_main_option("script_location", str(_ROOT / "alembic"))
+    return list(ScriptDirectory.from_config(cfg).get_heads())
 
 
 def test_the_migration_dag_has_exactly_one_head():
@@ -70,11 +68,10 @@ def test_the_migration_dag_has_exactly_one_head():
     잡는 곳은 `e2e/conftest.py::def _get_alembic_head` 뿐이고 `pre_push_gate.py` 는 e2e 를 돌리지
     않는다 — 그래서 로컬에서 잡을 관측면이 여기 필요하다.
     """
-    revs, downs = _revision_graph()
-    assert revs, "리비전을 하나도 못 읽었다 — 이 시험이 공허하다"
-    heads = sorted(set(revs) - downs)
+    heads = sorted(_alembic_heads())
+    assert heads, "head 를 하나도 못 읽었다 — 이 시험이 공허하다"
     assert len(heads) == 1, (
-        f"alembic head 가 {len(heads)}개다: {[(h, revs[h]) for h in heads]}\n"
+        f"alembic head 가 {len(heads)}개다: {heads}\n"
         "  분기다. 새 리비전의 `down_revision` 은 **직전 head** 여야 한다 —\n"
         "  `py -3 -m alembic heads` 로 확인하고 적어라(문서에 적힌 숫자를 믿지 마라)."
     )
@@ -87,10 +84,14 @@ def test_db_workflow_does_not_pin_a_head_number():
     절차는 「직전 head 를 조회해서 쓴다」여야 한다.
     """
     db_md = (_ROOT / "docs" / "workflow" / "db.md").read_text(encoding="utf-8")
-    pinned = re.findall(r"현재 head\s*`?(\w+)`?", db_md)
+    # 🔴 문구를 잠그지 않는다 — 「현재 head `0047`」만 막으면 「직전 head 는 `0048`」이 통과한다.
+    #    지난 사고의 지문을 외우는 것은 가드가 아니다. **파생값 자체**가 문서에 박혀 있는지 본다.
+    #    (첫 판은 `현재 head \w+` 정규식이었다 — Grok claim-review `01a057fd` 가 theatre 라 짚었다.)
+    # Derive, don't phrase-lock: the last incident's wording is not the invariant.
+    pinned = [h for h in _alembic_heads() if h in db_md]
     assert not pinned, (
-        f"db.md 가 head 번호를 못박았다: {pinned}. 다음 리비전에서 거짓이 된다 — "
-        "번호 대신 조회 명령을 적어라."
+        f"db.md 에 현재 head 값이 박혀 있다: {pinned}. 다음 리비전에서 거짓이 된다 — "
+        "번호 대신 `py -3 -m alembic heads` 를 적어라."
     )
 
 
@@ -116,14 +117,26 @@ def test_state_analyzer_count_is_derived():
     )
 
 
-def test_readme_ko_analyzer_count_is_derived():
-    """🔴 같은 값이 README.ko 에도 있다 — 한쪽만 고치면 다른 쪽이 늙는다."""
-    readme = (_ROOT / "README.ko.md").read_text(encoding="utf-8")
-    m = re.search(r"모두 \*\*(\d+)종\*\*이고, 그중 \*\*(\d+)종\*\*", readme)
-    assert m, "README.ko.md 에서 분석기 수 문장을 못 찾았다"
-    assert int(m.group(1)) == _registry_size(), (
-        f"README.ko 는 {m.group(1)}종이라 적는데 레지스트리는 {_registry_size()}개다"
-    )
+def test_both_readmes_carry_the_derived_analyzer_count():
+    """🔴 같은 값이 **두 README** 에 있다 — 한쪽만 고치면 다른 쪽이 늙는다.
+
+    첫 판은 `README.ko.md` 만 봤고, 그 사이 영문 `README.md` 는 계속 25 라고 적고 있었다
+    (Grok claim-review `01a057fd`) — 이 파일이 죽이겠다는 바로 그 부류를 스스로 남겼다.
+    """
+    size = _registry_size()
+    checked = 0
+    for name, pattern in (
+        ("README.ko.md", r"모두 \*\*(\d+)종\*\*"),
+        ("README.md", r"There are \*\*(\d+) registered analyzers\*\*"),
+    ):
+        text = (_ROOT / name).read_text(encoding="utf-8")
+        m = re.search(pattern, text)
+        assert m, f"{name} 에서 분석기 수 문장을 못 찾았다 — 표기가 바뀌었으면 이 시험도 고쳐라"
+        assert int(m.group(1)) == size, (
+            f"{name} 는 {m.group(1)}종이라 적는데 레지스트리는 {size}개다"
+        )
+        checked += 1
+    assert checked == 2, "두 README 를 다 재지 못했다 — 공허화"
 
 
 def test_readme_ko_provisioned_count_is_derived():
