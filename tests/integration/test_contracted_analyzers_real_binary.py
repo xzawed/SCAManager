@@ -801,3 +801,106 @@ def test_w2_golangci_same_package_reference_shape_is_recorded(tmp_path):
     assert isinstance(verdict, list), "목록이 아니다 — %r" % verdict
     # 🔴 개수를 단언하지 않는다 — (A)/(B) 를 가르는 것이 이 시험의 목적이다.
     #    `W2-SHAPE` 줄의 `adapter=issues=N` 과 `exit=` 를 CI 로그에서 읽는다.
+
+
+# ── golangci-lint: typecheck 산물과 진짜 발견의 공존 (#1584) ───────────────────
+#
+# 🔴 `#1584` 의 처방을 가르는 것은 **이 하나의 사실**이다 —
+#    「typecheck 항목을 걸러내면 진짜 발견이 남는가.」
+#
+#    운영 DB 전수: golangci-lint 이슈 546건 중 **540건이 `undefined:` 모양**이다.
+#    한 파일 격리에서 Go 는 같은 패키지의 심볼을 찾지 못하므로 그 대부분이 격리 산물이고,
+#    사용자 이슈 목록과 **점수**에 그대로 들어간다(1건당 코드품질 -1).
+#
+#    거르는 것이 옳아 보이지만, 거른 뒤 남는 것이 **없다면** 그 파일은
+#    「분석했고 이슈 0건 · 완전」이 되어 코드품질 만점을 받는다 — 시끄러운 거짓이
+#    **조용한 거짓**으로 바뀔 뿐이다. 그래서 두 갈래를 먼저 갈라야 한다:
+#
+#      (A) typecheck 와 함께 다른 린터의 발견도 보고된다
+#          -> `goanalysis_metalinter` 가 중단되지 않았다. typecheck 만 거르면 진짜 발견이 남고,
+#             파서 층 필터(#1584 처방 A1)로 충분하다.
+#      (B) typecheck 만 보고된다
+#          -> 타입 검사 실패가 다른 린터까지 끌고 내려간 것이다. 그때 거르면 관측면이 0 인데
+#             «완전» 으로 기록된다 — 필터만으로는 안 되고 신호가 필요하다(A2).
+#
+# 🔴 이 시험은 **판단하지 않는다.** 오늘의 동작을 단언하고 `FromLinter` 분포를 로그에 남긴다.
+#    측정 먼저, 전환은 그 다음 — `#1580`·`#1583` 이 세운 순서다.
+#
+# 🔴 `ineffassign` 을 고른 이유: golangci-lint 의 **기본 활성** 린터이고(어댑터 argv 에
+#    `--enable` 이 없다), 타입 정보 없이 제어흐름만으로 판정한다. `gosec` 는 기본이 아니라
+#    이 argv 로는 아예 돌지 않는다 — 그것을 쓰면 (B) 를 argv 탓에 관측하게 된다.
+#
+# Whether filtering typecheck leaves anything behind is the single fact #1584's prescription
+# turns on. Measure it; do not decide here.
+
+
+def _w2_record_linters(case: str, seen) -> str:
+    """마지막 서브프로세스의 stdout JSON 에서 `FromLinter` 분포를 뽑아 로그에 남긴다.
+
+    🔴 어댑터의 `AnalysisIssue` 에는 `FromLinter` 가 **저장되지 않는다**
+    (`golangci_lint.py::    from_linter = item.get("FromLinter", "")` 는 severity·category 매핑에만 쓴다).
+    그래서 분포는 원본 stdout 에서만 읽을 수 있다 — 운영 DB 로는 린터별로 가를 수 없는 이유다.
+    """
+    import collections  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    import warnings  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    dist: object
+    if not seen:
+        dist = "서브프로세스 미실행"
+    else:
+        raw = (seen[-1][1].stdout or "").strip()
+        if not raw:
+            # 🔴 「빈 stdout」과 「Issues:[]」를 같은 `{}` 로 적지 않는다 — 전자는 도구가
+            #    통째로 죽은 것이고 후자는 돌았는데 아무것도 못 찾은 것이다. 두 줄을
+            #    맞춰 봐야 알 수 있게 두면 다음 사람이 한쪽만 보고 결론낸다.
+            # Empty stdout (tool died) is not the same as `Issues:[]` (ran, found nothing).
+            dist = "빈 stdout (도구가 출력을 내지 않았다)"
+        else:
+            try:
+                items = json.loads(raw).get("Issues") or []
+                dist = dict(collections.Counter(i.get("FromLinter", "") for i in items))
+            except (ValueError, AttributeError) as exc:
+                dist = "JSON 읽기 실패: %s" % type(exc).__name__
+    line = "W2-LINTERS tool=golangci-lint case={0} | linters={1}".format(case, dist)
+    warnings.warn(line, UserWarning, stacklevel=2)
+    print("\n" + line, file=sys.stderr)
+    return line
+
+
+def test_w2_golangci_typecheck_artifact_coexists_with_a_real_finding(tmp_path):
+    """🔴 typecheck 산물과 **타입 무관 진짜 결함**을 한 파일에 넣고 무엇이 보고되는지 잰다.
+
+    `helper()` 는 같은 패키지의 다른 파일에 있어야 할 심볼 — 격리에서 `undefined` 다.
+    `x := 1` 다음 `x = 2` 는 `ineffassign` 이 잡는 진짜 결함이고 타입 정보를 필요로 하지 않는다.
+    """
+    _require("golangci-lint")
+    adapter = _w2_adapter("golangci_lint", "_GolangciLintAnalyzer")
+    src = tmp_path / "probe.go"
+    src.write_text(
+        "package tempmod" + chr(10) + chr(10)
+        + "func Use() int {" + chr(10)
+        + chr(9) + "x := 1" + chr(10)          # ineffassign: 곧바로 덮어쓴다
+        + chr(9) + "x = 2" + chr(10)
+        + chr(9) + "helper()" + chr(10)        # typecheck: 격리가 만든 undefined
+        + chr(9) + "return x" + chr(10)
+        + "}" + chr(10),
+        encoding="utf-8")
+
+    ctx = AnalyzeContext(filename="probe.go", content=src.read_text(encoding="utf-8"),
+                         language="go", is_test=False, tmp_path=str(src))
+    try:
+        seen, verdict, exc = _w2_observe(adapter, ctx)
+    except OSError as os_exc:
+        if os.name == "nt":
+            _not_measured("Windows 가 golangci-lint 를 직접 실행 못 함 (%s)"
+                          % type(os_exc).__name__)
+        raise
+    _w2_record("golangci-lint", "typecheck_plus_real", seen, verdict, exc)
+    _w2_record_linters("typecheck_plus_real", seen)
+
+    assert exc is None, (
+        "golangci-lint 가 이 모양에서 이미 raise 한다 — 전환된 것이다. (%r)" % exc)
+    assert isinstance(verdict, list), "목록이 아니다 — %r" % verdict
+    # 🔴 개수도 린터 이름도 단언하지 않는다 — (A)/(B) 를 가르는 것이 목적이고,
+    #    여기서 오늘의 값을 못박으면 다음 사람이 그것을 계약으로 읽는다.
+    #    판단은 `W2-LINTERS` 줄을 CI 로그에서 읽어서 한다.
