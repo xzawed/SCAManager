@@ -7,16 +7,16 @@
 **최신 (현재 코드 기준)**
 - 손으로 고치는 곳은 파일 끝 SSOT 불릿 한 줄뿐. 나머지 4지점은 `--fix` 가 파생한다.
 
-**종합 수치**: 전체 **8114** 수집 (단위 **7907** + 통합 207) / E2E **122** (`#1291` 기준) / pylint **9.99/10** (`src/`).
+**종합 수치**: 전체 **8103** 수집 (단위 **7896** + 통합 207) / E2E **122** (`#1291` 기준) / pylint **9.99/10** (`src/`).
 
 | 지표 | 값 | 재측정 |
 |---|---|---|
-| 전체 테스트 | **8114 수집** | `py -3 -m pytest --collect-only -q tests/unit` + `tests/integration` — 단위 7907 + 통합 207 (현재) |
+| 전체 테스트 | **8103 수집** | `py -3 -m pytest --collect-only -q tests/unit` + `tests/integration` — 단위 7896 + 통합 207 (현재) |
 | E2E 테스트 | **122개** | `make test-e2e` — = 122 collected (111 표준 + 11 perf). 대조 `scripts/check_e2e_scope.py` |
 | pylint | **9.99/10** | `py -3 -m pylint src/`. CI `--fail-under` 는 README 배지에서 파생 |
 | 커버리지 | Python 97% | `py -3 -m pytest tests/unit --cov=src` |
 | bandit HIGH | 0 | `py -3 -m bandit -r src/` |
-| 지원 언어 | AI 49 / 정적 27 | `src/analyzer/pure/language.py` · 등록 분석기 25종 |
+| 지원 언어 | AI 49 / 정적 27 | `src/analyzer/pure/language.py` · 등록 분석기 24종 |
 
 ## 수치 갱신 절차
 
@@ -28,4 +28,4 @@
 
 ## 테스트 수 추적 이력
 
-- **현재** (7242→**7907** 단위; 통합 207 = **8114** 수집)
+- **현재** (7242→**7896** 단위; 통합 207 = **8103** 수집)

@@ -172,63 +172,37 @@ def test_axis_does_not_fire_when_operator_disabled_everything():
     assert result.no_dedicated_observer is None
 
 
-# ── dotnet_format 은 전담 관측면이 아니다 — 있으면 오히려 신호를 지운다 (#1565) ──
+# ── C# 은 전담 관측면이 **없다** — dotnet_format 은 지웠다 (#1565) ──────────────
 #
-# 🔴 실측(이 개발 PC, dotnet 8.0.424 · 인코딩 수정 #1586 이후):
+# 🔴 `dotnet format` 은 프로젝트/솔루션을 요구하는데 `static.py` 는 파일 하나를 임시
+#    디렉터리에 떼어 놓는다. 실측(세 입력 전부): `exit=1 · 이슈 0건 · stderr 749바이트`
+#    (「유효한 프로젝트 또는 솔루션 파일이 아님」) — **한 번도 동작한 적이 없다.**
 #
-#     dotnet 있음   issues=0 incomplete=False unavailable=[]                no_dedicated=None
-#     dotnet 없음   issues=0 incomplete=False unavailable=['dotnet_format'] no_dedicated='csharp'
+# 🔴 그런데 등록돼 있으면 그 무동작이 「돌았다」로 세어져 이 축을 **지웠다**. 실측:
+#      dotnet 있음   unavailable=[]                no_dedicated=None      ← 「완전 · 깨끗」
+#      dotnet 없음   unavailable=['dotnet_format'] no_dedicated='csharp'  ← 사실
+#    **설치돼 있으면 보고가 더 나빴다.**
 #
-#   **dotnet 이 설치돼 있으면 보고가 더 나빠진다.** 어댑터가 「돌았다」로 세어져
-#   `no_dedicated_observer` 신호를 지우고, 그 파일은 「완전히 분석됨 · 이슈 0건」이 된다.
+# 🔴 임시 `.csproj` 로 감싸도 살아나지 않는다(#1586 인코딩 수정 이후 재측정):
+#      full format(proj)    dirty 5건 / clean 0 / **broken 0** · 5.3s
+#      whitespace --folder  dirty 5건 / clean 0 / **broken 0** · 1.7s
+#    `broken` 은 문법이 깨졌는데 공백만 정돈된 C# 이다 — 둘 다 「깨끗」으로 본다.
+#    `dotnet format` 은 서식 도구이지 분석기가 아니고, 진단도 `.cs` 가 아니라
+#    프로젝트/폴더에 귀속돼 줄번호가 소스의 것이 아니다.
 #
-# 🔴 그런데 이 어댑터는 **한 번도 분석한 적이 없다.** `dotnet format` 은 프로젝트/솔루션을
-#   요구하는데 어댑터는 단일 `.cs` 임시 파일을 넘긴다. 실측(세 입력 전부):
-#     현재 argv               exit=1 · hits=0 · stderr 749바이트("유효한 프로젝트가 아님")
+# 🔴 `is_enabled` 를 항상 False 로 두는 것은 **오답이었다**(Grok claim-review `01a05733`).
+#    그 갈래의 뜻은 「바이너리 부재」이고 `_binary_is_absent` 는 `dotnet` 이 아니라
+#    **`dotnet_format` 이라는 이름의 바이너리**를 찾는다 — 누가 그 이름을
+#    `PROVISIONED_ANALYZERS` 에 넣으면 모든 `.cs` 가 `incomplete` 가 되고 dotnet 을 깔아도
+#    안 풀린다. 그리고 그 선택은 `test_supported_languages_are_reachable.py` 의
+#    도달가능성 가드를 **피하는** 것이었다 — 그 가드가 제 일을 한 것이다. 그래서 지웠다.
 #
-#   임시 `.csproj` 로 감싸도(처방 A) 사는 것이 아니다 — 실측:
-#     full format(proj)       dirty 5건 / clean 0 / **broken 0** · 5.3s
-#     whitespace --folder     dirty 5건 / clean 0 / **broken 0** · 1.7s
-#   `broken` 은 **문법이 깨졌는데 공백만 정돈된** C# 이다. 둘 다 「깨끗」으로 본다 —
-#   `dotnet format` 은 서식 도구이지 분석기가 아니다. 게다가 진단이 `A.cs` 가 아니라
-#   프로젝트/폴더에 귀속돼 줄번호가 소스의 것이 아니다.
-#
-# 🔴 조달: `dotnet` 은 `ci.yml`·`nixpacks.toml`·`railway.toml` 어디에도 없고
-#   `PROVISIONED_ANALYZERS` 밖이다. 즉 프로덕션에서는 이미 안 돌고, 위 「더 나쁜」 보고는
-#   dotnet 이 깔린 개발 머신에서만 난다 — 그리고 이 리포는 판별식을 그런 머신에서 정한다.
-#
-# The adapter's presence erases the truth: with dotnet installed a C# file is recorded as
-# fully analysed and clean, while without it the missing-observer axis correctly fires.
+# C# has no dedicated observer: the adapter never analysed anything, and keeping it registered
+# merely erased this axis.
 
 
-def test_csharp_keeps_the_missing_observer_axis_even_where_dotnet_is_installed(monkeypatch):
-    """🔴 `dotnet` 이 있어도 C# 은 전담 관측면이 없다 — 어댑터가 그 신호를 지우면 안 된다.
-
-    `dotnet` 을 **있는 것으로** 만들고 프로덕션 경로를 태운다. 어댑터가 「돌았다」로
-    세어지면 축이 서지 않고, 그 파일은 「완전히 분석됨 · 깨끗」이 된다.
-    """
-    from src.analyzer.io.static import _run_analyzers, StaticAnalysisResult  # noqa: PLC0415
-    import src.analyzer.io.tools.dotnet_format as mod  # noqa: PLC0415
-
-    monkeypatch.setattr(mod.shutil, "which", lambda name: f"/usr/bin/{name}")
-    ctx = _ctx("csharp", "Program.cs")
-    result = StaticAnalysisResult(filename="Program.cs")
-    _run_analyzers(ctx, result)
-
-    assert result.no_dedicated_observer == "csharp", (
-        "`dotnet` 이 설치된 머신에서 C# 이 「전담 관측면 있음」으로 기록됐다.\n"
-        "  `dotnet format` 은 단일 `.cs` 를 분석하지 못한다(실측: 세 입력 전부 이슈 0건) —\n"
-        "  「돌았다」로 세어지면 그 파일은 「완전히 분석됨 · 깨끗」이 되고, dotnet 이\n"
-        "  **없는** 머신보다 보고가 나빠진다."
-    )
-
-
-def test_csharp_axis_is_not_an_artifact_of_dotnet_being_absent():
-    """🔴 부정 통제 — 위 시험이 「`which` 를 못 찾아서」 통과하는 것이 아님을 가른다.
-
-    `which` 를 건드리지 않은 상태에서도 축은 서야 한다. 두 시험이 함께 있어야
-    「dotnet 유무와 무관하게 C# 은 전담 관측면이 없다」가 된다.
-    """
+def test_csharp_has_no_dedicated_observer():
+    """🔴 C# 은 semgrep 만 본다 — 그 사실이 기록되어야 한다."""
     from src.analyzer.io.static import _run_analyzers, StaticAnalysisResult  # noqa: PLC0415
 
     ctx = _ctx("csharp", "Program.cs")
@@ -236,4 +210,20 @@ def test_csharp_axis_is_not_an_artifact_of_dotnet_being_absent():
     _run_analyzers(ctx, result)
     assert result.no_dedicated_observer == "csharp", (
         "C# 에 전담 관측면이 생겼다 — 조달이 바뀌었다면 이 절 전체를 다시 쓸 것"
+    )
+
+
+def test_no_adapter_claims_to_be_a_dedicated_csharp_observer():
+    """🔴 위 축이 **어댑터 부재**에서 오는지 확인한다 — 「돌긴 했는데 0건」과 가른다.
+
+    `supports("csharp")` 가 참인 전담 어댑터가 하나라도 등록돼 있으면, 그것이 무동작이어도
+    `dedicated_ran` 을 올려 축을 지운다. 그 자리가 정확히 `#1565` 였다.
+    """
+    dedicated = sorted(
+        a.name for a in REGISTRY
+        if not getattr(a, "is_generic", False) and a.supports(_ctx("csharp", "Program.cs"))
+    )
+    assert dedicated == [], (
+        f"C# 전담 어댑터가 등록돼 있다: {dedicated}. 그것이 실제로 분석하는지 먼저 재라 — "
+        "무동작이면 이 축을 지우고 그 파일은 「완전 · 깨끗」이 된다(#1565)."
     )

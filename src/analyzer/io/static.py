@@ -10,7 +10,6 @@ import src.analyzer.io.tools.buf_lint  # noqa: F401 — 모듈 로드 시 자동
 import src.analyzer.io.tools.clippy  # noqa: F401 — 모듈 로드 시 자동 등록  # pylint: disable=unused-import
 import src.analyzer.io.tools.cppcheck  # noqa: F401 — 모듈 로드 시 자동 등록  # pylint: disable=unused-import
 import src.analyzer.io.tools.dart_analyze  # noqa: F401 — 모듈 로드 시 자동 등록  # pylint: disable=unused-import
-import src.analyzer.io.tools.dotnet_format  # noqa: F401 — 모듈 로드 시 자동 등록  # pylint: disable=unused-import
 import src.analyzer.io.tools.eslint  # noqa: F401 — 모듈 로드 시 자동 등록  # pylint: disable=unused-import
 import src.analyzer.io.tools.golangci_lint  # noqa: F401 — 모듈 로드 시 자동 등록  # pylint: disable=unused-import
 import src.analyzer.io.tools.hadolint  # noqa: F401 — 모듈 로드 시 자동 등록  # pylint: disable=unused-import
@@ -324,10 +323,10 @@ def analyze_file(  # pylint: disable=too-many-locals
         # 🔴 **조달 계약으로 갈라친다** (backlog R21, 사용자 결정 2026-08-01 — 옵션 C).
         # `unavailable_tools`(바이너리 부재)를 무조건 incomplete 로 올리면, 배포 이미지가
         # **애초에 설치하지 않는** 도구의 언어는 auto-merge 가 **영구 불가**가 된다. 실측:
-        # 등록 25 분석기 중 10종(clippy·dart_analyze·dotnet_format·phpstan·psscriptanalyzer·
-        # stylelint·swiftlint·buf_lint·htmlhint …)이 railway.toml·nixpacks.toml·requirements.txt·
-        # package.json 어디에도 조달 흔적이 없다 → rust·dart·C#·php·powershell·css/scss·swift·
-        # protobuf·html 리포는 손댈 수 없는 이유로 영구 차단이었다. `#1245` 본문이 스스로
+        # 등록 24 분석기 중 8종(buf_lint·clippy·dart_analyze·htmlhint·phpstan·psscriptanalyzer·
+        # stylelint·swiftlint)이 railway.toml·nixpacks.toml·requirements.txt·package.json
+        # 어디에도 조달 흔적이 없다 → rust·dart·php·powershell·css·swift·protobuf·html
+        # 리포는 손댈 수 없는 이유로 영구 차단이었다. (C# 은 전담 어댑터가 아예 없다 — #1565) `#1245` 본문이 스스로
         # "차단 없이 가시화만" 이라 적은 것과 정면 모순이기도 하다.
         #
         # 갈라치는 기준은 **의도**다:

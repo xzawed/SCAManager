@@ -50,7 +50,6 @@ _PROVENANCE = {
     "clippy": ("cargo", OPTIONAL, "Rust 툴체인 미탑재 — cargo 설치 시 이미지 크게 증가"),
     "cppcheck": ("cppcheck", APT, ""),
     "dart_analyze": ("dart", OPTIONAL, "Dart SDK 미탑재"),
-    "dotnet_format": ("dotnet", OPTIONAL, ".NET SDK 미탑재 — 이미지 크기 부담"),
     "eslint": ("eslint", BUILD, ""),
     "golangci_lint": ("golangci-lint", BUILD, ""),
     "hadolint": ("hadolint", BUILD, ""),

@@ -70,12 +70,13 @@ _NARROW_AXES = ("TimeoutExpired", "FileNotFoundError")
 # 고친 어댑터는 이 목록에서 빼면 된다.
 KNOWN_FAIL_OPEN: frozenset[str] = frozenset({
     # 분석 축이 통째로 fail-open — 크래시가 «이슈 0건 · 완전» 이 된다.
-    # 남은 6개는 #1557 W2 잔여다: semgrep 이 같은 언어를 덮지만 **전담 축은 사라진다**.
+    # 남은 5개는 #1557 W2 잔여다: semgrep 이 같은 언어를 덮지만 **전담 축은 사라진다**.
+    # (dotnet_format 은 어댑터째 지웠다 — 단일 .cs 를 분석할 수 없었다, #1565)
     # 그중 배포본에서 실제로 도는 것은 **2개**(golangci_lint · ktlint) —
     # `_REACHABLE_CEILING` 이 그 수를 파생값으로 래칫한다.
     # 🔴 판별식은 도구마다 다르다 — 실측으로 정한 것만 전환한다. rubocop 은 크래시해도
     #    유효한 JSON 을 내므로 「비-JSON 이면 raise」 관용구가 통하지 않았다.
-    "dotnet_format", "golangci_lint", "htmlhint", "ktlint",
+    "golangci_lint", "htmlhint", "ktlint",
     "phpstan", "swiftlint",
 })
 
