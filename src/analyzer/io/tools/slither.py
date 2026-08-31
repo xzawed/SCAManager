@@ -78,6 +78,27 @@ _COMMENT_RE = re.compile(
 # beforehand — this regex alone cannot tell one from a real statement.
 _PRAGMA_RE = re.compile(r"^\s*pragma\s+solidity\s+([^;]+);", re.MULTILINE)
 
+# 🔴 `NpmSpec` 은 **npm 문법**이라 Solidity 가 적법하게 쓰는 철자 둘을 거부한다
+#    (실측, `semantic_version` 2.10.0 — 전부 `ValueError`):
+#        `>= 0.8.0`         연산자 뒤 공백
+#        `>=0.4.24<0.6.0`   절 사이 공백 없음
+#    정규화 없이 「파싱 실패 = skip」으로 보내면 **핀된 0.8.20 이 만족하는** 파일까지
+#    전담 관측면을 잃는다 — 실측 4건이 그랬다. 의미를 바꾸지 않고 공백만 고른다.
+# NpmSpec is npm grammar; Solidity legally writes spaces after operators and omits them
+# between clauses. Normalize whitespace only — never the operators or versions.
+_OP_TRAILING_SPACE = re.compile(r"(>=|<=|[<>^~=])[ \t]+")
+_CLAUSE_JOIN = re.compile(r"(?<=[0-9])(?=[<>^~=])")
+
+
+def _normalize_pragma_range(raw: str) -> str:
+    """Solidity pragma 범위를 `NpmSpec` 이 받는 공백 모양으로 — **의미는 그대로다.**
+
+    연산자·버전 문자열은 손대지 않는다. 손대면 그것은 정규화가 아니라 두 번째 판정식이다.
+    """
+    collapsed = _OP_TRAILING_SPACE.sub(r"\1", raw.strip())
+    spaced = _CLAUSE_JOIN.sub(" ", collapsed)
+    return " ".join(spaced.split())
+
 
 
 def _installed_solc_versions() -> tuple[str, ...]:
@@ -140,14 +161,21 @@ def _matching_solc(content: str, installed) -> str | None:
             NpmSpec, Version,
         )
         parsed = sorted((Version(v) for v in installed), reverse=True)
-        if not match:
-            # pragma 가 없으면 판단 근거가 없다 — 막지 않고 최신 설치본으로 돈다.
-            # No pragma: nothing to judge against; run with the newest installed compiler.
-            return str(parsed[0])
-        spec = NpmSpec(match.group(1).strip())
-        return next((str(v) for v in parsed if v in spec), None)
     except (ImportError, ValueError, TypeError):
-        # 파싱 실패·의존 부재는 「못 맞춘다」가 아니다 — 판단하지 못했을 뿐이다.
+        # 🔴 이 갈래에 **실제로 닿는 것은 `ImportError` 뿐이다**(Grok claim-review `01a0563d`).
+        #    pragma 파싱은 더 이상 여기 없다 — 아래 두 번째 try 로 옮겼다. 남은 것은
+        #    「semantic_version 이 없다」와, solc-select 가 `Version()` 이 거부할 문자열을
+        #    낼 경우뿐이다. 후자는 실측상 일어나지 않는다(`installed_versions()` 는
+        #    `solc-N.N.N` 디렉터리명에서 접두사를 뗀 `N.N.N` 만 낸다, solc-select 1.2.0).
+        #
+        # 🔴 그래도 `ValueError`·`TypeError` 를 떼지 않는다 — `is_enabled` 는
+        #    `static.py::_run_analyzers` 의 try **밖**에서 불린다(그 try 는 `run()` 만 감싼다).
+        #    여기서 새는 예외는 파이프라인까지 올라간다. 방어 폭이 죽은 코드처럼 보여도
+        #    떼는 쪽이 더 비싸다.
+        # Only ImportError reaches this in practice; the other two are defensive because
+        # `is_enabled` is called OUTSIDE the caller's try — an escape would hit the pipeline.
+        #
+        # 의존 부재는 「못 맞춘다」가 아니다 — 판단하지 못했을 뿐이다.
         # 그때는 막지 않고 설치본 하나로 돈다. 결과는 실행 후 판정한다.
         # 🔴 이것은 「최신」이 **아니다.** solc-select 1.2.0 정본 실측:
         #      `[f.replace("solc-","") for f in sorted(os.listdir(ARTIFACTS_DIR)) …]`
@@ -159,6 +187,24 @@ def _matching_solc(content: str, installed) -> str | None:
         # precisely because version parsing is unavailable — sorting here would be a second,
         # hand-rolled version predicate.
         return installed[0]
+
+    if not match:
+        # pragma 가 없으면 판단 근거가 없다 — 막지 않고 최신 설치본으로 돈다.
+        # No pragma: nothing to judge against; run with the newest installed compiler.
+        return str(parsed[0])
+
+    try:
+        spec = NpmSpec(_normalize_pragma_range(match.group(1)))
+    except (ValueError, TypeError):
+        # 🔴 「pragma 가 없다」와 「pragma 가 있는데 못 읽었다」는 다르다.
+        #    전자는 제약이 없으니 최신으로 도는 것이 맞고(위 갈래), 후자는 **제약이 있다는
+        #    것을 아는데 평가만 못 한** 상태다. 여기서 돌리면 못 맞추는 컴파일러가 빈 stdout 을
+        #    내 `incomplete` — 즉 **벽**이 된다. 벽보다 skip 이 낫다는 것이 #1571 의 계약이고,
+        #    skip 은 `static.py::no_dedicated_observer` 가 기록한다(차단하지 않는다).
+        # A pragma we cannot read is not "no constraint": running anyway rebuilds the wall
+        # that #1571 removed. Skip instead; the procurement axis records it.
+        return None
+    return next((str(v) for v in parsed if v in spec), None)
 
 
 class _SlitherAnalyzer:
