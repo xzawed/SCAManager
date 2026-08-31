@@ -644,7 +644,7 @@
       "info_li2": "Runtime activation middleware = `src/middleware/rls_session.py` (Cycle 66 #228)",
       "info_li3": "contextvars bridge = `src/shared/rls_context.py` + DB event listener (`SET LOCAL app.user_id`)",
       "info_li4": "2-layer safety = (1) app-level filter (`_apply_*_user_filter`) + (2) DB RLS policy (PG/Supabase) — ⚠️ without FORCE, an owner connection can bypass (2)",
-      "info_li5": "Whether legacy (user_id NULL) rows are served <strong>differs per table</strong> — the pattern column above is the source of truth; adding that clause to a `NULL 허용 X` table widens visibility",
+      "info_li5": "Whether legacy (user_id NULL) rows are served differs per table — the pattern column above is the source of truth",
       "force_warning_title": "⚠️ FORCE ROW LEVEL SECURITY not set — 2nd safety layer may be bypassed",
       "force_warning_body": "FORCE ROW LEVEL SECURITY is not confirmed on all 11 RLS tables (live pg_class check — alembic 0041 not applied / partially applied, or a non-PostgreSQL environment). If the app connection role owns the tables, PostgreSQL bypasses RLS for the owner, so despite the 'applied' matrix above the DB-level 2nd safety layer may not actually take effect. Verify `alembic upgrade head` and the switch to the non-BYPASSRLS app role (docs/runbooks/rls-role-separation.md).",
       "bypass_warning_title": "⚠️ Connection role bypasses RLS — 2nd safety layer ineffective despite FORCE",
