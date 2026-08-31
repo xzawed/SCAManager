@@ -395,26 +395,77 @@ def test_single_column_layout_on_mobile(seeded_page, base_url):
     assert columns.count(" ") == 0 or columns.strip().split() == [columns.strip().split()[0]]
 
 
-@pytest.mark.skip(
-    reason=(
-        "사이클 81/82/84 settings.html 진화 후 모든 .settings-grid 인스턴스 = single-child → "
-        "P0-1 default `:has(> .s-card:only-child) { grid-template-columns: 1fr; }` 의도된 1열 영역. "
-        "본 test의 '1024px 데스크탑 = 2열' 가정 무효화 — 사이클 93 학습. "
-        "`querySelector('.settings-grid')` 첫번째 인스턴스 (L664 PR 동작 규칙) = single-child → 1열 의도. "
-        "다수 자식 grid 영역 부재 = 본 검증 영역 미존재. 재활성화 시점 = 다수 자식 grid 인스턴스 도입 시 (UX 결정)."
-    )
-)
+# 🔴 **다수 자식** `.settings-grid` 를 찾는다 — 첫 인스턴스가 아니다 (#1587).
+#    settings.html 의 세 grid 는 전부 직계 `.s-card` 가 1개라 CSS 규칙
+#    `:has(> .s-card:only-child) { grid-template-columns: 1fr; }` 이 의도적으로 1열로 만든다.
+#    `querySelector('.settings-grid')`(첫 인스턴스)로 재면, 나중에 다수 자식 grid 가
+#    **첫 번째가 아닌 자리에** 생겨도 여전히 single-child 를 재게 된다.
+#    `display` 가 grid 가 아닌 것(숨은 `adv-only`)은 제외한다 — 레이아웃 값이 뜻을 갖지 않는다.
+# Find a MULTI-child grid, not the first one: a later multi-child grid could be added
+# anywhere, and a hidden grid's computed columns are meaningless.
+_MULTI_CHILD_GRID_COLUMNS_JS = """() => {
+  const grids = Array.from(document.querySelectorAll('.settings-grid'));
+  const multi = grids.find(g => {
+    const cs = getComputedStyle(g);
+    return cs.display === 'grid' && g.querySelectorAll(':scope > .s-card').length > 1;
+  });
+  return multi ? getComputedStyle(multi).gridTemplateColumns : null;
+}"""
+
+
 def test_two_column_layout_on_desktop(seeded_page, base_url):
-    """1024px 뷰포트에서 설정 그리드가 2컬럼이어야 한다 (사이클 81/82/84 진화로 미적용)."""
+    """1024px 뷰포트에서 **다수 자식** 설정 그리드가 2컬럼이어야 한다.
+
+    🔴 옛 판은 `@pytest.mark.skip` 무조건 skip 이라 로컬·CI 어디서도 실행된 적이 없고,
+    재활성화가 사람 기억에만 달려 있었다. 그 사유가 적어 둔 조건
+    (「재활성화 시점 = 다수 자식 grid 인스턴스 도입 시」)을 **코드로 옮긴다** — 조건이
+    생기는 순간 이 시험이 스스로 깨어난다 (#1587).
+
+    지금은 세 grid 전부 직계 `.s-card` 가 1개라 조건이 없어 skip 된다. 그 skip 이
+    무조건 skip 과 구별된다는 것은 아래 짝 시험이 증명한다.
+    The reactivation condition lived only in prose; it is now the code's own predicate.
+    """
     seeded_page.set_viewport_size({"width": 1024, "height": 768})
     seeded_page.goto(f"{base_url}{SETTINGS_URL}")
-    columns = seeded_page.evaluate(
-        "getComputedStyle(document.querySelector('.settings-grid')).gridTemplateColumns"
-    )
+    columns = seeded_page.evaluate(_MULTI_CHILD_GRID_COLUMNS_JS)
+    if columns is None:
+        pytest.skip(
+            "다수 자식 `.settings-grid` 가 아직 없다 — 모든 인스턴스가 single-child 라 "
+            "`:has(> .s-card:only-child)` 규칙이 의도적으로 1열로 만든다. "
+            "그런 영역이 생기면 이 시험은 자동으로 실행된다."
+        )
     # 2열: 값 사이에 공백이 있어야 함 (예: "430px 430px")
     # Two columns: values must be space-separated (e.g. "430px 430px").
     parts = columns.strip().split()
     assert len(parts) == 2, f"데스크탑에서 2열이어야 하는데 '{columns}' 반환됨"
+
+
+def test_the_desktop_two_column_check_judges_when_a_multi_child_grid_exists(
+    seeded_page, base_url
+):
+    """🔴 위 조건부 skip 이 **무조건 skip 과 구별되는지** 증명한다.
+
+    조건을 만족시키면(다수 자식 grid 를 DOM 에 심으면) 셀렉터가 그것을 찾아 **판정한다**.
+    이 짝이 없으면 「조건부로 바꿨다」는 주장이 공허하다 — 조건이 영영 거짓이어도
+    아무도 모른다. 템플릿은 건드리지 않는다(시각 변경이 아니다).
+    Without this pair, a conditional skip whose condition is never true is indistinguishable
+    from an unconditional one.
+    """
+    seeded_page.set_viewport_size({"width": 1024, "height": 768})
+    seeded_page.goto(f"{base_url}{SETTINGS_URL}")
+    assert seeded_page.evaluate(_MULTI_CHILD_GRID_COLUMNS_JS) is None, (
+        "심기 전에 이미 다수 자식 grid 가 있다 — 그렇다면 위 시험이 skip 이 아니어야 한다"
+    )
+    seeded_page.evaluate("""() => {
+      const g = document.createElement('div');
+      g.className = 'settings-grid';
+      g.innerHTML = '<div class="s-card"></div><div class="s-card"></div>';
+      document.body.appendChild(g);
+    }""")
+    columns = seeded_page.evaluate(_MULTI_CHILD_GRID_COLUMNS_JS)
+    assert columns is not None, "심은 다수 자식 grid 를 셀렉터가 못 찾았다 — 조건식이 틀렸다"
+    parts = columns.strip().split()
+    assert len(parts) == 2, f"다수 자식 grid 는 데스크탑에서 2열이어야 하는데 '{columns}' 반환됨"
 
 
 # ── Settings 재설계 E2E 테스트 (2026-04-21) ──────────────────────────
