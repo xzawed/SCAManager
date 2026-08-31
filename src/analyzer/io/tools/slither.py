@@ -35,9 +35,10 @@ _SECURITY_DETECTORS: frozenset[str] = frozenset({
 
 
 
-# 🔴 주석을 먼저 지우고 찾는다 — `_PRAGMA_RE` 는 주석 문법을 모르고 `search()` 는 **첫 매치**만
-#    보기 때문이다. `*` 접두가 없는 `/* … */` 가 실물 pragma 앞에 있고 그 안의 한 줄이
-#    `pragma solidity …;` 로 시작하면 그 줄이 판정을 가로챈다.
+# 🔴 주석을 먼저 지우고 찾는다 — `_PRAGMA_RE` 는 주석 문법을 모르기 때문이다.
+#    `*` 접두가 없는 `/* … */` 안의 한 줄이 `pragma solidity …;` 로 시작하면 그것이
+#    **실물 pragma 로 세어져 교집합에 들어간다**(#1576 이후 `findall` 이라 더 그렇다 —
+#    하나만 새어 들어가도 교집합이 비어 과차단이 된다).
 #    실측(py 3.12 · semantic_version 2.10.0 · 설치 0.8.20):
 #      `/*\npragma solidity ^0.4.24;\n*/\npragma solidity ^0.8.0;` → 지우기 전 None · 후 0.8.20
 #      반대 배치(주석이 맞춤·실물이 못 맞춤)      → 지우기 전 0.8.20 · 후 None
@@ -51,7 +52,8 @@ _SECURITY_DETECTORS: frozenset[str] = frozenset({
 #      줄 주석 포함   → None   (옳다 — 못 맞추므로 건너뛴다)
 #    교차 하나로 왼쪽부터 훑으므로 `//` 가 먼저 오면 그 줄이, `/*` 가 먼저 오면 그 블록이 먹는다.
 #
-# 🔴 **마지막 매치로 바꾸는 것은 오답이다** — 실물 pragma 뒤에 남은 주석이 판정을 뒤집는다.
+# 🔴 「첫 매치」·「마지막 매치」 **둘 다 오답이다** — 실물 pragma 가 여럿이면 solc 는 그
+#    전부를 만족해야 한다. `_matching_solc` 는 `findall` 로 전부 모아 교집합으로 판정한다(#1576).
 # 🔴 미종결 `/*` 는 파일 끝까지 지운다 — 컴파일러가 그렇게 읽는다. 그 결과 실물 pragma 가
 #    사라지면 판단 근거가 없어져 최신 설치본으로 돈다(막지 않는다). 안전한 방향이다.
 #    🔴 그 갈래를 `(?:\*/|\Z)` 로 합치지 않는다 — `.*?` 뒤에 폭 0인 `\Z` 가 오면 정적 분석이
@@ -60,9 +62,9 @@ _SECURITY_DETECTORS: frozenset[str] = frozenset({
 #    미종결 갈래가 끝까지 먹는다.
 # 🔴 문자열 리터럴 안의 `/*`·`//` 는 구별하지 못한다 — 그러려면 렉서가 필요하다. pragma 는
 #    SPDX 다음 최상단이라 그 앞에 문자열이 오는 일이 사실상 없어 남겨 둔다(알려진 잔여).
-# Strip comments before matching: the regex is comment-blind and takes the first match. Line
-# comments are stripped too, because a `/*` inside one would otherwise open a block that eats
-# the real pragma. String literals are not distinguished — that would need a lexer.
+# Strip comments before matching: the regex is comment-blind, and every surviving pragma joins
+# the intersection. Line comments are stripped too, because a `/*` inside one would otherwise
+# open a block that eats a real pragma. String literals are not distinguished (needs a lexer).
 _COMMENT_RE = re.compile(
     r"//[^\n]*"        # 줄 주석 — 줄 끝까지 / line comment, to end of line
     r"|/\*.*?\*/"      # 닫힌 블록 — 가장 가까운 `*/` 까지 / closed block, nearest `*/`
@@ -123,7 +125,10 @@ def _installed_solc_versions() -> tuple[str, ...]:
 
 
 def _matching_solc(content: str, installed) -> str | None:
-    """이 계약의 pragma 를 만족하는 설치본 중 **가장 높은 것** — 없으면 None.
+    """이 계약의 **모든** pragma 를 만족하는 설치본 중 가장 높은 것 — 없으면 None.
+
+    flatten 된 계약은 실물 pragma 를 여럿 갖는다. solc 는 그 전부를 만족해야 하므로
+    옳은 판정은 교집합이다 — 첫 매치만 보면 판정이 **연결 순서**에 달린다(#1576).
 
     🔴 bool 이 아니라 **버전을 돌려준다.** `run()` 이 그 값을 `--solc-solcs-select` 로
     넘기기 때문이다. 넘기지 않으면 slither 는 전역 핀(`global-version`)만 보고, `install` 은
@@ -151,11 +156,16 @@ def _matching_solc(content: str, installed) -> str | None:
     `semantic_version` 은 semgrep 의 전이 의존이라 프로덕션에 있으나 로컬 3.14 에는 없어
     **지연 임포트**한다.
 
-    Pick the newest installed compiler satisfying the pragma; None when none can.
+    Pick the newest installed compiler satisfying EVERY pragma; None when none can.
     """
     if not installed:
         return None
-    match = _PRAGMA_RE.search(_COMMENT_RE.sub("", content or ""))
+    # 🔴 `findall` 이다 — `search`(첫 매치)가 아니다. flatten 된 계약은 실물 pragma 를
+    #    여럿 갖고(각 원본 파일의 것을 이어붙인다), solc 는 그 **전부**를 만족해야 한다.
+    #    첫 매치만 보면 판정이 소스가 아니라 **flatten 도구가 이어붙인 순서**에 달린다 —
+    #    실측(#1576): 같은 계약 집합이 순서에 따라 벽이 되기도 하고 skip 이 되기도 했다.
+    # All real pragmas, not the first: solc must satisfy every one of them.
+    ranges = _PRAGMA_RE.findall(_COMMENT_RE.sub("", content or ""))
     try:
         from semantic_version import (  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
             NpmSpec, Version,
@@ -188,13 +198,17 @@ def _matching_solc(content: str, installed) -> str | None:
         # hand-rolled version predicate.
         return installed[0]
 
-    if not match:
+    if not ranges:
         # pragma 가 없으면 판단 근거가 없다 — 막지 않고 최신 설치본으로 돈다.
         # No pragma: nothing to judge against; run with the newest installed compiler.
         return str(parsed[0])
 
     try:
-        spec = NpmSpec(_normalize_pragma_range(match.group(1)))
+        # 🔴 `NpmSpec` 에는 교집합 연산자가 없다 — `&` 는 `TypeError` 다(실측).
+        #    교집합 **객체를 만들지 말고** 설치본마다 「모든 spec 을 만족하는가」를 묻는다.
+        #    같은 의미이고 구현 가능하다.
+        # NpmSpec has no intersection operator; ask each installed version to satisfy them all.
+        specs = [NpmSpec(_normalize_pragma_range(r)) for r in ranges]
     except (ValueError, TypeError):
         # 🔴 「pragma 가 없다」와 「pragma 가 있는데 못 읽었다」는 다르다.
         #    전자는 제약이 없으니 최신으로 도는 것이 맞고(위 갈래), 후자는 **제약이 있다는
@@ -204,7 +218,7 @@ def _matching_solc(content: str, installed) -> str | None:
         # A pragma we cannot read is not "no constraint": running anyway rebuilds the wall
         # that #1571 removed. Skip instead; the procurement axis records it.
         return None
-    return next((str(v) for v in parsed if v in spec), None)
+    return next((str(v) for v in parsed if all(v in s for s in specs)), None)
 
 
 class _SlitherAnalyzer:

@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/xzawed/SCAManager/actions/workflows/ci.yml/badge.svg)](https://github.com/xzawed/SCAManager/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/xzawed/SCAManager/actions/workflows/codeql.yml/badge.svg)](https://github.com/xzawed/SCAManager/actions/workflows/codeql.yml)
-[![Tests](https://img.shields.io/badge/Tests-8103%2B_total_(7896_unit_%2B_207_integration)-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-8109%2B_total_(7902_unit_%2B_207_integration)-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
 [![E2E](https://img.shields.io/badge/E2E-122_in_CI-brightgreen?style=flat-square&logo=playwright&logoColor=white)](e2e/)
 [![pylint](https://img.shields.io/badge/pylint-9.99%2F10-brightgreen?style=flat-square&logo=python&logoColor=white)](src/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.141-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
@@ -154,10 +154,10 @@ AI 호출이 실제로 실패했다면 — API 오류이거나 응답을 파싱�
 <br>
 
 Claude 는 **49개 언어**를 각각의 체크리스트로 리뷰합니다. 그중 **27개**는 정적 분석기까지 붙어
-있습니다. 등록된 분석기는 모두 **24종**이고, 그중 **16종**이 위에서 말한 필수 설치분입니다.
+있습니다. 등록된 분석기는 모두 **25종**이고, 그중 **16종**이 위에서 말한 필수 설치분입니다.
 나머지는 해당 바이너리가 `PATH` 에 있을 때만 동작합니다.
 
-로컬에서 `make run` 하시면 24종이 모두 있지는 않을 텐데, 그래도 괜찮습니다. 선택 분석기가 없으면
+로컬에서 `make run` 하시면 25종이 모두 있지는 않을 텐데, 그래도 괜찮습니다. 선택 분석기가 없으면
 조용히 건너뜁니다. 현재 수치는 [docs/STATE.md](docs/STATE.md) 에 있습니다.
 
 정적 분석이 지원하는 언어:
