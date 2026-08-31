@@ -4,6 +4,11 @@
 비-UTF-8 로케일에서 도구가 비-ASCII 를 내면 리더 스레드가 `UnicodeDecodeError` 로 죽고
 **`r.stdout` 이 `None`** 이 된다 — 빈 문자열이 아니다.
 
+🔴 **실패의 얼굴이 OS 마다 다르다**(CI 실측, PR #1591) — 결함은 같다:
+
+    Windows  리더 **스레드**가 죽는다 → 예외가 삼켜지고 `stdout=None`. 조용하다.
+    Linux    `communicate()` 가 본 스레드에서 디코딩 → `UnicodeDecodeError` 가 **올라온다**.
+
 그러면 두 갈래로 갈린다. 어느 쪽이든 **도구의 실제 출력은 유실된다**:
 
     `r.stdout.strip()` 을 하는 어댑터   → AttributeError
@@ -126,48 +131,70 @@ def test_the_kwargs_the_code_actually_uses_can_read_undecodable_bytes():
     }
     assert signatures, "kwargs 시그니처가 0건 — 위 공허화 가드가 먼저 잡았어야 한다"
 
-    probe = f"import sys; sys.stdout.buffer.write({_UNDECODABLE!r})"
     for sig in sorted(signatures, key=repr):
         kwargs = dict(sig)
         if kwargs.get("text") is not True:
             continue
-        r = subprocess.run(  # nosec B603
-            [sys.executable, "-c", probe], capture_output=True, check=False,
-            timeout=30, **kwargs,
-        )
-        assert r.stdout, (
-            f"kwargs={kwargs} 로는 도구 출력을 읽지 못한다 — `r.stdout`={r.stdout!r}.\n"
-            "  None 이면 리더 스레드가 UnicodeDecodeError 로 죽은 것이고,\n"
-            "  '' 이면 `errors='ignore'` 가 바이트를 통째로 버린 것이다 — 둘 다 유실이다.\n"
+        stdout, raised = _read_probe(kwargs)
+        assert stdout, (
+            f"kwargs={kwargs} 로는 도구 출력을 읽지 못한다 — stdout={stdout!r}, 예외={raised!r}.\n"
+            "  예외가 올라왔거나 None 이면 디코딩이 죽은 것이고(OS 마다 얼굴이 다르다),\n"
+            "  '' 이면 `errors='ignore'` 가 바이트를 통째로 버린 것이다 — 셋 다 유실이다.\n"
             "  어댑터는 그 결과를 「출력 없음」으로 판정한다(크래시 판별식 오발화·AttributeError).\n"
             "  🔴 `is not None` 만 단언하면 `ignore` 가 통과한다(실측)."
         )
 
 
+def _read_probe(kwargs: dict) -> tuple[str | None, BaseException | None]:
+    """프로브를 이 kwargs 로 태워 `(stdout, 올라온 예외)` 를 낸다.
+
+    🔴 **실패 모양이 OS 마다 다르다**(CI 실측, PR #1591):
+
+        Windows  리더 **스레드**가 죽는다 → 예외는 삼켜지고 `stdout=None` — 조용하다
+        Linux    `communicate()` 가 본 스레드에서 디코딩한다 → `UnicodeDecodeError` 가 **올라온다**
+
+    한쪽 모양만 단언하면 다른 OS 에서 red 가 된다 — 첫 판이 Windows 모양(`stdout is None`)만
+    단언해 Linux CI 에서 깨졌다. 둘 다 「도구 출력을 읽지 못했다」이고, 그것이 재려는 성질이다.
+    The failure shape is OS-dependent: a swallowed None on Windows, a raised error on Linux.
+    """
+    probe = f"import sys; sys.stdout.buffer.write({_UNDECODABLE!r})"
+    try:
+        r = subprocess.run(  # nosec B603
+            [sys.executable, "-c", probe], capture_output=True, check=False,
+            timeout=30, **kwargs,
+        )
+    except UnicodeDecodeError as exc:
+        return None, exc
+    return r.stdout, None
+
+
 @pytest.mark.parametrize(
-    ("kwargs", "expected", "reason"),
+    ("kwargs", "reason"),
     [
-        ({"text": True}, None, "로케일에 맡긴다"),
-        ({"text": True, "encoding": "utf-8"}, None,
+        ({"text": True}, "로케일에 맡긴다"),
+        ({"text": True, "encoding": "utf-8"},
          "`errors=` 가 없으면 UTF-8 도 못 읽는 바이트에서 죽는다"),
-        # 🔴 이것은 `is not None` 만 보는 단언을 **통과한다** — 그래서 여기서 못 박는다.
-        ({"text": True, "encoding": "utf-8", "errors": "ignore"}, "",
+        # 🔴 이것은 「예외도 안 나고 None 도 아니다」 — `is not None` 만 보는 단언을
+        #    **통과한다**. 그래서 「읽어낸 것이 있는가」로 물어야 한다.
+        ({"text": True, "encoding": "utf-8", "errors": "ignore"},
          "`ignore` 는 바이트를 버린다 — 유실은 그대로인데 「도구가 조용했다」로 보인다"),
     ],
 )
-def test_negative_control_the_shapes_we_rejected_really_do_fail(kwargs, expected, reason):
+def test_negative_control_the_shapes_we_rejected_really_do_fail(kwargs, reason):
     """🔴 부정 통제 — 거부한 세 모양이 **실제로** 출력을 잃는지 확인한다.
 
     이것이 없으면 위 단언이 무엇을 막는지 알 수 없다. 이 시험이 초록이라는 것은
     `encoding="utf-8"`+`errors="replace"` 가 **공짜 초록이 아니라는** 뜻이다.
+
+    「잃었다」의 정의는 셋 중 하나다 — 예외가 올라옴 · `stdout is None` · `stdout == ""`.
+    앞의 둘은 같은 결함의 OS 별 두 얼굴이고(`_read_probe` 참조), 셋째는 `ignore` 다.
     """
-    probe = f"import sys; sys.stdout.buffer.write({_UNDECODABLE!r})"
-    r = subprocess.run(  # nosec B603
-        [sys.executable, "-c", probe], capture_output=True, check=False,
-        timeout=30, **kwargs,
-    )
-    assert r.stdout == expected, (
-        f"{kwargs} 의 결과가 {r.stdout!r} 다 — {expected!r} 를 기대했다 ({reason}).\n"
+    stdout, raised = _read_probe(kwargs)
+    assert not stdout, (
+        f"{kwargs} 가 {stdout!r} 를 읽어냈다 — 잃을 것으로 기대했다 ({reason}).\n"
         "  이 인터프리터/로케일에서 이 축이 판별력을 잃었다는 뜻이다.\n"
         "  `_UNDECODABLE` 이 정말 cp949·UTF-8 양쪽에서 불법인지 다시 재라."
+    )
+    assert raised is not None or stdout in (None, ""), (
+        f"{kwargs} 가 예외도 None 도 '' 도 아닌 {stdout!r} 를 냈다 — 유실 모양이 셋 다 아니다."
     )
