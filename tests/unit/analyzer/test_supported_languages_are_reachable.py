@@ -34,9 +34,19 @@ from __future__ import annotations
 import pytest
 
 # 🔴 등록은 import 부작용이다 — `static` 을 들여와야 REGISTRY 가 찬다.
-import src.analyzer.io.static  # noqa: F401  pylint: disable=unused-import
+#    `# noqa: F401` 단독은 flake8 전용이라 CodeQL `py/unused-import` 가 발화하고,
+#    정의만 두면 `py/unused-global-variable` 로 옮겨갈 뿐이다. 정본은 튜플-참조
+#    **두 줄**(정의 + 소실 시 loud-fail) — `docs/workflow/verify.md::### side-effect-only ORM import`.
+import src.analyzer.io.static as _adapter_registration
 from src.analyzer.pure import language as _language
 from src.analyzer.pure.registry import REGISTRY, AnalyzeContext
+
+_SIDE_EFFECT_MODULES = (_adapter_registration,)
+if not REGISTRY:
+    raise RuntimeError(
+        f"side-effect import 소실 — {[m.__name__ for m in _SIDE_EFFECT_MODULES]} 를 "
+        "들여왔는데 어댑터 REGISTRY 가 비었다"
+    )
 
 
 def _detectable_languages() -> frozenset[str]:
