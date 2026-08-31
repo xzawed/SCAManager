@@ -52,7 +52,8 @@ class _CppCheckAnalyzer:
                     "--quiet",
                     ctx.tmp_path,
                 ],
-                capture_output=True, text=True, timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
             )
             # 🔴 **성공하면 항상 봉투를 낸다** — 그래서 빈 stderr 가 판별식이다.
             #    CI 실바이너리 실측(cppcheck 2.13.0, #1580 `W2-SHAPE`):

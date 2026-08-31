@@ -67,7 +67,7 @@ class _TscAnalyzer:
                     "--module", "esnext",
                     "--allowJs",
                 ] + jsx_flag + [ctx.tmp_path],
-                capture_output=True, text=True,
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
                 timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
             )
             output = r.stderr or r.stdout

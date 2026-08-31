@@ -72,7 +72,8 @@ class _PylintAnalyzer:
             r = subprocess.run(  # nosec B603 B607
                 ["pylint", ctx.tmp_path, "--output-format=json",
                  f"--disable={disable}"],
-                capture_output=True, text=True, timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
             )
             if not r.stdout.strip().startswith("["):
                 raise _fail("pylint", ctx, r)
@@ -135,7 +136,8 @@ class _Flake8Analyzer:
         try:
             r = subprocess.run(  # nosec B603 B607
                 cmd,
-                capture_output=True, text=True, timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
             )
             issues = []
             for line in r.stdout.strip().splitlines():
@@ -205,7 +207,8 @@ class _BanditAnalyzer:
         try:
             r = subprocess.run(  # nosec B603 B607
                 ["bandit", "-f", "json", "-q", ctx.tmp_path],
-                capture_output=True, text=True, timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
             )
             if not r.stdout.strip().startswith("{"):
                 raise _fail("bandit", ctx, r)

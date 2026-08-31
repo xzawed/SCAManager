@@ -156,7 +156,8 @@ class _ESLintAnalyzer:
                 # in a TemporaryDirectory while the app cwd is the repo root, so omitting it makes
                 # every JS/TS file silently skipped (#1226 defect 5).
                 cwd=os.path.dirname(ctx.tmp_path),
-                capture_output=True, text=True, timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
             )
         except subprocess.TimeoutExpired:
             ctx.timed_out = True
