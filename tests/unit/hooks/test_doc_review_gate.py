@@ -416,6 +416,46 @@ class TestClassifyFileGrade:
     def test_readme_is_important(self):
         assert classify_file_grade("README.md") == "important"
 
+    def test_scripts_readme_carrying_a_directive_is_important(self):
+        """🔴 주석은 「승격했다」고 적었는데 목록에는 없었다 — 등급은 `skip` 이었다(실측).
+
+        `src/scripts/README.md` 는 "Production code MUST NOT import from `src/scripts/`" 를
+        담는 **지시 표면**이다. 루트 README 패턴(`^README...`)은 이 경로를 잡지 않는다.
+        A recorded promotion that never reached the list left the directive surface ungraded.
+        """
+        assert classify_file_grade("src/scripts/README.md") == "important"
+
+    def test_other_src_readmes_stay_skip(self):
+        """대조군 — `src/**` 아래 README 를 통째로 올린 것이 아니다."""
+        assert classify_file_grade("src/analyzer/README.md") == "skip"
+        assert classify_file_grade("docs/README.md") == "skip"
+
+    def test_every_important_pattern_matches_something_on_disk(self):
+        """🔴 빈 분모를 채점하지 않는다 — 트리가 사라진 패턴은 커버리지가 조용히 0 이다.
+
+        주석은 이 규칙을 두 번 적어 뒀지만 강제하는 곳이 없었다. 개수를 못박지 않고
+        **집합이 비었는가**만 본다 — 정당한 삭제(패턴까지 함께 지움)는 벌하지 않는다.
+        Enforce the rule the comments state: a pattern whose tree is gone measures nothing.
+        """
+        from doc_review_gate import _CRITICAL, _IMPORTANT, _LOW_RISK  # noqa: PLC0415
+
+        root = Path(__file__).resolve().parents[3]
+        every = [
+            p.relative_to(root).as_posix()
+            for p in root.rglob("*")
+            if p.is_file() and ".git" not in p.parts and "node_modules" not in p.parts
+        ]
+        assert every, "리포에서 파일을 하나도 못 읽었다 — 이 시험이 공허하다"
+        empty = [
+            pattern
+            for pattern in (*_CRITICAL, *_IMPORTANT, *_LOW_RISK)
+            if not any(re.match(pattern, f, re.IGNORECASE) for f in every)
+        ]
+        assert not empty, (
+            "디스크에 하나도 매칭되지 않는 등급 패턴이 있다 — 빈 분모를 채점한다:\n"
+            + "\n".join(f"  {p}" for p in empty)
+        )
+
     def test_workflow_artifact_is_not_reviewed(self):
         """워크플로 산출·퇴역 이력은 심의 대상이 아니다."""
         assert classify_file_grade("docs/reports/artifacts/2026-04-19/round-1.log") == "skip"
@@ -1778,6 +1818,50 @@ def _consistency_prompt() -> str:
     """게이트가 consistency 에이전트에게 넣는 본문 — 로더를 우회하지 않는다.
     The body the gate actually injects; do not open the .md by path."""
     return _read_agent_prompt("consistency")
+
+
+def test_missing_agent_prompt_raises_instead_of_substituting_one():
+    """🔴 프롬프트 파일이 없으면 **터진다** — 범용 한 줄로 대체하지 않는다.
+
+    이전 판은 `"당신은 문서 {agent} 검토자입니다…"` 를 돌려줬다. 그러면 에이전트 .md 를
+    옮기거나 이름을 바꾼 순간 게이트가 **다른 검토자**로 조용히 바뀌고, 그 결과는
+    「심의해서 통과시켰다」와 구별되지 않는다 — 이 리포의 지배 결함 그 형태다.
+    A substituted generic prompt is indistinguishable from a real review that approved.
+    """
+    with pytest.raises(OSError) as exc:
+        _read_agent_prompt("nonexistent-agent")
+    assert "doc-nonexistent-agent-reviewer.md" in str(exc.value), (
+        "어느 파일이 없는지 말하지 않으면 진단이 안 된다"
+    )
+
+
+def test_a_missing_prompt_becomes_inoperative_never_an_approval():
+    """🔴 그 예외가 **차단이 아니라 미심의 표기**로 착지한다 (정책 17 — 안정성).
+
+    호출부가 받지 못하면 `asyncio.gather` 밖으로 튀어 훅 전체가 죽는다. 죽는 것과
+    통과시키는 것 사이의 자리가 `_inoperative` 다: `decision=warn` 으로 편집은 막지 않되
+    `inoperative=True` 로 승인과 절대 같은 값이 되지 않는다.
+    """
+    import asyncio  # noqa: PLC0415
+
+    from doc_review_gate import _call_single_agent  # noqa: PLC0415
+
+    result = asyncio.run(
+        _call_single_agent(MagicMock(), "nonexistent-agent", "diff", "ctx")
+    )
+    assert result["inoperative"] is True, "미심의가 표기되지 않았다"
+    assert result["decision"] != "approve", "심의를 못 했는데 승인 값이 나왔다"
+    assert "doc-nonexistent-agent-reviewer.md" in result["detail"]
+
+
+def test_the_real_agents_all_load_through_the_loader():
+    """대조군 — 실제 3 에이전트는 전부 읽힌다(위 red 가 '항상 red' 가 아님)."""
+    from doc_review_gate import _AGENT_NAMES  # noqa: PLC0415
+
+    loaded = {agent: _read_agent_prompt(agent) for agent in _AGENT_NAMES}
+    assert len(loaded) == 3, f"에이전트가 3개가 아니다: {sorted(loaded)}"
+    empty = [agent for agent, body in loaded.items() if not body.strip()]
+    assert not empty, f"프롬프트가 빈 에이전트: {empty}"
 
 
 def test_consistency_prompt_strips_frontmatter_via_the_gate_loader():
