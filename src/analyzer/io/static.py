@@ -71,23 +71,24 @@ _BINARY_OVERRIDES: dict[str, str] = {}
 
 
 def _binary_is_absent(tool: str) -> bool:
-    """`is_enabled()` 가 False 인 **두 원인**을 가른다 — 바이너리 부재인가, 정책상 미적용인가.
+    """`is_enabled()` 가 False 인 **두 원인**을 가른다 — 바이너리가 없는가, 있는데 못 도는가.
 
-    ## 🔴 왜 필요한가 (2026-08-17 운영 회귀 — 실측)
+    ## 🔴 왜 필요한가
 
-    `_run_analyzers` 는 `is_enabled()` 가 False 이면 무조건 `unavailable_tools` 에 넣는다.
-    그런데 그 메서드는 두 가지를 **구별하지 않는다**:
+    `_run_analyzers` 는 `is_enabled()` 가 False 이면 무조건 `unavailable_tools` 에 넣는데,
+    그 메서드는 두 가지를 **구별하지 않는다**(실측: 어댑터 25개 중 24개는 순수 `which`,
+    나머지 하나가 아래 복합 판정이다):
 
-    - `slither.is_enabled` → `shutil.which("slither") is not None` = **바이너리 부재**
-    - `_BanditAnalyzer.is_enabled` → `not ctx.is_test` = **이 파일엔 해당 없음**
+    - `python.py::        return shutil.which("bandit") is not None` = **바이너리 부재** — 조달 회귀다
+    - `slither.py::    def is_enabled(self, ctx: AnalyzeContext) -> bool:` = which 통과 뒤 **설치된 solc 아티팩트와 pragma** 까지 본다
+      → 바이너리는 있고 **이 파일을 못 도는** 것이다. 조달은 멀쩡하다.
 
-    bandit 은 `PROVISIONED_ANALYZERS` 안에 있으므로, 부재를 조달 회귀로 승격하는 판정이
-    바이너리 확인 없이 돌면 **모든 Python 테스트 파일이 `incomplete`** 가 된다
-    (실측: `analyze_file("tests/unit/test_foo.py", …)` → `unavailable=['bandit'] incomplete=True`).
-    그러면 테스트를 건드리는 모든 PR 의 auto-merge 가 막힌다 — 조달은 멀쩡한데.
+    둘을 합치면 후자가 조달 회귀로 승격돼 auto-merge 가 막힌다 — 고칠 것이 없는데.
+    `PROVISIONED_ANALYZERS` 안 도구일수록 그 오판의 폭발 반경이 크다.
 
-    이전 코드가 이 함정을 밟지 않았던 것은 판정이 `ran == 0` 안에 갇혀 있었기 때문이다.
-    그 게이트를 푸는 순간(조달 회귀를 실제로 잡기 위해) 이 구별이 **필수**가 된다.
+    🔴 「이 파일엔 정책상 해당 없음」은 여기가 아니라 `supports` 다(실측: `is_enabled` 가
+    정책 술어를 읽는 어댑터는 **0개**). `python.py::        return ctx.language == "python" and not ctx.is_test` 가 그 자리를 보여준다 —
+    `is_enabled` 에 두면 그 파일의 도구가 `unavailable_tools` 로 가서 같은 오판이 난다.
 
     `shutil.which` 는 「바이너리가 있는가」의 직접 관측이라 `is_enabled` 의 의도 모호성을
     타지 않는다.

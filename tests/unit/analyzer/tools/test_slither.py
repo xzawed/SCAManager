@@ -370,6 +370,31 @@ def test_falls_back_to_which_when_solc_select_is_absent(monkeypatch):
     assert _SlitherAnalyzer().is_enabled(_ctx()) is True
 
 
+def test_disabled_when_neither_solc_select_nor_solc_is_present(monkeypatch):
+    """🔴 폴백의 **반대쪽** — solc-select 도 없고 `which("solc")` 도 None 이면 꺼진다.
+
+    위 시험 하나만 두면 폴백은 한쪽만 재어진다. 뮤테이션 실측(#1568 잔여3):
+    `return shutil.which("solc") is not None` 을 `return True` 로 바꿔도 **55 passed** —
+    아무도 안 잡았다. `return False` 로 바꿔야 겨우 위 시험 하나가 걸렸다.
+
+    🔴 기존 헬퍼(`_enabled_with`·`_enabled_with_pragma`)로는 잴 수 없다 — 둘 다 `solc` 에
+    대해 **항상 경로를 돌려준다**. 이름별로 가르는 패치를 따로 쓴다.
+    The other half of the fallback: with neither solc-select nor a native solc, it must be off.
+    """
+    import builtins
+    monkeypatch.setattr("src.analyzer.io.tools.slither.shutil.which",
+                        lambda name: None if name == "solc" else f"/usr/bin/{name}")
+    real_import = builtins.__import__
+
+    def _no_solc_select(name, *a, **k):
+        if name.startswith("solc_select"):
+            raise ImportError("no solc_select")
+        return real_import(name, *a, **k)
+
+    monkeypatch.setattr(builtins, "__import__", _no_solc_select)
+    assert _SlitherAnalyzer().is_enabled(_ctx()) is False
+
+
 # ── pragma 사전 점검: 핀된 컴파일러가 못 맞추는 계약은 **벽이 아니라 skip** (#1568 B) ──
 #
 # `railway.toml` 은 solc **0.8.20 하나만** 핀한다. 그 컴파일러가 만족하지 못하는 pragma 를
@@ -437,10 +462,53 @@ def test_missing_pragma_still_runs(monkeypatch):
     assert _enabled_with_pragma(monkeypatch, "contract V {}\n") is True
 
 
-def test_unparsable_pragma_still_runs(monkeypatch):
-    """🔴 파싱 실패는 「못 맞춘다」가 아니다 — 실행하고 결과로 판정한다."""
+@pytestmark_semver
+def test_unreadable_pragma_skips_instead_of_walling(monkeypatch):
+    """🔴 「pragma 가 없다」와 「pragma 가 있는데 못 읽었다」는 다르다.
+
+    전자는 제약이 없으니 최신으로 도는 것이 맞다. 후자는 **제약이 있다는 것을 아는데
+    평가만 못 한** 상태다 — 그때 돌리면 못 맞추는 컴파일러가 빈 stdout 을 내 **벽**이 된다.
+    벽보다 skip 이 낫다는 것이 `#1571` 이 세운 계약이고, 조달 축이 그 사실을 기록한다.
+
+    옛 판(`test_unparsable_pragma_still_runs`)은 이 자리에서 `is True` 를 단언해
+    **벽을 계약으로 못박고 있었다** (#1568 잔여1).
+    """
     src = "pragma solidity 이건범위가아니다;\ncontract V {}\n"
+    assert _enabled_with_pragma(monkeypatch, src) is False
+
+
+# ── 적법한 Solidity 철자인데 NpmSpec 이 거부하는 것들 (#1568 잔여1) ──────────
+#
+# 🔴 `NpmSpec` 은 npm 문법이라 연산자 뒤 공백·절 사이 공백 없음을 거부한다(실측,
+#    semantic_version 2.10.0). Solidity 는 둘 다 적법하다. 정규화 없이 「파싱 실패 = skip」
+#    으로 가면 **핀된 컴파일러가 만족하는** 파일까지 전담 관측면을 잃는다 — 아래 4행이 그것이다.
+
+@pytestmark_semver
+@pytest.mark.parametrize("pragma", [
+    ">= 0.8.0",        # 연산자 뒤 공백
+    "^ 0.8.0",         # 캐럿 뒤 공백
+    ">= 0.8.20",       # 연산자 뒤 공백 + 정확 버전
+    ">=0.7.0  <0.9.0",  # 절 사이 공백 2개
+])
+def test_spellings_npmspec_rejects_but_the_pin_satisfies_still_run(monkeypatch, pragma):
+    """🔴 과차단 방지 — 0.8.20 이 만족하는 철자는 정규화해서라도 돌아야 한다."""
+    src = f"// SPDX-License-Identifier: MIT\npragma solidity {pragma};\ncontract V {{}}\n"
     assert _enabled_with_pragma(monkeypatch, src) is True
+
+
+@pytestmark_semver
+@pytest.mark.parametrize("pragma", [
+    ">= 0.4.22 < 0.6.0",  # 연산자 뒤 공백
+    ">=0.4.24<0.6.0",     # 절 사이 공백 없음
+])
+def test_spellings_npmspec_rejects_that_the_pin_cannot_satisfy_skip(monkeypatch, pragma):
+    """🔴 부정 통제 — 정규화해도 **못 맞추면** skip 이다.
+
+    정규화가 「전부 통과」로 흐르지 않는지 잰다. 이 두 행이 없으면 위 시험은
+    「정규화가 무엇이든 True 로 만든다」와 구별되지 않는다.
+    """
+    src = f"// SPDX-License-Identifier: MIT\npragma solidity {pragma};\ncontract V {{}}\n"
+    assert _enabled_with_pragma(monkeypatch, src) is False
 
 
 @pytestmark_semver

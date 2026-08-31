@@ -184,7 +184,7 @@ class _BanditAnalyzer:
         bandit 은 `PROVISIONED_ANALYZERS` 안이라 **모든 테스트 파일이 조달 회귀로 승격**된다
         (테스트를 건드리는 PR 전부 auto-merge 차단 — 그 회귀가 실제로 났다).
         `supports` 로 옮기면 그 파일에서 bandit 은 «지원 대상 아님» 이 되어 두 집합 어디에도
-        들어가지 않는다. `static.py:75-90` 이 이 구별을 계약으로 적어 두었다.
+        들어가지 않는다. `static.py::def _binary_is_absent` 가 이 구별을 계약으로 적어 두었다.
         Policy non-applicability belongs in `supports`: `is_enabled=False` means "binary absent",
         which promotes provisioned tools to a deployment regression.
         """
