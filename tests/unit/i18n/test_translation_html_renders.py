@@ -76,6 +76,7 @@ _MARKUP_LT = re.compile(r"<[A-Za-z/!?]")
 #    CSS 속성 이름도 실측 어휘로 천장을 친다 — 현재 쓰이는 것은 이 셋뿐이다.
 # Capping attribute names is not enough; cap the CSS property vocabulary too.
 _ALLOWED_STYLE_PROPS = {"font-size", "color", "font-weight"}
+_ALLOWED_CLASSES = {"br-md"}
 
 
 def _walk(obj, prefix: str = ""):
@@ -172,6 +173,7 @@ class _Balance(HTMLParser):
         self.tags: Counter = Counter()
         self.attrs: list[tuple[str, str, str]] = []
         self.errors: list[str] = []
+        self.exotic: list[str] = []
         self.events = 0
 
     def handle_starttag(self, tag, attrs):
@@ -188,14 +190,21 @@ class _Balance(HTMLParser):
         for name, value in attrs:
             self.attrs.append((tag, name.lower(), value or ""))
 
+    # 🔴 주석·선언·처리명령은 번역문에 설 자리가 없고, **미종료 주석은 페이지 나머지를 삼킨다**
+    #    (`정상 <!-- 열고 안 닫음` 은 사건 1개를 내며 어휘·균형 검사를 그대로 통과했다 — 실측).
+    #    사건 수만 맞추면 잡히지 않으므로 종류 자체를 위반으로 기록한다.
+    # An unterminated comment eats the rest of the page while satisfying every count-based check.
     def handle_comment(self, data):
         self.events += 1
+        self.exotic.append("주석")
 
     def handle_decl(self, decl):
         self.events += 1
+        self.exotic.append(f"선언 <!{decl[:20]}>")
 
     def handle_pi(self, data):
         self.events += 1
+        self.exotic.append("처리명령")
 
     def handle_endtag(self, tag):
         self.events += 1
@@ -208,6 +217,58 @@ class _Balance(HTMLParser):
             self.stack.pop()
         else:
             self.stack.pop()
+
+
+def offences_in(value: str) -> list[str]:
+    """`| safe` 로 내보내도 되는 값인가 — 위반 사유 목록(빈 목록 = 통과).
+
+    🔴 **판정은 여기 한 곳에만 있다.** 이 규칙을 프로브에서 다시 구현하면 그 사본이 늙어,
+    가드를 고쳐도 프로브는 옛 규칙으로 「통과」라고 답한다 — 실제로 그렇게 두 건을 놓쳤다.
+    조사할 일이 있으면 이 함수를 부른다.
+    Single source of judgement; a re-implemented probe silently answers with yesterday's rules.
+    """
+    reasons: list[str] = []
+    balance = _Balance()
+    balance.feed(value)
+    balance.close()
+
+    opened = len(_MARKUP_LT.findall(value))
+    if opened != balance.events:
+        reasons.append(
+            f"마크업을 여는 `<` {opened}개인데 파서 사건은 {balance.events}개다 — "
+            "끝나지 않은 태그는 아무 사건도 내지 않고 나머지 페이지를 삼킨다"
+        )
+    outside = set(balance.tags) - _ALLOWED_TAGS
+    if outside:
+        reasons.append(f"허용 밖 태그 {sorted(outside)}")
+    if balance.exotic:
+        reasons.append(f"번역문에 {', '.join(balance.exotic)} 이 있다")
+
+    for tag, name, attr_value in balance.attrs:
+        if (tag, name) not in _ALLOWED_ATTRS:
+            reasons.append(f"허용 밖 속성 <{tag} {name}=…>")
+        elif name == "class" and attr_value not in _ALLOWED_CLASSES:
+            reasons.append(f"허용 밖 class {attr_value!r}")
+        elif name == "href" and not _SAFE_HREF.match(attr_value):
+            reasons.append(f"href 가 `#`·`https://` 가 아니다: {attr_value!r}")
+        elif name == "style":
+            props = {
+                chunk.split(":", 1)[0].strip().lower()
+                for chunk in attr_value.split(";")
+                if ":" in chunk
+            }
+            outside_props = props - _ALLOWED_STYLE_PROPS
+            if outside_props or not props:
+                reasons.append(
+                    f"허용 밖 CSS 속성 {sorted(outside_props) or '(파싱 실패)'}"
+                    f" in style={attr_value!r}"
+                )
+
+    if balance.errors:
+        reasons.append("; ".join(balance.errors))
+    if balance.stack:
+        reasons.append(f"안 닫은 태그 {balance.stack}")
+    return reasons
 
 
 class _Anything:
@@ -348,39 +409,7 @@ def test_markup_rendered_as_safe_is_well_formed_and_in_vocabulary():
             if value is None:
                 continue
             checked += 1
-            balance = _Balance()
-            balance.feed(value)
-            balance.close()
-            opened = len(_MARKUP_LT.findall(value))
-            if opened != balance.events:
-                offences.append(
-                    f"{lang}/{key} — 마크업을 여는 `<` {opened}개인데 파서 사건은 {balance.events}개다."
-                    " 끝나지 않은 태그는 아무 사건도 내지 않고 나머지 페이지를 삼킨다"
-                )
-            outside = set(balance.tags) - _ALLOWED_TAGS
-            if outside:
-                offences.append(f"{lang}/{key} — 허용 밖 태그 {sorted(outside)}")
-            for tag, name, value in balance.attrs:
-                if (tag, name) not in _ALLOWED_ATTRS:
-                    offences.append(f"{lang}/{key} — 허용 밖 속성 <{tag} {name}=…>")
-                elif name == "href" and not _SAFE_HREF.match(value):
-                    offences.append(f"{lang}/{key} — href 가 `#`·`https://` 가 아니다: {value!r}")
-                elif name == "style":
-                    props = {
-                        chunk.split(":", 1)[0].strip().lower()
-                        for chunk in value.split(";")
-                        if ":" in chunk
-                    }
-                    outside_props = props - _ALLOWED_STYLE_PROPS
-                    if outside_props or not props:
-                        offences.append(
-                            f"{lang}/{key} — 허용 밖 CSS 속성 {sorted(outside_props) or '(파싱 실패)'}"
-                            f" in style={value!r}"
-                        )
-            if balance.errors:
-                offences.append(f"{lang}/{key} — {'; '.join(balance.errors)}")
-            if balance.stack:
-                offences.append(f"{lang}/{key} — 안 닫은 태그 {balance.stack}")
+            offences += [f"{lang}/{key} — {reason}" for reason in offences_in(value)]
 
     assert checked, "값을 하나도 못 읽었다 — 이 시험이 공허하다"
     assert not offences, (
