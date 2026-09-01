@@ -51,7 +51,7 @@ jobs:
         # (`FileUpdater#updated_version_comment` 가 `comment.end_with?(previous_version)` 로 판정).
         # 설명을 뒤에 붙이면 재작성이 skip 돼 주석만 stale 로 남는다 — 그게 이 이슈의 원인이었다.
         # 🔴 Keep the comment ENDING with the version; dependabot only rewrites it in that shape.
-        uses: trufflesecurity/trufflehog@bcfcf73aaf4759d4dadc2783177c245a02792318  # v3.97.0
+        uses: trufflesecurity/trufflehog@20652fbbdefffcdaa493a5bf57ab2ac6b1db715b  # v3.97.1
         with:
           path: ./
           base: ${{ github.event.pull_request.base.sha }}
@@ -73,7 +73,7 @@ jobs:
         if: github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000'
         # 핀 범위·주석 형식 규약은 위 PR 스텝 주석 참조 (#1239). 두 스텝은 항상 동일 SHA·동일 형식.
         # Pin scope and comment-shape rules: see the PR step above (#1239). Both steps stay in lockstep.
-        uses: trufflesecurity/trufflehog@bcfcf73aaf4759d4dadc2783177c245a02792318  # v3.97.0
+        uses: trufflesecurity/trufflehog@20652fbbdefffcdaa493a5bf57ab2ac6b1db715b  # v3.97.1
         with:
           path: ./
           base: ${{ github.event.before }}
