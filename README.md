@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/xzawed/SCAManager/actions/workflows/ci.yml/badge.svg)](https://github.com/xzawed/SCAManager/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/xzawed/SCAManager/actions/workflows/codeql.yml/badge.svg)](https://github.com/xzawed/SCAManager/actions/workflows/codeql.yml)
-[![Tests](https://img.shields.io/badge/Tests-8128%2B_total_(7921_unit_%2B_207_integration)-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-8146%2B_total_(7939_unit_%2B_207_integration)-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
 [![E2E](https://img.shields.io/badge/E2E-122_in_CI-brightgreen?style=flat-square&logo=playwright&logoColor=white)](e2e/)
 [![pylint](https://img.shields.io/badge/pylint-9.99%2F10-brightgreen?style=flat-square&logo=python&logoColor=white)](src/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.141-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
@@ -159,10 +159,10 @@ not analyze what it was given should not be able to score well.
 <br>
 
 Claude reviews **49 languages**, each against its own checklist. **27** of those also have a static
-analyzer behind them. There are **25 registered analyzers**; **16** ship in every deployment as the
+analyzer behind them. There are **24 registered analyzers**; **16** ship in every deployment as the
 contract described above, and the rest run when their binary happens to be on `PATH`.
 
-A local `make run` will not have all 25 available, and that is fine — a missing *optional* analyzer
+A local `make run` will not have all 24 available, and that is fine — a missing *optional* analyzer
 is skipped quietly. [docs/STATE.md](docs/STATE.md) carries the current counts.
 
 Languages with static analysis:

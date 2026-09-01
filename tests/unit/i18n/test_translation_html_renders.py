@@ -1,0 +1,471 @@
+"""HTML 을 담은 번역문이 **글자가 아니라 마크업으로** 렌더되고, 그 마크업이 성립한다.
+
+## 왜 — 운영자 화면에 `<strong>` 이 글자로 보이고 있었다 (실측)
+
+프로덕션 Jinja 환경(`src.ui._helpers.templates.env`, `autoescape=True`)으로 실제 템플릿 줄을
+렌더한 결과:
+
+    <li>&lt;strong&gt;RLS 적용&lt;/strong&gt; = PostgreSQL 만 (SQLite 단위 테스트 자동 skip)</li>
+
+세 언어 합집합으로 HTML 태그를 담은 번역 키 50개 중 **5개**가 `| safe` 없이 렌더돼
+태그가 그대로 글자였다(`admin.rls_audit.info_li1`, `admin.operations.info_li1`~`li4`).
+
+🔴 이 축을 보는 가드가 없었다. `test_i18n_args_safe_contract.py` 는 **반대 방향**만 본다 —
+`| safe` 에 kwargs 가 붙는 것을 막을 뿐, `| safe` 가 **빠진** 것은 보지 않는다.
+
+## 이 파일이 강제하는 것 — 두 축
+
+1. **도달** — 태그를 담은 번역은 브라우저에 마크업으로 닿는다. `| safe` 문자열을 세지 않고
+   **프로덕션 env 로 그 줄을 렌더해서** 본다. 예외는 속성 위치 하나뿐이다
+   (`data-i18n-*="{{ ... }}"` 안에서는 이스케이프가 정답이고, JS 가 읽어 다시 삽입한다).
+2. **성립** — `| safe` 는 **키**에 붙지 값에 붙지 않는다. 값에 `<strong>` 을 안 닫으면
+   굵게가 페이지 뒤쪽으로 번지고 `</ul><script>` 는 레이아웃을 깬다. 이스케이프였을 때는
+   못생긴 글자로 끝났다 — `| safe` 가 그 실패를 «보기 싫음»에서 «페이지 깨짐»으로 바꾼다
+   (적대 검증이 실증). 그래서 어휘와 균형을 잰다.
+
+A translation carrying markup must reach the browser as markup — and that markup must actually
+close, because `| safe` upgrades a typo from ugly text into a broken page.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+from collections import Counter
+from html.parser import HTMLParser
+from pathlib import Path
+
+os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
+os.environ.setdefault("GITHUB_WEBHOOK_SECRET", "test_secret")
+os.environ.setdefault("GITHUB_TOKEN", "ghp_test")
+os.environ.setdefault("TELEGRAM_BOT_TOKEN", "123:ABC")
+os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
+os.environ.setdefault("SESSION_SECRET", "0123456789abcdef0123456789abcdef")
+
+_ROOT = Path(__file__).resolve().parents[3]
+_TRANSLATIONS = _ROOT / "src" / "i18n" / "translations"
+_TEMPLATES = _ROOT / "src" / "templates"
+
+# 번역값 안의 HTML 태그. 🔴 세 언어를 **합집합**으로 본다 — 초판 계기는 ko.json 만 봐서
+# en/ja 에만 태그가 있는 키를 통째로 놓쳤다.
+_TAG = re.compile(r"<(strong|b|em|i|code|br|span|a|p|ul|li|div|sub|sup)\b[^>]*>", re.IGNORECASE)
+_KEY_IN_CALL = re.compile(r"'([^']+)'\s*\|\s*i18n_args")
+
+# 번역문이 쓸 수 있는 태그 — **의도적으로 좁다**. 넓히는 것은 의식적인 편집이어야 한다.
+# 현재 어휘를 실측해서 정했다(strong 63 · code 9 · br 3 · a 3, 불균형 0건).
+_ALLOWED_TAGS = {"strong", "code", "br", "a"}
+_VOID_TAGS = {"br", "img", "hr", "input", "meta", "link", "wbr"}
+
+# 🔴 태그 이름만 보면 `<a href="javascript:alert(1)" onclick="x()">` 가 통과한다
+#    (Grok claim-review `01a05a5a` 실측). 속성도 같은 방식으로 잰다 — 현재 어휘를 실측해서
+#    정한 **천장**이지 바닥이 아니다. 전부 지워도 초록, 새 속성은 의식적인 편집이어야 red 다.
+# Tag names alone let `onclick`/`javascript:` through; cap the attribute vocabulary too.
+_ALLOWED_ATTRS = {("br", "class"), ("code", "style"), ("a", "href"), ("a", "style")}
+_SAFE_HREF = re.compile(r"^(#|https://)")
+
+# 🔴 `끝나지 않은 <a href="#x` 는 파서가 **아무 사건도 내지 않아** 어휘·균형 검사를 통째로
+#    빠져나간다(Grok claim-review `01a05a68` 실측). 그러나 브라우저는 그 지점부터 페이지
+#    나머지를 태그 안으로 삼킨다. 그래서 「마크업을 여는 `<`」의 수와 파서가 낸 사건 수를 맞춘다.
+#    `<` 뒤가 글자·`/`·`!`·`?` 가 아니면 브라우저도 글자로 읽으므로 세지 않는다 —
+#    `<strong>< {reject}</strong>`(en 의 비교 기호)가 그 형태이고 정당하다.
+# A truncated tag emits no parser event at all; count markup-opening `<` and require a match.
+_MARKUP_LT = re.compile(r"<[A-Za-z/!?]")
+
+# 🔴 `style` 을 값째로 통과시키면 `style="background:url(javascript:alert(1))"` 가 지나간다
+#    (Grok claim-review `01a05a71` 실측). 속성 이름만 보는 것으로는 부족하다.
+#    CSS 속성 이름도 실측 어휘로 천장을 친다 — 현재 쓰이는 것은 이 셋뿐이다.
+# Capping attribute names is not enough; cap the CSS property vocabulary too.
+_ALLOWED_STYLE_PROPS = {"font-size", "color", "font-weight"}
+_ALLOWED_CLASSES = {"br-md"}
+# 속성 **이름** 천장으로는 값 안의 실행 구문을 못 막는다 — `font-size:expression(alert(1))`
+# 은 프로퍼티가 `font-size` 라 통과했다(실측). 값에서 이 셋만 잘라낸다. `var(` 는 정당하다.
+# A property-name ceiling cannot see into the value; these three constructs execute.
+_STYLE_POISON = re.compile(r"(url\s*\(|expression\s*\(|javascript\s*:)", re.IGNORECASE)
+
+
+def _walk(obj, prefix: str = ""):
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            yield from _walk(value, f"{prefix}.{key}" if prefix else key)
+    elif isinstance(obj, str):
+        yield prefix, obj
+
+
+def _tables() -> dict[str, dict[str, str]]:
+    """`{언어: {키: 값}}`."""
+    return {
+        path.stem: dict(_walk(json.loads(path.read_text(encoding="utf-8"))))
+        for path in sorted(_TRANSLATIONS.glob("*.json"))
+    }
+
+
+def _locales_with_markup(tables: dict[str, dict[str, str]]) -> dict[str, set[str]]:
+    """`{키: 그 키에 태그가 있는 언어들}` — 한 언어라도 있으면 담는다."""
+    found: dict[str, set[str]] = {}
+    for lang, table in tables.items():
+        for key, text in table.items():
+            if _TAG.search(text):
+                found.setdefault(key, set()).add(lang)
+    return found
+
+
+_JINJA_BLOCK = re.compile(r"\{\{.*?\}\}|\{%.*?%\}|\{#.*?#\}", re.DOTALL)
+_SENTINEL = re.compile("\x02J(\\d+)\x03")
+
+
+class _Where(HTMLParser):
+    """치환된 Jinja 자리표가 **속성값**에서 나오는지 **본문 텍스트**에서 나오는지 기록한다."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=False)
+        self.position: dict[int, str] = {}
+
+    def _mark(self, blob: str, where: str) -> None:
+        for match in _SENTINEL.finditer(blob or ""):
+            self.position.setdefault(int(match.group(1)), where)
+
+    def handle_starttag(self, tag, attrs):
+        for name, value in attrs:
+            self._mark(name, "attribute")
+            self._mark(value or "", "attribute")
+
+    def handle_startendtag(self, tag, attrs):
+        self.handle_starttag(tag, attrs)
+
+    def handle_data(self, data):
+        self._mark(data, "text")
+
+    def handle_comment(self, data):
+        self._mark(data, "comment")
+
+
+def _positions(text: str) -> tuple[list[tuple[int, str]], dict[int, str]]:
+    """`([(원본 오프셋, 블록 본문)], {블록 번호: 위치})`.
+
+    🔴 블록 본문을 **치환 시점에** 들고 온다. 초판은 `{{` 위치에서 다음 `}}` 까지를 블록이라
+    불렀는데, `{% if x %}` 에는 `}}` 가 없어 **뒤쪽 `{{ ... }}` 를 통째로 삼켰다** —
+    자리 3개가 남의 키를 자기 것으로 보고했다(자리 목록 덤프에서 발견).
+
+    🔴 손으로 쓴 상태기계로는 못 푼다. 초판은 따옴표 개수를, 두 번째 판은 `<`…`>` 상태를
+    셌는데, `settings.html` 의 `<script>` 안 `<`·화살표 함수·주석에 걸려 **12자리를 속성으로
+    건너뛰었다** — 즉 조용한 fail-open 이었다(자리 목록을 덤프해서 발견).
+    그래서 Jinja 블록을 자리표로 바꾸고 **진짜 HTML 파서**에게 묻는다.
+
+    분류 못 한 자리는 **값을 지어내지 않는다** — 호출부가 그것을 red 로 만든다.
+    초판은 `"text"` 로 기본값을 줬는데, 그 기본값을 밟는 시험이 하나도 없어 뮤테이션으로
+    `"attribute"` 로 바꿔도 전부 초록이었다(실측) — 죽은 코드이자 조용한 fail-open 자리다.
+    Ask a real HTML parser; an unclassified site is reported as such, never defaulted.
+    """
+    offsets: list[tuple[int, str]] = []
+
+    def _replace(match: re.Match) -> str:
+        offsets.append((match.start(), match.group(0)))
+        return f"\x02J{len(offsets) - 1}\x03"
+
+    parser = _Where()
+    parser.feed(_JINJA_BLOCK.sub(_replace, text))
+    parser.close()
+    return offsets, parser.position
+
+
+class _Balance(HTMLParser):
+    """열린 태그가 닫히는가 + 어떤 태그를 썼는가."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.stack: list[str] = []
+        self.tags: Counter = Counter()
+        self.attrs: list[tuple[str, str, str]] = []
+        self.errors: list[str] = []
+        self.exotic: list[str] = []
+        self.events = 0
+
+    def handle_starttag(self, tag, attrs):
+        self.tags[tag] += 1
+        self.events += 1
+        for name, value in attrs:
+            self.attrs.append((tag, name.lower(), value or ""))
+        if tag not in _VOID_TAGS:
+            self.stack.append(tag)
+
+    def handle_startendtag(self, tag, attrs):
+        self.tags[tag] += 1
+        self.events += 1
+        for name, value in attrs:
+            self.attrs.append((tag, name.lower(), value or ""))
+
+    # 🔴 주석·선언·처리명령은 번역문에 설 자리가 없고, **미종료 주석은 페이지 나머지를 삼킨다**
+    #    (`정상 <!-- 열고 안 닫음` 은 사건 1개를 내며 어휘·균형 검사를 그대로 통과했다 — 실측).
+    #    사건 수만 맞추면 잡히지 않으므로 종류 자체를 위반으로 기록한다.
+    # An unterminated comment eats the rest of the page while satisfying every count-based check.
+    def handle_comment(self, data):
+        self.events += 1
+        self.exotic.append("주석")
+
+    def handle_decl(self, decl):
+        self.events += 1
+        self.exotic.append(f"선언 <!{decl[:20]}>")
+
+    def handle_pi(self, data):
+        self.events += 1
+        self.exotic.append("처리명령")
+
+    def handle_endtag(self, tag):
+        self.events += 1
+        if tag in _VOID_TAGS:
+            return
+        if not self.stack:
+            self.errors.append(f"여는 태그 없이 </{tag}>")
+        elif self.stack[-1] != tag:
+            self.errors.append(f"</{tag}> 인데 열린 것은 <{self.stack[-1]}>")
+            self.stack.pop()
+        else:
+            self.stack.pop()
+
+
+def offences_in(value: str) -> list[str]:
+    """`| safe` 로 내보내도 되는 값인가 — 위반 사유 목록(빈 목록 = 통과).
+
+    🔴 **판정은 여기 한 곳에만 있다.** 이 규칙을 프로브에서 다시 구현하면 그 사본이 늙어,
+    가드를 고쳐도 프로브는 옛 규칙으로 「통과」라고 답한다 — 실제로 그렇게 두 건을 놓쳤다.
+    조사할 일이 있으면 이 함수를 부른다.
+    Single source of judgement; a re-implemented probe silently answers with yesterday's rules.
+    """
+    reasons: list[str] = []
+    balance = _Balance()
+    balance.feed(value)
+    balance.close()
+
+    opened = len(_MARKUP_LT.findall(value))
+    if opened != balance.events:
+        reasons.append(
+            f"마크업을 여는 `<` {opened}개인데 파서 사건은 {balance.events}개다 — "
+            "끝나지 않은 태그는 아무 사건도 내지 않고 나머지 페이지를 삼킨다"
+        )
+    outside = set(balance.tags) - _ALLOWED_TAGS
+    if outside:
+        reasons.append(f"허용 밖 태그 {sorted(outside)}")
+    if balance.exotic:
+        reasons.append(f"번역문에 {', '.join(balance.exotic)} 이 있다")
+
+    for tag, name, attr_value in balance.attrs:
+        if (tag, name) not in _ALLOWED_ATTRS:
+            reasons.append(f"허용 밖 속성 <{tag} {name}=…>")
+        elif name == "class" and attr_value not in _ALLOWED_CLASSES:
+            reasons.append(f"허용 밖 class {attr_value!r}")
+        elif name == "href" and not _SAFE_HREF.match(attr_value):
+            reasons.append(f"href 가 `#`·`https://` 가 아니다: {attr_value!r}")
+        elif name == "style":
+            props = {
+                chunk.split(":", 1)[0].strip().lower()
+                for chunk in attr_value.split(";")
+                if ":" in chunk
+            }
+            outside_props = props - _ALLOWED_STYLE_PROPS
+            if outside_props or not props:
+                reasons.append(
+                    f"허용 밖 CSS 속성 {sorted(outside_props) or '(파싱 실패)'}"
+                    f" in style={attr_value!r}"
+                )
+            poison = _STYLE_POISON.search(attr_value)
+            if poison:
+                reasons.append(f"style 값에 실행 구문 {poison.group(1)!r}")
+
+    if balance.errors:
+        reasons.append("; ".join(balance.errors))
+    if balance.stack:
+        reasons.append(f"안 닫은 태그 {balance.stack}")
+    return reasons
+
+
+class _Anything:
+    """무엇을 물어도 답하는 자리표 — 렌더가 이름 부재로 죽지 않게 한다.
+
+    🔴 `__html__` 을 두지 않는다. 두면 autoescape 가 이 값을 안전하다고 믿어
+    **이 시험이 재려는 바로 그 축**(이스케이프 여부)이 오염된다.
+    """
+
+    def __getattr__(self, _name: str) -> "_Anything":
+        return self
+
+    def __getitem__(self, _key) -> "_Anything":
+        return self
+
+    def __iter__(self):
+        return iter(())
+
+    def __str__(self) -> str:
+        return ""
+
+
+def _render_env():
+    """프로덕션이 쓰는 Jinja 환경 — 시험 전용 환경을 새로 만들지 않는다.
+
+    🔴 `undefined` 를 느슨한 것으로 바꾸지 않는다. 그러면 이스케이프 동작이 다른 환경을 잰다.
+    대신 그 줄이 참조하는 이름을 파싱해서 채워 넣는다.
+    """
+    import importlib  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    return importlib.import_module("src.ui._helpers").templates.env
+
+
+def _render(env, source: str, locale: str) -> str:
+    from jinja2 import meta  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    names = meta.find_undeclared_variables(env.parse(source))
+    context = {name: _Anything() for name in names}
+    context["locale"] = locale
+    return env.from_string(source).render(context)
+
+
+def _markup_call_sites():
+    """`(파일, 줄번호, 줄, 키, 위치)` — 태그를 담은 키를 렌더하는 템플릿 자리 전부.
+
+    한 줄에 같은 키가 두 번(속성 + 텍스트) 나오는 실제 형태가 있으므로 **자리마다** 낸다.
+    """
+    marked = _locales_with_markup(_tables())
+    for path in sorted(_TEMPLATES.rglob("*.html")):
+        text = path.read_text(encoding="utf-8")
+        offsets, position = _positions(text)
+        for number, (start, block) in enumerate(offsets):
+            if not block.startswith("{{"):
+                continue  # `{% %}` 문·`{# #}` 주석은 값을 출력하지 않는다
+            key_match = _KEY_IN_CALL.search(block)
+            if key_match is None or key_match.group(1) not in marked:
+                continue
+            key = key_match.group(1)
+            line_no = text.count("\n", 0, start) + 1
+            # 렌더는 그 `{{` 가 들어 있는 **한 줄**로 한다(위치 판정만 파일 전체를 본다).
+            line_start = text.rfind("\n", 0, start) + 1
+            line_end = text.find("\n", start)
+            line = text[line_start: len(text) if line_end == -1 else line_end]
+            yield path, line_no, line, key, position.get(number, "unclassified"), marked[key]
+
+
+def test_html_bearing_translations_reach_the_browser_as_markup():
+    """🔴 태그를 담은 번역이 글자로 보이면 red — `| safe` 유무가 아니라 **출력**을 본다.
+
+    🔴 **태그가 있는 언어를 전부 렌더한다.** ko 만 렌더하면 en/ja 에만 태그가 있는 키가
+    조용히 통과한다 — 키는 합집합으로 모아 놓고 렌더는 한 언어만 하는, 스스로 만든 구멍이다
+    (Grok claim-review `01a05a36`).
+    """
+    env = _render_env()
+    sites = list(_markup_call_sites())
+    assert sites, "태그를 담은 번역을 렌더하는 템플릿 자리를 하나도 못 찾았다 — 이 시험이 공허하다"
+
+    rendered = 0
+    escaped: list[str] = []
+    unrenderable: list[str] = []
+    unclassified = [
+        f"{path.name}:{number} {key}"
+        for path, number, _line, key, position, _locales in sites
+        if position not in {"text", "attribute", "comment"}
+    ]
+    assert not unclassified, (
+        "이 자리가 속성인지 텍스트인지 판정하지 못했다 — 못 쟀으면 초록이 아니라 red 다:\n"
+        + "\n".join(f"  {u}" for u in unclassified)
+    )
+
+    for path, number, line, key, position, locales in sites:
+        if position != "text":
+            continue
+        for locale in sorted(locales):
+            try:
+                out = _render(env, line.strip(), locale)
+            except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+                unrenderable.append(
+                    f"{path.name}:{number} {key} [{locale}] — {type(exc).__name__}: {exc}"
+                )
+                continue
+            rendered += 1
+            if "&lt;" in out:
+                escaped.append(f"{path.name}:{number} {key} [{locale}]")
+
+    assert rendered, "텍스트 위치에서 렌더된 자리가 0이다 — 이 시험이 공허하다"
+    assert not unrenderable, (
+        "그 줄을 단독으로 렌더하지 못했다 — 못 쟀으면 초록이 아니라 red 다:\n"
+        + "\n".join(f"  {u}" for u in unrenderable)
+    )
+    assert not escaped, (
+        "HTML 을 담은 번역이 **글자로** 렌더된다 — 운영자 화면에 `<strong>` 이 그대로 보인다.\n"
+        "  텍스트 위치면 `| safe` 를 붙이고, 속성값이면 그 `{{` 를 여는 태그 안에 두어라:\n"
+        + "\n".join(f"  {e}" for e in escaped)
+    )
+
+
+def test_markup_rendered_as_safe_is_well_formed_and_in_vocabulary():
+    """🔴 `| safe` 는 **키**에 붙지 값에 붙지 않는다 — 값이 성립하는지는 따로 잰다.
+
+    실증(적대 검증): `<strong>` 을 안 닫은 값은 `| safe` 에서 굵게가 페이지 뒤쪽으로 번지고,
+    `</ul><script>` 는 리스트를 끊고 script 노드를 만든다. 이스케이프였을 때는 둘 다
+    못생긴 글자로 끝났다. 이 시험이 그 승격을 CI red 로 되돌린다.
+    """
+    tables = _tables()
+    safe_keys = {
+        key
+        for _path, _number, line, key, position, _locales in _markup_call_sites()
+        if position == "text" and "| safe" in line
+    }
+    assert safe_keys, "`| safe` 로 렌더되는 마크업 키가 0개다 — 이 시험이 공허하다"
+
+    offences: list[str] = []
+    checked = 0
+    for key in sorted(safe_keys):
+        for lang, table in tables.items():
+            value = table.get(key)
+            if value is None:
+                continue
+            checked += 1
+            offences += [f"{lang}/{key} — {reason}" for reason in offences_in(value)]
+
+    assert checked, "값을 하나도 못 읽었다 — 이 시험이 공허하다"
+    assert not offences, (
+        "`| safe` 로 나가는 번역값이 성립하지 않는다 — 페이지가 깨지거나 스크립트가 실린다:\n"
+        f"  허용 태그 = {sorted(_ALLOWED_TAGS)}\n"
+        f"  허용 속성 = {sorted(_ALLOWED_ATTRS)} · href 는 `#`·`https://` 만\n"
+        f"  허용 CSS 속성 = {sorted(_ALLOWED_STYLE_PROPS)}\n"
+        "  (넓히려면 이 목록을 의식적으로 고쳐라 — 자동이스케이프에 구멍을 하나 더 내는 일이다)\n"
+        + "\n".join(f"  {o}" for o in offences)
+    )
+
+
+def _classify(fragment: str) -> list[str]:
+    """조각 안의 `{{ }}` 자리들을 순서대로 분류한다 — 정본 함수를 그대로 쓴다."""
+    offsets, position = _positions(fragment)
+    return [
+        position.get(number, "text")
+        for number, (_start, block) in enumerate(offsets)
+        if block.startswith("{{")
+    ]
+
+
+def test_the_attribute_exception_is_real_and_not_a_blanket_pass():
+    """🔴 부정 통제 — 속성 예외가 **모든 자리**를 통과시키는 문이 아님을 잰다.
+
+    여기 있는 반례는 전부 **내 초판 판정식이 실제로 틀렸던 입력**이다:
+
+    - 따옴표 개수 세기 판: 한 줄에 `{{` 가 둘이면 첫 번째만 봤고, 텍스트 안의 짝 없는
+      따옴표에 속았다(Grok `01a05a36`).
+    - `<`…`>` 상태기계 판: `<script>` 안의 `<` 에 걸려 그 뒤 **12자리를 속성으로 건너뛰었다**.
+    - 블록 끝을 `}}` 로 찾던 판: `{% if %}` 가 뒤쪽 `{{ }}` 를 통째로 삼켰다.
+    """
+    assert _classify("<li>{{ 'a.b' | i18n_args(locale) }}</li>") == ["text"]
+    assert _classify("<div data-x=\"{{ 'a.b' | i18n_args(locale) }}\"></div>") == ["attribute"]
+
+    # 🔴 한 자리에 속성과 텍스트가 함께 — 두 번째는 텍스트다
+    assert _classify(
+        "<div data-x=\"{{ 'p.k' | i18n_args(locale) }}\">{{ 'a.b' | i18n_args(locale) }}</div>"
+    ) == ["attribute", "text"]
+
+    # 🔴 텍스트 안의 짝 없는 따옴표는 속성이 아니다
+    assert _classify("<li>Note: \"RLS {{ 'a.b' | i18n_args(locale) }}</li>") == ["text"]
+
+    # 🔴 앞선 `<script>` 안의 `<` 가 뒤 자리를 오염시키지 않는다
+    assert _classify(
+        "<script>if (a < b) { x() }</script>\n<li>{{ 'a.b' | i18n_args(locale) }}</li>"
+    ) == ["text"]
+
+    # 🔴 `{% if %}` 가 뒤따르는 `{{ }}` 를 삼키지 않는다 — 자리는 둘로 세어지고 값은 텍스트다
+    assert _classify(
+        "{% if flag %}<li>{{ 'a.b' | i18n_args(locale) }}</li>{% endif %}"
+    ) == ["text"]

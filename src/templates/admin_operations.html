@@ -350,10 +350,10 @@
   <div class="admin-ops-info-card reveal">
     <h3 class="admin-ops-info-title">{{ 'admin.operations.info_title' | i18n_args(locale | default('ko')) }}</h3>
     <ul class="admin-ops-info-list">
-      <li>{{ 'admin.operations.info_li1' | i18n_args(locale | default('ko')) }}</li>
-      <li>{{ 'admin.operations.info_li2' | i18n_args(locale | default('ko')) }}</li>
-      <li>{{ 'admin.operations.info_li3' | i18n_args(locale | default('ko')) }}</li>
-      <li>{{ 'admin.operations.info_li4' | i18n_args(locale | default('ko')) }}</li>
+      <li>{{ 'admin.operations.info_li1' | i18n_args(locale | default('ko')) | safe }}</li>
+      <li>{{ 'admin.operations.info_li2' | i18n_args(locale | default('ko')) | safe }}</li>
+      <li>{{ 'admin.operations.info_li3' | i18n_args(locale | default('ko')) | safe }}</li>
+      <li>{{ 'admin.operations.info_li4' | i18n_args(locale | default('ko')) | safe }}</li>
       <li>{{ 'admin.operations.info_li5' | i18n_args(locale | default('ko')) }}</li>
     </ul>
   </div>
