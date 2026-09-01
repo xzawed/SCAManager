@@ -39,7 +39,7 @@ service to get it.
 ![SCAManager dashboard](docs/readme/dashboard.png)
 
 <sub>A local instance with seven days of seeded history — this is not what first boot looks like.
-The AI cost card reads $0.00 because the seed data never called the API.</sub>
+The AI cost card sits at zero because the seed data never called the API.</sub>
 
 </div>
 
@@ -57,7 +57,8 @@ a repository; the rest stays off until you switch it on.
 | **Approve / request changes** | Acts on GitHub for you, based on the score. | **Off** |
 | **Squash-merge** | Merges the pull request once the score is high enough. | **Off** |
 
-Every row is configured per repository, on that repository's **⚙️ Settings** page.
+Analysis and scoring always run. Every other row is configured per repository, on that
+repository's **⚙️ Settings** page.
 
 Two things happen once, when you add a repository, regardless of those settings: a **webhook is
 installed** on it, and — for **private** repositories only — a small `.scamanager/` directory
@@ -70,10 +71,15 @@ Before wiring anything up, you can run the same analysis over your working tree 
 line. It reads local files and never calls GitHub:
 
 ```bash
+cp .env.example .env                   # then fill SESSION_SECRET — see below
 python -m src.cli review --base main   # compare against a branch
 python -m src.cli review --staged      # or just what you have staged
 python -m src.cli review --no-ai       # skip Claude entirely — no API key needed
 ```
+
+The CLI needs the same `.env` as the server, because settings are validated at import. It does not
+need a running database, a GitHub app, or an Anthropic key — but without `SESSION_SECRET` even
+`--help` exits with a validation error.
 
 On Windows, use `py -3` in place of `python`.
 
@@ -105,13 +111,12 @@ commands. Open the [Makefile](Makefile), run the four above in order, and substi
 
 ### Filling in `.env`
 
-`.env.example` ships with working example values for most settings, so the app boots as soon as
-`DATABASE_URL` points at a real database. Three entries deserve attention before you use it for
-anything real:
+`.env.example` ships with working example values for most settings, but **`SESSION_SECRET` is
+deliberately empty and the app will not start until you fill it** — in every environment, not just
+production. Fill that, point `DATABASE_URL` at a real database, and it boots.
 
-- **`SESSION_SECRET`** — generate one with `openssl rand -hex 32`. Left alone, the app runs on a
-  publicly known development value and logs a warning; in production (an `https://` `APP_BASE_URL`,
-  or `ENVIRONMENT=production`) it refuses to start instead.
+- **`SESSION_SECRET`** — generate one with `openssl rand -hex 32`. Until it is set, startup fails
+  with `SESSION_SECRET must be at least 32 characters long`. There is no development fallback.
 - **`ANTHROPIC_API_KEY`** — without it there is no AI review, and no score can exceed 89.
 - **`GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`** — from a GitHub OAuth app, for signing in to
   the web UI.

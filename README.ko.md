@@ -38,7 +38,7 @@ Railway 프로젝트든 원하는 곳에서 돌아가며, GitHub 과 Anthropic �
 ![SCAManager 대시보드](docs/readme/dashboard.ko.png)
 
 <sub>7일치 이력을 미리 넣어 둔 로컬 인스턴스입니다 — 처음 띄웠을 때 보이는 화면은 아닙니다.
-AI 비용이 $0.00 인 것은 시드 데이터가 실제 API 를 호출하지 않았기 때문입니다.</sub>
+AI 비용 카드가 0 인 것은 시드 데이터가 실제 API 를 호출하지 않았기 때문입니다.</sub>
 
 </div>
 
@@ -56,7 +56,8 @@ AI 비용이 $0.00 인 것은 시드 데이터가 실제 API 를 호출하지 �
 | **승인 / 변경 요청** | 점수에 따라 GitHub 에서 대신 행동합니다. | **꺼짐** |
 | **Squash 머지** | 점수가 기준을 넘으면 PR 을 머지합니다. | **꺼짐** |
 
-표의 모든 항목은 저장소마다 따로, 해당 저장소의 **⚙️ 설정** 페이지에서 정합니다.
+분석·채점은 항상 돌아갑니다. 나머지 항목은 저장소마다 따로, 해당 저장소의 **⚙️ 설정**
+페이지에서 정합니다.
 
 설정과 무관하게, 저장소를 추가할 때 두 가지가 한 번 일어납니다. 저장소에 **웹훅이 설치**되고,
 **비공개 저장소에 한해** 작은 `.scamanager/` 디렉터리(설정 파일과 CLI 훅 스크립트)가
@@ -68,10 +69,15 @@ AI 비용이 $0.00 인 것은 시드 데이터가 실제 API 를 호출하지 �
 로컬 파일만 읽고 GitHub 은 호출하지 않습니다.
 
 ```bash
+cp .env.example .env                   # 그리고 SESSION_SECRET 을 채웁니다 — 아래 참고
 python -m src.cli review --base main   # 특정 브랜치와 비교
 python -m src.cli review --staged      # 또는 staged 변경만
 python -m src.cli review --no-ai       # Claude 호출 생략 — API 키 없이 동작합니다
 ```
+
+CLI 도 서버와 같은 `.env` 가 필요합니다 — 설정이 임포트 시점에 검증되기 때문입니다. 돌아가는
+DB 도, GitHub 앱도, Anthropic 키도 필요 없지만, `SESSION_SECRET` 이 없으면 `--help` 조차
+검증 오류로 멈춥니다.
 
 Windows 에서는 `python` 대신 `py -3` 을 쓰시면 됩니다.
 
@@ -102,12 +108,13 @@ Windows 처럼 `make` 가 없는 환경이라면, 위 타깃은 각각 한두 �
 
 ### `.env` 채우기
 
-`.env.example` 에는 대부분의 설정에 동작하는 예시값이 들어 있어서, `DATABASE_URL` 만 실제 DB 로
-바꾸면 앱이 뜹니다. 실제로 쓰시기 전에 다음 세 가지는 확인해 주세요.
+`.env.example` 에는 대부분의 설정에 동작하는 예시값이 들어 있지만, **`SESSION_SECRET` 은 일부러
+비워 두었고 채우기 전까지는 앱이 뜨지 않습니다** — 프로덕션만이 아니라 모든 환경에서 그렇습니다.
+그것을 채우고 `DATABASE_URL` 을 실제 DB 로 바꾸면 뜹니다.
 
-- **`SESSION_SECRET`** — `openssl rand -hex 32` 로 하나 만드세요. 그대로 두면 공개된 개발용
-  기본값으로 동작하며 경고 로그만 남습니다. 프로덕션(`https://` 로 시작하는 `APP_BASE_URL`,
-  또는 `ENVIRONMENT=production`)에서는 부팅 자체를 거부합니다.
+- **`SESSION_SECRET`** — `openssl rand -hex 32` 로 하나 만드세요. 설정하기 전까지는
+  `SESSION_SECRET must be at least 32 characters long` 으로 기동이 실패합니다.
+  개발용 기본값으로 넘어가는 경로는 없습니다.
 - **`ANTHROPIC_API_KEY`** — 없으면 AI 리뷰가 돌지 않아 어떤 점수도 89점을 넘지 못합니다.
 - **`GITHUB_CLIENT_ID` · `GITHUB_CLIENT_SECRET`** — GitHub OAuth 앱에서 발급받습니다.
   웹 UI 로그인에 필요합니다.
