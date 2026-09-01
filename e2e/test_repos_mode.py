@@ -95,6 +95,83 @@ def test_repo_detail_score_chart_renders(seeded_page: Page, base_url: str):
     )
 
 
+def _seed_two_pages(db_path: str, count: int = 25) -> None:
+    """`PAGE_SIZE`(20)를 넘기는 분석 이력을 넣어 페이지네이션이 나타나게 한다."""
+    from sqlalchemy import create_engine, text
+    engine = create_engine(f"sqlite:///{db_path}")
+    with engine.connect() as conn:
+        row = conn.execute(text(
+            "SELECT id FROM repositories WHERE full_name='owner/testrepo'"
+        )).fetchone()
+        if row is None:
+            raise RuntimeError("_seed_repo must run before _seed_two_pages")
+        repo_id = row[0]
+        from src.scorer.reliability import score_is_unreliable  # noqa: PLC0415
+        result = {"summary": "page"}
+        for i in range(count):
+            conn.execute(text("""
+                INSERT OR IGNORE INTO analyses
+                    (repo_id, commit_sha, commit_message, score, grade, result, author_login,
+                     score_unreliable, created_at)
+                VALUES
+                    (:rid, :sha, :msg, :score, 'B', :res, 'e2e-tester',
+                     :unrel, datetime('now', :delta))
+            """), {"rid": repo_id, "sha": f"page-sha-{i:03d}", "msg": f"feat: page seed {i}",
+                   "score": 60 + (i * 7) % 35, "res": json.dumps(result),
+                   "delta": f"-{count - i} hours",
+                   "unrel": score_is_unreliable(result)})
+        conn.commit()
+    engine.dispose()
+
+
+@pytest.mark.e2e
+def test_repo_detail_rows_stay_visible_after_rerender(seeded_page: Page, base_url: str):
+    """🔴 표를 **다시 그린 뒤에도** 행이 보여야 한다 — 사용자에게 「내용 유실」로 보이던 사고.
+
+    `.reveal { opacity: 0 }` 이고 `.visible` 은 IntersectionObserver 가 붙인다. 그 관찰 등록은
+    로드 시점과 htmx 이벤트에서만 돌았는데, 리포 상세의 표는 평범한 JS 로 다시 그려진다
+    (페이지네이션·정렬·필터·검색). 그래서 재렌더된 행은 DOM 에 있으나 **영원히 opacity 0** 였다.
+    실측(수정 전): 2페이지 5/5 · 1페이지 복귀 20/20 · 정렬 20/20 이 전부 안 보임.
+
+    🔴 「행이 존재하는가」로 재지 않는다 — 그것은 사고 당시에도 참이었다. **computed opacity** 를
+    본다. 애니메이션이 실패할 때 「안 움직임」이 아니라 「안 보임」이 되던 것이 결함의 본체다.
+    Assert computed opacity, not row presence: the rows existed throughout the incident.
+    """
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    _seed_two_pages(db_path)
+    seeded_page.goto(f"{base_url}/repos/owner/testrepo")
+
+    def visible_rows() -> int:
+        # 🔴 표를 **화면 안에** 둔다. 맨 아래까지 스크롤하면 표가 화면 위로 밀려 관찰자가
+        #    발화하지 않고, 그러면 고쳐진 코드에서도 0 이 나온다(실측 — 이 시험의 첫 판이
+        #    그렇게 거짓 red 였다).
+        seeded_page.evaluate(
+            "() => { const r = document.querySelector('tbody tr.analysis-row');"
+            " if (r) r.scrollIntoView({block:'center'}); }"
+        )
+        seeded_page.wait_for_timeout(900)
+        return seeded_page.evaluate(
+            "() => Array.from(document.querySelectorAll('tbody tr.analysis-row'))"
+            ".filter(r => parseFloat(getComputedStyle(r).opacity) > 0.5).length"
+        )
+
+    assert visible_rows() > 0, "최초 렌더부터 행이 보이지 않는다 — 이 시험의 전제가 깨졌다"
+
+    # 🔴 번호 버튼으로 특정한다 — 「›」(다음) 버튼도 1페이지에서는 `data-page="2"` 라
+    #    속성만으로 고르면 두 개가 잡힌다(실측: strict mode violation).
+    pagination = seeded_page.locator("#pagination")
+    page_two = pagination.get_by_role("button", name="2", exact=True)
+    expect(page_two).to_be_visible()
+    page_two.click()
+    assert visible_rows() > 0, "2페이지로 넘긴 뒤 행이 하나도 보이지 않는다"
+
+    pagination.get_by_role("button", name="1", exact=True).click()
+    assert visible_rows() > 0, "1페이지로 되돌아온 뒤 행이 하나도 보이지 않는다"
+
+    seeded_page.locator(".sortable-th").first.click()
+    assert visible_rows() > 0, "정렬한 뒤 행이 하나도 보이지 않는다"
+
+
 @pytest.mark.e2e
 def test_repos_tab_visible(page: Page, base_url: str):
     """repos 탭 링크가 Dashboard에 표시된다."""

@@ -1003,6 +1003,33 @@
     document.addEventListener('htmx:afterSettle', document._initRevealHandler);
     document.addEventListener('htmx:historyRestore', document._initRevealHandler);
 
+    // 🔴 평범한 JS 가 넣은 .reveal 도 관찰한다 — 안 하면 **내용이 사라진다**.
+    //    htmx 이벤트만 듣던 이전 판에서, 리포 상세의 표를 다시 그리는 모든 경로
+    //    (페이지네이션·정렬·필터·검색)가 opacity:0 인 행을 남겼다. 실측(Playwright):
+    //    최초 로드는 20행 중 15행 노출, 2페이지 5/5 · 1페이지 복귀 20/20 · 정렬 20/20 이
+    //    전부 opacity 0 이었다. 애니메이션이 실패할 때 «안 움직임» 이 아니라 «안 보임» 이
+    //    되는 구조라, 호출부마다 기억해서 부르는 방식(누락 시 다시 사라짐)이 아니라
+    //    삽입 자체를 관찰한다.
+    // Observe .reveal inserted by plain JS too: without this, re-rendering a table leaves
+    // rows at opacity:0 — the animation's failure mode was invisible content, not a missing
+    // animation. Watching insertions cannot be forgotten at a call site.
+    if (document._revealMO) document._revealMO.disconnect();
+    document._revealMO = new MutationObserver(function(muts) {
+      muts.forEach(function(m) {
+        m.addedNodes.forEach(function(node) {
+          if (node.nodeType !== 1) return;
+          if (node.classList && node.classList.contains('reveal')
+              && !node.classList.contains('visible')) _revealIO.observe(node);
+          if (node.querySelectorAll) {
+            node.querySelectorAll('.reveal:not(.visible)').forEach(function(el) {
+              _revealIO.observe(el);
+            });
+          }
+        });
+      });
+    });
+    document._revealMO.observe(document.body, { childList: true, subtree: true });
+
     // KPI 카운트업 (data-count 속성 기반)
     // KPI count-up (data-count attribute based)
     function countUp(el, duration) {
