@@ -56,6 +56,13 @@ _KEY_IN_CALL = re.compile(r"'([^']+)'\s*\|\s*i18n_args")
 _ALLOWED_TAGS = {"strong", "code", "br", "a"}
 _VOID_TAGS = {"br", "img", "hr", "input", "meta", "link", "wbr"}
 
+# 🔴 태그 이름만 보면 `<a href="javascript:alert(1)" onclick="x()">` 가 통과한다
+#    (Grok claim-review `01a05a5a` 실측). 속성도 같은 방식으로 잰다 — 현재 어휘를 실측해서
+#    정한 **천장**이지 바닥이 아니다. 전부 지워도 초록, 새 속성은 의식적인 편집이어야 red 다.
+# Tag names alone let `onclick`/`javascript:` through; cap the attribute vocabulary too.
+_ALLOWED_ATTRS = {("br", "class"), ("code", "style"), ("a", "href"), ("a", "style")}
+_SAFE_HREF = re.compile(r"^(#|https://)")
+
 
 def _walk(obj, prefix: str = ""):
     if isinstance(obj, dict):
@@ -149,15 +156,20 @@ class _Balance(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.stack: list[str] = []
         self.tags: Counter = Counter()
+        self.attrs: list[tuple[str, str, str]] = []
         self.errors: list[str] = []
 
     def handle_starttag(self, tag, attrs):
         self.tags[tag] += 1
+        for name, value in attrs:
+            self.attrs.append((tag, name.lower(), value or ""))
         if tag not in _VOID_TAGS:
             self.stack.append(tag)
 
     def handle_startendtag(self, tag, attrs):
         self.tags[tag] += 1
+        for name, value in attrs:
+            self.attrs.append((tag, name.lower(), value or ""))
 
     def handle_endtag(self, tag):
         if tag in _VOID_TAGS:
@@ -315,6 +327,11 @@ def test_markup_rendered_as_safe_is_well_formed_and_in_vocabulary():
             outside = set(balance.tags) - _ALLOWED_TAGS
             if outside:
                 offences.append(f"{lang}/{key} — 허용 밖 태그 {sorted(outside)}")
+            for tag, name, value in balance.attrs:
+                if (tag, name) not in _ALLOWED_ATTRS:
+                    offences.append(f"{lang}/{key} — 허용 밖 속성 <{tag} {name}=…>")
+                elif name == "href" and not _SAFE_HREF.match(value):
+                    offences.append(f"{lang}/{key} — href 가 `#`·`https://` 가 아니다: {value!r}")
             if balance.errors:
                 offences.append(f"{lang}/{key} — {'; '.join(balance.errors)}")
             if balance.stack:
@@ -322,8 +339,10 @@ def test_markup_rendered_as_safe_is_well_formed_and_in_vocabulary():
 
     assert checked, "값을 하나도 못 읽었다 — 이 시험이 공허하다"
     assert not offences, (
-        "`| safe` 로 나가는 번역값이 성립하지 않는다 — 페이지가 깨진다:\n"
-        f"  허용 어휘 = {sorted(_ALLOWED_TAGS)} (넓히려면 이 목록을 의식적으로 고쳐라)\n"
+        "`| safe` 로 나가는 번역값이 성립하지 않는다 — 페이지가 깨지거나 스크립트가 실린다:\n"
+        f"  허용 태그 = {sorted(_ALLOWED_TAGS)}\n"
+        f"  허용 속성 = {sorted(_ALLOWED_ATTRS)} · href 는 `#`·`https://` 만\n"
+        "  (넓히려면 이 목록을 의식적으로 고쳐라 — 자동이스케이프에 구멍을 하나 더 내는 일이다)\n"
         + "\n".join(f"  {o}" for o in offences)
     )
 
