@@ -75,8 +75,10 @@ def _binary_is_absent(tool: str) -> bool:
     ## 🔴 왜 필요한가
 
     `_run_analyzers` 는 `is_enabled()` 가 False 이면 무조건 `unavailable_tools` 에 넣는데,
-    그 메서드는 두 가지를 **구별하지 않는다**(실측: 어댑터 24개 중 23개는 순수 `which`,
-    나머지 하나가 아래 복합 판정이다):
+    그 메서드는 두 가지를 **구별하지 않는다**. 대부분의 어댑터는 순수 `which` 이고, 일부는
+    아래처럼 런타임·아티팩트까지 보는 복합 판정이다(**몇 개인지 여기 적지 않는다** —
+    어댑터가 게이트를 얻을 때마다 늙고, 실제로 늙었다: 이 자리는 「나머지 하나」라고 적혀
+    있었지만 세어 보면 그렇지 않다):
 
     - `python.py::        return shutil.which("bandit") is not None` = **바이너리 부재** — 조달 회귀다
     - `slither.py::    def is_enabled(self, ctx: AnalyzeContext) -> bool:` = which 통과 뒤 **설치된 solc 아티팩트와 pragma** 까지 본다
@@ -185,9 +187,11 @@ def _run_analyzers(ctx: AnalyzeContext, result: StaticAnalysisResult) -> tuple[i
             # 내면 어댑터가 `[]` 를 돌려주기 때문이다(조달 축 = `unavailable_tools`).
             # 🔴 그 밖의 `OSError`(깨진 shebang · 권한 · which 통과 후 TOCTOU)는 **미분석**이므로
             # 여기로 올라와야 한다. 그것은 계약이지 아직 트리 전체의 사실이 아니다 —
-            # `FileNotFoundError` 로 좁힌 어댑터만 이 구별을 갖고, 남은 7개(#1557 W2)는
-            # 여전히 `except OSError` 로 삼켜 이 분기에 도달하지 않는다. 재고는
-            # `tests/unit/analyzer/test_adapter_fail_open_inventory.py::KNOWN_FAIL_OPEN`.
+            # `FileNotFoundError` 로 좁힌 어댑터만 이 구별을 갖고, 아직 `except OSError` 로
+            # 삼키는 어댑터는 이 분기에 도달하지 않는다. **몇 개인지 여기 적지 않는다** —
+            # 재고는 `tests/unit/analyzer/test_adapter_fail_open_inventory.py::KNOWN_FAIL_OPEN`
+            # 하나뿐이고, 여기 숫자를 두면 그 목록과 따로 늙는다(실측: 이 자리는 「7개」였고
+            # 실제는 5개였다 — 전환 커밋이 인벤토리 쪽 사본만 고쳤다).
             # Deliberate non-install never reaches here: the which() gate or a FileNotFoundError
             # returns []. Any other OSError *should* promote — that is the contract, not yet a
             # tree-wide fact: the W2 adapters still swallow OSError and never arrive here.
@@ -281,13 +285,15 @@ def analyze_file(  # pylint: disable=too-many-locals
     # 🔴 is_enabled() conflates "binary absent" with "not applicable here"; skip promotion when the
     # operator explicitly disabled tools, otherwise their own opt-out is reported back as a defect.
     # 🔴 미커버 언어 기록 — **차단하지 않는다** (사용자 결정: 가시화만).
-    # 인식 언어 47개 중 21개(lua·perl·haskell·r·julia·elm·erlang·zig·ocaml·graphql·toml·xml 등)는
-    # 지원 분석기가 **애초에 등록돼 있지 않다**. 그 PR 은 정적 45/45 만점을 받는데, 이는 "분석했더니
+    # 인식 언어의 **절반 가까이**(lua·perl·haskell·r·julia·elm·erlang·zig·ocaml·graphql·toml·xml 등)는
+    # 지원 분석기가 **애초에 등록돼 있지 않다**(수치는 적지 않는다 — 언어 맵과 REGISTRY 가
+    # 바뀔 때마다 늙는다. 실측: 이 자리는 「47개 중 21개」였고 실제는 49개 중 22개였다).
+    # 그 PR 은 정적 45/45 만점을 받는데, 이는 "분석했더니
     # 깨끗함" 이 아니라 "제품이 이 언어를 분석하지 않음" 이다. 바이너리 부재(위 incomplete)와 달리
     # 고칠 수 있는 조달 문제가 아니므로 차단하면 해당 언어 리포의 auto-merge 가 영구 불가가 된다
     # → 점수·게이트는 그대로 두고 사람이 오독하지 않도록 **표면화만** 한다.
-    # 🔴 Record uncovered languages WITHOUT blocking (user decision). 21 of 47 recognised languages
-    # have no registered analyzer at all; blocking would permanently disable auto-merge for those
+    # 🔴 Record uncovered languages WITHOUT blocking (user decision). Nearly half of the recognised
+    # languages have no registered analyzer at all; blocking would permanently disable auto-merge for those
     # repos, so surface it instead of gating on it.
     # `unknown` = 확장자 맵에 없는 파일(.txt·.md 등) — 코드가 아니므로 제외한다.
     if supported == 0 and language and language != "unknown":
