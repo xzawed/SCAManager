@@ -77,6 +77,10 @@ _MARKUP_LT = re.compile(r"<[A-Za-z/!?]")
 # Capping attribute names is not enough; cap the CSS property vocabulary too.
 _ALLOWED_STYLE_PROPS = {"font-size", "color", "font-weight"}
 _ALLOWED_CLASSES = {"br-md"}
+# 속성 **이름** 천장으로는 값 안의 실행 구문을 못 막는다 — `font-size:expression(alert(1))`
+# 은 프로퍼티가 `font-size` 라 통과했다(실측). 값에서 이 셋만 잘라낸다. `var(` 는 정당하다.
+# A property-name ceiling cannot see into the value; these three constructs execute.
+_STYLE_POISON = re.compile(r"(url\s*\(|expression\s*\(|javascript\s*:)", re.IGNORECASE)
 
 
 def _walk(obj, prefix: str = ""):
@@ -263,6 +267,9 @@ def offences_in(value: str) -> list[str]:
                     f"허용 밖 CSS 속성 {sorted(outside_props) or '(파싱 실패)'}"
                     f" in style={attr_value!r}"
                 )
+            poison = _STYLE_POISON.search(attr_value)
+            if poison:
+                reasons.append(f"style 값에 실행 구문 {poison.group(1)!r}")
 
     if balance.errors:
         reasons.append("; ".join(balance.errors))
