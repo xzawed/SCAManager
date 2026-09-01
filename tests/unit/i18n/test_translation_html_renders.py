@@ -71,6 +71,12 @@ _SAFE_HREF = re.compile(r"^(#|https://)")
 # A truncated tag emits no parser event at all; count markup-opening `<` and require a match.
 _MARKUP_LT = re.compile(r"<[A-Za-z/!?]")
 
+# 🔴 `style` 을 값째로 통과시키면 `style="background:url(javascript:alert(1))"` 가 지나간다
+#    (Grok claim-review `01a05a71` 실측). 속성 이름만 보는 것으로는 부족하다.
+#    CSS 속성 이름도 실측 어휘로 천장을 친다 — 현재 쓰이는 것은 이 셋뿐이다.
+# Capping attribute names is not enough; cap the CSS property vocabulary too.
+_ALLOWED_STYLE_PROPS = {"font-size", "color", "font-weight"}
+
 
 def _walk(obj, prefix: str = ""):
     if isinstance(obj, dict):
@@ -359,6 +365,18 @@ def test_markup_rendered_as_safe_is_well_formed_and_in_vocabulary():
                     offences.append(f"{lang}/{key} — 허용 밖 속성 <{tag} {name}=…>")
                 elif name == "href" and not _SAFE_HREF.match(value):
                     offences.append(f"{lang}/{key} — href 가 `#`·`https://` 가 아니다: {value!r}")
+                elif name == "style":
+                    props = {
+                        chunk.split(":", 1)[0].strip().lower()
+                        for chunk in value.split(";")
+                        if ":" in chunk
+                    }
+                    outside_props = props - _ALLOWED_STYLE_PROPS
+                    if outside_props or not props:
+                        offences.append(
+                            f"{lang}/{key} — 허용 밖 CSS 속성 {sorted(outside_props) or '(파싱 실패)'}"
+                            f" in style={value!r}"
+                        )
             if balance.errors:
                 offences.append(f"{lang}/{key} — {'; '.join(balance.errors)}")
             if balance.stack:
@@ -369,6 +387,7 @@ def test_markup_rendered_as_safe_is_well_formed_and_in_vocabulary():
         "`| safe` 로 나가는 번역값이 성립하지 않는다 — 페이지가 깨지거나 스크립트가 실린다:\n"
         f"  허용 태그 = {sorted(_ALLOWED_TAGS)}\n"
         f"  허용 속성 = {sorted(_ALLOWED_ATTRS)} · href 는 `#`·`https://` 만\n"
+        f"  허용 CSS 속성 = {sorted(_ALLOWED_STYLE_PROPS)}\n"
         "  (넓히려면 이 목록을 의식적으로 고쳐라 — 자동이스케이프에 구멍을 하나 더 내는 일이다)\n"
         + "\n".join(f"  {o}" for o in offences)
     )
