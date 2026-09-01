@@ -125,8 +125,10 @@ def _positions(text: str) -> tuple[list[tuple[int, str]], dict[int, str]]:
     건너뛰었다** — 즉 조용한 fail-open 이었다(자리 목록을 덤프해서 발견).
     그래서 Jinja 블록을 자리표로 바꾸고 **진짜 HTML 파서**에게 묻는다.
 
-    분류 못 한 자리는 `"text"` 로 둔다 — 그래야 「못 쟀음」이 통과가 아니라 검사로 간다.
-    Ask a real HTML parser; an unclassified site defaults to text so it is checked, not skipped.
+    분류 못 한 자리는 **값을 지어내지 않는다** — 호출부가 그것을 red 로 만든다.
+    초판은 `"text"` 로 기본값을 줬는데, 그 기본값을 밟는 시험이 하나도 없어 뮤테이션으로
+    `"attribute"` 로 바꿔도 전부 초록이었다(실측) — 죽은 코드이자 조용한 fail-open 자리다.
+    Ask a real HTML parser; an unclassified site is reported as such, never defaulted.
     """
     offsets: list[tuple[int, str]] = []
 
@@ -230,7 +232,7 @@ def _markup_call_sites():
             line_start = text.rfind("\n", 0, start) + 1
             line_end = text.find("\n", start)
             line = text[line_start: len(text) if line_end == -1 else line_end]
-            yield path, line_no, line, key, position.get(number, "text"), marked[key]
+            yield path, line_no, line, key, position.get(number, "unclassified"), marked[key]
 
 
 def test_html_bearing_translations_reach_the_browser_as_markup():
@@ -247,8 +249,18 @@ def test_html_bearing_translations_reach_the_browser_as_markup():
     rendered = 0
     escaped: list[str] = []
     unrenderable: list[str] = []
+    unclassified = [
+        f"{path.name}:{number} {key}"
+        for path, number, _line, key, position, _locales in sites
+        if position not in {"text", "attribute", "comment"}
+    ]
+    assert not unclassified, (
+        "이 자리가 속성인지 텍스트인지 판정하지 못했다 — 못 쟀으면 초록이 아니라 red 다:\n"
+        + "\n".join(f"  {u}" for u in unclassified)
+    )
+
     for path, number, line, key, position, locales in sites:
-        if position == "attribute":
+        if position != "text":
             continue
         for locale in sorted(locales):
             try:
