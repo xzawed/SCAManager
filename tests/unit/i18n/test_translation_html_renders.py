@@ -63,6 +63,14 @@ _VOID_TAGS = {"br", "img", "hr", "input", "meta", "link", "wbr"}
 _ALLOWED_ATTRS = {("br", "class"), ("code", "style"), ("a", "href"), ("a", "style")}
 _SAFE_HREF = re.compile(r"^(#|https://)")
 
+# 🔴 `끝나지 않은 <a href="#x` 는 파서가 **아무 사건도 내지 않아** 어휘·균형 검사를 통째로
+#    빠져나간다(Grok claim-review `01a05a68` 실측). 그러나 브라우저는 그 지점부터 페이지
+#    나머지를 태그 안으로 삼킨다. 그래서 「마크업을 여는 `<`」의 수와 파서가 낸 사건 수를 맞춘다.
+#    `<` 뒤가 글자·`/`·`!`·`?` 가 아니면 브라우저도 글자로 읽으므로 세지 않는다 —
+#    `<strong>< {reject}</strong>`(en 의 비교 기호)가 그 형태이고 정당하다.
+# A truncated tag emits no parser event at all; count markup-opening `<` and require a match.
+_MARKUP_LT = re.compile(r"<[A-Za-z/!?]")
+
 
 def _walk(obj, prefix: str = ""):
     if isinstance(obj, dict):
@@ -158,9 +166,11 @@ class _Balance(HTMLParser):
         self.tags: Counter = Counter()
         self.attrs: list[tuple[str, str, str]] = []
         self.errors: list[str] = []
+        self.events = 0
 
     def handle_starttag(self, tag, attrs):
         self.tags[tag] += 1
+        self.events += 1
         for name, value in attrs:
             self.attrs.append((tag, name.lower(), value or ""))
         if tag not in _VOID_TAGS:
@@ -168,10 +178,21 @@ class _Balance(HTMLParser):
 
     def handle_startendtag(self, tag, attrs):
         self.tags[tag] += 1
+        self.events += 1
         for name, value in attrs:
             self.attrs.append((tag, name.lower(), value or ""))
 
+    def handle_comment(self, data):
+        self.events += 1
+
+    def handle_decl(self, decl):
+        self.events += 1
+
+    def handle_pi(self, data):
+        self.events += 1
+
     def handle_endtag(self, tag):
+        self.events += 1
         if tag in _VOID_TAGS:
             return
         if not self.stack:
@@ -324,6 +345,12 @@ def test_markup_rendered_as_safe_is_well_formed_and_in_vocabulary():
             balance = _Balance()
             balance.feed(value)
             balance.close()
+            opened = len(_MARKUP_LT.findall(value))
+            if opened != balance.events:
+                offences.append(
+                    f"{lang}/{key} — 마크업을 여는 `<` {opened}개인데 파서 사건은 {balance.events}개다."
+                    " 끝나지 않은 태그는 아무 사건도 내지 않고 나머지 페이지를 삼킨다"
+                )
             outside = set(balance.tags) - _ALLOWED_TAGS
             if outside:
                 offences.append(f"{lang}/{key} — 허용 밖 태그 {sorted(outside)}")
