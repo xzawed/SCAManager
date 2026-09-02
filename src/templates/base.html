@@ -338,14 +338,20 @@
     /* Primary — 기존 .btn-primary + 새 .btn--primary */
     .btn-primary, .btn--primary {
       background: var(--accent);
-      color: #fff;
+      /* 🔴 하드코딩된 #fff 가 components.css 의 var(--accent-text-on) 을 덮고 있었다.
+         명시도가 같아 나중에 온 이 블록이 이겼고, 그래서 catppuccin 은 토큰에
+         어두운 글자색을 이미 갖고도 흰 글자로 그려져 2.03:1 이었다.
+         A hardcoded #fff was overriding components.css's var(--accent-text-on)
+         at equal specificity — catppuccin already had a dark on-accent token
+         that never applied (2.03:1). */
+      color: var(--accent-text-on, #fff);
       border-color: var(--accent);
       box-shadow: 0 1px 3px rgba(94,106,210,.25);
     }
     .btn-primary:hover, .btn--primary:hover {
       background: var(--accent-hover);
       border-color: var(--accent-hover);
-      color: #fff;
+      color: var(--accent-text-on, #fff);
       transform: translateY(-1px);
       box-shadow: 0 3px 12px rgba(94,106,210,.4);
       text-decoration: none;
@@ -525,6 +531,18 @@
       .nav-user-name { display: none; }
       /* Step A (S3): theme/logout 버튼 클릭 영역 보강 (이전 11px → 안 변경하고 padding 만 확장) */
       .theme-btn, .nav-logout-btn { padding: 8px 10px; font-size: 11px; min-height: 40px; box-sizing: border-box; }
+      /* 🔴 nav 는 flex-wrap: nowrap 이고 자식 넷이 flex-shrink: 0 이라, 좁아져도 줄바꿈으로
+         도망치지 못하고 **문서 전체**를 가로로 늘린다(실측: 320px 에서 +89px · 375px 에서 +34px,
+         화면과 무관하게 scrollWidth 409px 고정). 실패 모습이 「nav 가 좀 좁다」가 아니라
+         「페이지가 옆으로 밀린다」라서, 좁은 화면에서는 라벨과 뱃지를 접어 min-content 폭을
+         뷰포트 아래로 내린다. 아이콘과 클릭 영역(40px)은 유지한다.
+         nav cannot wrap and four children never shrink, so its min-content width stretches the
+         whole document sideways. Fold labels/badge on narrow screens; keep icons and hit areas. */
+      nav { padding: 0 max(var(--space-3), env(safe-area-inset-left))
+                     0 max(var(--space-3), env(safe-area-inset-right)); }
+      .nav-badge { display: none; }
+      #themeName, #langName { display: none; }
+      .theme-btn .chevron { display: none; }
       /* Step A (S4): 480px 분기 container 도 safe-area-inset */
       .container { padding: var(--space-4) max(var(--space-2), env(safe-area-inset-right)) var(--space-4) max(var(--space-2), env(safe-area-inset-left)); }
     }
@@ -583,8 +601,6 @@
     .reveal.visible { animation: var(--anim-reveal-up); animation-delay: calc(var(--i,0) * 60ms); }
     /* 탭 패널: .active 클래스로 show/hide + tab-in 애니메이션
        Tab panel: show/hide via .active class with tab-in animation */
-    .tab-panel { display: none; }
-    .tab-panel.active { display: block; animation: var(--anim-tab-in); }
 
     /* ── Nav badge + avatar ───────────────────────────────────────────────── */
     /* Beta 뱃지 — accent 색상, pill 형태
@@ -702,7 +718,6 @@
        HTMX hx-boost: upgrades anchor clicks to fetch-based swaps (eliminates full page reload) -->
   <script src="/static/vendor/htmx.min.js"></script>
   <script src="/static/js/effects.js"></script>
-  <script src="/static/js/tweaks.js"></script>
   <!-- 자식 템플릿 스크립트 블록 — htmx 로드 이후 배치 (race condition 방지)
        Child template scripts block — placed after htmx load to prevent race conditions -->
   {% block scripts %}{% endblock %}
@@ -934,25 +949,6 @@
         };
         document.addEventListener('click', document._hamburgerCloseHandler);
       }
-
-      // 탭 패널 활성화 (.tab-btn + .tab-panel 패턴)
-      // Tab panel activation (.tab-btn + .tab-panel pattern)
-      document.querySelectorAll('.tab-btn').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-          var target = btn.dataset.tab;
-          document.querySelectorAll('.tab-btn').forEach(function(b) {
-            b.classList.toggle('active', b === btn);
-          });
-          document.querySelectorAll('.tab-panel').forEach(function(p) {
-            if (p.id === target) {
-              p.classList.add('active');
-              p.offsetWidth; // force reflow for re-animation
-            } else {
-              p.classList.remove('active');
-            }
-          });
-        }, { signal: sig });
-      });
     }
 
     _initNavHandlers();

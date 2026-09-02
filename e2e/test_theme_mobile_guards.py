@@ -236,3 +236,161 @@ def test_desktop_btn_no_mobile_min_height(page, base_url):
         f"데스크탑 .btn min-height = {height}px — 모바일 분기 누수 의심"
         " (@media max-width:768px 가 데스크탑 적용 중)"
     )
+
+
+# ── D. UI 감사 후속 — 가로 넘침 · accent 대비 · 테마 속성 일치 ─────────────
+# UI audit follow-up: horizontal overflow, on-accent contrast, theme attribute agreement.
+
+_NARROW_VIEWPORTS = [(320, 640), (375, 667)]
+
+# 대비 계산 — 알파를 조상 위로 합성한 «칠해지는» 색으로 잰다.
+# Contrast helper: composite alpha up the ancestor chain to the painted color.
+_CONTRAST_JS = r"""
+(sel) => {
+  const el = document.querySelector(sel);
+  if (!el) return {found: false};
+  const parse = c => { const m=(c||'').match(/[\d.]+/g);
+    return m ? {r:+m[0],g:+m[1],b:+m[2],a:m.length>3?+m[3]:1} : null; };
+  const over = (f,b) => { const a=f.a+b.a*(1-f.a); if(!a) return {r:0,g:0,b:0,a:0};
+    return {r:(f.r*f.a+b.r*b.a*(1-f.a))/a, g:(f.g*f.a+b.g*b.a*(1-f.a))/a,
+            b:(f.b*f.a+b.b*b.a*(1-f.a))/a, a}; };
+  const paintedBg = n => { let acc={r:255,g:255,b:255,a:1}; const chain=[];
+    for(let x=n;x;x=x.parentElement) chain.push(x);
+    for(let i=chain.length-1;i>=0;i--){ const cs=getComputedStyle(chain[i]);
+      const c=parse(cs.backgroundColor); if(c&&c.a>0) acc=over(c,acc);
+      const bi=cs.backgroundImage;
+      if(bi&&bi!=='none'){ const g=(bi.match(/rgba?\([^)]+\)/g)||[]).map(parse).filter(Boolean);
+        if(g.length) acc=over({...g[0],a:1},acc); }        // 그라디언트 첫 정지점으로 근사
+    } return acc; };
+  const lum = c => { const f=v=>{v/=255; return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4);};
+    return 0.2126*f(c.r)+0.7152*f(c.g)+0.0722*f(c.b); };
+  const cs = getComputedStyle(el);
+  const bg = paintedBg(el);
+  const fg = over(parse(cs.webkitTextFillColor || cs.color), bg);
+  const l1 = lum(fg), l2 = lum(bg);
+  return {found: true, ratio: (Math.max(l1,l2)+0.05)/(Math.min(l1,l2)+0.05),
+          size: parseFloat(cs.fontSize), color: cs.color,
+          // 🔴 이 계기는 background-color 만 읽는다. 그라디언트가 칠해지면 잰 값이
+          //    실제와 다르므로, 조용한 초록 대신 그 사실을 돌려보내 red 로 만든다.
+          // This instrument reads background-color only; report a painted gradient so the
+          // test fails loudly instead of passing on a number it cannot compute.
+          bgImage: (cs.backgroundImage || 'none')};
+}
+"""
+
+
+@pytest.mark.parametrize("width,height", _NARROW_VIEWPORTS)
+@pytest.mark.parametrize("path", ["/", "/dashboard"])
+def test_no_horizontal_overflow_on_narrow_viewports(page, base_url, width, height, path):
+    """🔴 좁은 화면에서 문서가 가로로 스크롤되면 안 된다.
+
+    실측(수정 전): 화면과 무관하게 `scrollWidth = 409px` 로 고정돼 375px 에서 34px,
+    320px 에서 89px 이 잘렸다. 원인은 `flex-wrap: nowrap` 인 nav 행의 min-content 폭.
+    기존 모바일 가드는 버튼 높이만 재고 **문서 넘침을 재지 않아** 이 결함을 못 봤다.
+
+    🔴 두 경로를 다 본다. `/` 만 보면 nav 만 덮고, 대시보드 계열의 두 번째 원인
+    (세그먼트 토글 `.dash-mode-toggle`, 실측 폭 362px)은 회귀해도 초록이다 —
+    가드를 만든 직후 실제로 그랬다.
+    Both paths: `/` alone covers only the nav and leaves the dashboard's segmented
+    toggle — the second, independent cause — silently unguarded.
+    """
+    page.set_viewport_size({"width": width, "height": height})
+    page.goto(f"{base_url}{path}")
+    page.wait_for_timeout(400)
+    over = page.evaluate(
+        "() => document.documentElement.scrollWidth"
+        " - document.documentElement.clientWidth")
+    assert over <= 1, (
+        f"{path} 가 {width}px 에서 {over}px 가로로 넘친다 — "
+        "화면 밖으로 밀린 내용이 생긴다"
+    )
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_primary_button_label_meets_aa(page, base_url, theme):
+    """🔴 채워진 기본 버튼의 «라벨» 이 네 테마 모두에서 AA(4.5:1)를 넘어야 한다.
+
+    실측(수정 전): `base.html` 이 `color: #fff` 를 하드코딩해 `components.css` 의
+    `var(--accent-text-on)` 을 덮었다 — dark 3.45 · catppuccin 2.03.
+    catppuccin 은 토큰에 이미 어두운 글자색이 있었는데도 적용되지 않았다.
+    버튼 «면» 은 3:1 이면 되지만 라벨은 본문 텍스트라 4.5 가 적용된다.
+    """
+    page.set_viewport_size({"width": 1280, "height": 800})
+    page.goto(base_url)
+    page.evaluate("(t) => applyTheme(t)", theme)
+    page.wait_for_timeout(250)
+    page.evaluate("""
+      () => { const b = document.createElement('button');
+              b.className = 'btn btn-primary'; b.id = 'aa-probe';
+              b.textContent = 'Save settings';
+              document.querySelector('.container, body').appendChild(b); }
+    """)
+    page.wait_for_timeout(150)
+    res = page.evaluate(_CONTRAST_JS, "#aa-probe")
+    assert res["found"], "주입한 .btn-primary 를 찾지 못했다"
+    # 🔴 계기의 사각지대를 red 로 바꾼다 — 그라디언트가 칠해지면 아래 비율은 거짓이다.
+    assert res["bgImage"] == "none", (
+        f"[{theme}] 버튼이 그라디언트({res['bgImage'][:48]})로 칠해진다 — "
+        "이 시험은 단색만 계산하므로 비율을 신뢰할 수 없다. 계기를 먼저 고칠 것"
+    )
+    assert res["ratio"] >= 4.5, (
+        f"[{theme}] 기본 버튼 라벨 대비 {res['ratio']:.2f} "
+        f"({res['size']:.0f}px, color={res['color']}) — 4.5 필요"
+    )
+
+
+def test_html_and_body_theme_attributes_agree(page, base_url):
+    """🔴 저장된 테마로 자연스럽게 로드했을 때 html 과 body 의 data-theme 이 같아야 한다.
+
+    실측(수정 전): `tweaks.js` 가 DOMContentLoaded 에서 뒤늦게 `html[data-theme]` 를
+    자기 기본값 dark 로 덮어, `sca-theme=light` 인데도 html=dark · body=light 로 갈렸다.
+    🔴 이 축은 «프로브가 applyTheme() 를 직접 부르면» 가려진다 — 부르지 않고 잰다.
+    Load naturally (never call applyTheme here) or the defect is masked.
+    """
+    page.goto(base_url)
+    page.evaluate("() => localStorage.setItem('sca-theme', 'light')")
+    page.goto(base_url)
+    page.wait_for_timeout(700)
+    pair = page.evaluate("""
+      () => ({html: document.documentElement.getAttribute('data-theme'),
+              body: document.body.getAttribute('data-theme')})
+    """)
+    assert pair["html"] == pair["body"], (
+        f"html={pair['html']} · body={pair['body']} 로 갈렸다 — "
+        "테마를 늦게 덮어쓰는 코드가 있다"
+    )
+    assert pair["body"] == "light", f"저장된 테마가 반영되지 않았다: {pair}"
+
+
+@pytest.mark.parametrize("mode", ["overview", "insight", "security", "usage"])
+def test_active_mode_segment_is_visible_on_narrow(page, base_url, mode):
+    """🔴 좁은 화면에서 «지금 보고 있는» 모드 세그먼트가 토글 안에 보여야 한다.
+
+    세그먼트 토글을 `overflow-x: auto` 로 만들어 문서 넘침을 없앤 뒤 생긴 2차 결함:
+    스크롤 위치가 0 이라 뒤쪽 모드(security·usage)를 열면 활성 항목이 잘려 보이지 않았다
+    (실측 320px: security 32px · usage 117px 만큼 오른쪽으로 벗어남).
+    「어느 모드인지」를 알려주는 유일한 표시라 안 보이면 길을 잃는다.
+    After making the toggle scrollable, the active segment for later modes sat outside
+    the visible strip — the only indicator of the current mode.
+    """
+    page.set_viewport_size({"width": 320, "height": 640})
+    page.goto(f"{base_url}/dashboard?mode={mode}")
+    page.wait_for_timeout(600)
+    res = page.evaluate("""
+      () => {
+        const t = document.querySelector('.dash-mode-toggle');
+        if (!t) return {skip: true};
+        const a = t.querySelector('a.active');
+        if (!a) return {skip: true};
+        const tr = t.getBoundingClientRect(), ar = a.getBoundingClientRect();
+        return {skip: false, text: (a.textContent || '').trim(),
+                offRight: Math.round(ar.right - tr.right),
+                offLeft: Math.round(tr.left - ar.left)};
+      }
+    """)
+    if res.get("skip"):
+        pytest.fail("활성 세그먼트를 찾지 못했다 — 이 시험의 전제가 깨졌다")
+    assert res["offRight"] <= 1 and res["offLeft"] <= 1, (
+        f"[{mode}] 활성 세그먼트 '{res['text']}' 가 토글 밖으로 나갔다 "
+        f"(오른쪽 {res['offRight']}px · 왼쪽 {res['offLeft']}px)"
+    )
