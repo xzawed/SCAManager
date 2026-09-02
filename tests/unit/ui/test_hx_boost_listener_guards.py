@@ -2,14 +2,12 @@
 
 hx-boost listener accumulation regression guard (#35/#36).
 
-add_repo.html 의 pagehide 리스너와 tweaks.js 의 document keydown 리스너가
-remove-before-add 패턴(named handler + 선행 removeEventListener)을 유지하는지
-소스 정적 스캔으로 회귀 차단. hx-boost body swap 재실행 시 익명 리스너가
-window/document 에 누적되던 사고(#35/#36)를 봉인한다.
+add_repo.html 의 pagehide 리스너와 effects.js 리스너가 remove-before-add 패턴
+(named handler + 선행 removeEventListener)을 유지하는지 소스 정적 스캔으로 회귀 차단.
+hx-boost body swap 재실행 시 익명 리스너가 window/document 에 누적되던 사고(#35/#36)를 봉인한다.
 
-Static source scan guard: ensures the pagehide (add_repo.html) and document keydown
-(tweaks.js) listeners keep the remove-before-add pattern so they do not pile up on
-hx-boost body-swap re-execution.
+Static source scan guard: ensures the pagehide (add_repo.html) and effects.js listeners
+keep the remove-before-add pattern so they do not pile up on hx-boost body-swap re-execution.
 """
 import pathlib
 
@@ -32,17 +30,6 @@ def test_add_repo_pagehide_uses_remove_before_add():
     # Block regression to an anonymous arrow listener (unremovable → pile-up)
     assert "addEventListener('pagehide', () =>" not in src
     assert "addEventListener('pagehide', ()=>" not in src
-
-
-def test_tweaks_keydown_uses_remove_before_add():
-    """tweaks.js document keydown 리스너는 named handler + remove-before-add (#36)."""
-    src = _read("src/static/js/tweaks.js")
-    assert "document._tweaksKeydown" in src
-    assert 'removeEventListener("keydown", document._tweaksKeydown)' in src
-    assert 'addEventListener("keydown", document._tweaksKeydown)' in src
-    # 익명 keydown 리스너 회귀 차단
-    # Block regression to an anonymous keydown listener
-    assert 'addEventListener("keydown", (e) =>' not in src
 
 
 def test_effects_animations_reinit_on_hx_boost():

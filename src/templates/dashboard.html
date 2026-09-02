@@ -352,6 +352,19 @@
     .kpi .kpi__value .t-num { font-size: var(--fs-2xl, 1.5rem); }
     .dash-range-toggle a { min-height: 44px; box-sizing: border-box; }
     .dash-mode-toggle a { min-height: 44px; }
+    /* 🔴 세그먼트 토글은 안에서 줄바꿈하지 않는다. 좁은 화면에서 그대로 두면 자기 폭
+       (실측 362px)으로 **문서 전체**를 가로로 늘려 페이지가 옆으로 밀린다
+       (실측: 320px 에서 +74px · 375px 에서 +19px). 토글 «안쪽» 만 스크롤시켜
+       페이지는 고정하고 세그먼트 모양도 지킨다.
+       A segmented control never wraps internally; unconstrained it stretches the whole
+       document sideways. Scroll inside the toggle instead — the page stays put. */
+    .dash-head > div { min-width: 0; max-width: 100%; }
+    .dash-mode-toggle, .dash-range-toggle {
+      max-width: 100%; overflow-x: auto; scrollbar-width: none;
+    }
+    .dash-mode-toggle::-webkit-scrollbar,
+    .dash-range-toggle::-webkit-scrollbar { display: none; }
+    .dash-mode-toggle a, .dash-range-toggle a { flex: 0 0 auto; white-space: nowrap; }
     .dash-insight-grid { grid-template-columns: 1fr; }
     .dash-insight-card { min-height: auto; padding: 18px; }
   }

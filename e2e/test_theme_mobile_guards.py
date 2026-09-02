@@ -236,3 +236,111 @@ def test_desktop_btn_no_mobile_min_height(page, base_url):
         f"데스크탑 .btn min-height = {height}px — 모바일 분기 누수 의심"
         " (@media max-width:768px 가 데스크탑 적용 중)"
     )
+
+
+# ── D. UI 감사 후속 — 가로 넘침 · accent 대비 · 테마 속성 일치 ─────────────
+# UI audit follow-up: horizontal overflow, on-accent contrast, theme attribute agreement.
+
+_NARROW_VIEWPORTS = [(320, 640), (375, 667)]
+
+# 대비 계산 — 알파를 조상 위로 합성한 «칠해지는» 색으로 잰다.
+# Contrast helper: composite alpha up the ancestor chain to the painted color.
+_CONTRAST_JS = r"""
+(sel) => {
+  const el = document.querySelector(sel);
+  if (!el) return {found: false};
+  const parse = c => { const m=(c||'').match(/[\d.]+/g);
+    return m ? {r:+m[0],g:+m[1],b:+m[2],a:m.length>3?+m[3]:1} : null; };
+  const over = (f,b) => { const a=f.a+b.a*(1-f.a); if(!a) return {r:0,g:0,b:0,a:0};
+    return {r:(f.r*f.a+b.r*b.a*(1-f.a))/a, g:(f.g*f.a+b.g*b.a*(1-f.a))/a,
+            b:(f.b*f.a+b.b*b.a*(1-f.a))/a, a}; };
+  const paintedBg = n => { let acc={r:255,g:255,b:255,a:1}; const chain=[];
+    for(let x=n;x;x=x.parentElement) chain.push(x);
+    for(let i=chain.length-1;i>=0;i--){ const cs=getComputedStyle(chain[i]);
+      const c=parse(cs.backgroundColor); if(c&&c.a>0) acc=over(c,acc);
+      const bi=cs.backgroundImage;
+      if(bi&&bi!=='none'){ const g=(bi.match(/rgba?\([^)]+\)/g)||[]).map(parse).filter(Boolean);
+        if(g.length) acc=over({...g[0],a:1},acc); }        // 그라디언트 첫 정지점으로 근사
+    } return acc; };
+  const lum = c => { const f=v=>{v/=255; return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4);};
+    return 0.2126*f(c.r)+0.7152*f(c.g)+0.0722*f(c.b); };
+  const cs = getComputedStyle(el);
+  const bg = paintedBg(el);
+  const fg = over(parse(cs.webkitTextFillColor || cs.color), bg);
+  const l1 = lum(fg), l2 = lum(bg);
+  return {found: true, ratio: (Math.max(l1,l2)+0.05)/(Math.min(l1,l2)+0.05),
+          size: parseFloat(cs.fontSize), color: cs.color};
+}
+"""
+
+
+@pytest.mark.parametrize("width,height", _NARROW_VIEWPORTS)
+def test_no_horizontal_overflow_on_narrow_viewports(page, base_url, width, height):
+    """🔴 좁은 화면에서 문서가 가로로 스크롤되면 안 된다.
+
+    실측(수정 전): 화면과 무관하게 `scrollWidth = 409px` 로 고정돼 375px 에서 34px,
+    320px 에서 89px 이 잘렸다. 원인은 `flex-wrap: nowrap` 인 nav 행의 min-content 폭.
+    기존 모바일 가드는 버튼 높이만 재고 **문서 넘침을 재지 않아** 이 결함을 못 봤다.
+    The document must not scroll horizontally on narrow viewports.
+    """
+    page.set_viewport_size({"width": width, "height": height})
+    page.goto(base_url)
+    page.wait_for_timeout(400)
+    over = page.evaluate(
+        "() => document.documentElement.scrollWidth"
+        " - document.documentElement.clientWidth")
+    assert over <= 1, (
+        f"{width}px 에서 문서가 {over}px 가로로 넘친다 — "
+        "화면 밖으로 밀린 내용이 생긴다"
+    )
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_primary_button_label_meets_aa(page, base_url, theme):
+    """🔴 채워진 기본 버튼의 «라벨» 이 네 테마 모두에서 AA(4.5:1)를 넘어야 한다.
+
+    실측(수정 전): `base.html` 이 `color: #fff` 를 하드코딩해 `components.css` 의
+    `var(--accent-text-on)` 을 덮었다 — dark 3.45 · catppuccin 2.03.
+    catppuccin 은 토큰에 이미 어두운 글자색이 있었는데도 적용되지 않았다.
+    버튼 «면» 은 3:1 이면 되지만 라벨은 본문 텍스트라 4.5 가 적용된다.
+    """
+    page.set_viewport_size({"width": 1280, "height": 800})
+    page.goto(base_url)
+    page.evaluate("(t) => applyTheme(t)", theme)
+    page.wait_for_timeout(250)
+    page.evaluate("""
+      () => { const b = document.createElement('button');
+              b.className = 'btn btn-primary'; b.id = 'aa-probe';
+              b.textContent = 'Save settings';
+              document.querySelector('.container, body').appendChild(b); }
+    """)
+    page.wait_for_timeout(150)
+    res = page.evaluate(_CONTRAST_JS, "#aa-probe")
+    assert res["found"], "주입한 .btn-primary 를 찾지 못했다"
+    assert res["ratio"] >= 4.5, (
+        f"[{theme}] 기본 버튼 라벨 대비 {res['ratio']:.2f} "
+        f"({res['size']:.0f}px, color={res['color']}) — 4.5 필요"
+    )
+
+
+def test_html_and_body_theme_attributes_agree(page, base_url):
+    """🔴 저장된 테마로 자연스럽게 로드했을 때 html 과 body 의 data-theme 이 같아야 한다.
+
+    실측(수정 전): `tweaks.js` 가 DOMContentLoaded 에서 뒤늦게 `html[data-theme]` 를
+    자기 기본값 dark 로 덮어, `sca-theme=light` 인데도 html=dark · body=light 로 갈렸다.
+    🔴 이 축은 «프로브가 applyTheme() 를 직접 부르면» 가려진다 — 부르지 않고 잰다.
+    Load naturally (never call applyTheme here) or the defect is masked.
+    """
+    page.goto(base_url)
+    page.evaluate("() => localStorage.setItem('sca-theme', 'light')")
+    page.goto(base_url)
+    page.wait_for_timeout(700)
+    pair = page.evaluate("""
+      () => ({html: document.documentElement.getAttribute('data-theme'),
+              body: document.body.getAttribute('data-theme')})
+    """)
+    assert pair["html"] == pair["body"], (
+        f"html={pair['html']} · body={pair['body']} 로 갈렸다 — "
+        "테마를 늦게 덮어쓰는 코드가 있다"
+    )
+    assert pair["body"] == "light", f"저장된 테마가 반영되지 않았다: {pair}"
