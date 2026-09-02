@@ -15,9 +15,6 @@ does not cover them — they need inline guards.
     2. `src/ui/routes/repo_insights.py` — `refresh=1` 일 때만 403. `_find_repo:54`
        내부 금지 — 반환 규약이 `None`(→404) 이라 다르고, `refresh=0` 조회는 현행 유지.
        Guard only when refresh=1; _find_repo returns None (→404), a different contract.
-    3. `_get_repo_or_404:170` (NULL 판정 `:179`) 는 **손대지 않는다** — 유일 호출처가
-       `:194` GET /repo-summary = 순수 읽기.
-       _get_repo_or_404 is untouched: its only caller is a pure read.
 
 🔴 `_get_analysis_and_repo` 통째 patch 금지 (본 파일 신규 403 테스트) / Do not patch the helper:
     기존 테스트(`test_issue_registration_api.py:51/71/88`)는 `_get_analysis_and_repo` 를
@@ -181,26 +178,6 @@ def test_status_null_owner_still_returns_200(client):
     ):
         resp = client.get("/api/issues/status?analysis_id=10")
     assert resp.status_code == 200
-
-
-def test_repo_summary_null_owner_still_returns_200(client):
-    """NULL-owner 리포 이슈 요약(GET /repo-summary) → 200 (읽기 비회귀).
-
-    `_get_repo_or_404` 는 순수 읽기 전용이라 가드 대상이 아니다.
-    _get_repo_or_404 is read-only and must NOT gain a guard.
-    """
-    db_mock = MagicMock()
-    db_mock.query.return_value.filter.return_value.first.return_value = _mock_repo(user_id=None)
-    with (
-        patch("src.api.issue_registration.get_current_user", return_value=_mock_user()),
-        patch("src.api.issue_registration.SessionLocal",
-              return_value=_mock_session_ctx(db_mock)),
-        patch("src.api.issue_registration.get_repo_issue_summary",
-              new=AsyncMock(return_value=[])),
-    ):
-        resp = client.get("/api/issues/repo-summary?repo_id=1")
-    assert resp.status_code == 200
-
 
 # ══════════════════════════════════════════════════════════════════════
 # 축 3 — 소유자 정상 통과 (기존 계약 불변)

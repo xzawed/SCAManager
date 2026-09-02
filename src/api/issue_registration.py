@@ -16,7 +16,6 @@ from src.models.analysis import Analysis
 from src.models.repository import Repository
 from src.services.issue_registration_service import (
     get_analysis_issue_status,
-    get_repo_issue_summary,
     make_ai_issue_key,
     make_static_issue_key,
     register_issue,
@@ -209,48 +208,3 @@ async def get_status(request: Request, analysis_id: int):
         )
 
     return {"registrations": statuses}
-
-
-def _get_repo_or_404(db: Session, repo_id: int, *, current_user_id: int) -> Repository:
-    """repo_id로 Repository를 조회하고 소유권을 검증한다. 없으면 404 raise.
-    Look up Repository by repo_id and verify ownership. Raises 404 if not found.
-    """
-    repo = db.query(Repository).filter(Repository.id == repo_id).first()
-    if not repo:
-        raise HTTPException(status_code=404, detail="Repository not found")
-    # 🔴 여기에 NULL-owner 쓰기 가드를 **추가하지 말 것**. 호출처는 `GET /repo-summary` 단 1곳
-    # = 순수 읽기다. `_get_analysis_and_repo` 와 이름이 대칭이라 "동형 패턴이니 다 잠그자"의
-    # 오폭 후보지만, 잠그면 repo_detail 의 이슈 이력 섹션만 죽고 보호되는 쓰기는 0건 = 순손실.
-    # user_id=None(소유자 미등록) 리포의 **조회 허용은 의도된 설계**(0026 RLS 가 명시 whitelist).
-    # 🔴 Do NOT add a write guard here — the only caller is `GET /repo-summary`, a pure read.
-    # Its name mirrors `_get_analysis_and_repo`, making it a tempting "lock them all" target, but
-    # locking it only kills the issue-history section and protects zero writes. Read access to
-    # unclaimed repos is intentional (RLS 0026 whitelists `user_id IS NULL`).
-    if repo.user_id is not None and repo.user_id != current_user_id:
-        raise HTTPException(status_code=404)
-    return repo
-
-
-@router.get("/repo-summary")
-@limiter.limit(RATE_LIMIT_API)
-async def repo_summary(request: Request, repo_id: int):
-    """repo_detail용 등록 이력 + GitHub 상태를 반환한다.
-    Return registration history and GitHub state for repo_detail.
-    """
-    current_user = _require_api_user(request)
-
-    def _check():
-        with SessionLocal() as _db:
-            return _get_repo_or_404(_db, repo_id, current_user_id=current_user.id)
-
-    repo = await asyncio.to_thread(_check)
-
-    with SessionLocal() as db:
-        registrations = await get_repo_issue_summary(
-            db,
-            repo_id=repo_id,
-            repo_full_name=repo.full_name,
-            github_token=current_user.plaintext_token,
-        )
-
-    return {"registrations": registrations}

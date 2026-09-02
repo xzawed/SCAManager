@@ -217,33 +217,3 @@ async def get_analysis_issue_status(
             ),
         })
     return result
-
-
-async def get_repo_issue_summary(
-    db: Session,
-    *,
-    repo_id: int,
-    repo_full_name: str,
-    github_token: str,
-) -> list[dict]:
-    """repo_detail용 등록 이력 + TTL 만료 항목 일괄 GitHub 상태 동기화.
-    Return all repo registrations for repo_detail; bulk-sync stale GitHub states.
-    """
-    records = issue_registration_repo.list_by_repo(db, repo_id=repo_id)
-    now = datetime.now(timezone.utc)
-    result = []
-    for rec in records:
-        await _sync_state_if_stale(db, rec, now=now, repo_full_name=repo_full_name, github_token=github_token)
-        result.append({
-            "issue_key": rec.issue_key,
-            "issue_type": rec.issue_type,
-            "github_issue_number": rec.github_issue_number,
-            "github_issue_state": rec.github_issue_state,
-            # 🔴 마지막 동기화 실패 사유 — None 이면 최신이다 (#1504 R3).
-            "sync_error": rec.sync_error,
-            "github_issue_url": (
-                f"https://github.com/{repo_full_name}/issues/{rec.github_issue_number}"
-            ),
-            "created_at": rec.created_at.isoformat() if rec.created_at else None,
-        })
-    return result
