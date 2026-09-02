@@ -326,7 +326,6 @@ def test_repo_detail_cycle143_korean_strings_render():
     assert "최근 점수:" in out  # recent_score
     assert "이번 달 AI 리뷰 예상 비용" in out  # cost.title
     assert "한 달 전체" in out  # cost.period ({month} 보간 후 Tier A 수정값)
-    assert "반복 이슈" in out  # issue_mgmt.title (🔁 반복 이슈 — Issue 등록 관리)
 
 
 def test_repo_detail_cycle143_english_strings_render():
@@ -340,13 +339,6 @@ def test_repo_detail_history_empty_renders_when_no_analyses():
     """repo_detail.html — analyses 비어있을 때 history_empty 빈 상태 렌더."""
     out = _render("repo_detail.html", locale="ko", **_repo_ctx(analyses=[]))
     assert "분석 이력이 없습니다" in out  # history_empty
-
-
-def test_repo_detail_cycle144_bulk_register_renders():
-    """repo_detail.html ko — 사이클 144 일괄 등록 버튼 정적 렌더 (count=0)."""
-    out = _render("repo_detail.html", locale="ko", **_repo_ctx())
-    # 템플릿이 count=0 으로 i18n_args 호출 → {count}건 보간 검증
-    assert "선택 항목 일괄 Issue 등록 (0건)" in out  # issue_mgmt.bulk_register
 
 
 def test_analysis_detail_cycle144_issue_panel_korean_renders():

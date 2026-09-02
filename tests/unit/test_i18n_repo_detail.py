@@ -76,90 +76,17 @@ def test_repo_detail_sprint2_cost_value_non_empty(locale: str, key: str):
 
 
 # ---------------------------------------------------------------------------
-# Sprint 3 — issue_mgmt 서브 네임스페이스 (사이클 143)
-# ---------------------------------------------------------------------------
-_SPRINT3_ISSUE_MGMT_KEYS = [
-    "title",
-    "tab_static",
-    "tab_ai",
-    "filter_unregistered",
-    "modal_title",
-    "form_title",
-    "form_body",
-    "form_labels",
-    "btn_cancel",
-    "btn_skip",
-    "btn_create_next",
-]
-
-
-@pytest.mark.parametrize("locale", _LOCALES)
-@pytest.mark.parametrize("key", _SPRINT3_ISSUE_MGMT_KEYS)
-def test_repo_detail_sprint3_issue_mgmt_key_exists(locale: str, key: str):
-    """repo_detail.issue_mgmt.<key>가 모든 locale에 존재해야 한다.
-    repo_detail.issue_mgmt.<key> must exist in all locales.
-    """
-    data = _load(locale)
-    assert "repo_detail" in data
-    assert "issue_mgmt" in data["repo_detail"], f"[{locale}] repo_detail.issue_mgmt 없음"
-    assert key in data["repo_detail"]["issue_mgmt"], (
-        f"[{locale}] repo_detail.issue_mgmt.{key} 없음"
-    )
-
-
-@pytest.mark.parametrize("locale", _LOCALES)
-@pytest.mark.parametrize("key", _SPRINT3_ISSUE_MGMT_KEYS)
-def test_repo_detail_sprint3_issue_mgmt_value_non_empty(locale: str, key: str):
-    """repo_detail.issue_mgmt.<key> 값이 비어있지 않아야 한다.
-    Value must be non-empty.
-    """
-    val = _load(locale).get("repo_detail", {}).get("issue_mgmt", {}).get(key)
-    assert isinstance(val, str) and val.strip(), (
-        f"[{locale}] repo_detail.issue_mgmt.{key} 비어있음: {val!r}"
-    )
-
-
-# ---------------------------------------------------------------------------
-# 사이클 144 Sprint 2 — issue_mgmt 동적 카운트 키 (data-i18n 패턴)
-# Cycle 144 Sprint 2 — issue_mgmt dynamic count keys (data-i18n pattern)
-# ---------------------------------------------------------------------------
-_SPRINT2_144_BULK_KEYS = ["bulk_register", "bulk_complete"]
-
-
-@pytest.mark.parametrize("locale", _LOCALES)
-@pytest.mark.parametrize("key", _SPRINT2_144_BULK_KEYS)
-def test_repo_detail_bulk_key_exists(locale: str, key: str):
-    """repo_detail.issue_mgmt.<bulk_key>가 모든 locale에 존재해야 한다.
-    repo_detail.issue_mgmt.<bulk_key> must exist in all locales.
-    """
-    data = _load(locale)
-    assert "issue_mgmt" in data["repo_detail"]
-    assert key in data["repo_detail"]["issue_mgmt"], (
-        f"[{locale}] repo_detail.issue_mgmt.{key} 없음"
-    )
-
-
-@pytest.mark.parametrize("locale", _LOCALES)
-@pytest.mark.parametrize("key", _SPRINT2_144_BULK_KEYS)
-def test_repo_detail_bulk_value_has_count_placeholder(locale: str, key: str):
-    """repo_detail.issue_mgmt.<bulk_key> 값에 {count} 플레이스홀더가 있어야 한다.
-    Value must contain the {count} placeholder for dynamic count injection.
-    """
-    val = _load(locale).get("repo_detail", {}).get("issue_mgmt", {}).get(key)
-    assert isinstance(val, str) and val.strip(), f"[{locale}] {key} 비어있음"
-    assert "{count}" in val, f"[{locale}] {key}에 {{count}} 플레이스홀더 없음: {val!r}"
-
-
-# ---------------------------------------------------------------------------
 # 사이클 145 Sprint 2 — js_msg 동적 텍스트 키
 # Cycle 145 Sprint 2 — js_msg dynamic text keys
 # ---------------------------------------------------------------------------
+# 🔴 이슈 등록 패널이 쓰던 9키(label_*·status_*·bulk_submit_final·btn_*·err_*)는
+#    그 패널과 함께 제거됐다. 같은 이름의 키가 analysis_detail 네임스페이스에 «따로»
+#    살아 있으니 혼동하지 말 것 — 여기는 repo_detail 전용이다.
+# The 9 keys the issue panel used were removed with it; identically-named keys still
+# exist under the analysis_detail namespace and are a different set.
 _JS_MSG_KEYS_145 = [
     "chart_avg", "chart_max", "chart_min",
     "tooltip_score", "grade_suffix",
-    "label_ai", "label_static",
-    "status_resolved", "status_open",
-    "bulk_submit_final", "btn_creating", "err_generic", "btn_retry", "err_network",
 ]
 
 
@@ -184,7 +111,5 @@ def test_repo_detail_js_msg_non_empty(locale: str, key: str):
 def test_repo_detail_js_msg_placeholders(locale: str):
     """플레이스홀더 키 검증."""
     js = _load(locale)["repo_detail"]["js_msg"]
-    assert "{num}" in js["status_resolved"]
-    assert "{num}" in js["status_open"]
     assert "{score}" in js["tooltip_score"]
     assert "{grade}" in js["grade_suffix"]

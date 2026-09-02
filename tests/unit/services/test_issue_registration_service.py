@@ -165,38 +165,6 @@ async def test_get_analysis_issue_status_skips_fresh_sync(db):
     assert result[0]["github_issue_state"] == "open"
 
 
-# ── get_repo_issue_summary (Phase 2) ──
-from src.services.issue_registration_service import get_repo_issue_summary
-
-
-@pytest.mark.asyncio
-async def test_get_repo_issue_summary_empty(db):
-    result = await get_repo_issue_summary(
-        db, repo_id=99, repo_full_name="o/r", github_token="tok"
-    )
-    assert result == []
-
-
-@pytest.mark.asyncio
-async def test_get_repo_issue_summary_returns_with_registration_state(db):
-    from src.repositories import issue_registration_repo
-    issue_registration_repo.create(
-        db, analysis_id=1, repo_id=1, issue_type="static_issue",
-        issue_key="sk1", github_issue_number=55,
-    )
-    with patch(
-        "src.services.issue_registration_service.get_issue_state",
-        new=AsyncMock(return_value="open"),
-    ):
-        result = await get_repo_issue_summary(
-            db, repo_id=1, repo_full_name="o/r", github_token="tok"
-        )
-    assert len(result) == 1
-    assert result[0]["github_issue_number"] == 55
-    assert result[0]["github_issue_state"] == "open"
-    assert result[0]["issue_type"] == "static_issue"
-    assert "created_at" in result[0]
-
 
 # ── TOCTOU IntegrityError 핸들러 (lines 70-76) ──
 
@@ -359,10 +327,15 @@ async def test_get_analysis_issue_status_keeps_state_on_sync_error(db):
     assert result[0]["github_issue_state"] == "open"
 
 
-# ── get_repo_issue_summary — timezone 정규화 + httpx.HTTPError (lines 144, 155-158) ──
+# ── _sync_state_if_stale — timezone 정규화 + httpx.HTTPError + malformed 응답 ──
+# 🔴 원래 get_repo_issue_summary 로 구동했으나 그 함수는 제거됐다(repo_detail 패널 삭제).
+#    검사 대상인 _sync_state_if_stale 은 **남아 있으므로** 같은 헬퍼를 부르는
+#    get_analysis_issue_status 로 돌려 커버리지를 보존한다 — 함께 지웠다면
+#    살아 있는 코드의 timezone·HTTPError·malformed 경로가 조용히 무방비가 됐다.
+# Re-pointed at get_analysis_issue_status: the helper under test survives.
 
 @pytest.mark.asyncio
-async def test_get_repo_issue_summary_normalizes_naive_synced_at(db):
+async def test_sync_normalizes_naive_synced_at(db):
     # synced_at이 naive datetime(tzinfo=None)이고 TTL 만료된 경우 → 재동기화
     # When synced_at is a naive datetime past TTL → re-sync occurs
     from src.repositories import issue_registration_repo
@@ -379,8 +352,8 @@ async def test_get_repo_issue_summary_normalizes_naive_synced_at(db):
         "src.services.issue_registration_service.get_issue_state",
         new=AsyncMock(return_value="closed"),
     ):
-        result = await get_repo_issue_summary(
-            db, repo_id=1, repo_full_name="o/r", github_token="tok"
+        result = await get_analysis_issue_status(
+            db, analysis_id=1, repo_full_name="o/r", github_token="tok"
         )
     # 재동기화 후 "closed" 반환
     # After re-sync, "closed" is returned
@@ -388,7 +361,7 @@ async def test_get_repo_issue_summary_normalizes_naive_synced_at(db):
 
 
 @pytest.mark.asyncio
-async def test_get_repo_issue_summary_keeps_state_on_sync_error(db):
+async def test_sync_keeps_state_on_http_error(db):
     # 동기화 실패(httpx.HTTPError) 시 기존 상태 유지
     # Keeps existing state when sync raises httpx.HTTPError
     from src.repositories import issue_registration_repo
@@ -400,8 +373,8 @@ async def test_get_repo_issue_summary_keeps_state_on_sync_error(db):
         "src.services.issue_registration_service.get_issue_state",
         new=AsyncMock(side_effect=httpx.HTTPError("connection error")),
     ):
-        result = await get_repo_issue_summary(
-            db, repo_id=1, repo_full_name="o/r", github_token="tok"
+        result = await get_analysis_issue_status(
+            db, analysis_id=1, repo_full_name="o/r", github_token="tok"
         )
     assert result[0]["github_issue_state"] == "open"
 
@@ -420,8 +393,8 @@ async def test_sync_keeps_state_on_malformed_github_response(db):
         "src.services.issue_registration_service.get_issue_state",
         new=AsyncMock(side_effect=KeyError("state")),  # resp.json()["state"] 키 부재 모사
     ):
-        result = await get_repo_issue_summary(
-            db, repo_id=1, repo_full_name="o/r", github_token="tok"
+        result = await get_analysis_issue_status(
+            db, analysis_id=1, repo_full_name="o/r", github_token="tok"
         )
     # 예외가 전파되지 않고 기존 "open" 상태 유지
     assert result[0]["github_issue_state"] == "open"

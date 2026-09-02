@@ -122,32 +122,6 @@ def test_status_returns_registrations(client):
     assert resp.status_code == 200
     assert len(resp.json()["registrations"]) == 1
 
-
-# ── GET /api/issues/repo-summary ──
-
-def test_repo_summary_returns_401_when_not_logged_in(client):
-    resp = client.get("/api/issues/repo-summary?repo_id=1")
-    assert resp.status_code == 401
-
-
-def test_repo_summary_returns_registrations(client):
-    mock_repo = _mock_repo()
-    with (
-        patch("src.api.issue_registration.get_current_user", return_value=_mock_user()),
-        patch("src.api.issue_registration._get_repo_or_404", return_value=mock_repo),
-        patch("src.api.issue_registration.get_repo_issue_summary",
-              new=AsyncMock(return_value=[
-                  {"issue_key": "k1", "issue_type": "static_issue",
-                   "github_issue_number": 55, "github_issue_state": "open",
-                   "github_issue_url": "https://github.com/owner/repo/issues/55",
-                   "created_at": "2026-05-24T00:00:00"},
-              ])),
-    ):
-        resp = client.get("/api/issues/repo-summary?repo_id=1")
-    assert resp.status_code == 200
-    assert len(resp.json()["registrations"]) == 1
-
-
 # ── _make_issue_key — static path (lines 64-67) ──
 
 def test_make_issue_key_static_path():
@@ -285,36 +259,6 @@ def test_register_returns_502_on_github_5xx(client):
         })
     assert resp.status_code == 502
 
-
-# ── _get_repo_or_404 — error paths (lines 142-149) ──
-
-def test_repo_summary_404_when_repo_not_found(client):
-    # repo 없음 → 404
-    # repo not found → 404
-    db_mock = MagicMock()
-    db_mock.query.return_value.filter.return_value.first.return_value = None
-    with (
-        patch("src.api.issue_registration.get_current_user", return_value=_mock_user()),
-        patch("src.api.issue_registration.SessionLocal", return_value=_mock_session_ctx(db_mock)),
-    ):
-        resp = client.get("/api/issues/repo-summary?repo_id=999")
-    assert resp.status_code == 404
-
-
-def test_repo_summary_404_on_ownership_denied(client):
-    # 다른 user_id를 가진 repo → 소유권 거부 → 404
-    # Repo owned by different user → ownership denied → 404
-    repo = _mock_repo(user_id=99)
-    db_mock = MagicMock()
-    db_mock.query.return_value.filter.return_value.first.return_value = repo
-    with (
-        patch("src.api.issue_registration.get_current_user", return_value=_mock_user()),
-        patch("src.api.issue_registration.SessionLocal", return_value=_mock_session_ctx(db_mock)),
-    ):
-        resp = client.get("/api/issues/repo-summary?repo_id=1")
-    assert resp.status_code == 404
-
-
 def test_register_success_through_real_helper(client):
     # _get_analysis_and_repo 헬퍼 success path (line 54) 커버
     # Covers _get_analysis_and_repo helper success path (line 54)
@@ -339,17 +283,14 @@ def test_register_success_through_real_helper(client):
     assert resp.status_code == 201
 
 
-def test_repo_summary_success_through_real_helper(client):
-    # _get_repo_or_404 헬퍼 success path (line 149) 커버
-    # Covers _get_repo_or_404 helper success path (line 149)
-    repo = _mock_repo()  # user_id=1 matches current_user.id=1
-    db_mock = MagicMock()
-    db_mock.query.return_value.filter.return_value.first.return_value = repo
-    with (
-        patch("src.api.issue_registration.get_current_user", return_value=_mock_user()),
-        patch("src.api.issue_registration.SessionLocal", return_value=_mock_session_ctx(db_mock)),
-        patch("src.api.issue_registration.get_repo_issue_summary",
-              new=AsyncMock(return_value=[])),
-    ):
-        resp = client.get("/api/issues/repo-summary?repo_id=1")
-    assert resp.status_code == 200
+def test_repo_summary_route_is_gone(client):
+    """🔴 repo_detail 의 이슈 등록 패널과 함께 제거된 경로는 살아 있으면 안 된다.
+
+    패널이 유일한 소비처였다. 경로가 되살아나면 부르는 곳 없는 API 가 다시 생긴다.
+    행동으로 잰다 — 라우팅은 인증보다 앞서므로 미인증이어도 404 다(401 이 아니다).
+    The panel was the only consumer; assert the route itself is absent (routing precedes auth).
+    """
+    resp = client.get("/api/issues/repo-summary?repo_id=1")
+    assert resp.status_code == 404, (
+        f"제거한 /repo-summary 가 {resp.status_code} 로 응답한다 — 경로가 되살아났다"
+    )
