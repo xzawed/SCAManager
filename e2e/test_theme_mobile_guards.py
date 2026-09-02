@@ -275,22 +275,28 @@ _CONTRAST_JS = r"""
 
 
 @pytest.mark.parametrize("width,height", _NARROW_VIEWPORTS)
-def test_no_horizontal_overflow_on_narrow_viewports(page, base_url, width, height):
+@pytest.mark.parametrize("path", ["/", "/dashboard"])
+def test_no_horizontal_overflow_on_narrow_viewports(page, base_url, width, height, path):
     """🔴 좁은 화면에서 문서가 가로로 스크롤되면 안 된다.
 
     실측(수정 전): 화면과 무관하게 `scrollWidth = 409px` 로 고정돼 375px 에서 34px,
     320px 에서 89px 이 잘렸다. 원인은 `flex-wrap: nowrap` 인 nav 행의 min-content 폭.
     기존 모바일 가드는 버튼 높이만 재고 **문서 넘침을 재지 않아** 이 결함을 못 봤다.
-    The document must not scroll horizontally on narrow viewports.
+
+    🔴 두 경로를 다 본다. `/` 만 보면 nav 만 덮고, 대시보드 계열의 두 번째 원인
+    (세그먼트 토글 `.dash-mode-toggle`, 실측 폭 362px)은 회귀해도 초록이다 —
+    가드를 만든 직후 실제로 그랬다.
+    Both paths: `/` alone covers only the nav and leaves the dashboard's segmented
+    toggle — the second, independent cause — silently unguarded.
     """
     page.set_viewport_size({"width": width, "height": height})
-    page.goto(base_url)
+    page.goto(f"{base_url}{path}")
     page.wait_for_timeout(400)
     over = page.evaluate(
         "() => document.documentElement.scrollWidth"
         " - document.documentElement.clientWidth")
     assert over <= 1, (
-        f"{width}px 에서 문서가 {over}px 가로로 넘친다 — "
+        f"{path} 가 {width}px 에서 {over}px 가로로 넘친다 — "
         "화면 밖으로 밀린 내용이 생긴다"
     )
 
