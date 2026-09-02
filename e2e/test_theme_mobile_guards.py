@@ -269,7 +269,12 @@ _CONTRAST_JS = r"""
   const fg = over(parse(cs.webkitTextFillColor || cs.color), bg);
   const l1 = lum(fg), l2 = lum(bg);
   return {found: true, ratio: (Math.max(l1,l2)+0.05)/(Math.min(l1,l2)+0.05),
-          size: parseFloat(cs.fontSize), color: cs.color};
+          size: parseFloat(cs.fontSize), color: cs.color,
+          // 🔴 이 계기는 background-color 만 읽는다. 그라디언트가 칠해지면 잰 값이
+          //    실제와 다르므로, 조용한 초록 대신 그 사실을 돌려보내 red 로 만든다.
+          // This instrument reads background-color only; report a painted gradient so the
+          // test fails loudly instead of passing on a number it cannot compute.
+          bgImage: (cs.backgroundImage || 'none')};
 }
 """
 
@@ -323,6 +328,11 @@ def test_primary_button_label_meets_aa(page, base_url, theme):
     page.wait_for_timeout(150)
     res = page.evaluate(_CONTRAST_JS, "#aa-probe")
     assert res["found"], "주입한 .btn-primary 를 찾지 못했다"
+    # 🔴 계기의 사각지대를 red 로 바꾼다 — 그라디언트가 칠해지면 아래 비율은 거짓이다.
+    assert res["bgImage"] == "none", (
+        f"[{theme}] 버튼이 그라디언트({res['bgImage'][:48]})로 칠해진다 — "
+        "이 시험은 단색만 계산하므로 비율을 신뢰할 수 없다. 계기를 먼저 고칠 것"
+    )
     assert res["ratio"] >= 4.5, (
         f"[{theme}] 기본 버튼 라벨 대비 {res['ratio']:.2f} "
         f"({res['size']:.0f}px, color={res['color']}) — 4.5 필요"

@@ -455,7 +455,11 @@
           t.scrollLeft = Math.max(0, Math.min(want, t.scrollWidth - t.clientWidth));
         });
     }
-    _dashRevealActiveSegment();
+    // 🔴 폭을 «레이아웃 뒤에» 잰다. 인라인 실행 시점은 폰트·비동기 CSS 가 아직이라
+    //    clientWidth 가 최종값이 아닐 수 있고, 그러면 가운데 정렬이 어긋난다.
+    //    (숨은 컨테이너면 scrollWidth == clientWidth == 0 이라 함수가 그대로 반환한다.)
+    // Measure after layout: at inline-execution time fonts/async CSS may not have settled.
+    requestAnimationFrame(_dashRevealActiveSegment);
     // hx-boost body swap / 뒤로가기 후에도 — remove-before-add (리스너 누적 차단)
     // Re-run after hx-boost swap / back nav — remove-before-add prevents listener pile-up.
     if (document._dashRevealSeg) {
