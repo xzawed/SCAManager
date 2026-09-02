@@ -984,11 +984,13 @@
       //    긴 요소는 초기 통지 하나만 받고 다시는 못 받아 `.visible` 이 영영 안 붙는다.
       //    실측(vh=720 · 요소 8640px): 0.1 은 통지 1건 {isIntersecting:false, ratio:0} 으로
       //    끝나 opacity 0 고착, 0 은 {isIntersecting:true, ratio:0.0787} 로 발화한다.
-      //    「화면 안쪽까지 들어왔을 때」 판정은 threshold 가 아니라 아래 rootMargin 이 맡는다.
+      //    0 이면 루트와 **1px 이라도 겹치는 순간** 발화한다. 아래에서 올라오는 요소는
+      //    rootMargin 의 -40px 만큼 늦게 뜨지만, 위쪽은 인셋이 없어 곧바로 뜬다.
       // The observer only calls back when the threshold bucket changes, so an element whose max
       // intersectionRatio (rootHeight/elementHeight) never reaches 0.1 gets only the initial
       // notification and stays at opacity 0 forever — the failure mode is invisible content.
-      // rootMargin, not the threshold, is what holds the reveal until the element is in view.
+      // With threshold 0 a single overlapping pixel reveals: the -40px bottom inset still holds
+      // back elements rising from below, but there is no top inset.
     }, { threshold: 0, rootMargin: '0px 0px -40px 0px' });
 
     function _initReveal() {
