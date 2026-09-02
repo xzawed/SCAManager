@@ -350,3 +350,37 @@ def test_html_and_body_theme_attributes_agree(page, base_url):
         "테마를 늦게 덮어쓰는 코드가 있다"
     )
     assert pair["body"] == "light", f"저장된 테마가 반영되지 않았다: {pair}"
+
+
+@pytest.mark.parametrize("mode", ["overview", "insight", "security", "usage"])
+def test_active_mode_segment_is_visible_on_narrow(page, base_url, mode):
+    """🔴 좁은 화면에서 «지금 보고 있는» 모드 세그먼트가 토글 안에 보여야 한다.
+
+    세그먼트 토글을 `overflow-x: auto` 로 만들어 문서 넘침을 없앤 뒤 생긴 2차 결함:
+    스크롤 위치가 0 이라 뒤쪽 모드(security·usage)를 열면 활성 항목이 잘려 보이지 않았다
+    (실측 320px: security 32px · usage 117px 만큼 오른쪽으로 벗어남).
+    「어느 모드인지」를 알려주는 유일한 표시라 안 보이면 길을 잃는다.
+    After making the toggle scrollable, the active segment for later modes sat outside
+    the visible strip — the only indicator of the current mode.
+    """
+    page.set_viewport_size({"width": 320, "height": 640})
+    page.goto(f"{base_url}/dashboard?mode={mode}")
+    page.wait_for_timeout(600)
+    res = page.evaluate("""
+      () => {
+        const t = document.querySelector('.dash-mode-toggle');
+        if (!t) return {skip: true};
+        const a = t.querySelector('a.active');
+        if (!a) return {skip: true};
+        const tr = t.getBoundingClientRect(), ar = a.getBoundingClientRect();
+        return {skip: false, text: (a.textContent || '').trim(),
+                offRight: Math.round(ar.right - tr.right),
+                offLeft: Math.round(tr.left - ar.left)};
+      }
+    """)
+    if res.get("skip"):
+        pytest.fail("활성 세그먼트를 찾지 못했다 — 이 시험의 전제가 깨졌다")
+    assert res["offRight"] <= 1 and res["offLeft"] <= 1, (
+        f"[{mode}] 활성 세그먼트 '{res['text']}' 가 토글 밖으로 나갔다 "
+        f"(오른쪽 {res['offRight']}px · 왼쪽 {res['offLeft']}px)"
+    )

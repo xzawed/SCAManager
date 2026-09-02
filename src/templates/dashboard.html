@@ -436,6 +436,36 @@
       </nav>
     </div>
   </div>
+  <script>
+    // 🔴 세그먼트 토글은 좁은 화면에서 «안쪽» 스크롤이다(@media 768px). 스크롤 위치가 0 이면
+    //    뒤쪽 모드를 열었을 때 활성 항목이 잘려 안 보인다(실측 320px: security 32px ·
+    //    usage 117px 벗어남). 「지금 어느 모드인가」를 알려주는 유일한 표시라 보이게 만든다.
+    //    🔴 페이지가 아니라 «토글 안쪽» 만 움직인다 — scrollIntoView 는 조상까지 밀어 올려
+    //    화면이 통째로 스크롤된다.
+    // The toggle scrolls internally on narrow screens; at scrollLeft 0 the active segment for
+    // later modes is clipped. Move the toggle's OWN scrollLeft (scrollIntoView would scroll
+    // ancestors, jumping the whole page).
+    function _dashRevealActiveSegment() {
+      document.querySelectorAll('.dash-mode-toggle, .dash-range-toggle')
+        .forEach(function (t) {
+          if (t.scrollWidth <= t.clientWidth) return;
+          var a = t.querySelector('a.active');
+          if (!a) return;
+          var want = a.offsetLeft - (t.clientWidth - a.offsetWidth) / 2;
+          t.scrollLeft = Math.max(0, Math.min(want, t.scrollWidth - t.clientWidth));
+        });
+    }
+    _dashRevealActiveSegment();
+    // hx-boost body swap / 뒤로가기 후에도 — remove-before-add (리스너 누적 차단)
+    // Re-run after hx-boost swap / back nav — remove-before-add prevents listener pile-up.
+    if (document._dashRevealSeg) {
+      document.removeEventListener('htmx:afterSettle', document._dashRevealSeg);
+      document.removeEventListener('htmx:historyRestore', document._dashRevealSeg);
+    }
+    document._dashRevealSeg = _dashRevealActiveSegment;
+    document.addEventListener('htmx:afterSettle', document._dashRevealSeg);
+    document.addEventListener('htmx:historyRestore', document._dashRevealSeg);
+  </script>
 
   {# repos 모드: 포트폴리오 요약 + 개별 Repo 레포트 #}
   {# repos mode: portfolio summary + individual repo report #}
