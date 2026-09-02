@@ -975,7 +975,19 @@
           _revealIO.unobserve(e.target);
         }
       });
-    }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+      // 🔴 threshold 는 0 이다. 관찰자는 문턱 버킷이 **바뀔 때만** 콜백을 준다. 단일 문턱이
+      //    0.1 이면 intersectionRatio 의 최대값(유효 루트 높이 ÷ 요소 높이)이 0.1 에 못 미치는
+      //    긴 요소는 초기 통지 하나만 받고 다시는 못 받아 `.visible` 이 영영 안 붙는다.
+      //    실측(vh=720 · 요소 8640px): 0.1 은 통지 1건 {isIntersecting:false, ratio:0} 으로
+      //    끝나 opacity 0 고착, 0 은 {isIntersecting:true, ratio:0.0787} 로 발화한다.
+      //    0 이면 루트와 **1px 이라도 겹치는 순간** 발화한다. 아래에서 올라오는 요소는
+      //    rootMargin 의 -40px 만큼 늦게 뜨지만, 위쪽은 인셋이 없어 곧바로 뜬다.
+      // The observer only calls back when the threshold bucket changes, so an element whose max
+      // intersectionRatio (rootHeight/elementHeight) never reaches 0.1 gets only the initial
+      // notification and stays at opacity 0 forever — the failure mode is invisible content.
+      // With threshold 0 a single overlapping pixel reveals: the -40px bottom inset still holds
+      // back elements rising from below, but there is no top inset.
+    }, { threshold: 0, rootMargin: '0px 0px -40px 0px' });
 
     function _initReveal() {
       // visible 클래스가 없는 요소만 observe (중복 등록 방지)

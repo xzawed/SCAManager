@@ -7,12 +7,12 @@
 **최신 (현재 코드 기준)**
 - 손으로 고치는 곳은 파일 끝 SSOT 불릿 한 줄뿐. 나머지 4지점은 `--fix` 가 파생한다.
 
-**종합 수치**: 전체 **8150** 수집 (단위 **7943** + 통합 207) / E2E **136** (`#1291` 기준) / pylint **9.99/10** (`src/`).
+**종합 수치**: 전체 **8150** 수집 (단위 **7943** + 통합 207) / E2E **137** (`#1291` 기준) / pylint **9.99/10** (`src/`).
 
 | 지표 | 값 | 재측정 |
 |---|---|---|
 | 전체 테스트 | **8150 수집** | `py -3 -m pytest --collect-only -q tests/unit` + `tests/integration` — 단위 7943 + 통합 207 (현재) |
-| E2E 테스트 | **136개** | `make test-e2e` — = 136 collected (125 표준 + 11 perf). 대조 `scripts/check_e2e_scope.py` |
+| E2E 테스트 | **137개** | `make test-e2e` — = 137 collected (126 표준 + 11 perf). 대조 `scripts/check_e2e_scope.py` |
 | pylint | **9.99/10** | `py -3 -m pylint src/`. CI `--fail-under` 는 README 배지에서 파생 |
 | 커버리지 | Python 97% | `py -3 -m pytest tests/unit --cov=src` |
 | bandit HIGH | 0 | `py -3 -m bandit -r src/` |
