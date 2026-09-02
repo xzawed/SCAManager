@@ -44,7 +44,10 @@ import pytest  # noqa: E402
 from src.services.issue_registration_service import make_static_issue_key  # noqa: E402
 
 _TEMPLATES = pathlib.Path(__file__).parents[3] / "src" / "templates"
-_POSTING_TEMPLATES = ("analysis_detail.html", "repo_detail.html")
+# 🔴 repo_detail 은 등록 호출부가 아니다 — 「반복 이슈」 패널과 함께 제거됐다.
+#    이제 등록 버튼은 analysis_detail 한 곳뿐이다.
+# repo_detail no longer posts: its issue panel was removed.
+_POSTING_TEMPLATES = ("analysis_detail.html",)
 # payload 의 `file:` 만 — 주석 안의 같은 글자를 세지 않기 위해 값까지 요구한다.
 _FILE_PAYLOAD = re.compile(r"^\s*file:\s*\S")
 
