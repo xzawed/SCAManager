@@ -173,6 +173,46 @@ def test_repo_detail_rows_stay_visible_after_rerender(seeded_page: Page, base_ur
 
 
 @pytest.mark.e2e
+def test_tall_reveal_element_becomes_visible(seeded_page: Page, base_url: str):
+    """🔴 유효 루트보다 10배 넘게 긴 `.reveal` 이 화면에 들어오면 보여야 한다.
+
+    관찰자는 `threshold` 버킷이 **바뀔 때만** 콜백을 받는다. 단일 문턱이 0.1 이면
+    intersectionRatio 의 최대값(= 유효 루트 높이 / 요소 높이)이 0.1 에 못 미치는 요소는
+    초기 통지(`ratio=0`) 하나만 받고 **다시는 받지 못한다** — `isIntersecting` 은 true 가
+    될 수 있었으나 콜백이 안 돌아 `.visible` 이 안 붙는다. `.reveal { opacity: 0 }` 이므로
+    실패 모습은 「애니메이션 없음」이 아니라 **「내용 안 보임」**이다.
+
+    실측(수정 전, vh=720 · 요소 8640px): 통지 1건 `{isIntersecting:false, ratio:0}` 으로
+    끝나고 opacity 0 에 고착. threshold 0 으로 바꾸면 `{isIntersecting:true, ratio:0.0787}`.
+
+    요소를 **집어넣는다** — 현재 어느 화면도 그만큼 길지 않기 때문이다(실측 최대 1646px).
+    검사 대상은 페이지가 아니라 **관찰자의 계약**이다: 화면에 들어온 `.reveal` 은 보인다.
+    A `.reveal` scrolled into view must be visible, whatever its height.
+    """
+    seeded_page.goto(f"{base_url}/repos/owner/testrepo")
+    seeded_page.wait_for_timeout(800)
+    opacity = seeded_page.evaluate(
+        """
+        () => new Promise(resolve => {
+          const d = document.createElement('div');
+          d.className = 'reveal';
+          d.style.height = (window.innerHeight * 12) + 'px';
+          document.body.appendChild(d);
+          setTimeout(() => {
+            d.scrollIntoView({block: 'center'});
+            setTimeout(
+              () => resolve(parseFloat(getComputedStyle(d).opacity)), 1200);
+          }, 300);
+        })
+        """
+    )
+    assert opacity > 0.5, (
+        f"화면 가운데까지 올린 `.reveal` 이 opacity {opacity} 로 남았다 — "
+        "긴 요소가 threshold 버킷을 못 넘어 콜백이 영영 안 돈다"
+    )
+
+
+@pytest.mark.e2e
 def test_repos_tab_visible(page: Page, base_url: str):
     """repos 탭 링크가 Dashboard에 표시된다."""
     page.goto(f"{base_url}/dashboard")
