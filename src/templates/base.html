@@ -168,7 +168,10 @@
       align-items: center;
       background: rgba(255,255,255,.06);
       border: 1px solid rgba(255,255,255,.1);
-      color: var(--text-3);
+      /* 🔴 자기 워시를 깔고 그 위에 3차 글자를 얹던 곳 — 알약 배경과 같은 형태다.
+         누르는 컨트롤의 라벨이므로 가장 흐린 층이 아니라 보조 층을 쓴다.
+         A control label on its own wash: use the secondary tier, not the faintest. */
+      color: var(--text-2);
       padding: 5px 10px;
       border-radius: var(--radius-pill);
       cursor: pointer;
@@ -191,7 +194,9 @@
       gap: var(--space-1);
       background: rgba(255,255,255,.06);
       border: 1px solid rgba(255,255,255,.1);
-      color: var(--text-3);
+      /* `.nav-logout-btn` 과 같은 이유 — 자기 워시 위의 컨트롤 라벨.
+         Same reason as .nav-logout-btn: a control label on its own wash. */
+      color: var(--text-2);
       padding: 5px 10px;
       border-radius: var(--radius-pill);
       cursor: pointer;

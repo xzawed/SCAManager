@@ -77,7 +77,11 @@
   }
   .kpi__delta--up   { background: rgba(52,211,153,0.12); color: var(--success, #34d399); }
   .kpi__delta--down { background: rgba(248,113,113,0.12); color: var(--danger, #f87171); }
-  .kpi__delta--flat { background: rgba(156,163,175,0.12); color: var(--text-3, rgba(255,255,255,0.4)); }
+  /* 🔴 회색 워시 위에 3차 글자를 얹어 네 테마 전부에서 최악 표면을 만들고 있었다
+     (dark 3.20 · light 3.07 · pastel 2.63 · catppuccin 2.76). 형제인 --up/--down 이
+     강조색을 쓰듯 이쪽도 보조 층을 쓴다 — 워시는 그대로 두고 글자만 올린다.
+     The grey wash + faint text made this the worst surface in all four themes. */
+  .kpi__delta--flat { background: rgba(156,163,175,0.12); color: var(--text-2, rgba(255,255,255,0.7)); }
   .kpi__foot {
     font-size: var(--fs-xs, 0.75rem); color: var(--text-3, rgba(255,255,255,0.4));
     margin-top: var(--space-2, 0.5rem);

@@ -134,9 +134,12 @@
   margin-bottom: 4px;
 }
 
+/* 🔴 여기 있던 `color: var(--text-2)` 는 죽은 선언이었다 — 같은 요소가 갖는 `.kpi__foot`
+   규칙이 `repo_insights.html` 안에 있어 명시도가 같은 채로 «나중에» 로드된다.
+   죽은 선언은 「이 값이 쓰인다」고 거짓말한다. 색은 `.kpi__foot`(--text-3)이 정한다.
+   The color here never won: an equal-specificity .kpi__foot rule loads later in the template. */
 .ri-kpi-sub {
   font-size: 12px;
-  color: var(--text-2);
 }
 
 .ri-delta-up   { color: var(--success); }

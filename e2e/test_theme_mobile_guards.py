@@ -243,14 +243,36 @@ def test_desktop_btn_no_mobile_min_height(page, base_url):
 
 _NARROW_VIEWPORTS = [(320, 640), (375, 667)]
 
+# 🔴 색 파서를 따로 둔다 — `color-mix()` 는 `color(srgb r g b)` 로 직렬화되고 그 성분은
+#    0~1 실수다. `rgb()` 의 0~255 와 같은 자로 읽으면 거의 «검정» 으로 재서, 실제로는
+#    통과하는 색을 미달로, 미달인 색을 통과로 보고할 수 있다. 이 리포는
+#    `settings.html::--text-desc` 가 `color-mix` 를 쓴다.
+# color-mix() serializes as `color(srgb r g b)` whose components are 0..1, not 0..255.
+_PARSE_COLOR_JS = r"""
+  const parse = c => { c=(c||'').trim(); if(!c) return null;
+  // 토큰 값(`getPropertyValue`)은 저자가 쓴 «16진» 그대로 온다 — computed 색만 다루면
+  // 토큰과 대조할 수 없다. 실제로 이 갈래가 없어 관측 0건이 났었다.
+  // Token values come back as authored hex; without this branch nothing matches.
+  const h=c.match(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/);
+  if (h) { let x=h[1]; if(x.length===3) x=x.split('').map(d=>d+d).join('');
+    return {r:parseInt(x.slice(0,2),16), g:parseInt(x.slice(2,4),16),
+            b:parseInt(x.slice(4,6),16), a:1}; }
+  const m=c.match(/[-\d.]+(?:e[-+]?\d+)?/g); if(!m) return null;
+  if (/^color\(/.test(c)) {
+    if (!/^color\(\s*srgb[\s(]/.test(c)) return null;   // display-p3 등은 못 잰다 → null
+    const n = /\//.test(c) && m.length>=4 ? m.slice(-4) : m.slice(-3).concat([1]);
+    return {r:+n[0]*255, g:+n[1]*255, b:+n[2]*255, a:+n[3]};
+  }
+  return {r:+m[0],g:+m[1],b:+m[2],a:m.length>3?+m[3]:1}; };
+"""
+
 # 대비 계산 — 알파를 조상 위로 합성한 «칠해지는» 색으로 잰다.
 # Contrast helper: composite alpha up the ancestor chain to the painted color.
 _CONTRAST_JS = r"""
 (sel) => {
+""" + _PARSE_COLOR_JS + r"""
   const el = document.querySelector(sel);
   if (!el) return {found: false};
-  const parse = c => { const m=(c||'').match(/[\d.]+/g);
-    return m ? {r:+m[0],g:+m[1],b:+m[2],a:m.length>3?+m[3]:1} : null; };
   const over = (f,b) => { const a=f.a+b.a*(1-f.a); if(!a) return {r:0,g:0,b:0,a:0};
     return {r:(f.r*f.a+b.r*b.a*(1-f.a))/a, g:(f.g*f.a+b.g*b.a*(1-f.a))/a,
             b:(f.b*f.a+b.b*b.a*(1-f.a))/a, a}; };
@@ -393,4 +415,127 @@ def test_active_mode_segment_is_visible_on_narrow(page, base_url, mode):
     assert res["offRight"] <= 1 and res["offLeft"] <= 1, (
         f"[{mode}] 활성 세그먼트 '{res['text']}' 가 토글 밖으로 나갔다 "
         f"(오른쪽 {res['offRight']}px · 왼쪽 {res['offLeft']}px)"
+    )
+
+
+# ── E. 보조·3차 글자색이 «칠해지는» 바탕에서 AA 를 넘는가 (#1609 가 미룬 일) ────────
+# Secondary/faint text tokens must clear AA against the color actually painted behind them.
+
+# 🔴 선택자 목록을 쓰지 않는다 — 목록은 늙고, 새로 생긴 사용처를 못 본다.
+#    대신 «그 테마에서 --text-2/--text-3 이 실제로 해석된 값» 과 같은 색으로 칠해진
+#    글자를 런타임에 골라낸다. 토큰을 새로 쓰는 화면이 생기면 자동으로 범위에 들어온다.
+# No selector list: elements are selected at runtime by matching the theme's resolved
+# --text-2 / --text-3 values, so new usages are covered automatically.
+_TOKEN_TEXT_AUDIT_JS = r"""
+() => {
+""" + _PARSE_COLOR_JS + r"""
+  const over = (f,b) => { const a=f.a+b.a*(1-f.a); if(!a) return {r:0,g:0,b:0,a:0};
+    return {r:(f.r*f.a+b.r*b.a*(1-f.a))/a, g:(f.g*f.a+b.g*b.a*(1-f.a))/a,
+            b:(f.b*f.a+b.b*b.a*(1-f.a))/a, a}; };
+  const stops = bi => (bi.match(/rgba?\([^)]+\)/g)||[]).map(parse).filter(Boolean);
+  // 조상 그라디언트는 stop 마다 바탕 후보를 만든다 — 글자가 어느 지점에 앉을지 모른다.
+  const paintedBgs = n => { let accs=[{r:255,g:255,b:255,a:1}];
+    const chain=[]; for(let x=n;x;x=x.parentElement) chain.push(x);
+    for(let i=chain.length-1;i>=0;i--){ const cs=getComputedStyle(chain[i]);
+      const bc=parse(cs.backgroundColor); if(bc&&bc.a>0) accs=accs.map(a=>over(bc,a));
+      const bi=cs.backgroundImage;
+      const clip=(cs.backgroundClip||'')+(cs.webkitBackgroundClip||'');
+      if(bi&&bi!=='none'&&!clip.includes('text')){ const g=stops(bi);
+        if(g.length) accs=accs.flatMap(a=>g.map(s=>over(s,a))); }
+      if(accs.length>24) accs=accs.slice(0,24);
+    } return accs; };
+  const lum = c => { const f=v=>{v/=255; return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4);};
+    return 0.2126*f(c.r)+0.7152*f(c.g)+0.0722*f(c.b); };
+  const ratio = (a,b) => { const l1=lum(a), l2=lum(b);
+    return (Math.max(l1,l2)+0.05)/(Math.min(l1,l2)+0.05); };
+
+  const bodyCs = getComputedStyle(document.body);
+  const want = {};
+  for (const name of ['--text-2','--text-3']) {
+    const c = parse(bodyCs.getPropertyValue(name));
+    if (!c) return {error: `${name} 을 읽지 못했다: ${bodyCs.getPropertyValue(name)}`};
+    want[name] = c;
+  }
+  const same = (a,b) => Math.round(a.r)===Math.round(b.r)
+                     && Math.round(a.g)===Math.round(b.g)
+                     && Math.round(a.b)===Math.round(b.b);
+
+  const bad = [], seen = {'--text-2':0,'--text-3':0};
+  for (const el of document.querySelectorAll('body *')) {
+    const own = Array.from(el.childNodes)
+      .filter(n=>n.nodeType===3 && n.textContent.trim()).map(n=>n.textContent.trim()).join(' ');
+    if (!own) continue;
+    // 이모지·기호만인 요소는 자기 색으로 그려진다 — 1.4.3 대상이 아니다.
+    if (!/[\p{L}\p{N}]/u.test(own)) continue;
+    const cs = getComputedStyle(el);
+    if (cs.visibility==='hidden' || cs.display==='none' || +cs.opacity===0) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width<1 || r.height<1) continue;
+    const fg = parse(cs.webkitTextFillColor || cs.color);
+    if (!fg || fg.a===0) continue;
+    const token = Object.keys(want).find(k => same(fg, want[k]));
+    if (!token) continue;
+    seen[token]++;
+    const size = parseFloat(cs.fontSize), weight = parseInt(cs.fontWeight,10)||400;
+    // WCAG 1.4.3 large text = 18pt(24px), or 14pt(18.5px) bold.
+    const need = (size>=24 || (size>=18.5 && weight>=700)) ? 3 : 4.5;
+    let worst = Infinity, worstBg = null;
+    for (const b of paintedBgs(el)) {
+      const v = ratio(over(fg,b), b);
+      if (v < worst) { worst = v; worstBg = b; }
+    }
+    if (worst < need) bad.push({token, ratio: +worst.toFixed(2), need, size,
+      text: own.slice(0,40), cls: (typeof el.className==='string'?el.className:''),
+      bg: `rgb(${Math.round(worstBg.r)},${Math.round(worstBg.g)},${Math.round(worstBg.b)})`});
+  }
+  return {bad, seen};
+}
+"""
+
+# 두 토큰이 실제로 쓰이는 화면들. 각각이 서로 다른 바탕(카드·표·nav 알약·KPI)을 만든다.
+_TOKEN_TEXT_PATHS = ["/", "/dashboard", "/repos/owner/testrepo", "/repos/owner/testrepo/insights"]
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+@pytest.mark.parametrize("path", _TOKEN_TEXT_PATHS)
+def test_token_text_meets_aa_against_painted_background(seeded_page, base_url, theme, path):
+    """🔴 `--text-2`·`--text-3` 로 칠해진 글자는 «실제로 칠해진» 바탕에서 AA 를 넘어야 한다.
+
+    실측(수정 전, 10화면 x 4테마): `--text-3` 을 쓰는 글자 59건 중 dark·light·pastel 은
+    59건 전부, catppuccin 은 48건이 미달이었다(최저 2.40 — pastel body 그라디언트의
+    어두운 stop 위).
+
+    🔴 단위 가드(`tests/unit/ui/test_secondary_text_contrast.py`)는 `tokens.css` 의
+    표면 토큰만 본다. 그것만으로는 «컴포넌트가 자기 워시를 깔고 그 위에 글자를 얹는» 경우를
+    못 본다 — 실제로 nav 의 두 버튼이 그래서 토큰을 올린 뒤에도 4.44 로 남아 있었고,
+    이 시험만이 그것을 잡았다. 두 가드는 서로를 대신하지 못한다.
+    The unit guard only sees surface tokens; components that paint their own wash under the
+    text are invisible to it. Two nav buttons did exactly that and only this test caught them.
+    """
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.goto(f"{base_url}{path}")
+    seeded_page.evaluate("(t) => applyTheme(t)", theme)
+    # 🔴 테마 전환에 transition 이 걸려 있다 — 끄지 않으면 «중간색» 을 잰다(전 테마의
+    #    글자색 위에 다음 테마의 바탕이 겹친 값이 나온다).
+    seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
+    seeded_page.wait_for_timeout(400)
+    res = seeded_page.evaluate(_TOKEN_TEXT_AUDIT_JS)
+
+    assert not res.get("error"), res.get("error")
+    seen = res["seen"]
+    # 🔴 아무것도 못 골랐으면 «통과» 가 아니라 red 다 — 토큰 이름이 바뀌었거나
+    #    테마가 적용되지 않은 것이고, 그때 이 시험은 아무 것도 재지 않는다.
+    assert seen["--text-2"] + seen["--text-3"] > 0, (
+        f"[{theme}] {path} 에서 --text-2/--text-3 로 칠해진 글자를 하나도 찾지 못했다 — "
+        "재지 못한 것이지 통과한 것이 아니다"
+    )
+    bad = res["bad"]
+    assert not bad, (
+        f"[{theme}] {path} — 토큰 글자 {len(bad)}건이 AA 미달 "
+        f"(관측 {seen['--text-2']}+{seen['--text-3']}건):\n  "
+        + "\n  ".join(
+            f"{b['token']} {b['ratio']} < {b['need']} @{b['size']:.0f}px "
+            f"bg={b['bg']} cls={b['cls']!r} {b['text']!r}"
+            for b in bad[:12]
+        )
     )
