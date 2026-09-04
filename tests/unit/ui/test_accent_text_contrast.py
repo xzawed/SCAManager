@@ -259,11 +259,15 @@ def test_accent_as_text_consumers_route_through_the_token():
             "토큰만 만들고 배선하지 않으면 화면은 그대로다"
         )
 
-    # `.hook-btn` 은 자기 토큰을 지난다 — 그 토큰이 accent 글자색을 가리켜야 한다.
+    # `.hook-btn` 은 자기 토큰을 지난다. 🔴 밝은 두 테마만 옮긴다 — dark·catppuccin 에서
+    # `--accent-2` 는 어두운 바탕 위라 원래 통과하고, 거기까지 바꾸면 «고칠 것이 없는
+    # 테마의 색상만» 달라진다(dark #b289ff → #7c7aff · catppuccin lavender → mauve).
     src = _read("src/static/css/tokens.css")
-    for theme in _THEMES:
-        block = _theme_block(src, theme)
-        assert _decl(block, "--hook-btn-tx") == "var(--accent-text)", (
-            f"[{theme}] --hook-btn-tx 가 accent 글자색을 가리키지 않는다 — "
-            "실측 pastel 2.07"
+    expected = {"light": "var(--accent-text)", "pastel": "var(--accent-text)",
+                "dark": "var(--accent-2)", "catppuccin": "var(--accent-2)"}
+    for theme, want in expected.items():
+        got = _decl(_theme_block(src, theme), "--hook-btn-tx")
+        assert got == want, (
+            f"[{theme}] --hook-btn-tx 가 {want} 가 아니라 {got} 다 — "
+            "밝은 테마만 글자 전용 색으로 옮긴다(실측 pastel 2.07 · light 3.84)"
         )

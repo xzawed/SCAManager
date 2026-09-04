@@ -581,7 +581,10 @@
   --hint-border:        rgba(255, 255, 255, 0.05);
   --hook-btn-bg:        rgba(178, 137, 255, 0.10);
   --hook-btn-bd:        rgba(178, 137, 255, 0.30);
-  --hook-btn-tx:        var(--accent-text);
+  /* dark/catppuccin: accent-2 는 어두운 바탕 위라 원래 통과한다 — 색상까지 바꾸면
+     그 테마의 인상만 달라진다. 밝은 두 테마만 글자 전용 색으로 옮긴다.
+     Only the pale themes need the text-safe accent here. */
+  --hook-btn-tx:        var(--accent-2);
   --btn-on-accent:      var(--accent-text-on);
 }
 
@@ -718,7 +721,10 @@
   --hint-border:   rgba(205, 214, 244, 0.08);
   --hook-btn-bg:   rgba(180, 190, 254, 0.10);
   --hook-btn-bd:   rgba(180, 190, 254, 0.28);
-  --hook-btn-tx:   var(--accent-text);
+  /* dark/catppuccin: accent-2 는 어두운 바탕 위라 원래 통과한다 — 색상까지 바꾸면
+     그 테마의 인상만 달라진다. 밝은 두 테마만 글자 전용 색으로 옮긴다.
+     Only the pale themes need the text-safe accent here. */
+  --hook-btn-tx:   var(--accent-2);
   --btn-on-accent: var(--accent-text-on);
 }
 
