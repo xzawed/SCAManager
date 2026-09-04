@@ -190,7 +190,9 @@
   flex: 1;
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--text-3);
+  /* 칩 표면 위에서는 3차 색이 어느 테마도 AA 를 못 넘는다 — 보조 층을 쓴다.
+     The faintest tier cannot reach AA on a chip surface in any theme. */
+  color: var(--text-2);
   background: var(--bg-mute);
   padding: 4px 10px;
   border-radius: var(--radius-pill);
@@ -501,7 +503,8 @@
   padding: 1px 6px;
   background: var(--bg-mute);
   border-radius: var(--radius-xs);
-  color: var(--text-3);
+  /* 칩 표면 위 3차 색 — 위 `.frame__url` 과 같은 이유. */
+  color: var(--text-2);
 }
 
 /* GitHub issue panel */

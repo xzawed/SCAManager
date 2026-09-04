@@ -220,11 +220,62 @@ def test_faint_text_is_not_painted_on_chip_surfaces():
     대상: `.kpi__delta--flat` — 회색 워시를 깔고 그 위에 3차 글자를 얹어
     네 테마 전부에서 최악 표면(2.63~3.20)을 만들고 있었다.
     """
-    block = _rule_block(_read("src/templates/dashboard.html"), ".kpi__delta--flat")
-    assert "var(--text-3" not in block, (
-        "`.kpi__delta--flat` 이 워시 배경 위에 3차 글자를 얹는다 — "
-        "이 조합은 네 테마 전부 AA 미달이다. 형제인 --up/--down 처럼 "
-        "강조 층(--text-2)을 쓴다"
+    # 🔴 «모든» 선언을 본다. 지금 칠해지는 한 곳만 보면, 그 규칙이 사라졌을 때
+    #    뒤에 숨어 있던 다른 선언이 조용히 칠해진다 — 실제로 `components.css` 에
+    #    같은 이름의 규칙이 `--text-3` 을 `--bg-mute` 위에 얹은 채 남아 있었다.
+    #    Check every declaration: the losing one paints as soon as the winner is removed.
+    sources = ("src/templates/dashboard.html", "src/static/css/components.css")
+    found = 0
+    for rel in sources:
+        src = _strip_css_comments(_read(rel))
+        for m in re.finditer(r"\.kpi__delta--flat\s*\{([^}]*)\}", src):
+            found += 1
+            assert "var(--text-3" not in m.group(1), (
+                f"[{rel}] `.kpi__delta--flat` 이 워시 배경 위에 3차 글자를 얹는다 — "
+                "이 조합은 네 테마 전부 AA 미달이다(2.41~3.20). 형제인 --up/--down 처럼 "
+                "강조 층(--text-2)을 쓴다"
+            )
+    assert found >= 2, (
+        f"`.kpi__delta--flat` 선언을 {found}건만 찾았다 — 둘(페이지·컴포넌트)을 다 보지 못하면 "
+        "재지 못한 것이지 통과한 것이 아니다"
+    )
+
+
+def test_no_rule_pairs_the_faintest_tier_with_a_chip_surface():
+    """🔴 어떤 규칙도 «칩 표면 위에 3차 글자» 를 만들지 않는다 — 전역 불변식.
+
+    위 `test_faint_text_token_meets_aa_on_every_ground` 는 바탕 5종만 본다.
+    그 «제외» 가 정당한 근거가 바로 이 테스트다 — 제외한 표면 위에 3차 글자를 얹는 규칙이
+    하나도 없어야 그 검사가 거짓 집행자가 아니게 된다. 개별 사례를 하나씩 막는 대신
+    부류를 막는다.
+
+    실측: `--bg-mute` 위에서 `--text-3` 은 dark 3.14 · light 2.93 · pastel 2.41 ·
+    catppuccin 2.47. 통과시키려면 `--text-3` 이 `--text-2` 를 지나쳐야 한다.
+
+    This is what makes the 5-ground check above honest: the excluded surfaces are excluded
+    only because no rule may pair them with the faintest tier.
+    """
+    chip = ("--bg-mute", "--bg-input", "--bg-card-hi")
+    offenders = []
+    for path in sorted((_ROOT / "src").rglob("*.css")) + sorted(
+        (_ROOT / "src" / "templates").glob("*.html")
+    ):
+        text = _strip_css_comments(path.read_text(encoding="utf-8"))
+        for m in re.finditer(r"\{([^{}]*)\}", text):
+            body = m.group(1)
+            if "var(--text-3" not in body:
+                continue
+            hit = next((c for c in chip if f"var({c}" in body), None)
+            if hit:
+                sel = text[max(0, m.start() - 90):m.start()].strip().splitlines()
+                offenders.append(
+                    f"{path.relative_to(_ROOT).as_posix()}: "
+                    f"{(sel[-1] if sel else '?')[:60]} — --text-3 on {hit}"
+                )
+    assert not offenders, (
+        "칩 표면 위에 3차 글자를 얹는 규칙이 있다 — 이 조합은 네 테마 전부 AA 미달이고,\n"
+        "위 바탕 5종 검사는 이 표면을 «보지 않으므로» 초록으로 통과한다:\n  "
+        + "\n  ".join(offenders)
     )
 
 
