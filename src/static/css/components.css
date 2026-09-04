@@ -564,7 +564,11 @@ button { font-family: inherit; }
   font-size: var(--fs-xs);
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: var(--text-3);
+  /* 🔴 표 머리글에 3차 색을 쓰던 유일한 곳이었다. `repo_detail.html` 은
+     `table thead tr th { color: var(--text-2) }` 를 썼지만 명시도(0,0,4)가 여기(0,1,1)에
+     져서 한 번도 적용된 적이 없다 — `admin.css` 의 `.admin-table th` 도 --text-2 다.
+     Restores the author's intent, which lost on specificity and never painted. */
+  color: var(--text-2);
   font-weight: 600;
   padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--border-subtle);

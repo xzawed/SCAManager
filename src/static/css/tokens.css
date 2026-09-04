@@ -97,7 +97,9 @@
 
   --text-1: #f3f3fa;
   --text-2: #a5a7be;
-  --text-3: #6a6c85;
+  /* 3.56~3.92 였다 — 이 테마의 모든 글자 바탕에서 AA 미달. 색상·채도는 두고 명도만 올렸다.
+     Was 3.56-3.92 on every text ground; hue/saturation kept, lightness raised. */
+  --text-3: #7b7d95;
   --text-mono: #c8cae0;
 
   /* Accent — Refined: indigo → purple */
@@ -201,7 +203,8 @@
 
   --text-1: #131325;
   --text-2: #55576f;
-  --text-3: #888aa3;
+  /* 3.11~3.38 였다. Was 3.11-3.38 on every text ground. */
+  --text-3: #6c6f8c;
   --text-mono: #2d2e44;
 
   --accent-1:    #5b5ef0;
@@ -288,8 +291,13 @@
   --border-focus:  rgba(140, 130, 210, 0.5);
 
   --text-1: #2d2738;
-  --text-2: #6a6276;
-  --text-3: #9a92a3;
+  /* 🔴 --text-3 만 올리면 카드 위에서 5.58 대 5.40(x1.03)이 되어 두 층이 한 색이 된다.
+     계단을 남기려고 보조 글자도 함께 옮겼다. 이 테마만 그렇다.
+     Raising --text-3 alone would collapse this theme's 2nd/3rd tiers into one. */
+  --text-2: #4e4857;
+  /* 2.40~2.88 이었다(body 그라디언트의 어두운 stop 에서 최악).
+     Was 2.40-2.88; worst on the dark stop of the body gradient. */
+  --text-3: #6d6477;
   --text-mono: #46405a;
 
   --accent-1:    #8c82d2;
@@ -374,9 +382,12 @@
   --border-strong: rgba(205, 214, 244, 0.18);
   --border-focus:  rgba(203, 166, 247, 0.6);
 
+  /* 🔴 세 층을 catppuccin 팔레트에서 «한 칸씩» 올렸다 — 새 색을 지어내지 않는다.
+     overlay1 은 이 팔레트의 어느 카드 표면에서도 AA 를 넘지 못한다(surface0 에서 3.40).
+     Each tier moved one step up catppuccin's own ladder rather than inventing hexes. */
   --text-1: #cdd6f4;  /* text */
-  --text-2: #a6adc8;  /* subtext0 */
-  --text-3: #7f849c;  /* overlay1 */
+  --text-2: #bac2de;  /* subtext1 (was subtext0) */
+  --text-3: #a6adc8;  /* subtext0 (was overlay1 — 3.40 on surface0) */
   --text-mono: #cdd6f4;
 
   --accent-1:    #cba6f7;  /* mauve */
