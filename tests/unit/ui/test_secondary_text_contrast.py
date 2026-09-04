@@ -33,8 +33,34 @@ def _read(rel: str) -> str:
     return (_ROOT / rel).read_text(encoding="utf-8")
 
 
+def _strip_css_comments(src: str) -> str:
+    """🔴 판정 전에 주석을 지운다 — 주석이 규칙을 흉내 내면 가드가 산문을 통과시킨다.
+
+    실측: 이 PR 이 `.tbl th` 에 붙인 설명 주석이 «`table thead tr th { color: var(--text-2) }`»
+    를 인용하고 있어, 규칙 블록을 `}` 로 자르던 첫 판이 **주석 안에서 잘렸고**
+    선언을 3차 색으로 되돌리는 뮤테이션이 초록으로 통과했다.
+    A comment quoting a CSS rule made the block scan terminate inside the comment, so the
+    guard matched the prose instead of the declaration.
+    """
+    return re.sub(r"/\*.*?\*/", "", src, flags=re.DOTALL)
+
+
+def _rule_block(src: str, selector: str) -> str:
+    """`<selector> {` 의 선언부. 주석은 미리 지운 뒤 찾는다."""
+    clean = _strip_css_comments(src)
+    i = clean.find(selector + " {")
+    assert i >= 0, f"`{selector}` 규칙 부재 — 테스트가 늙었다"
+    j = clean.find("}", i)
+    assert j > i, f"`{selector}` 블록이 닫히지 않는다"
+    return clean[i:j]
+
+
 def _theme_block(src: str, theme: str) -> str:
-    """`[data-theme="<theme>"] {` 팔레트 블록 본문. 여러 개면 첫 블록(팔레트)."""
+    """`[data-theme="<theme>"] {` 팔레트 블록 본문. 여러 개면 첫 블록(팔레트).
+
+    주석은 먼저 지운다 — 이 파일의 설명 주석이 토큰 이름을 인용한다.
+    """
+    src = _strip_css_comments(src)
     i = src.find(f'[data-theme="{theme}"] {{')
     assert i >= 0, f"{theme} 팔레트 블록 부재 — 테스트가 늙었다"
     j = src.find("\n}", i)
@@ -109,7 +135,7 @@ def _extra_grounds(theme: str) -> dict[str, tuple]:
     """
     if theme != "pastel":
         return {}
-    src = _read("src/templates/base.html")
+    src = _strip_css_comments(_read("src/templates/base.html"))
     i = src.find('body[data-theme="pastel"]')
     assert i >= 0, "pastel body 규칙 부재 — 테스트가 늙었다"
     block = src[i:src.find("}", i)]
@@ -194,10 +220,7 @@ def test_faint_text_is_not_painted_on_chip_surfaces():
     대상: `.kpi__delta--flat` — 회색 워시를 깔고 그 위에 3차 글자를 얹어
     네 테마 전부에서 최악 표면(2.63~3.20)을 만들고 있었다.
     """
-    src = _read("src/templates/dashboard.html")
-    i = src.find(".kpi__delta--flat {")
-    assert i >= 0, "`.kpi__delta--flat` 규칙 부재 — 테스트가 늙었다"
-    block = src[i:src.find("}", i)]
+    block = _rule_block(_read("src/templates/dashboard.html"), ".kpi__delta--flat")
     assert "var(--text-3" not in block, (
         "`.kpi__delta--flat` 이 워시 배경 위에 3차 글자를 얹는다 — "
         "이 조합은 네 테마 전부 AA 미달이다. 형제인 --up/--down 처럼 "
@@ -213,14 +236,32 @@ def test_shared_table_header_uses_secondary_not_faint():
     `admin.css` 의 `.admin-table th` 도 `--text-2` 다. 표 머리글에 3차 색을 쓰는 곳은
     `components.css` 한 군데뿐이었다.
     """
-    src = _read("src/static/css/components.css")
-    i = src.find(".tbl th {")
-    assert i >= 0, "`.tbl th` 규칙 부재 — 테스트가 늙었다"
-    block = src[i:src.find("}", i)]
-    assert "var(--text-2" in block, (
+    block = _rule_block(_read("src/static/css/components.css"), ".tbl th")
+    assert "color: var(--text-2)" in block, (
         "`.tbl th` 가 보조 글자색을 쓰지 않는다 — 표 머리글이 3차 색으로 돌아가면 "
         "네 테마 전부 AA 미달(2.88~3.56)"
     )
+
+
+def test_nav_control_labels_do_not_use_the_faintest_tier():
+    """🔴 자기 워시를 깔고 그 위에 라벨을 얹는 nav 컨트롤은 3차 색을 쓰지 않는다.
+
+    `.nav-logout-btn` · `.theme-btn` 은 `rgba(255,255,255,.06)` 을 자기 배경으로 깔고
+    그 위에 `--text-3` 을 얹고 있었다. 토큰을 AA 까지 올린 «뒤에도» dark 에서 4.44 로
+    남았다 — 이 표면은 `tokens.css` 에 없어서 토큰만 보는 검사로는 보이지 않는다.
+    These two paint their own wash, a surface tokens.css cannot see; the token fix alone
+    left dark at 4.44.
+    """
+    src = _read("src/templates/base.html")
+    for selector in (".nav-logout-btn", ".theme-btn"):
+        block = _rule_block(src, selector)
+        assert "var(--text-3" not in block, (
+            f"`{selector}` 이 자기 워시 위에 3차 글자를 얹는다 — "
+            "누르는 컨트롤의 라벨이고, dark 에서 4.44 로 AA 미달이 된다"
+        )
+        assert "color: var(--text-2)" in block, (
+            f"`{selector}` 의 라벨 색이 보조 토큰이 아니다"
+        )
 
 
 def test_no_dead_color_declaration_shadowed_by_a_later_equal_rule():
@@ -230,10 +271,7 @@ def test_no_dead_color_declaration_shadowed_by_a_later_equal_rule():
     `repo_insights.html` 의 `.kpi__foot` 이 «나중에» 로드돼 한 번도 이긴 적이 없다.
     죽은 선언은 「이 값이 쓰인다」고 거짓말한다.
     """
-    css = _read("src/static/css/repo_insights.css")
-    i = css.find(".ri-kpi-sub {")
-    assert i >= 0, "`.ri-kpi-sub` 규칙 부재 — 테스트가 늙었다"
-    block = css[i:css.find("}", i)]
+    block = _rule_block(_read("src/static/css/repo_insights.css"), ".ri-kpi-sub")
     assert "color:" not in block, (
         "`.ri-kpi-sub` 에 색 선언이 되살아났다 — 같은 요소의 `.kpi__foot` 이 "
         "`repo_insights.html` 에서 더 나중에 로드돼 항상 이긴다(죽은 선언)"
