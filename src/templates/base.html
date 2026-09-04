@@ -319,7 +319,9 @@
     tbody tr { transition: background var(--transition); }
 
     /* ── 링크 ──────────────────────────────────── */
-    a { color: var(--accent); text-decoration: none; }
+    /* accent 를 «글자» 로 쓰는 자리 — 밝은 테마에서 3.24~3.86 이었다.
+       Accent as text: 3.24-3.86 on the pale themes before this token. */
+    a { color: var(--accent-text); text-decoration: none; }
     a:hover { color: var(--accent-hover); }
 
     /* ── 버튼 (베이스) ─────────────────────────── */
@@ -460,7 +462,8 @@
       padding: 2px 6px;
       border-radius: var(--radius-xs);
       font-size: var(--fs-xs);
-      color: var(--accent-hover);
+      /* 인라인 코드 — pastel 에서 1.86 이었다(--accent-hover = --accent-2, 아주 밝다). */
+      color: var(--accent-text);
       border: 1px solid var(--border-subtle);
     }
 
@@ -612,8 +615,9 @@
        Beta badge — accent color, pill shape */
     .nav-badge {
       background: rgba(var(--accent-rgb),.15);
+      /* 실측 light 3.94 · pastel 2.64 — 옅은 accent 워시 위의 accent 글자. */
       border: 1px solid rgba(var(--accent-rgb),.3);
-      color: var(--accent);
+      color: var(--accent-text);
       font-size: 11px; font-weight: 600;
       padding: 2px 8px; border-radius: var(--radius-pill);
       letter-spacing: .04em;
@@ -626,7 +630,10 @@
       background: linear-gradient(135deg, var(--accent), var(--accent-2));
       border-radius: 50%;
       display: flex; align-items: center; justify-content: center;
-      font-size: 12px; font-weight: 700; color: #fff;
+      /* accent 그라디언트 위 흰 글자였다 — catppuccin 1.79 · pastel 2.32 · dark 2.65.
+         🔴 light 는 이 수정으로도 4.23 이다(그 테마의 --accent-text-on 이 흰색이고,
+         --accent-2 위에서는 어떤 글자색도 AA 에 도달하지 못한다). 면을 옮겨야 풀린다. */
+      font-size: 12px; font-weight: 700; color: var(--accent-text-on);
       border: 2px solid var(--border-subtle);
       flex-shrink: 0;
     }

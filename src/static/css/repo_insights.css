@@ -88,7 +88,8 @@
 .ri-day-btn:hover,
 .ri-day-btn.active {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
-  color: var(--accent);
+  /* 실측 light 3.86 · pastel 2.44 — 옅은 accent 워시 위의 accent 글자. */
+  color: var(--accent-text);
   border-color: color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
