@@ -112,6 +112,10 @@
      Text ON a filled accent surface: white fails AA here (3.45), dark passes (5.61).
      The accent itself is the brand color and stays untouched. */
   --accent-text-on: #0d0d15;
+  /* 🔴 `--accent-text-on` 의 «역방향» — accent 를 «글자» 로 쓸 때의 색.
+     accent 면색은 그대로 두고 글자만 옮긴다(#1609 선례). dark 는 어두운 바탕이라 accent 가 이미 5.29 — 그대로 둔다.
+     The inverse of --accent-text-on: the accent hue safe AS text on a page ground. */
+  --accent-text: var(--accent-1);
 
   /* Grade — vibrant on dark */
   --grade-a:     #34d399;
@@ -212,6 +216,10 @@
   --accent-glow: rgba(91, 94, 240, 0.22);
   --accent-grad: linear-gradient(135deg, #5b5ef0 0%, #8b5cf6 100%);
   --accent-text-on: #ffffff;
+  /* 🔴 `--accent-text-on` 의 «역방향» — accent 를 «글자» 로 쓸 때의 색.
+     accent 면색은 그대로 두고 글자만 옮긴다(#1609 선례). accent(#5b5ef0)는 밝은 바탕에서 3.86 — 색상·채도 유지, 명도만 낮춰 4.53.
+     The inverse of --accent-text-on: the accent hue safe AS text on a page ground. */
+  --accent-text: #4c4fef;
 
   --grade-a:     #059669;
   --grade-a-bg:  #ecfdf5;
@@ -307,6 +315,10 @@
   /* 흰 글자 3.37 → 어두운 글자 5.59. pastel 은 면이 밝아 catppuccin 과 같은 선택.
      White 3.37 fails; dark text 5.59 passes — same choice as catppuccin. */
   --accent-text-on: #12101c;
+  /* 🔴 `--accent-text-on` 의 «역방향» — accent 를 «글자» 로 쓸 때의 색.
+     accent 면색은 그대로 두고 글자만 옮긴다(#1609 선례). accent(#8c82d2)는 2.43 — 같은 방식으로 4.54.
+     The inverse of --accent-text-on: the accent hue safe AS text on a page ground. */
+  --accent-text: #5d4fc0;
 
   --grade-a:     #4f9d7d;
   --grade-a-bg:  #e6f3eb;
@@ -395,6 +407,10 @@
   --accent-glow: rgba(203, 166, 247, 0.35);
   --accent-grad: linear-gradient(135deg, #cba6f7 0%, #b4befe 100%);
   --accent-text-on: #1e1e2e;
+  /* 🔴 `--accent-text-on` 의 «역방향» — accent 를 «글자» 로 쓸 때의 색.
+     accent 면색은 그대로 두고 글자만 옮긴다(#1609 선례). catppuccin 도 어두운 바탕이라 6.19 — 그대로 둔다.
+     The inverse of --accent-text-on: the accent hue safe AS text on a page ground. */
+  --accent-text: var(--accent-1);
 
   --grade-a:     #a6e3a1;  /* green */
   --grade-a-bg:  rgba(166, 227, 161, 0.14);
@@ -565,6 +581,9 @@
   --hint-border:        rgba(255, 255, 255, 0.05);
   --hook-btn-bg:        rgba(178, 137, 255, 0.10);
   --hook-btn-bd:        rgba(178, 137, 255, 0.30);
+  /* dark/catppuccin: accent-2 는 어두운 바탕 위라 원래 통과한다 — 색상까지 바꾸면
+     그 테마의 인상만 달라진다. 밝은 두 테마만 글자 전용 색으로 옮긴다.
+     Only the pale themes need the text-safe accent here. */
   --hook-btn-tx:        var(--accent-2);
   --btn-on-accent:      var(--accent-text-on);
 }
@@ -614,7 +633,7 @@
   --hint-border:   rgba(0, 0, 0, 0.05);
   --hook-btn-bg:   rgba(139, 92, 246, 0.08);
   --hook-btn-bd:   rgba(139, 92, 246, 0.25);
-  --hook-btn-tx:   var(--accent-2);
+  --hook-btn-tx:   var(--accent-text);
   --btn-on-accent: var(--accent-text-on);
 }
 
@@ -658,7 +677,7 @@
   --hint-border:   rgba(82, 70, 110, 0.06);
   --hook-btn-bg:   rgba(200, 154, 216, 0.10);
   --hook-btn-bd:   rgba(200, 154, 216, 0.28);
-  --hook-btn-tx:   var(--accent-2);
+  --hook-btn-tx:   var(--accent-text);
   --btn-on-accent: var(--accent-text-on);
 }
 
@@ -702,6 +721,9 @@
   --hint-border:   rgba(205, 214, 244, 0.08);
   --hook-btn-bg:   rgba(180, 190, 254, 0.10);
   --hook-btn-bd:   rgba(180, 190, 254, 0.28);
+  /* dark/catppuccin: accent-2 는 어두운 바탕 위라 원래 통과한다 — 색상까지 바꾸면
+     그 테마의 인상만 달라진다. 밝은 두 테마만 글자 전용 색으로 옮긴다.
+     Only the pale themes need the text-safe accent here. */
   --hook-btn-tx:   var(--accent-2);
   --btn-on-accent: var(--accent-text-on);
 }

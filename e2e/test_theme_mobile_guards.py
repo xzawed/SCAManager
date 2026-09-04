@@ -451,6 +451,9 @@ _TOKEN_TEXT_AUDIT_JS = r"""
 
   const bodyCs = getComputedStyle(document.body);
   const want = {};
+  // 🔴 관측 대상 토큰 이름은 «한 곳» 에만 둔다. 아래 `seen` 을 따로 리터럴로 적었더니
+  //    이 목록을 바꾼 파생 가드에서 `seen[name]` 이 undefined 가 됐다(합계가 NaN).
+  //    Keep the token list in one place; a duplicated `seen` literal went stale immediately.
   for (const name of ['--text-2','--text-3']) {
     const c = parse(bodyCs.getPropertyValue(name));
     if (!c) return {error: `${name} 을 읽지 못했다: ${bodyCs.getPropertyValue(name)}`};
@@ -460,7 +463,8 @@ _TOKEN_TEXT_AUDIT_JS = r"""
                      && Math.round(a.g)===Math.round(b.g)
                      && Math.round(a.b)===Math.round(b.b);
 
-  const bad = [], seen = {'--text-2':0,'--text-3':0};
+  const bad = [], seen = {};
+  for (const name of Object.keys(want)) seen[name] = 0;   // 목록은 위 한 곳에서만 온다
   for (const el of document.querySelectorAll('body *')) {
     const own = Array.from(el.childNodes)
       .filter(n=>n.nodeType===3 && n.textContent.trim()).map(n=>n.textContent.trim()).join(' ');
@@ -537,5 +541,55 @@ def test_token_text_meets_aa_against_painted_background(seeded_page, base_url, t
             f"{b['token']} {b['ratio']} < {b['need']} @{b['size']:.0f}px "
             f"bg={b['bg']} cls={b['cls']!r} {b['text']!r}"
             for b in bad[:12]
+        )
+    )
+
+
+# ── F. accent 를 «글자» 로 쓰는 곳 (--accent-text) ────────────────────────────
+# Accent used AS text — the inverse of --accent-text-on.
+
+# E 절과 같은 방식으로 «해석된 토큰 값» 과 같은 색인 글자를 런타임에 고른다.
+_ACCENT_TEXT_AUDIT_JS = _TOKEN_TEXT_AUDIT_JS.replace(
+    "for (const name of ['--text-2','--text-3'])", "for (const name of ['--accent-text'])")
+
+_ACCENT_TEXT_PATHS = ["/repos/owner/testrepo", "/repos/owner/testrepo/settings",
+                      "/repos/owner/testrepo/insights"]
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_accent_used_as_text_meets_aa(seeded_page, base_url, theme):
+    """🔴 `--accent-text` 로 칠해진 글자가 «칠해진» 바탕에서 AA 를 넘어야 한다.
+
+    실측(수정 전, `--accent` 를 그대로 글자로 쓸 때): nav 뱃지 light 3.94 · pastel 2.64,
+    본문 링크 pastel 3.24, 인라인 `<code>` pastel 1.86, `.hook-btn` pastel 2.07.
+    dark·catppuccin 은 accent 가 어두운 바탕 위라 원래 통과한다 — 그래도 네 테마를 다 도는
+    이유는, 밝은 테마용으로 고른 색이 어두운 테마를 깨뜨리지 않았는지 재기 위해서다.
+
+    🔴 accent «면» 색은 이 수정에서 바뀌지 않는다(단위 가드가 그것을 따로 지킨다).
+    """
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    total = 0
+    bad = []
+    for path in _ACCENT_TEXT_PATHS:
+        seeded_page.goto(f"{base_url}{path}")
+        seeded_page.evaluate("(t) => applyTheme(t)", theme)
+        seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
+        seeded_page.wait_for_timeout(400)
+        res = seeded_page.evaluate(_ACCENT_TEXT_AUDIT_JS)
+        assert not res.get("error"), res.get("error")
+        total += res["seen"]["--accent-text"]
+        bad += [dict(b, path=path) for b in res["bad"]]
+
+    # 🔴 관측 0건이면 통과가 아니라 red 다 — 토큰 이름이 바뀌었거나 배선이 끊긴 것이다.
+    assert total > 0, (
+        f"[{theme}] --accent-text 로 칠해진 글자를 하나도 찾지 못했다 — "
+        "재지 못한 것이지 통과한 것이 아니다"
+    )
+    assert not bad, (
+        f"[{theme}] accent 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
+        + "\n  ".join(
+            f"{b['ratio']} < {b['need']} @{b['size']:.0f}px bg={b['bg']} "
+            f"cls={b['cls']!r} {b['text']!r} ({b['path']})"
+            for b in bad[:10]
         )
     )

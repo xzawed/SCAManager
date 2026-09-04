@@ -61,7 +61,9 @@
                      font-weight: 500; transition: all 0.15s ease;
                      display: inline-flex; align-items: center; gap: 0.35rem; }
   .mode-toggle-btn:hover:not(.active) { background: var(--bg-hover, rgba(99,102,241,.08)); }
-  .mode-toggle-btn.active { background: var(--accent); color: white;
+  /* 단색 accent 면 위 흰 글자 — dark 3.45 · pastel 3.37 · catppuccin 2.03 이었다.
+     #1609 가 `.btn-primary` 에 쓴 것과 같은 처방. */
+  .mode-toggle-btn.active { background: var(--accent); color: var(--accent-text-on);
                             border-color: var(--accent); font-weight: 700;
                             box-shadow: 0 2px 8px rgba(99,102,241,0.25); }
   .mode-toggle-hint { font-size: 11px; opacity: 0.85; margin-left: 0.15rem; }
@@ -535,7 +537,7 @@
       <div class="s-card-body">
         <p style="font-size:13px;color:var(--text-2);margin:0 0 .75rem;">{{ 'settings_page.onboarding.intro' | i18n_args(locale | default('ko')) }}</p>
         <div style="display:flex;flex-direction:column;gap:.45rem;font-size:13px;">
-          <a href="#notifyCard" style="color:var(--accent);font-weight:600;">
+          <a href="#notifyCard" style="color:var(--accent-text);font-weight:600;">
             {{ 'settings_page.onboarding.step1' | i18n_args(locale | default('ko')) | safe }}
           </a>
           <span style="color:var(--text-2);">

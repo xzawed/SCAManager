@@ -50,7 +50,9 @@
     display: inline-flex; align-items: center; justify-content: center;
     width: 28px; height: 28px; border-radius: 50%;
     background: var(--accent-grad, linear-gradient(135deg, #7c7aff, #b289ff));
-    font-size: var(--fs-xs, 0.75rem); font-weight: 700; color: #fff; flex-shrink: 0;
+    /* `.nav-avatar` 와 같은 부류 — accent 그라디언트 위 흰 글자. */
+    font-size: var(--fs-xs, 0.75rem); font-weight: 700;
+    color: var(--accent-text-on); flex-shrink: 0;
   }
   .step-card__title { font-size: var(--fs-md, 1rem); font-weight: 640; color: var(--text-1, #fff); }
 
