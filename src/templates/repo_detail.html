@@ -349,6 +349,18 @@
     background: var(--accent); border: 2px solid #fff;
     box-shadow: 0 1px 4px rgba(0,0,0,.3); cursor: pointer; pointer-events: all;
   }
+  /* 🔴 위 규칙의 `outline: none` 이 전역 `*:focus-visible` 을 특이도로 이기는데 대체가
+     없었다 — 실측: Tab 으로 도달해도 5092px 중 «0px» 이 바뀐다(네 테마 전부. 같은 자리에
+     빨강 링을 강제하면 690px 이 바뀌므로 계기 문제가 아니다). WCAG 2.4.7(Level A).
+     트랙이 아니라 «손잡이» 에 링을 준다 — 두 손잡이가 트랙 하나를 공유하므로 트랙을
+     두르면 어느 쪽이 포커스인지 알 수 없다.
+     The rule above beat the global ring on specificity with nothing replacing it. */
+  .dual-slider-track input[type=range]:focus-visible::-webkit-slider-thumb {
+    outline: 2px solid var(--focus-ring); outline-offset: 2px;
+  }
+  .dual-slider-track input[type=range]:focus-visible::-moz-range-thumb {
+    outline: 2px solid var(--focus-ring); outline-offset: 2px;
+  }
   .dual-slider-fill { position: absolute; height: 6px; background: var(--accent); border-radius: 3px; top: 0; pointer-events: none; }
   .dual-slider-bg { position: absolute; width: 100%; height: 6px; background: var(--border-subtle); border-radius: 3px; top: 0; }
   .score-val-label { font-size: 12px; font-weight: 700; color: var(--text-1); min-width: 28px; text-align: center; }
@@ -632,12 +644,19 @@
     const accentRgb = s.getPropertyValue('--accent-rgb').trim()   || '99,102,241';
     const muted     = s.getPropertyValue('--text-2').trim()       || '#64748b';
     const border    = s.getPropertyValue('--border-subtle').trim()|| '#2d3748';
+    /* 🔴 격자선 색은 `--chart-grid` 에서 «그대로» 온다 — 이전 코드는 `border + '44'` 로
+       16진 알파를 이어붙였는데, 그 값은 dark(`rgba(255,255,255,0.06)`)·catppuccin 에서
+       파싱 불가 문자열이 된다. canvas 는 무효 색을 조용히 무시하고 «직전 strokeStyle» 을
+       그대로 쓰므로, 실측 결과 격자선이 «불투명 검정»(0,0,0,255)으로 칠해졌다.
+       Concatenating a hex alpha only works when the token is hex; rgba() tokens
+       become an invalid string and canvas silently keeps the previous strokeStyle. */
+    const gridColor = s.getPropertyValue('--chart-grid').trim() || 'rgba(255, 255, 255, 0.05)';
     const tipBg     = s.getPropertyValue('--bg-card').trim()      || '#1c1c23';
     const tipText   = s.getPropertyValue('--text-1').trim()       || '#e2e2e8';
     const bgBase    = s.getPropertyValue('--bg-base').trim()      || '#07070f';
     const success   = s.getPropertyValue('--success').trim()      || '#4ade80';
     const danger    = s.getPropertyValue('--danger').trim()       || '#f87171';
-    return { accent, accentRgb, muted, border, tipBg, tipText, bgBase, success, danger };
+    return { accent, accentRgb, muted, border, gridColor, tipBg, tipText, bgBase, success, danger };
   }
 
   /* 등급별 포인트 색상 맵 — getComputedStyle 1회 호출로 통합 (N번 반복 방지)
@@ -685,7 +704,7 @@
     canvasEl.style.display = '';
     if (emptyEl) emptyEl.style.display = 'none';
 
-    const { accent, accentRgb, muted, border, tipBg, tipText, bgBase, success, danger } = getThemeColors();
+    const { accent, accentRgb, muted, border, gridColor, tipBg, tipText, bgBase, success, danger } = getThemeColors();
     const scores = _chartData.map(function(a) { return a.score; }).filter(function(s) { return s != null; });
 
     /* stats 배지 — 평균/최고/최저 / Stats: avg / max / min */
@@ -737,7 +756,7 @@
           x: { display: false },
           y: {
             min: 0, max: 100,
-            grid: { color: border + '44', drawBorder: false },
+            grid: { color: gridColor, drawBorder: false },
             border: { display: false },
             ticks: { color: muted, font: { size: 11 }, maxTicksLimit: 3, padding: 8 }
           }

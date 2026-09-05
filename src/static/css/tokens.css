@@ -125,6 +125,12 @@
      The inverse of --accent-text-on: the accent hue safe AS text on a page ground. */
   --accent-text: var(--accent-1);
 
+  /* 🔴 포커스 «링» 전용. `--accent` 는 «면» 색이라 그것을 링으로 쓰면 면과 링이 한 몸이
+     되고, 링만 진하게 하려 해도 버튼 면이 따라온다 — `--accent-text-hover` 를 뗀 것과
+     같은 이유다. 실측(픽셀·5화면×4테마, 포커스 강제): dark 최악 4.44 — 그대로 둔다.
+     Focus ring role, split from the accent SURFACE color. */
+  --focus-ring: var(--accent-1);
+
   /* Grade — vibrant on dark */
   --grade-a:     #34d399;
   --grade-a-bg:  rgba(52, 211, 153, 0.12);
@@ -229,6 +235,12 @@
      The inverse of --accent-text-on: the accent hue safe AS text on a page ground. */
   --accent-text: #4c4fef;
 
+  /* 🔴 포커스 «링» 전용. `--accent` 는 «면» 색이라 그것을 링으로 쓰면 면과 링이 한 몸이
+     되고, 링만 진하게 하려 해도 버튼 면이 따라온다 — `--accent-text-hover` 를 뗀 것과
+     같은 이유다. 실측(픽셀·5화면×4테마, 포커스 강제): light 최악 4.20 — 그대로 둔다.
+     Focus ring role, split from the accent SURFACE color. */
+  --focus-ring: var(--accent-1);
+
   --grade-a:     #04835c;
   --grade-a-bg:  #ecfdf5;
   --grade-a-bd:  #a7f3d0;
@@ -328,6 +340,12 @@
      The inverse of --accent-text-on: the accent hue safe AS text on a page ground. */
   --accent-text: #5d4fc0;
 
+  /* 🔴 포커스 «링» 전용. `--accent` 는 «면» 색이라 그것을 링으로 쓰면 면과 링이 한 몸이
+     되고, 링만 진하게 하려 해도 버튼 면이 따라온다 — `--accent-text-hover` 를 뗀 것과
+     같은 이유다. 실측(픽셀·5화면×4테마, 포커스 강제): pastel 은 `--accent`(#8c82d2)로 2.77~2.88 미달(기준 3.0) — 9건. 이 값으로 5.17.
+     Focus ring role, split from the accent SURFACE color. */
+  --focus-ring: #5d4fc0;
+
   --grade-a:     #3d7860;
   --grade-a-bg:  #e6f3eb;
   --grade-a-bd:  #b2dabf;
@@ -419,6 +437,12 @@
      accent 면색은 그대로 두고 글자만 옮긴다(#1609 선례). catppuccin 도 어두운 바탕이라 6.19 — 그대로 둔다.
      The inverse of --accent-text-on: the accent hue safe AS text on a page ground. */
   --accent-text: var(--accent-1);
+
+  /* 🔴 포커스 «링» 전용. `--accent` 는 «면» 색이라 그것을 링으로 쓰면 면과 링이 한 몸이
+     되고, 링만 진하게 하려 해도 버튼 면이 따라온다 — `--accent-text-hover` 를 뗀 것과
+     같은 이유다. 실측(픽셀·5화면×4테마, 포커스 강제): catppuccin 최악 4.54 — 그대로 둔다.
+     Focus ring role, split from the accent SURFACE color. */
+  --focus-ring: var(--accent-1);
 
   --grade-a:     #a6e3a1;  /* green */
   --grade-a-bg:  rgba(166, 227, 161, 0.14);

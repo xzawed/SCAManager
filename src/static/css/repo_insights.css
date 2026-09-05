@@ -289,6 +289,48 @@
   max-height: 200px;
 }
 
+/* ── 도넛 범례 / Donut legend ─────────────────────────────
+   조각 이름을 «글자» 로 준다. 색 견본은 보조 표시라 `aria-hidden`.
+   Segment names as text; the swatch is decorative. */
+.ri-legend {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  width: 100%;
+  max-width: 260px;
+  display: grid;
+  gap: 6px;
+}
+
+.ri-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.ri-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex: 0 0 auto;
+}
+
+.ri-legend-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ri-legend-count {
+  font-weight: 700;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── 문제 파일 / Problem files ──────────────────────────── */
 .ri-file-list {
   padding: 0 18px 16px;
