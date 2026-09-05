@@ -766,7 +766,7 @@
     {# Empty State — onboarding tooltip + 가이드 / Phase 2 PR-6 — i18n #}
     <div class="dash-insight-status">
       {{ 'dashboard.security.empty_title' | i18n_args(locale | default('ko')) }} <br>
-      <small style="opacity:0.8;">{{ 'dashboard.security.empty_hint_part1' | i18n_args(locale | default('ko')) }}<a href="https://github.com/{{ current_user.github_login }}?tab=security" target="_blank" rel="noopener">{{ 'dashboard.security.empty_hint_link' | i18n_args(locale | default('ko')) }}</a>{{ 'dashboard.security.empty_hint_part2' | i18n_args(locale | default('ko')) }}</small>
+      <small style="color:var(--text-3);">{{ 'dashboard.security.empty_hint_part1' | i18n_args(locale | default('ko')) }}<a href="https://github.com/{{ current_user.github_login }}?tab=security" target="_blank" rel="noopener">{{ 'dashboard.security.empty_hint_link' | i18n_args(locale | default('ko')) }}</a>{{ 'dashboard.security.empty_hint_part2' | i18n_args(locale | default('ko')) }}</small>
     </div>
     {% elif security %}
     <div class="dash-insight-grid" role="region" aria-label="{{ 'dashboard.security.card_aria' | i18n_args(locale | default('ko')) }}">
@@ -787,7 +787,7 @@
           <span class="dash-insight-metric-label">{{ 'dashboard.security.pending_label' | i18n_args(locale | default('ko')) }}</span>
           <span class="dash-insight-metric-value">{{ security.pending_count }}</span>
         </div>
-        <small style="opacity:0.7;">{{ 'dashboard.security.pending_hint' | i18n_args(locale | default('ko')) }}</small>
+        <small style="color:var(--text-3);">{{ 'dashboard.security.pending_hint' | i18n_args(locale | default('ko')) }}</small>
       </div>
       <div class="dash-insight-card">
         <h2 class="dash-insight-title">{{ 'dashboard.security.classification_title' | i18n_args(locale | default('ko')) }}</h2>
@@ -809,7 +809,7 @@
           {% endfor %}
         </ul>
         {% else %}
-        <small style="opacity:0.7;">{{ 'dashboard.security.recent_pending_empty' | i18n_args(locale | default('ko')) }}</small>
+        <small style="color:var(--text-3);">{{ 'dashboard.security.recent_pending_empty' | i18n_args(locale | default('ko')) }}</small>
         {% endif %}
       </div>
     </div>
@@ -825,7 +825,7 @@
     {# Empty State — onboarding tooltip #}
     <div class="dash-insight-status">
       {{ 'dashboard.usage.empty_title' | i18n_args(locale | default('ko')) }}<br>
-      <small style="opacity:0.8;">{{ 'dashboard.usage.empty_hint_part1' | i18n_args(locale | default('ko')) }}<a href="/repos/add">{{ 'dashboard.usage.empty_hint_link' | i18n_args(locale | default('ko')) }}</a>{{ 'dashboard.usage.empty_hint_part2' | i18n_args(locale | default('ko')) }}</small>
+      <small style="color:var(--text-3);">{{ 'dashboard.usage.empty_hint_part1' | i18n_args(locale | default('ko')) }}<a href="/repos/add">{{ 'dashboard.usage.empty_hint_link' | i18n_args(locale | default('ko')) }}</a>{{ 'dashboard.usage.empty_hint_part2' | i18n_args(locale | default('ko')) }}</small>
     </div>
     {% elif usage %}
     <div class="dash-insight-grid" role="region" aria-label="{{ 'dashboard.usage.card_aria' | i18n_args(locale | default('ko')) }}">
@@ -835,7 +835,7 @@
           <span class="dash-insight-metric-label">{{ 'dashboard.usage.repo_count_label' | i18n_args(locale | default('ko')) }}</span>
           <span class="dash-insight-metric-value">{{ usage.repo_count }}</span>
         </div>
-        <small style="opacity:0.7;">{{ 'dashboard.usage.repo_count_hint' | i18n_args(locale | default('ko')) }}</small>
+        <small style="color:var(--text-3);">{{ 'dashboard.usage.repo_count_hint' | i18n_args(locale | default('ko')) }}</small>
       </div>
       <div class="dash-insight-card">
         <h2 class="dash-insight-title">{{ 'dashboard.usage.total_analyses_title' | i18n_args(locale | default('ko')) }}</h2>
@@ -856,7 +856,7 @@
           <span class="dash-insight-metric-label">{{ 'dashboard.usage.recent_analyses_label' | i18n_args(locale | default('ko')) }}</span>
           <span class="dash-insight-metric-value">{{ usage.recent_analyses }}</span>
         </div>
-        <small style="opacity:0.7;">{{ 'dashboard.usage.recent_period_hint' | i18n_args(locale | default('ko'), days=usage.days) }}</small>
+        <small style="color:var(--text-3);">{{ 'dashboard.usage.recent_period_hint' | i18n_args(locale | default('ko'), days=usage.days) }}</small>
       </div>
       <div class="dash-insight-card">
         <h2 class="dash-insight-title">{{ 'dashboard.usage.avg_score_title' | i18n_args(locale | default('ko')) }}</h2>
@@ -866,7 +866,7 @@
             {% if usage.avg_score is not none %}{{ 'dashboard.usage.avg_score_unit' | i18n_args(locale | default('ko'), score=usage.avg_score) }}{% else %}-{% endif %}
           </span>
         </div>
-        <small style="opacity:0.7;">{{ 'dashboard.usage.avg_score_hint' | i18n_args(locale | default('ko')) }}</small>
+        <small style="color:var(--text-3);">{{ 'dashboard.usage.avg_score_hint' | i18n_args(locale | default('ko')) }}</small>
       </div>
     </div>
     <div style="margin-top: 1rem; padding: 1rem; background: var(--bg-card); border-radius: 8px;">
@@ -886,7 +886,7 @@
     {# Phase 2-B 🅑 (사이클 74 PR-B) — DB 캐싱 1h TTL + Refresh 버튼 + generated_at 표시 / Phase 2 PR-6 — i18n #}
     {# Phase 2-B 🅑 (Cycle 74 PR-B) — DB cache 1h TTL + Refresh button + generated_at display / Phase 2 PR-6 — i18n #}
     {% if insight and insight.status == 'success' %}
-    <div style="display:flex; justify-content:flex-end; align-items:center; gap:12px; margin-bottom:8px; font-size:0.85em; opacity:0.8;">
+    <div style="display:flex; justify-content:flex-end; align-items:center; gap:12px; margin-bottom:8px; font-size:0.85em; color:var(--text-3);">
       {% if insight.generated_at %}
       <span title="{{ 'dashboard.insight.generated_at_tooltip' | i18n_args(locale | default('ko')) }}">⏱ {{ insight.generated_at[:16].replace('T', ' ') }}</span>
       {% endif %}
@@ -998,7 +998,7 @@
         <div class="kpi__delta kpi__delta--flat">— {{ 'dashboard.delta.no_comparison' | i18n_args(locale | default('ko')) }}</div>
       {% endif %}
       {% if kpi.avg_score.excluded_unreliable %}
-      <div class="kpi__foot" style="opacity:0.85;color:var(--warning, #d97706);">
+      <div class="kpi__foot" style="color:var(--warning, #d97706);">
         {{ 'dashboard.kpi_avg_excludes_unreliable' | i18n_args(locale | default('ko'), count=kpi.avg_score.excluded_unreliable) }}
       </div>
       {% endif %}

@@ -84,11 +84,19 @@
 [data-theme="dark"] {
   --bg-base:     #07070f;
   --bg-canvas:   #0c0c18;
-  --bg-card:     rgba(255, 255, 255, 0.024);
-  --bg-card-hi:  rgba(255, 255, 255, 0.045);
+  /* 🔴 반투명이었다. 뒤에서 `.atmosphere__orb` 셋이 계속 움직여, 같은 토큰 위의 같은
+     글자인데 실제 배경이 rgb(8,8,19)~rgb(48,37,80) 을 오갔다(픽셀 실측) — 어떤 글자색으로도
+     대비를 약속할 수 없었다. 값은 «불이 안 닿을 때의 색 그대로» 다(캔버스 위 합성 결과).
+     페이지 배경의 orb 분위기는 그대로 두고 카드 «안» 만 고정한다.
+     Was translucent over three animated orbs; the value below is exactly what it composited
+     to when unlit, so the card's own look is unchanged. 합성 부모는 `--bg-canvas` 가
+     아니라 `--bg-base` 다 — `body` 와 `.atmosphere` 가 그것을 칠한다(`--bg-canvas` 는
+     쓰이지 않는 목업 전용). */
+  --bg-card:     #0c0c14;
+  --bg-card-hi:  #111119;
   --bg-elevated: #14141f;
   --bg-nav:      rgba(8, 8, 16, 0.72);
-  --bg-input:    rgba(255, 255, 255, 0.035);
+  --bg-input:    #0f0f17;
   --bg-mute:     rgba(255, 255, 255, 0.06);
 
   --border-subtle: rgba(255, 255, 255, 0.06);
