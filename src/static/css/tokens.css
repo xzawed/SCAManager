@@ -93,7 +93,7 @@
      아니라 `--bg-base` 다 — `body` 와 `.atmosphere` 가 그것을 칠한다(`--bg-canvas` 는
      쓰이지 않는 목업 전용). */
   --bg-card:     #0c0c14;
-  --bg-card-hi:  #121219;
+  --bg-card-hi:  #111119;
   --bg-elevated: #14141f;
   --bg-nav:      rgba(8, 8, 16, 0.72);
   --bg-input:    #0f0f17;
