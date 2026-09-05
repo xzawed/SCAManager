@@ -327,3 +327,38 @@ def test_no_dead_color_declaration_shadowed_by_a_later_equal_rule():
         "`.ri-kpi-sub` 에 색 선언이 되살아났다 — 같은 요소의 `.kpi__foot` 이 "
         "`repo_insights.html` 에서 더 나중에 로드돼 항상 이긴다(죽은 선언)"
     )
+
+
+# 카드 표면은 «고정» 이어야 한다 — 그 위 글자의 배경이 정해지지 않으면 대비를 약속할 수 없다.
+# Card surfaces must be opaque: text on a see-through card has no fixed background to measure.
+_CARD_SURFACES = ("--bg-card", "--bg-card-hi", "--bg-input", "--bg-elevated")
+
+
+def test_card_surfaces_are_opaque_so_text_has_a_fixed_background():
+    """🔴 글자를 얹는 카드 표면 토큰은 «불투명» 이어야 한다.
+
+    dark 의 `--bg-card` 는 `rgba(255,255,255,0.024)` — 사실상 투명이었다. 그 뒤에서
+    `.atmosphere__orb` 셋이 `mix-blend-mode: screen` 으로 38·48·56초 주기로 움직인다.
+    그래서 «같은 토큰 위의 같은 글자» 인데 실제로 칠해진 배경이
+    `rgb(8,8,19)` ~ `rgb(48,37,80)` 사이를 오갔다(픽셀 실측).
+
+    이것이 #1611 에서 `--text-3` 을 올리고도 dark 에서 다시 미달이 난 이유다 —
+    토큰 대 토큰으로 계산하면 통과하지만 화면에서는 통과하지 않는다.
+    페이지 배경의 orb 분위기는 그대로 두고, 카드 «안» 만 고정한다.
+
+    A translucent card over the animated atmosphere has no fixed background, so no contrast
+    guarantee is possible for text on it.
+    """
+    src = _read("src/static/css/tokens.css")
+    offenders = []
+    for theme in _THEMES:
+        block = _theme_block(src, theme)
+        for name in _CARD_SURFACES:
+            value = _decl(block, name)
+            alpha = _parse_color(value)[3]
+            if alpha < 1.0:
+                offenders.append(f"[{theme}] {name} = {value} (alpha {alpha})")
+    assert not offenders, (
+        "카드 표면이 반투명이다 — 그 위 글자의 배경이 orb 애니메이션에 따라 움직여\n"
+        "어떤 글자색으로도 대비를 보장할 수 없다:\n  " + "\n  ".join(offenders)
+    )
