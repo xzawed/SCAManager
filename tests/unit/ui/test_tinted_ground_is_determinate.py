@@ -44,8 +44,13 @@ def test_text_bearing_tints_have_a_determinate_ground():
         for body in _rule_bodies(read(rel), selector):
             for m in re.finditer(r"background\s*:\s*([^;]+);", body):
                 value = m.group(1)
-                # 🔴 `[^)]*` 는 `var(--accent)` 의 닫는 괄호에서 멈춘다 — 중첩을 허용해야
-                #    `color-mix(in srgb, var(--accent) 12%, transparent)` 를 잡는다.
+                # 🔴 투명을 써도 «불투명 층» 이 뒤에 깔려 있으면 바탕은 정해진다.
+                #    CSS 다중 배경은 마지막 층이 가장 아래다 — 그 층이 표면 토큰이면 통과.
+                #    Multi-background: the last layer is the bottom one.
+                if re.fullmatch(r"var\(--bg-[\w-]+\)", value.rsplit(",", 1)[-1].strip()):
+                    continue
+                # `[^)]*` 는 `var(--accent)` 의 닫는 괄호에서 멈춘다 — 중첩을 허용해야
+                # `color-mix(in srgb, var(--accent) 12%, transparent)` 를 잡는다.
                 if re.search(r"color-mix\(.*?,\s*transparent\s*\)", value) or \
                         re.search(r"transparent\s+100%", value):
                     offenders.append(f"{rel}: `{selector}` 의 배경이 transparent 에 섞인다 "
