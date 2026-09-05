@@ -112,6 +112,11 @@ def _start_uvicorn(db_path: str) -> tuple:
     os.environ["GITHUB_CLIENT_ID"] = "e2e-github-client-id"
     os.environ["GITHUB_CLIENT_SECRET"] = "e2e-github-client-secret"
     os.environ["SESSION_SECRET"] = "e2e-session-secret-32chars-long!!"
+    # 🔴 `/admin/*` 3화면은 `require_admin` 이 `SAAS_ADMIN_EMAILS` 를 보고 막는다.
+    #    의존성을 override 하지 «않고» 설정으로 연다 — 실제 인가 경로를 그대로 탄다.
+    #    이걸 안 하면 admin 화면은 e2e 로 도달 불가라 영영 검증되지 않는다.
+    #    Opens /admin/* through the real authorization path instead of stubbing it.
+    os.environ["SAAS_ADMIN_EMAILS"] = "e2e@test.com"
 
     # pydantic-settings 캐시 무효화
     for mod_name in list(sys.modules.keys()):
@@ -173,6 +178,11 @@ def live_server(tmp_path_factory):
     os.environ["GITHUB_CLIENT_ID"] = "e2e-github-client-id"
     os.environ["GITHUB_CLIENT_SECRET"] = "e2e-github-client-secret"
     os.environ["SESSION_SECRET"] = "e2e-session-secret-32chars-long!!"
+    # 🔴 `/admin/*` 3화면은 `require_admin` 이 `SAAS_ADMIN_EMAILS` 를 보고 막는다.
+    #    의존성을 override 하지 «않고» 설정으로 연다 — 실제 인가 경로를 그대로 탄다.
+    #    이걸 안 하면 admin 화면은 e2e 로 도달 불가라 영영 검증되지 않는다.
+    #    Opens /admin/* through the real authorization path instead of stubbing it.
+    os.environ["SAAS_ADMIN_EMAILS"] = "e2e@test.com"
     _setup_e2e_db(db_path)
 
     server, thread = _start_uvicorn(db_path)

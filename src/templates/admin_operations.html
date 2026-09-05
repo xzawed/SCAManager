@@ -59,7 +59,8 @@
   }
 
   .admin-ops-link {
-    color: var(--accent);
+    /* accent 를 «글자» 로 — 실측 pastel 3.24. */
+    color: var(--accent-text);
     text-decoration: none;
     font-weight: 500;
     transition: opacity 0.15s ease;
@@ -151,8 +152,8 @@
     display: block;
     margin-top: 10px;
     font-size: 11px;
-    color: var(--text-2);
-    opacity: 0.8;
+    /* opacity 는 대비까지 같이 낮춘다(실측 light 4.31) — 층으로 표현한다. */
+    color: var(--text-3);
     line-height: 1.5;
   }
 

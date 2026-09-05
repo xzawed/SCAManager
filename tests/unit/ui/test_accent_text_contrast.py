@@ -246,11 +246,18 @@ def test_accent_as_text_consumers_route_through_the_token():
 
     바꾸지 않으면 토큰만 생기고 화면은 그대로다 — 「쓰기만 넓히고 읽는 쪽은 그대로」.
     """
+    # 🔴 이 «구조» 검사가 필요한 이유: e2e 가드는 «그 토큰 색으로 칠해진» 글자를 골라
+    #    재므로, 토큰을 안 쓰도록 되돌리면 그 요소가 관측 집합에서 «빠져» 통과한다.
+    #    실측으로 확인했다 — `.admin-link` 를 `--accent` 로 되돌려도 e2e 는 green 이었다.
+    #    「어떤 토큰을 쓰는가」는 구조로, 「칠해진 결과가 AA 인가」는 e2e 로 나눠 본다.
+    #    A value-matching e2e guard cannot catch a change that stops using the token.
     checks = [
         ("src/templates/base.html", "a", "본문 링크"),
         ("src/templates/base.html", ".nav-badge", "nav 뱃지"),
         ("src/templates/base.html", "code", "인라인 코드"),
         ("src/static/css/repo_insights.css", ".ri-day-btn.active", "기간 선택 활성"),
+        ("src/static/css/admin.css", ".admin-link", "admin 링크"),
+        ("src/templates/admin_operations.html", ".admin-ops-link", "admin 운영 링크"),
     ]
     for rel, selector, label in checks:
         block = _declaring_block(_read(rel), selector, "color")
