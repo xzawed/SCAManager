@@ -449,6 +449,13 @@ _TOKEN_TEXT_AUDIT_JS = r"""
   const ratio = (a,b) => { const l1=lum(a), l2=lum(b);
     return (Math.max(l1,l2)+0.05)/(Math.min(l1,l2)+0.05); };
 
+  // 🔴 조상 `opacity` 를 곱한다. 이 가드는 `opacity===0` 만 걸렀고 0<o<1 을 무시해
+  //    `opacity:.8` 로 흐려진 글자를 «실제보다 진하게» 재고 있었다(실측 4.31 을 5.4 로).
+  //    Ancestor opacity was ignored, so dimmed text measured stronger than it renders.
+  const opacityFrom = n => { let a=1;
+    for(let x=n;x;x=x.parentElement){ const o=parseFloat(getComputedStyle(x).opacity);
+      if(!isNaN(o)) a*=o; }
+    return a; };
   const bodyCs = getComputedStyle(document.body);
   const want = {};
   // 🔴 관측 대상 토큰 이름은 «한 곳» 에만 둔다. 아래 `seen` 을 따로 리터럴로 적었더니
@@ -479,6 +486,9 @@ _TOKEN_TEXT_AUDIT_JS = r"""
     if (!fg || fg.a===0) continue;
     const token = Object.keys(want).find(k => same(fg, want[k]));
     if (!token) continue;
+    const oa = opacityFrom(el);
+    if (oa <= 0.005) continue;
+    fg.a *= oa;
     seen[token]++;
     const size = parseFloat(cs.fontSize), weight = parseInt(cs.fontWeight,10)||400;
     // WCAG 1.4.3 large text = 18pt(24px), or 14pt(18.5px) bold.
@@ -498,6 +508,18 @@ _TOKEN_TEXT_AUDIT_JS = r"""
 
 # 두 토큰이 실제로 쓰이는 화면들. 각각이 서로 다른 바탕(카드·표·nav 알약·KPI)을 만든다.
 _TOKEN_TEXT_PATHS = ["/", "/dashboard", "/repos/owner/testrepo", "/repos/owner/testrepo/insights"]
+
+
+def _settle_animations(page) -> None:
+    """🔴 «끝난 화면» 을 잰다 — 등장 애니메이션이 도는 중에 재면 `opacity` 가 0.9x 라
+    실제보다 흐리게 나온다(실측 `.reveal` 0.936 → 거짓 미달 1.97).
+    무한 반복(배경 orb)은 영영 안 끝나므로 제외한다.
+    Measure the settled frame: entrance animations mid-flight report a dimmer opacity.
+    """
+    page.evaluate("""() => Promise.all(document.getAnimations()
+        .filter(a => { try { return a.effect.getTiming().iterations !== Infinity; }
+                       catch (e) { return false; } })
+        .map(a => a.finished.catch(() => {})))""")
 
 
 @pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
@@ -523,6 +545,7 @@ def test_token_text_meets_aa_against_painted_background(seeded_page, base_url, t
     #    글자색 위에 다음 테마의 바탕이 겹친 값이 나온다).
     seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
     seeded_page.wait_for_timeout(400)
+    _settle_animations(seeded_page)
     res = seeded_page.evaluate(_TOKEN_TEXT_AUDIT_JS)
 
     assert not res.get("error"), res.get("error")
@@ -575,6 +598,7 @@ def test_accent_used_as_text_meets_aa(seeded_page, base_url, theme):
         seeded_page.evaluate("(t) => applyTheme(t)", theme)
         seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
         seeded_page.wait_for_timeout(400)
+        _settle_animations(seeded_page)
         res = seeded_page.evaluate(_ACCENT_TEXT_AUDIT_JS)
         assert not res.get("error"), res.get("error")
         total += res["seen"]["--accent-text"]
@@ -592,4 +616,111 @@ def test_accent_used_as_text_meets_aa(seeded_page, base_url, theme):
             f"cls={b['cls']!r} {b['text']!r} ({b['path']})"
             for b in bad[:10]
         )
+    )
+
+
+# ── G. 랜딩이 «앱에서 고른 테마» 를 따르는가 ──────────────────────────────────
+# Does the landing page honour the theme the user picked in the app?
+
+
+def test_landing_honours_the_stored_theme(anonymous_page, base_url):
+    """🔴 앱에서 고른 테마가 랜딩에도 적용돼야 한다.
+
+    실측(수정 전): `base.html` 은 `localStorage['sca-theme']` 에 쓰는데
+    `landing.html` 은 **`'scam-theme'`** 을 읽었다. 그 키는 리포 어디에서도
+    **쓰이지 않는다** — 항상 null 이라 랜딩은 늘 기본값 dark 로 떨어졌다.
+    저장값 light 로 확인: `body[data-theme]` 가 `dark` 였다.
+
+    🔴 이 화면은 로그인 상태에서는 렌더되지 않아(`overview` 가 대시보드를 준다)
+    `anonymous_page` 없이는 도달할 수 없다 — 그래서 여태 검증된 적이 없다.
+    """
+    anonymous_page.goto(base_url)
+    anonymous_page.evaluate("() => localStorage.setItem('sca-theme', 'light')")
+    anonymous_page.reload()
+    anonymous_page.wait_for_timeout(400)
+    applied = anonymous_page.get_attribute("body", "data-theme")
+    stored = anonymous_page.evaluate("() => localStorage.getItem('sca-theme')")
+    assert stored == "light", f"저장 자체가 안 됐다 — 이 시험의 전제가 깨졌다 ({stored})"
+    assert applied == "light", (
+        f"랜딩이 저장된 테마를 무시했다 — body[data-theme]={applied!r}. "
+        "앱과 랜딩이 서로 다른 localStorage 키를 읽고 있지 않은지 볼 것"
+    )
+
+
+# ── H. /admin/* 3화면 — 여태 e2e 로 도달할 수 없던 표면 ────────────────────────
+# The three admin screens: unreachable from e2e until now.
+
+def _admin_session_cookie(user_id: int = 1) -> dict:
+    """실제 서명 세션 쿠키.
+
+    🔴 의존성을 override 하지 «않는다». `require_admin` 은 `require_login` 을
+    의존성이 아니라 «평범한 함수» 로 부르기 때문에(`src/auth/session.py`),
+    conftest 의 `dependency_overrides[require_login]` 이 이 경로에는 적용되지 않는다 —
+    그래서 admin 화면은 여태 e2e 로 렌더된 적이 없다. 진짜 세션을 만들어
+    kill-switch → require_login → email allow-list 사슬을 그대로 태운다.
+    """
+    import base64  # noqa: PLC0415
+    import json as _json  # noqa: PLC0415
+    import os  # noqa: PLC0415
+
+    import itsdangerous  # noqa: PLC0415
+    # 🔴 비밀키를 여기 복제하지 않는다 — conftest 가 서버에 세운 값을 그대로 읽는다.
+    #    복제하면 conftest 가 키를 바꾼 날 조용히 302 로 흘러간다.
+    secret = os.environ["SESSION_SECRET"]
+    data = base64.b64encode(_json.dumps({"user_id": user_id}).encode())
+    value = itsdangerous.TimestampSigner(secret).sign(data).decode()
+    return {"name": "session", "value": value, "domain": "localhost", "path": "/"}
+
+
+_ADMIN_PATHS = ["/admin/tenants", "/admin/rls-audit", "/admin/operations"]
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_admin_screens_render_and_meet_aa(seeded_page, base_url, theme):
+    """🔴 admin 3화면의 `--accent-text`·`--text-2/3` 글자가 «둘 다» AA 를 넘어야 한다.
+
+    실측(수정 전, 이 화면들이 처음 측정됐다): `.admin-link`·`.admin-ops-link` 가
+    accent 를 글자로 써서 pastel 3.24 · `.badge--success` 2.68 ·
+    `.admin-ops-card-hint` 가 `opacity:0.8` 로 흐려져 light 4.31.
+    셋 다 이미 다른 화면에서 고친 부류인데 `admin.css` 에만 남아 있었다.
+    """
+    seeded_page.context.add_cookies([_admin_session_cookie()])
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    total, bad = 0, []
+    for path in _ADMIN_PATHS:
+        resp = seeded_page.goto(f"{base_url}{path}")
+        # 🔴 호스트만 보면 안 된다 — 403/503 오류 페이지도 localhost 다(fail-open).
+        #    상태와 «admin 화면의 실제 마크업» 을 함께 본다.
+        assert "localhost" in seeded_page.url, (
+            f"{path} 가 렌더되지 않고 {seeded_page.url[:60]} 로 이동했다 — "
+            "admin 인가 사슬이 막았다(세션·SAAS_ADMIN_EMAILS 확인)"
+        )
+        assert resp is not None and resp.status == 200, (
+            f"{path} 가 {resp.status if resp else '무응답'} 를 냈다 — "
+            "인가는 통과했는지, kill-switch·allow-list 를 볼 것"
+        )
+        assert seeded_page.locator("nav").count() > 0, (
+            f"{path} 에 nav 가 없다 — admin 화면이 아니라 오류 페이지를 잰 것이다"
+        )
+        seeded_page.evaluate("(t) => applyTheme(t)", theme)
+        seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
+        seeded_page.wait_for_timeout(350)
+        _settle_animations(seeded_page)
+        # 🔴 «두 감사를 다» 돌린다. 처음엔 토큰 글자(--text-2/3)만 봤는데, 이 화면에서
+        #    고친 것은 «accent 를 글자로 쓰는 링크» 였다 — 그 축을 안 보고 있었다.
+        #    뮤테이션(`.admin-link` 를 --accent 로 되돌림)이 green 으로 통과해 드러났다.
+        for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+                          (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
+            res = seeded_page.evaluate(js)
+            assert not res.get("error"), res.get("error")
+            total += sum(res["seen"][n] for n in names)
+            bad += [dict(b, path=path) for b in res["bad"]]
+    assert total > 0, (
+        f"[{theme}] admin 화면에서 토큰 글자를 하나도 찾지 못했다 — "
+        "재지 못한 것이지 통과한 것이 아니다"
+    )
+    assert not bad, (
+        f"[{theme}] admin 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
+        + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r} ({b['path']})"
+                      for b in bad[:10])
     )

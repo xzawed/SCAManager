@@ -345,9 +345,11 @@ button { font-family: inherit; }
   color: var(--accent-1);
   border-color: transparent;
 }
-.badge--success { color: var(--status-ok);   background: var(--grade-a-bg); border-color: var(--grade-a-bd); }
-.badge--warn    { color: var(--status-warn); background: var(--grade-c-bg); border-color: var(--grade-c-bd); }
-.badge--danger  { color: var(--status-err);  background: var(--grade-f-bg); border-color: var(--grade-f-bd); }
+/* 바탕이 등급 틴트이므로 글자도 등급색 — #1614 의 `.kpi__delta--up` 과 같은 이유.
+   `--status-*` 는 성공/오류 «크롬» 전용으로 남긴다. 실측 badge--success 2.68. */
+.badge--success { color: var(--grade-a);     background: var(--grade-a-bg); border-color: var(--grade-a-bd); }
+.badge--warn    { color: var(--grade-c);     background: var(--grade-c-bg); border-color: var(--grade-c-bd); }
+.badge--danger  { color: var(--grade-f);     background: var(--grade-f-bg); border-color: var(--grade-f-bd); }
 .badge--info    { color: var(--status-info); background: var(--grade-b-bg); border-color: var(--grade-b-bd); }
 
 /* ==========================================================================

@@ -9,7 +9,7 @@
 """
 import re
 
-from ._contrast import (AA, THEMES, card_surface, decl, over, parse_color, ratio,
+from ._contrast import (AA, ROOT, THEMES, card_surface, decl, over, parse_color, ratio,
                         read, resolve, strip_css_comments, theme_block)
 
 _GRADES = ("a", "b", "c", "d", "f")
@@ -86,4 +86,30 @@ def test_grade_base_rule_does_not_reset_the_per_grade_border():
     assert not offenders, (
         "`.grade` 가 border 단축으로 등급별 테두리 색을 되감는다 "
         "(굵기·선형만 정하고 색은 `.grade--X` 에 맡길 것):\n  " + "\n  ".join(offenders)
+    )
+
+
+def test_badge_colours_are_not_redefined_outside_components():
+    """🔴 `.badge--*` 색을 `components.css` 밖에서 다시 정하지 않는다.
+
+    `admin.css` 가 admin 화면에서 «나중에» 로드돼 `components.css` 의 등급 토큰 판을
+    덮고 있었다. 그 사본은 두 결함을 함께 들여왔다 — 틴트를 `transparent` 에 섞어
+    바탕이 움직였고(실측 2.68), 글자는 크롬용 `--status-*` 를 썼다.
+
+    같은 사실의 사본은 갈라진다. 정본은 `components.css` 한 곳이다.
+    """
+    offenders = []
+    for path in sorted((ROOT / "src").rglob("*.css")) + sorted(
+        (ROOT / "src" / "templates").glob("*.html")
+    ):
+        if path.name == "components.css":
+            continue
+        text = strip_css_comments(path.read_text(encoding="utf-8"))
+        for m in re.finditer(r"\.badge--(?:success|danger|warn|info)\b[^{]*\{([^}]*)\}", text):
+            if re.search(r"(?<![-\w])(?:color|background)\s*:", m.group(1)):
+                offenders.append(f"{path.relative_to(ROOT).as_posix()}: "
+                                 f"{m.group(0)[:60].strip()}")
+    assert not offenders, (
+        "`.badge--*` 색이 `components.css` 밖에서 재정의된다 — 나중에 로드되는 쪽이\n"
+        "정본을 덮어 등급 토큰이 무력화된다:\n  " + "\n  ".join(offenders)
     )

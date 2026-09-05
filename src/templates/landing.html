@@ -578,7 +578,11 @@
 <!-- 테마 초기화 스크립트 / Theme init script -->
 <script>
   (function() {
-    var t = localStorage.getItem("scam-theme") || "dark";
+    /* 🔴 앱은 `sca-theme` 에 쓴다(`base.html`). 여기서 읽던 `scam-theme` 은
+       리포 어디에서도 «쓰이지 않아» 항상 null 이었고, 랜딩은 늘 기본값으로
+       떨어졌다 — 사용자가 고른 테마가 무시됐다.
+       The app writes `sca-theme`; `scam-theme` was never written anywhere. */
+    var t = localStorage.getItem("sca-theme") || "dark";
     document.body.setAttribute("data-theme", t);
     var m = document.getElementById("theme-color-meta");
     if (m) {
