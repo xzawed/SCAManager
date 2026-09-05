@@ -553,6 +553,11 @@
 
   --accent:        var(--accent-1);
   --accent-hover:  var(--accent-2);
+  /* 🔴 `--accent-hover` 는 «두 역할» 을 겸한다 — 링크 hover «글자» 색이자
+     `.btn-primary:hover` 의 «면» 색이다. 글자 대비를 맞추려고 그것을 어둡게 하면
+     버튼 면까지 끌려온다. 글자 쪽만 떼어 낸다(실측: pastel 에서 링크 hover 2.06).
+     `--accent-hover` doubles as a hover SURFACE; split the text role out. */
+  --accent-text-hover: var(--accent-2);
   --accent-3:      var(--accent-2);
   --accent-rgb:    124, 122, 255;
   --accent-faint:  var(--accent-glow);
@@ -607,6 +612,11 @@
      Hover only: white text on --accent-2 is 4.23 (fails); this is 5.33.
      --accent-2 itself feeds the gradient and stays as is. */
   --accent-hover:  #7c4ddb;
+  /* 🔴 `--accent-hover` 는 «두 역할» 을 겸한다 — 링크 hover «글자» 색이자
+     `.btn-primary:hover` 의 «면» 색이다. 글자 대비를 맞추려고 그것을 어둡게 하면
+     버튼 면까지 끌려온다. 글자 쪽만 떼어 낸다(실측: pastel 에서 링크 hover 2.06).
+     `--accent-hover` doubles as a hover SURFACE; split the text role out. */
+  --accent-text-hover: #713ed8;
   --accent-3:      var(--accent-2);
   --accent-rgb:    91, 94, 240;
   --accent-faint:  var(--accent-glow);
@@ -651,6 +661,11 @@
 
   --accent:        var(--accent-1);
   --accent-hover:  var(--accent-2);
+  /* 🔴 `--accent-hover` 는 «두 역할» 을 겸한다 — 링크 hover «글자» 색이자
+     `.btn-primary:hover` 의 «면» 색이다. 글자 대비를 맞추려고 그것을 어둡게 하면
+     버튼 면까지 끌려온다. 글자 쪽만 떼어 낸다(실측: pastel 에서 링크 hover 2.06).
+     `--accent-hover` doubles as a hover SURFACE; split the text role out. */
+  --accent-text-hover: #4b3dac;
   --accent-3:      var(--accent-2);
   --accent-rgb:    140, 130, 210;
   --accent-faint:  var(--accent-glow);
@@ -695,6 +710,11 @@
 
   --accent:        var(--accent-1);
   --accent-hover:  var(--accent-2);
+  /* 🔴 `--accent-hover` 는 «두 역할» 을 겸한다 — 링크 hover «글자» 색이자
+     `.btn-primary:hover` 의 «면» 색이다. 글자 대비를 맞추려고 그것을 어둡게 하면
+     버튼 면까지 끌려온다. 글자 쪽만 떼어 낸다(실측: pastel 에서 링크 hover 2.06).
+     `--accent-hover` doubles as a hover SURFACE; split the text role out. */
+  --accent-text-hover: var(--accent-2);
   --accent-3:      var(--accent-2);
   --accent-rgb:    203, 166, 247;
   --accent-faint:  var(--accent-glow);

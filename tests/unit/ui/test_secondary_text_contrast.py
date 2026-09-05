@@ -362,3 +362,41 @@ def test_card_surfaces_are_opaque_so_text_has_a_fixed_background():
         "카드 표면이 반투명이다 — 그 위 글자의 배경이 orb 애니메이션에 따라 움직여\n"
         "어떤 글자색으로도 대비를 보장할 수 없다:\n  " + "\n  ".join(offenders)
     )
+
+
+def test_page_ground_text_does_not_use_the_faintest_tier():
+    """🔴 «페이지 바탕» 위의 글자는 3차 층을 쓰지 않는다.
+
+    카드는 #1613 에서 불투명으로 고정했지만, 페이지 바탕은 그대로 `.atmosphere__orb`
+    셋이 지나간다 — 배경이 시시각각 달라져 가장 흐린 층이 버티지 못한다.
+    실측(픽셀): 랜딩 `.stat-label` 3.71(네 테마) · hero 메타 3.57~3.69.
+
+    🔴 이 검사가 «구조» 인 이유: e2e 대비 가드는 배경을 조상 사슬로 «계산» 하므로
+    형제가 칠하는 orb 를 보지 못한다. 그래서 이 되돌림을 e2e 는 초록으로 통과시킨다
+    (실측으로 확인했다). 행동 축은 픽셀 계측이, 구조 축은 여기가 맡는다.
+    The e2e guard computes the ground from ancestors and is blind to the orbs.
+    """
+    offenders = []
+    for rel, selector in (("src/templates/landing.html", ".stat-label"),):
+        block = _rule_block(_read(rel), selector)
+        if "var(--text-3" in block:
+            offenders.append(f"{rel}: `{selector}` 가 페이지 바탕 위에서 3차 층을 쓴다")
+    assert not offenders, (
+        "페이지 바탕 위 글자가 3차 층을 쓴다 — orb 가 지나가면 AA 미달:\n  "
+        + "\n  ".join(offenders)
+    )
+
+
+def test_landing_badge_uses_the_text_accent_not_the_surface_one():
+    """🔴 랜딩 뱃지 글자는 «면» 전용 토큰(`--accent-hover`)을 쓰지 않는다.
+
+    실측: `--accent-hover` 를 글자로 써서 light·pastel 1.82.
+    `--accent-hover` 는 `.btn-primary:hover` 의 면색이기도 하다 — 역할이 다르다.
+    """
+    block = _rule_block(_read("src/templates/landing.html"), ".hero-badge")
+    assert "var(--accent-text" in block, (
+        "`.hero-badge` 가 글자용 accent 토큰을 쓰지 않는다"
+    )
+    assert "var(--accent-hover" not in block, (
+        "`.hero-badge` 가 «면» 전용 `--accent-hover` 를 글자색으로 쓴다 — 실측 1.82"
+    )

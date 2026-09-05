@@ -278,3 +278,53 @@ def test_accent_as_text_consumers_route_through_the_token():
             f"[{theme}] --hook-btn-tx 가 {want} 가 아니라 {got} 다 — "
             "밝은 테마만 글자 전용 색으로 옮긴다(실측 pastel 2.07 · light 3.84)"
         )
+
+
+def test_accent_text_hover_token_is_defined_and_meets_aa():
+    """🔴 hover «글자» 색도 네 테마에서 AA 를 넘어야 한다.
+
+    `--accent-hover` 는 두 역할을 겸한다 — 링크 hover 글자색이자
+    `.btn-primary:hover` 의 «면» 색이다. 글자 대비를 맞추려고 그것을 어둡게 하면
+    버튼 면까지 끌려오므로, 글자 역할만 `--accent-text-hover` 로 떼어 냈다.
+
+    실측(수정 전, hover 를 CDP 로 강제해 픽셀로): pastel 링크 hover 2.06 ·
+    `.ri-back-link` 네 테마 2.68~ · `.settings-btn` 3.24.
+    """
+    src = _read("src/static/css/tokens.css")
+    failures = []
+    for theme in _THEMES:
+        block = _theme_block(src, theme)
+        fg = _parse_color(_resolve(block, _decl(block, "--accent-text-hover")))
+        for name, bg in _grounds(block).items():
+            r = _ratio(_over(fg, bg), bg)
+            if r < _AA:
+                failures.append(f"[{theme}] --accent-text-hover on {name}: {r:.2f} < {_AA}")
+    assert not failures, "hover 글자색이 AA 미달인 조합:\n  " + "\n  ".join(failures)
+
+
+def test_hover_consumers_route_through_the_hover_text_token():
+    """🔴 hover 에서 accent 를 글자로 쓰던 자리는 `--accent-text-hover` 를 지난다.
+
+    🔴 «구조» 로 본다 — e2e 는 그 토큰 색으로 칠해진 글자를 골라 재므로, 토큰을
+    안 쓰도록 되돌리면 대상이 관측 집합에서 빠져 초록이 된다.
+    """
+    checks = [
+        ("src/templates/base.html", "a:hover", "본문 링크 hover"),
+        ("src/static/css/repo_insights.css", ".ri-back-link:hover", "insights 뒤로 hover"),
+        ("src/templates/repo_detail.html", ".settings-btn:hover", "설정 버튼 hover"),
+    ]
+    for rel, selector, label in checks:
+        block = _declaring_block(_read(rel), selector, "color")
+        assert "var(--accent-text-hover)" in block, (
+            f"[{rel}] {label}(`{selector}`)이 `--accent-text-hover` 를 쓰지 않는다"
+        )
+    # 로그아웃 hover 는 붉은 워시를 «투명» 위에 깔고 있었다 — 등급 F 짝을 쓴다.
+    block = _declaring_block(_read("src/templates/base.html"), ".nav-logout-btn:hover", "color")
+    assert "var(--grade-f)" in block, (
+        "`.nav-logout-btn:hover` 가 등급 F 글자색을 쓰지 않는다 — "
+        "붉은 워시 위 `--danger` 는 pastel 3.40 이었다"
+    )
+    assert "var(--danger)" not in block, (
+        "`.nav-logout-btn:hover` 가 `--danger` 를 글자로 쓴다 — 붉은 워시 위에서 pastel 3.40. "
+        "면(붉은 워시)은 그대로 두고 글자만 진한 쪽(`--grade-f`)으로 옮긴다"
+    )

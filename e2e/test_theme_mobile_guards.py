@@ -724,3 +724,49 @@ def test_admin_screens_render_and_meet_aa(seeded_page, base_url, theme):
         + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r} ({b['path']})"
                       for b in bad[:10])
     )
+
+
+# ── I. 랜딩(비로그인) 대비 — `.reveal` 때문에 스크롤해야 잴 수 있다 ─────────────
+# Landing contrast: content is revealed on scroll, so the page must be scrolled first.
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_landing_text_meets_aa(anonymous_page, base_url, theme):
+    """🔴 랜딩의 `--text-2/3`·`--accent-text` 글자가 AA 를 넘어야 한다.
+
+    실측(수정 전, 이 화면이 처음 측정됐다): `.stat-label` 이 3.71(네 테마 전부) ·
+    `.hero-badge` 가 1.82(light·pastel). 랜딩은 카드가 아니라 «페이지 바탕» 위라
+    3차 층이 버티지 못하고, 뱃지는 «면» 전용 토큰(`--accent-hover`)을 글자로 썼다.
+
+    🔴 `.reveal { opacity: 0 }` 이라 스크롤로 드러내지 않으면 4테마 전부 2행만 수집된다
+    — 그때는 «통과» 가 아니라 재지 못한 것이다(아래 관측 하한이 그것을 red 로 만든다).
+    """
+    anonymous_page.set_viewport_size({"width": 1440, "height": 900})
+    anonymous_page.goto(base_url)
+    anonymous_page.evaluate("(t) => document.body.setAttribute('data-theme', t)", theme)
+    anonymous_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
+    anonymous_page.evaluate("""() => new Promise(r => {
+        let y = 0;
+        const step = () => { window.scrollTo(0, y); y += 600;
+          if (y < document.body.scrollHeight) setTimeout(step, 30); else r(); };
+        step(); })""")
+    anonymous_page.evaluate("() => window.scrollTo(0, 0)")
+    _settle_animations(anonymous_page)
+    anonymous_page.wait_for_timeout(300)
+
+    total, bad = 0, []
+    for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+                      (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
+        res = anonymous_page.evaluate(js)
+        assert not res.get("error"), res.get("error")
+        total += sum(res["seen"][n] for n in names)
+        bad += res["bad"]
+    # 🔴 관측 하한 — `.reveal` 이 숨은 채로 재면 «통과» 로 보인다.
+    assert total >= 6, (
+        f"[{theme}] 랜딩에서 토큰 글자를 {total}건만 찾았다 — "
+        "`.reveal` 이 드러나지 않은 채로 잰 것이다(재지 못한 것이지 통과가 아니다)"
+    )
+    assert not bad, (
+        f"[{theme}] 랜딩 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
+        + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
+                      for b in bad[:8])
+    )

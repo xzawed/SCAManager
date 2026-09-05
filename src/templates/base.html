@@ -181,9 +181,13 @@
       white-space: nowrap;
     }
     .nav-logout-btn:hover {
+      /* 🔴 붉은 워시 위의 `--danger` 가 pastel 3.40 이었다. 워시는 «그대로» 두고
+         글자만 진한 쪽으로 옮긴다 — 면을 바꾸면 밝은 테마에서 `--grade-f-bg` 가
+         불투명(#fee2e2)이라 유리 nav 위에 «분홍 알약» 이 생긴다(Grok 지적, 실측).
+         Keep the translucent red wash; darken only the label. */
       background: rgba(239,68,68,.15);
       border-color: rgba(239,68,68,.4);
-      color: var(--danger);
+      color: var(--grade-f);
     }
 
     /* ── 테마 스위처 ──────────────────────────── */
@@ -322,7 +326,8 @@
     /* accent 를 «글자» 로 쓰는 자리 — 밝은 테마에서 3.24~3.86 이었다.
        Accent as text: 3.24-3.86 on the pale themes before this token. */
     a { color: var(--accent-text); text-decoration: none; }
-    a:hover { color: var(--accent-hover); }
+    /* hover 도 «글자» 다 — 면 전용 토큰(--accent-hover)을 쓰면 pastel 에서 2.06. */
+    a:hover { color: var(--accent-text-hover); }
 
     /* ── 버튼 (베이스) ─────────────────────────── */
     .btn {
