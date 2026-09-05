@@ -58,21 +58,26 @@
 
   /* ── 등급 배지 (로컬 fallback) / Grade badge (local fallback) ──────── */
   /* 글로벌 .grade 가 없을 때 대비 fallback 정의 / Fallback for when global .grade is absent */
+  /* 등급 칩 색은 `components.css` 의 `.grade--*` 가 테마 토큰으로 정한다.
+     여기 있던 리터럴 5줄은 그것을 같은 명시도로 «나중에» 덮어, light·pastel 이
+     이미 갖고 있던 어두운 등급색이 한 번도 칠해지지 않았다(실측 1.51~2.46).
+     Literal grade colours here overrode the per-theme tokens and never let the
+     pale themes use the dark grade colours they already had. */
   .grade {
     display: inline-flex; align-items: center; justify-content: center;
     font-weight: 700; font-size: 0.75rem; line-height: 1;
-    padding: 2px 7px; border-radius: 6px; border: 1px solid transparent;
+    padding: 2px 7px; border-radius: 6px;
+    /* 🔴 `border` 단축은 `border-color` 까지 되감는다. `base.html` 의
+       `.grade--X { border-color: var(--grade-X-bd) }` 가 «먼저» 오므로, 여기서
+       단축을 쓰면 등급별 테두리 색이 사라진다. 굵기·선형만 정한다.
+       The `border` shorthand also resets border-color, killing the per-grade tint. */
+    border-width: 1px; border-style: solid;
     text-transform: uppercase; letter-spacing: 0.05em;
   }
   .grade--hero {
     width: 88px; height: 88px; font-size: 2.25rem; font-weight: 800;
     border-radius: 16px; letter-spacing: -0.03em; padding: 0;
   }
-  .grade--a { background: rgba(52,211,153,0.12); color: #34d399; border-color: rgba(52,211,153,0.32); }
-  .grade--b { background: rgba(96,165,250,0.12); color: #60a5fa; border-color: rgba(96,165,250,0.32); }
-  .grade--c { background: rgba(251,191,36,0.12);  color: #fbbf24; border-color: rgba(251,191,36,0.32); }
-  .grade--d { background: rgba(251,146,60,0.12);  color: #fb923c; border-color: rgba(251,146,60,0.32); }
-  .grade--f { background: rgba(248,113,113,0.12); color: #f87171; border-color: rgba(248,113,113,0.32); }
   /* 이슈 심각도 배지 (이슈 행은 a-f 대신 error/warning/high/info 사용) */
   /* Severity badge modifiers (issue rows use error/warning/high/info, not a-f) */
   .grade--error   { background: rgba(248,113,113,0.12); color: #f87171; border-color: rgba(248,113,113,0.32); }

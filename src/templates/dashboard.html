@@ -75,8 +75,6 @@
     display: inline-flex; align-items: center; gap: 3px;
     width: fit-content;
   }
-  .kpi__delta--up   { background: rgba(52,211,153,0.12); color: var(--success, #34d399); }
-  .kpi__delta--down { background: rgba(248,113,113,0.12); color: var(--danger, #f87171); }
   /* 🔴 회색 워시 위에 3차 글자를 얹어 네 테마 전부에서 최악 표면을 만들고 있었다
      (dark 3.20 · light 3.07 · pastel 2.63 · catppuccin 2.76). 형제인 --up/--down 이
      강조색을 쓰듯 이쪽도 보조 층을 쓴다 — 워시는 그대로 두고 글자만 올린다.
@@ -391,17 +389,22 @@
 
   /* Grade badge fallback — these are also in base.html after PR-T2 merges */
   /* 등급 배지 fallback — PR-T2 머지 후 base.html 에도 정의됨 */
+  /* 등급 칩 색은 `components.css` 의 `.grade--*` 가 테마 토큰으로 정한다.
+     여기 있던 리터럴 5줄은 그것을 같은 명시도로 «나중에» 덮어, light·pastel 이
+     이미 갖고 있던 어두운 등급색이 한 번도 칠해지지 않았다(실측 1.51~2.46).
+     Literal grade colours here overrode the per-theme tokens and never let the
+     pale themes use the dark grade colours they already had. */
   .grade {
     display: inline-flex; align-items: center; justify-content: center;
     font-weight: 700; font-size: 0.75rem; line-height: 1;
-    padding: 2px 7px; border-radius: 6px; border: 1px solid transparent;
+    padding: 2px 7px; border-radius: 6px;
+    /* 🔴 `border` 단축은 `border-color` 까지 되감는다. `base.html` 의
+       `.grade--X { border-color: var(--grade-X-bd) }` 가 «먼저» 오므로, 여기서
+       단축을 쓰면 등급별 테두리 색이 사라진다. 굵기·선형만 정한다.
+       The `border` shorthand also resets border-color, killing the per-grade tint. */
+    border-width: 1px; border-style: solid;
     text-transform: uppercase; letter-spacing: 0.05em;
   }
-  .grade--a { background: rgba(52,211,153,0.12); color: #34d399; border-color: rgba(52,211,153,0.32); }
-  .grade--b { background: rgba(96,165,250,0.12); color: #60a5fa; border-color: rgba(96,165,250,0.32); }
-  .grade--c { background: rgba(251,191,36,0.12);  color: #fbbf24; border-color: rgba(251,191,36,0.32); }
-  .grade--d { background: rgba(251,146,60,0.12);  color: #fb923c; border-color: rgba(251,146,60,0.32); }
-  .grade--f { background: rgba(248,113,113,0.12); color: #f87171; border-color: rgba(248,113,113,0.32); }
 </style>
 
 <div class="dash-wrap dashboard-page" data-initial-mode="{{ initial_mode or 'overview' }}">

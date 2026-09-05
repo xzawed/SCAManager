@@ -497,8 +497,12 @@ button { font-family: inherit; }
   padding: 2px var(--space-2);
   border-radius: var(--radius-pill);
 }
-.kpi__delta--up   { color: var(--status-ok);  background: var(--grade-a-bg); }
-.kpi__delta--down { color: var(--status-err); background: var(--grade-f-bg); }
+/* 배경이 등급 틴트이므로 글자도 등급색을 쓴다 — `--status-*` 는 성공/오류 «크롬»
+   (토글·연결점·토스트·차트) 전용으로 남긴다. 두 색이 네 테마에서 값이 같았던 것은
+   팔레트의 우연이지 같은 뜻이 아니다.
+   The chip's ground is a grade tint, so its text is the grade colour. */
+.kpi__delta--up   { color: var(--grade-a); background: var(--grade-a-bg); }
+.kpi__delta--down { color: var(--grade-f); background: var(--grade-f-bg); }
 /* 🔴 워시 위의 3차 글자 — `--bg-mute` 위에서 `--text-3` 은 어느 테마도 AA 를 못 넘는다
    (dark 3.14 · light 2.93 · pastel 2.41 · catppuccin 2.47). 지금은 `dashboard.html` 의
    같은 이름 규칙이 뒤에 와서 이기지만, 그 규칙이 사라지면 이쪽이 칠해진다.
