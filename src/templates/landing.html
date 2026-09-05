@@ -211,7 +211,9 @@
       background: rgba(var(--accent-rgb, 99,102,241), 0.08);
       font-size: 0.8rem;
       font-weight: 500;
-      color: var(--accent-hover, #818cf8);
+      /* accent 를 «글자» 로 쓰는 자리 — 면 전용 토큰(--accent-hover)이라
+         밝은 테마에서 1.82 였다(실측). 글자용 토큰을 쓴다. */
+      color: var(--accent-text, #818cf8);
       margin-bottom: 28px;
       letter-spacing: 0.02em;
     }
@@ -309,7 +311,9 @@
       -webkit-text-fill-color: transparent;
       background-clip: text;
     }
-    .stat-label { font-size: 0.8rem; color: var(--text-3); margin-top: 4px; }
+    /* 랜딩은 카드가 아니라 «페이지 바탕» 위다 — 3차 층은 orb 아래에서 3.71(실측).
+       The landing stats sit on the page ground, not a card. */
+    .stat-label { font-size: 0.8rem; color: var(--text-2); margin-top: 4px; }
 
     /* ── 프리뷰 카드 (코드 리뷰 스니펫) ─────────────────── */
     .hero-preview {

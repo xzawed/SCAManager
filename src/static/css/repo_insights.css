@@ -29,7 +29,8 @@
 }
 
 .ri-back-link:hover {
-  color: var(--accent);
+  /* hero 는 페이지 바탕 위다 — accent 를 그대로 쓰면 네 테마 전부 2.68~. */
+  color: var(--accent-text-hover);
 }
 
 .ri-repo-title {
