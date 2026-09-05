@@ -59,8 +59,13 @@
   border-radius: 20px;
   font-size: 13px;
   font-weight: 700;
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
-  color: var(--accent);
+  /* 🔴 틴트를 «투명» 에 섞으면 바탕이 뒤에 오는 것에 따라 달라진다 — 이 뱃지는 accent 로
+     물든 hero 위에 앉아 3.49 였다. 카드 면에 섞어 «고정된» 불투명 칩으로 만든다
+     (#1613 에서 dark 카드에 쓴 것과 같은 처방). 겉보기는 같고 바탕만 정해진다.
+     Mixing into `transparent` leaves the ground to whatever is behind; mixing into the
+     card surface makes the chip opaque and its contrast computable. */
+  background: color-mix(in srgb, var(--accent) 15%, var(--bg-card));
+  color: var(--accent-text);
   border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
 }
 

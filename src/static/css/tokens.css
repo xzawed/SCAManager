@@ -142,9 +142,9 @@
   --grade-f-bg:  rgba(248, 113, 113, 0.13);
   --grade-f-bd:  rgba(248, 113, 113, 0.34);
 
-  --status-ok:   #34d399;
+  --status-ok: #34d399;
   --status-warn: #fbbf24;
-  --status-err:  #f87171;
+  --status-err: #f87171;
   --status-info: #38bdf8;
 
   --chart-grid: rgba(255, 255, 255, 0.05);
@@ -229,7 +229,7 @@
      The inverse of --accent-text-on: the accent hue safe AS text on a page ground. */
   --accent-text: #4c4fef;
 
-  --grade-a:     #059669;
+  --grade-a:     #04835c;
   --grade-a-bg:  #ecfdf5;
   --grade-a-bd:  #a7f3d0;
   --grade-b:     #0369a1;
@@ -245,9 +245,9 @@
   --grade-f-bg:  #fee2e2;
   --grade-f-bd:  #fca5a5;
 
-  --status-ok:   #059669;
+  --status-ok: #059669;
   --status-warn: #b45309;
-  --status-err:  #b91c1c;
+  --status-err: #b91c1c;
   --status-info: #0284c7;
 
   --chart-grid: rgba(20, 20, 60, 0.05);
@@ -328,25 +328,25 @@
      The inverse of --accent-text-on: the accent hue safe AS text on a page ground. */
   --accent-text: #5d4fc0;
 
-  --grade-a:     #4f9d7d;
+  --grade-a:     #3d7860;
   --grade-a-bg:  #e6f3eb;
   --grade-a-bd:  #b2dabf;
-  --grade-b:     #6791ba;
+  --grade-b:     #456f99;
   --grade-b-bg:  #e5eff7;
   --grade-b-bd:  #b6cee2;
-  --grade-c:     #b8924a;
+  --grade-c:     #846834;
   --grade-c-bg:  #f7eecf;
   --grade-c-bd:  #ddc079;
-  --grade-d:     #c47a52;
+  --grade-d:     #905331;
   --grade-d-bg:  #f5d9c4;
   --grade-d-bd:  #e0a987;
-  --grade-f:     #b65d6d;
+  --grade-f:     #9c4656;
   --grade-f-bg:  #f5d6dc;
   --grade-f-bd:  #d99aa6;
 
-  --status-ok:   #4f9d7d;
+  --status-ok: #4f9d7d;
   --status-warn: #b8924a;
-  --status-err:  #b65d6d;
+  --status-err: #b65d6d;
   --status-info: #6791ba;
 
   --chart-grid: rgba(45, 39, 56, 0.06);
@@ -433,12 +433,12 @@
   --grade-d-bg:  rgba(250, 179, 135, 0.14);
   --grade-d-bd:  rgba(250, 179, 135, 0.36);
   --grade-f:     #f38ba8;  /* pink/red */
-  --grade-f-bg:  rgba(243, 139, 168, 0.14);
+  --grade-f-bg:  rgba(243, 139, 168, 0.10);
   --grade-f-bd:  rgba(243, 139, 168, 0.36);
 
-  --status-ok:   #a6e3a1;
+  --status-ok: #a6e3a1;
   --status-warn: #f9e2af;
-  --status-err:  #f38ba8;
+  --status-err: #f38ba8;
   --status-info: #89b4fa;
 
   --chart-grid: rgba(205, 214, 244, 0.06);
