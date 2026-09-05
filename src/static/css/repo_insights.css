@@ -92,7 +92,10 @@
 
 .ri-day-btn:hover,
 .ri-day-btn.active {
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  /* 🔴 `transparent` 에 섞으면 바탕이 «뒤에 오는 것» 이 된다 — 이 페이지 뒤에서는
+     orb 가 움직인다(실측 3.64). 비활성 상태가 이미 쓰는 --bg-card 에 섞는다.
+     Mixing into `transparent` leaves the ground to the moving orbs. */
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-card));
   /* 실측 light 3.86 · pastel 2.44 — 옅은 accent 워시 위의 accent 글자. */
   color: var(--accent-text);
   border-color: color-mix(in srgb, var(--accent) 30%, transparent);

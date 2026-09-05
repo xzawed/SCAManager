@@ -32,7 +32,8 @@
     color: var(--text-1, #fff);
   }
   .analysis-hero__score-unit {
-    font-size: var(--fs-md, 1rem); color: var(--text-3, rgba(255,255,255,0.4));
+    /* hero 는 페이지 바탕 위다 — 3차 층은 orb 아래에서 3.67. 보조 층으로. */
+    font-size: var(--fs-md, 1rem); color: var(--text-2, rgba(255,255,255,0.6));
   }
 
   /* ── 점수 바 / Score bar ─────────────────────────────────────────── */
@@ -405,7 +406,7 @@
       </div>
       <!-- 메타 정보 인라인 / Inline meta info -->
       <div style="display:flex; flex-wrap:wrap; gap: var(--space-3, 0.75rem); margin-top: var(--space-3, 0.75rem); align-items: center;">
-        <span style="font-size: var(--fs-xs, 0.75rem); color: var(--text-3, rgba(255,255,255,0.4));">
+        <span style="font-size: var(--fs-xs, 0.75rem); color: var(--text-2, rgba(255,255,255,0.6));">
           📅 {{ analysis.created_at[:16].replace('T', ' ') if analysis.created_at else '—' }}
         </span>
         {% if analysis.commit_sha %}
@@ -423,7 +424,7 @@
         </a>
         {% endif %}
         <!-- 분석 소스 레이블 / Analysis source label -->
-        <span style="font-size: var(--fs-xs, 0.75rem); color: var(--text-3, rgba(255,255,255,0.4));">
+        <span style="font-size: var(--fs-xs, 0.75rem); color: var(--text-2, rgba(255,255,255,0.6));">
           {% if analysis.source == 'cli' %}{{ 'analysis_detail.source_cli' | i18n_args(locale | default('ko')) }}
           {% elif analysis.source == 'pr' %}{{ 'analysis_detail.source_pr' | i18n_args(locale | default('ko')) }}
           {% else %}{{ 'analysis_detail.source_push' | i18n_args(locale | default('ko')) }}

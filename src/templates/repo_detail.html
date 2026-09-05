@@ -453,7 +453,7 @@
       <span class="grade grade--{{ (_latest.grade or 'f') | lower }}">{{ _latest.grade or 'F' }}</span>
       <span style="font-size: var(--fs-sm, 0.875rem); color: var(--text-2, rgba(255,255,255,0.6));">{{ 'repo_detail.recent_score' | i18n_args(locale | default('ko')) }} {{ (_latest.score | round(1)) if _latest.score is not none else '—' }}/100</span>
       {%- endif %}
-      <span style="font-size: var(--fs-xs, 0.75rem); color: var(--text-3, rgba(255,255,255,0.4));">{{ analyses | length }}{{ 'repo_detail.analysis_unit' | i18n_args(locale | default('ko')) }}</span>
+      <span style="font-size: var(--fs-xs, 0.75rem); color: var(--text-2, rgba(255,255,255,0.6));">{{ analyses | length }}{{ 'repo_detail.analysis_unit' | i18n_args(locale | default('ko')) }}</span>
     </div>
   </div>
 </div>
