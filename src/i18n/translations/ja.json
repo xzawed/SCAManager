@@ -382,7 +382,9 @@
     "issue_form": {
       "title": "タイトル",
       "body": "本文",
-      "labels": "ラベル (カンマ区切り)"
+      "labels": "ラベル (カンマ区切り)",
+      "title_placeholder": "Issue のタイトルを入力してください",
+      "body_placeholder": "再現手順と期待する動作を記入してください"
     },
     "issue_panel": {
       "panel_title": "📋 GitHub Issue登録",
