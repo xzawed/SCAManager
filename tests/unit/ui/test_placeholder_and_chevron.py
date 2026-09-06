@@ -27,6 +27,7 @@ Understanding 1.4.11 Figures 24–25 는 이 화살표를 「드롭다운 기능
 from __future__ import annotations
 
 import re
+from html.parser import HTMLParser
 
 from ._contrast import (
     ROOT, THEMES, decl, over, parse_color, ratio, read, resolve, strip_css_comments,
@@ -43,17 +44,36 @@ _PLACEHOLDER_FILES = (
     "src/templates/settings.html",
 )
 
-# 낱말이 아니라 «속성» 형태로 센다 — 아래 시험의 docstring 에 오탐 실측이 있다.
-_SCRIPT_BLOCK = re.compile(r"<script[\s>].*?</script>", re.S | re.I)
-_PLACEHOLDER_ATTR = re.compile(r"""(?<![-\w])placeholder\s*=\s*["']""")
+class _PlaceholderAttrFinder(HTMLParser):
+    """시작 태그의 «속성» 만 본다 — 낱말도, 정규식도 아니다.
+
+    🔴 첫 판은 정규식으로 `<script>` 를 걷어낸 뒤 `placeholder\\s*=` 를 찾았다. 그것이
+    CodeQL `py/bad-tag-filter`(warning, alert #613)를 **자초했다** — HTML 을 정규식으로
+    거르는 코드는 우회 가능한 필터로 판정된다. 파서는 `script` 를 CDATA 로 다루므로
+    `add_repo.html` 의 `const placeholder = document.createElement` 를 속성으로 오인하지도
+    않는다(정규식 판의 오탐 1건). 거르지 말고 판다.
+
+    Parse instead of filtering: a regex that strips <script> is a bypassable HTML filter
+    (CodeQL py/bad-tag-filter), and the parser already treats script content as CDATA.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.found = False
+
+    def handle_starttag(self, tag: str, attrs: list) -> None:
+        if any(name == "placeholder" for name, _ in attrs):
+            self.found = True
 
 
 def _templates_using_a_placeholder_attribute() -> list[str]:
     """placeholder «속성» 을 쓰는 템플릿 전부 (리포 루트 기준 경로)."""
     out = []
     for path in sorted((ROOT / "src" / "templates").glob("*.html")):
-        markup = _SCRIPT_BLOCK.sub("", path.read_text(encoding="utf-8"))
-        if _PLACEHOLDER_ATTR.search(markup):
+        finder = _PlaceholderAttrFinder()
+        finder.feed(path.read_text(encoding="utf-8"))
+        finder.close()
+        if finder.found:
             out.append(path.relative_to(ROOT).as_posix())
     return out
 
