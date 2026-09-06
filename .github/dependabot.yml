@@ -6,9 +6,12 @@
 # 정책 정합:
 # - 정책 12 (MCP scope): GitHub Settings UI 변경은 사용자 영역. 본 dependabot.yml 신설은 Claude scope.
 # - 정책 16 (단순화 default): 단일 ecosystem (pip) + weekly + open-PR 한도 = minimal config.
-# - 메모리 `feedback_line_drift_verification.md`: 추측 금지 — 인용은 실측값으로.
-#   (이전 판은 feedback-log-first-debugging.md 를 가리켰는데 그 파일은 존재하지 않는다 —
-#    감사 B7/#1519 에서 dangling 으로 검출됐다.)
+# - 인용은 추측이 아니라 실측값으로, 코드 좌표는 줄번호가 아니라 앵커로
+#   (CLAUDE.md 「협업 규칙」 — `scripts/check_doc_anchors.py` 가 강제한다).
+#   🔴 여기는 원래 메모리 파일명을 인용했는데, 그 파일명이 **두 판 연속** 실재하지 않아
+#   dangling 으로 검출됐다(감사 B7/#1519, 그리고 그 시정판도 같은 결함). 파일명을 다시
+#   적으면 `check_memory_refs.py` 가 산문 속 이름도 참조로 세므로 이력조차 남길 수 없다 —
+#   그래서 인용을 걷고 집행되는 지점을 직접 가리킨다.
 #
 # 운영 영향:
 # - Python 의존성 보안 알림 (Dependabot security updates) 자동 제공

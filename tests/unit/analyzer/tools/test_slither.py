@@ -125,12 +125,15 @@ def test_is_enabled_when_binary_missing():
         assert _SlitherAnalyzer().is_enabled(_ctx()) is False
 
 
-def test_is_enabled_when_binary_present():
-    with patch(
-        "src.analyzer.io.tools.slither.shutil.which",
-        return_value="/usr/local/bin/slither",
-    ):
-        assert _SlitherAnalyzer().is_enabled(_ctx()) is True
+# 🔴 긍정 축(「slither 가 있으면 켜진다」)은 여기 두지 않는다 — #1566 이후 **거짓**이다.
+#    바이너리만으로는 켜지지 않고 solc 아티팩트도 있어야 한다(`is_enabled` 의 두 번째 관문).
+#    종전 테스트는 `shutil.which` 만 패치해 `installed_versions()` 가 **호스트 실물**을 탔고,
+#    solc-select 는 깔렸으나 아티팩트가 0개인 머신에서 red 였다. CI 는
+#    `solc-select install 0.8.20`(ci.yml) 덕에 초록이라 그 이원이 가려져 있었다.
+#    정본은 아래 「조달 축」의 `test_enabled_when_a_solc_version_is_installed` —
+#    그쪽은 `installed_versions` 를 스텁해 호스트에 결과가 달리지 않는다.
+#    The positive axis lives in the procurement section below; it stubs solc-select so the
+#    verdict never depends on host compiler artifacts.
 
 
 # ── _parse_slither_json ────────────────────────────────────────────────
