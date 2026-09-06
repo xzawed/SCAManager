@@ -886,6 +886,13 @@
     var accent = accentRgb ? ('rgb(' + accentRgb + ')') : (s.getPropertyValue('--accent').trim() || '#6366f1');
     var muted  = s.getPropertyValue('--text-2').trim() || s.getPropertyValue('--text-muted').trim() || '#64748b';
     var border = s.getPropertyValue('--border-subtle').trim() || s.getPropertyValue('--border').trim() || '#2d3748';
+    /* 🔴 격자선 색은 `--chart-grid` 에서 «그대로» 온다 — 이전 코드는 `border + '44'` 로
+       16진 알파를 이어붙였는데, 그 값은 dark(`rgba(255,255,255,0.06)`)·catppuccin 에서
+       파싱 불가 문자열이 된다. canvas 는 무효 색을 조용히 무시하고 «직전 strokeStyle» 을
+       그대로 쓰므로, 실측 결과 격자선이 «불투명 검정»(0,0,0,255)으로 칠해졌다.
+       Concatenating a hex alpha only works when the token is hex; rgba() tokens
+       become an invalid string and canvas silently keeps the previous strokeStyle. */
+    var gridColor = s.getPropertyValue('--chart-grid').trim() || 'rgba(255, 255, 255, 0.05)';
     /* PR-3 F3: tooltip 색을 테마 토큰에서 동적 read — 라이트/claude-dark 부조화 해소
        PR-3 F3: tooltip colors read from theme tokens — light/claude-dark harmony */
     var tipBg   = s.getPropertyValue('--bg-card').trim() || '#1c1c23';
@@ -952,7 +959,7 @@
         x: { display: false },
         y: {
           min: 0, max: 100,
-          grid: { color: border + '44', drawBorder: false },
+          grid: { color: gridColor, drawBorder: false },
           border: { display: false },
           ticks: { color: muted, font: { size: 10 }, maxTicksLimit: 3, padding: 6 }
         }

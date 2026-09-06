@@ -60,6 +60,14 @@ _STATE_HIST_HEADING = "## 테스트 수 추적 이력"
 # assemble a wrong (C, B). Reading is unified on full_pairs(); do not resurrect these.
 # README 배지: "Tests-5196%2B_total_(5042_unit_%2B_154_integration)"
 _README_BADGE = re.compile(r"Tests-(\d+)%2B_total_\((\d+)_unit_%2B_\d+_integration\)")
+# 🔴 README E2E 배지: "E2E-177_in_CI". SSOT 는 `e2e/EXPECTED_COUNT` 다.
+#    «검사» 는 이미 있다 —
+#    `tests/unit/scripts/test_e2e_count_has_one_source.py::test_every_doc_copy_matches_the_baseline`
+#    이 두 배지를 baseline 과 대조한다. 여기서 더하는 것은 **파생**뿐이다: Tests 배지처럼
+#    `--fix` 가 자동으로 맞춰 주지 않아 사람이 손으로 고쳐야 했고, 그래서 e2e 수가 바뀐
+#    PR 에서 배지만 뒤처지곤 했다. 검사를 여기 또 두지 않는다 — 같은 축에 집행자 둘은 잡음이다.
+# The check already exists in the unit suite; what is added here is only the --fix derivation.
+_README_E2E_BADGE = re.compile(r"E2E-(\d+)_in_CI")
 # README FastAPI 배지: "FastAPI-0.141-009688" — 관례상 핀의 major.minor 만 표기
 # README FastAPI badge — by convention it carries only the pin's major.minor
 _FASTAPI_BADGE = re.compile(r"FastAPI-(\d+\.\d+)-")
@@ -462,13 +470,28 @@ def apply_fix(project_root: Path) -> tuple[bool, list[str]]:
         state_path.write_text(new_state, encoding="utf-8", newline="\n")
         changed.append(f"✏️ docs/STATE.md — 종합 수치·추적셀 머리 → 전체 {total} / 단위 {unit}")
 
+    # 🔴 이 함수는 임시 루트(문서만 복사한 트리)에서도 불린다 — baseline 파일이 없을 수
+    #    있다. 없으면 «건너뛰되 그 사실을 적는다». 조용히 넘기면 배지가 안 고쳐진 채로
+    #    「이미 일치」처럼 보인다.
+    # apply_fix also runs against temp roots that hold only the docs; skip loudly.
+    e2e_baseline = project_root / "e2e" / "EXPECTED_COUNT"
+    e2e_want = e2e_baseline.read_text(encoding="utf-8").strip() if e2e_baseline.exists() else ""
+    if not e2e_want:
+        changed.append("⏭️ E2E 배지 — `e2e/EXPECTED_COUNT` 가 없어 파생하지 않았다")
     for name in ("README.md", "README.ko.md"):
         path = project_root / name
         text = path.read_text(encoding="utf-8")
         fixed = _README_BADGE.sub(badge, text, count=1)
         if fixed != text:
-            path.write_text(fixed, encoding="utf-8", newline="\n")
             changed.append(f"✏️ {name} — Tests 배지 → {total} ({unit} unit)")
+        # 🔴 E2E 배지도 같은 자리에서 파생한다. 사람이 손으로 맞추게 두면 얼어붙는다.
+        if e2e_want.isdigit() and len(_README_E2E_BADGE.findall(fixed)) == 1:
+            after = _README_E2E_BADGE.sub(f"E2E-{e2e_want}_in_CI", fixed, count=1)
+            if after != fixed:
+                changed.append(f"✏️ {name} — E2E 배지 → {e2e_want}")
+            fixed = after
+        if fixed != text:
+            path.write_text(fixed, encoding="utf-8", newline="\n")
 
     return True, changed or ["(이미 일치 — 변경 없음)"]
 

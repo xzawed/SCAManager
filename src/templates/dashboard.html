@@ -618,6 +618,14 @@
         var accent    = cs.getPropertyValue('--accent').trim()            || '#6366f1';
         var accentRgb = cs.getPropertyValue('--accent-rgb').trim()        || '99,102,241';
         var muted     = cs.getPropertyValue('--text-2').trim()            || '#64748b';
+        /* 🔴 격자선 색은 `--chart-grid` 에서 «그대로» 온다 — 이전 코드는 `border + '44'` 로
+       16진 알파를 이어붙였는데, 그 값은 dark(`rgba(255,255,255,0.06)`)·catppuccin 에서
+       파싱 불가 문자열이 된다. canvas 는 무효 색을 조용히 무시하고 «직전 strokeStyle» 을
+       그대로 쓰므로, 실측 결과 격자선이 «불투명 검정»(0,0,0,255)으로 칠해졌다.
+       Concatenating a hex alpha only works when the token is hex; rgba() tokens
+       become an invalid string and canvas silently keeps the previous strokeStyle. */
+        var gridColor = cs.getPropertyValue('--chart-grid').trim()
+                     || 'rgba(255, 255, 255, 0.05)';
         var border    = cs.getPropertyValue('--border-subtle').trim()
                      || cs.getPropertyValue('--border').trim()            || 'rgba(255,255,255,0.05)';
 
@@ -660,7 +668,7 @@
               x: { display: false },
               y: {
                 min: 0, max: 100,
-                grid: { color: border + '44', drawBorder: false },
+                grid: { color: gridColor, drawBorder: false },
                 border: { display: false },
                 ticks: { color: muted, font: { size: 10 }, maxTicksLimit: 3, padding: 6 }
               }
@@ -1316,7 +1324,10 @@
     const accentRgb = readVar('--accent-rgb', '99,102,241');
     const muted     = readVar('--text-muted', '#888');
     const subtle    = readVar('--text-subtle', muted);
-    const border    = readVar('--border', 'rgba(255,255,255,.08)');
+    /* 🔴 격자선은 `--chart-grid` — 앞서 `border + '44'` 로 알파를 이어붙였는데
+       dark·catppuccin 의 `--border*` 는 `rgba()` 라 그 결과가 무효 색이 되고,
+       canvas 가 «직전 strokeStyle»(불투명 검정)로 그렸다. */
+    const gridColor = readVar('--chart-grid', 'rgba(255, 255, 255, 0.05)');
 
     // 스파크라인 그라디언트 fill — 테마 accent 기반
     // Sparkline gradient fill — theme accent based
@@ -1355,7 +1366,7 @@
           y: {
             min: 0, max: 100,
             ticks: { color: subtle, maxTicksLimit: 3, font: { size: 11 }, padding: 6 },
-            grid: { color: border + '44', drawTicks: false },
+            grid: { color: gridColor, drawTicks: false },
             border: { display: false }
           }
         },

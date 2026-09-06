@@ -210,6 +210,19 @@
   .threshold-ctrl { display:flex; align-items:center; gap:.5rem; }
   .threshold-ctrl input[type=range] { flex:1; height:6px; border-radius:3px; background:var(--border-subtle); -webkit-appearance:none; outline:none; cursor:pointer; }
   .threshold-ctrl input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:18px; height:18px; border-radius:50%; cursor:pointer; }
+  /* 🔴 `outline:none` 이 전역 링을 이기는데 대체가 없었다 — 포커스를 받아도
+     `getComputedStyle(...).outline` 이 `none 0px` 이다(`:focus-visible` 은 참).
+     위 점수 슬라이더와 같은 결함·같은 처방. WCAG 2.4.7(Level AA). */
+  /* Gecko 용 손잡이 — `::-webkit-slider-thumb` 는 Firefox 에서 무시된다.
+     Thumb box for Gecko; the webkit pseudo is ignored there. */
+  .threshold-ctrl input[type=range]::-moz-range-thumb {
+    width:18px; height:18px; border-radius:50%; border:none; cursor:pointer; }
+  .approve-range::-moz-range-thumb { background:var(--success); }
+  .reject-range::-moz-range-thumb  { background:var(--danger); }
+  .threshold-ctrl input[type=range]:focus-visible::-webkit-slider-thumb {
+    outline:2px solid var(--focus-ring); outline-offset:2px; }
+  .threshold-ctrl input[type=range]:focus-visible::-moz-range-thumb {
+    outline:2px solid var(--focus-ring); outline-offset:2px; }
   @media (max-width: 480px) { .threshold-ctrl input[type=range]::-webkit-slider-thumb { width:24px; height:24px; } }
   .approve-range::-webkit-slider-thumb { background:var(--success); box-shadow:0 2px 6px rgba(74,222,128,.35); }
   .reject-range::-webkit-slider-thumb  { background:var(--danger);  box-shadow:0 2px 6px rgba(248,113,113,.35); }
@@ -282,7 +295,7 @@
     line-height:1; transition:opacity var(--transition), background var(--transition);
   }
   .mask-toggle:hover { opacity:1; background:var(--bg-hover,rgba(99,102,241,.1)); }
-  .mask-toggle:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .mask-toggle:focus-visible { outline:2px solid var(--focus-ring); outline-offset:2px; }
 
   /* Save toast */
   .save-toast {
@@ -340,6 +353,9 @@
     cursor:pointer; user-select:none; outline:none;
     list-style:none; display:flex; align-items:center; gap:.4rem;
   }
+  /* 🔴 `<summary>` 는 스스로 포커스를 받는다 — `outline:none` 만 있고 대체가 없었다. */
+  .danger-summary:focus-visible {
+    outline:2px solid var(--focus-ring); outline-offset:2px; border-radius:var(--radius-xs); }
   .danger-summary::-webkit-details-marker { display:none; }
   .danger-summary::before { content:'►'; font-size:10px; transition:transform var(--transition); }
   details[open] .danger-summary::before { transform:rotate(90deg); }

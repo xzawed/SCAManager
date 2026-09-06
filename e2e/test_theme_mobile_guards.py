@@ -770,3 +770,383 @@ def test_landing_text_meets_aa(anonymous_page, base_url, theme):
         + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
                       for b in bad[:8])
     )
+
+
+# ── J. 포커스 표시 — 「보이는가」와 「3:1 인가」 (WCAG 2.4.7 · 1.4.11) ──────────
+# Focus indicator: does it exist at all, and does it meet non-text contrast.
+
+_FOCUSABLE_SEL = ("a[href], button, input:not([type=hidden]), select, textarea,"
+                  ' [tabindex]:not([tabindex="-1"]), [role="button"], [role="tab"]')
+
+# 🔴 표시는 요소 자신에만 있지 않다 — range 손잡이는 «의사요소» 다.
+#    이 목록이 없으면 손잡이에 링을 준 슬라이더가 「표시 없음」으로 잘못 잡힌다.
+_INDICATOR_PSEUDOS = ("::-webkit-slider-thumb", "::before", "::after")
+
+_FOCUS_AUDIT_JS = r"""
+(sel) => {
+""" + _PARSE_COLOR_JS + r"""
+  const over = (f,b) => { const a=f.a+b.a*(1-f.a); if(!a) return {r:0,g:0,b:0,a:0};
+    return {r:(f.r*f.a+b.r*b.a*(1-f.a))/a, g:(f.g*f.a+b.g*b.a*(1-f.a))/a,
+            b:(f.b*f.a+b.b*b.a*(1-f.a))/a, a}; };
+  const lum = c => { const f=v=>{v/=255; return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4);};
+    return 0.2126*f(c.r)+0.7152*f(c.g)+0.0722*f(c.b); };
+  const ratio = (x,y) => { const a=lum(x), b=lum(y);
+    return (Math.max(a,b)+0.05)/(Math.min(a,b)+0.05); };
+  const ground = n => { let acc={r:255,g:255,b:255,a:1}; const chain=[];
+    for(let x=n;x;x=x.parentElement) chain.push(x);
+    for(let i=chain.length-1;i>=0;i--){ const cs=getComputedStyle(chain[i]);
+      const c=parse(cs.backgroundColor); if(c&&c.a>0) acc=over(c,acc);
+      const bi=cs.backgroundImage;
+      if(bi&&bi!=='none'){ const g=(bi.match(/rgba?\([^)]+\)|#[0-9a-fA-F]{3,8}/g)||[])
+        .map(parse).filter(Boolean);
+        g.forEach(s => { if(s.a>0) acc=over(s,acc); }); }
+    } return acc; };
+  const shadowLayers = v => { const out=[]; let d=0, cur='';
+    for(const ch of v){ if(ch==='(') d++; else if(ch===')') d--;
+      if(ch===',' && d===0){ out.push(cur); cur=''; } else cur+=ch; }
+    if(cur.trim()) out.push(cur); return out; };
+  const firstColor = s => { const m=s.match(/rgba?\([^)]*\)|#[0-9a-fA-F]{3,8}|color\([^)]*\)/);
+    return m ? parse(m[0]) : null; };
+
+  const PSEUDOS = %PSEUDOS%;
+  const out = {seen: 0, skippedRange: 0, noIndicator: [], low: []};
+  document.querySelectorAll(sel).forEach(el => {
+    if (!el.hasAttribute('data-focus-base')) return;
+    // 🔴 range 는 여기서 재지 않는다 — 링이 UA 섀도 의사요소(::-webkit-slider-thumb)에
+    //    있고 getComputedStyle 은 그것을 돌려주지 않아 «요소» 값(outline none)을 준다.
+    //    그 축은 test_range_slider_focus_actually_paints 가 픽셀로 맡는다.
+    if (el.tagName === 'INPUT' && el.type === 'range') { out.skippedRange++; return; }
+    const r = el.getBoundingClientRect();
+    if (r.width < 6 || r.height < 6) return;
+    const cs = getComputedStyle(el);
+    if (cs.visibility === 'hidden' || cs.display === 'none') return;
+    let op = 1; for(let x=el;x;x=x.parentElement){
+      const o=parseFloat(getComputedStyle(x).opacity); if(!isNaN(o)) op*=o; }
+    if (op < 0.99) return;
+
+    out.seen++;
+    const base = JSON.parse(el.getAttribute('data-focus-base'));
+    // 🔴 링은 요소 «바깥» 에 그려진다(outline-offset). 요소 «자신» 의 면만 바탕으로
+    //    삼으면, accent 로 채워진 버튼 위에서 링과 면이 같은 색이라 1.00 이 나온다 —
+    //    실제로는 그 링이 페이지 바탕과 4.4:1 로 잘 보인다. 두 인접색 중 «좋은 쪽» 을
+    //    취한다(1.4.11 은 인접색에 대해 3:1 을 요구하지, 모든 인접색을 요구하지 않는다).
+    // 🔴 표시의 «기하» 에 따라 무엇과 재는지가 다르다
+    //    (Understanding 1.4.11 — Relationship with Focus Visible):
+    //      · 요소 «바깥» 에 그려지는 표시(outline-offset, 비-inset box-shadow)
+    //        → 요소가 «앉은» 바탕, 곧 부모의 색과 3:1. 채워진 버튼의 «면» 과는 무관하다
+    //          (Figure 10: 면과 같은 색이어도 페이지와 대비되면 통과).
+    //      · 요소의 «테두리» 로 그려지는 표시 → 안팎 «둘 다» 3:1.
+    //    처음엔 둘 중 좋은 쪽(max)을 취했는데, 그러면 Figure 9(면과는 대비되지만 페이지와는
+    //    1:1 인 바깥 링)가 통과한다 — 명세보다 무른 판정이다(Grok claim-review).
+    const gnd = ground(el);
+    const gndOut = el.parentElement ? ground(el.parentElement) : gnd;
+    const outsideR = (c) => ratio(over(c, gndOut), gndOut);
+    const insideR = (c) => ratio(over(c, gnd), gnd);
+    const borderR = (c) => Math.min(insideR(c), outsideR(c));
+    const cands = [];
+    const consider = (colorStr, kind, how) => {
+      const c = parse(colorStr); if (!c || c.a <= 0) return;
+      cands.push({kind, ratio: how(c), color: colorStr});
+    };
+    if (parseFloat(cs.outlineWidth) > 0 && !['none','hidden'].includes(cs.outlineStyle))
+      consider(cs.outlineColor, 'outline', outsideR);
+    if (cs.boxShadow !== base.boxShadow && cs.boxShadow !== 'none')
+      shadowLayers(cs.boxShadow).forEach(l => { const c=firstColor(l);
+        if (c && c.a>0) cands.push({kind:'box-shadow',
+          ratio: /\binset\b/.test(l) ? insideR(c) : outsideR(c),
+          color: l.trim().slice(0,40)}); });
+    if (cs.borderTopColor !== base.borderTopColor)
+      consider(cs.borderTopColor, 'border', borderR);
+    PSEUDOS.forEach(ps => {
+      const p = getComputedStyle(el, ps);
+      if (!p) return;
+      if (parseFloat(p.outlineWidth) > 0 && !['none','hidden'].includes(p.outlineStyle))
+        consider(p.outlineColor, 'outline' + ps, outsideR);
+      if (p.boxShadow && p.boxShadow !== 'none' && p.boxShadow !== base['shadow' + ps])
+        { const c = firstColor(p.boxShadow);
+          if (c && c.a>0) cands.push({kind:'box-shadow'+ps,
+            ratio: /\binset\b/.test(p.boxShadow) ? insideR(c) : outsideR(c),
+            color: p.boxShadow.slice(0,40)}); }
+    });
+
+    const id = (el.className && String(el.className).slice(0,34)) || el.tagName.toLowerCase();
+    if (!cands.length) { out.noIndicator.push(id); return; }
+    const best = cands.reduce((a,b) => b.ratio > a.ratio ? b : a);
+    if (best.ratio < 3.0)
+      out.low.push({cls: id, ratio: +best.ratio.toFixed(2),
+                    kind: best.kind, color: best.color});
+  });
+  return out;
+}
+""".replace("%PSEUDOS%", str(list(_INDICATOR_PSEUDOS)).replace("'", '"'))
+
+_FOCUS_BASE_JS = r"""
+(payload) => {
+  const [sel, pseudos] = payload;
+  let n = 0;
+  document.querySelectorAll(sel).forEach(el => {
+    const cs = getComputedStyle(el);
+    const rec = {boxShadow: cs.boxShadow, borderTopColor: cs.borderTopColor};
+    pseudos.forEach(ps => { const p = getComputedStyle(el, ps);
+      rec['shadow' + ps] = p ? p.boxShadow : 'none'; });
+    el.setAttribute('data-focus-base', JSON.stringify(rec));
+    n++;
+  });
+  return n;
+}
+"""
+
+
+def _force_focus(page, on: bool) -> int:
+    """CDP 로 `:focus`·`:focus-visible` 을 한꺼번에 건다.
+
+    🔴 `focus-visible` 만 걸면 안 된다 — 이 앱은 `input:focus` 로도 스타일해서
+    (`settings.html`), 한쪽만 걸면 「표시가 없다」는 거짓 결론이 난다(#1617 에서 실제로).
+    """
+    cdp = page.context.new_cdp_session(page)
+    cdp.send("DOM.enable")
+    cdp.send("CSS.enable")
+    doc = cdp.send("DOM.getDocument", {"depth": -1, "pierce": True})
+    nodes = cdp.send("DOM.querySelectorAll",
+                     {"nodeId": doc["root"]["nodeId"], "selector": "[data-focus-base]"})
+    classes = ["focus", "focus-visible"] if on else []
+    for nid in nodes["nodeIds"]:
+        try:
+            cdp.send("CSS.forcePseudoState",
+                     {"nodeId": nid, "forcedPseudoClasses": classes})
+        except Exception:  # noqa: BLE001 — 사라진 노드는 건너뛴다
+            pass
+    return len(nodes["nodeIds"])
+
+
+_FOCUS_PATHS = ["/dashboard", "/repos/owner/testrepo",
+                "/repos/owner/testrepo/settings", "/repos/owner/testrepo/insights"]
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_every_focusable_shows_an_indicator_that_meets_3to1(seeded_page, base_url, theme):
+    """🔴 포커스를 받은 요소는 «표시가 있어야» 하고 그 표시는 3:1 이상이어야 한다.
+
+    실측(수정 전):
+      - `#scoreMin`·`#scoreMax`(점수 범위 슬라이더)는 Tab 으로 도달해도 표시가 «전혀»
+        없었다 — 픽셀로 5092px 중 0px. `.dual-slider-track input[type=range]` 의
+        `outline:none` 이 전역 링을 특이도로 이기고 대체가 없었다. WCAG 2.4.7(Level AA).
+      - pastel 의 링(`--accent` #8c82d2)이 페이지 바탕에서 2.77~2.88 (9건).
+
+    🔴 표시를 «의사요소» 에서도 찾는다. 슬라이더 링은 `::-webkit-slider-thumb` 에 있어
+    요소만 보면 고친 뒤에도 「표시 없음」으로 잡힌다.
+    """
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    total, skipped_range, missing, low = 0, 0, [], []
+    for path in _FOCUS_PATHS:
+        seeded_page.goto(f"{base_url}{path}")
+        seeded_page.evaluate("(t) => applyTheme(t)", theme)
+        seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
+        seeded_page.wait_for_timeout(300)
+        _settle_animations(seeded_page)
+        n = seeded_page.evaluate(_FOCUS_BASE_JS,
+                                 [_FOCUSABLE_SEL, list(_INDICATOR_PSEUDOS)])
+        if not n:
+            continue
+        _force_focus(seeded_page, True)
+        seeded_page.wait_for_timeout(150)
+        res = seeded_page.evaluate(_FOCUS_AUDIT_JS, _FOCUSABLE_SEL)
+        _force_focus(seeded_page, False)
+        total += res["seen"]
+        skipped_range += res["skippedRange"]
+        missing += [f"{path}: {c}" for c in res["noIndicator"]]
+        low += [dict(b, path=path) for b in res["low"]]
+
+    # 🔴 관측 하한 — 하나도 못 걸면 «통과» 가 아니라 재지 못한 것이다.
+    assert total >= 40, (
+        f"[{theme}] 포커스 가능한 요소를 {total}건만 관측했다 — "
+        "강제가 걸리지 않았거나 화면이 비었다(재지 못한 것이지 통과가 아니다)"
+    )
+    # 🔴 range 를 «실제로» 만났는지 — 0 이면 전용 픽셀 가드가 겨냥할 대상이 사라졌다는
+    #    뜻이므로, 조용한 초록 대신 red 로 알린다.
+    assert skipped_range >= 2, (
+        f"[{theme}] range 입력을 {skipped_range}건만 만났다 — "
+        "test_range_slider_focus_actually_paints 가 겨냥하는 대상이 바뀌었는지 볼 것"
+    )
+    assert not missing, (
+        f"[{theme}] 포커스 표시가 «전혀» 없는 요소 {len(missing)}건 (WCAG 2.4.7 Level AA):\n  "
+        + "\n  ".join(missing[:10])
+    )
+    assert not low, (
+        f"[{theme}] 포커스 표시 {len(low)}건이 3:1 미만 (관측 {total}건):\n  "
+        + "\n  ".join(f"{b['ratio']} cls={b['cls']!r} {b['kind']} {b['color']} ({b['path']})"
+                      for b in low[:10])
+    )
+
+
+# ── K. 차트 격자선 — canvas 는 무효 색을 «조용히» 버린다 ──────────────────────
+# Chart gridlines: canvas silently discards an invalid color and keeps the previous one.
+
+_CANVAS_COLOR_JS = r"""
+(names) => {
+  const probe = document.createElement('canvas').getContext('2d');
+  const cs = getComputedStyle(document.body);
+  const out = {};
+  names.forEach(n => {
+    const v = cs.getPropertyValue(n).trim();
+    probe.strokeStyle = '#010203';
+    let ok = false;
+    try { probe.strokeStyle = v; ok = probe.strokeStyle !== '#010203'; } catch (e) { ok = false; }
+    out[n] = {value: v, valid: ok, resolved: probe.strokeStyle};
+  });
+  out._charts = [];
+  document.querySelectorAll('canvas').forEach(cv => {
+    const ch = (window.Chart && window.Chart.getChart) ? window.Chart.getChart(cv) : null;
+    if (!ch || !ch.options || !ch.options.scales) return;
+    Object.keys(ch.options.scales).forEach(k => {
+      const g = ch.options.scales[k].grid;
+      if (!g || g.color == null) return;
+      const v = String(g.color);
+      probe.strokeStyle = '#010203';
+      let ok = false;
+      try { probe.strokeStyle = v; ok = probe.strokeStyle !== '#010203'; } catch (e) { ok = false; }
+      out._charts.push({id: cv.id, axis: k, value: v, valid: ok});
+    });
+  });
+  return out;
+}
+"""
+
+_CHART_COLOR_TOKENS = ["--chart-grid", "--border-subtle", "--accent", "--text-2"]
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_chart_colors_are_valid_canvas_colors(seeded_page, base_url, theme):
+    """🔴 차트에 넘기는 색은 canvas 가 «받아들이는» 형식이어야 한다.
+
+    실측(수정 전): 격자선 색이 `border + '44'` 였다. 그 이어붙이기는 토큰이 16진일 때만
+    유효한데 dark 는 `rgba(255,255,255,0.06)` 이라 결과가 파싱 불가 문자열이 된다.
+    canvas 는 예외를 내지 않고 «직전 strokeStyle» 을 그대로 쓴다 — 실측 결과
+    `repoTrendChart` 의 격자선 3/3 이 «불투명 검정»(0,0,0,255)으로 칠해졌다.
+
+    여기서는 브라우저의 canvas 파서에 직접 세워 보고 되읽는다 — 계산이 아니라 관측이다.
+    """
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.goto(f"{base_url}/repos/owner/testrepo")
+    seeded_page.evaluate("(t) => applyTheme(t)", theme)
+    seeded_page.wait_for_timeout(400)
+    res = seeded_page.evaluate(_CANVAS_COLOR_JS, _CHART_COLOR_TOKENS)
+
+    empty = [n for n in _CHART_COLOR_TOKENS if not res[n]["value"]]
+    assert not empty, (
+        f"[{theme}] 차트가 읽는 토큰이 비었다: {empty} — "
+        "빈 값은 Chart.js 기본색으로 조용히 대체된다"
+    )
+    bad = [f"{n}={res[n]['value']!r}" for n in _CHART_COLOR_TOKENS if not res[n]["valid"]]
+    assert not bad, (
+        f"[{theme}] canvas 가 받지 못하는 색 형식: {bad} — "
+        "무효 색은 예외 없이 «직전 색» 으로 칠해진다"
+    )
+    live_bad = [c for c in res["_charts"] if not c["valid"]]
+    assert not live_bad, (
+        f"[{theme}] 살아 있는 차트의 격자색이 무효다: "
+        + ", ".join(f"#{c['id']}.{c['axis']}={c['value']!r}" for c in live_bad[:6])
+    )
+
+
+# ── L. range 슬라이더 — 표시가 «UA 섀도 의사요소» 에 있어 계산으로는 안 보인다 ──
+# Range sliders: the indicator lives on a UA shadow pseudo-element, invisible to
+# getComputedStyle — so this axis is measured in pixels instead.
+
+_RANGE_SLIDERS = [
+    ("/repos/owner/testrepo", "#scoreMin"),
+    ("/repos/owner/testrepo", "#scoreMax"),
+    ("/repos/owner/testrepo/settings", ".approve-range"),
+    ("/repos/owner/testrepo/settings", ".reject-range"),
+]
+
+
+def _clip_bytes(page, sel: str) -> bytes:
+    """요소 둘레를 잘라 찍는다 — 스크롤하지 않으므로 뷰포트 좌표 = 페이지 좌표."""
+    r = page.evaluate(
+        "(s) => { const e = document.querySelector(s); const b = e.getBoundingClientRect();"
+        " return {x: b.left - 14, y: b.top - 14, width: b.width + 28, height: b.height + 28}; }",
+        sel)
+    return page.screenshot(clip=r)
+
+
+@pytest.mark.parametrize("path,sel", _RANGE_SLIDERS)
+def test_range_slider_focus_actually_paints(seeded_page, base_url, path, sel):
+    """🔴 슬라이더에 포커스가 가면 «픽셀이 바뀌어야» 한다.
+
+    실측(수정 전): Tab 으로 도달해도 5092px 중 **0px** 이 바뀌었다 — 네 테마 전부.
+    `.dual-slider-track input[type=range] { outline: none }`(특이도 0,2,1)가 전역
+    `*:focus-visible`(0,1,0)를 이기는데 대체가 없었다. WCAG 2.4.7 Focus Visible(Level AA).
+
+    🔴 이 시험이 증명하는 것은 «무언가 칠해진다» 까지다. 그 표시가 3:1 인지는
+    `tests/unit/ui/test_focus_indicator.py::test_range_slider_has_a_thumb_focus_ring`
+    (링이 `--focus-ring` 을 지나는가)와 `--focus-ring` 토큰 대비 시험이 함께 맡는다 —
+    실측상 settings 슬라이더는 일반 `input:focus` 규칙에서 15% 글로를 이미 받고 있어,
+    「픽셀이 바뀐다」만으로는 약한 표시를 통과시킨다.
+
+    🔴 이 축은 «계산» 으로 못 잰다. 고친 링은 `::-webkit-slider-thumb` 에 있고,
+    `getComputedStyle(el, '::-webkit-slider-thumb')` 은 UA 섀도 의사요소를 돌려주지
+    않아 요소 자신의 값(=outline none)을 준다 — 계산 기반 가드는 여기서 fail-open 이다.
+
+    🔴 자기검사를 함께 돌린다 — 같은 자리에 빨강 링을 «강제» 했을 때도 픽셀이 안 바뀌면
+    그것은 앱의 결함이 아니라 계기의 고장이다. 실제로 한 번 그랬다(`animation:none` 을
+    전역 주입하면 스크린샷이 갱신을 멈춘다).
+    """
+    page = seeded_page
+    # 높은 뷰포트 — 스크롤하지 않아야 clip 좌표계가 문제되지 않는다
+    page.set_viewport_size({"width": 1440, "height": 2400})
+    page.goto(f"{base_url}{path}")
+    # 🔴 settings 는 «간단 모드» 가 기본이라 임계값 슬라이더가 0×0 이다 — 그대로 재면
+    #    「화면에서 못 찾음」으로 red 가 나고, 정작 재려던 것은 못 잰다.
+    page.evaluate("() => { document.body.setAttribute('data-settings-mode', 'advanced');"
+                  " document.querySelectorAll('details').forEach(d => d.open = true);"
+                  " document.querySelectorAll('.is-hidden')"
+                  ".forEach(e => e.classList.remove('is-hidden')); }")
+    page.add_style_tag(content="*,*::before,*::after{transition:none !important}"
+                               ".atmosphere__orb{display:none !important}")
+    page.wait_for_timeout(600)
+    _settle_animations(page)
+
+    visible = page.evaluate(
+        "(s) => { const e = document.querySelector(s); if (!e) return false;"
+        " e.scrollIntoView({block: 'center'});"
+        " const b = e.getBoundingClientRect();"
+        " return b.width >= 6 && b.height >= 6 && b.top >= 0"
+        "        && b.bottom <= window.innerHeight; }", sel)
+    page.wait_for_timeout(250)
+    assert visible, (
+        f"{sel} 를 화면 안에서 찾지 못했다 — 재지 못한 것이지 통과가 아니다"
+    )
+
+    before = _clip_bytes(page, sel)
+
+    # A. 자기검사 — 계기가 링을 «볼 수 있는가»
+    # 🔴 자기검사도 «손잡이» 에 얹는다. 입력 요소에 얹으면 손잡이 링이 잘려 안 보여도
+    #    자기검사만 초록이 되어, 정작 재려는 자리를 못 본 채 통과할 수 있다(Grok 지적).
+    handle = page.add_style_tag(
+        content=f"{sel}::-webkit-slider-thumb{{outline:3px solid #ff0000 !important;"
+                "outline-offset:2px !important}")
+    page.wait_for_timeout(250)
+    sanity = _clip_bytes(page, sel)
+    page.evaluate("(el) => el.remove()", handle)
+    page.wait_for_timeout(250)
+    assert sanity != before, (
+        f"자기검사 실패 — {sel} 자리에 빨강 링을 강제해도 픽셀이 안 바뀐다. "
+        "계기가 고장난 것이므로 이 시험의 초록·빨강 모두 믿을 수 없다"
+    )
+    # 🔴 강제 스타일을 뗀 «뒤» 다시 기준을 잡는다 — 자리가 1px 만 움직여도 그림 크기가
+    #    달라져 바이트 비교가 무의미해진다(실측: 이 자리에서 한 번 그랬다).
+    before = _clip_bytes(page, sel)
+
+    # B. 실제 포커스
+    page.evaluate("(s) => document.querySelector(s).setAttribute('data-focus-base', '{}')", sel)
+    forced = _force_focus(page, True)
+    assert forced >= 1, "CDP 가 포커스를 강제하지 못했다"
+    page.wait_for_timeout(300)
+    after = _clip_bytes(page, sel)
+    _force_focus(page, False)
+
+    assert after != before, (
+        f"{sel} 에 포커스가 가도 «픽셀이 하나도» 바뀌지 않는다 — 표시가 없다 "
+        "(WCAG 2.4.7 Level AA). `outline:none` 을 쓴 규칙에 대체 표시가 붙었는지 볼 것"
+    )
