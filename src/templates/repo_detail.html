@@ -375,10 +375,15 @@
   /* ── 정렬 헤더 ─────────────────────────── */
   .sortable-th { cursor: pointer; user-select: none; white-space: nowrap; }
   .sortable-th:hover { color: var(--accent); }
-  .sort-icon { font-size: 10px; margin-left: 3px; opacity: .5; }
-  .sortable-th.asc  .sort-icon::after { content: '▲'; opacity: 1; color: var(--accent); }
-  .sortable-th.desc .sort-icon::after { content: '▼'; opacity: 1; color: var(--accent); }
-  .sortable-th:not(.asc):not(.desc) .sort-icon::after { content: '⇅'; }
+  /* 🔴 `opacity` 는 «곱해진다». 부모에 `.5` 를 걸고 `::after` 에서 `1` 로 되돌리려 했지만
+     그 되돌림은 작동하지 않아, 정렬된 열의 화살표까지 0.5 로 그려졌다 —
+     실측 1.71~2.97 로 네 테마 전부 3:1 미만이었다(정렬 방향은 «상태» 다).
+     부모의 흐림을 걷고, 색으로만 가른다. accent 를 «글자» 로 쓰므로 짝 토큰을 쓴다.
+     CSS opacity multiplies; the child's `opacity: 1` could never undo the parent's .5. */
+  .sort-icon { font-size: 10px; margin-left: 3px; }
+  .sortable-th.asc  .sort-icon::after { content: '▲'; color: var(--accent-text); }
+  .sortable-th.desc .sort-icon::after { content: '▼'; color: var(--accent-text); }
+  .sortable-th:not(.asc):not(.desc) .sort-icon::after { content: '⇅'; color: var(--text-3); }
   /* ── 페이지네이션 ───────────────────────── */
   .pagination { display: flex; align-items: center; justify-content: center; gap: .35rem; margin-top: .875rem; flex-wrap: wrap; }
   .page-btn {

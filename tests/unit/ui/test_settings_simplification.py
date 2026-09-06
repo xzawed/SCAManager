@@ -15,6 +15,23 @@ def _read() -> str:
     return _SETTINGS.read_text(encoding="utf-8")
 
 
+def _div_block(html: str, idx: int) -> str:
+    """`idx` 가 가리키는 `<div ...>` 부터 «그 div 가 닫힐 때까지».
+
+    🔴 고정 폭으로 자르면 블록 안에 줄이 늘어날 때마다 마지막 단언이 창 밖으로 밀려
+    거짓 red 가 난다. 「같은 블록 안인가」를 물으려면 블록의 끝을 세어야 한다.
+    Walk div depth instead of slicing a fixed number of characters.
+    """
+    start = html.rfind("<div", 0, idx + 1)
+    assert start != -1, "여는 <div> 를 찾지 못했다"
+    depth = 0
+    for m in re.finditer(r"<(/?)div\b", html[start:]):
+        depth += -1 if m.group(1) else 1
+        if depth == 0:
+            return html[start:start + m.end()]
+    raise AssertionError("블록이 닫히지 않는다 — 마크업이 깨졌거나 테스트가 늙었다")
+
+
 def test_ai_review_group_hierarchy():
     """카드 ②: ai_review_enabled(상위)가 pr_review_comment(종속)보다 앞 + 종속 래퍼 존재."""
     # ai_review_enabled comes before pr_review_comment, wrapped as a parent group with a dependent block.
@@ -173,7 +190,12 @@ def test_railway_controls_in_single_block():
     html = _read()
     i_block = html.find('class="railway-group"')
     assert i_block != -1, "railway-group 단일 블록 없음"
-    block = html[i_block:i_block + 2500]
+    # 🔴 고정 폭(2500자)으로 자르지 않는다 — 블록 «안» 에 줄이 몇 줄만 늘어도 마지막
+    #    단언이 창 밖으로 밀려 나가 「블록에 없음」이라는 거짓 red 가 난다(실제로 그랬다:
+    #    conn-dot 에 `aria-label` 을 붙이자 깨졌다). 이 시험이 물으려는 것은 「같은 블록
+    #    안에 있는가」이므로, `<div>` 깊이를 세어 «블록의 끝» 까지를 본다.
+    #    A fixed-width window breaks on any edit inside the block; walk the div depth.
+    block = _div_block(html, i_block)
     assert 'name="railway_api_token"' in block, "블록에 railway_api_token 없음"
     assert 'name="railway_deploy_alerts"' in block, "블록에 railway_deploy_alerts 없음"
     assert 'id="railway-webhook-url"' in block, "블록에 Railway Webhook URL 없음"
