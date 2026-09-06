@@ -270,6 +270,71 @@ def test_toggle_off_state_is_visible(seeded_page, base_url, theme):
     )
 
 
+# ── C-2. 토글 포커스 — 입력이 0×0 이라 «계산» 으로는 통과처럼 보인다 ────────
+
+def _clip_bytes(page, sel: str) -> bytes:
+    r = page.evaluate(
+        "(s) => { const b = document.querySelector(s).getBoundingClientRect();"
+        " return {x: b.left - 16, y: b.top - 16, width: b.width + 32,"
+        "         height: b.height + 32}; }", sel)
+    return page.screenshot(clip=r)
+
+
+def test_toggle_focus_actually_paints(seeded_page, base_url):
+    """🔴 토글에 포커스가 가면 «픽셀이 바뀌어야» 한다 (WCAG 2.4.7, AA).
+
+    실측(수정 전): `document.activeElement` 가 그 입력이고 `:focus-visible` 도 참인데
+    **0px** 이 바뀌었다 — 같은 자리에 빨강 링을 강제하면 618px 이 바뀌므로 계기 문제가
+    아니다. 입력이 `width:0;height:0;opacity:0` 이라 일반 `input:focus` 규칙의 글로가
+    그릴 자리가 없다. 링을 «보이는 형제» 트랙에 걸어 0 → 362px.
+
+    🔴 이 축은 계산으로 못 잡는다. `getComputedStyle(input)` 은 box-shadow 를 «갖고
+    있다» 고 답하고, e2e 포커스 감사는 6px 미만 요소를 아예 건너뛴다.
+    """
+    page = seeded_page
+    page.set_viewport_size({"width": 1440, "height": 2400})
+    page.goto(f"{base_url}/repos/owner/testrepo/settings")
+    page.evaluate("() => { document.body.setAttribute('data-settings-mode','advanced');"
+                  " document.querySelectorAll('.is-hidden')"
+                  ".forEach(e => e.classList.remove('is-hidden')); }")
+    page.add_style_tag(content="*,*::before,*::after{transition:none !important}"
+                               ".atmosphere__orb{display:none !important}")
+    page.wait_for_timeout(700)
+    sel = ".toggle-switch .toggle-track"
+    visible = page.evaluate(
+        "(s) => { const e = document.querySelector(s); if (!e) return false;"
+        " e.scrollIntoView({block: 'center'});"
+        " const b = e.getBoundingClientRect();"
+        " return b.width >= 6 && b.height >= 6 && b.top >= 0"
+        "        && b.bottom <= window.innerHeight; }", sel)
+    assert visible, "토글 트랙을 화면 안에서 찾지 못했다 — 재지 못한 것이지 통과가 아니다"
+    page.wait_for_timeout(300)
+
+    base = _clip_bytes(page, sel)
+    # 🔴 자기검사 — 계기가 링을 «볼 수 있는가». 0 이면 앱이 아니라 계기가 고장난 것이다.
+    handle = page.add_style_tag(
+        content=f"{sel}{{outline:3px solid #ff0000 !important;outline-offset:2px !important}}")
+    page.wait_for_timeout(300)
+    assert _clip_bytes(page, sel) != base, (
+        "자기검사 실패 — 트랙에 빨강 링을 강제해도 픽셀이 안 바뀐다. 계기가 고장났다")
+    page.evaluate("(el) => el.remove()", handle)
+    page.wait_for_timeout(300)
+    base = _clip_bytes(page, sel)
+
+    page.keyboard.press("Tab")          # 키보드 양태를 세운다
+    page.evaluate("() => document.querySelector("
+                  "'.toggle-switch input[type=checkbox]').focus()")
+    page.wait_for_timeout(350)
+    focused = page.evaluate(
+        "() => document.querySelector('.toggle-switch input[type=checkbox]')"
+        ".matches(':focus-visible')")
+    assert focused, "토글 입력이 `:focus-visible` 이 아니다 — 이 시험의 전제가 깨졌다"
+    assert _clip_bytes(page, sel) != base, (
+        "토글에 포커스가 가도 «픽셀이 하나도» 바뀌지 않는다 — 표시가 없다 "
+        "(WCAG 2.4.7 Level AA). 입력이 0×0 이므로 링은 보이는 형제에 걸어야 한다"
+    )
+
+
 # ── D. 정렬 방향 글리프 — 실제로 «칠해지는» 값으로 잰다 ────────────────────
 
 _SORT_JS = r"""

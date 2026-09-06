@@ -261,7 +261,63 @@ def test_toggle_off_state_is_visible_against_the_card():
     assert not bad, "꺼진 스위치가 보이지 않는다:\n  " + "\n  ".join(bad)
 
 
+def test_visually_hidden_input_puts_its_focus_ring_on_the_visible_sibling():
+    """🔴 «보이지 않는 입력» 의 포커스 링은 보이는 형제에 걸어야 한다.
+
+    실측: 토글 스위치는 Tab 으로 도달하고 `:focus-visible` 도 참인데 **픽셀이 0개**
+    바뀌었다(같은 자리 강제 링은 618px). 입력이 `width:0;height:0;opacity:0` 이라
+    일반 `input:focus` 규칙의 글로가 그릴 자리가 없기 때문이다. WCAG 2.4.7(AA).
+
+    🔴 이 자리는 앞선 두 가드가 «둘 다» 놓쳤다 —
+    e2e 포커스 감사는 6px 미만 요소를 건너뛰고, 「`outline:none` 에 대체가 있는가」
+    구조 가드는 일반 `input:focus` 의 box-shadow 를 대체로 «인정» 한다.
+    0×0 요소에서는 그 대체가 아무것도 그리지 않는다는 것을 둘 다 모른다.
+    """
+    src = strip_css_comments(read(_SETTINGS))
+    hidden = re.search(
+        r"\.toggle-switch input\[type=\"checkbox\"\]\s*\{([^}]*)\}", src)
+    assert hidden, "`.toggle-switch input[type=checkbox]` 규칙 부재 — 테스트가 늙었다"
+    body = hidden.group(1)
+    assert "opacity:0" in body.replace(" ", ""), (
+        "이 시험의 전제(입력이 시각적으로 숨겨져 있다)가 깨졌다 — 규칙을 다시 볼 것")
+
+    m = re.search(
+        r"\.toggle-switch input:focus-visible\s*\+\s*\.toggle-track\s*\{([^}]*)\}", src)
+    assert m, (
+        "숨겨진 토글 입력에 포커스가 가도 «보이는 형제» 에 링이 생기지 않는다 — "
+        "`.toggle-switch input:focus-visible + .toggle-track` 규칙이 필요하다 "
+        "(WCAG 2.4.7 Level AA)")
+    assert "var(--focus-ring)" in m.group(1), (
+        f"토글 포커스 링이 `--focus-ring` 을 쓰지 않는다 — {m.group(1).strip()[:60]!r}")
+
+
 # ── D. 정렬 방향 글리프 — opacity 가 «곱해져» 저자 의도가 죽었다 ────────────
+
+def test_sort_state_is_exposed_with_aria_sort():
+    """🔴 정렬 상태를 «글리프» 하나로만 나르면 안 된다.
+
+    실측: 리포 전체에 `aria-sort` 가 **0건**이었다(Grok 확인) — 보조기술은 어느 열이
+    어떤 방향으로 정렬됐는지 알 길이 없었다(WCAG 1.3.1). 마크업의 초기값과 JS 의 갱신을
+    «둘 다» 본다 — 마크업에만 있으면 첫 렌더 이후로 굳고, JS 에만 있으면 초기 상태가 빈다.
+    """
+    src = read(_REPO_DETAIL)
+    ths = re.findall(r"<th class=\"sortable-th\"[^>]*>", src)
+    assert ths, "`.sortable-th` 마크업 부재 — 테스트가 늙었다"
+    missing = [t for t in ths if "aria-sort" not in t]
+    assert not missing, (
+        f"`.sortable-th` {len(missing)}/{len(ths)} 개에 초기 `aria-sort` 가 없다:\n  "
+        + "\n  ".join(missing[:2]))
+
+    clean = strip_css_comments(src)
+    m = re.search(r"function updateSortHeaders\(\)\s*\{([\s\S]*?)\n\}", clean)
+    assert m, "`updateSortHeaders` 를 찾지 못했다 — 테스트가 늙었다"
+    body = m.group(1)
+    assert "aria-sort" in body, (
+        "정렬 클래스는 갱신하면서 `aria-sort` 는 갱신하지 않는다 — "
+        "보조기술에는 첫 렌더의 값이 그대로 남는다")
+    for want in ("ascending", "descending", "none"):
+        assert want in body, f"`updateSortHeaders` 가 `{want}` 를 세우지 않는다"
+
 
 def test_sort_indicator_opacity_does_not_compound():
     """🔴 `.sort-icon { opacity }` 는 `::after { opacity: 1 }` 로 되돌릴 수 없다.

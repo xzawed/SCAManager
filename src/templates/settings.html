@@ -174,7 +174,18 @@
     box-shadow:0 1px 4px rgba(0,0,0,.3);
   }
   .toggle-switch input:checked + .toggle-track { background: var(--success); border-color: var(--success); }
-  .toggle-switch input:checked + .toggle-track::after { transform:translateX(20px); background: var(--btn-on-accent); }
+  /* 켜짐에서는 손잡이 테두리도 트랙과 같은 색으로 — 그러지 않으면 `--text-3` 링이
+     초록 위에 1.30~2.10 으로 남아 지저분하다(Grok 지적).
+     On the checked track the knob ring must blend, or it leaves a muddy halo. */
+  .toggle-switch input:checked + .toggle-track::after {
+    transform:translateX(20px); background: var(--btn-on-accent); border-color: var(--success); }
+  /* 🔴 이 스위치는 Tab 으로 도달해도 «픽셀이 하나도» 바뀌지 않았다 — 실측 0/618.
+     입력이 `width:0;height:0;opacity:0` 이라 일반 `input:focus` 규칙의 글로가 그릴 자리가
+     없고, 전역 `*:focus-visible` 은 그 규칙의 `outline:none` 에 진다. WCAG 2.4.7(AA).
+     보이는 것은 «형제» 트랙이므로 링을 그쪽에 건다.
+     The input is 0x0 and transparent; put the ring on the sibling that is actually painted. */
+  .toggle-switch input:focus-visible + .toggle-track {
+    outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 
   /* AI 리뷰 그룹 — 종속(게시 위치) 들여쓰기 + AI 실행 OFF 시 하위 세부 완전 숨김 (CSS :has(), JS 0) */
   /* AI-review group — indent the dependent (post location) + fully hide the detail when the run toggle is off */
