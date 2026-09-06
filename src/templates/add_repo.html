@@ -83,10 +83,17 @@
      이해하는 데 필요한」 그래픽이라 1.4.11 의 3:1 대상이다(Understanding Fig. 24–25).
      종전에는 SVG 데이터 URI 안에 `#73737c` 가 박혀 테마를 타지 못했고, 실측
      catppuccin 2.68 로 미달이었다(나머지 셋은 4.06~4.70 이라 세 테마의 통과가 가렸다).
-     `<select>` 는 의사요소를 가질 수 없으므로 감싸는 요소에 그리고, 색은 마스크로
+     `select` 요소는 의사요소를 가질 수 없으므로 감싸는 요소에 그리고, 색은 마스크로
      토큰에서 받는다.
+     🔴 이 주석에 그 요소를 **꺾쇠로 적지 않는다** — SonarCloud 의 HTML 파서는 `<style>`
+     안 CSS 주석까지 훑어 산문 속 꺾쇠 태그를 실제 폼 컨트롤로 읽는다. 실측: 그렇게 적었을
+     때 `Web:InputWithoutLabelCheck` 2건이 이 두 줄에 붙어 new_reliability_rating 이 C 로
+     떨어지고 Quality Gate 가 막혔다(이 파일에 input 은 0개, 실제 select 는 label 과 짝이
+     맞는데도). 아래 실제 마크업은 그대로 두면 된다 — 문제는 산문 쪽이다.
      Authoring the arrow spends the user-agent exemption; the color must come from a token,
-     and <select> cannot host a pseudo-element, so the wrapper draws it. */
+     and a select element cannot host a pseudo-element, so the wrapper draws it.
+     Do not write that element in angle brackets here: Sonar's HTML parser reads prose inside
+     CSS comments as real form controls. */
   .form-select-wrap { position: relative; }
   .form-select-wrap::after {
     content: ''; position: absolute; right: 14px; top: 50%;
