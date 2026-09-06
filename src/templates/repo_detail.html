@@ -453,7 +453,12 @@
     .filter-btn { min-height: 44px; padding: .55rem .85rem; font-size: 13px; box-sizing: border-box; }
     .page-btn { min-width: 44px; min-height: 44px; box-sizing: border-box; }
     /* Step B (B1): 슬라이더 thumb 모바일 24px (settings P2-6 패턴 재적용) */
+    /* 🔴 두 엔진을 «따로» 적는다 — 한 선택자 목록에 webkit·moz 를 같이 쓰면 규칙 전체가
+       버려진다. 위 기본 규칙(16px)은 이미 두 벌인데 이 모바일 확대는 webkit 만 있었다.
+       그래서 Firefox 모바일에서는 손잡이가 16px 그대로였다(2.5.8 의 24px 미만).
+       Both engines need separate rules; the mobile bump had only the webkit pseudo. */
     .dual-slider-track input[type=range]::-webkit-slider-thumb { width: 24px; height: 24px; }
+    .dual-slider-track input[type=range]::-moz-range-thumb { width: 24px; height: 24px; }
   }
   @media (max-width: 480px) {
     .commit-msg-preview { display: none; }
