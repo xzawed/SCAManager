@@ -130,14 +130,17 @@ def legend() -> _Legend:
 def expected_labels() -> list[str]:
     """ko 번역의 실제 문자열 — 템플릿과 «따로» 가져온다.
 
-    템플릿에서 키를 긁어 오면 키가 사라져도 초록이다. 번역 원본에서 뽑아 대조한다.
+    템플릿에서 키를 긁어 오면 키가 사라져도 초록이다. 번역 «원본» 에서 뽑아 대조한다.
+
+    🔴 두 번째 Jinja 환경을 만들지 않는다. 처음엔 `Environment(autoescape=False)` 로
+    필터를 태웠는데, 그것이 CodeQL `py/jinja2/autoescape-false` 를 새로 띄웠다 —
+    시험 코드라도 dismiss 하면 기준선이 가짜가 된다. 로더를 직접 부르면 escape 문제
+    자체가 없고, 대조군이 «번역 원본» 이라 더 강하다.
     """
-    from src.i18n.filters import register_i18n_filters  # noqa: PLC0415
-    env = jinja2.Environment(autoescape=False)
-    register_i18n_filters(env)
+    from src.i18n.loader import get_text  # noqa: PLC0415
     out = []
     for key in _SEGMENT_KEYS:
-        text = env.from_string("{{ k | i18n_args('ko') }}").render(k=key)
+        text = get_text(key, "ko")
         assert text and text != key, f"{key} 번역 부재 — 대조군이 없다"
         out.append(text)
     return out
