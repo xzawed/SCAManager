@@ -192,8 +192,10 @@
         {#- 🔴 범례. 이 차트는 조각 이름을 «툴팁에만» 갖고 있었고 Chart.js 범례도 꺼져
             있어, 어느 조각이 무엇인지 알 길이 색밖에 없었다 — 키보드·터치로는 도달 불가.
             실측(캔버스 픽셀·4테마): 인접 조각 대비 1.03~2.61 (기준 3.0). 색을 바꾸는 대신
-            글자를 준다 — 글자가 뜻을 나르면 색은 더 이상 정보를 혼자 나르지 않는다.
-            Segment names lived only in the tooltip; the legend gives them as text. -#}
+            이름«과 수»를 준다. 이름만으로는 1.4.1 만 풀린다 — 1.4.11 은 「조각을 봐야
+            비율을 읽는가」를 묻고(Understanding Figure 44), 값이 함께 있어야 조각이
+            «이해에 필요» 하지 않게 된다(Figure 45). 그래서 건수를 같이 적는다.
+            Names discharge 1.4.1; the counts are what retire 1.4.11 (Figures 44/45). -#}
         <ul class="ri-legend">
           <li class="ri-legend-item">
             <span class="ri-legend-dot" style="background:var(--danger);" aria-hidden="true"></span>

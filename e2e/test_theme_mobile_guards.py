@@ -830,30 +830,43 @@ _FOCUS_AUDIT_JS = r"""
     //    삼으면, accent 로 채워진 버튼 위에서 링과 면이 같은 색이라 1.00 이 나온다 —
     //    실제로는 그 링이 페이지 바탕과 4.4:1 로 잘 보인다. 두 인접색 중 «좋은 쪽» 을
     //    취한다(1.4.11 은 인접색에 대해 3:1 을 요구하지, 모든 인접색을 요구하지 않는다).
+    // 🔴 표시의 «기하» 에 따라 무엇과 재는지가 다르다
+    //    (Understanding 1.4.11 — Relationship with Focus Visible):
+    //      · 요소 «바깥» 에 그려지는 표시(outline-offset, 비-inset box-shadow)
+    //        → 요소가 «앉은» 바탕, 곧 부모의 색과 3:1. 채워진 버튼의 «면» 과는 무관하다
+    //          (Figure 10: 면과 같은 색이어도 페이지와 대비되면 통과).
+    //      · 요소의 «테두리» 로 그려지는 표시 → 안팎 «둘 다» 3:1.
+    //    처음엔 둘 중 좋은 쪽(max)을 취했는데, 그러면 Figure 9(면과는 대비되지만 페이지와는
+    //    1:1 인 바깥 링)가 통과한다 — 명세보다 무른 판정이다(Grok claim-review).
     const gnd = ground(el);
     const gndOut = el.parentElement ? ground(el.parentElement) : gnd;
+    const outsideR = (c) => ratio(over(c, gndOut), gndOut);
+    const insideR = (c) => ratio(over(c, gnd), gnd);
+    const borderR = (c) => Math.min(insideR(c), outsideR(c));
     const cands = [];
-    const best2 = (c) => Math.max(ratio(over(c, gnd), gnd), ratio(over(c, gndOut), gndOut));
-    const consider = (colorStr, kind) => {
+    const consider = (colorStr, kind, how) => {
       const c = parse(colorStr); if (!c || c.a <= 0) return;
-      cands.push({kind, ratio: best2(c), color: colorStr});
+      cands.push({kind, ratio: how(c), color: colorStr});
     };
     if (parseFloat(cs.outlineWidth) > 0 && !['none','hidden'].includes(cs.outlineStyle))
-      consider(cs.outlineColor, 'outline');
+      consider(cs.outlineColor, 'outline', outsideR);
     if (cs.boxShadow !== base.boxShadow && cs.boxShadow !== 'none')
       shadowLayers(cs.boxShadow).forEach(l => { const c=firstColor(l);
         if (c && c.a>0) cands.push({kind:'box-shadow',
-          ratio: ratio(over(c,gnd), gnd), color: l.trim().slice(0,40)}); });
-    if (cs.borderTopColor !== base.borderTopColor) consider(cs.borderTopColor, 'border');
+          ratio: /\binset\b/.test(l) ? insideR(c) : outsideR(c),
+          color: l.trim().slice(0,40)}); });
+    if (cs.borderTopColor !== base.borderTopColor)
+      consider(cs.borderTopColor, 'border', borderR);
     PSEUDOS.forEach(ps => {
       const p = getComputedStyle(el, ps);
       if (!p) return;
       if (parseFloat(p.outlineWidth) > 0 && !['none','hidden'].includes(p.outlineStyle))
-        consider(p.outlineColor, 'outline' + ps);
+        consider(p.outlineColor, 'outline' + ps, outsideR);
       if (p.boxShadow && p.boxShadow !== 'none' && p.boxShadow !== base['shadow' + ps])
         { const c = firstColor(p.boxShadow);
           if (c && c.a>0) cands.push({kind:'box-shadow'+ps,
-            ratio: best2(c), color: p.boxShadow.slice(0,40)}); }
+            ratio: /\binset\b/.test(p.boxShadow) ? insideR(c) : outsideR(c),
+            color: p.boxShadow.slice(0,40)}); }
     });
 
     const id = (el.className && String(el.className).slice(0,34)) || el.tagName.toLowerCase();
@@ -917,7 +930,7 @@ def test_every_focusable_shows_an_indicator_that_meets_3to1(seeded_page, base_ur
     실측(수정 전):
       - `#scoreMin`·`#scoreMax`(점수 범위 슬라이더)는 Tab 으로 도달해도 표시가 «전혀»
         없었다 — 픽셀로 5092px 중 0px. `.dual-slider-track input[type=range]` 의
-        `outline:none` 이 전역 링을 특이도로 이기고 대체가 없었다. WCAG 2.4.7(Level A).
+        `outline:none` 이 전역 링을 특이도로 이기고 대체가 없었다. WCAG 2.4.7(Level AA).
       - pastel 의 링(`--accent` #8c82d2)이 페이지 바탕에서 2.77~2.88 (9건).
 
     🔴 표시를 «의사요소» 에서도 찾는다. 슬라이더 링은 `::-webkit-slider-thumb` 에 있어
@@ -956,7 +969,7 @@ def test_every_focusable_shows_an_indicator_that_meets_3to1(seeded_page, base_ur
         "test_range_slider_focus_actually_paints 가 겨냥하는 대상이 바뀌었는지 볼 것"
     )
     assert not missing, (
-        f"[{theme}] 포커스 표시가 «전혀» 없는 요소 {len(missing)}건 (WCAG 2.4.7 Level A):\n  "
+        f"[{theme}] 포커스 표시가 «전혀» 없는 요소 {len(missing)}건 (WCAG 2.4.7 Level AA):\n  "
         + "\n  ".join(missing[:10])
     )
     assert not low, (
@@ -1044,6 +1057,7 @@ _RANGE_SLIDERS = [
     ("/repos/owner/testrepo", "#scoreMin"),
     ("/repos/owner/testrepo", "#scoreMax"),
     ("/repos/owner/testrepo/settings", ".approve-range"),
+    ("/repos/owner/testrepo/settings", ".reject-range"),
 ]
 
 
@@ -1061,8 +1075,14 @@ def test_range_slider_focus_actually_paints(seeded_page, base_url, path, sel):
     """🔴 슬라이더에 포커스가 가면 «픽셀이 바뀌어야» 한다.
 
     실측(수정 전): Tab 으로 도달해도 5092px 중 **0px** 이 바뀌었다 — 네 테마 전부.
-    `.dual-slider-track input[type=range] { outline: none }`(특이도 0,1,2)가 전역
-    `*:focus-visible`(0,1,0)를 이기는데 대체가 없었다. WCAG 2.4.7 Focus Visible(Level A).
+    `.dual-slider-track input[type=range] { outline: none }`(특이도 0,2,1)가 전역
+    `*:focus-visible`(0,1,0)를 이기는데 대체가 없었다. WCAG 2.4.7 Focus Visible(Level AA).
+
+    🔴 이 시험이 증명하는 것은 «무언가 칠해진다» 까지다. 그 표시가 3:1 인지는
+    `tests/unit/ui/test_focus_indicator.py::test_range_slider_has_a_thumb_focus_ring`
+    (링이 `--focus-ring` 을 지나는가)와 `--focus-ring` 토큰 대비 시험이 함께 맡는다 —
+    실측상 settings 슬라이더는 일반 `input:focus` 규칙에서 15% 글로를 이미 받고 있어,
+    「픽셀이 바뀐다」만으로는 약한 표시를 통과시킨다.
 
     🔴 이 축은 «계산» 으로 못 잰다. 고친 링은 `::-webkit-slider-thumb` 에 있고,
     `getComputedStyle(el, '::-webkit-slider-thumb')` 은 UA 섀도 의사요소를 돌려주지
@@ -1076,7 +1096,10 @@ def test_range_slider_focus_actually_paints(seeded_page, base_url, path, sel):
     # 높은 뷰포트 — 스크롤하지 않아야 clip 좌표계가 문제되지 않는다
     page.set_viewport_size({"width": 1440, "height": 2400})
     page.goto(f"{base_url}{path}")
-    page.evaluate("() => { document.querySelectorAll('details').forEach(d => d.open = true);"
+    # 🔴 settings 는 «간단 모드» 가 기본이라 임계값 슬라이더가 0×0 이다 — 그대로 재면
+    #    「화면에서 못 찾음」으로 red 가 나고, 정작 재려던 것은 못 잰다.
+    page.evaluate("() => { document.body.setAttribute('data-settings-mode', 'advanced');"
+                  " document.querySelectorAll('details').forEach(d => d.open = true);"
                   " document.querySelectorAll('.is-hidden')"
                   ".forEach(e => e.classList.remove('is-hidden')); }")
     page.add_style_tag(content="*,*::before,*::after{transition:none !important}"
@@ -1086,9 +1109,11 @@ def test_range_slider_focus_actually_paints(seeded_page, base_url, path, sel):
 
     visible = page.evaluate(
         "(s) => { const e = document.querySelector(s); if (!e) return false;"
+        " e.scrollIntoView({block: 'center'});"
         " const b = e.getBoundingClientRect();"
         " return b.width >= 6 && b.height >= 6 && b.top >= 0"
         "        && b.bottom <= window.innerHeight; }", sel)
+    page.wait_for_timeout(250)
     assert visible, (
         f"{sel} 를 화면 안에서 찾지 못했다 — 재지 못한 것이지 통과가 아니다"
     )
@@ -1096,8 +1121,11 @@ def test_range_slider_focus_actually_paints(seeded_page, base_url, path, sel):
     before = _clip_bytes(page, sel)
 
     # A. 자기검사 — 계기가 링을 «볼 수 있는가»
+    # 🔴 자기검사도 «손잡이» 에 얹는다. 입력 요소에 얹으면 손잡이 링이 잘려 안 보여도
+    #    자기검사만 초록이 되어, 정작 재려는 자리를 못 본 채 통과할 수 있다(Grok 지적).
     handle = page.add_style_tag(
-        content=f"{sel}{{outline:3px solid #ff0000 !important;outline-offset:2px !important}}")
+        content=f"{sel}::-webkit-slider-thumb{{outline:3px solid #ff0000 !important;"
+                "outline-offset:2px !important}")
     page.wait_for_timeout(250)
     sanity = _clip_bytes(page, sel)
     page.evaluate("(el) => el.remove()", handle)
@@ -1120,5 +1148,5 @@ def test_range_slider_focus_actually_paints(seeded_page, base_url, path, sel):
 
     assert after != before, (
         f"{sel} 에 포커스가 가도 «픽셀이 하나도» 바뀌지 않는다 — 표시가 없다 "
-        "(WCAG 2.4.7 Level A). `outline:none` 을 쓴 규칙에 대체 표시가 붙었는지 볼 것"
+        "(WCAG 2.4.7 Level AA). `outline:none` 을 쓴 규칙에 대체 표시가 붙었는지 볼 것"
     )

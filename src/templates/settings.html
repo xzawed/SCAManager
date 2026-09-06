@@ -212,7 +212,13 @@
   .threshold-ctrl input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:18px; height:18px; border-radius:50%; cursor:pointer; }
   /* 🔴 `outline:none` 이 전역 링을 이기는데 대체가 없었다 — 포커스를 받아도
      `getComputedStyle(...).outline` 이 `none 0px` 이다(`:focus-visible` 은 참).
-     위 점수 슬라이더와 같은 결함·같은 처방. WCAG 2.4.7(Level A). */
+     위 점수 슬라이더와 같은 결함·같은 처방. WCAG 2.4.7(Level AA). */
+  /* Gecko 용 손잡이 — `::-webkit-slider-thumb` 는 Firefox 에서 무시된다.
+     Thumb box for Gecko; the webkit pseudo is ignored there. */
+  .threshold-ctrl input[type=range]::-moz-range-thumb {
+    width:18px; height:18px; border-radius:50%; border:none; cursor:pointer; }
+  .approve-range::-moz-range-thumb { background:var(--success); }
+  .reject-range::-moz-range-thumb  { background:var(--danger); }
   .threshold-ctrl input[type=range]:focus-visible::-webkit-slider-thumb {
     outline:2px solid var(--focus-ring); outline-offset:2px; }
   .threshold-ctrl input[type=range]:focus-visible::-moz-range-thumb {

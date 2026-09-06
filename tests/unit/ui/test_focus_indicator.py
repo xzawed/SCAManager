@@ -4,12 +4,14 @@
 포커스를 받아도 **4386px 중 0px** 이 바뀐다 — 네 테마 전부. 원인은
 `.dual-slider-track input[type=range] { outline: none }` 이 전역
 `*:focus-visible { outline: 2px solid var(--accent) }` 를 특이도로 이기고 **대체가 없는 것**.
-WCAG 2.4.7 Focus Visible(Level A).
+WCAG 2.4.7 Focus Visible(Level AA).
 
 색 쪽은 pastel 이 미달이었다 — `--accent`(#8c82d2)를 링으로 쓰는데 페이지 바탕에서
 실측 2.77~2.88(기준 3.0). 링 역할을 `--focus-ring` 으로 떼어 낸다.
 """
 import re
+
+import pytest
 
 from ._contrast import (
     ROOT, THEMES, decl, over, parse_color, ratio, read, resolve,
@@ -19,6 +21,18 @@ from ._contrast import (
 NON_TEXT = 3.0
 
 
+def _body_background_stops(base_html: str, theme: str) -> list[tuple]:
+    """`body[data-theme="X"]` 이 `background` 로 덮는 색들 — 없으면 빈 목록."""
+    m = re.search(rf'body\[data-theme="{theme}"\]\s*\{{([^}}]*)\}}', base_html)
+    if not m:
+        return []
+    decl_m = re.search(r"background\s*:\s*([^;]+);", m.group(1))
+    if not decl_m:
+        return []
+    return [parse_color(c) for c in
+            re.findall(r"#[0-9a-fA-F]{3,6}|rgba?\([^)]*\)", decl_m.group(1))]
+
+
 def test_focus_ring_token_meets_non_text_contrast_in_every_theme():
     """🔴 포커스 링은 그것이 얹히는 두 바탕(페이지·카드) 위에서 3:1 이상이어야 한다.
 
@@ -26,15 +40,22 @@ def test_focus_ring_token_meets_non_text_contrast_in_every_theme():
     통과하므로 **두 바탕을 다 본다** — 실제로 미달한 9건은 전부 페이지 바탕 위였다.
     """
     src = read("src/static/css/tokens.css")
+    base_html = strip_css_comments(read("src/templates/base.html"))
     bad = []
     for theme in THEMES:
         block = theme_block(src, theme)
         ring = parse_color(resolve(block, decl(block, "--focus-ring")))
-        for ground_name in ("--bg-base", "--bg-card"):
-            ground = parse_color(resolve(block, decl(block, ground_name)))
+        grounds = {name: parse_color(resolve(block, decl(block, name)))
+                   for name in ("--bg-base", "--bg-card")}
+        # 🔴 토큰이 곧 «칠해지는» 바탕은 아니다. pastel 은 `body[data-theme="pastel"]` 이
+        #    `--bg-base`(따뜻한 크림)를 라벤더 그라디언트로 «덮는다» — 그 위에 링이 앉는다.
+        #    토큰만 보면 실제로 링이 놓이는 색을 재지 못한다.
+        for i, stop in enumerate(_body_background_stops(base_html, theme)):
+            grounds[f"body[data-theme={theme}] stop{i}"] = stop
+        for name, ground in grounds.items():
             r = ratio(over(ring, ground), ground)
             if r < NON_TEXT:
-                bad.append(f"{theme}: --focus-ring on {ground_name} = {r:.2f} (< {NON_TEXT})")
+                bad.append(f"{theme}: --focus-ring on {name} = {r:.2f} (< {NON_TEXT})")
     assert not bad, "포커스 링이 바탕에서 안 보인다:\n  " + "\n  ".join(bad)
 
 
@@ -70,12 +91,25 @@ def _rules(src: str):
     return re.findall(r"([^{}]+)\{([^{}]*)\}", clean)
 
 
+# 🔴 «대체가 아예 없는가» 와 «대체가 충분한가» 는 다른 질문이다.
+#    실측: settings 의 임계값 슬라이더는 대체가 «있었다» — 일반 규칙
+#    `input:focus, select:focus, textarea:focus` 가 15% accent 글로를 준다
+#    (실측 `color(srgb 0.486 0.478 1 / 0.15) 0 0 0 3px`). 그건 2.4.7 이 아니라 1.4.11
+#    문제다. 반면 `#scoreMin`·`.danger-summary` 는 정말 아무것도 없었다(실측: 픽셀 0개).
+#    그래서 이 시험은 「없는가」만 보고, 「충분한가」는 아래 손잡이 링 시험이 맡는다.
+_GENERIC_INPUT_FOCUS = re.compile(r"\b(input|select|textarea)\s*:focus\b")
+
+
 def test_outline_none_is_always_paired_with_a_replacement_indicator():
     """🔴 `outline: none` 을 쓰는 규칙마다 «대체 표시» 가 같은 파일에 있어야 한다.
 
-    실측: 슬라이더는 대체가 없어 Tab 도달 시 픽셀이 0개 바뀐다. 대체로 인정하는 것은
-    같은 요소를 겨냥한 `:focus`/`:focus-visible` 규칙이 `outline`(none 아님) ·
-    `box-shadow` · `border-color` 중 하나를 선언하는 것.
+    실측: `#scoreMin`·`#scoreMax`·`.danger-summary` 는 대체가 없어 포커스 시
+    `outline` 이 `none 0px` 이고 픽셀이 0개 바뀐다. 대체로 인정하는 것은 같은 요소를
+    겨냥한 `:focus`/`:focus-visible` 규칙이 `outline`(none 아님) · `box-shadow` ·
+    `border-color` 중 하나를 선언하는 것 — 요소 이름을 겨냥한 «일반» 규칙도 포함한다.
+
+    이 시험은 «있는가» 만 본다. 그 대체가 3:1 을 넘는지는
+    `test_range_slider_has_a_thumb_focus_ring` + `--focus-ring` 토큰 시험이 맡는다.
     """
     offenders = []
     checked = 0
@@ -89,9 +123,12 @@ def test_outline_none_is_always_paired_with_a_replacement_indicator():
             key = sel.split(":")[0].split("::")[0].strip().rstrip(",").strip()
             if not key:
                 continue
+            tag = re.search(r"\b(input|select|textarea)\b", key)
             repl = [
                 (s, b) for s, b in rules
-                if key in s and re.search(r":focus(-visible)?", s)
+                if (key in s or (tag and _GENERIC_INPUT_FOCUS.search(s)
+                                 and tag.group(1) in s))
+                and re.search(r":focus(-visible)?", s)
                 and (re.search(r"outline\s*:\s*(?!none|0\b)", b)
                      or "box-shadow" in b or "border-color" in b
                      or re.search(r"\bborder\s*:", b))
@@ -101,28 +138,37 @@ def test_outline_none_is_always_paired_with_a_replacement_indicator():
     assert checked >= 3, (
         f"`outline:none` 규칙을 {checked}건만 봤다 — 못 재면 초록이 아니라 red 다")
     assert not offenders, (
-        "포커스 표시가 사라지는 자리가 있다 (WCAG 2.4.7 Level A):\n  "
+        "포커스 표시가 사라지는 자리가 있다 (WCAG 2.4.7 Level AA):\n  "
         + "\n  ".join(offenders))
 
 
-def test_range_slider_has_a_thumb_focus_ring():
-    """점수 범위 슬라이더는 «손잡이» 에 링을 준다.
+# range 슬라이더가 있는 모든 화면 — 새 화면이 생기면 여기에 더한다
+_RANGE_SLIDER_TEMPLATES = (
+    "src/templates/repo_detail.html",   # 점수 범위(#scoreMin/#scoreMax)
+    "src/templates/settings.html",      # 승인·거부 임계값
+)
+
+
+@pytest.mark.parametrize("rel", _RANGE_SLIDER_TEMPLATES)
+def test_range_slider_has_a_thumb_focus_ring(rel):
+    """range 슬라이더는 «손잡이» 에 `--focus-ring` 링을 준다.
 
     트랙 전체를 두르면 두 손잡이가 같은 트랙을 공유해 «어느 쪽이 포커스인지» 를 못 알린다.
     webkit·moz 두 의사요소를 다 적는다 — 한쪽만 적으면 다른 엔진에서 그대로 사라진다.
+
+    🔴 이것이 range 의 «대비» 축을 맡는 유일한 가드다. e2e 대비 가드는 range 를 건너뛴다 —
+    링이 UA 섀도 의사요소에 있어 `getComputedStyle` 이 돌려주지 않기 때문이다.
+    settings 슬라이더는 일반 `input:focus` 규칙에서 15% accent 글로를 «이미» 받고 있었다
+    (실측 알파 0.15) — 있지만 3:1 에 한참 못 미친다. 그 자리를 이 링이 대신한다.
     """
-    src = strip_css_comments(read("src/templates/repo_detail.html"))
-    missing = [
-        pseudo for pseudo in ("::-webkit-slider-thumb", "::-moz-range-thumb")
-        if not re.search(
-            r"input\[type=range\]:focus-visible" + re.escape(pseudo) + r"\s*\{([^}]*)\}", src)
-    ]
-    assert not missing, f"슬라이더 손잡이 포커스 링 부재: {missing}"
+    src = strip_css_comments(read(rel))
     for pseudo in ("::-webkit-slider-thumb", "::-moz-range-thumb"):
         m = re.search(
             r"input\[type=range\]:focus-visible" + re.escape(pseudo) + r"\s*\{([^}]*)\}", src)
+        assert m, f"{rel}: 슬라이더 손잡이 포커스 링 부재 — {pseudo}"
         assert "var(--focus-ring)" in m.group(1), (
-            f"{pseudo} 링이 `--focus-ring` 을 쓰지 않는다 — {m.group(1).strip()[:60]!r}")
+            f"{rel}: {pseudo} 링이 `--focus-ring` 을 쓰지 않는다 "
+            f"— {m.group(1).strip()[:60]!r}")
 
 
 def test_focus_ring_token_is_defined_in_every_theme():

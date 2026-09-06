@@ -60,6 +60,11 @@ _STATE_HIST_HEADING = "## 테스트 수 추적 이력"
 # assemble a wrong (C, B). Reading is unified on full_pairs(); do not resurrect these.
 # README 배지: "Tests-5196%2B_total_(5042_unit_%2B_154_integration)"
 _README_BADGE = re.compile(r"Tests-(\d+)%2B_total_\((\d+)_unit_%2B_\d+_integration\)")
+# 🔴 README E2E 배지: "E2E-177_in_CI". SSOT 는 `e2e/EXPECTED_COUNT` 다.
+#    이 배지에는 집행자가 없어서 e2e 수가 166→177 로 바뀐 PR 에서 조용히 얼었다
+#    (Grok claim-review 01a07292). Tests 배지만 보던 것을 여기서 넓힌다.
+# The E2E badge had no enforcer and silently froze; its SSOT is e2e/EXPECTED_COUNT.
+_README_E2E_BADGE = re.compile(r"E2E-(\d+)_in_CI")
 # README FastAPI 배지: "FastAPI-0.141-009688" — 관례상 핀의 major.minor 만 표기
 # README FastAPI badge — by convention it carries only the pin's major.minor
 _FASTAPI_BADGE = re.compile(r"FastAPI-(\d+\.\d+)-")
@@ -342,6 +347,31 @@ def check_consistency(project_root: Path) -> tuple[bool, list[str]]:
     return (not msgs), msgs
 
 
+def check_e2e_badge(project_root: Path) -> tuple[bool, list[str]]:
+    """README 2곳의 E2E 배지 ↔ `e2e/EXPECTED_COUNT` 정합.
+
+    🔴 배지가 «정확히 1개» 여야 한다. 0개면 형식이 바뀐 것이고, 2개 이상이면
+    어느 것이 진짜인지 이 스크립트가 모른다 — 둘 다 초록이 아니라 red 다.
+    """
+    msgs: list[str] = []
+    want = (project_root / "e2e" / "EXPECTED_COUNT").read_text(encoding="utf-8").strip()
+    if not want.isdigit():
+        return False, [f"❌ e2e/EXPECTED_COUNT 가 숫자가 아니다: {want!r}"]
+    for fname in ("README.md", "README.ko.md"):
+        text = (project_root / fname).read_text(encoding="utf-8")
+        found = _README_E2E_BADGE.findall(text)
+        if len(found) != 1:
+            msgs.append(
+                f"❌ {fname} E2E 배지 매치 {len(found)}개 — 정확히 1개여야 한다 "
+                "(형식이 바뀌었는지 확인)"
+            )
+        elif found[0] != want:
+            msgs.append(
+                f"❌ {fname} E2E 배지 {found[0]} ↔ e2e/EXPECTED_COUNT {want} 불일치"
+            )
+    return not msgs, msgs
+
+
 def check_dependency_pins(project_root: Path) -> tuple[bool, list[str]]:
     """requirements.txt 실핀 ↔ 문서 인용·배지 정합을 검사해 (ok, 메시지 목록) 반환.
 
@@ -462,13 +492,21 @@ def apply_fix(project_root: Path) -> tuple[bool, list[str]]:
         state_path.write_text(new_state, encoding="utf-8", newline="\n")
         changed.append(f"✏️ docs/STATE.md — 종합 수치·추적셀 머리 → 전체 {total} / 단위 {unit}")
 
+    e2e_want = (project_root / "e2e" / "EXPECTED_COUNT").read_text(encoding="utf-8").strip()
     for name in ("README.md", "README.ko.md"):
         path = project_root / name
         text = path.read_text(encoding="utf-8")
         fixed = _README_BADGE.sub(badge, text, count=1)
         if fixed != text:
-            path.write_text(fixed, encoding="utf-8", newline="\n")
             changed.append(f"✏️ {name} — Tests 배지 → {total} ({unit} unit)")
+        # 🔴 E2E 배지도 같은 자리에서 파생한다. 사람이 손으로 맞추게 두면 얼어붙는다.
+        if e2e_want.isdigit() and len(_README_E2E_BADGE.findall(fixed)) == 1:
+            after = _README_E2E_BADGE.sub(f"E2E-{e2e_want}_in_CI", fixed, count=1)
+            if after != fixed:
+                changed.append(f"✏️ {name} — E2E 배지 → {e2e_want}")
+            fixed = after
+        if fixed != text:
+            path.write_text(fixed, encoding="utf-8", newline="\n")
 
     return True, changed or ["(이미 일치 — 변경 없음)"]
 
@@ -549,6 +587,7 @@ def main() -> int:
     ok, msgs = check_consistency(project_root)
     pin_ok, pin_msgs = check_dependency_pins(project_root)
     lint_ok, lint_msgs = check_lint_badge(project_root)
+    e2e_ok, e2e_msgs = check_e2e_badge(project_root)
     print("=== docs 수치 정합 점검 / Docs Count-Sync Check ===\n")
     if ok:
         print("✅ STATE 종합·추적셀 ↔ README.md ↔ README.ko.md 전체/단위 카운트 일치")
@@ -557,9 +596,12 @@ def main() -> int:
     if lint_ok:
         sites = lint_badge_sites(project_root)
         print(f"✅ pylint 값 5지점 일치 — {sites[0][1]}/10 (CI --fail-under 가 배지에서 파생)")
-    if ok and pin_ok and lint_ok:
+    if e2e_ok:
+        want = (project_root / "e2e" / "EXPECTED_COUNT").read_text(encoding="utf-8").strip()
+        print(f"✅ README 2곳 E2E 배지 ↔ e2e/EXPECTED_COUNT 일치 — {want}")
+    if ok and pin_ok and lint_ok and e2e_ok:
         return 0
-    for m in msgs + pin_msgs + lint_msgs:
+    for m in msgs + pin_msgs + lint_msgs + e2e_msgs:
         print(m)
     print(
         "\n해결: (수치) 손으로 고칠 곳은 STATE.md §테스트 수 추적 이력 **현재 불릿 한 줄**뿐이다 —"
