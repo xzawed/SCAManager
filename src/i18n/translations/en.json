@@ -538,7 +538,9 @@
       "section_automation": "Automation integration (outbound)",
       "n8n_label": "n8n Webhook",
       "mask_aria": "Show/hide value",
-      "unclaimed_hidden": "This repository has no registered owner, so saved notification-channel values are hidden. Claim it via 'Add Repository' to see them."
+      "unclaimed_hidden": "This repository has no registered owner, so saved notification-channel values are hidden. Claim it via 'Add Repository' to see them.",
+      "channel_configured": "Configured",
+      "channel_not_configured": "Not configured"
     },
     "inbound": {
       "header": "Integration & Auth (Inbound)",

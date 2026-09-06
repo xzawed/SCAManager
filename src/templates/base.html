@@ -210,7 +210,10 @@
       white-space: nowrap;
     }
     .theme-btn:hover { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.18); }
-    .theme-btn .chevron { font-size: 10px; opacity: 0.5; transition: transform var(--transition); }
+    /* 🔴 이 삼각형은 «열림/닫힘» 을 나르는 상태 표시다(열리면 180도 돈다).
+       0.5 로 흐려 놔서 실측 2.27~2.84 로 3:1 미만이었다 — 흐림을 걷는다.
+       The caret carries the expanded/collapsed state; it cannot be dimmed below 3:1. */
+    .theme-btn .chevron { font-size: 10px; transition: transform var(--transition); }
     .theme-switcher.open .chevron { transform: rotate(180deg); }
     .theme-dropdown {
       display: none;
@@ -227,7 +230,7 @@
     }
     .theme-switcher.open .theme-dropdown { display: block; }
     body[data-theme="pastel"] .theme-dropdown { backdrop-filter: blur(20px); }
-    .theme-option {
+    .theme-option, .lang-option {
       display: flex;
       align-items: center;
       gap: 10px;
@@ -237,9 +240,16 @@
       color: var(--text-1);
       transition: background var(--transition);
     }
-    .theme-option:hover { background: rgba(94,106,210,.1); }
-    .theme-option.active { color: var(--accent); background: rgba(94,106,210,.08); font-weight: 600; }
-    .theme-option.active::after { content: '✓'; margin-left: auto; font-size: 11px; }
+    .theme-option:hover, .lang-option:hover { background: rgba(94,106,210,.1); }
+    /* 🔴 언어 메뉴에는 `.active` 규칙이 «아예 없었다» — JS 가 클래스를 붙여도 화면에
+       아무 효과가 없어, 네 테마 전부 선택 항목과 나머지의 계산 스타일이 완전히 같았다.
+       테마 메뉴와 같은 표시를 준다. 그리고 `✓` 는 «상태» 를 나르므로 3:1 을 넘어야 한다 —
+       `--accent` 는 pastel 에서 2.94 였다(실측). 글자용 짝 토큰으로 옮긴다.
+       The language menu had no active rule at all; give it the theme menu's treatment. */
+    .theme-option.active, .lang-option.active {
+      color: var(--accent-text); background: rgba(94,106,210,.08); font-weight: 600; }
+    .theme-option.active::after, .lang-option.active::after {
+      content: '✓'; margin-left: auto; font-size: 11px; }
 
     /* ── 레이아웃 ──────────────────────────────── */
     /* Step A (S4): container 좌우 padding 에 safe-area-inset 적용
@@ -702,10 +712,10 @@
         <span class="chevron">▾</span>
       </button>
       <div class="theme-dropdown" id="themeDropdown" role="menu">
-        <div class="theme-option" data-theme-target="dark"       role="menuitem" tabindex="0">🌌 {{ 'common.theme.dark_label' | i18n_args(locale | default('ko')) }}</div>
-        <div class="theme-option" data-theme-target="light"      role="menuitem" tabindex="0">☀️ {{ 'common.theme.light_label' | i18n_args(locale | default('ko')) }}</div>
-        <div class="theme-option" data-theme-target="pastel"     role="menuitem" tabindex="0">🌸 {{ 'common.theme.pastel_label' | i18n_args(locale | default('ko')) }}</div>
-        <div class="theme-option" data-theme-target="catppuccin" role="menuitem" tabindex="0">🐾 {{ 'common.theme.catppuccin_label' | i18n_args(locale | default('ko')) }}</div>
+        <div class="theme-option" data-theme-target="dark"       role="menuitemradio" aria-checked="false" tabindex="0">🌌 {{ 'common.theme.dark_label' | i18n_args(locale | default('ko')) }}</div>
+        <div class="theme-option" data-theme-target="light"      role="menuitemradio" aria-checked="false" tabindex="0">☀️ {{ 'common.theme.light_label' | i18n_args(locale | default('ko')) }}</div>
+        <div class="theme-option" data-theme-target="pastel"     role="menuitemradio" aria-checked="false" tabindex="0">🌸 {{ 'common.theme.pastel_label' | i18n_args(locale | default('ko')) }}</div>
+        <div class="theme-option" data-theme-target="catppuccin" role="menuitemradio" aria-checked="false" tabindex="0">🐾 {{ 'common.theme.catppuccin_label' | i18n_args(locale | default('ko')) }}</div>
       </div>
     </div>
     {# Phase 2 PR-4 (사이클 84) — 다국어 i18n 헤더 dropdown (테마 토글 패턴 차용) #}
@@ -721,9 +731,9 @@
         <span class="chevron">▾</span>
       </button>
       <div class="theme-dropdown" id="langDropdown" role="menu">
-        <div class="lang-option" data-lang="en" role="menuitem" tabindex="0">🇺🇸 English</div>
-        <div class="lang-option" data-lang="ko" role="menuitem" tabindex="0">🇰🇷 한국어</div>
-        <div class="lang-option" data-lang="ja" role="menuitem" tabindex="0">🇯🇵 日本語</div>
+        <div class="lang-option" data-lang="en" role="menuitemradio" aria-checked="false" tabindex="0">🇺🇸 English</div>
+        <div class="lang-option" data-lang="ko" role="menuitemradio" aria-checked="false" tabindex="0">🇰🇷 한국어</div>
+        <div class="lang-option" data-lang="ja" role="menuitemradio" aria-checked="false" tabindex="0">🇯🇵 日本語</div>
       </div>
     </div>
     {% endif %}
@@ -765,7 +775,9 @@
       document.getElementById('themeIcon').textContent = THEMES[theme].icon;
       document.getElementById('themeName').textContent = THEMES[theme].name;
       document.querySelectorAll('.theme-option').forEach(el => {
-        el.classList.toggle('active', el.dataset.themeTarget === theme);
+        var on = el.dataset.themeTarget === theme;
+        el.classList.toggle('active', on);
+        el.setAttribute('aria-checked', String(on));   // 보조기술 동기화
       });
       document.dispatchEvent(new CustomEvent('themechange', { detail: theme }));
     }
@@ -790,7 +802,9 @@
       if (iconEl) iconEl.textContent = THEMES[theme].icon;
       if (nameEl) nameEl.textContent = THEMES[theme].name;
       document.querySelectorAll('.theme-option').forEach(function(el) {
-        el.classList.toggle('active', el.dataset.themeTarget === theme);
+        var on = el.dataset.themeTarget === theme;
+        el.classList.toggle('active', on);
+        el.setAttribute('aria-checked', String(on));   // 보조기술 동기화
       });
     }
 
@@ -884,7 +898,9 @@
           langIcon.textContent = LANGS[lang].icon;
           langName.textContent = LANGS[lang].name;
           document.querySelectorAll('.lang-option').forEach(function(el) {
-            el.classList.toggle('active', el.dataset.lang === lang);
+            var on = el.dataset.lang === lang;
+            el.classList.toggle('active', on);
+            el.setAttribute('aria-checked', String(on));   // 보조기술 동기화
           });
         }
 

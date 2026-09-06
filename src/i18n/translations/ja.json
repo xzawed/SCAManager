@@ -538,7 +538,9 @@
       "section_automation": "自動化連携 (発信)",
       "n8n_label": "n8n Webhook",
       "mask_aria": "値を表示/非表示",
-      "unclaimed_hidden": "このリポジトリには登録された所有者がいないため、通知チャネルの保存値は表示されません。「リポジトリ追加」から所有権を取得すると表示されます。"
+      "unclaimed_hidden": "このリポジトリには登録された所有者がいないため、通知チャネルの保存値は表示されません。「リポジトリ追加」から所有権を取得すると表示されます。",
+      "channel_configured": "設定済み",
+      "channel_not_configured": "未設定"
     },
     "inbound": {
       "header": "統合 & 認証 (受信)",

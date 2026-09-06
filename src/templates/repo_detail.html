@@ -375,10 +375,15 @@
   /* ── 정렬 헤더 ─────────────────────────── */
   .sortable-th { cursor: pointer; user-select: none; white-space: nowrap; }
   .sortable-th:hover { color: var(--accent); }
-  .sort-icon { font-size: 10px; margin-left: 3px; opacity: .5; }
-  .sortable-th.asc  .sort-icon::after { content: '▲'; opacity: 1; color: var(--accent); }
-  .sortable-th.desc .sort-icon::after { content: '▼'; opacity: 1; color: var(--accent); }
-  .sortable-th:not(.asc):not(.desc) .sort-icon::after { content: '⇅'; }
+  /* 🔴 `opacity` 는 «곱해진다». 부모에 `.5` 를 걸고 `::after` 에서 `1` 로 되돌리려 했지만
+     그 되돌림은 작동하지 않아, 정렬된 열의 화살표까지 0.5 로 그려졌다 —
+     실측 1.71~2.97 로 네 테마 전부 3:1 미만이었다(정렬 방향은 «상태» 다).
+     부모의 흐림을 걷고, 색으로만 가른다. accent 를 «글자» 로 쓰므로 짝 토큰을 쓴다.
+     CSS opacity multiplies; the child's `opacity: 1` could never undo the parent's .5. */
+  .sort-icon { font-size: 10px; margin-left: 3px; }
+  .sortable-th.asc  .sort-icon::after { content: '▲'; color: var(--accent-text); }
+  .sortable-th.desc .sort-icon::after { content: '▼'; color: var(--accent-text); }
+  .sortable-th:not(.asc):not(.desc) .sort-icon::after { content: '⇅'; color: var(--text-3); }
   /* ── 페이지네이션 ───────────────────────── */
   .pagination { display: flex; align-items: center; justify-content: center; gap: .35rem; margin-top: .875rem; flex-wrap: wrap; }
   .page-btn {
@@ -623,10 +628,10 @@
   <table class="tbl">
     <thead>
       <tr>
-        <th class="sortable-th" data-sort="created_at">{{ 'repo_detail.table.date' | i18n_args(locale | default('ko')) }} <span class="sort-icon"></span></th>
+        <th class="sortable-th" aria-sort="none" data-sort="created_at">{{ 'repo_detail.table.date' | i18n_args(locale | default('ko')) }} <span class="sort-icon"></span></th>
         <th>{{ 'repo_detail.table.commit' | i18n_args(locale | default('ko')) }}</th>
         <th>{{ 'repo_detail.table.pr' | i18n_args(locale | default('ko')) }}</th>
-        <th class="sortable-th" data-sort="score">{{ 'repo_detail.table.score' | i18n_args(locale | default('ko')) }} <span class="sort-icon"></span></th>
+        <th class="sortable-th" aria-sort="none" data-sort="score">{{ 'repo_detail.table.score' | i18n_args(locale | default('ko')) }} <span class="sort-icon"></span></th>
         <th>{{ 'repo_detail.table.grade' | i18n_args(locale | default('ko')) }}</th>
         <th>{{ 'repo_detail.table.source' | i18n_args(locale | default('ko')) }}</th>
       </tr>
@@ -1075,7 +1080,14 @@ function applyFilters() {
 function updateSortHeaders() {
   document.querySelectorAll('.sortable-th').forEach(function(th) {
     th.classList.remove('asc', 'desc');
-    if (th.dataset.sort === state.sortField) th.classList.add(state.sortDir);
+    var on = th.dataset.sort === state.sortField;
+    if (on) th.classList.add(state.sortDir);
+    /* 🔴 정렬 상태를 «글리프» 하나로만 나르고 있었다 — 리포 전체에 `aria-sort` 가 0건이라
+       보조기술은 어느 열이 어떻게 정렬됐는지 알 수 없었다(WCAG 1.3.1).
+       Sort state was carried by the glyph alone; expose it with aria-sort. */
+    th.setAttribute('aria-sort', on
+      ? (state.sortDir === 'asc' ? 'ascending' : 'descending')
+      : 'none');
   });
 }
 document.querySelectorAll('.sortable-th').forEach(function(th) {
