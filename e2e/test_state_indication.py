@@ -179,7 +179,12 @@ _CONN_JS = r"""
   const orig = el.className;
   const on = pick('is-on'), off = pick('is-off');
   el.className = orig;
-  return {on, off};
+  // 점은 장식이고, 상태는 바로 옆 «글자» 가 나른다
+  const sib = el.nextElementSibling;
+  return {on, off,
+          hidden: el.getAttribute('aria-hidden'),
+          siblingText: sib ? (sib.textContent || '').trim() : null,
+          siblingClass: sib ? String(sib.className || '') : null};
 }
 """
 
@@ -201,9 +206,15 @@ def test_conn_dot_states_differ_by_more_than_color(seeded_page, base_url, theme)
     assert non_color, (
         f"[{theme}] `.conn-dot` 의 on/off 가 색으로만 갈린다 — "
         f"on={on} off={off}")
-    assert off["role"] and off["aria"], (
-        f"[{theme}] `.conn-dot` 가 상태를 보조기술에 알리지 않는다 — "
-        f"role={off['role']!r} aria-label={off['aria']!r}")
+    # 🔴 상태는 «글자» 가 나른다. 점 자신은 장식이어야 중복 낭독이 없다.
+    assert res["hidden"] == "true", (
+        f"[{theme}] `.conn-dot` 이 `aria-hidden` 이 아니다 — {res['hidden']!r}")
+    assert res["siblingClass"] and "sr-only" in res["siblingClass"], (
+        f"[{theme}] `.conn-dot` 옆에 `.sr-only` 형제가 없다 — "
+        f"{res['siblingClass']!r}")
+    assert res["siblingText"], (
+        f"[{theme}] `.conn-dot` 옆의 `.sr-only` 가 비어 있다 — "
+        "상태 글자가 렌더되지 않았다")
 
 
 # ── C. 토글 OFF — 스위치가 «있다는 사실» 이 보이는가 ────────────────────────

@@ -389,13 +389,17 @@
   @media (max-width: 480px) { .alert .ms-auto { margin-left: 0; width: 100%; } .alert .btn { width: 100%; } }
 
   /* Connection status dot */
-  /* 🔴 두 상태가 «색» 으로만 갈리면 안 된다 (WCAG 1.4.1, Level A) — 실측상 두 상태의
-     크기·모양·글자·title·aria·role·테두리가 전부 같고 차이는 background 와 opacity 뿐이었다.
-     켜짐은 «채운 점», 꺼짐은 «빈 고리» 로 모양을 가른다.
-     또 꺼진 점이 카드 위에서 light 2.51 · pastel 2.72 로 안 보였다 — `--text-2` 를
-     0.55 로 흐리게 쓴 탓이라, 흐림을 걷고 3차 글자층을 쓴다(실측 4.83~5.65).
+  /* 여기서 고친 것은 «두 가지» 다 — 기준이 다르므로 나눠 적는다.
+     1) 🔴 두 상태가 색으로만 갈렸다 (WCAG 1.4.1 Use of Color, Level A). 실측상 크기·모양·
+        글자·title·aria·role·테두리가 전부 같고 차이는 background 와 opacity 뿐이었다.
+        켜짐은 «채운 점», 꺼짐은 «빈 고리» 로 모양을 가른다.
+     2) 꺼진 점이 카드 위에서 light 2.51 · pastel 2.72 였다 (WCAG 1.4.11, AA) —
+        `--text-2` 를 0.55 로 흐리게 쓴 탓이라 흐림을 걷고 3차 글자층을 쓴다(4.83~5.65).
+     8px 에 1.5px 고리는 안티에일리어싱에 묻혀 «흐린 점» 으로 읽힐 수 있어 10px 로 키웠다.
+     보조기술에는 점 옆의 `.sr-only` «글자» 로 알린다(1.1.1 / 1.3.1) — `role="img"` +
+     `aria-label` 은 브라우즈 모드에서만 읽히고 입력 포커스 때는 입력 자신의 이름이 이긴다.
      ON is a filled dot, OFF a hollow ring — shape, not only color. */
-  .conn-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  .conn-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%;
               vertical-align: middle; margin-right: 6px;
               box-shadow: 0 0 0 1.5px var(--bg-card); }
   .conn-dot.is-on  { background: var(--success, #10b981); border: 0; }
@@ -979,7 +983,7 @@
             <div class="field-row">
               <label class="field-label" for="notify_chat_id">
                 <span class="conn-dot {% if config.notify_chat_id %}is-on{% else %}is-off{% endif %}"
-                      role="img" aria-label="{{ ('settings_page.notify.channel_configured' if config.notify_chat_id else 'settings_page.notify.channel_not_configured') | i18n_args(locale | default('ko')) }}"></span>
+                      aria-hidden="true"></span><span class="sr-only">{{ ('settings_page.notify.channel_configured' if config.notify_chat_id else 'settings_page.notify.channel_not_configured') | i18n_args(locale | default('ko')) }}</span>
                 {{ 'settings_page.notify.telegram_chat_id_label' | i18n_args(locale | default('ko')) }}
               </label>
               <span class="field-hint">{{ 'settings_page.notify.telegram_chat_id_hint' | i18n_args(locale | default('ko')) }}</span>
@@ -1066,7 +1070,7 @@
             <div class="field-row adv-only">
               <label class="field-label" for="discord_webhook_url">
                 <span class="conn-dot {% if config.discord_webhook_url %}is-on{% else %}is-off{% endif %}"
-                      role="img" aria-label="{{ ('settings_page.notify.channel_configured' if config.discord_webhook_url else 'settings_page.notify.channel_not_configured') | i18n_args(locale | default('ko')) }}"></span>
+                      aria-hidden="true"></span><span class="sr-only">{{ ('settings_page.notify.channel_configured' if config.discord_webhook_url else 'settings_page.notify.channel_not_configured') | i18n_args(locale | default('ko')) }}</span>
                 {{ 'settings_page.notify.discord_label' | i18n_args(locale | default('ko')) }}
               </label>
               <div class="masked-field">
@@ -1081,7 +1085,7 @@
             <div class="field-row adv-only">
               <label class="field-label" for="slack_webhook_url">
                 <span class="conn-dot {% if config.slack_webhook_url %}is-on{% else %}is-off{% endif %}"
-                      role="img" aria-label="{{ ('settings_page.notify.channel_configured' if config.slack_webhook_url else 'settings_page.notify.channel_not_configured') | i18n_args(locale | default('ko')) }}"></span>
+                      aria-hidden="true"></span><span class="sr-only">{{ ('settings_page.notify.channel_configured' if config.slack_webhook_url else 'settings_page.notify.channel_not_configured') | i18n_args(locale | default('ko')) }}</span>
                 {{ 'settings_page.notify.slack_label' | i18n_args(locale | default('ko')) }}
               </label>
               <div class="masked-field">
@@ -1096,7 +1100,7 @@
             <div class="field-row adv-only">
               <label class="field-label" for="email_recipients">
                 <span class="conn-dot {% if config.email_recipients %}is-on{% else %}is-off{% endif %}"
-                      role="img" aria-label="{{ ('settings_page.notify.channel_configured' if config.email_recipients else 'settings_page.notify.channel_not_configured') | i18n_args(locale | default('ko')) }}"></span>
+                      aria-hidden="true"></span><span class="sr-only">{{ ('settings_page.notify.channel_configured' if config.email_recipients else 'settings_page.notify.channel_not_configured') | i18n_args(locale | default('ko')) }}</span>
                 {{ 'settings_page.notify.email_label' | i18n_args(locale | default('ko')) }} <span class="field-tag">{{ 'settings_page.notify.email_tag' | i18n_args(locale | default('ko')) }}</span>
               </label>
               <span class="field-hint">{{ 'settings_page.notify.email_hint' | i18n_args(locale | default('ko')) }}</span>
@@ -1112,7 +1116,7 @@
             <div class="field-row adv-only">
               <label class="field-label" for="custom_webhook_url">
                 <span class="conn-dot {% if config.custom_webhook_url %}is-on{% else %}is-off{% endif %}"
-                      role="img" aria-label="{{ ('settings_page.notify.channel_configured' if config.custom_webhook_url else 'settings_page.notify.channel_not_configured') | i18n_args(locale | default('ko')) }}"></span>
+                      aria-hidden="true"></span><span class="sr-only">{{ ('settings_page.notify.channel_configured' if config.custom_webhook_url else 'settings_page.notify.channel_not_configured') | i18n_args(locale | default('ko')) }}</span>
                 {{ 'settings_page.notify.custom_label' | i18n_args(locale | default('ko')) }}
               </label>
               <div class="masked-field">
@@ -1130,7 +1134,7 @@
             <div class="field-row adv-only">
               <label class="field-label" for="n8n_webhook_url">
                 <span class="conn-dot {% if config.n8n_webhook_url %}is-on{% else %}is-off{% endif %}"
-                      role="img" aria-label="{{ ('settings_page.notify.channel_configured' if config.n8n_webhook_url else 'settings_page.notify.channel_not_configured') | i18n_args(locale | default('ko')) }}"></span>
+                      aria-hidden="true"></span><span class="sr-only">{{ ('settings_page.notify.channel_configured' if config.n8n_webhook_url else 'settings_page.notify.channel_not_configured') | i18n_args(locale | default('ko')) }}</span>
                 {{ 'settings_page.notify.n8n_label' | i18n_args(locale | default('ko')) }}
               </label>
               <div class="masked-field">
@@ -1228,7 +1232,7 @@
       <div class="railway-group">
         <div class="s-section-label">
           <span class="conn-dot {% if railway_api_token_set %}is-on{% else %}is-off{% endif %}"
-                      role="img" aria-label="{{ ('settings_page.notify.channel_configured' if railway_api_token_set else 'settings_page.notify.channel_not_configured') | i18n_args(locale | default('ko')) }}"></span>
+                      aria-hidden="true"></span><span class="sr-only">{{ ('settings_page.notify.channel_configured' if railway_api_token_set else 'settings_page.notify.channel_not_configured') | i18n_args(locale | default('ko')) }}</span>
           {{ 'settings_page.inbound.section_railway_token' | i18n_args(locale | default('ko')) }}
         </div>
         <div class="field-row">
@@ -1260,7 +1264,7 @@
 
         <div class="s-section-label" style="margin-top:.85rem">
           <span class="conn-dot {% if railway_webhook_url %}is-on{% else %}is-off{% endif %}"
-                      role="img" aria-label="{{ ('settings_page.notify.channel_configured' if railway_webhook_url else 'settings_page.notify.channel_not_configured') | i18n_args(locale | default('ko')) }}"></span>
+                      aria-hidden="true"></span><span class="sr-only">{{ ('settings_page.notify.channel_configured' if railway_webhook_url else 'settings_page.notify.channel_not_configured') | i18n_args(locale | default('ko')) }}</span>
           {{ 'settings_page.inbound.section_railway_webhook' | i18n_args(locale | default('ko')) }}
         </div>
         {% if railway_webhook_url %}

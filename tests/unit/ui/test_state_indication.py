@@ -82,21 +82,42 @@ def test_conn_dot_state_is_not_conveyed_by_color_alone():
     )
 
 
-def test_conn_dot_state_is_exposed_to_assistive_tech():
-    """🔴 점의 상태가 보조기술에 노출돼야 한다.
+def test_conn_dot_state_is_exposed_as_text():
+    """🔴 점의 상태가 «글자» 로 있어야 한다.
 
-    실측: `role`·`aria-label`·`title`·글자 어느 것도 없었다. 스크린리더에게 이 점은
-    존재하지 않고, 「설정됨/아님」은 어디에도 없다.
+    실측(수정 전): `role`·`aria-label`·`title`·글자 어느 것도 없었다 — 스크린리더에게
+    이 점은 존재하지 않고 「설정됨/아님」은 어디에도 없었다.
+
+    🔴 처음엔 `role="img"` + `aria-label` 로 고쳤는데 Grok 이 두 가지를 짚었다:
+    그 조합은 «브라우즈 모드» 에서만 읽히고 입력에 포커스가 가면 입력 자신의
+    `aria-label` 이 이겨 상태가 닿지 않는다는 것, 그리고 이 리포의 정적 분석이
+    `<span role="img">` 를 스멜로 잡는다는 것. 그래서 점은 장식으로 감추고(`aria-hidden`)
+    바로 옆에 `.sr-only` «글자» 를 둔다 — 대체 텍스트가 아니라 텍스트 그 자체다.
+
+    🔴 이 시험은 「무언가 있다」가 아니라 「무엇이 있다」를 본다. 앞선 판은
+    이름 없는 `role="presentation"` 하나로도 통과했다(Grok 지적).
     """
     src = read(_SETTINGS)
+    # 점 + 바로 뒤에 붙는 형제까지 한 덩어리로 본다
+    pairs = re.findall(
+        r"<span[^>]*class=\"conn-dot[^\"]*\"[^>]*>\s*</span>\s*(<span[^>]*>[^<]*</span>)?",
+        src, re.DOTALL)
     dots = re.findall(r"<span[^>]*class=\"conn-dot[^\"]*\"[^>]*>", src)
-    assert dots, "`.conn-dot` 마크업 부재 — 테스트가 늙었다"
-    naked = [d for d in dots
-             if "aria-label" not in d and "title" not in d and "role=" not in d]
-    assert not naked, (
-        f"`.conn-dot` {len(naked)}/{len(dots)} 개가 상태를 보조기술에 알리지 않는다 "
-        "(role + aria-label 또는 곁의 글자):\n  " + "\n  ".join(naked[:3])
-    )
+    assert len(dots) >= 8, f"`.conn-dot` 을 {len(dots)}개만 찾았다 — 테스트가 늙었다"
+    assert len(pairs) == len(dots), (
+        f"점 {len(dots)}개 중 {len(pairs)}개만 형제 검사에 걸렸다 — 마크업 형태가 바뀌었다")
+
+    hidden = [d for d in dots if 'aria-hidden="true"' in d]
+    assert len(hidden) == len(dots), (
+        f"`.conn-dot` {len(dots) - len(hidden)}개가 `aria-hidden` 이 아니다 — "
+        "글자가 상태를 나르므로 점은 장식이어야 중복 낭독이 없다")
+
+    missing = [i for i, sib in enumerate(pairs)
+               if not sib or "sr-only" not in sib
+               or "channel_configured" not in sib and "channel_not_configured" not in sib]
+    assert not missing, (
+        f"`.conn-dot` {len(missing)}/{len(dots)} 개 옆에 상태 «글자» 가 없다 — "
+        "`.sr-only` 로 설정됨/아님을 적을 것 (WCAG 1.1.1 / 1.3.1)")
 
 
 def test_conn_dot_off_meets_non_text_contrast():
