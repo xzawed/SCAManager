@@ -118,7 +118,7 @@ def test_dropdown_chevron_color_is_not_hardcoded():
     #    `background-color` 가 정한다. 문제는 `background-image` 로 «그려지는» 색이다.
     #    이 구분을 안 하면 올바른 처방(마스크)까지 red 가 난다.
     hits = re.findall(
-        r"(?<!-)background(?:-image)?\s*:[^;]*url\(\s*[\"']?data:image/svg\+xml[^;]*",
+        r"background(?:-image)?\s*:[^;]*url\(\s*[\"']?data:image/svg\+xml[^;]*",
         src, re.DOTALL)
     assert re.search(r"data:image/svg\+xml", src), (
         "SVG 데이터 URI 를 찾지 못했다 — 못 재면 초록이 아니라 red 다")
