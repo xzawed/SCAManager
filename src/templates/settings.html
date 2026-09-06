@@ -242,7 +242,13 @@
     outline:2px solid var(--focus-ring); outline-offset:2px; }
   .threshold-ctrl input[type=range]:focus-visible::-moz-range-thumb {
     outline:2px solid var(--focus-ring); outline-offset:2px; }
-  @media (max-width: 480px) { .threshold-ctrl input[type=range]::-webkit-slider-thumb { width:24px; height:24px; } }
+  /* 🔴 두 엔진을 «따로» 적는다 — 한 선택자 목록에 합치면 규칙 전체가 버려진다.
+     기본 규칙(18px)은 두 벌인데 이 모바일 확대는 webkit 만 있어, Firefox 모바일에서
+     손잡이가 18px 그대로였다. Both engines need their own rule here. */
+  @media (max-width: 480px) {
+    .threshold-ctrl input[type=range]::-webkit-slider-thumb { width:24px; height:24px; }
+    .threshold-ctrl input[type=range]::-moz-range-thumb { width:24px; height:24px; }
+  }
   .approve-range::-webkit-slider-thumb { background:var(--success); box-shadow:0 2px 6px rgba(74,222,128,.35); }
   .reject-range::-webkit-slider-thumb  { background:var(--danger);  box-shadow:0 2px 6px rgba(248,113,113,.35); }
   .num-input {

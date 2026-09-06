@@ -171,6 +171,90 @@ def test_range_slider_has_a_thumb_focus_ring(rel):
             f"— {m.group(1).strip()[:60]!r}")
 
 
+def _contexts(src: str):
+    """(문맥이름, 본문) — 최상위 하나 + `@media` 블록 각각. 중괄호 균형으로 뜬다.
+
+    문맥을 나누는 이유: `@media` 안의 규칙은 밖의 규칙과 «다른 조건» 에서만 산다.
+    문맥을 섞어 세면 「밖에 moz 가 있으니 됐다」로 통과해 버린다 — 그것이 이 결함이
+    살아남은 방식이다(기본 규칙은 두 벌, 모바일 확대만 한 벌이었다).
+    """
+    out, cut = [], []
+    for m in re.finditer(r"@media([^{]*)\{", src):
+        i = m.end() - 1
+        depth, j = 0, i
+        while j < len(src):
+            if src[j] == "{":
+                depth += 1
+            elif src[j] == "}":
+                depth -= 1
+                if depth == 0:
+                    break
+            j += 1
+        out.append((f"@media{m.group(1).strip()}", src[i + 1:j]))
+        cut.append((m.start(), j + 1))
+    top = src
+    for a, b in reversed(cut):
+        top = top[:a] + top[b:]
+    return [("(최상위)", top)] + out
+
+
+_THUMB_SIZE = re.compile(r"(width|height)\s*:\s*([0-9.]+px)", re.I)
+
+
+def _thumb_sizes(body: str, pseudo: str) -> dict[str, dict[str, str]]:
+    """{선택자(의사요소 제외): {width/height: 값}} — 크기를 «정하는» 규칙만."""
+    out: dict[str, dict[str, str]] = {}
+    for m in re.finditer(r"([^{}]*" + re.escape(pseudo) + r"[^{}]*)\{([^{}]*)\}", body):
+        sel, decls = m.group(1).strip(), m.group(2)
+        if ":focus" in sel:            # 링 규칙은 크기 축이 아니다 — 위 시험이 맡는다
+            continue
+        sizes = {k.lower(): v for k, v in _THUMB_SIZE.findall(decls)}
+        if sizes:
+            out[sel.replace(pseudo, "").strip()] = sizes
+    return out
+
+
+@pytest.mark.parametrize("rel", _RANGE_SLIDER_TEMPLATES)
+def test_thumb_size_is_declared_for_both_engines_in_every_context(rel):
+    """🔴 손잡이 «크기» 도 두 엔진에 다 적는다 — 링만이 아니다.
+
+    Gecko 는 `::-webkit-slider-thumb` 를 통째로 무시한다. 기본 규칙은 두 벌로 적혀
+    있었는데 **모바일 확대만 webkit 한 벌**이었다:
+
+        repo_detail @768   webkit 16 -> 24 · moz 는 16 그대로
+        settings    @480   webkit 18 -> 24 · moz 는 18 그대로
+
+    즉 Firefox 모바일에서만 손잡이가 작았다. 데스크톱(1440px)에서도, Chromium 에서도
+    보이지 않는다 — 두 조건이 겹쳐야 드러나는 자리라 여태 아무도 재지 않았다.
+
+    🔴 문맥별로 판정하는 이유를 «실측대로» 적는다 — 처음 쓴 사유는 틀렸다.
+    위 두 사례는 문맥을 합쳐 세도 잡힌다(선택자가 같아 mobile 값이 base 를 덮고, moz 와
+    값이 어긋나 red 가 된다 — 심어서 확인). 문맥 분리가 실제로 필요한 것은 **모바일 값이
+    base 의 moz 값과 겹치는** 경우다: base 를 24/24 로 두고 모바일 moz 만 없애면
+    분리판은 red, 합침판은 **green** 이었다. 그 자리가 이 가드의 존재 이유다.
+
+    🔴 한 선택자 목록에 두 의사요소를 합쳐 적으면 «두 엔진 다» 규칙을 버린다 — 그래서
+    합침을 처방으로 제안하지 않는다.
+
+    Size parity, per media context: Gecko ignores the webkit pseudo entirely.
+    """
+    src = strip_css_comments(read(rel))
+    checked, offenders = 0, []
+    for name, body in _contexts(src):
+        webkit = _thumb_sizes(body, "::-webkit-slider-thumb")
+        moz = _thumb_sizes(body, "::-moz-range-thumb")
+        for sel, sizes in webkit.items():
+            checked += 1
+            if sel not in moz:
+                offenders.append(f"{rel} {name}: `{sel}` 이 webkit 만 크기를 정한다 "
+                                 f"({sizes}) — Gecko 에는 안 닿는다")
+            elif moz[sel] != sizes:
+                offenders.append(f"{rel} {name}: `{sel}` 크기가 엔진마다 다르다 "
+                                 f"webkit={sizes} moz={moz[sel]}")
+    assert checked, f"{rel}: 크기를 정하는 webkit 손잡이 규칙을 0개 찾았다 — 판정이 공허하다"
+    assert not offenders, "손잡이 크기가 한 엔진에만 적용된다:\n  " + "\n  ".join(offenders)
+
+
 def test_focus_ring_token_is_defined_in_every_theme():
     """네 테마 전부에 정의돼야 한다 — 한 테마만 빠지면 그 테마에서 링이 사라진다."""
     src = read("src/static/css/tokens.css")
