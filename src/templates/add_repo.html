@@ -76,11 +76,26 @@
     border-radius: 10px; color: var(--text-1, #fff); font-size: 14px;
     transition: border-color 0.2s, box-shadow 0.2s;
     appearance: none; cursor: pointer;
-    /* appearance:none 으로 제거된 기본 화살표를 SVG chevron 으로 보강
-       SVG chevron to replace the native arrow removed by appearance:none */
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='none' stroke='%2373737c' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
-    background-repeat: no-repeat; background-position: right 14px center;
     box-sizing: border-box;
+  }
+  /* 🔴 `appearance:none` 으로 지운 기본 화살표를 저자가 다시 그리는 순간, 「사용자
+     에이전트가 정한 모양」 면제는 소진된다 — 그 화살표는 「드롭다운 기능이 있다는 것을
+     이해하는 데 필요한」 그래픽이라 1.4.11 의 3:1 대상이다(Understanding Fig. 24–25).
+     종전에는 SVG 데이터 URI 안에 `#73737c` 가 박혀 테마를 타지 못했고, 실측
+     catppuccin 2.68 로 미달이었다(나머지 셋은 4.06~4.70 이라 세 테마의 통과가 가렸다).
+     `<select>` 는 의사요소를 가질 수 없으므로 감싸는 요소에 그리고, 색은 마스크로
+     토큰에서 받는다.
+     Authoring the arrow spends the user-agent exemption; the color must come from a token,
+     and <select> cannot host a pseudo-element, so the wrapper draws it. */
+  .form-select-wrap { position: relative; }
+  .form-select-wrap::after {
+    content: ''; position: absolute; right: 14px; top: 50%;
+    width: 12px; height: 8px; transform: translateY(-50%);
+    pointer-events: none;
+    background-color: var(--text-3);
+    -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+    -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
   }
   .form-select:focus {
     outline: none; border-color: var(--accent, #7c7aff);
@@ -177,9 +192,11 @@
       </div>
       <div class="form-group" style="margin-bottom: 0;">
         <label class="form-label" for="repo_full_name">{{ 'add_repo.label_select' | i18n_args(locale | default('ko')) }}</label>
-        <select class="form-select" name="repo_full_name" id="repo_full_name" required>
-          <option value="">{{ 'add_repo.loading_option' | i18n_args(locale | default('ko')) }}</option>
-        </select>
+        <div class="form-select-wrap">
+          <select class="form-select" name="repo_full_name" id="repo_full_name" required>
+            <option value="">{{ 'add_repo.loading_option' | i18n_args(locale | default('ko')) }}</option>
+          </select>
+        </div>
         <p class="repo-hint" id="repoHint">{{ 'add_repo.hint_default' | i18n_args(locale | default('ko')) }}</p>
       </div>
     </div>

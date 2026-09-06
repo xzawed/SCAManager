@@ -280,7 +280,15 @@
   }
   .field-input:focus { border-color:var(--accent); background:var(--bg-input-focus);
                        box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent); }
-  .field-input::placeholder { color:var(--text-2); opacity:.7; }
+  /* 🔴 placeholder 는 «글자» 라 1.4.3 의 4.5:1 대상인데 `opacity: .7` 로 깎여
+     dark 4.48 · light 3.43 · pastel 3.88 · catppuccin 4.34 였다(실측 8개 전수, 3회).
+     `--text-2` 자체는 7.05~8.64 로 여유롭다 — 곱셈이 원인 전부다.
+     🔴 `.7` 을 «지우기만» 하면 Blink/WebKit 이 UA 기본 placeholder 투명도를 다시
+     적용한다 — `opacity: 1` 을 명시한다. 색은 3차 층으로 둬서 입력된 값(`--text-1`)
+     보다 여전히 옅다.
+     Placeholder is text (1.4.3); the .7 multiplier was the whole failure. Deleting it
+     is not enough — the UA reapplies its own opacity, so state 1 explicitly. */
+  .field-input::placeholder { color:var(--text-3); opacity:1; }
 
   /* Channel grid */
   .channel-grid { display:grid; grid-template-columns:1fr; gap:.5rem .9rem; }
