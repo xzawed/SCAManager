@@ -11,9 +11,11 @@ pre-push 훅이 `set -euo pipefail` 아래에서 죽어 **push 를 막았다**.
 Substring asserts cannot see this class of defect, and `bash -n` cannot either (the Python lives
 inside a double-quoted argument). Unquote the argument the way bash does, then compile it.
 """
+import pathlib
 import re
 import shutil
 import subprocess
+import tempfile
 
 import pytest
 
@@ -111,31 +113,50 @@ def test_no_bare_double_quote_inside_python_c_arguments():
     )
 
 
-def _bash_actually_runs() -> bool:
-    """`shutil.which` 만으로는 부족하다 — Windows 에는 실행 불가한 WSL 릴레이 스텁이 잡힌다.
+def _bash_that_can_syntax_check_a_file() -> str | None:
+    r"""「bash 가 돈다」로는 부족하다 — 이 테스트가 넘길 **경로를 읽는** bash 여야 한다.
 
-    which() alone is not enough: Windows can surface a WSL relay stub that cannot exec.
+    🔴 bare `"bash"` 는 Windows 에서 `C:\Windows\System32\bash.exe`(WSL)로 잡힌다
+    (실측: `uname -o` = GNU/Linux). 그 bash 는 `bash -c "exit 0"` 을 0 으로 끝내므로 종전
+    프로브를 **통과**했지만, `C:\...` 도 `C:/...` 도 보지 못해 `bash -n <경로>` 를 127 로
+    죽였다. 같은 파일을 `shutil.which("bash")`(Git MSYS bash)에 주면 0 이다 — **다른
+    실행파일**이다.
+
+    그래서 둘을 함께 고친다: 실행파일을 `which` 로 **고정**하고, 프로브가 테스트와 **같은
+    동작**(임시 파일에 `bash -n`)을 재게 한다. 테스트가 필요로 하는 성질보다 약한 프로브는
+    skip 도 정직한 red 도 아닌 **거짓 red** 를 만든다.
+
+    Probe the exact capability the test needs: a WSL bash execs fine but cannot see Windows
+    paths, so pin the executable via which() and probe with a real `bash -n` on a temp file.
     """
-    if shutil.which("bash") is None:
-        return False
+    exe = shutil.which("bash")
+    if exe is None:
+        return None
     try:
-        return subprocess.run(
-            ["bash", "-c", "exit 0"], capture_output=True, check=False, timeout=15
-        ).returncode == 0
+        with tempfile.TemporaryDirectory() as d:
+            probe = pathlib.Path(d) / "probe.sh"
+            probe.write_text("exit 0" + chr(10), encoding="utf-8", newline=chr(10))
+            rc = subprocess.run(
+                [exe, "-n", str(probe)], capture_output=True, check=False, timeout=15
+            ).returncode
     except OSError:
-        return False
+        return None
+    return exe if rc == 0 else None
+
+
+_BASH = _bash_that_can_syntax_check_a_file()
 
 
 @pytest.mark.skipif(
-    not _bash_actually_runs(),
-    reason="bash 를 실제로 실행할 수 없는 환경 — CI(Linux) 가 이 축을 담당한다",
+    _BASH is None,
+    reason="이 경로를 읽는 bash 가 없는 환경 — CI(Linux) 가 이 축을 담당한다",
 )
 def test_script_passes_bash_syntax_check(tmp_path):
     """`bash -n` 은 파이썬 스니펫을 못 보지만 셸 층의 회귀는 잡는다."""
     p = tmp_path / "install-hook.sh"
     p.write_text(_INSTALL_HOOK_SH, encoding="utf-8", newline=chr(10))
     r = subprocess.run(
-        ["bash", "-n", str(p)], capture_output=True, text=True, check=False, timeout=30
+        [_BASH, "-n", str(p)], capture_output=True, text=True, check=False, timeout=30
     )
     assert r.returncode == 0, f"bash -n 실패: {r.stderr}"
 
