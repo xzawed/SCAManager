@@ -29,14 +29,61 @@ from __future__ import annotations
 import re
 
 from ._contrast import (
-    THEMES, decl, over, parse_color, ratio, read, resolve, strip_css_comments, theme_block,
+    ROOT, THEMES, decl, over, parse_color, ratio, read, resolve, strip_css_comments,
+    theme_block,
 )
 
 AA_TEXT = 4.5
 NON_TEXT = 3.0
 
 # `::placeholder` 를 선언하는 모든 자리. 새 자리가 생기면 여기가 비지 않게 된다.
-_PLACEHOLDER_FILES = ("src/templates/repo_detail.html", "src/templates/settings.html")
+_PLACEHOLDER_FILES = (
+    "src/templates/analysis_detail.html",
+    "src/templates/repo_detail.html",
+    "src/templates/settings.html",
+)
+
+# 낱말이 아니라 «속성» 형태로 센다 — 아래 시험의 docstring 에 오탐 실측이 있다.
+_SCRIPT_BLOCK = re.compile(r"<script[\s>].*?</script>", re.S | re.I)
+_PLACEHOLDER_ATTR = re.compile(r"""(?<![-\w])placeholder\s*=\s*["']""")
+
+
+def _templates_using_a_placeholder_attribute() -> list[str]:
+    """placeholder «속성» 을 쓰는 템플릿 전부 (리포 루트 기준 경로)."""
+    out = []
+    for path in sorted((ROOT / "src" / "templates").glob("*.html")):
+        markup = _SCRIPT_BLOCK.sub("", path.read_text(encoding="utf-8"))
+        if _PLACEHOLDER_ATTR.search(markup):
+            out.append(path.relative_to(ROOT).as_posix())
+    return out
+
+
+def test_every_placeholder_attribute_has_an_explicit_rule():
+    """🔴 placeholder 를 «쓰는» 파일과 규칙을 «선언한» 파일이 어긋나면 그 자리는 아무도 안 잰다.
+
+    어긋난 자리는 조용히 Tailwind base 의
+    `color-mix(in oklab, currentcolor 50%, transparent)` 로 깎인다. 실측(이 결함이 살아남은
+    경로): `analysis_detail.html` 의 `#issueLabels` 는 placeholder 가 있는데 `::placeholder`
+    규칙이 없어 `--text-1` 이 반으로 깎였고 light 3.47 · pastel 2.99 · catppuccin 3.40 으로
+    미달이었다. dark 만 4.90 으로 통과해 셋을 가렸고, 이 파일이 `_PLACEHOLDER_FILES` 밖이라
+    위의 대비 시험도 그 자리를 **보지 못했다.**
+
+    🔴 낱말로 세면 안 된다 — `add_repo.html` 의 `const placeholder = document.createElement`
+    는 JS 변수이지 속성이 아니다(실측 오탐 1건). 스크립트를 걷어내고 속성 형태만 센다.
+
+    Files that use the attribute and files that declare the rule must be the same set;
+    otherwise Tailwind's base halves the placeholder color where nobody measures it.
+    """
+    users = _templates_using_a_placeholder_attribute()
+    assert users, "placeholder 속성을 쓰는 템플릿이 0개 — 판정이 공허하다(스캔이 죽었다)"
+    unmeasured = [f for f in users if f not in _PLACEHOLDER_FILES]
+    assert not unmeasured, (
+        "placeholder 를 쓰는데 `_PLACEHOLDER_FILES` 에 없다 — 대비를 아무도 재지 않는다:\n  "
+        + "\n  ".join(unmeasured))
+    ruleless = [f for f in users if "::placeholder" not in read(f)]
+    assert not ruleless, (
+        "placeholder 를 쓰는데 `::placeholder` 규칙이 없다 — Tailwind base 가 반으로 깎는다:\n  "
+        + "\n  ".join(ruleless))
 
 
 def _placeholder_rules() -> list[tuple[str, str, str]]:

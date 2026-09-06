@@ -382,7 +382,9 @@
     "issue_form": {
       "title": "제목",
       "body": "본문",
-      "labels": "라벨 (쉼표 구분)"
+      "labels": "라벨 (쉼표 구분)",
+      "title_placeholder": "이슈 제목을 입력하세요",
+      "body_placeholder": "재현 방법·기대 동작을 적으세요"
     },
     "issue_panel": {
       "panel_title": "📋 GitHub Issue 등록",

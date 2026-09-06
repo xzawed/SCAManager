@@ -382,7 +382,9 @@
     "issue_form": {
       "title": "Title",
       "body": "Body",
-      "labels": "Labels (comma separated)"
+      "labels": "Labels (comma separated)",
+      "title_placeholder": "Enter an issue title",
+      "body_placeholder": "Steps to reproduce and expected behavior"
     },
     "issue_panel": {
       "panel_title": "📋 GitHub Issue Registration",

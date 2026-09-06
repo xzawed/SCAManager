@@ -285,6 +285,13 @@
   }
   .issue-modal-input:focus,
   .issue-modal-textarea:focus { outline: none; border-color: var(--accent); }
+  /* 🔴 명시하지 않으면 Tailwind base 의 `color-mix(in oklab, currentcolor 50%, transparent)`
+     가 남는다 — `--text-1` 을 반으로 깎아 실측 light 3.47 / pastel 2.99 / catppuccin 3.40
+     으로 AA 미달이었다(dark 4.90 하나의 통과가 셋을 가렸다). 색은 3차 토큰에서 받고
+     투명도는 «명시적으로 1» 로 둔다 — 지우기만 하면 UA 기본값이 되살아난다.
+     Declare the color explicitly; Tailwind's base halves currentColor otherwise. */
+  .issue-modal-input::placeholder,
+  .issue-modal-textarea::placeholder { color: var(--text-3); opacity: 1; }
   .issue-modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.25rem; }
   .issue-modal-error { font-size: 12px; color: var(--danger); margin-top: 0.5rem; }
   .issue-modal-error.hidden { display: none; }
@@ -831,11 +838,13 @@
       <h4 class="issue-modal-title">{{ 'analysis_detail.issue_panel.modal_title' | i18n_args(locale | default('ko')) }}</h4>
 
       <label class="issue-modal-label">{{ 'analysis_detail.issue_form.title' | i18n_args(locale | default('ko')) }}
-        <input type="text" id="issueTitle" class="issue-modal-input">
+        <input type="text" id="issueTitle" class="issue-modal-input"
+               placeholder="{{ 'analysis_detail.issue_form.title_placeholder' | i18n_args(locale | default('ko')) }}">
       </label>
 
       <label class="issue-modal-label">{{ 'analysis_detail.issue_form.body' | i18n_args(locale | default('ko')) }}
-        <textarea id="issueBody" class="issue-modal-textarea" rows="6"></textarea>
+        <textarea id="issueBody" class="issue-modal-textarea" rows="6"
+                  placeholder="{{ 'analysis_detail.issue_form.body_placeholder' | i18n_args(locale | default('ko')) }}"></textarea>
       </label>
 
       <label class="issue-modal-label">{{ 'analysis_detail.issue_form.labels' | i18n_args(locale | default('ko')) }}
