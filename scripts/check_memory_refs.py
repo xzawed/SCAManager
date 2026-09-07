@@ -10,6 +10,7 @@ Compares memory slugs referenced in project docs against actual files in the mem
 directory, reporting: missing files, stale "(현재 미생성)" annotations, unreferenced files.
 """
 import io
+import argparse
 import os
 import re
 import sys
@@ -96,6 +97,82 @@ def normalize(slug: str) -> str:
     reads as missing and every file as unreferenced.
     """
     return slug.lower().replace("-", "_")
+
+
+# ── 역방향(메모리 → 리포) 축 ────────────────────────────────────────────────
+#
+# 🔴 지금까지 이 스크립트는 **리포 → 메모리 슬러그** 한 방향만 봤다. 그 반대 —
+#    메모리가 가리키는 리포 문서가 사라졌는가 — 는 아무도 안 봤고, 실제로
+#    `MEMORY.md` 의 「다음 세션 시작점 = docs/backlog.md」가 #1397 로 퇴역한 파일을
+#    가리킨 채 남아 있었다. 다음 세션이 그 좌표로 출발하면 턴을 통째로 버린다.
+#
+# 🔴 «처방적 표면» 만 판정한다. 옛 `project-*.md` 의 산문은 append-only 역사이고,
+#    「#1397 이 docs/backlog.md 를 퇴역시켰다」 같은 문장은 그 파일이 없어야 **참**이다.
+#    그것까지 red 로 만들면 역사를 고쳐 쓰라는 요구가 되고, 매 세션 60건이 울린다.
+#    실측: 백틱 구체 경로 130건 중 60건이 부재인데, 그 대다수가 이 부류다.
+#
+# 🔴 위키링크는 «파일명» 이 아니라 frontmatter `name:` 으로도 해석된다(실측: 3건이
+#    그렇게 살아 있다). 파일명만 보면 그 3건을 매 세션 거짓 red 로 만들고, 「고치려고」
+#    파일명을 바꾸면 오히려 링크가 깨진다.
+#
+# Reverse axis: only prescriptive surfaces are judged; old narrative is append-only history.
+# Wiki links resolve by frontmatter `name:` as well as by filename.
+
+_PRESCRIPTIVE_FILE = "MEMORY.md"
+_PRESCRIPTIVE_LINE = re.compile(r"시작점")
+_MD_LINK = re.compile(r"\[[^\]]*\]\((?!https?://|mailto:)([^)#]+)\)")
+_REPO_PATH = re.compile(
+    r"`((?:docs|src|tests|scripts|e2e|alembic|\.claude|\.github)/[^`\s]+)`")
+_ANY_WIKI = re.compile(r"\[\[([a-z0-9][a-z0-9_-]{6,})\]\]")
+_FRONTMATTER_NAME = re.compile(r"^name:\s*(\S+)\s*$", re.M)
+
+
+def memory_identities(memory_dir: Path) -> set[str]:
+    """메모리가 «자기를 부르는 이름» 전부 — 파일 stem 과 frontmatter `name:` 의 합집합."""
+    ids = set()
+    for path in sorted(memory_dir.glob("*.md")):
+        ids.add(normalize(path.stem))
+        text = path.read_text(encoding="utf-8", errors="replace")
+        m = _FRONTMATTER_NAME.search(text)
+        if m:
+            ids.add(normalize(m.group(1)))
+    return ids
+
+
+def _is_concrete_path(ref: str) -> bool:
+    """glob·앵커(`path::sym`)·줄번호 좌표는 «경로가 아니다» — 존재를 물으면 안 된다.
+
+    실측으로 이 셋을 경로로 세다가 부재 60건을 99건으로 부풀린 적이 있다.
+    """
+    if "*" in ref or "?" in ref or "{" in ref or "<" in ref or ref.endswith("/"):
+        return False
+    if "::" in ref:
+        return False
+    return not re.search(r":\d+(?:[-,]\d+)*$", ref)
+
+
+def reverse_dangling(memory_dir: Path, project_root: Path) -> list[str]:
+    """처방적 표면이 가리키는 «없는 것» 목록 — 사람이 읽는 문자열로."""
+    ids = memory_identities(memory_dir)
+    out: list[str] = []
+    for path in sorted(memory_dir.glob("*.md")):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for lineno, line in enumerate(text.splitlines(), 1):
+            prescriptive = path.name == _PRESCRIPTIVE_FILE or _PRESCRIPTIVE_LINE.search(line)
+            for m in _ANY_WIKI.finditer(line):
+                if normalize(m.group(1)) not in ids:
+                    out.append(f"{path.name}:{lineno}  [[{m.group(1)}]] — 그 이름의 메모리가 없다")
+            if not prescriptive:
+                continue
+            for rx in (_MD_LINK, _REPO_PATH):
+                for m in rx.finditer(line):
+                    ref = m.group(1).strip().rstrip(".,")
+                    if not _is_concrete_path(ref):
+                        continue
+                    if (memory_dir / ref).exists() or (project_root / ref).exists():
+                        continue
+                    out.append(f"{path.name}:{lineno}  {ref} — 처방인데 그 자리가 없다")
+    return out
 
 
 def repo_slug(project_root: Path) -> str:
@@ -237,7 +314,7 @@ def print_report(
     return ok
 
 
-def main(project_root: Path | None = None) -> int:
+def main(project_root: Path | None = None, advisory: bool = False) -> int:
     # 리포 루트는 주입 가능 — 테스트가 전역 `Path.resolve` 를 패치하지 않아도 되게 한다.
     # Injectable so tests need not monkeypatch Path.resolve globally.
     project_root = project_root or Path(__file__).resolve().parents[1]
@@ -296,8 +373,32 @@ def main(project_root: Path | None = None) -> int:
     stale = collect_stale(project_root, actual)
 
     print(f"메모리 디렉토리 / memory dir: {memory_dir}\n")
-    return 0 if print_report(referenced, actual, stale) else 1
+    forward_ok = print_report(referenced, actual, stale)
+
+    reverse = reverse_dangling(memory_dir, project_root)
+    if reverse:
+        print(f"\n🔴 메모리의 «처방» 이 없는 자리를 가리킵니다 ({len(reverse)}건):")
+        for line in reverse:
+            print(f"   {line}")
+        print("   해결 / Fix: 살아 있는 좌표로 고치거나, 역사 서술이면 처방 문장에서 빼세요.")
+    else:
+        print("\n✅ 처방적 좌표 전건 유효 (역방향)")
+
+    ok = forward_ok and not reverse
+    if advisory:
+        # 🔴 SessionStart 는 조언이다(정책 17). 이 자리에서 exit 1 을 내면 세션 자체가
+        #    시끄러워지고, 「배너만 요란한 무치 가드」가 19 PR 동안 아무것도 못 바꾼 전례가
+        #    있다. 집행은 pre-commit 쪽이 맡고 여기서는 «보이게» 만 한다.
+        if not ok:
+            print("\n(SessionStart 조언 모드 — 여기서는 막지 않습니다)")
+        return 0
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    _parser = argparse.ArgumentParser(description="메모리 ↔ 리포 참조 정합")
+    _parser.add_argument(
+        "--advisory", action="store_true",
+        help="보고만 하고 항상 0 으로 끝낸다(SessionStart 용).",
+    )
+    sys.exit(main(advisory=_parser.parse_args().advisory))

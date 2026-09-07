@@ -13,6 +13,9 @@
 Behaviour guard: the script had zero behavioural tests while its hardcoded memory path went stale,
 so it silently passed forever. The negative controls below are the point of this file.
 """
+import json
+from pathlib import Path
+
 import pytest
 
 # 🔴 단일 import 형태 — `import X as mod` 와 `from X import ...` 공존은
@@ -428,3 +431,121 @@ def test_precommit_hook_fires_wherever_the_guard_scans():
         f"가드는 스캔하는데 pre-commit 훅이 발화하지 않는 범위: {uncovered} — "
         "그 파일만 고친 커밋에서 dangling 슬러그가 그대로 랜딩한다"
     )
+
+
+# ── 역방향(메모리 → 리포) 축 ─────────────────────────────────────────────────
+#
+# 🔴 CI 에는 메모리 디렉토리가 없다(리포 밖). 그래서 «실물» 로는 못 재고 fixture 로 잰다 —
+#    그것이 이 축의 정직한 천장이다. 메모리를 이 공개 리포에 복사하지 않는다.
+
+
+def _mem(tmp_path, files: dict[str, str]):
+    d = tmp_path / "memory"
+    d.mkdir()
+    for name, body in files.items():
+        (d / name).write_text(body, encoding="utf-8")
+    return d
+
+
+def test_reverse_flags_a_dead_coordinate_on_the_index(tmp_path):
+    """🔴 매 세션 로드되는 인덱스가 없는 자리를 가리키면 red — 다음 세션이 턴을 버린다.
+
+    실측 사례: `MEMORY.md` 의 「다음 세션 시작점 = docs/backlog.md」가 #1397 로 퇴역한
+    파일을 가리킨 채 남아 있었다. 정방향 가드(리포→슬러그)는 이 방향을 보지 않는다.
+    """
+    mem = _mem(tmp_path, {"MEMORY.md": "- 시작점 = `docs/gone.md`\n"})
+    out = mod.reverse_dangling(mem, tmp_path / "repo")
+    assert any("docs/gone.md" in line for line in out), out
+
+
+def test_reverse_ignores_history_outside_prescriptive_surfaces(tmp_path):
+    """🔴 옛 기록의 산문은 append-only 역사다 — 그 파일이 «없어야» 참인 문장도 있다.
+
+    실측: 백틱 구체 경로 130건 중 60건이 부재인데 대다수가 이 부류다. 그것까지 red 로
+    만들면 역사를 고쳐 쓰라는 요구가 되고 매 세션 60건이 울려 경고가 죽는다.
+    """
+    mem = _mem(tmp_path, {
+        "MEMORY.md": "- 인덱스\n",
+        "project_old.md": "#1397 이 `docs/backlog.md` 를 퇴역시켰다\n",
+    })
+    assert mod.reverse_dangling(mem, tmp_path / "repo") == []
+
+
+def test_reverse_judges_a_start_point_line_even_in_an_old_note(tmp_path):
+    """🔴 대조군 — 「시작점」 문장은 옛 파일에 있어도 처방이다.
+
+    처방 판정을 인덱스 파일 하나로 좁히면, 옛 기록에 적힌 죽은 시작점이 그대로 남는다.
+    """
+    mem = _mem(tmp_path, {
+        "MEMORY.md": "- 인덱스\n",
+        "project_old.md": "▶️ 다음 시작점 = `docs/gone.md`\n",
+    })
+    out = mod.reverse_dangling(mem, tmp_path / "repo")
+    assert any("docs/gone.md" in line for line in out), out
+
+
+def test_wiki_links_resolve_by_frontmatter_name_not_only_filename(tmp_path):
+    """🔴 위키링크는 frontmatter `name:` 으로도 해석된다 — 파일명만 보면 거짓 red 다.
+
+    실측: 이 리포의 메모리 3건이 그렇게 살아 있다. 「고치려고」 파일명을 슬러그에 맞추면
+    오히려 다른 링크가 깨진다.
+    """
+    mem = _mem(tmp_path, {
+        "MEMORY.md": "- [[nice-slug]]\n",
+        "project_ugly_filename.md": "---\nname: nice-slug\n---\n본문\n",
+    })
+    assert mod.reverse_dangling(mem, tmp_path / "repo") == []
+
+
+def test_wiki_link_to_nothing_is_flagged(tmp_path):
+    """대조군 — 어느 이름으로도 없는 위키링크는 잡아야 한다."""
+    mem = _mem(tmp_path, {"MEMORY.md": "- [[missing-thing]]\n"})
+    out = mod.reverse_dangling(mem, tmp_path / "repo")
+    assert any("missing-thing" in line for line in out), out
+
+
+@pytest.mark.parametrize("ref", [
+    "docs/**/*.md", "scripts/check_x.py::_SYMBOL", "docs/a.md:42", "docs/a.md:10-20",
+    "src/i18n/{en,ko}.json", "tests/unit/<area>",
+])
+def test_non_path_tokens_are_not_asked_to_exist(ref):
+    """🔴 glob·앵커·줄번호·플레이스홀더는 «경로가 아니다».
+
+    실측으로 이 넷을 경로로 세다가 부재 60건을 99건으로 부풀린 적이 있다 — 계기가
+    결론을 만든 것이다.
+    """
+    assert mod._is_concrete_path(ref) is False
+
+
+def test_advisory_mode_never_fails_the_session(tmp_path, monkeypatch, capsys):
+    """🔴 SessionStart 는 조언이다 — 여기서 exit 1 을 내면 세션이 시끄러워진다.
+
+    다만 «조용해지는» 것도 아니다: 보고는 그대로 인쇄한다.
+    """
+    mem = _mem(tmp_path, {"MEMORY.md": "- 시작점 = `docs/gone.md`\n"})
+    monkeypatch.setenv("CLAUDE_PROJECT_MEMORY_DIR", str(mem))
+    root = Path(__file__).resolve().parents[3]
+    assert mod.main(project_root=root, advisory=True) == 0
+    assert "docs/gone.md" in capsys.readouterr().out
+
+
+def test_default_mode_still_fails(tmp_path, monkeypatch):
+    """대조군 — 조언 모드가 «기본» 이 되면 집행이 사라진다."""
+    mem = _mem(tmp_path, {"MEMORY.md": "- 시작점 = `docs/gone.md`\n"})
+    monkeypatch.setenv("CLAUDE_PROJECT_MEMORY_DIR", str(mem))
+    root = Path(__file__).resolve().parents[3]
+    assert mod.main(project_root=root, advisory=False) == 1
+
+
+def test_session_start_wires_the_advisory_flag():
+    """정의 ≠ 배선 — SessionStart 에 `--advisory` 로 걸려 있어야 한다.
+
+    플래그 없이 걸면 세션 시작이 exit 1 로 시끄러워지고, 안 걸면 이 축이 아무 데서도
+    안 돌아 정의만 남는다.
+    """
+    cfg = json.loads((Path(__file__).resolve().parents[3] / ".claude" / "settings.json")
+                     .read_text(encoding="utf-8"))
+    cmds = [h.get("command", "") for e in cfg["hooks"]["SessionStart"] for h in e.get("hooks", [])]
+    hit = [c for c in cmds if "check_memory_refs.py" in c]
+    assert hit, "SessionStart 에 역방향 점검이 걸려 있지 않다"
+    assert all("--advisory" in c for c in hit), f"`--advisory` 없이 걸려 있다: {hit}"
