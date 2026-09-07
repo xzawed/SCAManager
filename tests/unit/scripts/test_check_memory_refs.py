@@ -549,3 +549,28 @@ def test_session_start_wires_the_advisory_flag():
     hit = [c for c in cmds if "check_memory_refs.py" in c]
     assert hit, "SessionStart 에 역방향 점검이 걸려 있지 않다"
     assert all("--advisory" in c for c in hit), f"`--advisory` 없이 걸려 있다: {hit}"
+
+
+# 🔴 알려진 잔여 — 역방향 스캔은 «접두사 8개» 로만 경로를 알아본다
+#    (`docs|src|tests|scripts|e2e|alembic|.claude|.github`). 그 밖의 실제 리포 파일이
+#    처방 문장에 백틱으로 적히면 **판정 자체가 일어나지 않는다** — 없는 파일을 가리켜도
+#    조용하다. 아래 둘은 실재하는 리포 루트 파일이고, 검사가 «못 알아보는» 부류다.
+#    범위를 넓히면 산문 오탐이 늘어 경고가 죽으므로, 넓히지 않고 한계를 기록한다.
+# witness-corpus: 접두사 목록 밖의 실제 리포 경로 — 스캔이 아예 보지 않는 부류다
+_PATHS_THE_SCAN_CANNOT_SEE = (
+    "README.md",
+    ".pre-commit-config.yaml",
+)
+
+
+@pytest.mark.parametrize("ref", _PATHS_THE_SCAN_CANNOT_SEE)
+def test_paths_outside_the_prefix_list_are_never_judged(ref, tmp_path):
+    """🔴 이 둘은 «잘못 잡는» 것이 아니라 «아예 안 보는» 잔여다 — 숨기지 않고 고정한다.
+
+    처방 문장이 이 부류의 죽은 경로를 가리켜도 역방향 스캔은 침묵한다. 여기서 「잡힌다」
+    를 단언하면 다음 사람은 이 스캔이 리포 전체를 본다고 믿게 된다.
+    """
+    mem = _mem(tmp_path, {"MEMORY.md": "- 시작점 = `" + ref + "`" + chr(10)})
+    assert mod.reverse_dangling(mem, tmp_path / "repo") == [], (
+        "이 부류가 잡히기 시작했다면 접두사 범위가 넓어진 것이다 — "
+        "이 시험과 위 주석을 함께 갱신할 것")
