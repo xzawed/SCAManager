@@ -18,6 +18,11 @@
             "type": "command",
             "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY ${CLAUDE_PROJECT_DIR:-.}/scripts/prune_agent_worktrees.py",
             "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY ${CLAUDE_PROJECT_DIR:-.}/scripts/check_memory_refs.py --advisory",
+            "timeout": 30
           }
         ]
       }
