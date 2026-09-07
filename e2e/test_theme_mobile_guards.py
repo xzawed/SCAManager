@@ -507,7 +507,8 @@ _TOKEN_TEXT_AUDIT_JS = r"""
 """
 
 # 두 토큰이 실제로 쓰이는 화면들. 각각이 서로 다른 바탕(카드·표·nav 알약·KPI)을 만든다.
-_TOKEN_TEXT_PATHS = ["/", "/dashboard", "/repos/owner/testrepo", "/repos/owner/testrepo/insights"]
+_TOKEN_TEXT_PATHS = ["/", "/dashboard", "/repos/owner/testrepo", "/repos/owner/testrepo/insights",
+                     "/repos/add"]
 
 
 def _settle_animations(page) -> None:
@@ -538,15 +539,25 @@ def test_token_text_meets_aa_against_painted_background(seeded_page, base_url, t
     The unit guard only sees surface tokens; components that paint their own wash under the
     text are invisible to it. Two nav buttons did exactly that and only this test caught them.
     """
-    seeded_page.set_viewport_size({"width": 1440, "height": 900})
-    seeded_page.goto(f"{base_url}{path}")
-    seeded_page.evaluate("(t) => applyTheme(t)", theme)
+    _assert_token_text_aa(seeded_page, base_url, theme, path)
+
+
+def _assert_token_text_aa(page, base_url, theme, path):
+    """한 화면·한 테마에서 토큰 글자의 AA 를 잰다 — 두 시험이 공유한다.
+
+    🔴 화면 목록이 parametrize 상수인 시험과, 화면 경로가 **픽스처에서 와야 하는** 시험
+    (분석 상세는 `seeded_analysis` 의 id 가 필요하다)이 같은 측정을 써야 한다. 본문을
+    복사하면 한쪽만 고쳐지는 순간 두 화면의 판정이 갈린다.
+    """
+    page.set_viewport_size({"width": 1440, "height": 900})
+    page.goto(f"{base_url}{path}")
+    page.evaluate("(t) => applyTheme(t)", theme)
     # 🔴 테마 전환에 transition 이 걸려 있다 — 끄지 않으면 «중간색» 을 잰다(전 테마의
     #    글자색 위에 다음 테마의 바탕이 겹친 값이 나온다).
-    seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
-    seeded_page.wait_for_timeout(400)
-    _settle_animations(seeded_page)
-    res = seeded_page.evaluate(_TOKEN_TEXT_AUDIT_JS)
+    page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
+    page.wait_for_timeout(400)
+    _settle_animations(page)
+    res = page.evaluate(_TOKEN_TEXT_AUDIT_JS)
 
     assert not res.get("error"), res.get("error")
     seen = res["seen"]
@@ -566,6 +577,22 @@ def test_token_text_meets_aa_against_painted_background(seeded_page, base_url, t
             for b in bad[:12]
         )
     )
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_token_text_meets_aa_on_the_analysis_detail_screen(
+        seeded_page, base_url, seeded_analysis, theme):
+    """🔴 분석 상세는 경로에 id 가 들어가 parametrize 상수로 못 적어 스윕 밖이었다.
+
+    그 결과 이 화면은 픽셀 접근성 관측을 **한 번도** 받지 않았고, 실제로 심각도 칩이
+    리터럴 hex 라 24조합 중 16건이 AA 미달인 채로 남아 있었다(#1633 에서 고쳤다).
+    「목록에 못 적는 화면」이 조용히 빠지는 것이 이 스윕의 구조적 구멍이었다.
+
+    The analysis-detail path needs a fixture-provided id, so it could not be a parametrize
+    constant — and that is exactly why it was never swept.
+    """
+    _assert_token_text_aa(seeded_page, base_url, theme,
+                          f"/repos/owner%2Ftestrepo/analyses/{seeded_analysis}")
 
 
 # ── F. accent 를 «글자» 로 쓰는 곳 (--accent-text) ────────────────────────────
@@ -920,11 +947,13 @@ def _force_focus(page, on: bool) -> int:
 
 
 _FOCUS_PATHS = ["/dashboard", "/repos/owner/testrepo",
-                "/repos/owner/testrepo/settings", "/repos/owner/testrepo/insights"]
+                "/repos/owner/testrepo/settings", "/repos/owner/testrepo/insights",
+                "/repos/add"]
 
 
 @pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
-def test_every_focusable_shows_an_indicator_that_meets_3to1(seeded_page, base_url, theme):
+def test_every_focusable_shows_an_indicator_that_meets_3to1(
+        seeded_page, base_url, seeded_analysis, theme):
     """🔴 포커스를 받은 요소는 «표시가 있어야» 하고 그 표시는 3:1 이상이어야 한다.
 
     실측(수정 전):
@@ -938,7 +967,10 @@ def test_every_focusable_shows_an_indicator_that_meets_3to1(seeded_page, base_ur
     """
     seeded_page.set_viewport_size({"width": 1440, "height": 900})
     total, skipped_range, missing, low = 0, 0, [], []
-    for path in _FOCUS_PATHS:
+    # 🔴 분석 상세는 경로에 id 가 들어가 상수 목록에 못 적는다 — 그래서 이 스윕 밖이었다.
+    #    「목록에 못 적는 화면」이 조용히 빠지는 것이 이 가드의 구조적 구멍이었다.
+    for path in [*_FOCUS_PATHS,
+                 f"/repos/owner%2Ftestrepo/analyses/{seeded_analysis}"]:
         seeded_page.goto(f"{base_url}{path}")
         seeded_page.evaluate("(t) => applyTheme(t)", theme)
         seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
