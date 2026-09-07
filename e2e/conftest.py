@@ -10,6 +10,7 @@ import os
 import sys
 import threading
 import time
+from pathlib import Path
 
 import pytest
 import requests
@@ -440,41 +441,82 @@ def seeded_analysis(live_server):
     return _seed_analysis(db_path)
 
 
-# ── 최소 통과 건수 게이트 (backlog R58 · Grok claim-review 71bd2d6c) ────────
+# ── skip 집합 게이트 (backlog R58 → 회고 2026-09-07 D) ──────────────────────
 #
 # 🔴 **수집 건수 baseline 만으로는 전건 skip 을 못 막는다.** `scripts/check_e2e_scope.py`
-# 가 121건 수집을 확인해도, 그 121건이 전부 skip 되면 pytest 는 **exit 0** 이다 —
+# 가 수집 건수를 확인해도, 그것이 전부 skip 되면 pytest 는 **exit 0** 이다 —
 # `pytest.mark.skip`·`skipif`·픽스처 skip 어느 경로든 결말이 같다. 실제로 이 스위트는
 # `live_server` 가 전건 skip 을 유발해 **앱이 부팅 못 해도 CI 초록**이었다(뮤테이션 실측).
-# 그 한 경로는 `RuntimeError` 로 닫았지만, **다른 skip 경로는 여전히 열려 있다**.
 #
-# 통과 건수 하한이 그 클래스의 유일한 관측면이다. opt-in(`--e2e-min-passed`)이라
-# 로컬 부분 실행(`-k`)에는 영향이 없고, CI 만 하한을 건다.
+# 🔴 종전 처방(통과 건수 **하한**)은 그 자체가 같은 부류의 결함이었다. 하한은 손으로 적은
+# 상수라 스위트가 자라도 따라가지 않는다 — 실측: 수집이 122→200 으로 는 동안 CI 는
+# `--e2e-min-passed=100` 에 머물러 **절반이 조용히 skip 돼도 초록**인 상태였다(분해능
+# 82%→50%). 여유 칸(budget)을 둔 파생값도 같은 결함을 다시 만든다.
 #
-# A collection baseline cannot stop mass-skip: pytest exits 0 when everything skips.
-# Only a floor on *passed* observes that class. Opt-in so local `-k` runs are unaffected.
+# 그래서 숫자가 아니라 **집합**으로 판정한다: 관측된 skip 노드 집합이 커밋된
+# `e2e/SKIP_ALLOWLIST` 와 **양방향으로** 일치해야 한다. 목록 밖 skip 이 생기면 red,
+# 목록에 있는데 skip 되지 않아도 red(낡은 예외는 다음 사람에게 거짓을 가르친다).
+# 이 관용구의 정본은 `scripts/check_lint_js_nonvacuous.py` 의 커밋된 justified 집합이다.
+#
+# opt-in(`--e2e-strict-skips`)이라 로컬 부분 실행(`-k`)에는 영향이 없고, CI 만 건다.
+# 🔴 값을 받지 않는 **불리언 플래그**다 — `=N` 형태면 `=0` 으로 조용히 끌 수 있고,
+# CI 배선을 부분문자열로 재던 가드가 그것을 통과시켰다.
+#
+# A collection baseline cannot stop mass-skip, and a hand-written pass floor rots as the
+# suite grows. Gate on the skip *set* against a committed allowlist, both directions.
+
+_SKIP_ALLOWLIST = Path(__file__).resolve().parent / "SKIP_ALLOWLIST"
+
+
+def _allowed_skips() -> set[str] | None:
+    """커밋된 정당 skip 집합 — 파일이 없거나 못 읽으면 None(판정 불가)."""
+    try:
+        raw = _SKIP_ALLOWLIST.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    out = set()
+    for line in raw.splitlines():
+        entry = line.split("#", 1)[0].strip()
+        if entry:
+            out.add(entry)
+    return out
 
 
 def pytest_addoption(parser):
     parser.addoption(
-        "--e2e-min-passed", type=int, default=0,
-        help="통과 건수 하한 — 미만이면 세션을 실패시킨다(전건 skip 공허화 차단, R58).",
+        "--e2e-strict-skips", action="store_true",
+        help="skip 집합이 e2e/SKIP_ALLOWLIST 와 다르면 세션을 실패시킨다(공허화 차단).",
     )
 
 
 def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001
-    floor = session.config.getoption("--e2e-min-passed")
-    if not floor:
+    if not session.config.getoption("--e2e-strict-skips"):
         return
     reporter = session.config.pluginmanager.get_plugin("terminalreporter")
     if reporter is None:
         return
-    passed = len(reporter.stats.get("passed", []))
-    if passed < floor:
-        skipped = len(reporter.stats.get("skipped", []))
-        reporter.write_line(
-            f"e2e 통과 {passed}건 < 하한 {floor}건 (skip {skipped}) — "
-            "수집은 됐으나 실제로 검증된 것이 부족하다. 초록으로 넘기지 않는다.",
-            red=True,
-        )
+
+    def fail(msg: str) -> None:
+        reporter.write_line(msg, red=True)
         session.exitstatus = 1
+
+    allowed = _allowed_skips()
+    if allowed is None:
+        # 🔴 못 재면 초록이 아니라 red 다 — 목록이 사라지면 게이트가 통째로 사라진다.
+        fail(f"e2e skip allowlist 를 읽지 못했다 ({_SKIP_ALLOWLIST}) — 판정 불가라 red 다.")
+        return
+
+    observed = {r.nodeid.replace("\\", "/") for r in reporter.stats.get("skipped", [])}
+    collected = {i.nodeid.replace("\\", "/") for i in getattr(session, "items", [])}
+    unexpected = sorted(observed - allowed)
+    # 🔴 stale 은 «이번에 수집된» 것만 본다 — `-k` 로 걸러진 항목까지 세면 부분 실행이
+    #    거짓 red 가 된다. 목록에 있는데 **아예 사라진** 시험은 이 축이 아니라
+    #    `test_skip_allowlist_is_committed_and_matches_the_measured_skip` 이 잡는다
+    #    (파일·함수 실재를 정적으로 확인한다). 두 축이 겹치지 않게 나눈다.
+    stale = sorted((allowed & collected) - observed)
+    if unexpected:
+        fail("e2e 에서 허용되지 않은 skip {}건 — 수집은 됐으나 검증되지 않았다:\n  {}".format(
+            len(unexpected), "\n  ".join(unexpected)))
+    if stale:
+        fail("e2e/SKIP_ALLOWLIST 가 낡았다 — 이제 skip 되지 않는 항목 {}건, 지워라:\n  {}".format(
+            len(stale), "\n  ".join(stale)))

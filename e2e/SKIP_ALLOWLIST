@@ -1,0 +1,17 @@
+# 정당한 skip 의 **커밋된 집합** — 이 파일과 실제 skip 집합이 다르면 e2e 세션이 red 다.
+#
+# 🔴 왜 «하한 숫자» 가 아니라 집합인가: 하한은 손으로 적은 상수라 스위트가 자라도
+#    따라가지 않는다. 실측으로 수집이 122→200 으로 는 동안 하한은 100 에 머물러
+#    «절반이 조용히 skip 돼도 초록» 인 상태가 됐다. 여유 칸(budget)을 두는 처방도
+#    같은 결함을 다시 만든다 — 그래서 여유를 두지 않고 «이것만 허용» 으로 적는다.
+#
+# 🔴 양방향으로 red 다. 목록에 없는 skip 이 생겨도, 목록에 있는데 skip 되지 않아도 실패한다.
+#    후자는 이 파일이 낡았다는 뜻이고, 낡은 예외는 다음 사람에게 거짓을 가르친다.
+#
+# 줄 = pytest nodeid. `#` 뒤는 주석.
+# 🔴 `e2e/` 접두사를 붙이지 않는다 — `e2e/pytest.ini` 때문에 rootdir 이 `e2e/` 라
+#    pytest 가 보고하는 nodeid 는 `test_x.py::test_y` 형태다. 접두사를 붙이면
+#    영영 매칭되지 않아 그 skip 이 «허용되지 않은 것» 으로 red 가 된다(실측).
+# A committed set of justified skips; any drift in either direction fails the session.
+
+test_settings.py::test_two_column_layout_on_desktop  # 다수 자식 .settings-grid 가 아직 없다 — 생기면 자동 실행되고, 그때 이 줄을 지운다
