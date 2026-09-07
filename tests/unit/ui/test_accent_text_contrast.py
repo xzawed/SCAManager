@@ -14,10 +14,12 @@ accent 면 위 흰 글자는 catppuccin 1.79 까지 내려갔다.
 import pathlib
 import re
 
+from ._contrast import THEMES
+
 _ROOT = pathlib.Path(__file__).resolve().parents[3]
 
 _AA = 4.5
-_THEMES = ("dark", "light", "pastel", "catppuccin")
+
 
 # accent 글자가 앉는 바탕. 페이지 바탕 + 이 부류가 실제로 얹히는 옅은 칩 면들.
 _ACCENT_TEXT_GROUNDS = ("--bg-base", "--bg-canvas", "--bg-card", "--bg-elevated")
@@ -154,7 +156,7 @@ def test_accent_text_token_is_defined_in_every_theme():
     상속색으로 무너진다 — cleanup PR #169 이 catppuccin 에서 실제로 겪은 사고다.
     """
     src = _read("src/static/css/tokens.css")
-    for theme in _THEMES:
+    for theme in THEMES:
         block = _theme_block(src, theme)
         assert _decl(block, "--accent-text"), f"[{theme}] --accent-text 미정의"
 
@@ -168,7 +170,7 @@ def test_accent_used_as_text_meets_aa_on_every_ground():
     """
     src = _read("src/static/css/tokens.css")
     failures = []
-    for theme in _THEMES:
+    for theme in THEMES:
         block = _theme_block(src, theme)
         fg = _parse_color(_resolve(block, _decl(block, "--accent-text")))
         for name, bg in _grounds(block).items():
@@ -292,7 +294,7 @@ def test_accent_text_hover_token_is_defined_and_meets_aa():
     """
     src = _read("src/static/css/tokens.css")
     failures = []
-    for theme in _THEMES:
+    for theme in THEMES:
         block = _theme_block(src, theme)
         fg = _parse_color(_resolve(block, _decl(block, "--accent-text-hover")))
         for name, bg in _grounds(block).items():
