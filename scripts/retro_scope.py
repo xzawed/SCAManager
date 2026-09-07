@@ -25,6 +25,7 @@ starting the run is silently excluded — exactly the case the policy exists to 
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import re
 import subprocess
@@ -117,6 +118,95 @@ def merged_prs(boundary: str) -> list[int]:
     return sorted(set(nums))
 
 
+def _gh_json(args: list[str]) -> object | None:
+    """gh 호출 — 부재·실패·비JSON 이면 None. 호출자는 그것을 «안 쟀음» 으로 다룬다."""
+    try:
+        r = subprocess.run(
+            ["gh", *args], cwd=_ROOT, capture_output=True, text=True,
+            encoding="utf-8", errors="replace", check=False, timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if r.returncode != 0:
+        return None
+    try:
+        return json.loads(r.stdout)
+    except json.JSONDecodeError:
+        return None
+
+
+def commit_date(ref: str) -> str | None:
+    """커밋의 날짜(YYYY-MM-DD) — 해석 실패면 None."""
+    d = _git(["log", "-1", "--format=%cs", ref]).strip()
+    return d or None
+
+
+_HEAD_SHA = re.compile(r"\bhead\b[^0-9a-f]{0,12}([0-9a-f]{7,40})\b", re.I)
+
+
+def report_head(retro_filename: str) -> str | None:
+    """리포트가 기록한 «분석 종료 시점 HEAD» SHA — 해석되는 것만 돌려준다.
+
+    🔴 경계 갭(#1564·#1567 이 어느 창에도 없던 사건)은 이것 없이는 **원리적으로** 못 닫는다.
+    경계 커밋은 리포트가 «머지된» 시점이고, 회고의 분석은 그보다 앞에서 끝난다. 그 사이
+    머지분을 가리려면 회고가 본 HEAD 를 리포트가 스스로 적어 두는 수밖에 없다.
+
+    옛 리포트는 이 값이 없거나(미기재) squash 로 SHA 가 소멸해 해석되지 않는다 —
+    그때는 None 을 돌려 호출자가 「이 축은 안 쟀다」로 다루게 한다. 날짜로 근사하지 않는다:
+    실측상 리포트 날짜로 자르면 직전 창 말미가 3~7건 겹쳐 들어와 «정밀한 척» 이 된다.
+
+    The boundary commit is when the report MERGED; the analysis ended earlier. Only a
+    head SHA recorded by the report itself can close that gap — otherwise report it unmeasured.
+    """
+    path = _REPORTS / retro_filename
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    for line in text.splitlines()[:40]:
+        m = _HEAD_SHA.search(line)
+        if m and resolve_ref(m.group(1)):
+            return m.group(1)
+    return None
+
+
+def github_stacked_prs(since_date: str) -> list[int] | None:
+    """base 가 `main` 이 아닌 머지 PR 번호 — gh 를 못 쓰면 None.
+
+    🔴 stacked PR 은 부모의 squash 하나로 접혀 main 제목에 `(#N)` 을 남기지 않는다.
+    실측: 한 창에서 3건(#1600·#1602·#1603)이 사라졌고 그중 하나가 심의 훅 자신을 고친
+    PR 이었다. `git log` 로는 이 부류가 **원리적으로** 안 보인다.
+
+    🔴 커밋 **본문** 파싱은 처방이 아니다. 재현율만 보면 3/3 이지만 정밀도가 3/10 이다 —
+    본문의 `(#N)` 대다수는 Issue 번호이고, GitHub 은 Issue 와 PR 이 번호 공간을 공유하므로
+    git 객체 안에서 둘을 가릴 방법이 없다(실측: 1557·1565·1568·1577·1578·1586·1587 은
+    전부 `Could not resolve to a PullRequest`).
+
+    🔴 여기서 «날짜» 는 후보를 줄이는 값싼 필터일 뿐 판정식이 아니다. 판정은
+    `baseRefName != "main"` 이고, 그래서 날짜가 하루 헐거워도 과포함이 생기지 않는다.
+
+    Stacked PRs never leave `(#N)` on a main squash title; the predicate is baseRefName,
+    with the date only narrowing the query.
+    """
+    rows = _gh_json([
+        "pr", "list", "--state", "merged", "--limit", "200",
+        "--json", "number,mergedAt,baseRefName",
+    ])
+    if not isinstance(rows, list):
+        return None
+    cut = (dt.date.fromisoformat(since_date) - dt.timedelta(days=1)).isoformat()
+    out = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        merged_at, number, base = row.get("mergedAt"), row.get("number"), row.get("baseRefName")
+        if not (isinstance(merged_at, str) and isinstance(number, int) and isinstance(base, str)):
+            continue
+        if base != "main" and merged_at[:10] >= cut:
+            out.append(number)
+    return sorted(set(out))
+
+
 def resolve_ref(ref: str) -> str | None:
     """ref 를 커밋 SHA 로 해석 — 존재하지 않으면 None (조용히 넘기지 않는다)."""
     sha = _git(["rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"]).strip()
@@ -170,7 +260,35 @@ def compute(since: str | None = None) -> dict:
             ),
         }
 
-    prs = merged_prs(boundary)
+    unmeasured: list[str] = []
+
+    # 🔴 경계 갭 축 — 리포트가 «분석 종료 HEAD» 를 적어 뒀으면 거기서부터 센다.
+    #    경계 커밋은 리포트가 머지된 시점이라 그 사이 머지분이 어느 창에도 없었다(P1).
+    #    적혀 있지 않으면 근사하지 않고 「안 쟀다」로 넘긴다.
+    scan_from = boundary
+    if newest and (rh := report_head(newest)):
+        scan_from = rh
+    elif anchor == "report":
+        unmeasured.append("report-merge-gap")
+
+    prs_git = merged_prs(scan_from)
+
+    # 🔴 stacked PR 축 — base 가 main 이 아닌 머지는 git log 로 원리적으로 안 보인다(P0).
+    since_date = retro_date(newest) if newest else commit_date(boundary)
+    gh_nums = github_stacked_prs(since_date) if since_date else None
+
+    if gh_nums is None:
+        prs, gh_only = prs_git, []
+        gh_checked = False
+        # 🔴 「안 쟀음」은 「통과」가 아니다 — 이 축이 비었다는 사실을 소비자에게 넘긴다.
+        unmeasured.append("stacked-pr-cross-check")
+    else:
+        # 창 밖(경계 이전)의 stacked PR 은 담지 않는다 — 판정은 base, 범위는 스캔 기점이다.
+        floor = min(prs_git) if prs_git else 0
+        gh_only = sorted(n for n in gh_nums if n not in prs_git and n >= floor)
+        prs = sorted(set(prs_git) | set(gh_only))
+        gh_checked = True
+
     head = _git(["rev-parse", "--short", "HEAD"]).strip()
     return {
         "ok": True,
@@ -181,6 +299,11 @@ def compute(since: str | None = None) -> dict:
         "pr_count": len(prs),
         "prs": prs,
         "range": f"#{prs[0]}~#{prs[-1]}" if prs else "(없음)",
+        # 🔴 아래 셋은 소비자가 «읽어야» 의미가 있다. 워크플로 SCOPE_SCHEMA 가 이 이름을
+        #    요구하도록 배선돼 있고, 그 배선을 지우면 누락이 다시 조용해진다.
+        "gh_checked": gh_checked,
+        "gh_only": gh_only,
+        "unmeasured": unmeasured,
     }
 
 
@@ -212,6 +335,15 @@ def main() -> int:
     print(f"  경계 커밋      : {r['boundary']}  → HEAD {r['head']}")
     print(f"  머지 PR        : {r['pr_count']}건  {r['range']}")
     print(f"  전체           : {', '.join('#' + str(n) for n in r['prs'])}")
+    if r["gh_checked"]:
+        if r["gh_only"]:
+            print(f"  🔴 git log 가 못 본 것: {', '.join('#' + str(n) for n in r['gh_only'])}")
+            print("     (base 가 main 이 아닌 stacked PR · 리포트 머지 전 갭 — GitHub 대조로만 보인다)")
+        else:
+            print("  GitHub 대조    : 차집합 0 — git log 산출과 일치")
+    else:
+        print("  🔴 GitHub 대조 **미실행** — `gh` 를 쓸 수 없다. 이 축은 아무것도 검증하지 않았다")
+        print("     (stacked PR 과 리포트 머지 전 갭은 git log 로 원리적으로 안 보인다)")
     print()
     print("🔴 회고 착수 **직전에** 다시 실행할 것 — 그 사이 머지분이 빠지는 것이 P0 의 기전이었다.")
     if r["anchor"] == "explicit":

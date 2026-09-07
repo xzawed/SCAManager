@@ -244,22 +244,30 @@ if (dryRun) {
 //
 // The workflow runtime has no filesystem or subprocess access, so the scope is obtained by
 // an agent that actually runs the machine oracle, then compared against the caller's string.
+// 🔴 `unmeasured` 를 **required** 로 둔다. 스크립트가 「이 축은 안 쟀다」를 내도 여기서
+//    읽지 않으면 누락이 다시 조용해진다 — 관측만 하고 집행하지 않는 가드가 이 리포의
+//    반복 결함이었다. 스키마가 이름을 요구해야 배선이 끊겼을 때 red 가 난다.
 const SCOPE_SCHEMA = {
   type: 'object', additionalProperties: false,
-  required: ['ok', 'pr_count', 'prs', 'head', 'raw'],
+  required: ['ok', 'pr_count', 'prs', 'head', 'raw', 'unmeasured'],
   properties: {
     ok: { type: 'boolean' },
     pr_count: { type: 'integer' },
     prs: { type: 'array', items: { type: 'integer' } },
     head: { type: 'string' },
     raw: { type: 'string', description: 'retro_scope.py --json 의 stdout 원문' },
+    unmeasured: {
+      type: 'array', items: { type: 'string' },
+      description: '값이 비어야 정상 — 비어 있지 않으면 그 축은 «안 쟀음»(초록 아님)',
+    },
   },
 }
 
 const machineScope = await agent(
   '이 리포에서 아래 한 줄을 **그대로 실행**하고 그 출력을 보고하세요. 다른 조사·수정 금지.\n\n' +
   '```\nPYTHONIOENCODING=utf-8 py -3 scripts/retro_scope.py --json\n```\n\n' +
-  '· 출력 JSON 의 `pr_count`·`prs`·`head` 를 그대로 옮기고, stdout 전문을 `raw` 에 넣으세요.\n' +
+  '· 출력 JSON 의 `pr_count`·`prs`·`head`·`unmeasured` 를 그대로 옮기고, stdout 전문을 `raw` 에 넣으세요.\n' +
+  '· `unmeasured` 가 출력에 없으면 빈 배열이 아니라 `["field-absent"]` 로 보고하세요 — 없는 것과 빈 것은 다릅니다.\n' +
   '· 명령이 실패하면 `ok: false` 로 하고 `raw` 에 stderr 를 넣으세요. **추정값을 만들지 마세요.**',
   { label: 'scope:machine', phase: 'Scope', schema: SCOPE_SCHEMA, effort: 'low' },
 )
@@ -269,11 +277,22 @@ if (!machineScope || machineScope.ok !== true) {
   scopeNote = '🔴 기계 범위 산출 실패 — 호출자 범위로 진행(정직 기준: 이 회고의 범위는 미검증)'
   log(scopeNote)
 } else {
+  // 🔴 안 잰 축을 회고 맥락에 실어 보낸다 — 이 창의 범위가 «완전하다» 고 읽히면 안 된다.
+  const unmeasured = machineScope.unmeasured ?? ['field-absent']
+  if (unmeasured.length) {
+    scopeNote +=
+      `🔴 **범위 산출에서 재지 못한 축이 있다**: ${unmeasured.join(', ')}. ` +
+      '그 축이 가리는 PR 은 이 목록에 없을 수 있다 — 「없다」가 아니라 「안 쟀다」로 다룰 것. ' +
+      '(stacked-pr-cross-check = base 가 main 이 아닌 PR, report-merge-gap = 직전 리포트가 ' +
+      '분석 종료 HEAD 를 기록하지 않아 리포트 머지 직전 구간을 못 가린다)\n'
+    log(scopeNote)
+  }
   const missing = machineScope.prs.filter((n) => !String(context ?? '').includes(String(n)))
   if (missing.length) {
     // 🔴 덮어쓰지 않고 **주입**한다 — 호출자 맥락(무엇을 왜 의심할지)에는 사람의 판단이
     //    들어 있고 그것을 버리면 회고 품질이 떨어진다. 빠진 범위만 강제로 얹는다.
-    scopeNote =
+    // 🔴 `+=` 다 — `=` 로 두면 위의 «안 잰 축» 경고를 덮어 그 축이 다시 조용해진다.
+    scopeNote +=
       `🔴 **호출자 범위가 기계 산출과 다르다** — 브리프에 없는 PR ${missing.length}건: ` +
       `${missing.map((n) => '#' + n).join(', ')}. 기계값(HEAD ${machineScope.head} · ` +
       `${machineScope.pr_count}건)을 범위에 **추가**한다. 정책 8-(5): 가장 검증 덜 된 산출물이 회고를 피한다.`
