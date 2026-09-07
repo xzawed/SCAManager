@@ -380,6 +380,23 @@ button { font-family: inherit; }
 .grade--d { --g-color: var(--grade-d); --g-bg: var(--grade-d-bg); --g-bd: var(--grade-d-bd); }
 .grade--f { --g-color: var(--grade-f); --g-bg: var(--grade-f-bg); --g-bd: var(--grade-f-bd); }
 
+/* 이슈 심각도 별칭 — 등급 3종 세트에 «얹는다», 새 색을 만들지 않는다.
+   🔴 종전에는 `analysis_detail.html` 의 페이지 `<style>` 이 이 여섯을 리터럴 hex 로 박고
+      있었다(#1609·#1614 와 같은 형태 — 페이지 스타일이 나중에 로드돼 컴포넌트를 이긴다).
+      실측: 24조합 중 16건이 AA 미달이었다(light 1.57~2.46 · pastel 1.51~2.38).
+   🔴 `--danger-text` 같은 «글자용» 토큰을 새로 만들지 않는다. 그 관용구(`--accent-text`)는
+      «페이지 바탕 위» 계약이고, 칩은 12% 틴트 위에 앉는다. 틴트 위 계약은 이미
+      `--grade-X` / `--grade-X-bg` / `--grade-X-bd` 3종 세트로 AA 가 잠겨 있다.
+   🔴 `--info` 토큰은 존재하지 않는다. 만들면 네 번째 이름이 생기므로 `--grade-b` 를 쓴다
+      (`.badge--info` 가 이미 `--grade-b-bg` 를 쓰는 것과 같은 방향).
+   Severity aliases map onto the grade triple; they never mint a new colour. */
+.grade--error,
+.grade--high    { --g-color: var(--grade-f); --g-bg: var(--grade-f-bg); --g-bd: var(--grade-f-bd); }
+.grade--warning { --g-color: var(--grade-c); --g-bg: var(--grade-c-bg); --g-bd: var(--grade-c-bd); }
+.grade--medium  { --g-color: var(--grade-d); --g-bg: var(--grade-d-bg); --g-bd: var(--grade-d-bd); }
+.grade--low,
+.grade--info    { --g-color: var(--grade-b); --g-bg: var(--grade-b-bg); --g-bd: var(--grade-b-bd); }
+
 .grade--lg {
   height: 40px;
   min-width: 44px;

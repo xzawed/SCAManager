@@ -79,14 +79,11 @@
     width: 88px; height: 88px; font-size: 2.25rem; font-weight: 800;
     border-radius: 16px; letter-spacing: -0.03em; padding: 0;
   }
-  /* 이슈 심각도 배지 (이슈 행은 a-f 대신 error/warning/high/info 사용) */
-  /* Severity badge modifiers (issue rows use error/warning/high/info, not a-f) */
-  .grade--error   { background: rgba(248,113,113,0.12); color: #f87171; border-color: rgba(248,113,113,0.32); }
-  .grade--warning { background: rgba(251,191,36,0.12);  color: #fbbf24; border-color: rgba(251,191,36,0.32); }
-  .grade--high    { background: rgba(248,113,113,0.12); color: #f87171; border-color: rgba(248,113,113,0.32); }
-  .grade--medium  { background: rgba(251,146,60,0.12);  color: #fb923c; border-color: rgba(251,146,60,0.32); }
-  .grade--low     { background: rgba(96,165,250,0.12);  color: #60a5fa; border-color: rgba(96,165,250,0.32); }
-  .grade--info    { background: rgba(96,165,250,0.12);  color: #60a5fa; border-color: rgba(96,165,250,0.32); }
+  /* 🔴 이슈 심각도 배지(error/warning/high/medium/low/info)는 여기서 색을 정하지 않는다.
+     페이지 `<style>` 은 `components.css` 보다 «나중에» 로드돼 컴포넌트를 이기고, 실제로
+     그 방식으로 리터럴 hex 가 박혀 24조합 중 16건이 AA 미달이었다(light 1.57~2.46 ·
+     pastel 1.51~2.38). 정본은 `components.css` 의 등급 3종 세트에 얹은 별칭이다.
+     Severity modifiers live in components.css, mapped onto the grade triple. */
 
   /* ── 카드 컴포넌트 (로컬 fallback) / Card component (local fallback) ─ */
   .card {
