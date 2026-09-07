@@ -16,7 +16,38 @@ _GRADES = ("a", "b", "c", "d", "f")
 
 # 등급 칩을 그리는 템플릿들. 여기에 리터럴이 있으면 테마 토큰이 무력화된다.
 _TEMPLATES = ("src/templates/analysis_detail.html", "src/templates/dashboard.html",
-              "src/templates/overview.html", "src/templates/repo_detail.html")
+              "src/templates/landing.html", "src/templates/overview.html",
+              "src/templates/repo_detail.html")
+
+_GRADE_MARKUP = 'class="grade'
+
+
+def _templates_rendering_grade_chips() -> list[str]:
+    """등급 칩을 «렌더하는» 템플릿 — 열거가 아니라 파생이다.
+
+    🔴 술어를 `grade-badge` 로 잡으면 안 된다 — 실측상 그 문자열은 production 템플릿
+    **0건**에 맞는다(`repo_insights` 계열의 다른 컴포넌트 이름이다). 실제 마크업은
+    `class="grade ...` 이고, 그 기준으로 세면 5건이다. 목록은 4건이었다 —
+    `landing.html` 이 밖에 있었고, 거기에 색 규칙이 생겨도 아무도 재지 않았다.
+    """
+    out = []
+    for path in sorted((ROOT / "src" / "templates").rglob("*.html")):
+        if _GRADE_MARKUP in path.read_text(encoding="utf-8"):
+            out.append(path.relative_to(ROOT).as_posix())
+    return out
+
+
+def test_every_template_rendering_a_grade_chip_is_in_the_list():
+    """🔴 목록 밖 템플릿의 등급 칩은 «아무도 안 잰다» — 열거 가드의 공통 결함이다."""
+    found = _templates_rendering_grade_chips()
+    assert found, "등급 칩을 쓰는 템플릿을 0개 찾았다 — 스캔이 죽었다(공허한 초록)"
+    missing = [f for f in found if f not in _TEMPLATES]
+    assert not missing, (
+        "등급 칩을 렌더하는데 `_TEMPLATES` 밖이다 — 하드코딩 색을 아무도 재지 않는다:\n  "
+        + "\n  ".join(missing))
+    stale = [f for f in _TEMPLATES if f not in found]
+    assert not stale, (
+        "목록에 있는데 등급 칩이 없다 — 낡은 항목은 거짓을 가르친다:\n  " + "\n  ".join(stale))
 
 
 def test_no_template_hardcodes_grade_chip_colours():

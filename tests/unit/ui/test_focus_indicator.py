@@ -78,11 +78,33 @@ def test_global_focus_ring_uses_the_focus_ring_token():
 # 🔴 포커스를 «지우는» 규칙은 같은 선택자에 대체 표시를 반드시 짝지어야 한다.
 #    현재 리포에서 `outline:none` 을 «포커스 상태에» 쓰는 자리를 모두 적는다.
 #    새 자리가 생기면 이 목록이 비어 있지 않게 되어 red 가 된다.
-_FOCUS_KILLERS = (
-    ("src/templates/repo_detail.html", r"\.dual-slider-track input\[type=range\]"),
-    ("src/templates/settings.html", r"input:focus, select:focus, textarea:focus"),
-    ("src/templates/analysis_detail.html", r"\.issue-modal-input:focus"),
-)
+# 🔴 손으로 적던 목록을 **없앤다.** 종전 판은 파일 3개를 열거하고 바로 위 주석이
+#    「새 자리가 생기면 red 가 된다」고 적었는데 그것은 **거짓**이었다 — 목록 밖 파일은
+#    읽지도 않으므로 새 자리는 영원히 안 보인다. 실측으로 그 시점에 이미 두 자리가
+#    목록 밖이었다(`src/static/css/components.css` 의 `.input:focus`,
+#    `src/templates/add_repo.html` 의 `.form-select:focus`). 둘 다 대체 표시가 있어서
+#    결함은 아니었지만, 대체가 지워져도 아무 시험도 울리지 않는 상태였다.
+#
+# 🔴 「`:focus` 규칙 안의 `outline:none` 만 본다」로 좁히면 안 된다 — 원래 이 가드를 만든
+#    결함(`repo_detail.html` 의 슬라이더)은 **비-focus 규칙**에 있었다. 그래서 규칙 종류를
+#    가리지 않고 `outline: none|0` 을 «전부» 걷는다.
+#
+# The old hand list's own comment lied: files outside it were never read. Derive instead,
+# and do not narrow to focus rules — the original defect lived in a non-focus rule.
+_FOCUS_KILLER_ROOTS = ("src/templates", "src/static/css")
+_OUTLINE_KILLED = re.compile(r"outline\s*:\s*(none|0)\b")
+
+
+def _focus_killer_files() -> list[str]:
+    """`outline: none|0` 을 선언하는 파일 전부 — 열거가 아니라 파생이다."""
+    out = []
+    for rel_root in _FOCUS_KILLER_ROOTS:
+        for path in sorted((ROOT / rel_root).rglob("*")):
+            if path.suffix not in (".html", ".css") or "dist" in path.parts:
+                continue
+            if _OUTLINE_KILLED.search(strip_css_comments(path.read_text(encoding="utf-8"))):
+                out.append(path.relative_to(ROOT).as_posix())
+    return out
 
 
 def _rules(src: str):
@@ -113,7 +135,9 @@ def test_outline_none_is_always_paired_with_a_replacement_indicator():
     """
     offenders = []
     checked = 0
-    for rel in sorted({p for p, _ in _FOCUS_KILLERS}):
+    files = _focus_killer_files()
+    assert files, "`outline: none` 을 쓰는 파일을 0개 찾았다 — 스캔이 죽었다(공허한 초록)"
+    for rel in files:
         src = read(rel)
         rules = _rules(src)
         killers = [(s.strip(), b) for s, b in rules
@@ -129,7 +153,11 @@ def test_outline_none_is_always_paired_with_a_replacement_indicator():
                 if (key in s or (tag and _GENERIC_INPUT_FOCUS.search(s)
                                  and tag.group(1) in s))
                 and re.search(r":focus(-visible)?", s)
-                and (re.search(r"outline\s*:\s*(?!none|0\b)", b)
+                # 🔴 `(?!none|0\b)` 만으로는 `outline: none` 이 **자기 자신의 대체**로
+                #    인정된다 — `\s*` 가 0글자로 물러나면 lookahead 가 공백 위에서
+                #    성립한다(실측: `outline: none;` → True, `outline: 0;` → True).
+                #    뒤에 «공백 아닌 글자» 를 요구해 그 되돌림을 막는다.
+                and (re.search(r"outline\s*:\s*(?!none\b|0\b)\S", b)
                      or "box-shadow" in b or "border-color" in b
                      or re.search(r"\bborder\s*:", b))
             ]

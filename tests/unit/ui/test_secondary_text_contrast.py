@@ -16,6 +16,8 @@ guards that catch a revert where e2e is not run.
 import pathlib
 import re
 
+from ._contrast import THEMES
+
 _ROOT = pathlib.Path(__file__).resolve().parents[3]
 
 # WCAG 2.1 SC 1.4.3 — 본문 크기 글자. `--text-2`·`--text-3` 은 10~13px 에만 쓰인다.
@@ -26,7 +28,7 @@ _AA = 4.5
 # `test_faint_text_is_not_painted_on_chip_surfaces` 가 그것을 따로 지킨다.
 _GROUNDS = ("--bg-base", "--bg-canvas", "--bg-card", "--bg-nav", "--bg-elevated")
 
-_THEMES = ("dark", "light", "pastel", "catppuccin")
+
 
 
 def _read(rel: str) -> str:
@@ -152,7 +154,7 @@ def test_faint_text_token_meets_aa_on_every_ground():
     """
     src = _read("src/static/css/tokens.css")
     failures = []
-    for theme in _THEMES:
+    for theme in THEMES:
         block = _theme_block(src, theme)
         fg = _parse_color(_decl(block, "--text-3"))
         grounds = {**_grounds(block), **_extra_grounds(theme)}
@@ -172,7 +174,7 @@ def test_secondary_text_token_meets_aa_on_every_ground():
     """
     src = _read("src/static/css/tokens.css")
     failures = []
-    for theme in _THEMES:
+    for theme in THEMES:
         block = _theme_block(src, theme)
         fg = _parse_color(_decl(block, "--text-2"))
         for name, bg in {**_grounds(block), **_extra_grounds(theme)}.items():
@@ -189,7 +191,7 @@ def test_text_hierarchy_stays_visibly_separated():
     카드 위 대비가 5.58 대 5.40(x1.03)이 되어 두 층이 사실상 한 색이 된다.
     """
     src = _read("src/static/css/tokens.css")
-    for theme in _THEMES:
+    for theme in THEMES:
         block = _theme_block(src, theme)
         card = _grounds(block)["--bg-card"]
         r1, r2, r3 = (
@@ -351,7 +353,7 @@ def test_card_surfaces_are_opaque_so_text_has_a_fixed_background():
     """
     src = _read("src/static/css/tokens.css")
     offenders = []
-    for theme in _THEMES:
+    for theme in THEMES:
         block = _theme_block(src, theme)
         for name in _CARD_SURFACES:
             value = _decl(block, name)

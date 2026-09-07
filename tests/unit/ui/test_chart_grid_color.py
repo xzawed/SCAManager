@@ -13,14 +13,51 @@ catppuccin(`rgba(205,214,244,0.08)`)에서는 무효라, 격자선이 직전 str
 """
 import re
 
-from ._contrast import THEMES, decl, parse_color, read, resolve, strip_css_comments, theme_block
+from ._contrast import (
+    ROOT, THEMES, decl, parse_color, read, resolve, strip_css_comments, theme_block,
+)
 
-# 차트가 있는 템플릿 — 이 목록이 비면 테스트가 공허하다
+# 격자선이 있는 차트를 그리는 템플릿 — 이 목록이 비면 테스트가 공허하다
 _CHART_TEMPLATES = (
     "src/templates/dashboard.html",
     "src/templates/repo_detail.html",
     "src/templates/analysis_detail.html",
 )
+
+
+def _templates_drawing_axed_charts() -> list[str]:
+    """축(`scales`)을 선언하는 `new Chart(` 가 있는 템플릿 — 열거가 아니라 파생이다.
+
+    🔴 축이 «있는» 것만 대상이다. `repo_insights.html` 은 `doughnut` 이라 격자선 자체가
+    없고(실측: `scales` 미선언), 그것까지 요구하면 정당한 차트가 거짓 red 를 받는다.
+    반대로 새 `line`/`bar` 차트가 생기면 `scales` 를 선언하므로 자동으로 걸린다.
+    """
+    out = []
+    for path in sorted((ROOT / "src" / "templates").rglob("*.html")):
+        text = path.read_text(encoding="utf-8")
+        if "new Chart(" in text and "scales" in text:
+            out.append(path.relative_to(ROOT).as_posix())
+    return out
+
+
+def test_every_axed_chart_template_is_in_the_list():
+    """🔴 목록에 없는 템플릿의 차트는 «아무도 안 잰다» — 열거 가드의 공통 결함이다.
+
+    실측: 이 리포에서 `new Chart(` 는 4개 파일에 있고 그중 3개가 `scales` 를 선언한다.
+    목록이 손으로 유지되면 네 번째 축 차트가 생겨도 조용히 밖에 남는다.
+
+    A guard cannot see a surface that is not in its list; derive the set and compare.
+    """
+    found = _templates_drawing_axed_charts()
+    assert found, "축 있는 차트를 0개 찾았다 — 스캔이 죽었다(공허한 초록)"
+    missing = [f for f in found if f not in _CHART_TEMPLATES]
+    assert not missing, (
+        "축 있는 차트가 `_CHART_TEMPLATES` 밖에 있다 — 격자선을 아무도 재지 않는다:\n  "
+        + "\n  ".join(missing))
+    stale = [f for f in _CHART_TEMPLATES if f not in found]
+    assert not stale, (
+        "목록에 있는데 축 차트가 없다 — 낡은 항목은 다음 사람에게 거짓을 가르친다:\n  "
+        + "\n  ".join(stale))
 
 
 def test_chart_grid_color_never_uses_string_concatenation():
