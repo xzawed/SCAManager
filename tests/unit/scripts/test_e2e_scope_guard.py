@@ -18,6 +18,7 @@ e2e 초록에는 공허화 경로가 **둘** 있었다.
 from __future__ import annotations
 
 import ast
+import re
 import sys
 from pathlib import Path
 
@@ -153,24 +154,79 @@ def test_scope_guard_is_wired_into_the_local_runner():
     )
 
 
-def test_min_passed_gate_is_wired_into_ci():
-    """🔴 **전건 skip 은 수집 baseline 으로 못 잡는다** — 통과 하한이 그 유일한 관측면.
+_E2E_RUN = re.compile(r"^\s*run:\s*(.*pytest\s+e2e/.*)$", re.M)
 
-    실측: 121건을 전부 skip 시키면 baseline 가드는 통과하고(수집 121 유지) pytest 는
-    exit 0 이다. `--e2e-min-passed` 가 있어야 red 가 된다.
-    """
+
+def _ci_e2e_command() -> str:
+    """CI 의 e2e 실행 «명령 줄» — 파일 전체가 아니라 그 줄만 판정 대상이다."""
     ci = (_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    assert "--e2e-min-passed=" in ci, "e2e 실행에 통과 건수 하한이 없다 — 전건 skip 이 초록"
+    m = _E2E_RUN.search(ci)
+    assert m, "ci.yml 에서 e2e 실행 줄을 찾지 못했다 — 못 재면 초록이 아니라 red 다"
+    return m.group(1)
 
 
-def test_min_passed_option_exists_in_conftest():
-    """옵션이 실제로 정의돼 있어야 CI 인자가 의미를 갖는다(정의 ≠ 사용의 역방향)."""
+def test_skip_gate_is_wired_into_ci():
+    """🔴 **전건 skip 은 수집 baseline 으로 못 잡는다** — skip 집합이 그 유일한 관측면.
+
+    실측: 수집된 것을 전부 skip 시켜도 baseline 가드는 통과하고 pytest 는 exit 0 이다.
+
+    🔴 부분문자열로 재면 안 된다. 종전 판은 `"--e2e-min-passed=" in ci` 였고,
+    그러면 `--e2e-min-passed=0` — 즉 게이트를 **완전히 끈 상태** — 도 통과한다
+    (conftest 가 `if not floor: return` 이었다). 값을 갖는 형태 자체를 금지하고,
+    실행 줄에서 **불리언 플래그**를 확인한다.
+    """
+    cmd = _ci_e2e_command()
+    assert "--e2e-strict-skips" in cmd, (
+        f"e2e 실행에 skip 집합 게이트가 없다 — 전건 skip 이 초록이다: {cmd}")
+    assert not re.search(r"--e2e-strict-skips\s*=", cmd), (
+        f"불리언 플래그에 값을 붙였다 — 값 형태는 «0 으로 끄기» 를 허용한다: {cmd}")
+    assert "--e2e-min-passed" not in cmd, (
+        f"래칫되지 않는 옛 하한 인자가 남아 있다: {cmd}")
+
+
+def test_skip_gate_option_exists_in_conftest():
+    """옵션이 실제로 정의돼 있어야 CI 인자가 의미를 갖는다(정의 ≠ 사용의 역방향).
+
+    🔴 `action="store_true"` 여야 한다 — `type=int` 면 `=0` 으로 끌 수 있다.
+    """
     conftest = (_ROOT / "e2e" / "conftest.py").read_text(encoding="utf-8")
     tree = ast.parse(conftest)
     names = {n.name for n in ast.walk(tree)
              if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
-    assert "pytest_addoption" in names, "--e2e-min-passed 옵션 정의가 없다"
-    assert "pytest_sessionfinish" in names, "하한을 판정하는 훅이 없다"
+    assert "pytest_addoption" in names, "--e2e-strict-skips 옵션 정의가 없다"
+    assert "pytest_sessionfinish" in names, "skip 집합을 판정하는 훅이 없다"
+    assert 'action="store_true"' in conftest, (
+        "게이트 플래그가 불리언이 아니다 — 값을 받으면 0 으로 끌 수 있다")
+
+
+def test_skip_allowlist_is_committed_and_matches_the_measured_skip():
+    """🔴 허용 집합은 «숫자» 가 아니라 커밋된 **집합**이다.
+
+    종전 처방(통과 건수 하한)은 손으로 적은 상수라 스위트가 자라도 따라가지 않았다 —
+    실측: 수집이 122→200 으로 는 동안 CI 는 100 에 머물러 분해능이 82%→50% 로 붕괴했다.
+    여유 칸을 둔 파생값도 같은 결함을 다시 만든다. 그래서 여유 없이 «이것만» 을 적는다.
+
+    이 시험은 목록이 **비지 않았고 실재하는 nodeid** 를 가리키는지만 본다 — 개수를
+    못박지 않는다(개수 스냅샷은 정당한 추가·삭제를 벌한다).
+    """
+    path = _ROOT / "e2e" / "SKIP_ALLOWLIST"
+    assert path.exists(), "e2e/SKIP_ALLOWLIST 가 없다 — 게이트가 판정 불가로 red 가 된다"
+    entries = [ln.split("#", 1)[0].strip() for ln in
+               path.read_text(encoding="utf-8").splitlines()]
+    entries = [e for e in entries if e]
+    assert entries, "허용 목록이 비었다 — 실측상 정당한 skip 이 1건 있으므로 비면 안 된다"
+    for entry in entries:
+        rel, _, name = entry.partition("::")
+        assert name, f"nodeid 형식이 아니다: {entry!r}"
+        # 🔴 `e2e/` 접두사 금지 — `e2e/pytest.ini` 로 rootdir 이 `e2e/` 라 pytest 가 보고하는
+        #    nodeid 는 `test_x.py::test_y` 다. 접두사를 붙이면 영영 매칭되지 않아 정당한
+        #    skip 이 «허용되지 않음» 으로 red 가 된다(실측으로 그 형태를 한 번 밟았다).
+        assert not rel.startswith("e2e/"), (
+            f"nodeid 에 `e2e/` 접두사를 붙였다 — rootdir 이 e2e/ 라 매칭되지 않는다: {entry}")
+        target = _ROOT / "e2e" / rel
+        assert target.exists(), f"허용 목록이 없는 파일을 가리킨다: e2e/{rel}"
+        assert f"def {name}(" in target.read_text(encoding="utf-8"), (
+            f"허용 목록의 시험이 실재하지 않는다: {entry} — 낡은 예외는 게이트를 넓힌다")
 
 
 # ── ③ 세 번째 공허화 경로: 무조건 skip (#1587) ────────────────────────────────

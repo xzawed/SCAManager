@@ -784,7 +784,7 @@ jobs:
       # `--strict-markers` 는 이 축을 못 본다. 통과 건수 하한이 유일한 관측면이다.
       # A collection-count baseline does not stop mass-skip: pytest exits 0 when all skip.
       - name: Run E2E suite
-        run: python -m pytest e2e/ -q -rs -p no:asyncio --timeout=120 --e2e-min-passed=100
+        run: python -m pytest e2e/ -q -rs -p no:asyncio --timeout=120 --e2e-strict-skips
 
       # 🔴 실패 시 trace/스크린샷을 남긴다 — 이게 없어서 R52 진단이 **로그 고고학**이
       #    됐다(요약이 잘린 텍스트 로그만으로 30건을 역추적). 다음 회귀는 그러지 않도록.
