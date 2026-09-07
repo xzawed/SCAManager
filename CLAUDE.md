@@ -60,6 +60,8 @@ py -3 -m pytest e2e/ -p no:asyncio  # E2E (tests/ 와 같이 돌리지 않는다
 
 `alembic/versions/` · `src/templates/*.html` · `railway.toml` · `alembic.ini` 은 테스트 불가
 환경에서 훅이 차단한다(로컬 PC·Codespaces 는 허용).
+🔴 차단은 `Write|Edit|MultiEdit` 에만 걸린다. **Bash 로 고치면 막히지 않는다** — 같은 조건에서
+PostToolUse 가 «탐지해 알릴» 뿐이고 되돌리지도 않는다.
 
 ## 코드 주석
 
