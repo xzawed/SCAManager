@@ -59,6 +59,16 @@
             "timeout": 90
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY ${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/detect_protected_bash_write.py",
+            "timeout": 30
+          }
+        ]
       }
     ]
   }
