@@ -225,7 +225,14 @@ CLAUDE_MODEL_PRICING: dict[str, dict[str, float]] = {
     **CLAUDE_RETIRED_MODEL_PRICING,
 }
 
+# 기본 티어 모델 — 미등록 id 의 요율을 여기서 «파생» 한다.
+# 🔴 값을 손으로 한 번 더 적지 않는다. 예전에는 `{"input": 3.00, "output": 15.00}` 리터럴이라,
+#    카탈로그 요율이 바뀌어도 이 줄만 옛값으로 남을 수 있었다. 이제 없는 id 를 쓰면
+#    import 시점에 KeyError 로 죽는다 — 조용히 틀린 값을 쓰는 것보다 낫다.
+# Derive the fallback from the catalogue instead of restating the numbers.
+CLAUDE_DEFAULT_MODEL_ID = "claude-sonnet-5"
+
 # 모델 미등록 시 fallback — 기록 경로의 `_DEFAULT_FAMILY`(sonnet) 와 «같은 값이어야» 한다.
 # 다르면 같은 호출이 화면과 DB 에서 서로 다른 비용을 갖는다(test_pricing_parity 가 차단).
 # Must equal the recording path's default family rate, or screen and DB disagree.
-CLAUDE_PRICING_FALLBACK: dict[str, float] = {"input": 2.00, "output": 10.00}
+CLAUDE_PRICING_FALLBACK: dict[str, float] = dict(CLAUDE_MODEL_PRICING[CLAUDE_DEFAULT_MODEL_ID])
