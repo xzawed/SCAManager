@@ -20,7 +20,7 @@ os.environ["GITHUB_CLIENT_SECRET"] = "test-github-client-secret"
 os.environ["SESSION_SECRET"] = "test-session-secret-32-chars-long!"
 # Claude 모델 기본값 명시 — .env.example 이 빈값으로 설정되어 Python default 를 override 하는 버그 방지
 # Explicitly set Claude model defaults — .env.example sets empty values that would override Python defaults
-os.environ["CLAUDE_REVIEW_MODEL"] = "claude-sonnet-4-6"
+os.environ["CLAUDE_REVIEW_MODEL"] = "claude-sonnet-5"
 os.environ["CLAUDE_INSIGHT_MODEL"] = "claude-haiku-4-5"
 # 테스트 환경 = 개발 모드 명시 opt-out — API_KEY 미설정 시 REST API fail-closed(503) 기본값을
 # 우회해 기존 endpoint 테스트(repos/stats 등 키 없이 200 의존)를 보존한다.

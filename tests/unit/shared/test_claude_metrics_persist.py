@@ -15,7 +15,7 @@ from src.shared.claude_metrics import log_claude_api_call
 
 def test_persists_via_helper():
     with patch("src.shared.claude_metrics._persist_cost") as p:
-        log_claude_api_call(model="claude-sonnet-4-6", duration_ms=10, input_tokens=1,
+        log_claude_api_call(model="claude-sonnet-5", duration_ms=10, input_tokens=1,
                             output_tokens=1, status="success", repo_id=3)
         assert p.called
         assert p.call_args.kwargs["repo_id"] == 3
@@ -68,15 +68,15 @@ def test_real_wire_writes_row_without_patching_persist_cost(monkeypatch):
     monkeypatch.setattr("src.database.WorkerSessionLocal", real_session_local)
 
     log_claude_api_call(
-        model="claude-sonnet-4-6", duration_ms=10, input_tokens=100, output_tokens=50,
+        model="claude-sonnet-5", duration_ms=10, input_tokens=100, output_tokens=50,
         status="success", repo_id=1, user_id=1,
     )
 
     with real_session_local() as check_db:
         rows = check_db.query(ClaudeApiCall).all()
         assert len(rows) == 1
-        assert rows[0].model == "claude-sonnet-4-6"
+        assert rows[0].model == "claude-sonnet-5"
         # sonnet: (100*3.0 + 50*15.0) / 1_000_000 = 0.00105
-        assert rows[0].cost_usd == pytest.approx(0.00105)
+        assert rows[0].cost_usd == pytest.approx(0.0007)  # 100×$2 + 50×$10 = 700 µ$
         assert rows[0].repo_id == 1
         assert rows[0].user_id == 1

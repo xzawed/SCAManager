@@ -2,10 +2,12 @@
 
 Phase E.2b — Claude API cost/latency/token 추적 기반.
 
-Anthropic API 가격 정책 (USD per 1M tokens, **2026-07 기준**):
-  - Opus : $5 input / $25 output   (Opus 4.8/4.7/4.6 — 분기 재확인 2026-07, 이전 $15/$75 대비 3× 인하)
-  - Sonnet: $3 input / $15 output  ← 기본값 (claude-sonnet-4-6 등)
-  - Haiku : $1 input / $5 output
+Anthropic API 가격 정책 (USD per 1M tokens, **2026-09 기준**):
+  - Fable : $10 input / $50 output (Fable 5.1 — 최고 난도 추론)
+  - Opus  : $5 input / $25 output  (Opus 5/4.8/4.7 — 2026-07 에 $15/$75 대비 3× 인하)
+  - Sonnet: $2 input / $10 output  ← 기본값 (claude-sonnet-5). 🔴 4.6 세대는 $3/$15 였다 — 세대가
+            오르며 «내렸다». ID 만 올리고 요율을 두면 추정이 50% 과대가 된다.
+  - Haiku : $1 input / $5 output   (Haiku 4.5 — 현행 최신)
 
 ⚠️ **정확도 경고**:
   - 가격은 Anthropic 측 변경 가능 — **분기별 (3개월) 재확인 필수**.
@@ -15,6 +17,8 @@ Anthropic API 가격 정책 (USD per 1M tokens, **2026-07 기준**):
 """
 import inspect
 import logging
+
+from src.constants import CLAUDE_RETIRED_MODEL_PRICING
 
 logger = logging.getLogger(__name__)
 
@@ -46,16 +50,20 @@ async def aclose_anthropic_client(client) -> None:
     if inspect.isawaitable(result):
         await result
 
-# 모델 패밀리별 가격 (USD per 1M tokens, input/output) — 2026-07 기준
-# Model family pricing (USD per 1M tokens, input/output) — 2026-07 basis
+# 모델 패밀리별 가격 (USD per 1M tokens, input/output) — 2026-09 기준
+# Model family pricing (USD per 1M tokens, input/output) — 2026-09 basis
 # 🔴 PARITY GUARD: 본 dict 가 가격 SSOT. 변경 시 constants.CLAUDE_MODELS + i18n model_hint(en/ko/ja)
 #   3곳 동시 수정 의무 (tests/unit/shared/test_pricing_parity.py 가 drift 를 CI 에서 차단 — 정책 4).
 # 🔴 PARITY GUARD: this dict is the pricing SSOT. On change, also update constants.CLAUDE_MODELS and
 #   the i18n model_hint (en/ko/ja); test_pricing_parity.py blocks any drift in CI (policy 4).
 _PRICING_USD_PER_MTOK = {
-    "opus": (5.0, 25.0),    # Opus 4.8/4.7/4.6 — 이전 (15.0, 75.0) 대비 3× 인하 (2026-07 확인)
+    "fable": (10.0, 50.0),  # Fable 5.1 — 최고 난도 추론·장기 에이전틱
+    "opus": (5.0, 25.0),    # Opus 5/4.8/4.7 — 이전 (15.0, 75.0) 대비 3× 인하 (2026-07 확인)
                              # Previously (15.0, 75.0) — 3× price drop confirmed 2026-07
-    "sonnet": (3.0, 15.0),
+    # 🔴 Sonnet 5 는 (2.0, 10.0) 이다 — 4.6 세대의 (3.0, 15.0) 이 아니다. 모델 ID 만
+    #    올리고 이 값을 두면 비용 추정이 50% 과대가 된다(2026-09 공식 문서 실측).
+    #    Sonnet 5 is $2/$10, not the 4.6-generation $3/$15.
+    "sonnet": (2.0, 10.0),
     "haiku": (1.0, 5.0),
 }
 _DEFAULT_FAMILY = "sonnet"  # 미지 모델 → sonnet 가격으로 보수적 추정
@@ -85,12 +93,20 @@ def estimate_claude_cost_usd(
     cache_read = input rate × 0.1 (10× cheaper) / cache_creation = input rate × 1.25.
     """
     model_lower = (model or "").lower()
-    family = _DEFAULT_FAMILY
-    for key in _PRICING_USD_PER_MTOK:
-        if key in model_lower:
-            family = key
-            break
-    in_rate, out_rate = _PRICING_USD_PER_MTOK[family]
+    # 🔴 family 요율(부분문자열)보다 «정확한 모델 id» 가 먼저다. family 는 세대를 구분하지
+    #    못해서, 카탈로그에서 내린 Sonnet 4.6($3/$15)을 현행 Sonnet 5($2/$10)로 매긴다.
+    #    저장된 `RepoConfig.review_model` 은 검증 없이 흐르므로 이 경로가 실제로 열려 있다.
+    #    Exact id wins over the substring family match, which cannot tell generations apart.
+    retired = CLAUDE_RETIRED_MODEL_PRICING.get(model_lower)
+    if retired is not None:
+        in_rate, out_rate = retired["input"], retired["output"]
+    else:
+        family = _DEFAULT_FAMILY
+        for key in _PRICING_USD_PER_MTOK:
+            if key in model_lower:
+                family = key
+                break
+        in_rate, out_rate = _PRICING_USD_PER_MTOK[family]
     return (
         input_tokens * in_rate
         + output_tokens * out_rate
@@ -167,7 +183,7 @@ def log_claude_api_call(  # pylint: disable=too-many-arguments
     가 파싱할 수 있도록 한다.
 
     Args:
-        model: 호출된 모델 ID (예: "claude-sonnet-4-6")
+        model: 호출된 모델 ID (예: "claude-sonnet-5")
         duration_ms: API 호출 전체 소요 시간 (ms)
         input_tokens / output_tokens: 입력/출력 토큰 수.
             🔴 **에러라고 0 을 넘기지 말 것** (backlog R65). API 가 응답을 돌려준 뒤

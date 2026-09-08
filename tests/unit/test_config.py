@@ -569,7 +569,7 @@ def test_is_production_development_does_not_weaken_https():
 def test_blank_model_env_falls_back_to_default(monkeypatch):
     """🔴 `CLAUDE_REVIEW_MODEL=` (값 없음)이 기본값을 빈 문자열로 덮으면 안 된다.
 
-    실측 사고: `.env` 의 빈 값이 `claude-sonnet-4-6` 을 `""` 로 덮어 모든 AI 리뷰가
+    실측 사고: `.env` 의 빈 값이 기본 모델을 `""` 로 덮어 모든 AI 리뷰가
     `400 model: String should have at least 1 character` → `api_error` 였다.
     pydantic-settings 는 `""` 도 **제공된 값**으로 보기 때문이다.
 
@@ -580,15 +580,23 @@ def test_blank_model_env_falls_back_to_default(monkeypatch):
     monkeypatch.setenv("CLAUDE_REVIEW_MODEL", "")
     monkeypatch.setenv("CLAUDE_INSIGHT_MODEL", "   ")
     s = cfg.Settings()
-    assert s.claude_review_model == "claude-sonnet-4-6"
+    assert s.claude_review_model == "claude-sonnet-5"
     assert s.claude_insight_model == "claude-haiku-4-5"
 
 
 def test_explicit_model_env_still_wins(monkeypatch):
-    """폴백이 정상 오버라이드까지 삼키면 안 된다 — 가드가 기능을 죽이는 것 방지."""
+    """폴백이 정상 오버라이드까지 삼키면 안 된다 — 가드가 기능을 죽이는 것 방지.
+
+    🔴 오버라이드 값은 **기본값과 달라야** 한다. 한때 여기 쓰던 값이 기본값으로 승격되면서
+    이 시험은 「오버라이드가 무시돼도 통과」하는 상태가 됐다 — 기본 모델을 올릴 때마다
+    이 대조를 다시 확인할 것.
+    The override must differ from the default, or this test passes even when it is ignored.
+    """
     import src.config as cfg  # noqa: PLC0415  # 파일 관용구 — dual-import 가드 준수
-    monkeypatch.setenv("CLAUDE_REVIEW_MODEL", "claude-sonnet-5")
-    assert cfg.Settings().claude_review_model == "claude-sonnet-5"
+    assert cfg.Settings.model_fields["claude_review_model"].default != "claude-opus-5", (
+        "오버라이드 값이 기본값과 같아졌다 — 이 시험은 아무것도 재지 않는다")
+    monkeypatch.setenv("CLAUDE_REVIEW_MODEL", "claude-opus-5")
+    assert cfg.Settings().claude_review_model == "claude-opus-5"
 
 
 # ---------------------------------------------------------------------------

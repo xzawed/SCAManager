@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     # 경계 밴드 폭(점) — >= 1 강제 (0/음수면 모든 score 가 밴드 밖 = 검증 silent 무효화 방지)
     # Band width in points — enforce >= 1 (0/negative would silently disable verification while key set)
     merge_verifier_band: int = Field(default=MERGE_VERIFIER_BAND_DEFAULT, ge=1)
-    claude_review_model: str = "claude-sonnet-4-6"  # AI 코드리뷰 모델 (환경변수 CLAUDE_REVIEW_MODEL로 오버라이드)
+    claude_review_model: str = "claude-sonnet-5"  # AI 코드리뷰 모델 (환경변수 CLAUDE_REVIEW_MODEL로 오버라이드)
     # Phase 2 d-🅓 (사이클 74) — Insight narrative 영역 한정 모델 (default Haiku — 67% 비용 절감)
     # AI 리뷰 (review_code) 는 claude_review_model (Sonnet) 보존 — 명시 제외 영역 (메모리 feedback-ai-review-quality-protect.md)
     # Phase 2 d-🅓 (Cycle 74) — model for Insight narrative only (default Haiku — 67% cheaper).
@@ -220,7 +220,7 @@ class Settings(BaseSettings):
         """빈 환경변수를 **미설정**으로 취급한다 — 빈 값이 기본값을 덮지 않게.
 
         🔴 실측 사고 (2026-08-05, 라이브 호출로만 발견): `.env` 의 `CLAUDE_REVIEW_MODEL=`
-        (값 없음)이 기본값 `claude-sonnet-4-6` 을 **빈 문자열로 덮어써**, 모든 AI 리뷰가
+        (값 없음)이 기본값 `claude-sonnet-5` 를 **빈 문자열로 덮어써**, 모든 AI 리뷰가
         `400 model: String should have at least 1 character` 로 죽고 `api_error` 로
         기록됐다. pydantic-settings 는 `""` 도 **제공된 값**으로 보기 때문이다.
 

@@ -437,7 +437,7 @@
     "show_value": "値を表示",
     "save_toast_ok": "✅ 設定が保存されました。",
     "save_toast_err": "❌ 保存に失敗しました。承認基準点が却下基準点より低いです。",
-    "model_hint": "AIレビューモデル。Haiku 高速・低コスト($1/1M)・Sonnet バランス($3/1M)・Opus 高品質($5/1M)。空欄でグローバルデフォルト(claude-sonnet-4-6)。※ 価格はAnthropic公式基準。"
+    "model_hint": "AIレビューモデル。Haiku 高速・低コスト($1/1M)・Sonnet バランス($2/1M)・Opus 高品質($5/1M)・Fable 高難度推論($10/1M)。空欄でグローバルデフォルト(claude-sonnet-5)。※ 価格はAnthropic公式基準。"
   },
   "settings_page": {
     "title_prefix": "設定",
