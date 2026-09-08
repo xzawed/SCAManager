@@ -67,7 +67,7 @@ def _api_cost_estimate(stats: dict[str, int | float]) -> dict[str, Any]:
     output_estimate = input_tok // 8
 
     cost_usd = estimate_claude_cost_usd(
-        model="claude-sonnet-4-6",
+        model="claude-sonnet-5",
         input_tokens=input_tok,
         output_tokens=output_estimate,
         cache_read_tokens=cache_read,
@@ -79,7 +79,7 @@ def _api_cost_estimate(stats: dict[str, int | float]) -> dict[str, Any]:
         "output_estimate": output_estimate,
         "cache_read_tokens": cache_read,
         "cache_creation_tokens": cache_creation,
-        "model": "claude-sonnet-4-6 (assumed default)",
+        "model": "claude-sonnet-5 (assumed default)",
     }
 
 

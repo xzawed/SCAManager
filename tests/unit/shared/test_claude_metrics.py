@@ -14,21 +14,21 @@ class TestEstimateCostUsd:
     """estimate_claude_cost_usd — 모델별 가격 정책 (USD/MTok)"""
 
     def test_sonnet_rates(self):
-        # sonnet: $3/M input, $15/M output
+        # sonnet 5: $2/M input, $10/M output — 4.6 세대($3/$15)보다 «싸다»
         cost = claude_metrics.estimate_claude_cost_usd(
-            model="claude-sonnet-4-6",
+            model="claude-sonnet-5",
             input_tokens=1_000_000,
             output_tokens=0,
         )
-        assert cost == pytest.approx(3.0)
+        assert cost == pytest.approx(2.0)
 
     def test_sonnet_output_cost(self):
         cost = claude_metrics.estimate_claude_cost_usd(
-            model="claude-sonnet-4-6",
+            model="claude-sonnet-5",
             input_tokens=0,
             output_tokens=1_000_000,
         )
-        assert cost == pytest.approx(15.0)
+        assert cost == pytest.approx(10.0)
 
     def test_opus_rates(self):
         # opus: $5/M input, $25/M output (2026-07 기준 — 이전 $15/$75 대비 3× 인하)
@@ -56,11 +56,11 @@ class TestEstimateCostUsd:
             input_tokens=1_000_000,
             output_tokens=1_000_000,
         )
-        assert cost == pytest.approx(3.0 + 15.0)
+        assert cost == pytest.approx(2.0 + 10.0)
 
     def test_zero_tokens_returns_zero(self):
         cost = claude_metrics.estimate_claude_cost_usd(
-            model="claude-sonnet-4-6",
+            model="claude-sonnet-5",
             input_tokens=0,
             output_tokens=0,
         )
@@ -69,12 +69,12 @@ class TestEstimateCostUsd:
     def test_realistic_review_cost(self):
         # 실제 리뷰 1건: ~8k input + 1k output (sonnet)
         cost = claude_metrics.estimate_claude_cost_usd(
-            model="claude-sonnet-4-6",
+            model="claude-sonnet-5",
             input_tokens=8000,
             output_tokens=1000,
         )
-        # 8000 * 3 + 1000 * 15 = 24000 + 15000 = 39000 µ$ = $0.039
-        assert cost == pytest.approx(0.039)
+        # 8000 * 2 + 1000 * 10 = 16000 + 10000 = 26000 µ$ = $0.026
+        assert cost == pytest.approx(0.026)
 
     # ── Phase 1 (g-G1) — cache 비용 모델 반영 ───────────────────────────
     # cache_read = input 정가의 1/10 (Anthropic 정책 — 5분 ephemeral)
@@ -82,45 +82,45 @@ class TestEstimateCostUsd:
     def test_cache_read_costs_one_tenth_of_input(self):
         """cache_read_tokens 는 input rate × 0.1 비용 (10배 절감)."""
         cost = claude_metrics.estimate_claude_cost_usd(
-            model="claude-sonnet-4-6",
+            model="claude-sonnet-5",
             input_tokens=0,
             output_tokens=0,
             cache_read_tokens=1_000_000,
         )
-        # sonnet input $3/M × 0.1 = $0.30
-        assert cost == pytest.approx(0.30)
+        # sonnet input $2/M × 0.1 = $0.20
+        assert cost == pytest.approx(0.20)
 
     def test_cache_creation_costs_one_quarter_more_than_input(self):
         """cache_creation_tokens 는 input rate × 1.25 비용 (캐시 등록)."""
         cost = claude_metrics.estimate_claude_cost_usd(
-            model="claude-sonnet-4-6",
+            model="claude-sonnet-5",
             input_tokens=0,
             output_tokens=0,
             cache_creation_tokens=1_000_000,
         )
-        # sonnet input $3/M × 1.25 = $3.75
-        assert cost == pytest.approx(3.75)
+        # sonnet input $2/M × 1.25 = $2.50
+        assert cost == pytest.approx(2.50)
 
     def test_cache_fields_default_zero_backwards_compat(self):
         """cache_*_tokens 인자 부재 시 기존 동작 보존 (backward compat)."""
         cost = claude_metrics.estimate_claude_cost_usd(
-            model="claude-sonnet-4-6",
+            model="claude-sonnet-5",
             input_tokens=8000,
             output_tokens=1000,
         )
-        assert cost == pytest.approx(0.039)
+        assert cost == pytest.approx(0.026)
 
     def test_combined_cost_with_cache(self):
         """cache + input + output 합산 — 운영 cache hit 시나리오."""
         # 실제: 5000 cache_read (재사용) + 3000 input (신규) + 1000 output
         cost = claude_metrics.estimate_claude_cost_usd(
-            model="claude-sonnet-4-6",
+            model="claude-sonnet-5",
             input_tokens=3000,
             output_tokens=1000,
             cache_read_tokens=5000,
         )
-        # 5000 * 0.30 + 3000 * 3.0 + 1000 * 15.0 = 1500 + 9000 + 15000 = 25500 µ$
-        assert cost == pytest.approx(0.0255)
+        # 5000 * 0.20 + 3000 * 2.0 + 1000 * 10.0 = 1000 + 6000 + 10000 = 17000 µ$
+        assert cost == pytest.approx(0.017)
 
 
 class TestCacheStats:
@@ -144,7 +144,7 @@ class TestCacheStats:
     def test_log_call_accumulates_counters(self, caplog):
         with caplog.at_level(logging.INFO, logger="src.shared.claude_metrics"):
             claude_metrics.log_claude_api_call(
-                model="claude-sonnet-4-6", duration_ms=100,
+                model="claude-sonnet-5", duration_ms=100,
                 input_tokens=3000, output_tokens=500, status="success",
                 cache_read_tokens=5000, cache_creation_tokens=0,
             )
@@ -162,7 +162,7 @@ class TestCacheStats:
             # 5 consecutive creation > 0 + read == 0 → WARNING expected.
             for _ in range(5):
                 claude_metrics.log_claude_api_call(
-                    model="claude-sonnet-4-6", duration_ms=100,
+                    model="claude-sonnet-5", duration_ms=100,
                     input_tokens=1000, output_tokens=500, status="success",
                     cache_read_tokens=0, cache_creation_tokens=600,
                 )
@@ -187,7 +187,7 @@ class TestLogClaudeApiCall:
     def test_success_log_contains_core_fields(self, caplog):
         with caplog.at_level(logging.INFO, logger="src.shared.claude_metrics"):
             claude_metrics.log_claude_api_call(
-                model="claude-sonnet-4-6",
+                model="claude-sonnet-5",
                 duration_ms=1234.5,
                 input_tokens=8000,
                 output_tokens=1000,
@@ -198,7 +198,7 @@ class TestLogClaudeApiCall:
         msg = record.getMessage()
         # 핵심 필드 모두 포함
         # All essential fields must be present.
-        assert "claude-sonnet-4-6" in msg
+        assert "claude-sonnet-5" in msg
         assert "1234" in msg or "1235" in msg  # duration ms
         assert "8000" in msg  # input tokens
         assert "1000" in msg  # output tokens
@@ -207,7 +207,7 @@ class TestLogClaudeApiCall:
     def test_log_includes_cost_estimate(self, caplog):
         with caplog.at_level(logging.INFO, logger="src.shared.claude_metrics"):
             claude_metrics.log_claude_api_call(
-                model="claude-sonnet-4-6",
+                model="claude-sonnet-5",
                 duration_ms=1000,
                 input_tokens=8000,
                 output_tokens=1000,
@@ -220,7 +220,7 @@ class TestLogClaudeApiCall:
     def test_log_error_status(self, caplog):
         with caplog.at_level(logging.WARNING, logger="src.shared.claude_metrics"):
             claude_metrics.log_claude_api_call(
-                model="claude-sonnet-4-6",
+                model="claude-sonnet-5",
                 duration_ms=500,
                 input_tokens=0,
                 output_tokens=0,
@@ -237,7 +237,7 @@ class TestLogClaudeApiCall:
         # (structured log shipper 가 파싱할 수 있도록)
         with caplog.at_level(logging.INFO, logger="src.shared.claude_metrics"):
             claude_metrics.log_claude_api_call(
-                model="claude-sonnet-4-6",
+                model="claude-sonnet-5",
                 duration_ms=1000,
                 input_tokens=8000,
                 output_tokens=1000,
@@ -245,7 +245,7 @@ class TestLogClaudeApiCall:
             )
         record = caplog.records[-1]
         # extra 는 LogRecord 의 속성으로 병합됨
-        assert getattr(record, "claude_model", None) == "claude-sonnet-4-6"
+        assert getattr(record, "claude_model", None) == "claude-sonnet-5"
         assert getattr(record, "duration_ms", None) == 1000
         assert getattr(record, "input_tokens", None) == 8000
         assert getattr(record, "output_tokens", None) == 1000

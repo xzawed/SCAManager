@@ -167,10 +167,12 @@ BREAKDOWN_KEY_TEST_COVERAGE = "test_coverage"
 
 # ── Claude AI 모델 목록 + 요금 (Anthropic 공식 기준, USD/1M 토큰) ─────────
 # ── Claude AI model catalog + pricing (Anthropic official, USD per 1M tokens) ─
-# 출처: https://www.anthropic.com/pricing (2026-07 재확인 — 실제 청구와 다를 수 있음)
-# Source: https://www.anthropic.com/pricing (reconfirmed 2026-07 — actual billing may differ)
-# 2026-07 갱신: Opus $15/$75 → $5/$25 (3× 인하), Haiku $0.80/$4 → $1/$5 — claude_metrics.py 와 단일 기준 정합
-# 2026-07 update: Opus $15/$75 → $5/$25 (3× drop), Haiku $0.80/$4 → $1/$5 — unified with claude_metrics.py
+# 출처: platform.claude.com 모델 개요표 (2026-09 재확인 — 실제 청구와 다를 수 있음)
+# Source: platform.claude.com models overview (reconfirmed 2026-09 — actual billing may differ)
+# 2026-09 갱신: Claude 5 세대로 교체 — Sonnet 4.6 → Sonnet 5 ($3/$15 → **$2/$10**),
+#   Opus 4.7 → Opus 5 ($5/$25 유지), Fable 5.1 신설 ($10/$50). Haiku 4.5 는 최신이라 그대로.
+#   🔴 Sonnet 은 세대가 오르며 값이 «내렸다» — ID 만 올리면 추정이 50% 과대가 된다.
+# 2026-09 update: moved to the Claude 5 generation; Sonnet's rate DROPPED with the generation.
 # 🔴 PARITY GUARD: 가격 SSOT = claude_metrics._PRICING_USD_PER_MTOK. 여기 input/output_price 변경 시
 #   SSOT + i18n model_hint(en/ko/ja) 3곳 동시 수정 의무 (test_pricing_parity.py 가 CI 차단 — 정책 4).
 # 🔴 PARITY GUARD: pricing SSOT = claude_metrics._PRICING_USD_PER_MTOK. Changing input/output_price here
@@ -183,26 +185,54 @@ CLAUDE_MODELS: list[dict] = [
         "output_price": 5.00,
     },
     {
-        "id": "claude-sonnet-4-6",
-        "label": "Claude Sonnet 4.6 (균형 · Balanced) ★기본 · Default",
-        "input_price": 3.00,
-        "output_price": 15.00,
+        "id": "claude-sonnet-5",
+        "label": "Claude Sonnet 5 (균형 · Balanced) ★기본 · Default",
+        "input_price": 2.00,
+        "output_price": 10.00,
     },
     {
-        "id": "claude-opus-4-7",
-        "label": "Claude Opus 4.7 (고품질 · High Quality)",
+        "id": "claude-opus-5",
+        "label": "Claude Opus 5 (고품질 · High Quality)",
         "input_price": 5.00,
         "output_price": 25.00,
     },
+    {
+        "id": "claude-fable-5-1",
+        "label": "Claude Fable 5.1 (최고 난도 추론 · Deep Reasoning)",
+        "input_price": 10.00,
+        "output_price": 50.00,
+    },
 ]
 
-# 모델 ID → 가격 딕셔너리 (빠른 조회용)
-# Model ID → pricing dict (for fast lookup)
-CLAUDE_MODEL_PRICING: dict[str, dict[str, float]] = {
-    m["id"]: {"input": m["input_price"], "output": m["output_price"]}
-    for m in CLAUDE_MODELS
+# 🔴 셀렉터에서 «내렸지만» 여전히 흐르는 모델의 요율.
+#
+# `RepoConfig.review_model` 은 `String(50)` 이고 저장 시 카탈로그 검증이 없다. 그래서 예전에
+# 고른 모델 id 는 카탈로그에서 빠진 뒤에도 계속 API 로 나가고 비용이 기록된다 — 운영자가
+# 아무것도 바꾸지 않아도 그렇다. 그때 family 요율(sonnet=$2/$10)로 매기면 Sonnet 4.6 호출이
+# **33% 과소 계상**된다. 세대가 오르며 값이 «내렸기» 때문이다.
+#
+# 여기 남기는 것은 «요율뿐» 이다 — `CLAUDE_MODELS`(셀렉터)에는 넣지 않는다.
+# Retired-but-still-stored model ids: rates only, never offered in the selector.
+CLAUDE_RETIRED_MODEL_PRICING: dict[str, dict[str, float]] = {
+    "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
 }
 
-# 모델 미등록 시 fallback (Sonnet 기준)
-# Fallback pricing when model not in registry (Sonnet tier)
-CLAUDE_PRICING_FALLBACK: dict[str, float] = {"input": 3.00, "output": 15.00}
+# 모델 ID → 가격 딕셔너리 (빠른 조회용) — 현행 카탈로그 + 내린 모델
+# Model ID → pricing dict (fast lookup) — current catalog plus retired ids
+CLAUDE_MODEL_PRICING: dict[str, dict[str, float]] = {
+    **{m["id"]: {"input": m["input_price"], "output": m["output_price"]}
+       for m in CLAUDE_MODELS},
+    **CLAUDE_RETIRED_MODEL_PRICING,
+}
+
+# 기본 티어 모델 — 미등록 id 의 요율을 여기서 «파생» 한다.
+# 🔴 값을 손으로 한 번 더 적지 않는다. 예전에는 `{"input": 3.00, "output": 15.00}` 리터럴이라,
+#    카탈로그 요율이 바뀌어도 이 줄만 옛값으로 남을 수 있었다. 이제 없는 id 를 쓰면
+#    import 시점에 KeyError 로 죽는다 — 조용히 틀린 값을 쓰는 것보다 낫다.
+# Derive the fallback from the catalogue instead of restating the numbers.
+CLAUDE_DEFAULT_MODEL_ID = "claude-sonnet-5"
+
+# 모델 미등록 시 fallback — 기록 경로의 `_DEFAULT_FAMILY`(sonnet) 와 «같은 값이어야» 한다.
+# 다르면 같은 호출이 화면과 DB 에서 서로 다른 비용을 갖는다(test_pricing_parity 가 차단).
+# Must equal the recording path's default family rate, or screen and DB disagree.
+CLAUDE_PRICING_FALLBACK: dict[str, float] = dict(CLAUDE_MODEL_PRICING[CLAUDE_DEFAULT_MODEL_ID])
