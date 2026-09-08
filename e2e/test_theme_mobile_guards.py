@@ -542,14 +542,23 @@ def test_token_text_meets_aa_against_painted_background(seeded_page, base_url, t
     _assert_token_text_aa(seeded_page, base_url, theme, path)
 
 
-def _assert_token_text_aa(page, base_url, theme, path):
-    """한 화면·한 테마에서 토큰 글자의 AA 를 잰다 — 두 시험이 공유한다.
+def _assert_token_text_aa(page, base_url, theme, path, viewport=None, prepare=None):
+    """한 화면·한 테마에서 토큰 글자의 AA 를 잰다 — 세 시험이 공유한다.
 
     🔴 화면 목록이 parametrize 상수인 시험과, 화면 경로가 **픽스처에서 와야 하는** 시험
     (분석 상세는 `seeded_analysis` 의 id 가 필요하다)이 같은 측정을 써야 한다. 본문을
     복사하면 한쪽만 고쳐지는 순간 두 화면의 판정이 갈린다.
+
+    🔴 `viewport` 를 «인자» 로 연 이유 — 이 헬퍼가 뷰포트를 데스크탑으로 하드코딩하고
+    있어서, 호출자가 모바일 크기를 넣어도 덮였다. 그래서 모바일에만 존재하는 표면
+    (`.nav-links.open` 오버레이)의 글자 대비는 원리적으로 **한 번도** 관측되지 않았다.
+    기본값은 그대로 데스크탑이라 기존 두 시험의 판정은 바뀌지 않는다.
+
+    `prepare` 는 테마 적용 «후» · 측정 «전» 에 부르는 훅이다(예: 햄버거 열기).
+
+    The viewport was hardcoded to desktop, so mobile-only surfaces were never observed.
     """
-    page.set_viewport_size({"width": 1440, "height": 900})
+    page.set_viewport_size(viewport or {"width": 1440, "height": 900})
     page.goto(f"{base_url}{path}")
     page.evaluate("(t) => applyTheme(t)", theme)
     # 🔴 테마 전환에 transition 이 걸려 있다 — 끄지 않으면 «중간색» 을 잰다(전 테마의
@@ -557,6 +566,8 @@ def _assert_token_text_aa(page, base_url, theme, path):
     page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
     page.wait_for_timeout(400)
     _settle_animations(page)
+    if prepare is not None:
+        prepare(page)
     res = page.evaluate(_TOKEN_TEXT_AUDIT_JS)
 
     assert not res.get("error"), res.get("error")
@@ -593,6 +604,82 @@ def test_token_text_meets_aa_on_the_analysis_detail_screen(
     """
     _assert_token_text_aa(seeded_page, base_url, theme,
                           f"/repos/owner%2Ftestrepo/analyses/{seeded_analysis}")
+
+
+# 오버레이가 «실제로» 열렸고 그 안의 글자가 감사 대상 토큰으로 칠해졌는지 세는 계기.
+# 0 이면 위 감사는 오버레이를 한 글자도 보지 못한 것이고, 그때 초록은 「통과」가 아니다.
+_OVERLAY_OBSERVED_JS = r"""
+() => {
+  const box = document.querySelector('.nav-links');
+  if (!box) return {error: '.nav-links 미존재'};
+  const cs = getComputedStyle(box);
+  if (!box.classList.contains('open')) return {error: '햄버거를 눌렀는데 .open 이 없다'};
+  if (cs.display === 'none') return {error: '.open 인데 display:none — 오버레이가 안 보인다'};
+  // 🔴 토큰 «원시값»(hex)과 computed `color`(rgb 형식)를 문자열로 견주면 언제나 다르다.
+  //    그 비교는 항상 0 을 돌려주고, 그러면 이 계기는 「못 쟀다」를 「없다」로 바꾼다.
+  //    브라우저에게 var() 를 «해석시켜» 같은 표기로 만든 뒤 견준다.
+  const probe = document.createElement('span');
+  probe.style.color = 'var(--text-2)';
+  document.body.appendChild(probe);
+  const want = getComputedStyle(probe).color;
+  probe.remove();
+  const links = Array.from(box.querySelectorAll('a.nav-link'));
+  const painted = links.filter(a => getComputedStyle(a).color === want);
+  const r = box.getBoundingClientRect();
+  return {links: links.length, painted: painted.length,
+          width: Math.round(r.width), height: Math.round(r.height),
+          position: cs.position};
+}
+"""
+
+
+def _open_mobile_nav(page) -> None:
+    """햄버거를 눌러 `.nav-links.open` 오버레이를 띄운다."""
+    page.click(".nav-hamburger")
+    page.wait_for_selector(".nav-links.open", state="visible", timeout=5000)
+    _settle_animations(page)
+
+
+def _assert_overlay_was_measured(page) -> None:
+    """🔴 측정이 «끝난 뒤» 상태로 오버레이가 실제 대상이었는지 되짚는다.
+
+    이 확인을 여는 쪽(`_open_mobile_nav`)에 두었더니, 호출부에서 `prepare=` 를 지우는
+    뮤테이션이 **초록으로 남았다** — 검사가 열기와 함께 사라져 오버레이를 한 번도 열지
+    않은 채 통과했다. 검사는 지워지는 쪽이 아니라 «남는 쪽» 에 둔다.
+
+    Keeping this inside the opener made a `prepare=`-removal mutation survive green.
+    """
+    res = page.evaluate(_OVERLAY_OBSERVED_JS)
+    assert not res.get("error"), (
+        f"{res['error']} — 오버레이를 열지 않은 채 AA 감사가 통과했다(측정 대상 밖)")
+    # 「열었다」가 아니라 「감사가 볼 글자가 있다」를 잰다. 오버레이가 열려도 그 안의
+    # 글자가 --text-2 가 아니면 AA 감사는 이 면을 한 글자도 재지 않는다.
+    assert res["painted"] > 0, (
+        f"오버레이가 열렸으나 --text-2 로 칠해진 링크가 0개다 "
+        f"(링크 {res['links']}개, {res['width']}x{res['height']}, {res['position']}) — "
+        "재지 못한 것이지 통과한 것이 아니다")
+    assert res["position"] == "fixed", (
+        f"오버레이가 fixed 가 아니다({res['position']}) — 모바일 @media 가 안 걸렸다")
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_token_text_meets_aa_in_the_mobile_nav_overlay(seeded_page, base_url, theme):
+    """🔴 모바일에만 «존재하는» 표면 — 데스크탑 스윕은 이 면을 볼 수 없다.
+
+    `@media (max-width: 768px)` 에서 `.nav-links` 는 `display:none` 이 되고, 햄버거를
+    누른 `.open` 상태에서만 `position:fixed` 오버레이로 나타난다. 그 오버레이는
+    `background: var(--bg-nav)` — **알파 0.72~0.82 의 반투명** 면이다. 1440 에서는 이
+    요소가 아예 다른 레이아웃(가로 flex 바)이라, 지금까지의 AA 스윕은 이 면의 글자
+    대비를 «한 번도» 관측하지 못했다.
+
+    헬퍼가 뷰포트를 데스크탑으로 하드코딩하고 있었던 것이 그 원인이다 — 호출자가
+    모바일 크기를 넣어도 덮였다. 「덜 잰 축」이 아니라 «못 재는 축» 이었다.
+
+    A fixed translucent overlay that only exists under 768px was structurally unobservable.
+    """
+    _assert_token_text_aa(seeded_page, base_url, theme, "/dashboard",
+                          viewport=_MOBILE_VIEWPORT, prepare=_open_mobile_nav)
+    _assert_overlay_was_measured(seeded_page)
 
 
 # ── F. accent 를 «글자» 로 쓰는 곳 (--accent-text) ────────────────────────────
