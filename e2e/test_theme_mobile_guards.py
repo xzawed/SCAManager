@@ -523,6 +523,60 @@ def _settle_animations(page) -> None:
         .map(a => a.finished.catch(() => {})))""")
 
 
+def _reveal_all(page) -> None:
+    """🔴 화면 «전체» 를 드러낸 뒤 잰다 — 안 그러면 첫 화면 아래는 관측되지 않는다.
+
+    `base.html::_revealIO` 가 `.card`·`.s-card`·`.kpi-card`·`.reveal` 에 `.reveal` 을 붙이고,
+    `.visible` 은 **뷰포트에 들어올 때만** 붙인다. `.reveal { opacity: 0 }` 이므로 스크롤하지
+    않으면 첫 화면 아래 글자는 전부 `opacity:0` 이고, 대비 감사는 그것을 「보이지 않음」으로
+    걸러 «안 쟀는데 통과» 를 만든다.
+
+    🔴 `_settle_animations` 로는 못 고친다. `.visible` 이 붙기 «전» 에는 Animation 객체가
+    아예 없어서 기다릴 대상이 0개다 — 그 헬퍼는 이 경우 no-op 다.
+
+    실측(2026-09-09, 400조합): 스크롤을 넣자 관측 글자가 늘고 invisible 로 걸린 수가
+    5212 → 2281 로 줄었다. 그리고 결론이 «양방향» 으로 바뀌었다 — 페이드 도중에 재던
+    `.mono` 2.52 는 정착값 7.05 로 사라졌고(거짓), 첫 화면 아래 있던 `.field-tag`
+    pastel 2.79 같은 진짜 미달이 새로 드러났다.
+
+    Scroll first: reveal-on-intersect content is invisible (and unmeasurable) until it enters
+    the viewport, and `_settle_animations` cannot help because no Animation exists yet.
+    """
+    page.evaluate("""async () => {
+        const step = Math.max(200, Math.floor(window.innerHeight * 0.8));
+        for (let y = 0; y < document.body.scrollHeight; y += step) {
+            window.scrollTo(0, y);
+            await new Promise(r => setTimeout(r, 110));
+        }
+        window.scrollTo(0, 0);
+        await new Promise(r => setTimeout(r, 110));
+    }""")
+    _settle_animations(page)
+
+
+def unrevealed_counts(page) -> dict:
+    """`.reveal` 중 아직 안 드러난 것을 **두 부류로 나눠** 센다.
+
+    - `stuck`: 화면에 자리를 차지하는데도 `opacity < 0.99` — 스윕이 «놓친» 것이다.
+    - `hiddenByMode`: 상자가 0인 것(모드 토글의 `display:none` 등). 이건 스윕 잘못이
+      아니라 «다른 상태에서 재야 할» 표면이다(설정 advanced 등).
+
+    🔴 둘을 합쳐 세면 고칠 수 없는 수가 섞여 시험이 영영 red 이거나, 반대로 뭉뚱그려
+    통과시키게 된다. 나눠 세고 각각 다른 곳에서 책임진다.
+    """
+    return page.evaluate("""() => {
+        const out = {stuck: 0, hiddenByMode: 0, total: 0};
+        for (const e of document.querySelectorAll('.reveal')) {
+            out.total++;
+            if (parseFloat(getComputedStyle(e).opacity) >= 0.99) continue;
+            const r = e.getBoundingClientRect();
+            if (r.width < 1 || r.height < 1) out.hiddenByMode++;
+            else out.stuck++;
+        }
+        return out;
+    }""")
+
+
 @pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
 @pytest.mark.parametrize("path", _TOKEN_TEXT_PATHS)
 def test_token_text_meets_aa_against_painted_background(seeded_page, base_url, theme, path):
@@ -565,7 +619,7 @@ def _assert_token_text_aa(page, base_url, theme, path, viewport=None, prepare=No
     #    글자색 위에 다음 테마의 바탕이 겹친 값이 나온다).
     page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
     page.wait_for_timeout(400)
-    _settle_animations(page)
+    _reveal_all(page)
     if prepare is not None:
         prepare(page)
     res = page.evaluate(_TOKEN_TEXT_AUDIT_JS)
@@ -712,7 +766,7 @@ def test_accent_used_as_text_meets_aa(seeded_page, base_url, theme):
         seeded_page.evaluate("(t) => applyTheme(t)", theme)
         seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
         seeded_page.wait_for_timeout(400)
-        _settle_animations(seeded_page)
+        _reveal_all(seeded_page)
         res = seeded_page.evaluate(_ACCENT_TEXT_AUDIT_JS)
         assert not res.get("error"), res.get("error")
         total += res["seen"]["--accent-text"]
@@ -819,7 +873,7 @@ def test_admin_screens_render_and_meet_aa(seeded_page, base_url, theme):
         seeded_page.evaluate("(t) => applyTheme(t)", theme)
         seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
         seeded_page.wait_for_timeout(350)
-        _settle_animations(seeded_page)
+        _reveal_all(seeded_page)
         # 🔴 «두 감사를 다» 돌린다. 처음엔 토큰 글자(--text-2/3)만 봤는데, 이 화면에서
         #    고친 것은 «accent 를 글자로 쓰는 링크» 였다 — 그 축을 안 보고 있었다.
         #    뮤테이션(`.admin-link` 를 --accent 로 되돌림)이 green 으로 통과해 드러났다.
@@ -1062,7 +1116,7 @@ def test_every_focusable_shows_an_indicator_that_meets_3to1(
         seeded_page.evaluate("(t) => applyTheme(t)", theme)
         seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
         seeded_page.wait_for_timeout(300)
-        _settle_animations(seeded_page)
+        _reveal_all(seeded_page)
         n = seeded_page.evaluate(_FOCUS_BASE_JS,
                                  [_FOCUSABLE_SEL, list(_INDICATOR_PSEUDOS)])
         if not n:
@@ -1269,3 +1323,42 @@ def test_range_slider_focus_actually_paints(seeded_page, base_url, path, sel):
         f"{sel} 에 포커스가 가도 «픽셀이 하나도» 바뀌지 않는다 — 표시가 없다 "
         "(WCAG 2.4.7 Level AA). `outline:none` 을 쓴 규칙에 대체 표시가 붙었는지 볼 것"
     )
+
+
+# ── I. 스윕이 «첫 화면만» 재고 있지 않은지 ────────────────────────────────────
+
+@pytest.mark.parametrize("path", ["/repos/owner%2Ftestrepo/settings", "/dashboard"])
+def test_the_aa_sweep_measures_below_the_fold_too(seeded_page, base_url, path):
+    """🔴 대비 감사가 첫 화면 아래를 «보지 못한» 채 초록이면 안 된다.
+
+    `.reveal { opacity: 0 }` + IntersectionObserver 구조라, 스크롤하지 않으면 첫 화면
+    아래 글자는 전부 opacity 0 이고 감사는 그것을 「보이지 않음」으로 «건너뛴다».
+    건너뛴 것은 통과가 아니다 — 이 시험이 그 차이를 잰다.
+
+    🔴 `_settle_animations` 는 이 축을 못 막는다. `.visible` 이 붙기 전에는 기다릴
+    Animation 이 0개라 그 헬퍼가 no-op 이기 때문이다.
+
+    Without scrolling, reveal-on-intersect content stays at opacity 0 and is skipped.
+    """
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.goto(f"{base_url}{path}")
+    seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
+    _settle_animations(seeded_page)
+    seeded_page.wait_for_timeout(300)
+
+    # 🔴 대조군 — 이 화면에 애초에 `.reveal` 이 없으면 이 시험은 아무것도 재지 않는다.
+    total = seeded_page.evaluate("() => document.querySelectorAll('.reveal').length")
+    assert total > 0, f"{path} 에 `.reveal` 요소가 0개다 — 이 시험이 재는 대상이 없다"
+
+    before = unrevealed_counts(seeded_page)
+    _reveal_all(seeded_page)
+    after = unrevealed_counts(seeded_page)
+
+    # 🔴 계기 자기검증 — 스크롤 «전» 에 안 드러난 것이 하나도 없으면 이 시험은 아무것도
+    #    증명하지 않는다(화면이 짧아 전부 첫 화면에 들어온 경우). 그때는 대상 화면을 바꾼다.
+    assert before["stuck"] > 0, (
+        f"{path}: 스크롤 전에도 가려진 `.reveal` 이 0개다 — 이 시험이 재는 대상이 없다 "
+        f"(total={before['total']})")
+    assert after["stuck"] == 0, (
+        f"{path}: 스윕이 끝난 뒤에도 자리를 차지한 `.reveal` {after['stuck']}/{total} 개가 "
+        "opacity<0.99 다 — 그 글자들의 대비는 어떤 조합에서도 관측되지 않는다(안 쟀음 ≠ 통과)")
