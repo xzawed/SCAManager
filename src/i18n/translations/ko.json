@@ -503,7 +503,7 @@
       "reject_threshold_label": "반려 기준점",
       "reject_threshold_hint": "미만 → 반려",
       "range_summary": "💡 <strong>{approve}점 이상</strong> 자동 승인 · <strong>{reject}점 미만</strong> 자동 반려 · 그 사이 스킵",
-      "semi_auto_hint": "💡 반자동 Approve는 <a href=\"#notifyCard\" style=\"color:var(--accent);font-weight:600;\">알림 채널 카드의 Telegram Chat ID</a>로 전송됩니다.",
+      "semi_auto_hint": "💡 반자동 Approve는 <a href=\"#notifyCard\" style=\"color:var(--accent-text);font-weight:600;\">알림 채널 카드의 Telegram Chat ID</a>로 전송됩니다.",
       "merge_issue_title": "Auto-merge 실패 시 Issue 자동 생성",
       "merge_issue_desc": "실패 사유·권장 조치를 담은 GitHub Issue 자동 생성"
     },
