@@ -503,7 +503,7 @@
       "reject_threshold_label": "Reject threshold",
       "reject_threshold_hint": "< → Reject",
       "range_summary": "💡 <strong>≥ {approve}</strong> auto-approve · <strong>< {reject}</strong> auto-reject · in-between skip",
-      "semi_auto_hint": "💡 Semi-auto Approve is sent to the <a href=\"#notifyCard\" style=\"color:var(--accent);font-weight:600;\">Telegram Chat ID in the notification channel card</a>.",
+      "semi_auto_hint": "💡 Semi-auto Approve is sent to the <a href=\"#notifyCard\" style=\"color:var(--accent-text);font-weight:600;\">Telegram Chat ID in the notification channel card</a>.",
       "merge_issue_title": "Auto-create Issue on auto-merge failure",
       "merge_issue_desc": "Auto-create a GitHub Issue with the failure reason and recommended action"
     },

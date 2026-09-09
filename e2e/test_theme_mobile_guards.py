@@ -736,6 +736,85 @@ def test_token_text_meets_aa_in_the_mobile_nav_overlay(seeded_page, base_url, th
     _assert_overlay_was_measured(seeded_page)
 
 
+# ── E-2. 설정 «advanced» 모드 — simple 에서 숨는 표면 ─────────────────────────
+# `.adv-only` 22요소가 기본(simple) 모드에서 `display:none` 이라, 이 상태를 열지 않으면
+# 어떤 스윕도 그 글자를 본 적이 없다. 실측으로 그 안에 `.field-tag` pastel 2.79 가 있었다.
+
+def _open_settings_advanced(page) -> None:
+    """설정을 advanced 모드로 — `.adv-only` 가 실제로 드러날 때까지 기다린다."""
+    page.click('[data-settings-mode-btn="advanced"]')
+    page.wait_for_selector(".adv-only", state="visible", timeout=5000)
+
+
+def _assert_advanced_was_measured(page) -> None:
+    """🔴 측정이 «끝난 뒤» 상태로 advanced 가 실제 대상이었는지 되짚는다.
+
+    이 확인을 여는 쪽에 두면 호출부에서 `prepare=` 를 지우는 뮤테이션이 초록으로 남는다
+    (모바일 오버레이에서 실증한 형태). 검사는 지워지는 쪽이 아니라 «남는 쪽» 에 둔다.
+    """
+    res = page.evaluate("""() => {
+        const vis = Array.from(document.querySelectorAll('.adv-only'))
+            .filter(e => { const r = e.getBoundingClientRect();
+                           return r.width > 0 && r.height > 0; });
+        const mode = (document.body.getAttribute('data-settings-mode')
+                      || document.querySelector('main')?.getAttribute('data-settings-mode'));
+        return {visible: vis.length, total: document.querySelectorAll('.adv-only').length, mode};
+    }""")
+    assert res["mode"] == "advanced", (
+        f"설정이 advanced 모드가 아니다(mode={res['mode']!r}) — 이 상태를 열지 않았다")
+    assert res["visible"] > 0, (
+        f"advanced 인데 보이는 `.adv-only` 가 0개다 (총 {res['total']}) — "
+        "재지 못한 것이지 통과한 것이 아니다")
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_token_text_meets_aa_in_settings_advanced(seeded_page, base_url, theme):
+    """🔴 설정 advanced 는 기본 모드에서 `display:none` 이라 스윕 밖이었다.
+
+    실측(2026-09-09): 그 안의 `.field-tag` 가 `color: var(--accent)` 라 pastel **2.79**,
+    light 4.20 이었다. `--accent-text` 로 바꾸면 같은 틴트 면에서 4.93~5.52 로 통과한다.
+    「목록에 못 적는 상태」가 조용히 빠지는 것이 이 스윕의 구조적 구멍이었다.
+
+    🔴 이 시험이 «잡지 못하는» 것 — 두 감사는 «특정 토큰 값과 같은 색» 의 글자만 고른다
+    (`--text-2`·`--text-3`·`--accent-text`). 그래서 `.field-tag` 를 `--accent` 로 되돌리는
+    뮤테이션은 **여기서 초록으로 통과한다** — 그 색이 세 토큰 중 어디에도 해당하지 않아
+    관측 대상에서 빠지기 때문이다(실증). 그 축은 정적 열거 가드
+    (`tests/unit/ui/test_accent_as_text_closure.py`)가 잡는다. 이 시험이 지키는 것은
+    「advanced 상태를 연다」와 「그 상태의 토큰 글자가 AA 를 넘는다」이다.
+
+    The advanced settings pane is display:none by default, so it was never swept. Note the
+    audits are token-scoped, so a color that matches none of the three tokens is not observed.
+    """
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.goto(f"{base_url}/repos/owner%2Ftestrepo/settings")
+    seeded_page.evaluate("(t) => applyTheme(t)", theme)
+    seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
+    seeded_page.wait_for_timeout(350)
+    _open_settings_advanced(seeded_page)
+    _reveal_all(seeded_page)
+
+    # 🔴 «두 감사를 다» 돌린다. 처음엔 토큰 글자(--text-2/3)만 보게 썼는데, 이 화면에서
+    #    고친 것은 «accent 를 글자로 쓰는 태그»(`.field-tag`) 였다 — 그 축을 안 보고 있었다.
+    #    뮤테이션(`.field-tag` 를 --accent 로 되돌림)이 green 으로 통과해 드러났다.
+    #    admin 시험이 같은 교훈을 이미 담고 있었는데 그 관용구를 안 쓴 것이 원인이다.
+    total, bad = 0, []
+    for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+                      (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
+        res = seeded_page.evaluate(js)
+        assert not res.get("error"), res.get("error")
+        total += sum(res["seen"][n] for n in names)
+        bad += res["bad"]
+
+    _assert_advanced_was_measured(seeded_page)
+    assert total > 0, (
+        f"[{theme}] 설정 advanced 에서 토큰 글자를 하나도 찾지 못했다 — "
+        "재지 못한 것이지 통과한 것이 아니다")
+    assert not bad, (
+        f"[{theme}] 설정 advanced 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
+        + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
+                      for b in bad[:10]))
+
+
 # ── F. accent 를 «글자» 로 쓰는 곳 (--accent-text) ────────────────────────────
 # Accent used AS text — the inverse of --accent-text-on.
 

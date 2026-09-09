@@ -222,7 +222,7 @@
   }
   .pr-badge {
     font-size: 12px;
-    color: var(--accent);
+    color: var(--accent-text);
     font-weight: 600;
   }
 
@@ -548,7 +548,7 @@
     <span style="font-size:13px;font-weight:600;color:var(--text-1);">{{ 'repo_detail.cost.title' | i18n_args(locale | default('ko')) }}</span>
     <span style="font-size:11px;color:var(--text-2);">{{ 'repo_detail.cost.period' | i18n_args(locale | default('ko'), month=monthly_cost_month) }}</span>
     {% if monthly_token_count > 0 %}
-    <span style="margin-left:auto;font-size:15px;font-weight:700;color:var(--accent);">
+    <span style="margin-left:auto;font-size:15px;font-weight:700;color:var(--accent-text);">
       ${{ "%.4f"|format(monthly_cost_usd) }}
     </span>
     <span style="font-size:12px;color:var(--text-2);">

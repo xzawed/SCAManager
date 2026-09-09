@@ -503,7 +503,7 @@
       "reject_threshold_label": "却下基準点",
       "reject_threshold_hint": "< → 却下",
       "range_summary": "💡 <strong>{approve}点以上</strong> 自動承認 · <strong>{reject}点未満</strong> 自動却下 · 中間はスキップ",
-      "semi_auto_hint": "💡 半自動 Approve は <a href=\"#notifyCard\" style=\"color:var(--accent);font-weight:600;\">通知チャンネルカードの Telegram Chat ID</a> に送信されます。",
+      "semi_auto_hint": "💡 半自動 Approve は <a href=\"#notifyCard\" style=\"color:var(--accent-text);font-weight:600;\">通知チャンネルカードの Telegram Chat ID</a> に送信されます。",
       "merge_issue_title": "Auto-merge 失敗時に Issue を自動作成",
       "merge_issue_desc": "失敗理由・推奨アクションを含む GitHub Issue を自動作成"
     },
