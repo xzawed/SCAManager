@@ -66,7 +66,10 @@
   .mode-toggle-btn.active { background: var(--accent); color: var(--accent-text-on);
                             border-color: var(--accent); font-weight: 700;
                             box-shadow: 0 2px 8px rgba(99,102,241,0.25); }
-  .mode-toggle-hint { font-size: 11px; opacity: 0.85; margin-left: 0.15rem; }
+  /* 🔴 `opacity` 로 흐리지 않는다 — accent 면 위 흰 글자가 light 4.00 이 됐다(실측).
+     투명도를 빼면 4.88. 색은 그대로다.
+     Do not dim with opacity: it broke AA on the accent surface (4.00 -> 4.88). */
+  .mode-toggle-hint { font-size: 11px; margin-left: 0.15rem; }
   .mode-toggle-counter { margin-left: auto; font-size: 11px; color: var(--text-2);
                          font-weight: 600; }
   .mode-toggle-counter:empty { display: none; }
@@ -218,7 +221,10 @@
   .gate-mode-btn.active {
     background: var(--btn-gate-active-bg, rgba(99,102,241,.15));
     border-color: var(--btn-gate-active-bd, var(--accent));
-    color: var(--btn-gate-active-tx, var(--accent));
+    /* 🔴 «글자용» accent 를 쓴다. `--btn-gate-active-tx` 는 틴트 면에 비해 옅어
+       pastel 2.93 · light 4.28 이었다(실측 400조합). `--accent-text` 는 5.48 / 5.02.
+       Use the text-grade accent: the button token was too light on its own tint. */
+    color: var(--accent-text);
   }
   .gate-mode-btn:hover:not(.active) { background: var(--bg-mute, var(--bg-hover)); border-color: var(--border-strong, var(--accent)); }
   @media (max-width: 480px) { .gate-mode-btn { padding:.65rem .35rem; min-height:48px; } }
@@ -470,7 +476,16 @@
   .hdr-merge  { background:var(--grad-merge); }
   .hdr-notify { background:var(--grad-notify); }
   .hdr-hook   { background:var(--grad-hook); }
-  .hdr-preset { background: linear-gradient(135deg, var(--accent), var(--accent-2, var(--pink, var(--accent)))); }
+  /* 🔴 자체 그라디언트를 두지 않는다. `--accent-2` 를 직접 깔면 light 에서 흰 글자가
+     4.23 이었다(실측) — 그 값은 어떤 가드에도 안 걸려 있었다. 이미 네 테마에서
+     AA 를 검증한 전용 토큰 `--grad-preset` 을 쓴다. 🔴 `--grad-hook` 를 그대로
+     빌려 쓰면 «다른 카드» 인 inbound 헤더와 색이 같아진다(Grok `01a0861a`).
+     Reuse the AA-verified purple gradient instead of a bespoke accent one. */
+  .hdr-preset { background: var(--grad-preset); }
+  /* 🔴 danger 면 위 글자는 accent 용 on-토큰을 빌려 쓰면 안 된다 — 면이 다른 색이다.
+     변수를 헤더에서 다시 정의해 자손(`.hdr-title`·`.hdr-badge`)이 물려받게 한다.
+     실측 pastel: 3.98 -> 4.73. */
+  .hdr-danger { --btn-on-accent: var(--danger-text-on); }
   .s-card-body { padding:1.1rem; }
 
   .s-divider { height:1px; background:var(--border-subtle); margin:1rem 0; opacity:.6; }
@@ -1333,7 +1348,7 @@
 
   {# Danger zone / Phase 2 PR-8 — i18n #}
   <div class="s-card danger-zone adv-only" style="margin-bottom:2rem;">
-    <div class="s-card-hdr" style="background: linear-gradient(135deg, color-mix(in srgb, var(--danger) 60%, #000), var(--danger))">
+    <div class="s-card-hdr hdr-danger" style="background: linear-gradient(135deg, color-mix(in srgb, var(--danger) 60%, #000), var(--danger))">
       <span class="hdr-icon">⚠️</span>
       <span class="hdr-title">{{ 'settings_page.danger.header' | i18n_args(locale | default('ko')) }}</span>
       <span class="hdr-badge">{{ 'settings_page.danger.badge' | i18n_args(locale | default('ko')) }}</span>
@@ -1353,7 +1368,7 @@
             </div>
             <form method="post" action="/repos/{{ repo_name }}/delete"
                   onsubmit='return confirm({{ 'settings_page.danger.delete_confirm' | i18n_args(locale | default('ko'), repo_name=repo_name) | tojson }});'>
-              <button type="submit" style="background:var(--danger);color:var(--btn-on-accent);border:none;border-radius:8px;padding:.6rem 1.1rem;font-weight:600;cursor:pointer;">
+              <button type="submit" style="background:var(--danger);color:var(--danger-text-on);border:none;border-radius:8px;padding:.6rem 1.1rem;font-weight:600;cursor:pointer;">
                 {{ 'settings_page.danger.delete_btn' | i18n_args(locale | default('ko')) }}
               </button>
             </form>

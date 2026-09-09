@@ -25,7 +25,9 @@
      Toast error popup */
   .toast {
     position: fixed; top: 1.5rem; left: 50%; transform: translateX(-50%);
-    background: var(--danger, #f87171); color: var(--btn-on-accent, #fff);
+    /* 🔴 danger 면 위 글자는 danger 전용 on-토큰을 쓴다 — accent 용을 빌리면
+       면이 달라 테마마다 우연히 맞거나 틀린다(pastel 4.28 이었다). */
+    background: var(--danger, #f87171); color: var(--danger-text-on, #fff);
     padding: .75rem 1.5rem; border-radius: var(--radius-btn, 8px);
     font-size: 14px; font-weight: 600;
     box-shadow: 0 4px 16px color-mix(in srgb, var(--danger, #f87171) 40%, transparent);

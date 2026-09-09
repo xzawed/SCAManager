@@ -120,6 +120,8 @@
      Text ON a filled accent surface: white fails AA here (3.45), dark passes (5.61).
      The accent itself is the brand color and stays untouched. */
   --accent-text-on: #0d0d15;
+  /* danger 면 위 글자 — accent 용 on-토큰을 빌려 쓰면 면이 달라 어긋난다. */
+  --danger-text-on: #0d0d15;
   /* 🔴 `--accent-text-on` 의 «역방향» — accent 를 «글자» 로 쓸 때의 색.
      accent 면색은 그대로 두고 글자만 옮긴다(#1609 선례). dark 는 어두운 바탕이라 accent 가 이미 5.29 — 그대로 둔다.
      The inverse of --accent-text-on: the accent hue safe AS text on a page ground. */
@@ -230,6 +232,8 @@
   --accent-glow: rgba(91, 94, 240, 0.22);
   --accent-grad: linear-gradient(135deg, #5b5ef0 0%, #8b5cf6 100%);
   --accent-text-on: #ffffff;
+  /* danger 면 위 글자 — accent 용 on-토큰을 빌려 쓰면 면이 달라 어긋난다. */
+  --danger-text-on: #ffffff;
   /* 🔴 `--accent-text-on` 의 «역방향» — accent 를 «글자» 로 쓸 때의 색.
      accent 면색은 그대로 두고 글자만 옮긴다(#1609 선례). accent(#5b5ef0)는 밝은 바탕에서 3.86 — 색상·채도 유지, 명도만 낮춰 4.53.
      The inverse of --accent-text-on: the accent hue safe AS text on a page ground. */
@@ -335,6 +339,8 @@
   /* 흰 글자 3.37 → 어두운 글자 5.59. pastel 은 면이 밝아 catppuccin 과 같은 선택.
      White 3.37 fails; dark text 5.59 passes — same choice as catppuccin. */
   --accent-text-on: #12101c;
+  /* danger 면 위 글자 — accent 용 on-토큰을 빌려 쓰면 면이 달라 어긋난다. */
+  --danger-text-on: #ffffff;
   /* 🔴 `--accent-text-on` 의 «역방향» — accent 를 «글자» 로 쓸 때의 색.
      accent 면색은 그대로 두고 글자만 옮긴다(#1609 선례). accent(#8c82d2)는 2.43 — 같은 방식으로 4.54.
      The inverse of --accent-text-on: the accent hue safe AS text on a page ground. */
@@ -364,7 +370,9 @@
 
   --status-ok: #4f9d7d;
   --status-warn: #b8924a;
-  --status-err: #b65d6d;
+  /* 🔴 «글자» 와 «면» 양쪽에 쓰인다 — 명도 한 단계(L -0.02)로 둘 다 AA.
+     카드 위 글자 4.23→4.55 · 흰 글자를 얹은 면 4.40→4.73 (실측). */
+  --status-err: #b35667;
   --status-info: #6791ba;
 
   --chart-grid: rgba(45, 39, 56, 0.06);
@@ -433,6 +441,8 @@
   --accent-glow: rgba(203, 166, 247, 0.35);
   --accent-grad: linear-gradient(135deg, #cba6f7 0%, #b4befe 100%);
   --accent-text-on: #1e1e2e;
+  /* danger 면 위 글자 — accent 용 on-토큰을 빌려 쓰면 면이 달라 어긋난다. */
+  --danger-text-on: #1e1e2e;
   /* 🔴 `--accent-text-on` 의 «역방향» — accent 를 «글자» 로 쓸 때의 색.
      accent 면색은 그대로 두고 글자만 옮긴다(#1609 선례). catppuccin 도 어두운 바탕이라 6.19 — 그대로 둔다.
      The inverse of --accent-text-on: the accent hue safe AS text on a page ground. */
@@ -608,6 +618,9 @@
   --grad-merge:         linear-gradient(135deg, #38bdf8, #0284c7);
   --grad-notify:        linear-gradient(135deg, #fbbf24, #f59e0b);
   --grad-hook:          linear-gradient(135deg, #b289ff, #9a75f0);
+  /* preset 헤더 — accent→accent-2 계열. `--grad-hook` 를 빌려 쓰면 inbound 카드와
+     색이 같아져 구분이 사라진다. light 만 두 번째 stop 을 명도 -0.02 조정했다. */
+  --grad-preset:        linear-gradient(135deg, #6c6af0, #b289ff);
   --title-gradient:     var(--accent-grad);
   --btn-gate-active-bg: rgba(124, 122, 255, 0.14);
   --btn-gate-active-bd: var(--accent-1);
@@ -662,9 +675,10 @@
   --orb3: var(--atm-color-3);
   --orb4: var(--atm-color-1);
   --grad-gate:     linear-gradient(135deg, #5b5ef0, #4f52e0);
-  --grad-merge:    linear-gradient(135deg, #0284c7, #0369a1);
+  --grad-merge:    linear-gradient(135deg, #027cba, #0369a1);
   --grad-notify:   linear-gradient(135deg, #b45309, #92400e);
-  --grad-hook:     linear-gradient(135deg, #8b5cf6, #7c3aed);
+  --grad-hook:     linear-gradient(135deg, #8452f5, #7c3aed);
+  --grad-preset:   linear-gradient(135deg, #5b5ef0, #8452f5);
   --title-gradient: var(--accent-grad);
   --btn-gate-active-bg: rgba(91, 94, 240, 0.10);
   --btn-gate-active-bd: var(--accent-1);
@@ -710,10 +724,11 @@
   --orb2: var(--atm-color-2);
   --orb3: var(--atm-color-3);
   --orb4: var(--atm-color-1);
-  --grad-gate:     linear-gradient(135deg, #8c82d2, #7a6fc0);
-  --grad-merge:    linear-gradient(135deg, #6791ba, #5280a0);
+  --grad-gate:     linear-gradient(135deg, #8c82d2, #7d73c2);
+  --grad-merge:    linear-gradient(135deg, #6791ba, #5483a3);
   --grad-notify:   linear-gradient(135deg, #b8924a, #a07838);
   --grad-hook:     linear-gradient(135deg, #c89ad8, #b085c0);
+  --grad-preset:   linear-gradient(135deg, #8c82d2, #c89ad8);
   --title-gradient: var(--accent-grad);
   --btn-gate-active-bg: rgba(140, 130, 210, 0.10);
   --btn-gate-active-bd: var(--accent-1);
@@ -763,6 +778,7 @@
   --grad-merge:    linear-gradient(135deg, #89b4fa, #74a0e8);
   --grad-notify:   linear-gradient(135deg, #f9e2af, #e8d09e);
   --grad-hook:     linear-gradient(135deg, #b4befe, #a0aaec);
+  --grad-preset:   linear-gradient(135deg, #cba6f7, #b4befe);
   --title-gradient: var(--accent-grad);
   --btn-gate-active-bg: rgba(203, 166, 247, 0.14);
   --btn-gate-active-bd: var(--accent-1);
