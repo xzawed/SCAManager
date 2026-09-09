@@ -230,7 +230,7 @@
   --accent-1:    #5b5ef0;
   --accent-2:    #8b5cf6;
   --accent-glow: rgba(91, 94, 240, 0.22);
-  --accent-grad: linear-gradient(135deg, #5b5ef0 0%, #8b5cf6 100%);
+  --accent-grad: linear-gradient(135deg, #5b5ef0 0%, #8452f5 100%);
   --accent-text-on: #ffffff;
   /* danger 면 위 글자 — accent 용 on-토큰을 빌려 쓰면 면이 달라 어긋난다. */
   --danger-text-on: #ffffff;
@@ -597,6 +597,12 @@
   --accent-faint:  var(--accent-glow);
   --accent-blue:   var(--accent-1);
   --success:       var(--status-ok);
+  /* 🔴 `--success` 하나가 «바탕 위 글자»·«틴트 칩»·«채운 면» 을 겸할 수 없다 —
+     글자용은 카드에서 AA 를 넘게 진하게, 면 위 글자는 그 면에 맞춰 따로 둔다. */
+  /* 이 테마는 바탕에서 이미 AA 를 넘는다 — 값을 복사하지 않고 «역할» 로 잇는다.
+     복사해 두면 `--status-ok` 를 고친 날 글자만 옛 색으로 남는다. */
+  --success-text: var(--status-ok);
+  --success-text-on: #0d0d15;
   --warning:       var(--status-warn);
   --warning-rgb:   251, 191, 36;
   --warning-faint: rgba(251, 191, 36, 0.10);
@@ -659,6 +665,10 @@
   --accent-faint:  var(--accent-glow);
   --accent-blue:   var(--accent-1);
   --success:       var(--status-ok);
+  /* 🔴 `--success` 하나가 «바탕 위 글자»·«틴트 칩»·«채운 면» 을 겸할 수 없다 —
+     글자용은 카드에서 AA 를 넘게 진하게, 면 위 글자는 그 면에 맞춰 따로 둔다. */
+  --success-text: #04855d;
+  --success-text-on: #0d0d15;
   --warning:       var(--status-warn);
   --warning-rgb:   180, 83, 9;
   --warning-faint: rgba(180, 83, 9, 0.10);
@@ -709,6 +719,10 @@
   --accent-faint:  var(--accent-glow);
   --accent-blue:   var(--accent-1);
   --success:       var(--status-ok);
+  /* 🔴 `--success` 하나가 «바탕 위 글자»·«틴트 칩»·«채운 면» 을 겸할 수 없다 —
+     글자용은 카드에서 AA 를 넘게 진하게, 면 위 글자는 그 면에 맞춰 따로 둔다. */
+  --success-text: #407e65;
+  --success-text-on: #12101c;
   --warning:       var(--status-warn);
   --warning-rgb:   184, 146, 74;
   --warning-faint: rgba(184, 146, 74, 0.12);
@@ -759,6 +773,12 @@
   --accent-faint:  var(--accent-glow);
   --accent-blue:   var(--accent-1);
   --success:       var(--status-ok);
+  /* 🔴 `--success` 하나가 «바탕 위 글자»·«틴트 칩»·«채운 면» 을 겸할 수 없다 —
+     글자용은 카드에서 AA 를 넘게 진하게, 면 위 글자는 그 면에 맞춰 따로 둔다. */
+  /* 이 테마는 바탕에서 이미 AA 를 넘는다 — 값을 복사하지 않고 «역할» 로 잇는다.
+     복사해 두면 `--status-ok` 를 고친 날 글자만 옛 색으로 남는다. */
+  --success-text: var(--status-ok);
+  --success-text-on: #1e1e2e;
   --warning:       var(--status-warn);
   --warning-rgb:   249, 226, 175;
   --warning-faint: rgba(249, 226, 175, 0.14);

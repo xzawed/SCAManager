@@ -506,7 +506,7 @@
     <div class="kpi">
       <div class="kpi__label"><span>{{ 'dashboard.repos.kpi_warning' | i18n_args(locale | default('ko')) }}</span></div>
       <div class="kpi__value">
-        <span class="t-num" style="color: {% if summary.summary.warning_count > 0 %}var(--danger){% else %}var(--success){% endif %}">
+        <span class="t-num" style="color: {% if summary.summary.warning_count > 0 %}var(--danger){% else %}var(--success-text){% endif %}">
           {{ summary.summary.warning_count }}
         </span>
       </div>
@@ -1259,7 +1259,7 @@
           </div>
           <div style="font-size:12px; color:var(--text-2);">
             {% if card.score_trend == 'up' %}
-              <span style="color:var(--success);">{{ 'dashboard.trend_improve' | i18n_args(locale | default('ko')) }}</span>
+              <span style="color:var(--success-text);">{{ 'dashboard.trend_improve' | i18n_args(locale | default('ko')) }}</span>
             {% elif card.score_trend == 'down' %}
               <span style="color:var(--danger);">{{ 'dashboard.trend_decline' | i18n_args(locale | default('ko')) }}</span>
             {% else %}
