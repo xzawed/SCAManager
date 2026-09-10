@@ -550,6 +550,20 @@ def _reveal_all(page) -> None:
         }
         window.scrollTo(0, 0);
         await new Promise(r => setTimeout(r, 110));
+        // 🔴 훑기만으로는 «문서 끝 40px 안» 에 있는 요소가 영영 안 드러난다 —
+        //    관찰자의 `rootMargin: 0 0 -40px 0` 때문에 최대 스크롤에서도 교차하지 않는다.
+        //    실측: 같은 코드가 로컬은 초록, CI 는 `.reveal 1/7` red 였다(폰트 높이 차이로
+        //    경계에 걸린다). 남은 것은 «하나씩» 화면 가운데로 끌어와 확실히 드러낸다.
+        const stuck = Array.from(document.querySelectorAll('.reveal')).filter(e => {
+            const r = e.getBoundingClientRect();
+            return r.width > 0 && r.height > 0
+                   && parseFloat(getComputedStyle(e).opacity) < 0.99; });
+        for (const el of stuck) {
+            el.scrollIntoView({block: 'center'});
+            await new Promise(r => setTimeout(r, 90));
+        }
+        window.scrollTo(0, 0);
+        await new Promise(r => setTimeout(r, 110));
     }""")
     _settle_animations(page)
 
