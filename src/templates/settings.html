@@ -318,7 +318,8 @@
   }
   .hook-btn:hover { filter: brightness(1.15); }
   .hook-alert { padding:.55rem .9rem; border-radius:8px; font-size:13px; margin-bottom:.6rem; }
-  .hook-alert.ok   { background: color-mix(in srgb, var(--success) 15%, transparent); color: var(--success); }
+  /* 🔴 면·테두리·글자를 «함께» 고른 3종 세트 — `--success` 를 틴트로 깔고 글자로도 쓰면 밝은 테마에서 3.88~3.96 이다(실측). */
+  .hook-alert.ok   { background: var(--grade-a-bg); color: var(--grade-a); }
   .hook-alert.fail { background: color-mix(in srgb, var(--danger) 15%, transparent); color: var(--danger); }
   /* 🔴 부분 성공 — ok(초록)도 fail(빨강)도 아닌 제3의 상태 (#1504 R1).
      둘 중 하나로 칠하면 「다 됐다」 또는 「아무것도 안 됐다」로 오독된다. */
@@ -346,7 +347,8 @@
     box-shadow:0 4px 18px rgba(0,0,0,.18);
     animation: toastIn .25s ease, toastOut .4s ease 3s forwards;
   }
-  .save-toast-ok  { background: color-mix(in srgb, var(--success) 15%, transparent); border: 1px solid var(--success); color: var(--success); }
+  /* 🔴 3종 세트 — 위와 같은 이유. */
+  .save-toast-ok  { background: var(--grade-a-bg); border: 1px solid var(--grade-a); color: var(--grade-a); }
   .save-toast-err { background: color-mix(in srgb, var(--danger) 15%, transparent); border: 1px solid var(--danger); color: var(--danger); }
   @keyframes toastIn  { from { opacity:0; transform:translateX(-50%) translateY(-10px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
   @keyframes toastOut { from { opacity:1; } to { opacity:0; pointer-events:none; } }
