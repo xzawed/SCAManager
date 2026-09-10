@@ -211,3 +211,85 @@ def test_the_contrast_sweep_opens_every_dashboard_mode():
     assert not missing, (
         "대비 스윕이 열지 않는 대시보드 모드가 있다 — 그 화면의 글자 대비는 "
         f"어떤 조합에서도 관측되지 않는다: {missing}\n  여는 경로: {sorted(swept)}")
+
+
+# ── 상호작용 «상태» — 클릭해야 나타나는 표면 ──────────────────────────────────
+
+def interactive_states() -> dict[str, str]:
+    """{셀렉터: 어디} — 클릭·입력으로만 나타나는 상태를 **소스에서 파생**한다.
+
+    판정 근거는 두 가지다:
+      - `aria-haspopup="true"` 를 가진 버튼이 여는 대상(드롭다운·메뉴)
+      - 기본이 숨김(`.hidden`)이거나 «보임» 상태 클래스(`.visible`)로만 드러나는 오버레이
+
+    🔴 손으로 목록을 적으면 새 상태가 조용히 빠진다 — 이 리포는 설정 `advanced`
+    (`.adv-only` 22요소)와 모바일 nav 오버레이를 그렇게 놓친 적이 있다.
+    """
+    out: dict[str, str] = {}
+    for path in sorted((_ROOT / "src" / "templates").glob("*.html")):
+        raw = path.read_text(encoding="utf-8")
+        # 🔴 Jinja 를 먼저 걷어낸다. `class="{% if … %}is-hidden{% endif %}"` 는
+        #    «데이터 조건» 분기(#1639 W12)이지 클릭으로 여는 상태가 아니다 — 섞으면 이
+        #    가드가 시드 문제까지 떠안아 영영 red 다. 태그를 지우면 그 class 는 빈다.
+        src = re.sub(r"\{%.*?%\}|\{\{.*?\}\}", "", raw, flags=re.S)
+        where = path.name
+        # 🔴 속성 «순서» 를 가정하지 않는다 — 이슈 모달은 `class=... id=...` 순서라
+        #    `id="…"[^>]*class=` 정규식이 통째로 놓쳤다. 태그를 통으로 잡고 안을 본다.
+        for m in re.finditer(r"<[a-z]+\b[^>]*>", src):
+            tag = m.group(0)
+            mid = re.search(r'id="([\w-]+)"', tag)
+            if not mid:
+                continue
+            cls = re.search(r'class="([^"]*)"', tag)
+            classes = cls.group(1).split() if cls else []
+            # (a) 열리는 메뉴  (b) 기본이 숨김인 오버레이 — «단독 토큰» hidden
+            #     🔴 `\bhidden\b` 로 보면 `is-hidden` 도 걸린다(하이픈이 낱말 경계다).
+            if 'role="menu"' in tag or "hidden" in classes:
+                out[f"#{mid.group(1)}"] = where
+        # (c) «보임» 상태 클래스로만 드러나는 바
+        for m in re.finditer(r"\.([\w-]+)\.visible\s*\{", src):
+            out[f".{m.group(1)}"] = where
+    return out
+
+
+# 열 수는 있으나 «잴 것이 없는» 상태 — 사유와 함께 두고, 사라지면 red 다(역방향).
+_STATE_EXEMPT = {
+    "#tabStatic":
+        "열리지만 e2e 시드에 정적 분석 이슈가 없어 «빈 컨테이너» 다(실측 h=0, 글자 0). "
+        "도달성이 아니라 «데이터» 문제라 #1639 W12 가 맡는다 — 여기서 열어봐야 0을 잰다.",
+}
+
+
+def test_every_interactive_state_is_opened_by_a_sweep():
+    """🔴 클릭해야 나타나는 상태는 «열지 않으면» 어떤 픽셀 감사도 그 면을 보지 못한다.
+
+    실측(400조합 프로브): 테마·언어 드롭다운, `.save-bar`, 이슈 모달은 어떤 스윕에도
+    없었다. 모바일 nav 오버레이(#1637)와 설정 advanced(#1641)가 같은 부류였고, 둘 다
+    열자마자 진짜 미달이 나왔다 — 「목록에 못 적는 상태」가 이 스윕의 구조적 구멍이다.
+
+    States that only appear on interaction are unobservable unless a sweep opens them.
+    """
+    states = interactive_states()
+    assert states, "상호작용 상태를 0개 찾았다 — 파생이 죽었다(공허한 초록)"
+    # 🔴 `sel not in src` 로 판정하면 안 된다 — 부분문자열이다. `.save-bar` 를
+    #    `.save-bar-GONE` 으로 바꾸는 뮤테이션이 **green 으로 통과**했다(앞 글자가 그대로
+    #    들어 있으므로). 이 리포가 반복해서 값을 치른 형태다. 문자열 «리터럴» 로 정확히 본다.
+    literals = {n.value for n in ast.walk(ast.parse(_SWEEP.read_text(encoding="utf-8")))
+                if isinstance(n, ast.Constant) and isinstance(n.value, str)}
+    # JS 블롭 안의 따옴표 문자열도 셀렉터다(`querySelector('.save-bar')`).
+    for text in list(literals):
+        literals.update(re.findall(r"""['"]([^'"\n]{1,80})['"]""", text))
+    missing = sorted(f"{sel}  ({where})" for sel, where in states.items()
+                     if sel not in literals and sel not in _STATE_EXEMPT)
+    assert not missing, (
+        "스윕이 열지 않는 상호작용 상태가 있다 — 그 면의 대비·크기는 관측되지 않는다:\n  "
+        + "\n  ".join(missing))
+
+
+def test_state_exemptions_still_point_at_a_real_state():
+    """🔴 죽은 면제는 「이미 따져봤다」로 읽히면서 아무것도 가리지 않는다."""
+    states = interactive_states()
+    stale = sorted(sel for sel in _STATE_EXEMPT if sel not in states)
+    assert not stale, (
+        "소스에서 사라진 상태를 아직 면제하고 있다 — 지우거나 갱신한다:\n  "
+        + "\n  ".join(stale))
