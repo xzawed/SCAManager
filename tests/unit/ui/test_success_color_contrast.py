@@ -14,16 +14,21 @@
 | 채운 «면» 위 글자 | light **3.77**(`--btn-on-accent` = 흰색) | 미달 → `--success-text-on` 으로 분리 |
 | 15% «틴트» 위 글자 | 위 `--success-text` 로 바꿔도 **3.88 / 3.96** | 🔴 이 축은 여기서 못 고친다(아래) |
 
-## 🔴 틴트 칩은 이 파일이 «고치지 않는다»
+## 🔴 틴트 칩 — 색만 바꿔서는 못 고친다
 
 `.severity-low`·`.issue-badge--closed`·`.fb-btn.active.fb-up`·`.hook-alert.ok`·
-`.save-toast-ok` 는 같은 규칙에서 틴트 면·테두리·글자를 모두 `--success` 로 잡는다.
-바탕용으로 진하게 만든 `--success-text` 를 얹어도 틴트 위에서는 3.88~3.96 이라 여전히
-미달이다 — `components.css` 가 이미 경고하듯 **틴트 칩은 «잠긴 3종 세트»**(면·테두리·
-글자를 함께 고른 grade 토큰)로 가야 한다(#1633 이 등급 칩에 한 처방).
+`.save-toast-ok` 는 같은 규칙에서 틴트 면·테두리·글자를 모두 `--success` 로 잡았다.
+바탕용으로 진하게 만든 `--success-text` 를 얹어도 틴트 위에서는 **3.88(light) /
+3.96(pastel)** 이라 여전히 미달이다.
 
-그건 이 PR 범위가 아니라 #1639 로 넘긴다. 여기서는 «바탕 위 글자» 와 «채운 면» 만 닫고,
-틴트 칩은 아래 검사가 **사유와 함께 분리해 센다** — 조용히 통과시키지 않는다.
+그래서 면·테두리·글자를 «함께» 고른 **잠긴 3종 세트**(`--grade-a`/`-bg`/`-bd`)로 옮겼다 —
+#1633 이 등급 칩에 한 처방과 같다. 그 세트는 자기 면 위에서 **4.52~8.40** 으로 네 테마
+전부 통과한다.
+
+🔴 처음에는 이 자리를 «세기만» 했다(고칠 방법을 정하기 전이었으므로). 세는 시험을
+0-요구로 뒤집을 때 **반공허 단언의 근거도 함께 옮겨야 한다** — 「위반이 있는가」로 두면
+전부 고친 순간 그 단언이 발화한다(실제로 발화했다). 계기 생존은 «대체 토큰이 실제로
+쓰이는가» 로 잰다.
 """
 from __future__ import annotations
 
@@ -81,29 +86,46 @@ def success_as_text_sites() -> dict[str, dict]:
     return found
 
 
+def _replacement_sites() -> int:
+    """`--success-text` 를 글자로 쓰는 자리 수 — 계기가 살아 있는지 재는 대조군."""
+    n = 0
+    for path in _sources():
+        src = _strip_jinja(strip_css_comments(path.read_text(encoding="utf-8")))
+        n += len(re.findall(r"(?<![-\w])color\s*:[^;}\"]*var\(\s*--success-text\s*[,)]", src))
+    return n
+
+
 def test_success_is_not_used_as_text_on_plain_grounds():
     """🔴 바탕 위 글자에 `--success` 를 쓰면 밝은 테마에서 AA 미달이다.
 
     실측: light 3.77 · pastel 3.13. 글자용은 `--success-text` 를 쓴다.
     """
+    # 🔴 반공허 확인을 «위반이 있는가» 로 두면 안 된다. 전부 고친 뒤에는 0이 정답이라
+    #    그 단언이 발화한다(실제로 발화했다). 계기가 살아 있는지는 «대체 토큰이 실제로
+    #    쓰이는가» 로 잰다 — 스캔 경로·정규식이 죽으면 그쪽도 0이 된다.
+    assert _replacement_sites() > 0, (
+        "`color: var(--success-text)` 를 0곳 찾았다 — 스캔이 죽었다(공허한 초록)")
     sites = success_as_text_sites()
-    assert sites, "`color: var(--success)` 를 0곳 찾았다 — 스캔이 죽었다(공허한 초록)"
     plain = sorted(where for where, info in sites.items() if not info["tint"])
     assert not plain, (
         "바탕 위 글자에 `--success` 를 쓴다 — `var(--success-text)` 로 바꾼다:\n  "
         + "\n  ".join(plain))
 
 
-def test_tint_chips_are_counted_not_silently_passed():
-    """🔴 틴트 칩은 여기서 못 고친다 — 그러면 «세어» 남긴다.
+def test_no_success_tint_chip_remains():
+    """🔴 틴트 칩은 «잠긴 3종 세트» 로 옮긴다 — 색만 바꿔서는 못 고친다.
 
-    바탕용으로 진하게 만든 글자색도 15% 틴트 위에서는 3.88~3.96 이라 미달이다.
-    이 검사는 그 자리를 «0이 아님» 으로 붙잡아, 다음 사람이 「없다」로 읽지 않게 한다.
-    숫자가 0이 되면(= 전부 grade 3종 세트로 옮겼으면) 이 시험을 지운다.
+    실측: 바탕용으로 진하게 만든 `--success-text` 를 얹어도 15% 틴트 위에서는
+    light **3.88** · pastel **3.96** 이라 여전히 미달이다. 면·테두리·글자를 «함께»
+    고른 `--grade-a` 3종 세트는 자기 면 위에서 4.52~8.40 으로 네 테마 전부 통과한다
+    (#1633 이 등급 칩에 한 처방과 같다).
+
+    이전 판은 이 자리를 «세기만» 했다(고칠 수 없었으므로). 이제 0을 요구한다.
     """
     chips = sorted(w for w, info in success_as_text_sites().items() if info["tint"])
-    assert chips, (
-        "success 틴트 칩을 0곳 찾았다 — 전부 옮겼다면 이 시험과 #1639 의 해당 항목을 지운다")
+    assert not chips, (
+        "success 를 «틴트 면 + 글자» 로 함께 쓰는 칩이 남아 있다 — "
+        "`--grade-a`/`-bg`/`-bd` 3종 세트로 옮긴다:\n  " + "\n  ".join(chips))
 
 
 def test_success_text_token_meets_aa_on_every_card():
@@ -155,3 +177,32 @@ def test_filled_success_controls_use_the_on_token():
             bad.append(f"{path.name}: color:{value}")
     assert not bad, (
         "success 로 채운 면 위 글자가 전용 on-토큰을 쓰지 않는다:\n  " + "\n  ".join(bad))
+
+
+def test_migrated_chips_keep_their_siblings_border_treatment():
+    """🔴 형제와 «테두리 취급» 이 갈리지 않아야 한다.
+
+    `.severity-low` 는 `.severity-high`(`--danger`)·`.severity-medium`(`--warning`) 과
+    나란히 놓인다. 셋 다 **불투명** 테두리였는데, 3종 세트로 옮기며 low 만
+    `--grade-a-bd`(반투명/연한 민트, 카드 대비 1.28~2.41)로 바뀌면 셋의 모양이 갈린다.
+    `.fb-btn.active.fb-up` 도 형제 `.fb-btn.active.fb-down` 이 불투명 `--danger` 를 쓴다.
+
+    🔴 이건 **1.4.11 위반이 아니다.** 이 리포는 「보이는 글자가 있는 컨트롤은 경계 표시
+    요구 대상이 아니다」를 실측으로 확립했다(#1621, 185/216 → 1/58). 여기서 잡는 것은
+    «접근성» 이 아니라 «일관성» 이다 — 그렇게 적어야 다음 사람이 기준을 헷갈리지 않는다.
+    Grok `01a08ab4` 가 테두리 약화를 지적했고, 그 지적의 «옳은 부분» 이 이것이다.
+    """
+    src = strip_css_comments(
+        (ROOT / "src" / "templates" / "analysis_detail.html").read_text(encoding="utf-8"))
+    pairs = [(".severity-low", (".severity-high", ".severity-medium")),
+             (".fb-btn.active.fb-up", (".fb-btn.active.fb-down",))]
+    bad = []
+    for target, siblings in pairs:
+        m = re.search(re.escape(target) + r"\s*\{([^}]*)\}", src)
+        assert m, f"`{target}` 규칙이 없다 — 시험이 늙었다"
+        got = re.search(r"border(?:-color)?\s*:[^;]*var\(\s*(--[\w-]+)\s*\)", m.group(1))
+        assert got, f"`{target}` 에 토큰 테두리가 없다"
+        if got.group(1).endswith("-bd"):
+            bad.append(f"{target}: `{got.group(1)}` — 형제 {siblings} 는 불투명 토큰을 쓴다")
+    assert not bad, (
+        "3종 세트로 옮긴 칩만 테두리가 옅어져 형제와 갈린다:\n  " + "\n  ".join(bad))
