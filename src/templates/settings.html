@@ -330,7 +330,9 @@
   .mask-toggle {
     position:absolute; right:8px; top:50%; transform:translateY(-50%);
     background:transparent; border:none; cursor:pointer;
+    /* 🔴 WCAG 2.5.8 — `4px + 15px + 4px = 23px` 로 1px 모자랐다(실측 36x23). */
     padding:4px 8px; font-size:15px; opacity:.55; border-radius:6px;
+    display:inline-flex; align-items:center; justify-content:center; min-height:24px;
     line-height:1; transition:opacity var(--transition), background var(--transition);
   }
   .mask-toggle:hover { opacity:1; background:var(--bg-hover,rgba(99,102,241,.1)); }

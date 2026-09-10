@@ -122,3 +122,24 @@ def test_exemptions_still_point_at_a_real_sweep():
     assert not stale, (
         "면제 목록이 실재하지 않는 함수를 가리킨다 — 지우거나 갱신한다:\n  "
         + "\n  ".join(stale))
+
+
+def test_the_mobile_target_threshold_is_the_wcag_value():
+    """🔴 가드는 «자기 자신이 꺼지는 것» 을 못 잡는다 — 임계값을 밖에서 고정한다.
+
+    실측: e2e 판정식을 `< 1` 로 낮추는 뮤테이션이 **green 으로 통과**했다.
+    판정 기준은 한 곳(`_TARGET_MIN`)에서 오고, 그 값이 규범값인지는 여기서 잰다.
+    SC 2.5.8 Target Size (Minimum) = 24 CSS px (2.5.5 의 AAA 44 가 아니다).
+    """
+    src = _SWEEP.read_text(encoding="utf-8")
+    m = re.search(r"^_TARGET_MIN\s*=\s*(\d+)", src, re.M)
+    assert m, "`_TARGET_MIN` 이 없다 — 임계값이 다시 JS 안으로 숨었다"
+    assert int(m.group(1)) == 24, (
+        f"타깃 크기 임계값이 {m.group(1)} 이다 — SC 2.5.8 은 24 CSS px 다")
+    assert "_TARGET_AUDIT_JS, _TARGET_MIN" in src, (
+        "감사 JS 가 임계값을 «인자로» 받지 않는다 — JS 안에 숫자를 박으면 "
+        "그 숫자만 조용히 낮출 수 있다")
+    # 🔴 `r.width < 1` 은 «빈 상자 걸러내기» 라 정당하다 — 처음엔 그것까지 금지해
+    #    스스로 red 를 냈다. 금지 대상은 «임계값» 이므로 두 자리 리터럴만 막는다.
+    assert not re.search(r"r\.(width|height)\s*<\s*\d{2,}", src), (
+        "감사 JS 가 임계값을 리터럴과 견준다 — 인자(MIN)로 견줘야 한 곳만 고칠 수 있다")

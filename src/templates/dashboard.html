@@ -910,7 +910,8 @@
       {% endif %}
       <a href="/dashboard?mode=insight&days={{ days }}&refresh=1"
          title="{{ 'dashboard.insight.refresh_tooltip' | i18n_args(locale | default('ko')) }}"
-         style="text-decoration:none;">{{ 'dashboard.insight.refresh' | i18n_args(locale | default('ko')) }}</a>
+         {# 🔴 WCAG 2.5.8 — 24×24. 0.85em flex 아이템이라 20px 였다(실측). #}
+         style="text-decoration:none; display:inline-flex; align-items:center; min-height:24px;">{{ 'dashboard.insight.refresh' | i18n_args(locale | default('ko')) }}</a>
     </div>
     <div class="dash-insight-grid" role="region" aria-label="{{ 'dashboard.insight.card_aria' | i18n_args(locale | default('ko')) }}">
       <div class="dash-insight-card">

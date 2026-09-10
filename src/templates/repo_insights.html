@@ -125,7 +125,8 @@
     <p class="ri-narrative-text">{{ narrative.text }}</p>
     <div style="text-align:right; margin-top:8px;">
       <a href="/repos/{{ repo.full_name }}/insights?days={{ days }}&refresh=1"
-         style="font-size:11px; color:var(--text-2); text-decoration:none;">↺ {{ 'repo_insights.refresh' | i18n_args(locale | default('ko')) }}</a>
+         {# 🔴 WCAG 2.5.8 — 24×24. 11px 글자라 줄높이만으로는 15px 였다(실측). #}
+         style="font-size:11px; color:var(--text-2); text-decoration:none; display:inline-flex; align-items:center; min-height:24px;">↺ {{ 'repo_insights.refresh' | i18n_args(locale | default('ko')) }}</a>
     </div>
   </div>
   {% endif %}

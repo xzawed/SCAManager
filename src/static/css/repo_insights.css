@@ -18,7 +18,9 @@
 }
 
 .ri-back-link {
+  /* 🔴 WCAG 2.5.8 — 24×24 (실측 21px 이었다). */
   display: inline-flex;
+  min-height: 24px;
   align-items: center;
   gap: 6px;
   font-size: 13px;

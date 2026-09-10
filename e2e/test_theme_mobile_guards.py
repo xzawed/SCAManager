@@ -550,6 +550,20 @@ def _reveal_all(page) -> None:
         }
         window.scrollTo(0, 0);
         await new Promise(r => setTimeout(r, 110));
+        // 🔴 훑기만으로는 «문서 끝 40px 안» 에 있는 요소가 영영 안 드러난다 —
+        //    관찰자의 `rootMargin: 0 0 -40px 0` 때문에 최대 스크롤에서도 교차하지 않는다.
+        //    실측: 같은 코드가 로컬은 초록, CI 는 `.reveal 1/7` red 였다(폰트 높이 차이로
+        //    경계에 걸린다). 남은 것은 «하나씩» 화면 가운데로 끌어와 확실히 드러낸다.
+        const stuck = Array.from(document.querySelectorAll('.reveal')).filter(e => {
+            const r = e.getBoundingClientRect();
+            return r.width > 0 && r.height > 0
+                   && parseFloat(getComputedStyle(e).opacity) < 0.99; });
+        for (const el of stuck) {
+            el.scrollIntoView({block: 'center'});
+            await new Promise(r => setTimeout(r, 90));
+        }
+        window.scrollTo(0, 0);
+        await new Promise(r => setTimeout(r, 110));
     }""")
     _settle_animations(page)
 
@@ -1441,3 +1455,79 @@ def test_the_aa_sweep_measures_below_the_fold_too(seeded_page, base_url, path):
     assert after["stuck"] == 0, (
         f"{path}: 스윕이 끝난 뒤에도 자리를 차지한 `.reveal` {after['stuck']}/{total} 개가 "
         "opacity<0.99 다 — 그 글자들의 대비는 어떤 조합에서도 관측되지 않는다(안 쟀음 ≠ 통과)")
+
+
+# ── J. WCAG 2.5.8 타깃 크기 (24×24) — 모바일 ─────────────────────────────────
+
+_TARGET_MIN = 24
+
+# 🔴 규범 예외를 «코드로» 적는다. 손으로 셀렉터를 빼면 그 자리는 영영 안 재진다.
+#   - 문장 안 링크: 「문장 안에 있거나 line-height 로 크기가 묶인 타깃」(SC 2.5.8 예외).
+#     flex 아이템은 blockify 돼 line-height 에 묶이지 «않으므로» 예외가 아니다 — 실측으로
+#     `.admin-link` 는 `display:block` · 부모 `flex` 였다.
+#   - range 입력: 타깃은 thumb 이고 입력 상자가 아니다(#1627 이 thumb 을 24 로 만들었다).
+_TARGET_AUDIT_JS = r"""
+(MIN) => {
+  const CTRL = 'button, a[href], input:not([type=hidden]), select, textarea,' +
+               ' [role=button], [role=menuitem]';
+  const out = {seen: 0, small: [], exempt: {range: 0, inlineInSentence: 0, zeroBox: 0}};
+  for (const el of document.querySelectorAll(CTRL)) {
+    const r = el.getBoundingClientRect();
+    if (r.width < 1 || r.height < 1) { out.exempt.zeroBox++; continue; }
+    if (el.tagName === 'INPUT' && el.getAttribute('type') === 'range') {
+      out.exempt.range++; continue; }
+    const cs = getComputedStyle(el);
+    if (el.tagName === 'A' && cs.display === 'inline') {
+      const p = el.parentElement;
+      const flow = p && Array.from(p.childNodes)
+        .some(n => n.nodeType === 3 && n.textContent.trim());
+      if (flow) { out.exempt.inlineInSentence++; continue; }
+    }
+    out.seen++;
+    if (r.width < MIN || r.height < MIN)
+      out.small.push({sel: (el.className && typeof el.className === 'string'
+                            ? '.' + el.className.trim().split(/\s+/)[0] : el.tagName.toLowerCase()),
+                      w: Math.round(r.width), h: Math.round(r.height),
+                      display: cs.display,
+                      text: (el.textContent || '').trim().slice(0, 20)});
+  }
+  return out;
+}
+"""
+
+# 🔴 대시보드는 «한 화면» 이 아니다 — `?mode=` 분기마다 다른 DOM 이다. 첫 판은 이 목록에
+#    `?mode=insight` 가 없어서, 프로브가 거기서 잡은 15~20px 링크를 가드가 못 봤다
+#    (Grok `01a0899b`). 화면이 아니라 «상태» 를 적는다.
+_TARGET_PATHS = ["/admin/tenants", "/admin/rls-audit", "/admin/operations",
+                 "/repos/owner%2Ftestrepo/insights", "/repos/owner%2Ftestrepo/settings",
+                 "/dashboard?mode=insight", "/dashboard?mode=security", "/dashboard?mode=repos"]
+
+
+@pytest.mark.parametrize("path", _TARGET_PATHS)
+def test_every_control_meets_the_24px_target_on_mobile(seeded_page, base_url, path):
+    """🔴 375px 에서 컨트롤이 24×24 미만이면 손가락으로 정확히 누를 수 없다 (SC 2.5.8 AA).
+
+    실측(수정 전): `.admin-link`·`.admin-ops-link` 22px · `.ri-back-link` 21px ·
+    `.mask-toggle` 36×23 — 전부 1~3px 모자랐다.
+
+    🔴 예외는 «세어» 남긴다. 문장 안 링크와 range 입력은 규범상 제외지만, 그 수가 0이 되면
+    판정이 조용히 넓어진 것이므로 그것도 알아야 한다.
+
+    Controls below 24x24 cannot be hit reliably; exemptions are counted, not hidden.
+    """
+    seeded_page.context.add_cookies([_admin_session_cookie()])
+    seeded_page.set_viewport_size(_MOBILE_VIEWPORT)
+    resp = seeded_page.goto(f"{base_url}{path}")
+    assert "localhost" in seeded_page.url, (
+        f"{path} 가 렌더되지 않고 {seeded_page.url[:60]} 로 이동했다 — 남의 페이지를 잰다")
+    assert resp is not None and resp.status == 200, f"{path} status={resp and resp.status}"
+    _reveal_all(seeded_page)
+
+    res = seeded_page.evaluate(_TARGET_AUDIT_JS, _TARGET_MIN)
+    assert res["seen"] > 0, (
+        f"{path} 에서 컨트롤을 하나도 재지 못했다 — 재지 못한 것이지 통과한 것이 아니다")
+    assert not res["small"], (
+        f"{path}: {_TARGET_MIN}px 미만 컨트롤 {len(res['small'])}건 "
+        f"(관측 {res['seen']} · 예외 {res['exempt']}):\n  "
+        + "\n  ".join(f"{s['sel']} {s['w']}x{s['h']} display={s['display']} {s['text']!r}"
+                      for s in res["small"][:10]))

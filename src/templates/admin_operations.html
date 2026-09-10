@@ -59,6 +59,8 @@
   }
 
   .admin-ops-link {
+    /* 🔴 WCAG 2.5.8 — 24×24. flex 아이템이라 «문장 안» 예외가 성립하지 않는다. */
+    display: inline-flex; align-items: center; min-height: 24px;
     /* accent 를 «글자» 로 — 실측 pastel 3.24. */
     color: var(--accent-text);
     text-decoration: none;
