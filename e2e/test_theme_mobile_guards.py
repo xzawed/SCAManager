@@ -507,8 +507,16 @@ _TOKEN_TEXT_AUDIT_JS = r"""
 """
 
 # 두 토큰이 실제로 쓰이는 화면들. 각각이 서로 다른 바탕(카드·표·nav 알약·KPI)을 만든다.
+# 🔴 대시보드는 «한 화면» 이 아니다 — `?mode=` 마다 다른 DOM 이다. 실측(400조합)에서
+#    기본 모드 외 4개는 이 목록에 없어 «한 번도» 대비 관측을 받지 않았다.
+#    그런데 라우트 커버리지 가드는 초록이었다: `/dashboard` 가 라우트로는 덮였고,
+#    타깃 크기 축이 넣은 `?mode=` 리터럴까지 합쳐 세었기 때문이다.
+#    `tests/unit/ui/test_a11y_route_coverage.py::test_the_contrast_sweep_opens_every_dashboard_mode`
+#    가 이 목록을 템플릿의 분기와 대조한다 — 새 모드가 생기면 red 다.
 _TOKEN_TEXT_PATHS = ["/", "/dashboard", "/repos/owner/testrepo", "/repos/owner/testrepo/insights",
-                     "/repos/add"]
+                     "/repos/add",
+                     "/dashboard?mode=insight", "/dashboard?mode=security",
+                     "/dashboard?mode=usage", "/dashboard?mode=repos"]
 
 
 def _settle_animations(page) -> None:
@@ -911,33 +919,16 @@ def test_landing_honours_the_stored_theme(anonymous_page, base_url):
 # ── H. /admin/* 3화면 — 여태 e2e 로 도달할 수 없던 표면 ────────────────────────
 # The three admin screens: unreachable from e2e until now.
 
-def _admin_session_cookie(user_id: int = 1) -> dict:
-    """실제 서명 세션 쿠키.
-
-    🔴 의존성을 override 하지 «않는다». `require_admin` 은 `require_login` 을
-    의존성이 아니라 «평범한 함수» 로 부르기 때문에(`src/auth/session.py`),
-    conftest 의 `dependency_overrides[require_login]` 이 이 경로에는 적용되지 않는다 —
-    그래서 admin 화면은 여태 e2e 로 렌더된 적이 없다. 진짜 세션을 만들어
-    kill-switch → require_login → email allow-list 사슬을 그대로 태운다.
-    """
-    import base64  # noqa: PLC0415
-    import json as _json  # noqa: PLC0415
-    import os  # noqa: PLC0415
-
-    import itsdangerous  # noqa: PLC0415
-    # 🔴 비밀키를 여기 복제하지 않는다 — conftest 가 서버에 세운 값을 그대로 읽는다.
-    #    복제하면 conftest 가 키를 바꾼 날 조용히 302 로 흘러간다.
-    secret = os.environ["SESSION_SECRET"]
-    data = base64.b64encode(_json.dumps({"user_id": user_id}).encode())
-    value = itsdangerous.TimestampSigner(secret).sign(data).decode()
-    return {"name": "session", "value": value, "domain": "localhost", "path": "/"}
+# 🔴 admin 세션 쿠키·외부 이동 검사는 «관용구» 라 conftest 에 둔다 — 한 파일에만
+#    있으면 다음 프로브가 같은 실수를 반복한다(#1639 W10).
 
 
 _ADMIN_PATHS = ["/admin/tenants", "/admin/rls-audit", "/admin/operations"]
 
 
 @pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
-def test_admin_screens_render_and_meet_aa(seeded_page, base_url, theme):
+def test_admin_screens_render_and_meet_aa(admin_page, base_url, theme,
+                                          assert_still_on_our_app):
     """🔴 admin 3화면의 `--accent-text`·`--text-2/3` 글자가 «둘 다» AA 를 넘어야 한다.
 
     실측(수정 전, 이 화면들이 처음 측정됐다): `.admin-link`·`.admin-ops-link` 가
@@ -945,34 +936,23 @@ def test_admin_screens_render_and_meet_aa(seeded_page, base_url, theme):
     `.admin-ops-card-hint` 가 `opacity:0.8` 로 흐려져 light 4.31.
     셋 다 이미 다른 화면에서 고친 부류인데 `admin.css` 에만 남아 있었다.
     """
-    seeded_page.context.add_cookies([_admin_session_cookie()])
-    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    admin_page.set_viewport_size({"width": 1440, "height": 900})
     total, bad = 0, []
     for path in _ADMIN_PATHS:
-        resp = seeded_page.goto(f"{base_url}{path}")
-        # 🔴 호스트만 보면 안 된다 — 403/503 오류 페이지도 localhost 다(fail-open).
-        #    상태와 «admin 화면의 실제 마크업» 을 함께 본다.
-        assert "localhost" in seeded_page.url, (
-            f"{path} 가 렌더되지 않고 {seeded_page.url[:60]} 로 이동했다 — "
-            "admin 인가 사슬이 막았다(세션·SAAS_ADMIN_EMAILS 확인)"
-        )
-        assert resp is not None and resp.status == 200, (
-            f"{path} 가 {resp.status if resp else '무응답'} 를 냈다 — "
-            "인가는 통과했는지, kill-switch·allow-list 를 볼 것"
-        )
-        assert seeded_page.locator("nav").count() > 0, (
-            f"{path} 에 nav 가 없다 — admin 화면이 아니라 오류 페이지를 잰 것이다"
-        )
-        seeded_page.evaluate("(t) => applyTheme(t)", theme)
-        seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
-        seeded_page.wait_for_timeout(350)
-        _reveal_all(seeded_page)
+        resp = admin_page.goto(f"{base_url}{path}")
+        # 🔴 호스트·상태·우리 마크업을 «셋 다» 본다 — 403/503 오류 페이지도 localhost 라
+        #    호스트만 보면 fail-open 이다. 그 판정은 conftest 의 공용 관용구에 있다.
+        assert_still_on_our_app(admin_page, path, resp)
+        admin_page.evaluate("(t) => applyTheme(t)", theme)
+        admin_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
+        admin_page.wait_for_timeout(350)
+        _reveal_all(admin_page)
         # 🔴 «두 감사를 다» 돌린다. 처음엔 토큰 글자(--text-2/3)만 봤는데, 이 화면에서
         #    고친 것은 «accent 를 글자로 쓰는 링크» 였다 — 그 축을 안 보고 있었다.
         #    뮤테이션(`.admin-link` 를 --accent 로 되돌림)이 green 으로 통과해 드러났다.
         for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
                           (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
-            res = seeded_page.evaluate(js)
+            res = admin_page.evaluate(js)
             assert not res.get("error"), res.get("error")
             total += sum(res["seen"][n] for n in names)
             bad += [dict(b, path=path) for b in res["bad"]]
@@ -1504,7 +1484,7 @@ _TARGET_PATHS = ["/admin/tenants", "/admin/rls-audit", "/admin/operations",
 
 
 @pytest.mark.parametrize("path", _TARGET_PATHS)
-def test_every_control_meets_the_24px_target_on_mobile(seeded_page, base_url, path):
+def test_every_control_meets_the_24px_target_on_mobile(admin_page, base_url, path):
     """🔴 375px 에서 컨트롤이 24×24 미만이면 손가락으로 정확히 누를 수 없다 (SC 2.5.8 AA).
 
     실측(수정 전): `.admin-link`·`.admin-ops-link` 22px · `.ri-back-link` 21px ·
@@ -1515,15 +1495,14 @@ def test_every_control_meets_the_24px_target_on_mobile(seeded_page, base_url, pa
 
     Controls below 24x24 cannot be hit reliably; exemptions are counted, not hidden.
     """
-    seeded_page.context.add_cookies([_admin_session_cookie()])
-    seeded_page.set_viewport_size(_MOBILE_VIEWPORT)
-    resp = seeded_page.goto(f"{base_url}{path}")
-    assert "localhost" in seeded_page.url, (
-        f"{path} 가 렌더되지 않고 {seeded_page.url[:60]} 로 이동했다 — 남의 페이지를 잰다")
+    admin_page.set_viewport_size(_MOBILE_VIEWPORT)
+    resp = admin_page.goto(f"{base_url}{path}")
+    assert "localhost" in admin_page.url, (
+        f"{path} 가 렌더되지 않고 {admin_page.url[:60]} 로 이동했다 — 남의 페이지를 잰다")
     assert resp is not None and resp.status == 200, f"{path} status={resp and resp.status}"
-    _reveal_all(seeded_page)
+    _reveal_all(admin_page)
 
-    res = seeded_page.evaluate(_TARGET_AUDIT_JS, _TARGET_MIN)
+    res = admin_page.evaluate(_TARGET_AUDIT_JS, _TARGET_MIN)
     assert res["seen"] > 0, (
         f"{path} 에서 컨트롤을 하나도 재지 못했다 — 재지 못한 것이지 통과한 것이 아니다")
     assert not res["small"], (

@@ -520,3 +520,69 @@ def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001
     if stale:
         fail("e2e/SKIP_ALLOWLIST 가 낡았다 — 이제 skip 되지 않는 항목 {}건, 지워라:\n  {}".format(
             len(stale), "\n  ".join(stale)))
+
+
+# ── admin 도달 · 외부 이동 방지 (#1639 W10) ───────────────────────────────────
+#
+# 🔴 이 두 개는 «관용구» 다. 한 파일에만 있으면 다음 프로브가 같은 실수를 반복한다 —
+#    실제로 admin 세션 쿠키 없이 `/admin/*` 을 연 프로브가 **github.com 을 72조합 측정**
+#    하고, GitHub 로그인 페이지의 결함(이름 없는 아이콘 버튼 30·작은 타깃 37·중복 id 4)을
+#    이 앱의 결함으로 집계했다. 남의 DOM 을 우리 것으로 적는 것이 가장 나쁜 오측이다.
+
+def admin_session_cookie(user_id: int = 1) -> dict:
+    """실제 서명 세션 쿠키 — `/admin/*` 을 여는 «유일한» 방법.
+
+    🔴 의존성 override 로는 안 된다. `require_admin` 은 `require_login` 을 의존성이
+    아니라 «평범한 함수» 로 부르기 때문에(`src/auth/session.py`), conftest 의
+    `dependency_overrides[require_login]` 이 그 경로에는 적용되지 않는다.
+    진짜 세션을 만들어 kill-switch → require_login → email allow-list 사슬을 그대로 태운다.
+
+    🔴 비밀키를 여기 복제하지 않는다 — `live_server` 가 세운 값을 그대로 읽는다.
+    복제하면 그 값을 바꾼 날 조용히 302 로 흘러간다.
+    """
+    import base64  # noqa: PLC0415
+    import json as _json  # noqa: PLC0415
+
+    import itsdangerous  # noqa: PLC0415
+    secret = os.environ["SESSION_SECRET"]
+    data = base64.b64encode(_json.dumps({"user_id": user_id}).encode())
+    value = itsdangerous.TimestampSigner(secret).sign(data).decode()
+    return {"name": "session", "value": value, "domain": "localhost", "path": "/"}
+
+
+def _assert_still_on_our_app(page, path: str, resp=None) -> None:
+    """🔴 «우리 앱을 재고 있는가» 를 먼저 확인한다 — 세 축을 다 본다.
+
+    호스트만 보면 안 된다: 403/503 오류 페이지도 localhost 다(fail-open). 상태와
+    «우리 마크업» 을 함께 봐야 「열렸다」가 「그 화면이다」가 된다.
+    """
+    assert "localhost" in page.url or "127.0.0.1" in page.url, (
+        f"{path} 가 렌더되지 않고 {page.url[:70]} 로 이동했다 — "
+        "인가 사슬이 막았다(세션 쿠키·SAAS_ADMIN_EMAILS 확인). 이 상태로 측정하면 "
+        "«남의 페이지» 를 이 앱의 결함으로 적게 된다")
+    if resp is not None:
+        assert resp.status == 200, f"{path} status={resp.status} — 오류 페이지를 재고 있다"
+    assert page.locator("nav").count() > 0, (
+        f"{path} 에 우리 `nav` 가 없다 — localhost 이지만 우리 화면이 아니다")
+
+
+@pytest.fixture
+def admin_page(seeded_page):
+    """🔴 admin 화면을 여는 «유일한» 관용구 — 세션 쿠키가 붙은 페이지.
+
+    이 픽스처를 쓰지 않고 `/admin/*` 을 열면 GitHub OAuth 로 나가고, 그 페이지를 재게 된다
+    (실측: 프로브 72조합이 github.com 을 쟀다). 쿠키를 손으로 만들지 말 것.
+    """
+    seeded_page.context.add_cookies([admin_session_cookie()])
+    return seeded_page
+
+
+@pytest.fixture
+def assert_still_on_our_app():
+    """🔴 «우리 앱을 재고 있는가» 판정을 픽스처로 준다.
+
+    conftest 의 함수는 시험 파일에서 직접 import 할 수 없다(pytest 는 conftest 를
+    모듈로 노출하지 않는다). 픽스처로 주면 «쓰지 않으면 눈에 띈다» — 정의만 있고
+    아무도 안 쓰는 헬퍼가 되는 것을 막는다(Grok `01a08b4a` 가 그 상태를 지적했다).
+    """
+    return _assert_still_on_our_app
