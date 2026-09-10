@@ -56,6 +56,9 @@
 
 /* ── 링크 / Links ────────────────────────────────────────── */
 .admin-link {
+  /* 🔴 WCAG 2.5.8 — 24×24. flex 아이템이라 line-height 에 묶이지 않아
+     «문장 안» 예외가 성립하지 않는다(실측 display:block · 부모 flex). */
+  display: inline-flex; align-items: center; min-height: 24px;
   /* accent 를 «글자» 로 쓰는 자리 — 밝은 테마에서 3.24(#1612 의 토큰). */
   color: var(--accent-text);
   text-decoration: none;
