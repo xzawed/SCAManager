@@ -22,7 +22,6 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 from ._contrast import ROOT, strip_css_comments
 
