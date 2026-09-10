@@ -147,3 +147,67 @@ def test_derived_screen_routes_are_actually_registered():
     assert not missing, (
         "소스에서 파생한 화면 경로가 앱에 등록돼 있지 않다 — 파생이 앱과 어긋났다:\n  "
         + "\n  ".join(missing))
+
+
+# ── 화면 «상태» — 한 라우트가 여러 UI 인 경우 ─────────────────────────────────
+
+def dashboard_modes() -> set[str]:
+    """`?mode=` 분기를 **라우터의 SSOT** 에서 파생한다.
+
+    🔴 처음에는 템플릿을 `mode == '<x>'` 로 grep 했다. 그건 SSOT 가 아니다 —
+    따옴표 종류·`mode in (...)`·파이썬 쪽에서만 갈리는 분기를 놓치고, 낱말 경계가 없어
+    `foo_mode == 'x'` 같은 것도 주워 담는다(Grok `01a08b4a`).
+    유효 모드의 정본은 `src/ui/routes/dashboard.py::_VALID_MODES` 다.
+    """
+    src = (_ROOT / "src" / "ui" / "routes" / "dashboard.py").read_text(encoding="utf-8")
+    m = re.search(r"_VALID_MODES\s*=\s*\(([^)]*)\)", src)
+    assert m, "`_VALID_MODES` 를 찾지 못했다 — 모드 SSOT 가 옮겨졌다"
+    return set(re.findall(r"[\"']([a-z_]+)[\"']", m.group(1)))
+
+
+def _contrast_sweep_paths() -> set[str]:
+    """대비 감사가 «실제로» 여는 경로 — `_TOKEN_TEXT_PATHS` 만 본다.
+
+    🔴 `_swept_paths()` 처럼 파일 안 모든 리터럴을 합치면 안 된다. 그 함수는 «타깃 크기»
+    축이 넣은 `?mode=` 문자열까지 세어, 대비 축이 그 화면을 여는 것처럼 보이게 만든다
+    (Grok `01a08aa1`). 축마다 자기 목록을 본다.
+    """
+    src = _SWEEP.read_text(encoding="utf-8")
+    for node in ast.parse(src).body:
+        if not (isinstance(node, ast.Assign) and isinstance(node.value, (ast.List, ast.Tuple))):
+            continue
+        if any(isinstance(t, ast.Name) and t.id == "_TOKEN_TEXT_PATHS" for t in node.targets):
+            return {e.value for e in node.value.elts
+                    if isinstance(e, ast.Constant) and isinstance(e.value, str)}
+    raise AssertionError("`_TOKEN_TEXT_PATHS` 를 찾지 못했다 — 시험이 늙었다")
+
+
+def test_the_contrast_sweep_opens_every_dashboard_mode():
+    """🔴 대시보드는 «한 화면» 이 아니다 — `?mode=` 마다 다른 DOM 이다.
+
+    실측(2026-09-09 400조합): 대비 스윕은 `/dashboard` 하나만 열어 기본 모드 외 4개는
+    한 번도 관측되지 않았다. 그런데 라우트 커버리지 가드는 **초록**이었다 — `/dashboard`
+    가 라우트로는 덮였고, 타깃 크기 축이 넣은 `?mode=` 리터럴까지 합쳐 세기 때문이다.
+    「초록 = 쟀다」가 되지 않도록 축마다 따로 요구한다.
+
+    The dashboard renders five different UIs; the contrast sweep opened only the default.
+    """
+    modes = dashboard_modes()
+    assert len(modes) >= 2, f"대시보드 mode 분기를 {len(modes)}개 찾았다 — 파생이 죽었다"
+    # 🔴 목록을 읽는 것만으로는 부족하다 — 대비 시험이 «그 목록» 을 parametrize 해야
+    #    의미가 있다. 데코레이터를 `_FOCUS_PATHS` 로 바꾸면 이 가드는 초록인 채
+    #    모드가 다시 안 재진다(Grok `01a08b4a`).
+    src = _SWEEP.read_text(encoding="utf-8")
+    assert re.search(
+        r'@pytest\.mark\.parametrize\(\s*"path",\s*_TOKEN_TEXT_PATHS\s*\)\s*\n'
+        r"def test_token_text_meets_aa_against_painted_background", src), (
+        "대비 시험이 `_TOKEN_TEXT_PATHS` 를 parametrize 하지 않는다 — "
+        "이 가드가 읽는 목록과 실제로 여는 목록이 갈렸다")
+    swept = _contrast_sweep_paths()
+    missing = sorted(m for m in modes
+                     if not any(f"mode={m}" in p for p in swept)
+                     # 기본 모드는 `?mode=` 없이도 열린다 — `/dashboard` 로 충분하다.
+                     and not (m == "overview" and "/dashboard" in swept))
+    assert not missing, (
+        "대비 스윕이 열지 않는 대시보드 모드가 있다 — 그 화면의 글자 대비는 "
+        f"어떤 조합에서도 관측되지 않는다: {missing}\n  여는 경로: {sorted(swept)}")
