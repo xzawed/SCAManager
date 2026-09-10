@@ -1523,25 +1523,65 @@ def test_every_control_meets_the_24px_target_on_mobile(admin_page, base_url, pat
 #    렌더되는데 e2e 시드에는 없다(그 축은 #1639 W12). 마크업은 서버가 렌더하므로
 #    상태 클래스를 직접 바꿔 «칠해진 상태» 를 관측한다 — 트리거 경로는 주장하지 않는다.
 
+# 프로덕션 `openModal` 이 채우는 것과 «같은» 필드를 채운다 — 빈 모달은 다른 화면이다.
+_FILL_ISSUE_MODAL = """() => {
+    document.getElementById('issueTitle').value = 'e2e: SQL 인젝션 가능성 / possible SQL injection';
+    document.getElementById('issueBody').value = 'e2e 본문 / body - src/app.py:12';
+    document.getElementById('issueLabels').value = 'bug, security';
+    /* +error */
+    document.getElementById('issueModalOverlay').classList.remove('hidden');
+}"""
+
 _STATE_OPENERS = {
     "#themeDropdown": ("/dashboard", "() => document.getElementById('themeToggle').click()"),
     "#langDropdown": ("/dashboard", "() => document.getElementById('langToggle').click()"),
     ".save-bar": ("/repos/owner%2Ftestrepo/settings",
                   "() => document.querySelector('.save-bar').classList.add('visible')"),
-    "#issueModalOverlay": ("/repos/owner%2Ftestrepo/analyses/__ID__",
-                           "() => document.getElementById('issueModalOverlay')"
-                           ".classList.remove('hidden')"),
+    # 🔴 «빈» 모달을 열면 프로덕션에 없는 화면을 재게 된다 — `openModal` 은
+    #    세 입력을 채운 뒤 연다(`analysis_detail.html::function openModal`).
+    #    글자가 없는 상자를 열어 초록을 받는 것은 관측이 아니다(Grok `01a08bb5`).
+    "#issueModalOverlay": ("/repos/owner%2Ftestrepo/analyses/__ID__", _FILL_ISSUE_MODAL),
     "#issueModalError": ("/repos/owner%2Ftestrepo/analyses/__ID__",
-                         "() => { const o = document.getElementById('issueModalOverlay');"
-                         " o.classList.remove('hidden');"
-                         " const e = document.getElementById('issueModalError');"
-                         " e.classList.remove('hidden'); e.textContent = 'e2e'; }"),
+                         _FILL_ISSUE_MODAL.replace("/* +error */", """
+        const e = document.getElementById('issueModalError');
+        e.classList.remove('hidden');
+        e.textContent = 'e2e: 이슈 생성에 실패했습니다 / issue creation failed';""")),
     "#issueToast": ("/repos/owner%2Ftestrepo/analyses/__ID__",
                     "() => { const t = document.getElementById('issueToast');"
-                    " t.classList.remove('hidden'); t.textContent = 'e2e'; }"),
-    ".custom-date-wrap": ("/repos/owner%2Ftestrepo",
-                          "() => document.querySelector('.custom-date-wrap')"
-                          ".classList.add('visible')"),
+                    " t.classList.remove('hidden');"
+                    " t.textContent = 'e2e: 이슈가 생성되었습니다 / issue created'; }"),
+    # 프로덕션(`repo_detail.html::state.datePreset`)은 열면서 두 날짜를 채운다.
+    ".custom-date-wrap": ("/repos/owner%2Ftestrepo", """() => {
+        document.getElementById('dateFrom').value = '2026-01-01';
+        document.getElementById('dateTo').value = '2026-09-01';
+        document.querySelector('.custom-date-wrap').classList.add('visible');
+    }"""),
+    # 🔴 인라인 `display:none` 축 — CSS 클래스가 없어 (a)~(c) 어디에도 안 걸렸다.
+    #    `settings.html::document.getElementById('telegramOtpDisplay').style.display = ''`
+    "#telegramOtpDisplay": ("/repos/owner%2Ftestrepo/settings", """() => {
+        document.getElementById('telegramOtpCode').textContent = '482915';
+        document.getElementById('telegramOtpDisplay').style.display = '';
+    }"""),
+    # `settings.html::lbl.style.display = (k === name) ? 'block' : 'none'`
+    # 프리셋 카드는 접힌 `<details>` 안이라 카드를 먼저 편다.
+    "#pt-label-minimal": ("/repos/owner%2Ftestrepo/settings", """() => {
+        document.getElementById('preset-minimal').open = true;
+        document.getElementById('pt-label-minimal').style.display = 'block';
+    }"""),
+    "#pt-label-standard": ("/repos/owner%2Ftestrepo/settings", """() => {
+        document.getElementById('preset-standard').open = true;
+        document.getElementById('pt-label-standard').style.display = 'block';
+    }"""),
+    "#pt-label-strict": ("/repos/owner%2Ftestrepo/settings", """() => {
+        document.getElementById('preset-strict').open = true;
+        document.getElementById('pt-label-strict').style.display = 'block';
+    }"""),
+    # `add_repo.html::toast.classList.add('show')` — 등록 실패 경로의 토스트.
+    ".toast": ("/repos/add", """() => {
+        const t = document.getElementById('errorToast');
+        t.textContent = 'e2e: 이미 등록된 리포지터리입니다 / already registered';
+        t.classList.add('show');
+    }"""),
 }
 
 _STATE_VISIBLE_JS = r"""
