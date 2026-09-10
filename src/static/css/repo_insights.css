@@ -152,7 +152,7 @@
   font-size: 12px;
 }
 
-.ri-delta-up   { color: var(--success); }
+.ri-delta-up   { color: var(--success-text); }
 .ri-delta-down { color: var(--danger); }
 
 /* ── 2열 그리드 (반복 이슈 + 도넛) / 2-col grid ─────────── */
