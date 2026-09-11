@@ -45,15 +45,20 @@ def test_catppuccin_settings_tokens_defined(seeded_page, base_url):
     seeded_page.goto(f"{base_url}/repos/owner/testrepo/settings")
     _set_catppuccin(seeded_page)
 
-    # 8 토큰 모두 :root 에 정의되어 있어야 함 (빈 문자열이면 미정의 = invalid var())
-    # All 8 tokens must be defined on :root (empty value = undefined = invalid).
+    # 토큰이 모두 정의되어 있어야 함 (빈 문자열이면 미정의 = invalid var())
+    # All tokens must be defined (empty value = undefined = invalid).
+    #
+    # 🔴 이 목록은 «settings 가 실제로 읽는» 토큰만 담는다. `--save-btn-bg` 는 소비자가
+    #    0곳인데 이 단언이 존재를 계약으로 붙들고 있어서 죽은 채로 남아 있었다(#1639 W19).
+    #    되살리면 `tests/unit/ui/test_no_dead_design_tokens.py` 가 red 가 된다.
+    #    같은 축의 단위 시험 3건을 고쳤는데 이 e2e 만 남아 CI 에서 red 가 났다 —
+    #    「존재를 요구하는 계약」은 단위와 e2e **두 곳**에 흩어져 있다.
     required = [
         "--grad-gate",
         "--grad-merge",
         "--grad-notify",
         "--grad-hook",
         "--title-gradient",
-        "--save-btn-bg",
         "--hint-bg",
         "--hook-btn-bg",
     ]
