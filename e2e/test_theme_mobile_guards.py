@@ -1717,3 +1717,111 @@ def test_token_text_meets_aa_in_settings_gate_blocks(
         f"[{theme}] 게이트 블록 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
         + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
                       for b in bad[:10]))
+
+
+# ── E-4. «없을 때» 의 화면 — 부재 팔 (#1639 W12-b 2차) ───────────────────────
+#
+# 🔴 정밀 검증에서 내 지표가 틀렸다는 것이 드러났다. 「참 팔을 못 봄」만 세면
+#    `{% if X %}있음{% else %}없음{% endif %}` 의 **«없음» 쪽이 통째로 빠진다** —
+#    실측: 관측 안 된 «팔» 163/410 중 **46건이 «거짓 팔»** 이었고, 그쪽이 대부분
+#    사람이 «데이터가 없을 때» 보는 화면이다.
+#
+# 이 시험이 여는 것:
+#   `analysis_detail.html:26·:33`  점수 NULL → `—` 와 등급 없는 히어로
+#   `analysis_detail.html:378·:381` 줄번호·경로 없는 이슈 행
+#   `dashboard.html:504·:585·:599·:777` 분석이 하나도 없는 리포의 repos 리포트
+
+_ABSENCE_MARKERS = {
+    # {셀렉터: 그 자리가 «부재» 를 어떻게 보여주는가}
+    ".analysis-hero__score-num": "점수 NULL 이면 `—`",
+    ".issue__title": "위치 없는 이슈도 제목은 있다",
+}
+
+
+def _assert_absence_was_rendered(page) -> None:
+    """🔴 부재 팔이 «실제로» 그려졌는지 측정 후에 되짚는다."""
+    res = page.evaluate("""() => {
+        const num = document.querySelector('.analysis-hero__score-num');
+        const paths = document.querySelectorAll('.issue__path');
+        const issues = document.querySelectorAll('.issue');
+        return {score: num ? num.textContent.trim() : null,
+                issues: issues.length, paths: paths.length};
+    }""")
+    assert res["score"] is not None, "히어로 점수 자리를 못 찾았다 — 화면이 바뀌었다"
+    assert res["score"] in ("—", "-"), (
+        f"점수가 {res['score']!r} — NULL 시드가 닿지 않았다. 부재 팔을 재지 못했다")
+    assert res["issues"] > 0, "이슈 행이 0개 — 위치 없는 이슈 시드가 닿지 않았다"
+    assert res["paths"] == 0, (
+        f"`.issue__path` 가 {res['paths']}개 — 위치 «없는» 이슈여야 하는데 경로가 그려졌다")
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_token_text_meets_aa_when_data_is_absent(
+        seeded_page, base_url, absence_analysis, theme):
+    """🔴 점수도 위치도 «없는» 분석 상세에서 글자가 AA 를 넘는가.
+
+    red 로 만드는 뮤테이션: 시드의 `score` 에 값을 넣으면 `—` 가 사라져
+    `_assert_absence_was_rendered` 가 red.
+    """
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.goto(f"{base_url}/repos/owner%2Fgatedrepo/analyses/{absence_analysis}")
+    assert "localhost" in seeded_page.url, (
+        f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
+    seeded_page.evaluate("(t) => applyTheme(t)", theme)
+    seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
+    seeded_page.wait_for_timeout(350)
+    _reveal_all(seeded_page)
+
+    total, bad = 0, []
+    for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+                      (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
+        res = seeded_page.evaluate(js)
+        assert not res.get("error"), res.get("error")
+        total += sum(res["seen"][n] for n in names)
+        bad += res["bad"]
+
+    _assert_absence_was_rendered(seeded_page)
+    assert total > 0, (
+        f"[{theme}] 부재 화면에서 토큰 글자를 하나도 찾지 못했다 — "
+        "재지 못한 것이지 통과한 것이 아니다")
+    assert not bad, (
+        f"[{theme}] 부재 화면 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
+        + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
+                      for b in bad[:10]))
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_token_text_meets_aa_for_a_repo_with_no_analyses(
+        seeded_page, base_url, gated_settings_repo, theme):
+    """🔴 분석이 하나도 없는 리포의 repos 리포트 — «아직 아무것도 없다» 화면.
+
+    red 로 만드는 뮤테이션: `gatedrepo` 에 분석을 시드하면 평균 점수가 생겨
+    부재 팔이 닫히고 되짚기 단언이 red.
+    """
+    from urllib.parse import quote
+
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.goto(
+        f"{base_url}/dashboard?mode=repos&repo={quote(gated_settings_repo, safe='')}")
+    assert "localhost" in seeded_page.url, (
+        f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
+    seeded_page.evaluate("(t) => applyTheme(t)", theme)
+    seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
+    seeded_page.wait_for_timeout(350)
+    _reveal_all(seeded_page)
+
+    total, bad = 0, []
+    for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+                      (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
+        res = seeded_page.evaluate(js)
+        assert not res.get("error"), res.get("error")
+        total += sum(res["seen"][n] for n in names)
+        bad += res["bad"]
+
+    assert total > 0, (
+        f"[{theme}] 분석 없는 리포 화면에서 토큰 글자를 하나도 찾지 못했다 — "
+        "재지 못한 것이지 통과한 것이 아니다")
+    assert not bad, (
+        f"[{theme}] 분석 없는 리포 화면 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
+        + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
+                      for b in bad[:10]))

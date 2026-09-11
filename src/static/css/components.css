@@ -1040,7 +1040,21 @@ body.fx-ready .fx-enter.is-in-view {
   cursor: pointer; transition: all 0.18s; display: inline-flex; align-items: center;
 }
 .nav-btn:hover { background: var(--accent); color: var(--btn-on-accent, #fff); border-color: var(--accent); text-decoration: none; }
-.nav-btn.disabled { opacity: 0.38; cursor: default; pointer-events: none; }
+/* 🔴 `opacity` 로 흐리지 않는다 — 알파는 대비를 «항상» 긎는다.
+   실측(수정 전, `--text-2` × .38): dark 2.08 · light 1.79 · pastel 1.89 ·
+   catppuccin 2.53 — 네 테마 전부 AA(4.5) 미달이었다.
+   🔴 그리고 이것은 «비활성 컴포넌트» 예외에 해당하지 않는다. 마크업이
+      `<span class="nav-btn disabled">` 라 버튼도 `aria-disabled` 도 아닌 «그냥 글자» 다
+      (`analysis_detail.html` 의 `{% if prev_id %}…{% else %}<span …>`).
+   처방은 #1647 이 프리셋 표의 `opacity:.45` 에 쓴 것과 같다 — 흐림이 아니라
+   «검증된 약한 글자 토큰». `--text-3` 은 이 면 위에서 4.53~5.65 다(실측).
+   이 상태는 이전/다음 분석이 «없을 때» 만 렌더돼, 그 시드가 생기기 전에는
+   어떤 스윕도 본 적이 없었다(#1639 W12-b).
+   Never dim with alpha: it always cuts contrast. De-emphasise with a verified token. */
+.nav-btn.disabled {
+  color: var(--text-3); background: transparent;
+  cursor: default; pointer-events: none;
+}
 .nav-label { font-size: 0.82rem; color: var(--text-2); padding: 0 var(--space-2, 0.5rem); }
 
 /* ── GitHub Issue 등록 패널 / Issue registration panel ──────────── */

@@ -565,6 +565,65 @@ def _seed_gated_repo(db_path: str) -> str:
     return GATED_REPO
 
 
+def _seed_absence_analysis(db_path: str) -> int:
+    """«없는 것» 을 가진 분석 — 점수 NULL · 줄번호/경로 없는 이슈 → analysis_id.
+
+    🔴 `analysis_detail.html` 은 «있을 때» 와 «없을 때» 를 가른다:
+       `{% if analysis.score is not none %}…{% else %}—{% endif %}`(:26·:33) ·
+       `{% if iss.get('line') %}`(:378) · `{% if iss.get('path') or iss.get('file') %}`(:381).
+       기존 시드는 점수도 줄번호도 «항상» 있어서 **거짓 팔이 한 번도 렌더되지 않았다**.
+       그쪽이 사람이 «분석이 실패했을 때» 보는 화면이다(#1639 W12-b).
+    🔴 점수 NULL 은 진짜 운영 상태다 — #960 이 「절단형이 아니라 genuine 실패만 NULL」로
+       한정했다. 그래서 `ai_review_status='api_error'` 를 함께 준다.
+    Seed the absence side: NULL score and an issue with neither line nor path.
+    """
+    from sqlalchemy import create_engine, text
+
+    from src.scorer.reliability import score_is_unreliable  # noqa: PLC0415
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    with engine.connect() as conn:
+        row = conn.execute(text(
+            "SELECT id FROM repositories WHERE full_name=:fn"
+        ), {"fn": GATED_REPO}).fetchone()
+        if row is None:
+            raise RuntimeError("_seed_absence_analysis: gated repo must exist first")
+        repo_id = row[0]
+        result = {
+            "summary": "e2e absence seed",
+            "ai_review_status": "api_error",
+            "issues": [
+                # 🔴 `line` 도 `file` 도 없다 — 그 «없음» 이 이 시드의 목적이다.
+                {"tool": "ruff", "category": "code_quality",
+                 "message": "issue without a location", "severity": "warning"},
+            ],
+        }
+        conn.execute(text("""
+            INSERT OR IGNORE INTO analyses
+                (repo_id, commit_sha, commit_message, score, grade, result,
+                 author_login, score_unreliable, created_at)
+            VALUES
+                (:rid, 'absence-seed-001', 'fix: absence seed', NULL, 'F', :res,
+                 'e2e-tester', :unrel, datetime('now'))
+        """), {"rid": repo_id, "res": json.dumps(result),
+               "unrel": score_is_unreliable(result)})
+        conn.commit()
+        got = conn.execute(text(
+            "SELECT id, score FROM analyses WHERE repo_id=:rid AND commit_sha='absence-seed-001'"
+        ), {"rid": repo_id}).fetchone()
+    engine.dispose()
+    assert got is not None, "_seed_absence_analysis: 행이 없다"
+    assert got[1] is None, f"점수가 NULL 이 아니다({got[1]!r}) — 부재 팔이 안 열린다"
+    return got[0]
+
+
+@pytest.fixture(scope="session")
+def absence_analysis(live_server, gated_settings_repo):
+    """점수 NULL · 위치 없는 이슈를 가진 분석 id."""
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    return _seed_absence_analysis(db_path)
+
+
 @pytest.fixture(scope="session")
 def gated_settings_repo(live_server):
     """`auto_merge=True`·`approve_mode='semi-auto'` 인 리포 — 숨은 게이트 블록이 열린다."""
