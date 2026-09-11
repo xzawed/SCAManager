@@ -514,6 +514,65 @@ def _seed_graded_analyses(db_path: str) -> dict[str, int]:
     return ids
 
 
+# 🔴 기본 설정에서 «숨는» 게이트 블록 — 네 곳이 `is-hidden` 으로 렌더된다
+#    (`settings.html` 의 `{% if not config.auto_merge %}is-hidden{% endif %}` 등).
+#    기본값이 `auto_merge=False`·`approve_mode="disabled"`(`src/models/repo_config.py`)라
+#    그 안의 컨트롤(임계값 슬라이더·숫자 입력·토글)은 감사에 **한 번도 보인 적이 없다**.
+#    공유 리포의 설정을 바꾸면 다른 시험의 전제가 흔들리므로 «두 번째 리포» 를 둔다.
+# Gate blocks hidden under the default config; seed a second repo so both states are swept.
+GATED_REPO = "owner/gatedrepo"
+
+
+def _seed_gated_repo(db_path: str) -> str:
+    """게이트 블록이 «열린» 설정의 리포를 만든다 → full_name.
+
+    🔴 원시 SQL 로 넣지 않는다. `RepoConfig` 의 기본값은 SQLAlchemy 의 **파이썬 측**
+       `default=` 라 DB 에는 기본값이 없다 — `INSERT` 에서 빠뜨리면 NOT NULL 위반이고,
+       `INSERT OR IGNORE` 는 그 실패를 **조용히 삼킨다**(실측: 행이 안 생겼는데 예외 0건).
+       ORM 으로 넣어야 27개 컬럼의 기본값이 채워진다.
+    Use the ORM: the column defaults are Python-side, and INSERT OR IGNORE swallows the
+    resulting NOT NULL violation without raising.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from src.models.repo_config import RepoConfig  # noqa: PLC0415
+    from src.models.repository import Repository  # noqa: PLC0415
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    session = sessionmaker(bind=engine)()
+    try:
+        if not session.query(Repository).filter_by(full_name=GATED_REPO).first():
+            session.add(Repository(full_name=GATED_REPO, user_id=_E2E_USER_ID))
+        cfg = session.query(RepoConfig).filter_by(repo_full_name=GATED_REPO).first()
+        if cfg is None:
+            cfg = RepoConfig(repo_full_name=GATED_REPO)
+            session.add(cfg)
+        cfg.approve_mode = "semi-auto"
+        cfg.auto_merge = True
+        cfg.auto_merge_issue_on_failure = True
+        session.commit()
+        got = session.query(RepoConfig).filter_by(repo_full_name=GATED_REPO).first()
+        assert got is not None, "_seed_gated_repo: repo_configs 행이 없다"
+        assert got.approve_mode == "semi-auto" and got.auto_merge, (
+            f"게이트 설정이 기대와 다르다: approve_mode={got.approve_mode!r} "
+            f"auto_merge={got.auto_merge!r} — 이 값이 아니면 숨은 블록이 열리지 않아 "
+            "«못 쟀음» 이 된다"
+        )
+    finally:
+        session.close()
+        engine.dispose()
+    return GATED_REPO
+
+
+@pytest.fixture(scope="session")
+def gated_settings_repo(live_server):
+    """`auto_merge=True`·`approve_mode='semi-auto'` 인 리포 — 숨은 게이트 블록이 열린다."""
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    _seed_repo(live_server, db_path)
+    return _seed_gated_repo(db_path)
+
+
 @pytest.fixture(scope="session")
 def graded_analyses(live_server):
     """등급 A~F 분석을 심고 {등급: id} 를 돌려준다."""

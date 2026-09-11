@@ -1634,3 +1634,86 @@ def test_token_text_meets_aa_in_interactive_states(seeded_page, base_url, seeded
     assert res["display"] != "none" and res["opacity"] > 0.5, (
         f"{selector} 가 열리지 않았다({res}) — 재지 못한 것이지 통과한 것이 아니다")
     assert res["w"] > 0 and res["h"] > 0, f"{selector} 의 상자가 0이다({res})"
+
+
+# ── E-3. 설정 «게이트» 블록 — 기본 설정에서 `is-hidden` 인 표면 (#1639 W12-b) ──
+#
+# `settings.html` 은 네 블록을 설정값으로 숨긴다:
+#   `{% if not config.auto_merge %}is-hidden{% endif %}`      ×2 (임계값 행·이슈 토글)
+#   `{% if config.approve_mode == 'disabled' %}is-hidden{% endif %}`  (승인 임계값)
+#   `{% if config.approve_mode != 'semi-auto' %}is-hidden{% endif %}` (semi-auto 힌트)
+#
+# 🔴 기본값이 `auto_merge=False`·`approve_mode="disabled"` 라 네 블록 전부 `display:none`
+#    으로 렌더된다. 그 안에는 range 슬라이더·숫자 입력·임계값 라벨이 있는데, 어떤 스윕도
+#    그 글자를 «본 적이 없다». 도달성 문제가 아니라 **설정값** 문제다.
+#
+# 🔴 그리고 이 자리는 「참 팔이 새 클래스를 내놓는가」로는 못 찾는다 — 참 팔이 내놓는 것은
+#    공유 클래스 `is-hidden` 이고, 봐야 할 UI 는 **거짓 팔**이다(Grok `01a090cd`).
+#    양쪽 팔을 다 봐야 이 부류가 보인다.
+
+_GATE_BLOCK_IDS = ("#mergeThresholdRow", "#approveThresholds",
+                   "#semiAutoHint", "#mergeIssueRow")
+
+
+def _assert_gate_blocks_were_measured(page) -> None:
+    """🔴 측정이 «끝난 뒤» 네 블록이 실제로 보였는지 되짚는다.
+
+    여는 쪽이 아니라 남는 쪽에 둔다 — 호출부에서 준비 단계를 지우는 뮤테이션이
+    초록으로 남지 않게(설정 advanced 시험과 같은 관용구).
+    """
+    res = page.evaluate("""(ids) => {
+        const out = {};
+        for (const id of ids) {
+            const el = document.querySelector(id);
+            if (!el) { out[id] = 'missing'; continue; }
+            const r = el.getBoundingClientRect();
+            out[id] = (r.width > 0 && r.height > 0) ? 'visible' : 'hidden';
+        }
+        return out;
+    }""", list(_GATE_BLOCK_IDS))
+    hidden = {k: v for k, v in res.items() if v != "visible"}
+    assert not hidden, (
+        f"게이트 블록이 열리지 않았다: {hidden} — 시드 설정"
+        "(`auto_merge=True`·`approve_mode='semi-auto'`)이 닿지 않았다. "
+        "재지 못한 것이지 통과한 것이 아니다."
+    )
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_token_text_meets_aa_in_settings_gate_blocks(
+        seeded_page, base_url, gated_settings_repo, theme):
+    """🔴 설정 게이트 블록은 기본 설정에서 `display:none` 이라 스윕 밖이었다.
+
+    red 로 만드는 뮤테이션 두 가지 — 축이 다르다:
+      · 시드의 `auto_merge` 를 끄면 **픽스처 단언**이 먼저 잡는다(ERROR). 시드가 닿지
+        않았다는 뜻이고, 그 자리에서 멈추는 것이 맞다.
+      · 템플릿이 설정과 무관하게 `class="is-hidden"` 을 박으면 시드는 멀쩡한데 화면이
+        안 열린다 — 그때 `_assert_gate_blocks_were_measured` 가 FAILED 로 잡는다(실증).
+    """
+    from urllib.parse import quote
+
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.goto(f"{base_url}/repos/{quote(gated_settings_repo, safe='')}/settings")
+    assert "localhost" in seeded_page.url, (
+        f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
+    seeded_page.evaluate("(t) => applyTheme(t)", theme)
+    seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
+    seeded_page.wait_for_timeout(350)
+    _reveal_all(seeded_page)
+
+    total, bad = 0, []
+    for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+                      (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
+        res = seeded_page.evaluate(js)
+        assert not res.get("error"), res.get("error")
+        total += sum(res["seen"][n] for n in names)
+        bad += res["bad"]
+
+    _assert_gate_blocks_were_measured(seeded_page)
+    assert total > 0, (
+        f"[{theme}] 게이트 블록이 열린 설정 화면에서 토큰 글자를 하나도 찾지 못했다 — "
+        "재지 못한 것이지 통과한 것이 아니다")
+    assert not bad, (
+        f"[{theme}] 게이트 블록 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
+        + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
+                      for b in bad[:10]))
