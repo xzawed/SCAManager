@@ -130,6 +130,8 @@
   .preset-table td { padding:.28rem .2rem; color:var(--text-2); vertical-align:middle; }
   .preset-table td:first-child { font-weight:600; color:var(--text-1); width:58%; }
   .preset-table td:last-child { text-align:right; }
+  /* 변경 없는 행 — `--text-3` 은 네 테마 전부 AA 를 넘긴다(4.73~7.37). */
+  .preset-table tr.pt-row-same td { color: var(--text-3); }
   .pt-applied-label {
     margin-top:.75rem; padding:.4rem .65rem;
     background:rgba(16,185,129,.1); border:1px solid rgba(16,185,129,.3);
@@ -1495,13 +1497,16 @@
                       (!isNaN(cur) && cur !== '' && typeof cur === 'string') ? Number(cur) : cur;
       const changed = String(curNorm) !== String(next);
       const arrow = changed ? '→' : '=';
-      const rowStyle = changed ? '' : 'opacity:.45;';
+      // 변경 없는 행은 «흐리게» 가 아니라 «약한 글자색» 으로 구분한다 —
+      // `opacity:.45` 는 합성 대비를 2.08~2.98 로 내려 네 테마 전부 AA 미달이다.
+      // Dim unchanged rows with a color token, not opacity: alpha composites below AA.
+      const rowCls = changed ? '' : ' class="pt-row-same"';
       const nextStyle = changed ? 'font-weight:700;color:var(--accent-text);' : '';
       html +=
-        '<tr style="' + rowStyle + '">' +
+        '<tr' + rowCls + '>' +
           '<td>' + labels[key] + '</td>' +
           '<td style="text-align:center">' + fmt(curNorm) + '</td>' +
-          '<td style="text-align:center;font-weight:600;color:var(--text-2)">' + arrow + '</td>' +
+          '<td style="text-align:center;font-weight:600;color:var(' + (changed ? '--text-2' : '--text-3') + ')">' + arrow + '</td>' +
           '<td style="text-align:right;' + nextStyle + '">' + fmt(next) + '</td>' +
         '</tr>';
     });

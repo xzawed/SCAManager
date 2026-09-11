@@ -211,3 +211,130 @@ def test_the_contrast_sweep_opens_every_dashboard_mode():
     assert not missing, (
         "대비 스윕이 열지 않는 대시보드 모드가 있다 — 그 화면의 글자 대비는 "
         f"어떤 조합에서도 관측되지 않는다: {missing}\n  여는 경로: {sorted(swept)}")
+
+
+# ── 상호작용 «상태» — 클릭해야 나타나는 표면 ──────────────────────────────────
+
+def interactive_states() -> dict[str, str]:
+    """{셀렉터: 어디} — 클릭·입력으로만 나타나는 상태를 **소스에서 파생**한다.
+
+    판정 근거는 두 가지다:
+      - `aria-haspopup="true"` 를 가진 버튼이 여는 대상(드롭다운·메뉴)
+      - 기본이 숨김(`.hidden`)이거나 «보임» 상태 클래스(`.visible`)로만 드러나는 오버레이
+
+    🔴 손으로 목록을 적으면 새 상태가 조용히 빠진다 — 이 리포는 설정 `advanced`
+    (`.adv-only` 22요소)와 모바일 nav 오버레이를 그렇게 놓친 적이 있다.
+
+    값에 «어느 규칙이 찾았는지» 를 붙인다 — 규칙이 죽으면 파생이 줄고, 「파생 ⊆ 스윕」만
+    보는 가드는 그때 **조용히 초록**이다(실증: 규칙 (c) 를 통째로 지워도 통과).
+    """
+    out: dict[str, str] = {}
+    for path in sorted((_ROOT / "src" / "templates").glob("*.html")):
+        raw = path.read_text(encoding="utf-8")
+        # 🔴 Jinja 를 먼저 걷어낸다. `class="{% if … %}is-hidden{% endif %}"` 는
+        #    «데이터 조건» 분기(#1639 W12)이지 클릭으로 여는 상태가 아니다 — 섞으면 이
+        #    가드가 시드 문제까지 떠안아 영영 red 다. 태그를 지우면 그 class 는 빈다.
+        src = re.sub(r"\{%.*?%\}|\{\{.*?\}\}", "", raw, flags=re.S)
+        where = path.name
+        # 🔴 속성 «순서» 를 가정하지 않는다 — 이슈 모달은 `class=... id=...` 순서라
+        #    `id="…"[^>]*class=` 정규식이 통째로 놓쳤다. 태그를 통으로 잡고 안을 본다.
+        for m in re.finditer(r"<[a-z]+\b[^>]*>", src):
+            tag = m.group(0)
+            mid = re.search(r'id="([\w-]+)"', tag)
+            if not mid:
+                continue
+            cls = re.search(r'class="([^"]*)"', tag)
+            classes = cls.group(1).split() if cls else []
+            # (a) 열리는 메뉴  (b) 기본이 숨김인 오버레이 — «단독 토큰» hidden
+            #     🔴 `\bhidden\b` 로 보면 `is-hidden` 도 걸린다(하이픈이 낱말 경계다).
+            if 'role="menu"' in tag:
+                out[f"#{mid.group(1)}"] = f"{where} (a:menu)"
+            elif "hidden" in classes:
+                out[f"#{mid.group(1)}"] = f"{where} (b:hidden)"
+            # (d) 인라인 `style="display:none"` — CSS 를 아무리 봐도 안 보이는 축이다.
+            #     🔴 (a)~(c) 는 모두 «클래스» 를 본다. `#telegramOtpDisplay` 는 클래스가
+            #        없고 JS 가 `style.display=''` 로 열어, 세 규칙 어디에도 안 걸렸다
+            #        (Grok `01a08bda`). 숨기는 방법이 하나가 아니다.
+            elif re.search(r'style="[^"]*display\s*:\s*none', tag):
+                out[f"#{mid.group(1)}"] = f"{where} (d:inline-none)"
+        # (c) 상태 클래스로만 «드러나는» 면.
+        #     🔴 클래스 «이름» 을 추측하지 않는다. 첫 판은 `.visible` 만 봐서
+        #        `add_repo.html` 의 `.toast.show` 를 놓쳤고(Grok `01a08bb5`), 이름 목록을
+        #        `show|open|active` 로 넓히자 이번엔 `.filter-btn.active` 처럼 «항상 보이는
+        #        컨트롤의 선택 상태» 까지 8건 딸려 왔다 — 그건 이미 관측되는 면이다.
+        #        판정 근거는 이름이 아니라 성질이다: **그 클래스가 없으면 안 보이는가.**
+        base_hidden = {m.group(1) for m in re.finditer(
+            r"\.([\w-]+)\s*\{([^}]*)\}", src)
+            if re.search(r"(?<![-\w])(?:display\s*:\s*none|opacity\s*:\s*0(?!\.)|"
+                         r"visibility\s*:\s*hidden)", m.group(2))}
+        for m in re.finditer(r"\.([\w-]+)\.([\w-]+)\s*\{", src):
+            if m.group(1) in base_hidden:
+                out[f".{m.group(1)}"] = f"{where} (c:state-class)"
+    return out
+
+
+# 열 수는 있으나 «잴 것이 없는» 상태 — 사유와 함께 두고, 사라지면 red 다(역방향).
+_STATE_EXEMPT = {
+    "#tabStatic":
+        "열리지만 e2e 시드에 정적 분석 이슈가 없어 «빈 컨테이너» 다(실측 h=0, 글자 0). "
+        "도달성이 아니라 «데이터» 문제라 #1639 W12 가 맡는다 — 여기서 열어봐야 0을 잰다.",
+    "#reinstall_hook_form":
+        "글자가 없는 POST 껍데기다(`<form>` 안이 비었다) — 사람에게 «보이는» 적이 없다.",
+    "#reinstall_webhook_form":
+        "글자가 없는 POST 껍데기다(`<form>` 안이 비었다) — 사람에게 «보이는» 적이 없다.",
+}
+
+
+def _sweep_state_openers() -> set[str]:
+    """스윕이 «직접 여는» 상태 — e2e 의 `_STATE_OPENERS` 키를 AST 로 꺼낸다.
+
+    🔴 `sel not in src` 로 보면 안 된다 — 부분문자열이다. `.save-bar` 를
+    `.save-bar-GONE` 으로 바꾸는 뮤테이션이 green 으로 통과했다(앞 글자가 그대로 들어
+    있으므로). 딕셔너리 «키» 로 정확히 본다.
+    """
+    for node in ast.walk(ast.parse(_SWEEP.read_text(encoding="utf-8"))):
+        if (isinstance(node, ast.Assign)
+                and any(getattr(t, "id", None) == "_STATE_OPENERS" for t in node.targets)
+                and isinstance(node.value, ast.Dict)):
+            return {k.value for k in node.value.keys
+                    if isinstance(k, ast.Constant) and isinstance(k.value, str)}
+    raise AssertionError("e2e 스윕에서 `_STATE_OPENERS` 를 찾지 못했다 — 이름이 바뀌었다")
+
+
+# `_STATE_OPENERS` 밖에서 열리는 면 — 여는 «곳» 을 사유로 적는다.
+_OPENED_ELSEWHERE = {
+    ".nav-links": "모바일 nav 오버레이 — 햄버거를 눌러 여는 전용 시험이 이미 있다(#1637).",
+    ".reveal": "스크롤로 드러난다 — 모든 픽셀 감사 앞의 `_reveal_all` 이 연다.",
+}
+
+
+def test_interactive_states_and_what_the_sweep_opens_are_the_same_set():
+    """🔴 클릭해야 나타나는 상태는 «열지 않으면» 어떤 픽셀 감사도 그 면을 보지 못한다.
+
+    실측(400조합 프로브): 테마·언어 드롭다운, `.save-bar`, 이슈 모달은 어떤 스윕에도
+    없었다. 모바일 nav 오버레이(#1637)와 설정 advanced(#1641)가 같은 부류였고, 둘 다
+    열자마자 진짜 미달이 나왔다 — 「목록에 못 적는 상태」가 이 스윕의 구조적 구멍이다.
+
+    🔴 **부분집합으로 보면 안 된다.** 「파생 ⊆ 스윕」만 걸면 파생을 «줄이는» 변경이
+    전부 초록이다 — 못 찾은 면은 없는 면과 구별되지 않으므로. 규칙마다 「≥1」 바닥을
+    걸어도 마찬가지다(Grok `01a08bd2` 가 규칙 (b)·(c) 각각에 대해 실증: 이름을
+    `.visible` 로 되돌리면 `.toast`·`.nav-links` 가 조용히 빠지는데 (c) 는 여전히 3을
+    찾아 바닥을 넘는다). 그래서 **양방향 등식**이다 — 한쪽이 줄어도 red 다.
+
+    The derived surfaces and the surfaces the sweep opens must be the SAME set:
+    a subset guard goes green whenever the derivation itself shrinks.
+    """
+    states = interactive_states()
+    claimed = _sweep_state_openers() | set(_STATE_EXEMPT) | set(_OPENED_ELSEWHERE)
+
+    unopened = sorted(f"{sel}  ({states[sel]})" for sel in states.keys() - claimed)
+    assert not unopened, (
+        "스윕이 열지 않는 상호작용 상태가 있다 — 그 면의 대비·크기는 관측되지 않는다:\n  "
+        + "\n  ".join(unopened))
+
+    # 이 축이 «죽은 면제» 도 잡는다 — 면제가 실재하지 않는 면을 가리키면 여기서 red.
+    vanished = sorted(claimed - states.keys())
+    assert not vanished, (
+        "스윕·면제가 가리키는 면을 파생이 더는 찾지 못한다 — 소스에서 사라졌거나 "
+        "**파생 규칙이 약해졌다**(후자면 다른 면들도 같이 빠진 것이다):\n  "
+        + "\n  ".join(vanished))
