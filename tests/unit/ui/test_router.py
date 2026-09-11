@@ -2014,14 +2014,17 @@ def _read_css(name: str) -> str:
 
 
 def test_phantom_token_aliases_in_root():
-    """PR #169 cleanup 회귀 가드 — :root 에 환각 토큰 alias 5종 보존.
+    """PR #169 cleanup 회귀 가드 — :root 에 환각 토큰 alias 보존.
 
-    --bg-hover / --card-bg / --text (Step A) +
-    --accent-blue / --c-warning (PR-1 cleanup) 이 정의돼야.
+    --bg-hover / --card-bg (Step A) + --accent-blue (PR-1 cleanup) 이 정의돼야.
     사이클 93 Step 1: base.html → tokens.css 외부화 (검사 위치 갱신).
+
+    🔴 이 목록은 «읽히는» 토큰만 담는다. `--text`·`--c-warning` 은 소비자가 0곳이었는데
+       이 단언이 존재를 계약으로 붙들고 있어서 죽은 채로 남아 있었다(#1639 W19).
+       되살리면 `test_no_dead_design_tokens` 가 red 가 된다 — 두 가드가 서로를 붙든다.
     """
     tokens = _read_css("tokens.css")
-    for token in ("--bg-hover:", "--card-bg:", "--text:", "--accent-blue:", "--c-warning:"):
+    for token in ("--bg-hover:", "--card-bg:", "--accent-blue:"):
         assert token in tokens, f"환각 토큰 alias {token} 가 tokens.css :root 에서 누락"
 
 
@@ -2042,14 +2045,17 @@ def test_claude_dark_settings_tokens_defined():
     """PR #169 cleanup 회귀 가드 — settings 페이지 토큰 8종 (모든 4 테마 확인).
 
     --grad-gate/merge/notify/hook + --title-gradient + --btn-gate-active-* +
-    --save-btn-* + --hint-* + --hook-btn-* 가 각 테마 블록에 있어야.
+    --hint-* + --hook-btn-* 가 각 테마 블록에 있어야.
     Phase 3 v3: 테마 블록이 tokens.css compat 섹션으로 이전됨.
     Phase 3 v3: theme blocks migrated to tokens.css compat section (4 per-theme blocks).
+
+    🔴 `--save-btn-bg`·`--btn-gate-active-tx` 는 소비자 0곳이라 제거됐다(#1639 W19).
+       존재를 요구하던 이 단언이 그것들을 살려 두고 있었다.
     """
     tokens = _read_css("tokens.css")
     # settings 페이지 핵심 토큰이 tokens.css compat 섹션에 존재하는지 확인
     # settings page key tokens must exist somewhere in tokens.css compat section
-    for token in ("--grad-gate:", "--save-btn-bg:", "--hint-bg:", "--hook-btn-tx:"):
+    for token in ("--grad-gate:", "--hint-bg:", "--hook-btn-tx:"):
         assert tokens.count(token) >= 4, (
             f"tokens.css 에 {token} 4-테마 정의 부족 "
             f"(실측 {tokens.count(token)}회 — 4 이상 기대)"
@@ -2117,8 +2123,14 @@ def test_jetbrains_mono_globally_applied():
 def test_foundation_tokens_present():
     """사이클 93 Step 1 회귀 가드 — Phase 2 Foundation 신규 토큰.
 
-    elevation 5-step + motion 3-duration + display 3-scale + animation refs.
+    elevation + motion 3-duration + display 3-scale + animation refs.
     2026-05-11 UI Redesign: --mesh-bg/--accent-glow 제거, --anim-* 추가.
+
+    🔴 이 목록에서 «읽히지 않는» 것을 걷어냈다(#1639 W19) — `--elev-0/4`·`--elev-inset`·
+       `--blur-sm/md/lg`·`--anim-tab-in`·`--anim-modal-in`·`--anim-toast-in`·
+       `--anim-float-a~d`·`--orb1~4`. 전부 소비자 0곳인데 이 단언이 존재를 계약으로
+       붙들고 있어서, 「Foundation 이 갖춰져 있다」가 값만 있는 상태를 가리키고 있었다.
+       남은 이름은 전부 실제로 읽힌다 — 되살리면 `test_no_dead_design_tokens` 가 red.
     """
     tokens = _read_css("tokens.css")
     themes = _read_css("themes.css")
@@ -2131,32 +2143,18 @@ def test_foundation_tokens_present():
     # Theme-agnostic 토큰 (tokens.css)
     # Theme-agnostic tokens (tokens.css)
     for token in (
-        "--elev-1:", "--elev-2:", "--elev-3:", "--elev-4:", "--elev-inset:",
+        "--elev-1:", "--elev-2:", "--elev-3:",
         "--dur-fast:", "--dur-base:", "--dur-slow:",
         "--ease-out-expo:", "--ease-spring:",
         "--fs-display-sm:", "--fs-display-md:", "--fs-display-lg:",
         "--tracking-tight:",
-        "--blur-sm:", "--blur-md:", "--blur-lg:",
     ):
         assert token in tokens, f"tokens.css 에 신규 Foundation 토큰 {token} 누락"
 
     # Animation convenience refs — 2026-05-11 UI Redesign 신규 추가
     # Animation convenience refs — added in 2026-05-11 UI Redesign
-    for token in (
-        "--anim-page-in:", "--anim-tab-in:", "--anim-reveal-up:",
-        "--anim-badge-pop:", "--anim-modal-in:", "--anim-toast-in:",
-        "--anim-float-a:", "--anim-float-b:", "--anim-float-c:", "--anim-float-d:",
-    ):
+    for token in ("--anim-page-in:", "--anim-reveal-up:", "--anim-badge-pop:"):
         assert token in tokens, f"tokens.css 에 animation 토큰 {token} 누락"
-
-    # 신규 4 테마 모두 orb 토큰 정의 확인 (mesh-bg/accent-glow 대체)
-    # New 4 themes must all define orb tokens (replaces mesh-bg/accent-glow)
-    # Phase 3 v3: orb 토큰은 tokens.css compat 섹션으로 이전됨
-    # Phase 3 v3: orb tokens migrated to tokens.css compat section
-    for token in ("--orb1:", "--orb2:", "--orb3:", "--orb4:"):
-        assert tokens.count(token) >= 4, (
-            f"tokens.css 에 {token} 4-테마 정의 부족 (실측 {tokens.count(token)}회 — 4 이상 기대)"
-        )
 
 
 def test_chart_vendoring_no_jsdelivr_chartjs():
