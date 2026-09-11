@@ -447,3 +447,71 @@ def test_issue_modal_opens_from_the_real_button_not_a_class_flip(
         f"모달은 열렸으나 입력이 비었다 (title={title!r} body={body!r}) — "
         "`openModal` 이 채우는 경로를 타지 않았다"
     )
+
+
+# ── F. 점수 바 등급 색 — 클래스 «이름» 이 데이터에서 조립되는 축 ─────────────
+#
+# 🔴 `analysis_detail.html` 은 `score-bar--{{ grade | lower }}` 로 클래스를 «보간» 한다.
+#    `{% if %}` 가 아니라 분기 커버리지가 못 보고, 시드가 등급 하나만 만들면 나머지 네
+#    변종은 브라우저에서도 한 번도 렌더되지 않는다 — 두 관측자가 동시에 눈이 먼 축이다.
+# 🔴 그리고 이것은 **캐스케이드** 판정이다. 페이지 `<style>` 이 `components.css` 보다
+#    나중에 로드돼 같은 명시도에서 이긴다 — 정적 추론으로는 어느 쪽이 칠해지는지 모른다.
+#    실제로 칠해진 색을 되읽는다.
+
+_GRADE_FILL_JS = r"""
+(sel) => {
+""" + _CONTRAST_HELPERS + r"""
+  const bar = document.querySelector(sel);
+  if (!bar) return {err: 'no-bar'};
+  const after = getComputedStyle(bar, '::after');
+  const track = ground(bar);
+  const img = after.backgroundImage;
+  // 그라디언트면 stop 전부를 재고 «가장 나쁜» 값을 돌려준다 — 평균은 미달을 가린다.
+  let fills = [];
+  if (img && img !== 'none') {
+    fills = (img.match(/rgba?\([^)]+\)|#[0-9a-fA-F]{3,8}/g) || []).map(parse).filter(Boolean);
+  }
+  const solid = parse(after.backgroundColor);
+  if (solid && solid.a > 0) fills.push(solid);
+  if (!fills.length) return {err: 'no-fill', img: img, bg: after.backgroundColor};
+  const rs = fills.map(f => ratio(over(f, track), track));
+  return {
+    worst: Math.min.apply(null, rs),
+    n: fills.length,
+    fill: after.backgroundColor,
+    image: (img || '').slice(0, 120),
+    track: `rgb(${Math.round(track.r)}, ${Math.round(track.g)}, ${Math.round(track.b)})`,
+  };
+}
+"""
+
+
+@pytest.mark.e2e
+@pytest.mark.parametrize("theme", _THEMES)
+def test_every_grade_score_bar_is_perceivable(page, base_url, graded_analyses, theme):
+    """🔴 다섯 등급 × 네 테마에서 점수 바 채움이 트랙 대비 3:1 이상 (SC 1.4.11).
+
+    실측(수정 전, 페이지 `<style>` 의 리터럴이 등급 토큰을 덮던 때):
+    light b 2.20 · d 1.96 · pastel a 2.62 · b 2.05 · c 2.33 · d 1.82.
+
+    red 로 만드는 뮤테이션: 템플릿에 `.score-bar--d::after { background: #fb923c; }`
+    한 줄을 되돌리면 light·pastel 이 red.
+    """
+    bad, seen = [], 0
+    for grade, analysis_id in sorted(graded_analyses.items()):
+        _theme(page, base_url, f"/repos/owner%2Ftestrepo/analyses/{analysis_id}", theme)
+        assert "localhost" in page.url, f"{page.url[:60]} 로 나갔다 — 남의 페이지를 잰다"
+        cls = page.get_attribute(".score-bar", "class") or ""
+        assert f"score-bar--{grade.lower()}" in cls.split(), (
+            f"{grade} 분석인데 클래스가 {cls!r} — 변종이 렌더되지 않았다"
+        )
+        res = page.evaluate(_GRADE_FILL_JS, ".score-bar")
+        assert "err" not in res, f"[{theme}/{grade}] 채움을 못 쟀다: {res}"
+        seen += 1
+        if res["worst"] < _NON_TEXT:
+            bad.append(f"[{theme}] {grade}: {res['worst']:.2f} "
+                       f"(fill={res['image'] or res['fill']} track={res['track']})")
+    assert seen == 5, f"등급 {seen}/5 만 쟀다 — 못 잰 것이지 통과한 것이 아니다"
+    assert not bad, (
+        f"점수 바 채움이 트랙에서 보이지 않는다 ({_NON_TEXT}:1 미만):\n  " + "\n  ".join(bad)
+    )
