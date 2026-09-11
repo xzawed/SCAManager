@@ -192,8 +192,15 @@ def test_migrated_chips_keep_their_siblings_border_treatment():
     «접근성» 이 아니라 «일관성» 이다 — 그렇게 적어야 다음 사람이 기준을 헷갈리지 않는다.
     Grok `01a08ab4` 가 테두리 약화를 지적했고, 그 지적의 «옳은 부분» 이 이것이다.
     """
+    # 🔴 브라우저가 «보는 곳» 을 합쳐서 본다. `analysis_detail.html` 의 CSS 는
+    #    `components.css` 로 이관됐다 — 그 템플릿의 `{% block head %}` 를 `base.html` 이
+    #    렌더하지 않아 이 규칙들이 3개월 반 동안 죽어 있었다(#1639 W12-b).
+    #    템플릿 소스만 읽으면 이 가드는 «도달하지 않는 CSS» 를 인증한다 — 실제로 그랬다.
     src = strip_css_comments(
-        (ROOT / "src" / "templates" / "analysis_detail.html").read_text(encoding="utf-8"))
+        (ROOT / "src" / "templates" / "analysis_detail.html").read_text(encoding="utf-8")
+        + "\n"
+        + (ROOT / "src" / "static" / "css" / "components.css").read_text(encoding="utf-8")
+    )
     pairs = [(".severity-low", (".severity-high", ".severity-medium")),
              (".fb-btn.active.fb-up", (".fb-btn.active.fb-down",))]
     bad = []

@@ -465,6 +465,63 @@ def _seed_analysis(db_path: str) -> int:
     return analysis_row[0]
 
 
+def _seed_graded_analyses(db_path: str) -> dict[str, int]:
+    """등급 A~F 를 하나씩 만든다 → {등급: analysis_id}.
+
+    🔴 `analysis_detail.html` 은 `score-bar--{{ grade | lower }}` 로 클래스 «이름» 을
+       조립한다. 어떤 변종이 칠해지는지는 데이터가 정하므로, 등급 하나만 시드하면
+       나머지 네 변종은 브라우저에서 **한 번도 렌더되지 않는다** — `{% if %}` 가 아니라서
+       분기 커버리지도 못 보는 축이다(#1639 W12-b).
+    Seed one analysis per grade: the score-bar variant class is interpolated from data,
+    so a single-grade seed leaves four variants unrendered and unmeasurable.
+    """
+    from sqlalchemy import create_engine, text
+
+    from src.scorer.reliability import score_is_unreliable  # noqa: PLC0415
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    ids: dict[str, int] = {}
+    with engine.connect() as conn:
+        row = conn.execute(text(
+            "SELECT id FROM repositories WHERE full_name='owner/testrepo'"
+        )).fetchone()
+        if row is None:
+            raise RuntimeError("_seed_repo must run before _seed_graded_analyses")
+        repo_id = row[0]
+        result = {"summary": "e2e grade seed"}
+        unrel = score_is_unreliable(result)
+        for grade, score in (("A", 95), ("B", 82), ("C", 68), ("D", 52), ("F", 30)):
+            sha = f"grade-seed-{grade.lower()}"
+            conn.execute(text("""
+                INSERT OR IGNORE INTO analyses
+                    (repo_id, commit_sha, commit_message, score, grade, result,
+                     author_login, score_unreliable, created_at)
+                VALUES
+                    (:rid, :sha, 'feat: grade seed', :score, :grade, :res,
+                     'e2e-tester', :unrel, datetime('now'))
+            """), {"rid": repo_id, "sha": sha, "score": score, "grade": grade,
+                   "res": json.dumps(result), "unrel": unrel})
+        conn.commit()
+        for grade in ("A", "B", "C", "D", "F"):
+            got = conn.execute(text(
+                "SELECT id FROM analyses WHERE repo_id=:rid AND commit_sha=:sha"
+            ), {"rid": repo_id, "sha": f"grade-seed-{grade.lower()}"}).fetchone()
+            if got is None:
+                raise RuntimeError(f"_seed_graded_analyses: {grade} row not found")
+            ids[grade] = got[0]
+    engine.dispose()
+    assert len(ids) == 5, f"등급 시드 {len(ids)}건 — 다섯이어야 한다"
+    return ids
+
+
+@pytest.fixture(scope="session")
+def graded_analyses(live_server):
+    """등급 A~F 분석을 심고 {등급: id} 를 돌려준다."""
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    _seed_repo(live_server, db_path)
+    return _seed_graded_analyses(db_path)
+
+
 @pytest.fixture(scope="session")
 def seeded_analysis(live_server):
     """owner/testrepo + Analysis 레코드를 삽입하고 analysis_id를 반환하는 session fixture.

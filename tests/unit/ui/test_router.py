@@ -2174,7 +2174,14 @@ def test_chart_vendoring_no_jsdelivr_chartjs():
 
 
 def test_chart_aspect_ratio_false():
-    """PR #168 + PR-3 회귀 가드 — Chart.js maintainAspectRatio:false + chart-wrap-inner."""
+    """PR #168 + PR-3 회귀 가드 — Chart.js maintainAspectRatio:false + chart-wrap-inner.
+
+    🔴 «CSS 가 어디 있는지» 와 «마크업이 어디 있는지» 를 갈라 본다. `analysis_detail.html`
+       의 페이지 CSS 는 `components.css` 로 이관됐다 — 그 템플릿의 `{% block head %}` 를
+       `base.html` 이 렌더하지 않아 3개월 반 죽어 있었다(#1639 W12-b). 템플릿 소스만
+       보면 이 가드는 다시 「도달하지 않는 CSS」를 인증하게 된다.
+    """
+    effective_css = _read_css("components.css")
     for tpl in ("repo_detail.html", "analysis_detail.html"):
         content = _read_template(tpl)
         assert "maintainAspectRatio: false" in content, (
@@ -2183,8 +2190,9 @@ def test_chart_aspect_ratio_false():
         assert "chart-wrap-inner" in content, (
             f"{tpl} 의 chart-wrap-inner 컨테이너 누락"
         )
-        assert "clamp(200px" in content, (
-            f"{tpl} 의 chart-wrap-inner clamp 회귀 (PR-3 F1)"
+        assert "clamp(200px" in content or "clamp(200px" in effective_css, (
+            f"{tpl} 의 chart-wrap-inner clamp 회귀 (PR-3 F1) — "
+            "템플릿에도 components.css 에도 없다"
         )
 
 

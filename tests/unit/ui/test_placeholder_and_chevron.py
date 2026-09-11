@@ -38,11 +38,19 @@ AA_TEXT = 4.5
 NON_TEXT = 3.0
 
 # `::placeholder` 를 선언하는 모든 자리. 새 자리가 생기면 여기가 비지 않게 된다.
+# 🔴 «규칙이 선언된 곳» 은 템플릿만이 아니다. `analysis_detail.html` 의 CSS 는
+#    `components.css` 로 이관됐다 — 그 템플릿의 `{% block head %}` 를 `base.html` 이
+#    렌더하지 않아 3개월 반 동안 죽어 있었기 때문이다(#1639 W12-b).
+#    브라우저가 보는 곳을 보지 않으면 이 가드는 다시 죽은 코드를 인증한다.
 _PLACEHOLDER_FILES = (
+    "src/static/css/components.css",
     "src/templates/analysis_detail.html",
     "src/templates/repo_detail.html",
     "src/templates/settings.html",
 )
+
+# 그 템플릿에 규칙이 없어도 «전역 CSS» 가 덮으면 Tailwind base 에 깎이지 않는다.
+_GLOBAL_CSS = ("src/static/css/components.css",)
 
 class _PlaceholderAttrFinder(HTMLParser):
     """시작 태그의 «속성» 만 본다 — 낱말도, 정규식도 아니다.
@@ -100,7 +108,11 @@ def test_every_placeholder_attribute_has_an_explicit_rule():
     assert not unmeasured, (
         "placeholder 를 쓰는데 `_PLACEHOLDER_FILES` 에 없다 — 대비를 아무도 재지 않는다:\n  "
         + "\n  ".join(unmeasured))
-    ruleless = [f for f in users if "::placeholder" not in read(f)]
+    global_css = "".join(read(f) for f in _GLOBAL_CSS)
+    ruleless = [
+        f for f in users
+        if "::placeholder" not in read(f) and "::placeholder" not in global_css
+    ]
     assert not ruleless, (
         "placeholder 를 쓰는데 `::placeholder` 규칙이 없다 — Tailwind base 가 반으로 깎는다:\n  "
         + "\n  ".join(ruleless))
