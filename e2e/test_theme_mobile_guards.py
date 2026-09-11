@@ -1731,11 +1731,10 @@ def test_token_text_meets_aa_in_settings_gate_blocks(
 #   `analysis_detail.html:378·:381` 줄번호·경로 없는 이슈 행
 #   `dashboard.html:504·:585·:599·:777` 분석이 하나도 없는 리포의 repos 리포트
 
-_ABSENCE_MARKERS = {
-    # {셀렉터: 그 자리가 «부재» 를 어떻게 보여주는가}
-    ".analysis-hero__score-num": "점수 NULL 이면 `—`",
-    ".issue__title": "위치 없는 이슈도 제목은 있다",
-}
+# 부재를 «무엇으로» 확인하는가: `.analysis-hero__score-num` 이 `—` 인가(점수 NULL) ·
+# `.issue__path` 가 0개인가(위치 없는 이슈). 아래 단언이 그 둘을 직접 읽는다 —
+# 같은 목록을 상수로 또 두면 쓰이지 않는 전역이 되고, 실제로 CodeQL
+# `py/unused-global-variable`(alert #616)을 자초했다.
 
 
 def _assert_absence_was_rendered(page) -> None:
