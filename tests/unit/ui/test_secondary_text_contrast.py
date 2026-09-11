@@ -243,6 +243,52 @@ def test_faint_text_is_not_painted_on_chip_surfaces():
     )
 
 
+_CHIP_SURFACES = ("--bg-mute", "--bg-input", "--bg-card-hi")
+
+# 🔴 판정 근거는 «이름의 등장» 이 아니라 «성질» 이다 — 그 선언이 실제로 글자를 칠하는가,
+#    면을 칠하는가. 초판은 블록 안에 두 이름이 «나오기만» 하면 위반으로 봤고, 그래서
+#    토큰 별칭을 모아 둔 선언 블록(`--tooltip-border: var(--text-3);` 이 있고 같은 블록
+#    어딘가에 `--table-row-hover: var(--bg-mute);` 가 있는 곳)이 위반으로 잡혔다.
+#    그 블록은 아무것도 «칠하지» 않는다 — 별칭일 뿐이다.
+_FAINT_TEXT_RE = re.compile(
+    r"(?<![\w-])(?:color|-webkit-text-fill-color)\s*:[^;{}]*var\(\s*--text-3(?![\w-])"
+)
+
+
+def _paints_faint_text(body: str) -> bool:
+    """그 블록이 3차 글자색으로 «글자를» 칠하는가 — 별칭 선언은 아니다."""
+    return bool(_FAINT_TEXT_RE.search(body))
+
+
+def _chip_surface_painted(body: str) -> str | None:
+    """그 블록이 칩 표면으로 «면을» 칠하는가 → 그 토큰 이름."""
+    for chip in _CHIP_SURFACES:
+        pattern = (
+            rf"(?<![\w-])background(?:-color)?\s*:[^;{{}}]*var\(\s*{re.escape(chip)}(?![\w-])"
+        )
+        if re.search(pattern, body):
+            return chip
+    return None
+
+
+def test_the_chip_pairing_probe_judges_by_role_not_by_mention():
+    """🔴 그 가드가 «잴 수 있는지» 를 잰다 — 진짜 위반은 잡고, 별칭 선언은 놓아준다.
+
+    이 자기 시험이 없으면 성질 판정을 좁히다 가드를 조용히 무력화할 수 있다.
+    """
+    real = "color: var(--text-3); background: var(--bg-mute);"
+    assert _paints_faint_text(real) and _chip_surface_painted(real) == "--bg-mute", (
+        "진짜 위반(칩 면 위 3차 글자)을 못 잡는다 — 가드가 무력해졌다"
+    )
+    alias = "--tooltip-border: var(--text-3); --table-row-hover: var(--bg-mute);"
+    assert not _paints_faint_text(alias), "별칭 선언을 «글자를 칠한다» 로 오판한다"
+    assert not _chip_surface_painted(alias), "별칭 선언을 «면을 칠한다» 로 오판한다"
+    # 경계 — `--text-30` 같은 다른 토큰에 걸리지 않는다
+    assert not _paints_faint_text("color: var(--text-30);"), "경계 소실 — 부분문자열 일치"
+    # 면 쪽만 있고 글자가 2차면 위반이 아니다
+    assert not _paints_faint_text("color: var(--text-2); background: var(--bg-mute);")
+
+
 def test_no_rule_pairs_the_faintest_tier_with_a_chip_surface():
     """🔴 어떤 규칙도 «칩 표면 위에 3차 글자» 를 만들지 않는다 — 전역 불변식.
 
@@ -257,7 +303,6 @@ def test_no_rule_pairs_the_faintest_tier_with_a_chip_surface():
     This is what makes the 5-ground check above honest: the excluded surfaces are excluded
     only because no rule may pair them with the faintest tier.
     """
-    chip = ("--bg-mute", "--bg-input", "--bg-card-hi")
     offenders = []
     for path in sorted((_ROOT / "src").rglob("*.css")) + sorted(
         (_ROOT / "src" / "templates").glob("*.html")
@@ -265,9 +310,9 @@ def test_no_rule_pairs_the_faintest_tier_with_a_chip_surface():
         text = _strip_css_comments(path.read_text(encoding="utf-8"))
         for m in re.finditer(r"\{([^{}]*)\}", text):
             body = m.group(1)
-            if "var(--text-3" not in body:
+            if not _paints_faint_text(body):
                 continue
-            hit = next((c for c in chip if f"var({c}" in body), None)
+            hit = _chip_surface_painted(body)
             if hit:
                 sel = text[max(0, m.start() - 90):m.start()].strip().splitlines()
                 offenders.append(

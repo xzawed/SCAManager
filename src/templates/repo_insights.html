@@ -335,7 +335,21 @@
       },
       options: {
         cutout: '62%',
-        plugins: { legend: { display: false } },
+        /* 툴팁 잠긴 3종 세트 — 도넛도 카드 위에 뜬다(#1639 W17). 설정이 없으면
+           Chart.js 기본 검정이 dark 카드 `#0c0c14` 위에서 대비 1.15 다.
+           Tooltip locked 3-set: the default near-black is invisible on dark cards. */
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: readVar('--tooltip-bg', '#1c1c23'),
+            titleColor: readVar('--tooltip-text', '#e2e2e8'),
+            bodyColor: readVar('--tooltip-text', '#e2e2e8'),
+            borderColor: readVar('--tooltip-border', readVar('--tooltip-text', '#e2e2e8')),
+            borderWidth: 1,
+            padding: 10,
+            cornerRadius: 8
+          }
+        },
         animation: animate === false ? { duration: 0 } : { duration: 500 },
       },
     });

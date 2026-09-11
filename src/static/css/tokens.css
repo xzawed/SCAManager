@@ -535,6 +535,14 @@
   --table-row-hover: var(--bg-mute);
   --bg-2:          var(--bg-card);
   --bg-input-focus: var(--bg-card-hi);
+  /* 차트 툴팁 — 잠긴 3종 세트(면·테두리·글자). canvas 위라 CSS 선택자가 닿지 않고,
+     JS 가 이 세 이름을 읽어 Chart.js 에 넘긴다. 테두리만 바꾸면 글자가, 면만 바꾸면
+     경계가 깨진다 — 셋을 같이 본다(`test_chart_tooltip_and_point_border.py`).
+     🔴 `--border-subtle` 로 되돌리지 말 것: 알파 합성 후 카드 대비 1.13~1.28 이라
+        툴팁이 카드와 구분되지 않는다(실측 #1639 W17). */
+  --tooltip-bg:     var(--bg-card);
+  --tooltip-border: var(--text-3);
+  --tooltip-text:   var(--text-1);
 
   /* settings page compat */
   --grad-gate:          linear-gradient(135deg, #7c7aff, #6c6af0);
@@ -592,6 +600,14 @@
   --table-row-hover: var(--bg-mute);
   --bg-2:          var(--bg-card);
   --bg-input-focus: var(--bg-card-hi);
+  /* 차트 툴팁 — 잠긴 3종 세트(면·테두리·글자). canvas 위라 CSS 선택자가 닿지 않고,
+     JS 가 이 세 이름을 읽어 Chart.js 에 넘긴다. 테두리만 바꾸면 글자가, 면만 바꾸면
+     경계가 깨진다 — 셋을 같이 본다(`test_chart_tooltip_and_point_border.py`).
+     🔴 `--border-subtle` 로 되돌리지 말 것: 알파 합성 후 카드 대비 1.13~1.28 이라
+        툴팁이 카드와 구분되지 않는다(실측 #1639 W17). */
+  --tooltip-bg:     var(--bg-card);
+  --tooltip-border: var(--text-3);
+  --tooltip-text:   var(--text-1);
   --grad-gate:     linear-gradient(135deg, #5b5ef0, #4f52e0);
   --grad-merge:    linear-gradient(135deg, #027cba, #0369a1);
   --grad-notify:   linear-gradient(135deg, #b45309, #92400e);
@@ -637,6 +653,14 @@
   --table-row-hover: var(--bg-mute);
   --bg-2:          var(--bg-card);
   --bg-input-focus: var(--bg-card-hi);
+  /* 차트 툴팁 — 잠긴 3종 세트(면·테두리·글자). canvas 위라 CSS 선택자가 닿지 않고,
+     JS 가 이 세 이름을 읽어 Chart.js 에 넘긴다. 테두리만 바꾸면 글자가, 면만 바꾸면
+     경계가 깨진다 — 셋을 같이 본다(`test_chart_tooltip_and_point_border.py`).
+     🔴 `--border-subtle` 로 되돌리지 말 것: 알파 합성 후 카드 대비 1.13~1.28 이라
+        툴팁이 카드와 구분되지 않는다(실측 #1639 W17). */
+  --tooltip-bg:     var(--bg-card);
+  --tooltip-border: var(--text-3);
+  --tooltip-text:   var(--text-1);
   --grad-gate:     linear-gradient(135deg, #8c82d2, #7d73c2);
   --grad-merge:    linear-gradient(135deg, #6791ba, #5483a3);
   --grad-notify:   linear-gradient(135deg, #b8924a, #a07838);
@@ -684,6 +708,14 @@
   --table-row-hover: var(--bg-mute);
   --bg-2:          var(--bg-card);
   --bg-input-focus: var(--bg-card-hi);
+  /* 차트 툴팁 — 잠긴 3종 세트(면·테두리·글자). canvas 위라 CSS 선택자가 닿지 않고,
+     JS 가 이 세 이름을 읽어 Chart.js 에 넘긴다. 테두리만 바꾸면 글자가, 면만 바꾸면
+     경계가 깨진다 — 셋을 같이 본다(`test_chart_tooltip_and_point_border.py`).
+     🔴 `--border-subtle` 로 되돌리지 말 것: 알파 합성 후 카드 대비 1.13~1.28 이라
+        툴팁이 카드와 구분되지 않는다(실측 #1639 W17). */
+  --tooltip-bg:     var(--bg-card);
+  --tooltip-border: var(--text-3);
+  --tooltip-text:   var(--text-1);
   --grad-gate:     linear-gradient(135deg, #cba6f7, #b9a0e8);
   --grad-merge:    linear-gradient(135deg, #89b4fa, #74a0e8);
   --grad-notify:   linear-gradient(135deg, #f9e2af, #e8d09e);

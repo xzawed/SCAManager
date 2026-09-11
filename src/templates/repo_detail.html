@@ -677,14 +677,18 @@
        Concatenating a hex alpha only works when the token is hex; rgba() tokens
        become an invalid string and canvas silently keeps the previous strokeStyle. */
     const gridColor = s.getPropertyValue('--chart-grid').trim() || 'rgba(255, 255, 255, 0.05)';
-    const tipBg     = s.getPropertyValue('--bg-card').trim()      || '#1c1c23';
-    const tipText   = s.getPropertyValue('--text-1').trim()       || '#e2e2e8';
+    /* 툴팁 잠긴 3종 세트 — 면·테두리·글자를 같이 읽는다. 면만 읽고 테두리를
+       `--border-subtle` 로 두면 카드 대비 1.13~1.28 이라 경계가 없다(#1639 W17).
+       Tooltip locked 3-set: surface, border, text are read together. */
+    const tipBg     = s.getPropertyValue('--tooltip-bg').trim()     || '#1c1c23';
+    const tipText   = s.getPropertyValue('--tooltip-text').trim()   || '#e2e2e8';
+    const tipBorder = s.getPropertyValue('--tooltip-border').trim() || tipText;
     const bgBase    = s.getPropertyValue('--bg-base').trim()      || '#07070f';
     /* 🔴 «글자» 로 넣으므로 글자용 토큰을 읽는다 — `--success` 는 면·틴트도 겸해
        밝은 테마에서 3.13~3.77 이었다(실측). */
     const success   = s.getPropertyValue('--success-text').trim() || '#4ade80';
     const danger    = s.getPropertyValue('--danger').trim()       || '#f87171';
-    return { accent, accentRgb, muted, border, gridColor, tipBg, tipText, bgBase, success, danger };
+    return { accent, accentRgb, muted, border, gridColor, tipBg, tipText, tipBorder, bgBase, success, danger };
   }
 
   /* 등급별 포인트 색상 맵 — getComputedStyle 1회 호출로 통합 (N번 반복 방지)
@@ -732,7 +736,7 @@
     canvasEl.style.display = '';
     if (emptyEl) emptyEl.style.display = 'none';
 
-    const { accent, accentRgb, muted, border, gridColor, tipBg, tipText, bgBase, success, danger } = getThemeColors();
+    const { accent, accentRgb, muted, border, gridColor, tipBg, tipText, tipBorder, bgBase, success, danger } = getThemeColors();
     const scores = _chartData.map(function(a) { return a.score; }).filter(function(s) { return s != null; });
 
     /* stats 배지 — 평균/최고/최저 / Stats: avg / max / min */
@@ -773,7 +777,9 @@
           pointRadius: 0,
           pointHoverRadius: 6,
           pointHoverBackgroundColor: accent,
-          pointHoverBorderColor: '#fff',
+          /* 🔴 `'#fff'` 하드코딩이었다 — light(`#ffffff`)·pastel(`#fffaf2`) 카드 위에서는
+             고리가 배경과 같은 색이라 «없는 것과 같다». 바탕 토큰에서 읽는다(#1639 W18). */
+          pointHoverBorderColor: bgBase,
           pointHoverBorderWidth: 2,
           tension: 0.45,
           fill: true,
@@ -795,7 +801,7 @@
             backgroundColor: tipBg,
             titleColor: tipText,
             bodyColor: muted,
-            borderColor: border,
+            borderColor: tipBorder,
             borderWidth: 1,
             padding: { x: 14, y: 10 },
             cornerRadius: 10,
