@@ -388,3 +388,62 @@ def test_sort_direction_glyph_meets_non_text_contrast(seeded_page, base_url, the
         + "\n  ".join(f"{r['content']} ratio={r['ratio']} opacity={r['opacity']} "
                       f"th={r['th'][:30]!r}" for r in bad[:6])
     )
+
+
+# ── E. 이슈 패널 — «데이터가 있어야 존재하는» 면과 그 트리거 ────────────────
+#
+# 🔴 #1639 W9 는 모달을 «클래스를 벗겨» 열었다. 그것은 「상자가 있다」는 증명이지
+#    「버튼을 누르면 열린다」의 증명이 아니다. 둘은 다른 축이고, 트리거가 끊기면
+#    앞의 시험은 그대로 초록이다.
+# 🔴 그리고 그 트리거는 시드에 정적 이슈가 있어야 **존재한다** —
+#    `buildRow` 는 `stateMap` 에 등록이 없을 때만 `.btn-register` 를 만들고,
+#    항목 자체가 `result["issues"]` 에서 온다(#1639 W12).
+
+@pytest.mark.e2e
+def test_static_issue_panel_is_not_an_empty_container(
+        seeded_page, base_url, seeded_analysis):
+    """정적 분석 탭이 «빈 상자» 가 아니다 — 시드가 실제 이슈를 담는다.
+
+    이 시험이 없으면 `#tabStatic` 을 스윕에 넣어도 글자 0을 재고 초록을 받는다.
+    """
+    seeded_page.goto(f"{base_url}/repos/owner%2Ftestrepo/analyses/{seeded_analysis}")
+    seeded_page.click('.issue-tab[data-tab="static"]')
+    rows = seeded_page.locator("#staticIssueList .issue-row")
+    rows.first.wait_for(state="visible", timeout=5000)
+    count = rows.count()
+    assert count >= 2, (
+        f"정적 이슈 행이 {count}건 — 시드(`e2e/conftest.py::seed_result`)의 "
+        "`issues` 가 비었거나 렌더 경로가 끊겼다. 0이면 «못 쟀음» 이지 초록이 아니다."
+    )
+    text = seeded_page.locator("#staticIssueList").inner_text().strip()
+    assert text, "정적 이슈 목록에 글자가 하나도 없다 — 빈 컨테이너를 재고 있다"
+
+
+@pytest.mark.e2e
+def test_issue_modal_opens_from_the_real_button_not_a_class_flip(
+        seeded_page, base_url, seeded_analysis):
+    """🔴 «버튼을 눌러» 모달이 열리는가 — 트리거 축.
+
+    red 로 만드는 뮤테이션: `buildRow` 의 `btn.addEventListener('click', …)` 를 지우면
+    버튼은 남지만 모달이 열리지 않는다. 클래스를 벗겨 여는 스윕은 그래도 초록이다.
+    """
+    seeded_page.goto(f"{base_url}/repos/owner%2Ftestrepo/analyses/{seeded_analysis}")
+    seeded_page.click('.issue-tab[data-tab="static"]')
+    overlay = seeded_page.locator("#issueModalOverlay")
+    assert "hidden" in (overlay.get_attribute("class") or ""), (
+        "모달이 이미 열려 있다 — 이 시험의 전제(닫힌 상태)가 성립하지 않는다"
+    )
+    btn = seeded_page.locator("#staticIssueList .btn-register").first
+    btn.wait_for(state="visible", timeout=5000)
+    btn.click()
+    overlay.wait_for(state="visible", timeout=3000)
+    assert "hidden" not in (overlay.get_attribute("class") or ""), (
+        "등록 버튼을 눌렀는데 모달이 열리지 않았다 — 트리거가 끊겼다"
+    )
+    # 🔴 프로덕션의 `openModal` 은 «채운 뒤» 연다. 빈 상자가 열린 것은 관측이 아니다.
+    title = seeded_page.input_value("#issueTitle")
+    body = seeded_page.input_value("#issueBody")
+    assert title.strip() and body.strip(), (
+        f"모달은 열렸으나 입력이 비었다 (title={title!r} body={body!r}) — "
+        "`openModal` 이 채우는 경로를 타지 않았다"
+    )

@@ -320,7 +320,12 @@
   .repos-warnings { margin-bottom: 16px; }
   .repos-warning-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--warning-faint, rgba(var(--warning-rgb, 245 158 11) / 0.1)); border: 1px solid var(--warning); border-radius: 8px; margin-bottom: 6px; font-size: 13px; }
   .repos-warning-icon { color: var(--warning); }
-  .repos-warning-link { color: var(--text-1); text-decoration: none; font-weight: 600; }
+  /* 🔴 375px 에서 93x21 이라 SC 2.5.8(24x24 AA) 미달이었다 — 이 링크는 `warning=True`
+     일 때만 렌더돼서(`src/api/repo_report.py::high_security_count`) e2e 시드가 그
+     분기를 한 번도 열지 않는 동안 관측 밖에 있었다(#1639 W12).
+     `.admin-link`·`.ri-back-link` 와 같은 처방(#1644 W6): inline-flex + min-height. */
+  .repos-warning-link { color: var(--text-1); text-decoration: none; font-weight: 600;
+                        display: inline-flex; align-items: center; min-height: 24px; }
   .repos-warning-link:hover { text-decoration: underline; }
   .repos-warning-score { margin-left: auto; color: var(--text-2); font-size: 12px; }
   .repos-selector-form { margin-bottom: 24px; }
