@@ -1545,6 +1545,17 @@ _STATE_OPENERS = {
     # 🔴 «빈» 모달을 열면 프로덕션에 없는 화면을 재게 된다 — `openModal` 은
     #    세 입력을 채운 뒤 연다(`analysis_detail.html::function openModal`).
     #    글자가 없는 상자를 열어 초록을 받는 것은 관측이 아니다(Grok `01a08bb5`).
+    # 🔴 «진짜 트리거» 로 연다 — 클래스를 손으로 벗기면 「버튼을 누르면 열린다」를
+    #    증명하지 못한다. 탭은 클릭 핸들러가 `hidden` 을 벗기는 구조라 클릭이 곧 관측이다
+    #    (`analysis_detail.html::document.querySelectorAll('.issue-tab')`).
+    #    이 면이 «빈 컨테이너» 였던 이유는 도달성이 아니라 시드에 정적 이슈가 없어서였다
+    #    (#1639 W12) — `e2e/conftest.py::seed_result` 가 이제 두 건을 넣는다.
+    "#tabStatic": ("/repos/owner%2Ftestrepo/analyses/__ID__",
+                   # 🔴 속성값에 따옴표를 쓰지 않는다 — 이 문자열은 JS 소스로 넘어가는데
+                   #    작은따옴표를 중첩하면 `SyntaxError: missing ) after argument list`
+                   #    가 나고, 스윕은 그것을 «대비 미달» 로 보고한다(실측: 네 테마 전부
+                   #    거짓 red). CSS 속성 선택자는 식별자면 따옴표가 필요 없다.
+                   "() => document.querySelector('.issue-tab[data-tab=static]').click()"),
     "#issueModalOverlay": ("/repos/owner%2Ftestrepo/analyses/__ID__", _FILL_ISSUE_MODAL),
     "#issueModalError": ("/repos/owner%2Ftestrepo/analyses/__ID__",
                          _FILL_ISSUE_MODAL.replace("/* +error */", """

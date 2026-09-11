@@ -34,6 +34,11 @@ _PINNED = {
     ".admin-ops-link": ("src/templates/admin_operations.html", "22px"),
     ".ri-back-link": ("src/static/css/repo_insights.css", "21px"),
     ".mask-toggle": ("src/templates/settings.html", "36x23"),
+    # 🔴 이 링크는 `warning=True` 일 때만 렌더된다 — e2e 시드가 그 분기를 한 번도
+    #    열지 않는 동안 24px 가드의 «열거» 밖에 있었다(#1639 W12 가 시드를 채우자
+    #    93x21 로 드러났다). e2e 쪽은 세션 순서에 따라 그 상태가 없으면 조용하므로
+    #    이 정적 핀이 유일하게 항상 도는 관측자다.
+    ".repos-warning-link": ("src/templates/dashboard.html", "93x21"),
 }
 
 

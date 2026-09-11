@@ -275,9 +275,6 @@ def interactive_states() -> dict[str, str]:
 
 # 열 수는 있으나 «잴 것이 없는» 상태 — 사유와 함께 두고, 사라지면 red 다(역방향).
 _STATE_EXEMPT = {
-    "#tabStatic":
-        "열리지만 e2e 시드에 정적 분석 이슈가 없어 «빈 컨테이너» 다(실측 h=0, 글자 0). "
-        "도달성이 아니라 «데이터» 문제라 #1639 W12 가 맡는다 — 여기서 열어봐야 0을 잰다.",
     "#reinstall_hook_form":
         "글자가 없는 POST 껍데기다(`<form>` 안이 비었다) — 사람에게 «보이는» 적이 없다.",
     "#reinstall_webhook_form":

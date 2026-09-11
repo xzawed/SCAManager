@@ -411,7 +411,41 @@ def _seed_analysis(db_path: str) -> int:
         #    제외돼 대시보드·overview 가 빈 값을 그린다(실측: overview e2e 5건이 그렇게 깨졌다).
         from src.scorer.reliability import score_is_unreliable  # noqa: PLC0415
 
-        seed_result = {"summary": "e2e perf test"}
+        # 🔴 «빈» 결과를 시드하면 화면의 절반이 관측에서 사라진다. 정적 이슈 목록
+        #    (`#tabStatic`)과 이슈 등록 모달의 «트리거» 는 `result["issues"]` 가 있어야
+        #    존재한다 — 도달성이 아니라 데이터 문제였다(#1639 W12).
+        #    `src/ui/routes/detail.py::annotate_issue_keys` 가 이 두 키를 읽어
+        #    `issue_key` 를 얹고, 템플릿이 `panel.dataset.staticIssues` 로 넘긴다.
+        # 🔴 이 시드는 «기준선을 옮긴다» — 알고 쓴다.
+        #    `category="security"` + `severity="error"` 조합은
+        #    `src/services/dashboard_service.py::_count_high_security` 에 걸려
+        #    HIGH 보안 KPI 를 0 → 1 로 만들고, 그 값이
+        #    `src/api/repo_report.py` 의 `warning` 플래그(`... or kpi["high_security_count"] > 0`)
+        #    를 True 로 뒤집는다. `repo_category_breakdown` 도 0 이 아니게 된다.
+        #    처음엔 「집계에 영향 없다」고 적었는데 그것은 **틀렸다** — `score_is_unreliable`
+        #    만 보고 이슈를 «세는» 경로 열 곳을 놓쳤다(Grok `01a08f23` 이 BROKEN 판정).
+        #
+        #    그럼에도 남기는 이유: 그 플립이 여는 `warning` 분기에서 **진짜 결함**이 나왔다
+        #    (`.repos-warning-link` 93x21, SC 2.5.8 미달 — 같은 PR 에서 고쳤다).
+        #    감사의 목적은 더 많은 상태를 여는 것이고, 닫아 두면 그 면은 영영 관측 밖이다.
+        #    🔴 따라서 e2e 에서 HIGH 보안 KPI 와 repos 경고 목록은 «시드가 만든 값» 이다 —
+        #       그 숫자를 0 으로 고정하는 시험을 새로 쓰지 말 것.
+        # This seed deliberately moves two aggregates (HIGH-security KPI, report warning flag);
+        # that flip is what exposed the 21px warning link. Do not pin those numbers to zero.
+        seed_result = {
+            "summary": "e2e perf test",
+            "issues": [
+                {"tool": "bandit", "category": "security",
+                 "message": "hardcoded password string", "file": "src/app.py",
+                 "severity": "error", "line": 12},
+                {"tool": "ruff", "category": "code_quality",
+                 "message": "unused import os", "file": "src/util.py",
+                 "severity": "warning", "line": 3},
+            ],
+            "ai_suggestions": [
+                "입력값 검증을 추가하세요 / add input validation",
+            ],
+        }
         conn.execute(text("""
             INSERT OR IGNORE INTO analyses
                 (repo_id, commit_sha, commit_message, score, grade, result, author_login,
