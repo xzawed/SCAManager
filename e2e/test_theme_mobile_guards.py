@@ -1515,3 +1515,111 @@ def test_every_control_meets_the_24px_target_on_mobile(admin_page, base_url, pat
         f"(관측 {res['seen']} · 예외 {res['exempt']}):\n  "
         + "\n  ".join(f"{s['sel']} {s['w']}x{s['h']} display={s['display']} {s['text']!r}"
                       for s in res["small"][:10]))
+
+
+# ── K. 상호작용 «상태» — 클릭해야 나타나는 표면 (#1639 W9) ────────────────────
+#
+# 🔴 이 상태들은 열지 않으면 어떤 픽셀 감사도 그 면을 보지 못한다. 모바일 nav 오버레이
+#    (#1637)와 설정 advanced(#1641)가 같은 부류였고, 둘 다 열자마자 진짜 미달이 나왔다.
+#    목록은 `tests/unit/ui/test_a11y_route_coverage.py::interactive_states` 가 소스에서
+#    파생해 대조한다 — 새 상태가 생기면 그 가드가 먼저 red 다.
+#
+# 🔴 «트리거» 가 아니라 «상태» 를 잰다. 이슈 모달의 등록 버튼은 분석에 이슈가 있어야
+#    렌더되는데 e2e 시드에는 없다(그 축은 #1639 W12). 마크업은 서버가 렌더하므로
+#    상태 클래스를 직접 바꿔 «칠해진 상태» 를 관측한다 — 트리거 경로는 주장하지 않는다.
+
+# 프로덕션 `openModal` 이 채우는 것과 «같은» 필드를 채운다 — 빈 모달은 다른 화면이다.
+_FILL_ISSUE_MODAL = """() => {
+    document.getElementById('issueTitle').value = 'e2e: SQL 인젝션 가능성 / possible SQL injection';
+    document.getElementById('issueBody').value = 'e2e 본문 / body - src/app.py:12';
+    document.getElementById('issueLabels').value = 'bug, security';
+    /* +error */
+    document.getElementById('issueModalOverlay').classList.remove('hidden');
+}"""
+
+_STATE_OPENERS = {
+    "#themeDropdown": ("/dashboard", "() => document.getElementById('themeToggle').click()"),
+    "#langDropdown": ("/dashboard", "() => document.getElementById('langToggle').click()"),
+    ".save-bar": ("/repos/owner%2Ftestrepo/settings",
+                  "() => document.querySelector('.save-bar').classList.add('visible')"),
+    # 🔴 «빈» 모달을 열면 프로덕션에 없는 화면을 재게 된다 — `openModal` 은
+    #    세 입력을 채운 뒤 연다(`analysis_detail.html::function openModal`).
+    #    글자가 없는 상자를 열어 초록을 받는 것은 관측이 아니다(Grok `01a08bb5`).
+    "#issueModalOverlay": ("/repos/owner%2Ftestrepo/analyses/__ID__", _FILL_ISSUE_MODAL),
+    "#issueModalError": ("/repos/owner%2Ftestrepo/analyses/__ID__",
+                         _FILL_ISSUE_MODAL.replace("/* +error */", """
+        const e = document.getElementById('issueModalError');
+        e.classList.remove('hidden');
+        e.textContent = 'e2e: 이슈 생성에 실패했습니다 / issue creation failed';""")),
+    "#issueToast": ("/repos/owner%2Ftestrepo/analyses/__ID__",
+                    "() => { const t = document.getElementById('issueToast');"
+                    " t.classList.remove('hidden');"
+                    " t.textContent = 'e2e: 이슈가 생성되었습니다 / issue created'; }"),
+    # 프로덕션(`repo_detail.html::state.datePreset`)은 열면서 두 날짜를 채운다.
+    ".custom-date-wrap": ("/repos/owner%2Ftestrepo", """() => {
+        document.getElementById('dateFrom').value = '2026-01-01';
+        document.getElementById('dateTo').value = '2026-09-01';
+        document.querySelector('.custom-date-wrap').classList.add('visible');
+    }"""),
+    # 🔴 인라인 `display:none` 축 — CSS 클래스가 없어 (a)~(c) 어디에도 안 걸렸다.
+    #    `settings.html::document.getElementById('telegramOtpDisplay').style.display = ''`
+    "#telegramOtpDisplay": ("/repos/owner%2Ftestrepo/settings", """() => {
+        document.getElementById('telegramOtpCode').textContent = '482915';
+        document.getElementById('telegramOtpDisplay').style.display = '';
+    }"""),
+    # `settings.html::lbl.style.display = (k === name) ? 'block' : 'none'`
+    # 프리셋 카드는 접힌 `<details>` 안이라 카드를 먼저 편다.
+    "#pt-label-minimal": ("/repos/owner%2Ftestrepo/settings", """() => {
+        document.getElementById('preset-minimal').open = true;
+        document.getElementById('pt-label-minimal').style.display = 'block';
+    }"""),
+    "#pt-label-standard": ("/repos/owner%2Ftestrepo/settings", """() => {
+        document.getElementById('preset-standard').open = true;
+        document.getElementById('pt-label-standard').style.display = 'block';
+    }"""),
+    "#pt-label-strict": ("/repos/owner%2Ftestrepo/settings", """() => {
+        document.getElementById('preset-strict').open = true;
+        document.getElementById('pt-label-strict').style.display = 'block';
+    }"""),
+    # `add_repo.html::toast.classList.add('show')` — 등록 실패 경로의 토스트.
+    ".toast": ("/repos/add", """() => {
+        const t = document.getElementById('errorToast');
+        t.textContent = 'e2e: 이미 등록된 리포지터리입니다 / already registered';
+        t.classList.add('show');
+    }"""),
+}
+
+_STATE_VISIBLE_JS = r"""
+(sel) => {
+  const el = document.querySelector(sel);
+  if (!el) return {error: sel + ' 미존재'};
+  const cs = getComputedStyle(el), r = el.getBoundingClientRect();
+  return {display: cs.display, opacity: +cs.opacity,
+          w: Math.round(r.width), h: Math.round(r.height),
+          texts: Array.from(el.querySelectorAll('*'))
+            .filter(n => Array.from(n.childNodes).some(
+                c => c.nodeType === 3 && c.textContent.trim())).length};
+}
+"""
+
+
+@pytest.mark.parametrize("selector", sorted(_STATE_OPENERS))
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_token_text_meets_aa_in_interactive_states(seeded_page, base_url, seeded_analysis,
+                                                   theme, selector):
+    """🔴 클릭해야 나타나는 면의 글자도 AA 를 넘어야 한다.
+
+    Interaction-only surfaces are unobservable unless a sweep opens them.
+    """
+    path, opener = _STATE_OPENERS[selector]
+    path = path.replace("__ID__", str(seeded_analysis))
+    _assert_token_text_aa(seeded_page, base_url, theme, path,
+                          prepare=lambda p: p.evaluate(opener))
+
+    # 🔴 측정이 «끝난 뒤» 상태로 되짚는다 — 여는 쪽에 두면 `prepare=` 를 지우는
+    #    뮤테이션이 초록으로 남는다(모바일 오버레이에서 실증한 형태).
+    res = seeded_page.evaluate(_STATE_VISIBLE_JS, selector)
+    assert not res.get("error"), res["error"]
+    assert res["display"] != "none" and res["opacity"] > 0.5, (
+        f"{selector} 가 열리지 않았다({res}) — 재지 못한 것이지 통과한 것이 아니다")
+    assert res["w"] > 0 and res["h"] > 0, f"{selector} 의 상자가 0이다({res})"

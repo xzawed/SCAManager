@@ -538,26 +538,35 @@ def test_preset_diff_preview_has_nine_rows(seeded_page, base_url):
         )
 
 
-def test_preset_diff_has_unchanged_fields_dimmed(seeded_page, base_url):
-    """현재값과 같은 필드는 opacity:.45 로 흐리게 표시되어야 한다.
+def test_preset_diff_marks_unchanged_fields_without_lowering_contrast(seeded_page, base_url):
+    """현재값과 같은 필드는 약하게 표시하되, 글자 대비를 긎지 않는다.
 
-    P1: 초기 상태(기본값) 에서 minimal 프리셋 대부분이 불변 → 여러 행이 흐림.
+    🔴 이 시험은 원래 `opacity:.45` 를 붙들고 있었다 — 그 값은 합성 후 대비가
+    dark 2.52 · light 2.08 · pastel 2.18 · catppuccin 2.98 로 **네 테마 전부 AA
+    미달**이다(#1639 W9 실측). 알파로 흐리면 대비는 항상 내려간다 — 구분은
+    «약한 글자색» 으로 한다. 시험이 결함을 고정하면 수정이 red 로 돌아온다.
+
+    Unchanged rows must be de-emphasised by color token, never by alpha.
     """
     seeded_page.goto(f"{base_url}{SETTINGS_URL}")
     seeded_page.locator("#preset-minimal summary").click()
     seeded_page.wait_for_timeout(300)
-    dim_count = seeded_page.evaluate(
+    res = seeded_page.evaluate(
         """() => {
-            const rows = document.querySelectorAll('#preset-diff-minimal tr');
-            let n = 0;
-            rows.forEach(r => {
-                if ((r.getAttribute('style') || '').includes('opacity:.45')) n++;
-            });
-            return n;
+            const rows = Array.from(
+                document.querySelectorAll('#preset-diff-minimal tr'));
+            return {
+                same: rows.filter(r => r.classList.contains('pt-row-same')).length,
+                faded: rows.filter(
+                    r => parseFloat(getComputedStyle(r).opacity) < 0.99).length,
+                total: rows.length,
+            };
         }"""
     )
     # 기본 config 는 minimal 에 가까워 최소 3개 이상 불변 필드 존재
-    assert dim_count >= 3, f"흐린(opacity:.45) 행 3개 이상 기대, 실제 {dim_count}"
+    assert res["same"] >= 3, f"변경 없는 행 3개 이상 기대, 실제 {res}"
+    assert res["faded"] == 0, (
+        f"행을 알파로 흐리게 하고 있다({res}) — 합성 대비가 AA 미달로 떨어진다")
 
 
 def test_p2_highlight_applied_on_apply(seeded_page, base_url):
