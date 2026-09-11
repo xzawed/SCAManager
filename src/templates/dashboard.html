@@ -628,6 +628,12 @@
                      || 'rgba(255, 255, 255, 0.05)';
         var border    = cs.getPropertyValue('--border-subtle').trim()
                      || cs.getPropertyValue('--border').trim()            || 'rgba(255,255,255,0.05)';
+        /* 툴팁 잠긴 3종 세트 + 포인트 고리 바탕 — canvas 위라 CSS 가 닿지 않는다(#1639 W17·W18).
+           Tooltip locked 3-set + point-ring base: canvas is out of CSS's reach. */
+        var tipBg     = cs.getPropertyValue('--tooltip-bg').trim()        || '#1c1c23';
+        var tipText   = cs.getPropertyValue('--tooltip-text').trim()      || '#e2e2e8';
+        var tipBorder = cs.getPropertyValue('--tooltip-border').trim()    || tipText;
+        var bgBase    = cs.getPropertyValue('--bg-base').trim()           || '#07070f';
 
         if (window._repoTrendChart) { window._repoTrendChart.destroy(); }
 
@@ -655,7 +661,9 @@
               pointRadius: 0,
               pointHoverRadius: 5,
               pointHoverBackgroundColor: accent,
-              pointHoverBorderColor: '#fff',
+              /* 🔴 `'#fff'` 하드코딩이었다 — 바로 위 주석이 「hex 직접 사용 금지」인데
+                 집행하는 것이 없었다. light/pastel 카드 위에서 고리가 사라진다(#1639 W18). */
+              pointHoverBorderColor: bgBase,
               pointHoverBorderWidth: 2,
             }]
           },
@@ -663,7 +671,19 @@
             responsive: true,
             maintainAspectRatio: false,
             animation: animate === false ? { duration: 0 } : { duration: 300, easing: 'easeOutCubic' },
-            plugins: { legend: { display: false } },
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                backgroundColor: tipBg,
+                titleColor: tipText,
+                bodyColor: tipText,
+                borderColor: tipBorder,
+                borderWidth: 1,
+                padding: 10,
+                cornerRadius: 8,
+                displayColors: false
+              }
+            },
             scales: {
               x: { display: false },
               y: {
@@ -1329,6 +1349,13 @@
        dark·catppuccin 의 `--border*` 는 `rgba()` 라 그 결과가 무효 색이 되고,
        canvas 가 «직전 strokeStyle»(불투명 검정)로 그렸다. */
     const gridColor = readVar('--chart-grid', 'rgba(255, 255, 255, 0.05)');
+    /* 툴팁 잠긴 3종 세트 + 포인트 고리 바탕(#1639 W17·W18).
+       🔴 기본 툴팁(Chart.js `rgba(0,0,0,0.8)`)은 밝은 테마에서만 보인다 — dark 카드
+          `#0c0c14` 위에서는 합성 후 대비 1.15 라 「기본값이라 괜찮다」가 성립하지 않는다. */
+    const tipBg     = readVar('--tooltip-bg', '#1c1c23');
+    const tipText   = readVar('--tooltip-text', '#e2e2e8');
+    const tipBorder = readVar('--tooltip-border', tipText);
+    const bgBase    = readVar('--bg-base', '#07070f');
 
     // 스파크라인 그라디언트 fill — 테마 accent 기반
     // Sparkline gradient fill — theme accent based
@@ -1352,7 +1379,7 @@
           pointRadius: 0,
           pointHoverRadius: 5,
           pointHoverBackgroundColor: accent,
-          pointHoverBorderColor: '#fff',
+          pointHoverBorderColor: bgBase,
           pointHoverBorderWidth: 2,
           borderWidth: 2.5,
           fill: true,
@@ -1373,7 +1400,16 @@
         },
         plugins: {
           legend: { display: false },
-          tooltip: { enabled: true, padding: 10, cornerRadius: 8 }
+          tooltip: {
+            enabled: true,
+            backgroundColor: tipBg,
+            titleColor: tipText,
+            bodyColor: tipText,
+            borderColor: tipBorder,
+            borderWidth: 1,
+            padding: 10,
+            cornerRadius: 8
+          }
         }
       }
     });

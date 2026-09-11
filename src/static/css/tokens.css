@@ -614,6 +614,14 @@
   --table-row-hover: var(--bg-mute);
   --bg-2:          var(--bg-card);
   --bg-input-focus: var(--bg-card-hi);
+  /* 차트 툴팁 — 잠긴 3종 세트(면·테두리·글자). canvas 위라 CSS 선택자가 닿지 않고,
+     JS 가 이 세 이름을 읽어 Chart.js 에 넘긴다. 테두리만 바꾸면 글자가, 면만 바꾸면
+     경계가 깨진다 — 셋을 같이 본다(`test_chart_tooltip_and_point_border.py`).
+     🔴 `--border-subtle` 로 되돌리지 말 것: 알파 합성 후 카드 대비 1.13~1.28 이라
+        툴팁이 카드와 구분되지 않는다(실측 #1639 W17). */
+  --tooltip-bg:     var(--bg-card);
+  --tooltip-border: var(--text-3);
+  --tooltip-text:   var(--text-1);
   --orb1: var(--atm-color-1);
   --orb2: var(--atm-color-2);
   --orb3: var(--atm-color-3);
@@ -680,6 +688,14 @@
   --table-row-hover: var(--bg-mute);
   --bg-2:          var(--bg-card);
   --bg-input-focus: var(--bg-card-hi);
+  /* 차트 툴팁 — 잠긴 3종 세트(면·테두리·글자). canvas 위라 CSS 선택자가 닿지 않고,
+     JS 가 이 세 이름을 읽어 Chart.js 에 넘긴다. 테두리만 바꾸면 글자가, 면만 바꾸면
+     경계가 깨진다 — 셋을 같이 본다(`test_chart_tooltip_and_point_border.py`).
+     🔴 `--border-subtle` 로 되돌리지 말 것: 알파 합성 후 카드 대비 1.13~1.28 이라
+        툴팁이 카드와 구분되지 않는다(실측 #1639 W17). */
+  --tooltip-bg:     var(--bg-card);
+  --tooltip-border: var(--text-3);
+  --tooltip-text:   var(--text-1);
   --orb1: var(--atm-color-1);
   --orb2: var(--atm-color-2);
   --orb3: var(--atm-color-3);
@@ -734,6 +750,14 @@
   --table-row-hover: var(--bg-mute);
   --bg-2:          var(--bg-card);
   --bg-input-focus: var(--bg-card-hi);
+  /* 차트 툴팁 — 잠긴 3종 세트(면·테두리·글자). canvas 위라 CSS 선택자가 닿지 않고,
+     JS 가 이 세 이름을 읽어 Chart.js 에 넘긴다. 테두리만 바꾸면 글자가, 면만 바꾸면
+     경계가 깨진다 — 셋을 같이 본다(`test_chart_tooltip_and_point_border.py`).
+     🔴 `--border-subtle` 로 되돌리지 말 것: 알파 합성 후 카드 대비 1.13~1.28 이라
+        툴팁이 카드와 구분되지 않는다(실측 #1639 W17). */
+  --tooltip-bg:     var(--bg-card);
+  --tooltip-border: var(--text-3);
+  --tooltip-text:   var(--text-1);
   --orb1: var(--atm-color-1);
   --orb2: var(--atm-color-2);
   --orb3: var(--atm-color-3);
@@ -790,6 +814,14 @@
   --table-row-hover: var(--bg-mute);
   --bg-2:          var(--bg-card);
   --bg-input-focus: var(--bg-card-hi);
+  /* 차트 툴팁 — 잠긴 3종 세트(면·테두리·글자). canvas 위라 CSS 선택자가 닿지 않고,
+     JS 가 이 세 이름을 읽어 Chart.js 에 넘긴다. 테두리만 바꾸면 글자가, 면만 바꾸면
+     경계가 깨진다 — 셋을 같이 본다(`test_chart_tooltip_and_point_border.py`).
+     🔴 `--border-subtle` 로 되돌리지 말 것: 알파 합성 후 카드 대비 1.13~1.28 이라
+        툴팁이 카드와 구분되지 않는다(실측 #1639 W17). */
+  --tooltip-bg:     var(--bg-card);
+  --tooltip-border: var(--text-3);
+  --tooltip-text:   var(--text-1);
   --orb1: var(--atm-color-1);
   --orb2: var(--atm-color-2);
   --orb3: var(--atm-color-3);
