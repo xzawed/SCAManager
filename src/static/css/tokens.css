@@ -399,9 +399,16 @@
   /* danger 면 위 글자 — accent 용 on-토큰을 빌려 쓰면 면이 달라 어긋난다. */
   --danger-text-on: #1e1e2e;
   /* 🔴 `--accent-text-on` 의 «역방향» — accent 를 «글자» 로 쓸 때의 색.
-     accent 면색은 그대로 두고 글자만 옮긴다(#1609 선례). catppuccin 도 어두운 바탕이라 6.19 — 그대로 둔다.
+     accent 면색은 그대로 두고 글자만 옮긴다(#1609 선례).
+     🔴 「catppuccin 은 6.19 라 그대로 둔다」고 적혀 있었는데, 그 6.19 는 «카드 면»
+        기준이었고 칩 면(`--bg-mute`)은 가드의 바탕 목록 밖이었다 — 거기서 4.49 였다.
      The inverse of --accent-text-on: the accent hue safe AS text on a page ground. */
-  --accent-text: var(--accent-1);
+  /* 🔴 catppuccin 만 `--accent-1` 별칭이었다 — light(#4c4fef)·pastel(#5d4fc0)은 이미
+     자체 값을 갖는다. 이 토큰의 존재 이유가 «accent 를 글자로 쓸 때 AA» 인데,
+     칩 면(`--bg-mute`, 탭 띠) 위에서 4.49 로 0.01 모자랐다(실측). 이 리포는
+     반올림하지 않는다. 색조는 그대로 두고 밝기만 최소로 올린다 → 4.68 / 카드 6.45.
+     Catppuccin aliased the palette colour; give it its own AA-safe text value. */
+  --accent-text: #ceabf7;
 
   /* 🔴 포커스 «링» 전용. `--accent` 는 «면» 색이라 그것을 링으로 쓰면 면과 링이 한 몸이
      되고, 링만 진하게 하려 해도 버튼 면이 따라온다 — `--accent-text-hover` 를 뗀 것과

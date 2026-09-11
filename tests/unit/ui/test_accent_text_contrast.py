@@ -22,7 +22,14 @@ _AA = 4.5
 
 
 # accent 글자가 앉는 바탕. 페이지 바탕 + 이 부류가 실제로 얹히는 옅은 칩 면들.
-_ACCENT_TEXT_GROUNDS = ("--bg-base", "--bg-canvas", "--bg-card", "--bg-elevated")
+# 🔴 `--bg-mute` 를 뺀 것이 구멍이었다. `test_secondary_text_contrast.py` 는 칩 표면을
+#    «그 위에 3차 글자를 얹는 규칙이 없다» 는 근거로 제외하는데, accent 는 다르다 —
+#    `.issue-reg-tabs { background: var(--bg-mute) }` 위에 `.issue-tab.active` 가
+#    `color: var(--accent-text)` 로 앉는다(`components.css`). 실제 규칙이 있으므로
+#    바탕 목록에 있어야 한다. 실측: catppuccin 4.49 — 이 목록 밖이라 아무도 안 쟀다.
+#    A real rule paints accent text on the chip surface, so it belongs in the grounds.
+_ACCENT_TEXT_GROUNDS = ("--bg-base", "--bg-canvas", "--bg-card", "--bg-elevated",
+                        "--bg-mute")
 
 
 def _read(rel: str) -> str:
