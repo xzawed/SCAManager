@@ -300,3 +300,84 @@ def test_the_shared_theme_helper_verifies_what_it_applied():
     assert "dataset.theme" in body and "assert" in body, (
         "헬퍼가 «걸린 결과» 를 되읽어 단언하지 않는다 — 모르는 이름이 dark 로 조용히 "
         "되돌아가도 통과한다")
+
+
+def _resolved_js_constants(tree) -> dict:
+    """모듈 상수 이름 → 그것이 만들어내는 JS 텍스트.
+
+    🔴 상수만 보면 안 된다 — 이 파일의 계기는 하나만 단순 문자열이다.
+    `_TOKEN_TEXT_AUDIT_JS`·`_FOCUS_AUDIT_JS` 는 `_PARSE_COLOR_JS + r"..."`(BinOp),
+    `_ACCENT_TEXT_AUDIT_JS`·`_DESC_TEXT_AUDIT_JS`·`_BANNER_TEXT1_AUDIT_JS` 는 파생 호출이다.
+    첫 판은 Constant 만 세어 **7개 중 1개**만 검사하고 초록이었다(Grok `01a09667`).
+    🔴 파생 호출은 «실제로 치환해서» 푼다 — 원본 텍스트를 그대로 물려주면
+    `.replace()` 로 검사 호출을 지운 파생이 부모의 문자열 덕에 통과한다.
+    """
+    resolved: dict[str, str] = {}
+
+    def value_of(node) -> str:
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return node.value
+        if isinstance(node, ast.Name):
+            return resolved.get(node.id, "")
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+            return value_of(node.left) + value_of(node.right)
+        if isinstance(node, ast.Call):
+            # `<base>.replace(old, new)` — 치환을 실제로 적용한다.
+            if (isinstance(node.func, ast.Attribute) and node.func.attr == "replace"
+                    and len(node.args) == 2):
+                base = value_of(node.func.value)
+                old, new_ = value_of(node.args[0]), value_of(node.args[1])
+                return base.replace(old, new_) if old else base
+            # `_derive_audit(base, (old, new), ...)` — 같은 방식으로 순서대로.
+            if isinstance(node.func, ast.Name) and node.func.id == "_derive_audit" and node.args:
+                text = value_of(node.args[0])
+                for pair in node.args[1:]:
+                    elts = getattr(pair, "elts", [])
+                    if len(elts) == 2:
+                        old, new_ = value_of(elts[0]), value_of(elts[1])
+                        if old:
+                            text = text.replace(old, new_)
+                return text
+        return ""
+
+    for node in tree.body:
+        if (isinstance(node, ast.Assign) and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)):
+            resolved[node.targets[0].id] = value_of(node.value)
+    return resolved
+
+
+def test_every_pixel_audit_skips_text_the_browser_does_not_paint():
+    """🔴 «상자가 있다» 와 «칠해진다» 는 다르다 — 감사는 후자만 세야 한다.
+
+    닫힌 `<details>` 의 내용은 상자를 그대로 갖고 자기 `display`·`visibility`·`opacity`
+    도 정상이라 감사의 네 필터를 **전부 통과한다.** 브라우저는 그것을 칠하지 않는다
+    (`content-visibility` 는 자식의 계산값에 나타나지 않는다).
+
+    실측(2026-09-13, `_reveal_all` 이후):
+      · 대비 감사 — 설정 화면에서 «관측 37건» 중 **21건**이 접힌 프리셋 아코디언의
+        diff 표였다. 다른 네 화면은 0건.
+      · 24px·포커스 감사 — 같은 화면에서 16건 중 3건.
+    → 관측 수가 부풀고(가짜 커버리지), 거기서 나온 «미달» 은 아무도 못 보는 글자의
+      미달이다(가짜 결함). 양쪽 다 나쁘다.
+
+    🔴 그래서 «칠해지는가» 는 브라우저에게 묻는다(`Element.checkVisibility`). 이 배선을
+    구조로 잰다 — 상자로 요소를 «고르는» 감사는 전부 그 물음을 함께 해야 한다.
+    """
+    tree = ast.parse(_SWEEP.read_text(encoding="utf-8"))
+    resolved = _resolved_js_constants(tree)
+    # 🔴 비공허성은 «바닥 숫자» 가 아니라 «파생이 풀렸는가» 로 잰다 — 첫 판이 초록이던
+    #    이유는 개수가 적어서가 아니라 6개가 **빈 문자열로 풀렸기** 때문이다.
+    unresolved = sorted(k for k, v in resolved.items()
+                        if k.endswith("_AUDIT_JS") and "querySelectorAll" not in v)
+    assert not unresolved, (
+        "감사 상수인데 JS 로 풀리지 않았다 — 파생기가 그 형태를 모른다(그 계기는 "
+        "검사에서 조용히 빠진다):\n  " + "\n  ".join(unresolved))
+    # 🔴 대상은 «요소를 골라 상자로 거르는» 계기다 — 한 요소만 재는 헬퍼는 해당 없음.
+    scanners = {k: v for k, v in resolved.items()
+                if "querySelectorAll" in v and "getBoundingClientRect" in v}
+    assert scanners, "상자로 요소를 고르는 계기를 0개 찾았다 — 파생이 죽었다(공허한 초록)"
+    missing = sorted(k for k, v in scanners.items() if "checkVisibility" not in v)
+    assert not missing, (
+        "브라우저가 «안 칠한다» 고 답하는 요소를 그대로 세는 감사가 있다 — 관측 수가 "
+        "부풀고 아무도 못 보는 글자의 미달이 보고된다:\n  " + "\n  ".join(missing))

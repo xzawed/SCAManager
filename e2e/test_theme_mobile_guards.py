@@ -489,6 +489,13 @@ _TOKEN_TEXT_AUDIT_JS = r"""
     if (cs.visibility==='hidden' || cs.display==='none' || +cs.opacity===0) continue;
     const r = el.getBoundingClientRect();
     if (r.width<1 || r.height<1) continue;
+    // 🔴 «상자가 있다» 와 «칠해진다» 는 다르다. 닫힌 `<details>` 의 내용은 상자를 그대로
+    //    갖고 자기 `display/visibility/opacity` 도 정상이라 위 네 줄을 전부 통과한다 —
+    //    브라우저는 그것을 칠하지 않는다(`content-visibility` 는 자식 계산값에 안 나온다).
+    //    실측(2026-09-13, `_reveal_all` 이후): 설정 화면에서 감사가 센 37건 중 **21건**이
+    //    접힌 프리셋 아코디언의 diff 표였다. 다른 네 화면은 0건.
+    //    → 관측 수가 부풀고, 거기서 나온 «미달» 은 아무도 못 보는 글자의 미달이다.
+    if (el.checkVisibility && !el.checkVisibility({opacityProperty: true, visibilityProperty: true})) continue;
     const fg = parse(cs.webkitTextFillColor || cs.color);
     if (!fg || fg.a===0) continue;
     const token = Object.keys(want).find(k => same(fg, want[k]));
@@ -698,6 +705,8 @@ _OVERLAY_OBSERVED_JS = r"""
   const cs = getComputedStyle(box);
   if (!box.classList.contains('open')) return {error: '햄버거를 눌렀는데 .open 이 없다'};
   if (cs.display === 'none') return {error: '.open 인데 display:none — 오버레이가 안 보인다'};
+  if (box.checkVisibility && !box.checkVisibility({opacityProperty: true, visibilityProperty: true}))
+    return {error: '.open 인데 브라우저가 «칠하지 않는다» — 상자만 있고 화면엔 없다'};
   // 🔴 토큰 «원시값»(hex)과 computed `color`(rgb 형식)를 문자열로 견주면 언제나 다르다.
   //    그 비교는 항상 0 을 돌려주고, 그러면 이 계기는 「못 쟀다」를 「없다」로 바꾼다.
   //    브라우저에게 var() 를 «해석시켜» 같은 표기로 만든 뒤 견준다.
@@ -1068,6 +1077,9 @@ _FOCUS_AUDIT_JS = r"""
     if (r.width < 6 || r.height < 6) return;
     const cs = getComputedStyle(el);
     if (cs.visibility === 'hidden' || cs.display === 'none') return;
+    // 🔴 닫힌 `<details>` 안의 컨트롤은 상자도 계산값도 정상인데 «칠해지지» 않는다.
+    //    포커스 표시를 그 자리에서 재면 아무도 못 보는 링을 재는 것이다(실측 설정 3/16).
+    if (el.checkVisibility && !el.checkVisibility({opacityProperty: true, visibilityProperty: true})) return;
     let op = 1; for(let x=el;x;x=x.parentElement){
       const o=parseFloat(getComputedStyle(x).opacity); if(!isNaN(o)) op*=o; }
     if (op < 0.99) return;
@@ -1489,6 +1501,11 @@ _TARGET_AUDIT_JS = r"""
   for (const el of document.querySelectorAll(CTRL)) {
     const r = el.getBoundingClientRect();
     if (r.width < 1 || r.height < 1) { out.exempt.zeroBox++; continue; }
+    // 🔴 상자가 있어도 «칠해지지» 않으면 사용자는 못 누른다 — 닫힌 `<details>` 의 내용이
+    //    그렇다(자기 display/visibility 는 정상, 상자도 그대로). 실측(설정, 375px):
+    //    잰 16건 중 3건이 그 부류였다. 면제로 «세어» 남긴다.
+    if (el.checkVisibility && !el.checkVisibility(
+        {opacityProperty: true, visibilityProperty: true})) { out.exempt.zeroBox++; continue; }
     if (el.tagName === 'INPUT' && el.getAttribute('type') === 'range') {
       out.exempt.range++; continue; }
     const cs = getComputedStyle(el);
@@ -1719,7 +1736,25 @@ _STATE_VISIBLE_JS = r"""
   const el = document.querySelector(sel);
   if (!el) return {error: sel + ' 미존재'};
   const cs = getComputedStyle(el), r = el.getBoundingClientRect();
-  return {display: cs.display, opacity: +cs.opacity,
+  // 🔴 상자만 보면 «열렸다» 를 못 가른다 — 닫힌 `<details>` 의 자식도 상자를 그대로
+  //    갖는다(실측: 위험 구역 43px · 셋업 243px 가 닫힌 채로도 잡혔다). 그래서 여는
+  //    단계를 지우는 뮤테이션이 초록이었다. 브라우저에게 «칠하는가» 를 묻는다.
+  // 🔴 안 칠해지면 «누가 가리는지» 까지 돌려준다 — CI 에서만 나는 차이를 로그 한 줄로
+  //    좁히기 위해서다(로컬은 칠해지고 CI 는 아닌 사례를 실제로 만났다).
+  let hider = null;
+  if (el.checkVisibility && !el.checkVisibility({opacityProperty: true,
+                                                 visibilityProperty: true})) {
+    for (let x = el; x; x = x.parentElement) {
+      if (x.checkVisibility && x.checkVisibility({opacityProperty: true,
+                                                  visibilityProperty: true})) break;
+      const xs = getComputedStyle(x);
+      hider = {tag: x.tagName, cls: (x.className || '').toString().slice(0, 30),
+               id: x.id || null, display: xs.display, visibility: xs.visibility,
+               cv: xs.contentVisibility, open: x.tagName === 'DETAILS' ? x.open : null};
+    }
+  }
+  return {display: cs.display, opacity: +cs.opacity, hider: hider,
+          painted: el.checkVisibility ? el.checkVisibility({opacityProperty: true, visibilityProperty: true}) : true,
           w: Math.round(r.width), h: Math.round(r.height),
           texts: Array.from(el.querySelectorAll('*'))
             .filter(n => Array.from(n.childNodes).some(
@@ -1748,6 +1783,9 @@ def test_token_text_meets_aa_in_interactive_states(seeded_page, base_url, seeded
     assert res["display"] != "none" and res["opacity"] > 0.5, (
         f"{selector} 가 열리지 않았다({res}) — 재지 못한 것이지 통과한 것이 아니다")
     assert res["w"] > 0 and res["h"] > 0, f"{selector} 의 상자가 0이다({res})"
+    assert res["painted"], (
+        f"{selector} 의 상자는 있는데 브라우저가 «칠하지 않는다»({res}) — 닫힌 "
+        "`<details>` 의 자식이 그렇다. 상자만 보면 여는 단계를 지워도 초록이다")
 
 
 # ── E-3. 설정 «게이트» 블록 — 기본 설정에서 `is-hidden` 인 표면 (#1639 W12-b) ──
