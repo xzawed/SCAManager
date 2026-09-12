@@ -266,6 +266,15 @@
     transition:border-color var(--transition), color var(--transition);
   }
   .num-input.danger { border-color:var(--danger); color:var(--danger); }
+  /* 🔴 포커스 표시 — `.num-input.danger`(특이도 0,2,0)가 `input:focus`(0,1,1)의
+     `border-color:var(--accent)` 를 **이겨서**, 포커스가 가도 테두리가 붉은 그대로였다.
+     남는 표시는 15% 알파 글로뿐이고 그것은 1.19:1 (dark)·1.16 (pastel) — 3:1 미달
+     (WCAG 2.4.7 Level AA). 게이트가 «열린» 리포에서만 보이는 입력이라 스윕 밖이었다.
+     🔴 알파를 올려 때우지 않는다(이 리포의 알파 결함 4회차) — 전역 링을 되돌려준다.
+     세 입력이 같은 조작 묶음이므로 `.danger` 만이 아니라 `.num-input` 전체에 건다.
+     The `.danger` variant outranked the focus border change, leaving only a 15%-alpha glow
+     at 1.19:1. Restore the global ring instead of raising the alpha. */
+  .num-input:focus-visible { outline:2px solid var(--focus-ring); outline-offset:2px; }
   .range-hint {
     margin-top:.65rem; padding:.5rem .75rem;
     background:var(--hint-bg); border:1px solid var(--hint-border);

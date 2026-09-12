@@ -1165,14 +1165,21 @@ def _force_focus(page, on: bool) -> int:
     return len(nodes["nodeIds"])
 
 
+#    🔴 목록은 «화면» 이 아니라 «상태» 다. 설정 화면은 게이트가 닫힌 리포만 있어서,
+#    `approve_mode='semi-auto'` 라야 보이는 임계값 입력 3개가 한 번도 포커스 관측을
+#    받지 않았다 — 그중 `#rejectVal`(`.num-input.danger`)이 1.19:1 로 미달이었다.
+#    `/` 와 `?mode=` 분기도 같은 이유로 넣는다(실측: 그쪽은 미달 0).
 _FOCUS_PATHS = ["/dashboard", "/repos/owner/testrepo",
                 "/repos/owner/testrepo/settings", "/repos/owner/testrepo/insights",
-                "/repos/add"]
+                "/repos/add", "/",
+                "/dashboard?mode=repos", "/dashboard?mode=security",
+                "/repos/owner%2Fgatedrepo/settings",
+                "/repos/owner%2Funclaimedrepo/settings"]
 
 
 @pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
 def test_every_focusable_shows_an_indicator_that_meets_3to1(
-        seeded_page, base_url, seeded_analysis, theme):
+        seeded_page, base_url, seeded_analysis, gated_settings_repo, unclaimed_repo, theme):
     """🔴 포커스를 받은 요소는 «표시가 있어야» 하고 그 표시는 3:1 이상이어야 한다.
 
     실측(수정 전):
@@ -1183,6 +1190,18 @@ def test_every_focusable_shows_an_indicator_that_meets_3to1(
 
     🔴 표시를 «의사요소» 에서도 찾는다. 슬라이더 링은 `::-webkit-slider-thumb` 에 있어
     요소만 보면 고친 뒤에도 「표시 없음」으로 잡힌다.
+
+    🔴 이 스윕이 **유일한 실효 관측자**다. 단위 가드
+    (`tests/unit/ui/test_focus_indicator.py::test_outline_none_is_always_paired_with_a_replacement_indicator`)
+    는 «파일에 대체 표시가 있는가» 를 보므로, 같은 파일 안에서 특정 규칙만 표시를 잃는
+    경우를 못 본다 — `#rejectVal` 이 정확히 그랬다(1.19:1). `input:focus{outline:none}` 은
+    남아 있으니, 새 상태 클래스(예: `.field-input.invalid{border-color:…}`)가 생기면 같은
+    부류가 재발한다. **그 상태를 이 목록이 열지 않으면 아무도 못 본다.**
+
+    🔴 두 픽스처(`gated_settings_repo`·`unclaimed_repo`)를 여기서 요청하므로 시드가
+    이 파일 앞쪽으로 당겨진다 — 뒤의 below-the-fold 스윕이 `/dashboard` 에서
+    `active_repos.total` 을 더 큰 값으로 본다(건수를 단언하지 않아 통과는 유지된다.
+    Grok `01a09491` 이 내 「부작용 없음」 주장을 WEAKENED 로 깎았다).
     """
     seeded_page.set_viewport_size({"width": 1440, "height": 900})
     total, skipped_range, missing, low = 0, 0, [], []
@@ -1192,6 +1211,11 @@ def test_every_focusable_shows_an_indicator_that_meets_3to1(
                  f"/repos/owner%2Ftestrepo/analyses/{seeded_analysis}"]:
         seeded_page.goto(f"{base_url}{path}")
         seeded_page.evaluate("(t) => applyTheme(t)", theme)
+        # 🔴 설정 화면의 임계값 입력은 «고급 모드» 안이라, 열지 않으면 0×0 이고 포커스
+        #    감사는 그것을 건너뛴다 — 열지 않은 채로는 `#rejectVal` 의 1.19:1 을 못 본다.
+        seeded_page.evaluate(
+            "() => { document.body.setAttribute('data-settings-mode', 'advanced');"
+            " document.querySelectorAll('details').forEach(d => d.open = true); }")
         seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
         seeded_page.wait_for_timeout(300)
         _reveal_all(seeded_page)
