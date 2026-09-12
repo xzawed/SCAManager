@@ -674,12 +674,112 @@ def _seed_security_alerts(db_path: str) -> int:
     return made
 
 
+def _seed_merge_history(db_path: str, analysis_id: int) -> dict[str, int]:
+    """auto-merge 시도 이력 — 현재 창 3건(머지 1·실패 2) · 직전 창 1건(머지) ·
+    직전 창의 낮은 점수 분석 1건 → overview 의 «머지 이력이 있을 때» 화면을 연다.
+
+    🔴 e2e 는 `merge_attempts` 행을 **한 번도** 만들지 않았다. 그래서
+       `dashboard.html:1234` 의 실패 사유 목록(`.reason-list`)과 auto-merge KPI 의
+       `distinct_prs`(`--text-3` PR 카운트)·`delta` 팔은 어떤 조합에서도
+       렌더되지 않았다 — 「안 쟀음」이지 통과가 아니었다(#1639 W12-b).
+    🔴 이 시드는 **기준선을 둘 옮긴다** — 알고 쓴다:
+       ① auto-merge KPI 가 «—»(비교 없음)에서 33.3% + ▼ 로 바뀐다.
+       ② 직전 창의 score=10 분석이 `kpi.avg_score.delta` 를 양수로 만든다. 그 행은
+          현재 창(7일) 밖이라 평균 자체는 그대로지만, 같은 `days` 로 도는
+          `repo_insight_cards` 의 **직전 창** 비교값(`score_trend`)은 움직인다.
+       그 숫자를 «0» 이나 «—» 로 고정하는 시험을 새로 쓰지 말 것.
+    🔴 ORM 으로 넣는다 — `score_unreliable` 의 기본값은 **server_default true**(신뢰 불가)
+       라 빠뜨리면 그 분석이 집계에서 빠지고, 원시 SQL + `INSERT OR IGNORE` 는
+       NOT NULL 위반을 조용히 삼킨다(#1652 실측).
+
+    Seeds merge attempts (and one previous-window analysis) so the overview renders the
+    failure-reason list and the auto-merge KPI arms. It deliberately moves two baselines.
+    """
+    from datetime import datetime, timedelta, timezone  # noqa: PLC0415
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from src.models.analysis import Analysis  # noqa: PLC0415
+    from src.models.merge_attempt import MergeAttempt  # noqa: PLC0415
+    from src.models.repository import Repository  # noqa: PLC0415
+    from src.scorer.reliability import score_is_unreliable  # noqa: PLC0415
+    from src.services import dashboard_service  # noqa: PLC0415
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    cur_at, prev_at = now - timedelta(days=1), now - timedelta(days=10)
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    session = sessionmaker(bind=engine)()
+    try:
+        repo = session.query(Repository).filter_by(full_name="owner/testrepo").first()
+        if repo is None:
+            raise RuntimeError("_seed_merge_history: owner/testrepo must exist first")
+        # 🔴 실패 사유가 **서로 달라야** 목록이 두 줄이 된다 — 같은 사유면 한 줄로 접힌다.
+        #    머지 판정은 `success` 가 아니라 `_merge_attempt_states.is_merged(state, success)`
+        #    다(켜기만 한 auto-merge 도 success=True).
+        rows = [
+            {"pr_number": 9101, "success": False, "failure_reason": "unstable_ci",
+             "state": "legacy", "score": 72, "attempted_at": cur_at},
+            {"pr_number": 9102, "success": False, "failure_reason": "blocked_by_review",
+             "state": "legacy", "score": 68, "attempted_at": cur_at},
+            {"pr_number": 9103, "success": True, "failure_reason": None,
+             "state": "direct_merged", "score": 91, "attempted_at": cur_at},
+            # 직전 창은 전부 머지(100%) — 그래야 현재 33.3% 와의 delta 가 음수(▼)가 된다.
+            {"pr_number": 9001, "success": True, "failure_reason": None,
+             "state": "direct_merged", "score": 88, "attempted_at": prev_at},
+        ]
+        for r in rows:
+            exists = session.query(MergeAttempt).filter_by(
+                repo_name=repo.full_name, pr_number=r["pr_number"]).first()
+            if exists is None:
+                session.add(MergeAttempt(
+                    analysis_id=analysis_id, repo_name=repo.full_name, threshold=80, **r))
+        old_sha = "merge-history-prev-001"
+        if session.query(Analysis).filter_by(commit_sha=old_sha).first() is None:
+            old_result = {"summary": "e2e previous-window baseline"}
+            session.add(Analysis(
+                repo_id=repo.id, commit_sha=old_sha,
+                commit_message="chore: previous-window baseline for delta",
+                score=10, grade="F", result=old_result, author_login="e2e-tester",
+                score_unreliable=score_is_unreliable(old_result), created_at=prev_at))
+        session.commit()
+
+        # 🔴 되읽기는 «템플릿이 읽는 바로 그 함수» 로 한다. 행 수만 세면 사용자 필터나
+        #    시간 창이 어긋나도 초록이 된다 — 그때 화면에는 아무것도 안 열린다.
+        dist = dashboard_service.merge_failure_distribution(
+            session, days=7, user_id=_E2E_USER_ID)
+        auto = dashboard_service.auto_merge_kpi(session, days=7, user_id=_E2E_USER_ID)
+        kpi = dashboard_service.dashboard_kpi(session, days=7, user_id=_E2E_USER_ID)
+    finally:
+        session.close()
+        engine.dispose()
+
+    assert len(dist) >= 2, (
+        f"실패 사유가 {len(dist)}종 — 2종 이상이라야 `.reason-list` 가 두 줄이 된다. "
+        "0이면 «못 쟀음» 이지 통과가 아니다")
+    assert auto["distinct_prs"] and auto["delta"] is not None and auto["delta"] < 0, (
+        f"auto-merge KPI 가 열리지 않았다 (distinct_prs={auto['distinct_prs']!r} "
+        f"delta={auto['delta']!r}) — `--text-3` PR 카운트와 ▼ delta 팔이 닫힌 채다")
+    assert kpi["avg_score"]["delta"] is not None and kpi["avg_score"]["delta"] > 0, (
+        f"평균 점수 delta 가 {kpi['avg_score']['delta']!r} — 직전 창 분석이 "
+        "집계에 안 잡혔다(`score_unreliable` 또는 시간 창 확인). ▲ 팔이 닫힌 채다")
+    return {"failure_reasons": len(dist), "distinct_prs": auto["distinct_prs"]}
+
+
 @pytest.fixture(scope="session")
 def security_alerts(live_server):
     """보안 알림이 있는 상태 — `?mode=security` 가 4카드 그리드를 그린다."""
     db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
     _seed_repo(live_server, db_path)
     return _seed_security_alerts(db_path)
+
+
+@pytest.fixture(scope="session")
+def merge_history(live_server, seeded_analysis):
+    """머지 이력이 있는 상태 — overview 가 실패 사유 목록 + auto-merge KPI 를 그린다."""
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    return _seed_merge_history(db_path, seeded_analysis)
 
 
 @pytest.fixture(scope="session")
