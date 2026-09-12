@@ -15,7 +15,7 @@
 
 import pytest
 
-from e2e.conftest import apply_theme
+from e2e.conftest import INSIGHT_LANGUAGE, apply_theme
 
 
 # ── A. catppuccin 토큰 회귀 가드 (cleanup PR #169 사고 차단) ─────────────────
@@ -2334,3 +2334,81 @@ def test_the_unclaimed_banner_text_meets_aa_on_its_warning_wash(
         f"[{theme}] 미청구 배너 글자 {len(res['bad'])}건이 AA 미달 (관측 {seen}건):\n  "
         + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
                       for b in res["bad"][:10]))
+
+
+# ── E-8. insight 모드의 «성공» 4카드 그리드 (#1639 — 마지막 미개방 모드) ─────
+#
+# `?mode=insight` 는 e2e 에서 언제나 상태 안내(`no_api_key`)만 그렸다. 4카드 그리드는
+# **한 번도 렌더된 적이 없다** — 카드 제목·목록·지표 라벨/값/델타가 통째로 관측 밖이었다.
+#
+# 🔴 여는 방법이 «싸지 않다»(#1639 핸드오프가 미리 경고했다):
+#   ① API 키 검사가 **캐시보다 먼저** 온다(`dashboard_service.py:1022-1024`) — 캐시 행만
+#      넣어서는 아무것도 안 열린다.
+#   ② 캐시 키는 `(user_id, days, language, repo_id IS NULL)` + `expires_at` 다.
+#      로케일이 어긋나면 캐시가 빗나가 API 호출로 흘러간다 → 쿠키로 못박는다.
+#   ③ 키를 세션 전역으로 켜면 리포 인사이트까지 깨어나 실패 호출·비용 행을 쓴다
+#      (Grok `01a095b6`) → `insight_success` 픽스처가 **이 시험 동안만** 켠다.
+
+
+def _assert_insight_grid_was_rendered(page) -> None:
+    """🔴 측정이 «끝난 뒤» 성공 그리드가 실제로 그려졌는지 되짚는다.
+
+    red 로 만드는 뮤테이션: 캐시 시드를 빼거나 언어를 어긋나게 하면 상태 안내(`api_error`)가
+    그려져 red. 키를 안 켜면 `no_api_key` 로 red.
+    """
+    res = page.evaluate("""() => {
+        const grid = document.querySelector('.dash-insight-grid');
+        const status = document.querySelector('.dash-insight-status');
+        return {grid: !!grid,
+                cards: grid ? grid.querySelectorAll('.dash-insight-card').length : 0,
+                listItems: document.querySelectorAll('.dash-insight-list li').length,
+                metrics: document.querySelectorAll('.dash-insight-metric').length,
+                deltas: document.querySelectorAll('.dash-insight-metric-delta').length,
+                status: status ? status.textContent.trim().slice(0, 60) : null};
+    }""")
+    assert res["grid"] and res["cards"] == 4, (
+        f"4카드 그리드가 없다(cards={res['cards']}, status={res['status']!r}) — "
+        "캐시가 빗나갔거나 키가 안 켜졌다. 재지 못한 것이지 통과한 것이 아니다")
+    assert res["status"] is None, (
+        f"상태 안내가 함께 떴다: {res['status']!r} — 성공 화면이 아니다")
+    # 🔴 «칸만 열리고 내용이 비면» 잴 글자가 없다 — 시드가 채운 항목 수를 되짚는다.
+    assert res["listItems"] >= 6 and res["metrics"] >= 3, (
+        f"카드가 비었다(목록 {res['listItems']} · 지표 {res['metrics']}) — 빈 상자를 쟀다")
+    assert res["deltas"] >= 2, (
+        f"델타 칩이 {res['deltas']}개 — `{{% if m.delta %}}` 팔이 안 열렸다"
+        "(시드의 `delta: None` 항목이 그 거짓 팔도 함께 연다)")
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_token_text_meets_aa_in_insight_success_grid(
+        seeded_page, base_url, insight_success, theme):
+    """🔴 insight 모드가 «성공» 일 때 그리는 4카드 글자가 AA 를 넘는가."""
+    seeded_page.context.add_cookies([
+        {"name": "preferred_language", "value": INSIGHT_LANGUAGE,
+         "url": base_url},
+    ])
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.goto(f"{base_url}/dashboard?mode=insight")
+    assert "localhost" in seeded_page.url, (
+        f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
+    apply_theme(seeded_page, theme)
+    seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
+    seeded_page.wait_for_timeout(350)
+    _reveal_all(seeded_page)
+
+    total, bad = 0, []
+    for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+                      (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
+        res = seeded_page.evaluate(js)
+        assert not res.get("error"), res.get("error")
+        total += sum(res["seen"][n] for n in names)
+        bad += res["bad"]
+
+    _assert_insight_grid_was_rendered(seeded_page)
+    assert total > 0, (
+        f"[{theme}] insight 그리드에서 토큰 글자를 하나도 찾지 못했다 — "
+        "재지 못한 것이지 통과한 것이 아니다")
+    assert not bad, (
+        f"[{theme}] insight 그리드 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
+        + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
+                      for b in bad[:10]))
