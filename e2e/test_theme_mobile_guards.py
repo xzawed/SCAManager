@@ -658,6 +658,11 @@ def _assert_token_text_aa(page, base_url, theme, path, viewport=None, prepare=No
     _reveal_all(page)
     if prepare is not None:
         prepare(page)
+        # 🔴 여는 단계가 «새 내용» 을 표시하면 그 조상이 아직 `.reveal`(opacity 0) 일 수
+        #    있다 — reveal 은 여는 «전» 에 한 번 돌았을 뿐이다. 실측: CI 에서
+        #    `#telegramOtpDisplay` 가 그 상태로 「브라우저가 안 칠한다」로 잡혔다
+        #    (로컬은 카드가 이미 드러나 있어 재현되지 않았다). 연 «뒤» 다시 돌린다.
+        _reveal_all(page)
     res = page.evaluate(_TOKEN_TEXT_AUDIT_JS)
 
     assert not res.get("error"), res.get("error")
