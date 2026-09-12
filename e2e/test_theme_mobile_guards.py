@@ -632,63 +632,65 @@ def test_token_text_meets_aa_against_painted_background(seeded_page, base_url, t
     _assert_token_text_aa(seeded_page, base_url, theme, path)
 
 
-# 🔴 «크롬 밖» 을 세는 축 — 바닥이 nav 만으로 만족되지 않게 한다.
-#
-# 실측(2026-09-13, 9경로 × 4테마): 어느 화면에서도 nav·헤더·푸터의 글자만으로
-# **10~17건**이 잡힌다. 그러니 `total > 0` 은 «본문이 통째로 사라져도» 초록이다
-# (Grok `01a09667`·`01a09702` 가 두 번 지적한 «공허한 바닥»).
-# 화면 고유 글자는 2~31건이었다 — 그 축을 따로 세어 0이면 red 로 만든다.
-#
-# 🔴 경로별 «숫자» 를 커밋하지 않는다 — 그 수는 시드와 파일 순서를 따라다니고
-#    (`/dashboard` 는 이 세션에서만 세 번 움직였다), 「초록 될 때까지 숫자 올리기」를
-#    부른다(Grok `01a09702`). 목록 없이 **구조**(크롬 안인가 밖인가)로 판정한다.
-_CHROME_SEL = "nav, header, footer, .nav-links, .nav-inner, .site-header, .top-nav"
+# 🔴 «크롬» 은 **최상위 레이아웃**만이다. 첫 판(#1666)은 `nav` 를 통째로 크롬으로 봤는데,
+#    `.dash-mode-toggle` 이 `<nav>` 다(`dashboard.html:431`) — 페이지 «내용» 인데 크롬으로
+#    분류됐다. 그 정의로 24px 축을 재보니 `/dashboard`·`?mode=insight` 의 «고유» 가 0이었다
+#    (즉 그대로 옮겼으면 그 축의 단언이 성립하지 못했다). 실측 후 좁혔다:
+#    최상위 크롬 기준으로 세 축 모두 어느 경로에서나 고유가 3건 이상이다.
+_CHROME_SEL = "body > nav, body > header, body > footer"
 
-_OWN_TEXT_COUNT_JS = r"""
+_CHROME_SPLIT_JS = r"""
 (payload) => {
-  const [names, chromeSel] = payload;
-  const probe = document.createElement('span');
-  document.body.appendChild(probe);
-  const want = names.map(n => { probe.style.color = 'var(' + n + ')';
-                                return getComputedStyle(probe).color; });
-  probe.remove();
+  const [sel, chromeSel, minBox, colorNames] = payload;
+  let want = null;
+  if (colorNames) {
+    const probe = document.createElement('span');
+    document.body.appendChild(probe);
+    want = colorNames.map(n => { probe.style.color = 'var(' + n + ')';
+                                 return getComputedStyle(probe).color; });
+    probe.remove();
+  }
   const eff = n => { let a = 1;
     for (let x = n; x; x = x.parentElement) {
       const o = parseFloat(getComputedStyle(x).opacity); if (!isNaN(o)) a *= o; }
     return a; };
   let chrome = 0, own = 0; const samples = [];
-  for (const el of document.querySelectorAll('body *')) {
-    const own_text = Array.from(el.childNodes)
-      .filter(n => n.nodeType === 3 && n.textContent.trim());
-    if (!own_text.length) continue;
+  for (const el of document.querySelectorAll(sel)) {
+    const r = el.getBoundingClientRect();
+    if (r.width < minBox || r.height < minBox) continue;
     const cs = getComputedStyle(el);
     if (cs.visibility === 'hidden' || cs.display === 'none' || +cs.opacity === 0) continue;
-    const r = el.getBoundingClientRect();
-    if (r.width < 1 || r.height < 1) continue;
     if (el.checkVisibility && !el.checkVisibility({opacityProperty: true,
                                                    visibilityProperty: true})) continue;
     if (eff(el) <= 0.005) continue;
-    if (!want.includes(cs.color)) continue;
+    if (want) {
+      const t = Array.from(el.childNodes).filter(n => n.nodeType === 3 && n.textContent.trim());
+      if (!t.length) continue;
+      if (!want.includes(cs.color)) continue;
+    }
     if (el.closest(chromeSel)) { chrome++; continue; }
     own++;
     if (samples.length < 4) samples.push((el.className || '').toString().slice(0, 24));
   }
-  return {chrome, own, samples};
+  return {chrome: chrome, own: own, samples: samples};
 }
 """
 
 
-def _assert_page_body_was_measured(page, theme, path) -> None:
-    """🔴 «이 화면 고유의» 글자가 관측됐는가 — 크롬만 세고 통과하지 않게.
+def _assert_body_contributed(page, *, axis, where, selector, min_box=1, colors=None) -> None:
+    """🔴 «이 화면 고유» 가 하나라도 관측됐는가 — 크롬만 세고 통과하지 않게.
 
-    red 로 만드는 뮤테이션: 본문 컨테이너를 통째로 숨기면(`.settings-wrap`·`.dashboard-page`
-    등에 `display:none`) `total > 0` 은 nav 덕분에 여전히 초록인데 이 단언은 red 다.
+    실측(2026-09-13, 최상위 크롬 기준): 어느 축·경로에서도 고유는 3건 이상이다
+    (글자 최소 4 · 24px 최소 4 · 포커스 최소 3). 크롬만으로는 글자 6~15 · 컨트롤 5~14 가
+    그냥 잡히므로 「0보다 크다」류 바닥은 **본문이 통째로 사라져도 초록**이었다.
+
+    red 로 만드는 뮤테이션: 본문 컨테이너에 `display:none` 을 주입하면 종전 바닥은
+    초록인데 이 단언은 red 다(실측).
     """
-    res = page.evaluate(_OWN_TEXT_COUNT_JS,
-                        [["--text-2", "--text-3", "--accent-text"], _CHROME_SEL])
+    res = page.evaluate(_CHROME_SPLIT_JS, [selector, _CHROME_SEL, min_box, colors])
     assert res["own"] > 0, (
-        f"[{theme}] {path}: 관측된 토큰 글자 {res['chrome']}건이 **전부 nav·헤더**다 — "
-        "이 화면 고유의 글자는 하나도 재지 못했다. 「안 쟀음」과 「통과」는 다르다")
+        f"[{axis}] {where}: 관측 {res['chrome']}건이 **전부 최상위 nav·헤더**다 — "
+        "이 화면 고유의 것은 하나도 재지 못했다. 「안 쟀음」과 「통과」는 다르다")
 
 
 def _assert_token_text_aa(page, base_url, theme, path, viewport=None, prepare=None):
@@ -728,7 +730,8 @@ def _assert_token_text_aa(page, base_url, theme, path, viewport=None, prepare=No
     seen = res["seen"]
     # 🔴 아무것도 못 골랐으면 «통과» 가 아니라 red 다 — 토큰 이름이 바뀌었거나
     #    테마가 적용되지 않은 것이고, 그때 이 시험은 아무 것도 재지 않는다.
-    _assert_page_body_was_measured(page, theme, path)
+    _assert_body_contributed(page, axis=theme, where=path, selector="body *",
+                             colors=["--text-2", "--text-3", "--accent-text"])
     assert seen["--text-2"] + seen["--text-3"] > 0, (
         f"[{theme}] {path} 에서 --text-2/--text-3 로 칠해진 글자를 하나도 찾지 못했다 — "
         "재지 못한 것이지 통과한 것이 아니다"
@@ -1300,12 +1303,18 @@ def test_every_focusable_shows_an_indicator_that_meets_3to1(
         _reveal_all(seeded_page)
         n = seeded_page.evaluate(_FOCUS_BASE_JS,
                                  [_FOCUSABLE_SEL, list(_INDICATOR_PSEUDOS)])
-        if not n:
-            continue
+        # 🔴 0이면 «건너뛰기» 가 아니라 red 다. 종전 `continue` 는 그 경로의 되짚기까지
+        #    통째로 건너뛰어, 화면이 비어도 조용했다(Grok `01a09737` 이 지목한 구멍).
+        #    어느 경로든 nav 만으로도 6~15개가 잡힌다 — 0은 화면이 안 떴다는 뜻이다.
+        assert n, f"[{theme}] {path}: 포커스 대상을 하나도 찾지 못했다 — 화면이 비었다"
         _force_focus(seeded_page, True)
         seeded_page.wait_for_timeout(150)
         res = seeded_page.evaluate(_FOCUS_AUDIT_JS, _FOCUSABLE_SEL)
         _force_focus(seeded_page, False)
+        # 🔴 합계 바닥(`total >= 40`)은 **경로 하나가 통째로 비어도** 넘는다 — 크롬의
+        #    포커스 대상만으로 경로당 6~15건이 잡히기 때문이다. 경로마다 요구한다.
+        _assert_body_contributed(seeded_page, axis=f"focus/{theme}", where=path,
+                                 selector=_FOCUSABLE_SEL, min_box=6)
         total += res["seen"]
         skipped_range += res["skippedRange"]
         missing += [f"{path}: {c}" for c in res["noIndicator"]]
@@ -1549,15 +1558,20 @@ def test_the_aa_sweep_measures_below_the_fold_too(seeded_page, base_url, path):
 
 _TARGET_MIN = 24
 
+
 # 🔴 규범 예외를 «코드로» 적는다. 손으로 셀렉터를 빼면 그 자리는 영영 안 재진다.
 #   - 문장 안 링크: 「문장 안에 있거나 line-height 로 크기가 묶인 타깃」(SC 2.5.8 예외).
 #     flex 아이템은 blockify 돼 line-height 에 묶이지 «않으므로» 예외가 아니다 — 실측으로
 #     `.admin-link` 는 `display:block` · 부모 `flex` 였다.
 #   - range 입력: 타깃은 thumb 이고 입력 상자가 아니다(#1627 이 thumb 을 24 로 만들었다).
+# 🔴 컨트롤 목록은 «한 곳» 에만 둔다 — 감사 JS 와 «크롬 밖» 판정이 같은 집합을
+#    봐야 한다. 둘로 적으면 한쪽만 바뀌는 순간 두 판정이 갈린다(이 파일의 반복 교훈).
+_TARGET_CTRL_SEL = ("button, a[href], input:not([type=hidden]), select, textarea,"
+                    " [role=button], [role=menuitem]")
+
 _TARGET_AUDIT_JS = r"""
 (MIN) => {
-  const CTRL = 'button, a[href], input:not([type=hidden]), select, textarea,' +
-               ' [role=button], [role=menuitem]';
+  const CTRL = '__CTRL__';
   // 🔴 «고급 전용 컨트롤을 실제로 셌는가» 는 감사 «안에서» 세야 한다. 밖에서 «상자가
   //    있는가» 만 보면, 그 컨트롤이 면제로 빠져도(0×0·range·문장 안 링크) 되짚기는
   //    초록으로 남는다 — 감싼 상자는 여전히 보이기 때문이다(Grok `01a0945f`).
@@ -1592,6 +1606,10 @@ _TARGET_AUDIT_JS = r"""
   return out;
 }
 """
+
+if "__CTRL__" not in _TARGET_AUDIT_JS:
+    raise RuntimeError("타깃 감사에 `__CTRL__` 자리표시자가 없다 — 주입이 죽었다")
+_TARGET_AUDIT_JS = _TARGET_AUDIT_JS.replace("__CTRL__", _TARGET_CTRL_SEL)
 
 # 🔴 대시보드는 «한 화면» 이 아니다 — `?mode=` 분기마다 다른 DOM 이다. 첫 판은 이 목록에
 #    `?mode=insight` 가 없어서, 프로브가 거기서 잡은 15~20px 링크를 가드가 못 봤다
@@ -1704,6 +1722,9 @@ def test_every_control_meets_the_24px_target_on_mobile(
         "재지 못한 것이지 통과한 것이 아니다")
 
     _assert_advanced_controls_were_measured(admin_page, {"seen": seen, "advSeen": adv_seen})
+    # 🔴 `seen > 0` 은 nav 의 버튼·링크만으로 만족된다(실측: 크롬만 5~14건).
+    _assert_body_contributed(admin_page, axis="24px", where=path,
+                             selector=_TARGET_CTRL_SEL, min_box=1)
     assert seen > 0, (
         f"{path} 에서 컨트롤을 하나도 재지 못했다 — 재지 못한 것이지 통과한 것이 아니다")
     assert not small, (
