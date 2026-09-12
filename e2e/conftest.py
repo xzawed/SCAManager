@@ -118,6 +118,20 @@ def _start_uvicorn(db_path: str) -> tuple:
     #    이걸 안 하면 admin 화면은 e2e 로 도달 불가라 영영 검증되지 않는다.
     #    Opens /admin/* through the real authorization path instead of stubbing it.
     os.environ["SAAS_ADMIN_EMAILS"] = "e2e@test.com"
+    # 🔴 **개발 PC 의 `.env` 가 e2e 로 새어 들어온다.** `build_settings()` 는 `.env` 를 읽고,
+    #    위 목록에 없는 자격증명은 그대로 살아 있다 — 실측(2026-09-12): 이 PC 의 `.env` 에
+    #    **진짜 `ANTHROPIC_API_KEY`** 가 있어 `?mode=insight`·`/repos/<repo>/insights` 가
+    #    로컬 e2e 에서 **실제 API 를 호출**하고 있었다(CI 는 `.env` 가 없어 조용했다).
+    #    자격증명은 «전부» CI 와 같은 값(기본값 `""`)으로 못박는다 — 목록을 손으로 지키지
+    #    않도록 `tests/unit/scripts/test_e2e_harness_neutralises_credentials.py` 가
+    #    `Settings` 에서 파생해 강제한다.
+    # A developer .env leaks into e2e: pin every credential to its CI-equivalent value.
+    for _cred in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "TELEGRAM_WEBHOOK_SECRET",
+                  "INTERNAL_CRON_API_KEY", "TOKEN_ENCRYPTION_KEY", "N8N_WEBHOOK_SECRET"):
+        os.environ[_cred] = ""
+    # 🔴 벨트+멜빵 — 키가 어떤 경로로든 살아나도 호출이 **기계 밖으로 나가지 않는다**.
+    #    `anthropic` SDK 는 `base_url` 미지정 시 이 env 를 읽는다(1.3.0 실측, Grok `01a095b6`).
+    os.environ["ANTHROPIC_BASE_URL"] = "http://127.0.0.1:1"
 
     # pydantic-settings 캐시 무효화
     for mod_name in list(sys.modules.keys()):
@@ -847,6 +861,103 @@ def merge_history(live_server, seeded_analysis):
     """머지 이력이 있는 상태 — overview 가 실패 사유 목록 + auto-merge KPI 를 그린다."""
     db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
     return _seed_merge_history(db_path, seeded_analysis)
+
+
+# ── insight 모드의 «성공» 그리드 ────────────────────────────────────────────
+#
+# 🔴 `?mode=insight` 는 e2e 에서 **한 번도 성공 화면을 그린 적이 없다.** 키가 없으면
+#    `no_api_key` 상태 안내만 나온다. 4카드 그리드(`dashboard.html:941-973`)는
+#    마지막 남은 «한 번도 안 열린» 대시보드 모드였다(#1639).
+INSIGHT_LANGUAGE = "en"
+
+
+def _seed_insight_success_cache(db_path: str, *, language: str = INSIGHT_LANGUAGE) -> dict:
+    """insight 4카드 «성공» 응답을 캐시에 넣는다 → 넣은 응답 dict.
+
+    🔴 **INSERT 가 아니라 upsert 다.** 같은 키
+       `(user_id, days, language, repo_id IS NULL)` 에 유니크 인덱스
+       (`uq_insight_cache_global`)가 있고, 앞선 `?mode=insight` 방문이 남긴 **오류 행**이
+       이미 있을 수 있다(`_handle_insight_error` → `record_error`). 그 행은
+       `expires_at=now` 라 stale 이라서 조회에는 안 잡히지만, INSERT 는 유니크 위반이다
+       (Grok `01a095b6` 이 이 대목에서 내 계획을 깎았다).
+    🔴 언어를 못박는다 — 라우트가 `language=locale_value` 로 넘기고 로케일은 브라우저
+       `Accept-Language` 에서 온다. 시험은 `preferred_language` 쿠키로 같은 값을 고정한다.
+       어긋나면 캐시가 빗나가 API 호출로 흘러간다.
+
+    Upsert (never insert) a success payload; an earlier error row may already hold the key.
+    """
+    from datetime import datetime, timezone  # noqa: PLC0415
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415
+
+    response = {
+        "status": "success",
+        "days": 7,
+        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "positive_highlights": [
+            "Average score held at 85 across the window.",
+            "Auto-merge recovered on the second attempt for every blocked PR.",
+        ],
+        "focus_areas": [
+            "Two PRs failed on unstable CI checks.",
+            "One hardcoded credential finding is still open.",
+        ],
+        "key_metrics": [
+            {"label": "Average score", "value": "85", "delta": "+45"},
+            {"label": "Auto-merge success", "value": "33.3%", "delta": "-66.7"},
+            {"label": "Analyses", "value": "1", "delta": None},
+        ],
+        "next_actions": [
+            "Stabilise the flaky check before re-running auto-merge.",
+            "Resolve the open security finding on src/app.py.",
+        ],
+    }
+    engine = create_engine(f"sqlite:///{db_path}")
+    session = sessionmaker(bind=engine)()
+    try:
+        insight_narrative_cache_repo.upsert(
+            session, user_id=_E2E_USER_ID, days=7, language=language, response=response)
+        # 🔴 되읽기는 «서비스가 읽는 그 함수» 로 한다 — 행이 생겨도 시간 창·언어가
+        #    어긋나면 화면은 안 열리고 API 호출로 흘러간다.
+        got = insight_narrative_cache_repo.get_fresh(
+            session, user_id=_E2E_USER_ID, days=7, language=language)
+    finally:
+        session.close()
+        engine.dispose()
+    assert got is not None and got.get("status") == "success", (
+        f"insight 캐시가 신선하지 않다: {got!r} — 이 상태면 성공 그리드가 안 열린다")
+    return response
+
+
+@pytest.fixture
+def insight_success(live_server, seeded_analysis):
+    """insight 성공 그리드가 열린 상태 — **이 시험 동안만** API 키를 켠다.
+
+    🔴 키를 세션 전역 env 로 넣지 않는다. 키가 있으면 `/repos/<repo>/insights` 의
+       리포 내러티브도 깨어나 매 방문마다 실패 호출 + `claude_api_calls` 행을 쓴다
+       (Grok `01a095b6` 이 내 「부작용 없음」 주장을 BROKEN 으로 깎았다).
+       e2e 서버는 **같은 프로세스의 스레드**라 `settings` 를 잠시 바꾸면 그 창만 열린다.
+    🔴 그럼에도 `ANTHROPIC_BASE_URL` 을 도달 불가 주소로 고정한다 — 캐시가 빗나가도
+       호출이 **기계 밖으로 나가지 않는다**(`anthropic` SDK 가 이 env 를 읽는다).
+    """
+    from src.config import settings  # noqa: PLC0415
+
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    payload = _seed_insight_success_cache(db_path)
+    prev_key, prev_base = settings.anthropic_api_key, os.environ.get("ANTHROPIC_BASE_URL")
+    settings.anthropic_api_key = "e2e-dummy-not-a-real-key"
+    os.environ["ANTHROPIC_BASE_URL"] = "http://127.0.0.1:1"
+    try:
+        yield payload
+    finally:
+        settings.anthropic_api_key = prev_key
+        if prev_base is None:
+            os.environ.pop("ANTHROPIC_BASE_URL", None)
+        else:
+            os.environ["ANTHROPIC_BASE_URL"] = prev_base
 
 
 @pytest.fixture(scope="session")
