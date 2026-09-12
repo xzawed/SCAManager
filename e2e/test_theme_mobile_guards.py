@@ -1885,3 +1885,127 @@ def test_token_text_meets_aa_in_security_mode_with_alerts(
         f"[{theme}] 보안 그리드 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
         + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
                       for b in bad[:10]))
+
+
+# ── E-6. overview 의 «머지 이력이 있을 때» — 실패 사유 목록 + auto-merge KPI ──
+#
+# e2e 는 `merge_attempts` 행을 한 번도 만들지 않아 overview 는 언제나 「비교 없음」 팔만
+# 그렸다. 닫혀 있던 곳: `.reason-list`(`dashboard.html:1234`) · auto-merge KPI 의
+# `--text-3` PR 카운트(`:1107`) · delta ▲▼(`:1035`·`:1037`·`:1127`·`:1129`).
+#
+# 🔴 같은 화면의 나머지(추세 차트·자주 발생 이슈·리포 카드)는 **이미 그려지고 있었다** —
+#    다만 «파일 순서» 덕이었다. 세션이 SQLite 하나를 공유하고 `test_overview_score.py`·
+#    `test_performance.py`·`test_state_indication.py` 가 알파벳 순으로 먼저 분석을 심는다.
+#    실측(프로브): 새 DB + `seeded_page` 만이면 grade·trend·freq·repo_cards 가 전부 0이고,
+#    `test_performance.py` 를 앞세우면 전부 1이 된다. Grok `01a09345` 가 「그 파일이 유일한
+#    원인」이라는 내 주장을 WEAKENED 로 깎았다(첫 삽입은 `test_overview_score.py:24-56`,
+#    `frequent_issues` 만이 `_seed_analysis` 의 `result.issues` 에 유일하게 의존).
+#    그래서 이 시험은 우연에 기대지 않고 픽스처로 못박는다 — 파일 하나를 지우거나
+#    `-k` 로 걸러도 여기서 재는 화면은 그대로다.
+
+
+def _assert_merge_history_was_rendered(page) -> None:
+    """🔴 측정이 «끝난 뒤» 머지 이력 화면이 실제로 «재졌는지» 되짚는다.
+
+    존재만 확인하면 부족하다 — 감사 JS 는 색·유효 opacity 로 거른다. 그래서 세 가지를
+    같은 방법으로 되짚는다: ① 목록이 열렸는가 ② 그 글자가 감사가 세는 토큰 색인가
+    ③ 조상 opacity 를 곱한 값이 1인가(`.card`→`.reveal{opacity:0}` 이면 감사는 건너뛴다).
+
+    red 로 만드는 뮤테이션(전건 실측):
+      A. 시드를 no-op 으로 → 목록 0줄.
+      B. 사유 메타 색을 토큰 밖으로 → 색 단언.
+      C. 본문의 `_reveal_all` 호출 삭제 → 유효 opacity 단언(첫 화면 KPI 글자만으로도
+         `total > 0` 은 만족되므로 그 단언은 이 축을 못 막는다 — Grok `01a09378`).
+    """
+    res = page.evaluate("""() => {
+        // 감사 JS 와 같은 방식으로 조상 opacity 를 곱한다.
+        const eff = n => { let a = 1;
+            for (let x = n; x; x = x.parentElement) {
+                const o = parseFloat(getComputedStyle(x).opacity);
+                if (!isNaN(o)) a *= o; }
+            return a; };
+        // 🔴 «감사가 세는 색인가» 를 감사와 같은 방법으로 잰다 — body 기준 `--text-3`
+        //    한 값. 색이 토큰을 벗어나면 스윕은 그 글자를 조용히 건너뛴다.
+        const probe = document.createElement('span');
+        probe.style.color = 'var(--text-3)';
+        document.body.appendChild(probe);
+        const t3 = getComputedStyle(probe).color;
+        probe.remove();
+        const rows = document.querySelectorAll('.reason-list .reason-row').length;
+        const meta = document.querySelector('.reason-list .reason-row__reason span:last-child');
+        // 🔴 delta 칩은 «어느 카드의» 것인지까지 가른다. 페이지 전역으로 ▲▼ 를 세면
+        //    분석 건수·활성 리포 같은 다른 카드의 칩이 대신 통과시킨다(Grok `01a09378`).
+        let prSpan = null, amDelta = null, avgDelta = null;
+        for (const kpi of document.querySelectorAll('.kpi')) {
+            const label = kpi.querySelector('.kpi__label');
+            const chip = kpi.querySelector('.kpi__delta');
+            const cls = chip ? chip.className : '';
+            const pr = label ? Array.from(label.querySelectorAll('span'))
+                .find(e => /\\d+\\s*\\/\\s*\\d+\\s*PR/.test(e.textContent)) : null;
+            if (pr) { prSpan = pr; amDelta = cls; }
+            else if (label && label.querySelector('.grade')) { avgDelta = cls; }
+        }
+        return {rows: rows,
+                t3: t3,
+                metaColor: meta ? getComputedStyle(meta).color : null,
+                metaOpacity: meta ? +eff(meta).toFixed(3) : null,
+                prColor: prSpan ? getComputedStyle(prSpan).color : null,
+                amDelta: amDelta, avgDelta: avgDelta};
+    }""")
+    assert res["rows"] >= 2, (
+        f"실패 사유 줄이 {res['rows']}개 — `.reason-list` 가 안 열렸다(merge_failures 가 빈 목록). "
+        "재지 못한 것이지 통과한 것이 아니다")
+    assert res["prColor"] is not None, (
+        "auto-merge KPI 의 «N/M PR» 카운트가 없다 — `distinct_prs` 팔이 닫힌 채다. "
+        "그 글자가 `--text-3` 이라 이 스윕이 재려던 대상이다")
+    assert res["metaColor"] == res["t3"] and res["prColor"] == res["t3"], (
+        f"새로 연 글자가 `--text-3`({res['t3']}) 이 아니다 — "
+        f"사유 메타={res['metaColor']} · PR 카운트={res['prColor']}. "
+        "이 스윕은 그 두 토큰만 세므로, 색이 벗어나면 열어도 «안 재고» 초록이 된다")
+    assert res["metaOpacity"] is not None and res["metaOpacity"] >= 0.99, (
+        f"사유 메타의 유효 opacity 가 {res['metaOpacity']} — 감사는 이 글자를 «건너뛴다» "
+        "(`.card` 가 `.reveal{opacity:0}` 인 채다). 스윕이 안 열린 것을 재고 초록이 된다")
+    # 🔴 이 두 칩은 «열렸는지» 만 본다. 색(`--grade-a`/`--grade-f`)은 이 스윕의 관측
+    #    대상이 아니고(감사는 `--text-2`·`--text-3`·`--accent-text` 만 센다),
+    #    그 조합의 AA 는 `tests/unit/ui/test_grade_badge_contrast.py` 가 맡는다.
+    assert res["avgDelta"] and "kpi__delta--up" in res["avgDelta"].split(), (
+        f"평균 점수 카드의 delta 가 {res['avgDelta']!r} — ▲ 팔(직전 창 비교)이 안 열렸다")
+    assert res["amDelta"] and "kpi__delta--down" in res["amDelta"].split(), (
+        f"auto-merge 카드의 delta 가 {res['amDelta']!r} — ▼ 팔(직전 창 비교)이 안 열렸다")
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_token_text_meets_aa_for_overview_with_merge_history(
+        seeded_page, base_url, merge_history, theme):
+    """🔴 overview 가 «머지 이력이 있을 때» 그리는 글자가 AA 를 넘는가."""
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.goto(f"{base_url}/dashboard")
+    assert "localhost" in seeded_page.url, (
+        f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
+    seeded_page.evaluate("(t) => applyTheme(t)", theme)
+    # 🔴 테마가 «실제로 걸렸는지» 확인한다. `applyTheme` 은 모르는 이름을 조용히 dark 로
+    #    되돌린다(`base.html`) — 그러면 네 갈래가 같은 화면을 네 번 재고도 초록이다.
+    #    이 파일의 다른 스윕들은 아직 이 확인이 없다(Grok `01a09378`).
+    applied = seeded_page.evaluate("() => document.documentElement.dataset.theme")
+    assert applied == theme, (
+        f"테마가 {applied!r} 로 걸렸다 — {theme!r} 을 재려 했는데 다른 화면을 쟀다")
+    seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
+    seeded_page.wait_for_timeout(350)
+    _reveal_all(seeded_page)
+
+    total, bad = 0, []
+    for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+                      (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
+        res = seeded_page.evaluate(js)
+        assert not res.get("error"), res.get("error")
+        total += sum(res["seen"][n] for n in names)
+        bad += res["bad"]
+
+    _assert_merge_history_was_rendered(seeded_page)
+    assert total > 0, (
+        f"[{theme}] 머지 이력 화면에서 토큰 글자를 하나도 찾지 못했다 — "
+        "재지 못한 것이지 통과한 것이 아니다")
+    assert not bad, (
+        f"[{theme}] 머지 이력 화면 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
+        + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
+                      for b in bad[:10]))
