@@ -293,13 +293,16 @@
     border:1.5px solid var(--border-subtle); background:var(--bg-input);
     color:var(--text-1); font-size:12px; font-family:'Menlo','Consolas',monospace;
     transition:border-color var(--transition), background var(--transition), box-shadow var(--transition);
-    outline:none;
   }
   input, select, textarea { transition: border-color 0.2s, box-shadow 0.2s; }
+  /* 🔴 `outline` 을 죽이지 않는다 — 전역 `*:focus-visible` 링(`base.html`)이 «세 번째
+     속성» 으로 남아야, 상태 클래스가 테두리(`border-color`)나 글로(`box-shadow`)를
+     덮어써도 표시가 사라지지 않는다. `.num-input.danger`(0,2,0)가 정확히 그렇게
+     테두리를 삼켜 1.19:1 이 됐다(#1658). 글로는 «강조» 로 남기고 링이 규범을 맡는다.
+     Keep the outline so the global focus ring survives a state class overriding border/shadow. */
   input:focus, select:focus, textarea:focus {
     border-color: var(--accent);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
-    outline: none;
   }
   .field-input:focus { border-color:var(--accent); background:var(--bg-input-focus);
                        box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent); }
