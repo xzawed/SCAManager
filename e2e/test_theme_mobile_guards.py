@@ -15,6 +15,8 @@
 
 import pytest
 
+from e2e.conftest import apply_theme
+
 
 # ── A. catppuccin 토큰 회귀 가드 (cleanup PR #169 사고 차단) ─────────────────
 
@@ -344,7 +346,7 @@ def test_primary_button_label_meets_aa(page, base_url, theme):
     """
     page.set_viewport_size({"width": 1280, "height": 800})
     page.goto(base_url)
-    page.evaluate("(t) => applyTheme(t)", theme)
+    apply_theme(page, theme)
     page.wait_for_timeout(250)
     page.evaluate("""
       () => { const b = document.createElement('button');
@@ -641,7 +643,7 @@ def _assert_token_text_aa(page, base_url, theme, path, viewport=None, prepare=No
     """
     page.set_viewport_size(viewport or {"width": 1440, "height": 900})
     page.goto(f"{base_url}{path}")
-    page.evaluate("(t) => applyTheme(t)", theme)
+    apply_theme(page, theme)
     # 🔴 테마 전환에 transition 이 걸려 있다 — 끄지 않으면 «중간색» 을 잰다(전 테마의
     #    글자색 위에 다음 테마의 바탕이 겹친 값이 나온다).
     page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
@@ -814,7 +816,7 @@ def test_token_text_meets_aa_in_settings_advanced(seeded_page, base_url, theme):
     """
     seeded_page.set_viewport_size({"width": 1440, "height": 900})
     seeded_page.goto(f"{base_url}/repos/owner%2Ftestrepo/settings")
-    seeded_page.evaluate("(t) => applyTheme(t)", theme)
+    apply_theme(seeded_page, theme)
     seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
     seeded_page.wait_for_timeout(350)
     _open_settings_advanced(seeded_page)
@@ -869,7 +871,7 @@ def test_accent_used_as_text_meets_aa(seeded_page, base_url, theme):
     bad = []
     for path in _ACCENT_TEXT_PATHS:
         seeded_page.goto(f"{base_url}{path}")
-        seeded_page.evaluate("(t) => applyTheme(t)", theme)
+        apply_theme(seeded_page, theme)
         seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
         seeded_page.wait_for_timeout(400)
         _reveal_all(seeded_page)
@@ -948,7 +950,7 @@ def test_admin_screens_render_and_meet_aa(admin_page, base_url, theme,
         # 🔴 호스트·상태·우리 마크업을 «셋 다» 본다 — 403/503 오류 페이지도 localhost 라
         #    호스트만 보면 fail-open 이다. 그 판정은 conftest 의 공용 관용구에 있다.
         assert_still_on_our_app(admin_page, path, resp)
-        admin_page.evaluate("(t) => applyTheme(t)", theme)
+        apply_theme(admin_page, theme)
         admin_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
         admin_page.wait_for_timeout(350)
         _reveal_all(admin_page)
@@ -1210,7 +1212,7 @@ def test_every_focusable_shows_an_indicator_that_meets_3to1(
     for path in [*_FOCUS_PATHS,
                  f"/repos/owner%2Ftestrepo/analyses/{seeded_analysis}"]:
         seeded_page.goto(f"{base_url}{path}")
-        seeded_page.evaluate("(t) => applyTheme(t)", theme)
+        apply_theme(seeded_page, theme)
         # 🔴 설정 화면의 임계값 입력은 «고급 모드» 안이라, 열지 않으면 0×0 이고 포커스
         #    감사는 그것을 건너뛴다 — 열지 않은 채로는 `#rejectVal` 의 1.19:1 을 못 본다.
         seeded_page.evaluate(
@@ -1303,7 +1305,7 @@ def test_chart_colors_are_valid_canvas_colors(seeded_page, base_url, theme):
     """
     seeded_page.set_viewport_size({"width": 1440, "height": 900})
     seeded_page.goto(f"{base_url}/repos/owner/testrepo")
-    seeded_page.evaluate("(t) => applyTheme(t)", theme)
+    apply_theme(seeded_page, theme)
     seeded_page.wait_for_timeout(400)
     res = seeded_page.evaluate(_CANVAS_COLOR_JS, _CHART_COLOR_TOKENS)
 
@@ -1808,7 +1810,7 @@ def test_token_text_meets_aa_in_settings_gate_blocks(
     seeded_page.goto(f"{base_url}/repos/{quote(gated_settings_repo, safe='')}/settings")
     assert "localhost" in seeded_page.url, (
         f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
-    seeded_page.evaluate("(t) => applyTheme(t)", theme)
+    apply_theme(seeded_page, theme)
     seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
     seeded_page.wait_for_timeout(350)
     _reveal_all(seeded_page)
@@ -1878,7 +1880,7 @@ def test_token_text_meets_aa_when_data_is_absent(
     seeded_page.goto(f"{base_url}/repos/owner%2Fgatedrepo/analyses/{absence_analysis}")
     assert "localhost" in seeded_page.url, (
         f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
-    seeded_page.evaluate("(t) => applyTheme(t)", theme)
+    apply_theme(seeded_page, theme)
     seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
     seeded_page.wait_for_timeout(350)
     _reveal_all(seeded_page)
@@ -1916,7 +1918,7 @@ def test_token_text_meets_aa_for_a_repo_with_no_analyses(
         f"{base_url}/dashboard?mode=repos&repo={quote(gated_settings_repo, safe='')}")
     assert "localhost" in seeded_page.url, (
         f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
-    seeded_page.evaluate("(t) => applyTheme(t)", theme)
+    apply_theme(seeded_page, theme)
     seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
     seeded_page.wait_for_timeout(350)
     _reveal_all(seeded_page)
@@ -1976,7 +1978,7 @@ def test_token_text_meets_aa_in_security_mode_with_alerts(
     seeded_page.goto(f"{base_url}/dashboard?mode=security")
     assert "localhost" in seeded_page.url, (
         f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
-    seeded_page.evaluate("(t) => applyTheme(t)", theme)
+    apply_theme(seeded_page, theme)
     seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
     seeded_page.wait_for_timeout(350)
     _reveal_all(seeded_page)
@@ -2094,13 +2096,7 @@ def test_token_text_meets_aa_for_overview_with_merge_history(
     seeded_page.goto(f"{base_url}/dashboard")
     assert "localhost" in seeded_page.url, (
         f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
-    seeded_page.evaluate("(t) => applyTheme(t)", theme)
-    # 🔴 테마가 «실제로 걸렸는지» 확인한다. `applyTheme` 은 모르는 이름을 조용히 dark 로
-    #    되돌린다(`base.html`) — 그러면 네 갈래가 같은 화면을 네 번 재고도 초록이다.
-    #    이 파일의 다른 스윕들은 아직 이 확인이 없다(Grok `01a09378`).
-    applied = seeded_page.evaluate("() => document.documentElement.dataset.theme")
-    assert applied == theme, (
-        f"테마가 {applied!r} 로 걸렸다 — {theme!r} 을 재려 했는데 다른 화면을 쟀다")
+    apply_theme(seeded_page, theme)
     seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
     seeded_page.wait_for_timeout(350)
     _reveal_all(seeded_page)
@@ -2260,10 +2256,7 @@ def test_token_text_meets_aa_for_an_unclaimed_repo_settings(
     seeded_page.goto(f"{base_url}/repos/{quote(unclaimed_repo, safe='')}/settings")
     assert "localhost" in seeded_page.url, (
         f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
-    seeded_page.evaluate("(t) => applyTheme(t)", theme)
-    applied = seeded_page.evaluate("() => document.documentElement.dataset.theme")
-    assert applied == theme, (
-        f"테마가 {applied!r} 로 걸렸다 — {theme!r} 을 재려 했는데 다른 화면을 쟀다")
+    apply_theme(seeded_page, theme)
     # 🔴 설정은 «간단 모드» 가 기본이라 고급 카드가 접혀 있다 — railway 블록이 그 안이다.
     seeded_page.evaluate("() => { document.body.setAttribute('data-settings-mode', 'advanced');"
                          " document.querySelectorAll('details').forEach(d => d.open = true); }")
@@ -2320,10 +2313,7 @@ def test_the_unclaimed_banner_text_meets_aa_on_its_warning_wash(
     seeded_page.goto(f"{base_url}/")
     assert "localhost" in seeded_page.url, (
         f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
-    seeded_page.evaluate("(t) => applyTheme(t)", theme)
-    applied = seeded_page.evaluate("() => document.documentElement.dataset.theme")
-    assert applied == theme, (
-        f"테마가 {applied!r} 로 걸렸다 — {theme!r} 을 재려 했는데 다른 화면을 쟀다")
+    apply_theme(seeded_page, theme)
     seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
     seeded_page.wait_for_timeout(350)
     _reveal_all(seeded_page)

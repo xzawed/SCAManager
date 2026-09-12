@@ -18,6 +18,8 @@
 """
 import pytest
 
+from e2e.conftest import apply_theme
+
 _THEMES = ["dark", "light", "pastel", "catppuccin"]
 
 _CONTRAST_HELPERS = r"""
@@ -80,7 +82,7 @@ def _reveal(page) -> None:
 def _theme(page, base_url, path, theme):
     page.set_viewport_size({"width": 1440, "height": 2000})
     page.goto(f"{base_url}{path}")
-    page.evaluate("(t) => applyTheme(t)", theme)
+    apply_theme(page, theme)
     page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
     page.wait_for_timeout(350)
 
@@ -146,7 +148,7 @@ def test_changing_the_theme_moves_aria_checked(seeded_page, base_url):
     before = seeded_page.evaluate(
         "() => [...document.querySelectorAll('.theme-option')]"
         ".map(e => e.getAttribute('aria-checked')).join(',')")
-    seeded_page.evaluate("() => applyTheme('pastel')")
+    apply_theme(seeded_page, "pastel")
     seeded_page.wait_for_timeout(250)
     after = seeded_page.evaluate(
         "() => [...document.querySelectorAll('.theme-option')]"
