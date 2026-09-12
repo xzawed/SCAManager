@@ -1455,7 +1455,11 @@ _TARGET_AUDIT_JS = r"""
 (MIN) => {
   const CTRL = 'button, a[href], input:not([type=hidden]), select, textarea,' +
                ' [role=button], [role=menuitem]';
-  const out = {seen: 0, small: [], exempt: {range: 0, inlineInSentence: 0, zeroBox: 0}};
+  // 🔴 «고급 전용 컨트롤을 실제로 셌는가» 는 감사 «안에서» 세야 한다. 밖에서 «상자가
+  //    있는가» 만 보면, 그 컨트롤이 면제로 빠져도(0×0·range·문장 안 링크) 되짚기는
+  //    초록으로 남는다 — 감싼 상자는 여전히 보이기 때문이다(Grok `01a0945f`).
+  const out = {seen: 0, advSeen: 0, small: [],
+               exempt: {range: 0, inlineInSentence: 0, zeroBox: 0}};
   for (const el of document.querySelectorAll(CTRL)) {
     const r = el.getBoundingClientRect();
     if (r.width < 1 || r.height < 1) { out.exempt.zeroBox++; continue; }
@@ -1469,6 +1473,7 @@ _TARGET_AUDIT_JS = r"""
       if (flow) { out.exempt.inlineInSentence++; continue; }
     }
     out.seen++;
+    if (el.closest('.adv-only')) out.advSeen++;
     if (r.width < MIN || r.height < MIN)
       out.small.push({sel: (el.className && typeof el.className === 'string'
                             ? '.' + el.className.trim().split(/\s+/)[0] : el.tagName.toLowerCase()),
@@ -1483,13 +1488,57 @@ _TARGET_AUDIT_JS = r"""
 # 🔴 대시보드는 «한 화면» 이 아니다 — `?mode=` 분기마다 다른 DOM 이다. 첫 판은 이 목록에
 #    `?mode=insight` 가 없어서, 프로브가 거기서 잡은 15~20px 링크를 가드가 못 봤다
 #    (Grok `01a0899b`). 화면이 아니라 «상태» 를 적는다.
+#    🔴 «화면» 만이 아니라 «설정 상태» 도 목록이다. 같은 설정 URL 이라도 게이트가 닫힌
+#    리포와 열린 리포는 컨트롤 수가 다르고(실측 35 vs 38), 미청구 리포는 저장 버튼이 없다.
+#    `/` 와 `/dashboard`(overview)는 아예 목록 밖이라 24px 축을 한 번도 받지 않았다.
 _TARGET_PATHS = ["/admin/tenants", "/admin/rls-audit", "/admin/operations",
                  "/repos/owner%2Ftestrepo/insights", "/repos/owner%2Ftestrepo/settings",
-                 "/dashboard?mode=insight", "/dashboard?mode=security", "/dashboard?mode=repos"]
+                 "/dashboard?mode=insight", "/dashboard?mode=security", "/dashboard?mode=repos",
+                 "/", "/dashboard",
+                 "/repos/owner%2Fgatedrepo/settings", "/repos/owner%2Funclaimedrepo/settings"]
+
+
+def _assert_advanced_controls_were_measured(page, audit) -> None:
+    """🔴 «고급 컨트롤을 실제로 «쟀는가»» 를 측정이 끝난 뒤 되짚는다.
+
+    세 단계로 좁힌다 — 전부 Grok `01a0945f` 가 앞 판의 구멍을 지적해 생겼다:
+      ① 상태: 모드가 `advanced` 다(접힌 `<details>` 는 본문의 «하나씩 열기» 루프가 맡는다 —
+         상호배타 아코디언이라 «전부 열림» 은 애초에 불가능한 상태다).
+      ② 결속: **감사가 센 컨트롤 중** `.adv-only` 안의 것이 1개 이상(`audit["advSeen"]`).
+         밖에서 «감싼 상자가 보이는가» 만 보면, 그 안의 컨트롤이 면제(0×0·range·문장 안
+         링크)로 빠져도 초록이 된다.
+      ③ 이름: 모드 토글이 있는데 `.adv-only` 가 0이면 클래스 이름이 바뀐 것이다 —
+         조용히 «해당 없음» 으로 빠지지 않게 red.
+
+    red 로 만드는 뮤테이션(실측): 본문에서 모드를 여는 `evaluate` 를 지우면
+    `/repos/owner%2Ftestrepo/settings` 가 `mode='simple'` 로 red.
+    🔴 단, `owner/gatedrepo` 는 설정 때문에 **처음부터 advanced** 로 뜬다
+    (`settings.py::_detect_initial_mode`) — 그 경로에서는 그 뮤테이션이 초록이다. 이
+    되짚기가 보는 것은 «내가 열었는가» 가 아니라 «지금 열려 있는가» 이고, 그것이 옳다.
+    """
+    res = page.evaluate("""() => ({
+        btns: document.querySelectorAll('[data-settings-mode-btn]').length,
+        mode: document.body.dataset.settingsMode || null,
+        advTotal: document.querySelectorAll('.adv-only').length,
+    })""")
+    if not res["btns"] and not res["advTotal"]:
+        return  # 고급 모드라는 개념이 없는 화면 — 이 축은 해당 없음
+    assert res["advTotal"], (
+        "모드 토글은 있는데 `.adv-only` 가 0개다 — 클래스 이름이 바뀌었으면 이 축은 "
+        "조용히 «해당 없음» 이 되어 사라진다")
+    assert res["btns"], (
+        "`.adv-only` 표면은 있는데 모드 토글이 없다 — 그 컨트롤을 열 수단이 사라졌다")
+    assert res["mode"] == "advanced", (
+        f"설정 화면 모드가 {res['mode']!r} — 고급 컨트롤이 0×0 으로 «면제» 되어 "
+        "재지 않은 채 초록이 된다(실측: 열지 않으면 14건, 열면 35건)")
+    assert audit["advSeen"] > 0, (
+        f"감사가 «잰» {audit['seen']}건 중 `.adv-only` 안의 것이 0 — 고급 컨트롤은 "
+        "여전히 관측 밖이다(면제로 빠졌는지 볼 것)")
 
 
 @pytest.mark.parametrize("path", _TARGET_PATHS)
-def test_every_control_meets_the_24px_target_on_mobile(admin_page, base_url, path):
+def test_every_control_meets_the_24px_target_on_mobile(
+        admin_page, base_url, gated_settings_repo, unclaimed_repo, path):
     """🔴 375px 에서 컨트롤이 24×24 미만이면 손가락으로 정확히 누를 수 없다 (SC 2.5.8 AA).
 
     실측(수정 전): `.admin-link`·`.admin-ops-link` 22px · `.ri-back-link` 21px ·
@@ -1498,6 +1547,12 @@ def test_every_control_meets_the_24px_target_on_mobile(admin_page, base_url, pat
     🔴 예외는 «세어» 남긴다. 문장 안 링크와 range 입력은 규범상 제외지만, 그 수가 0이 되면
     판정이 조용히 넓어진 것이므로 그것도 알아야 한다.
 
+    🔴 두 픽스처는 세션 스코프라 **첫 파라미터(`/admin/tenants`)에서 시드된다** — 종전에는
+    이 파일 뒤쪽에서야 만들어지던 리포가 이제 여기서 생겨, 그 사이의 AA 스윕
+    (`/dashboard`·`?mode=repos`·overview)이 리포 카드 한 장과 `active_repos.total` 2→3 을
+    더 본다. 건수를 단언하는 시험이 없어 통과는 유지되지만 «부작용 없음» 은 사실이 아니다
+    (Grok `01a0945f` 가 내 주장을 REFUTED).
+
     Controls below 24x24 cannot be hit reliably; exemptions are counted, not hidden.
     """
     admin_page.set_viewport_size(_MOBILE_VIEWPORT)
@@ -1505,16 +1560,49 @@ def test_every_control_meets_the_24px_target_on_mobile(admin_page, base_url, pat
     assert "localhost" in admin_page.url, (
         f"{path} 가 렌더되지 않고 {admin_page.url[:60]} 로 이동했다 — 남의 페이지를 잰다")
     assert resp is not None and resp.status == 200, f"{path} status={resp and resp.status}"
+    # 🔴 설정 화면은 «간단 모드» 가 기본이라 고급 카드의 컨트롤 20여 개가 0×0 이고,
+    #    감사는 그것을 `zeroBox` 로 «면제» 한다 — 열지 않으면 절반을 영영 안 잰다
+    #    (실측 14 → 35). 사용자가 여는 방식 그대로 연다: 모드 토글 + `<details>`.
+    #    🔴 `.is-hidden` 은 벗기지 않는다 — 설정으로 닫힌 행은 «설정이 열린 리포»
+    #    (`owner/gatedrepo`, `auto_merge=True`)가 열어서 잰다. 클래스를 손으로 벗기면
+    #    실제로는 공존하지 않는 배치를 재게 된다(Grok `01a09457`).
+    admin_page.evaluate("() => { document.body.setAttribute('data-settings-mode', 'advanced');"
+                        " document.querySelectorAll('details').forEach(d => d.open = true); }")
     _reveal_all(admin_page)
 
     res = admin_page.evaluate(_TARGET_AUDIT_JS, _TARGET_MIN)
-    assert res["seen"] > 0, (
+    small, seen, adv_seen = list(res["small"]), res["seen"], res["advSeen"]
+
+    # 🔴 «전부 열기» 로는 부족하다 — `.preset-details` 3개는 `ontoggle` 로 서로를 닫는
+    #    **상호배타 아코디언**이라 동시에 열리지 않는다. 실측: 한 번에 열면 첫 패널만
+    #    열려 나머지 두 패널의 «적용» 버튼은 0×0 → `zeroBox` 면제 → 영영 관측 밖.
+    #    그래서 하나씩 열어 각 상태를 재고 결과를 합친다.
+    #    Exclusive accordions cannot all be open; measure one panel at a time and union.
+    panels = admin_page.evaluate("() => document.querySelectorAll('details').length")
+    unopened = []
+    for i in range(panels):
+        opened = admin_page.evaluate(
+            "(i) => { const ds = [...document.querySelectorAll('details')];"
+            " ds.forEach((d, j) => { d.open = (j === i); });"
+            " return !!(ds[i] && ds[i].open); }", i)
+        if not opened:
+            unopened.append(i)
+            continue
+        r = admin_page.evaluate(_TARGET_AUDIT_JS, _TARGET_MIN)
+        small += r["small"]
+        seen, adv_seen = max(seen, r["seen"]), max(adv_seen, r["advSeen"])
+    assert not unopened, (
+        f"{path}: `<details>` 패널 {unopened} 를 열지 못했다 — 그 안의 컨트롤은 "
+        "재지 못한 것이지 통과한 것이 아니다")
+
+    _assert_advanced_controls_were_measured(admin_page, {"seen": seen, "advSeen": adv_seen})
+    assert seen > 0, (
         f"{path} 에서 컨트롤을 하나도 재지 못했다 — 재지 못한 것이지 통과한 것이 아니다")
-    assert not res["small"], (
-        f"{path}: {_TARGET_MIN}px 미만 컨트롤 {len(res['small'])}건 "
-        f"(관측 {res['seen']} · 예외 {res['exempt']}):\n  "
+    assert not small, (
+        f"{path}: {_TARGET_MIN}px 미만 컨트롤 {len(small)}건 "
+        f"(관측 {seen} · 예외 {res['exempt']}):\n  "
         + "\n  ".join(f"{s['sel']} {s['w']}x{s['h']} display={s['display']} {s['text']!r}"
-                      for s in res["small"][:10]))
+                      for s in small[:10]))
 
 
 # ── K. 상호작용 «상태» — 클릭해야 나타나는 표면 (#1639 W9) ────────────────────
