@@ -460,7 +460,6 @@ button { font-family: inherit; }
   transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
 }
 .input:focus {
-  outline: none;
   border-color: var(--border-focus);
   box-shadow: 0 0 0 3px var(--accent-glow);
 }
@@ -1157,7 +1156,7 @@ body.fx-ready .fx-enter.is-in-view {
   transition: border-color 0.15s; resize: vertical;
 }
 .issue-modal-input:focus,
-.issue-modal-textarea:focus { outline: none; border-color: var(--accent); }
+.issue-modal-textarea:focus { border-color: var(--accent); }
 /* 🔴 명시하지 않으면 Tailwind base 의 `color-mix(in oklab, currentcolor 50%, transparent)`
    가 남는다 — `--text-1` 을 반으로 깎아 실측 light 3.47 / pastel 2.99 / catppuccin 3.40
    으로 AA 미달이었다(dark 4.90 하나의 통과가 셋을 가렸다). 색은 3차 토큰에서 받고
