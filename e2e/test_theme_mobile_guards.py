@@ -2009,3 +2009,226 @@ def test_token_text_meets_aa_for_overview_with_merge_history(
         f"[{theme}] 머지 이력 화면 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
         + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
                       for b in bad[:10]))
+
+
+# ── E-7. «소유자 미등록» 저장소 — 설정 화면의 팔 넷 + `/` 의 경고 배너 ────────
+#
+# `repo_is_claimed = repo.user_id is not None`(`settings.py:243`) 한 플래그가 설정 화면의
+# 팔 셋을 동시에 뒤집는다: 자격증명 가림(`renderable_secrets`) · 안내 힌트(`:1024`) ·
+# 저장 버튼 숨김(`:1204` 거짓 팔). 네 번째는 `railway_webhook_unclaimed`(`:1327-1335`) 로,
+# **토큰이 설정돼 있을 때만** 열린다. e2e 의 두 리포는 전부 청구돼 있어 이 상태는 한 번도
+# 렌더된 적이 없었다.
+#
+# 🔴 이 시드는 `/` 에 «미청구» 배너(`overview.html:210-215`)도 띄운다. 그 배너 글자는
+#    `--text-1` 이고 바탕은 `color-mix(in srgb, var(--warning) 12%, transparent)` 다 —
+#    **이 스윕의 토큰 목록에도, 다른 어떤 가드의 바탕 목록에도 없던 조합**이다.
+#    그래서 아래 두 번째 시험이 배너 «안» 만 `--text-1` 로 잰다(감사 JS 는 같은 것을 쓰고
+#    토큰 이름과 순회 범위만 바꾼다 — `_ACCENT_TEXT_AUDIT_JS` 와 같은 관용구).
+
+_TOKEN_LIST_LINE = "for (const name of ['--text-2','--text-3'])"
+_TOKEN_VALUE_LINE = "    const c = parse(bodyCs.getPropertyValue(name));"
+_SCAN_LINE = "document.querySelectorAll('body *')"
+
+# 🔴 «해석된» 토큰 값을 쓴다. `getPropertyValue` 는 저자가 쓴 정의를 그대로 준다 —
+#    `--text-desc: color-mix(in srgb, ...)` 는 그 문자열에서 숫자 하나(55)만 긁혀
+#    **엉뚱한 색**이 되고, 그러면 아무 글자와도 안 맞아 «관측 0건인데 초록» 이 된다.
+#    프로브 요소에 `color: var(--토큰)` 을 얹어 브라우저가 계산하게 시킨다.
+#    🔴 정의 «여부» 는 프로브로 못 가른다. 토큰이 없으면 `color: var(--없는것)` 은
+#    computed-value 단계에서 무효가 되어 선언이 통째로 버려지고 프로브는 **부모 색을
+#    상속**한다 — 그러면 그 상속색이 「토큰」 행세를 하며 무관한 글자를 세게 된다
+#    (Grok `01a09432` CONFIRMED). `--text-desc` 는 `settings.html:11` 에만 있으므로
+#    다른 화면에서 이 감사를 재사용하면 바로 그 상태가 된다. 원시 값이 비면 error 로 죽인다.
+_RESOLVED_TOKEN_VALUE = (
+    "    const _raw = bodyCs.getPropertyValue(name).trim();"
+    "\n    if (!_raw) return {error: `${name} 이 이 화면에 정의돼 있지 않다 —"
+    " 프로브가 상속색을 받아 «아무 글자나» 토큰으로 오인한다`};"
+    "\n    const _p = document.createElement('span'); _p.style.color = 'var(' + name + ')';"
+    " document.body.appendChild(_p); const _v = getComputedStyle(_p).color; _p.remove();"
+    "\n    const c = parse(_v);")
+
+
+def _derive_audit(js: str, *subs: tuple[str, str]) -> str:
+    """감사 JS 를 파생한다 — 기준 문자열이 정확히 1회가 아니면 **즉시 실패**한다.
+
+    🔴 `str.replace` 는 못 찾아도 조용히 원본을 돌려준다. 그러면 파생 감사가 원본
+    토큰을 재면서 「관측 0건」으로 초록이 될 수 있다 — 파생 시점에 red 로 만든다.
+    """
+    for old, new in subs:
+        if js.count(old) != 1:
+            raise RuntimeError(
+                f"감사 JS 파생 실패 — 기준 문자열이 {js.count(old)}회 (1회여야 한다): {old[:48]!r}")
+        js = js.replace(old, new)
+    return js
+
+
+# `.field-hint`·`.preset-desc`·`.preset-hint`·`.t-desc` 가 쓰는 설정 화면 전용 토큰.
+# 실측 18~19건 — 이 축이 없던 동안 그 글자들의 대비는 아무도 재지 않았다
+# (단위 `test_settings_desc_readability.py` 는 «규칙이 이 토큰을 쓰는가» 만 본다).
+_DESC_TEXT_AUDIT_JS = _derive_audit(
+    _TOKEN_TEXT_AUDIT_JS,
+    (_TOKEN_LIST_LINE, "for (const name of ['--text-desc'])"),
+    (_TOKEN_VALUE_LINE, _RESOLVED_TOKEN_VALUE))
+
+_BANNER_TEXT1_AUDIT_JS = _derive_audit(
+    _TOKEN_TEXT_AUDIT_JS,
+    (_TOKEN_LIST_LINE, "for (const name of ['--text-1'])"),
+    (_TOKEN_VALUE_LINE, _RESOLVED_TOKEN_VALUE),
+    (_SCAN_LINE, "document.querySelectorAll('.ov-unclaimed-banner, .ov-unclaimed-banner *')"))
+
+
+def _assert_unclaimed_settings_was_rendered(page, expected_hints: dict) -> None:
+    """🔴 측정이 «끝난 뒤» 미청구 팔 넷이 실제로 그려졌는지 되짚는다.
+
+    red 로 만드는 뮤테이션: 시드에서 `user_id` 를 채우면 넷이 한꺼번에 닫히고,
+    토큰만 비우면 railway 팔이 «미설정» 문구로 바뀐다(둘 다 red).
+    """
+    res = page.evaluate("""() => {
+        const eff = n => { let a = 1;
+            for (let x = n; x; x = x.parentElement) {
+                const o = parseFloat(getComputedStyle(x).opacity);
+                if (!isNaN(o)) a *= o; }
+            return a; };
+        const probe = document.createElement('span');
+        document.body.appendChild(probe);
+        const val = n => { probe.style.color = 'var(' + n + ')';
+                           return getComputedStyle(probe).color; };
+        // 설정 화면의 안내 글자는 `--text-desc`(color-mix) 다 — `--text-2/3` 이 아니다.
+        const tokens = [val('--text-desc')];
+        probe.remove();
+        const hint = document.querySelector('.field-hint[role="status"]');
+        return {
+            renderedUnclaimed: document.querySelectorAll('input[name="rendered_unclaimed"]').length,
+            hintText: hint ? hint.textContent.trim() : null,
+            hintColor: hint ? getComputedStyle(hint).color : null,
+            hintOpacity: hint ? +eff(hint).toFixed(3) : null,
+            tokens: tokens,
+            saveBtn: document.querySelectorAll('#saveBtn').length,
+            railwayUrlInput: document.querySelectorAll('#railway-webhook-url').length,
+            // 🔴 «설정돼 있는데 가려진다» 를 확인한다 — 시드는 `notify_chat_id` 를 채웠다.
+            filledSecrets: Array.from(document.querySelectorAll('input[name^="notify_"]'))
+                .filter(e => e.value).map(e => e.name),
+            hints: Array.from(document.querySelectorAll('.field-hint'))
+                .map(e => e.textContent.trim()),
+        };
+    }""")
+    assert res["renderedUnclaimed"] == 1, (
+        f"`rendered_unclaimed` 히든 입력이 {res['renderedUnclaimed']}개 — "
+        "미청구 팔이 안 열렸다(리포가 청구된 상태다). 재지 못한 것이지 통과가 아니다")
+    assert res["hintText"], "`.field-hint[role=status]` 안내가 없다 — 미청구 팔이 닫힌 채다"
+    assert res["saveBtn"] == 0, (
+        "저장 버튼이 있다 — 미청구 저장소의 POST 는 403 이라 버튼이 없어야 한다"
+        "(`settings.html:1204` 거짓 팔)")
+    assert res["railwayUrlInput"] == 0, (
+        "미청구 저장소에 railway webhook URL 이 노출됐다 — 세션 없는 엔드포인트의 "
+        "인증 수단이 평문으로 나가면 안 된다")
+    assert not res["filledSecrets"], (
+        f"미청구인데 자격증명 값이 렌더됐다: {res['filledSecrets']} — "
+        "`renderable_secrets(..., claimed=False)` 가 가려야 한다")
+    # 🔴 부분문자열이 아니라 **정본 문자열 자체**와 대조한다(카탈로그에서 읽어 온다).
+    assert expected_hints["unclaimed"] in res["hints"], (
+        "railway «청구 필요» 안내가 화면에 없다 — 토큰이 없어 «미설정» 팔로 갔을 수 있다")
+    assert expected_hints["pending"] not in res["hints"], (
+        "railway «미설정(pending)» 안내가 떴다 — 토큰이 설정돼 있으므로 거짓 안내다")
+    assert res["hintColor"] in res["tokens"], (
+        f"안내 글자가 {res['hintColor']} — `--text-desc` {res['tokens']} 가 아니라서 "
+        "이 스윕이 세지 않는다. 열어도 «안 재고» 초록이 된다")
+    assert res["hintOpacity"] is not None and res["hintOpacity"] >= 0.99, (
+        f"안내 글자의 유효 opacity 가 {res['hintOpacity']} — 감사가 건너뛴다")
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_token_text_meets_aa_for_an_unclaimed_repo_settings(
+        seeded_page, base_url, unclaimed_repo, theme):
+    """🔴 «소유자 미등록» 설정 화면의 글자가 AA 를 넘는가."""
+    from urllib.parse import quote  # noqa: PLC0415
+
+    from src.i18n.loader import get_text  # noqa: PLC0415
+
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.goto(f"{base_url}/repos/{quote(unclaimed_repo, safe='')}/settings")
+    assert "localhost" in seeded_page.url, (
+        f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
+    seeded_page.evaluate("(t) => applyTheme(t)", theme)
+    applied = seeded_page.evaluate("() => document.documentElement.dataset.theme")
+    assert applied == theme, (
+        f"테마가 {applied!r} 로 걸렸다 — {theme!r} 을 재려 했는데 다른 화면을 쟀다")
+    # 🔴 설정은 «간단 모드» 가 기본이라 고급 카드가 접혀 있다 — railway 블록이 그 안이다.
+    seeded_page.evaluate("() => { document.body.setAttribute('data-settings-mode', 'advanced');"
+                         " document.querySelectorAll('details').forEach(d => d.open = true); }")
+    seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
+    seeded_page.wait_for_timeout(350)
+    _reveal_all(seeded_page)
+
+    total, bad, desc_seen = 0, [], 0
+    for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+                      (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",)),
+                      (_DESC_TEXT_AUDIT_JS, ("--text-desc",))):
+        res = seeded_page.evaluate(js)
+        assert not res.get("error"), res.get("error")
+        seen = sum(res["seen"][n] for n in names)
+        if names == ("--text-desc",):
+            desc_seen = seen
+        total += seen
+        bad += res["bad"]
+
+    # 🔴 `--text-desc` 는 이번에 «처음» 재는 축이다 — 0건이면 파생이 깨진 것이지 통과가 아니다.
+    assert desc_seen > 0, (
+        f"[{theme}] `--text-desc` 글자를 하나도 찾지 못했다 — 설정 화면의 안내·설명 글자가 "
+        "전부 그 토큰인데 0건이면 계기가 고장난 것이다(파생 감사의 토큰 해석 확인)")
+
+    # 화면이 쓰는 로케일 그대로 정본 문자열을 뽑는다 — 'en' 을 손으로 적지 않는다.
+    locale = seeded_page.evaluate("() => document.documentElement.lang") or "ko"
+    _assert_unclaimed_settings_was_rendered(seeded_page, {
+        "unclaimed": get_text("settings_page.inbound.railway_webhook_unclaimed", locale),
+        "pending": get_text("settings_page.inbound.railway_webhook_pending", locale),
+    })
+    assert total > 0, (
+        f"[{theme}] 미청구 설정 화면에서 토큰 글자를 하나도 찾지 못했다 — "
+        "재지 못한 것이지 통과한 것이 아니다")
+    assert not bad, (
+        f"[{theme}] 미청구 설정 화면 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
+        + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
+                      for b in bad[:10]))
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_the_unclaimed_banner_text_meets_aa_on_its_warning_wash(
+        seeded_page, base_url, unclaimed_repo, theme):
+    """🔴 `/` 의 «미청구» 배너 — `--text-1` 글자가 «경고 워시» 위에서 AA 를 넘는가.
+
+    이 조합은 어느 가드의 바탕 목록에도 없었다. 배너는 자기 바탕을
+    `color-mix(in srgb, var(--warning) 12%, transparent)` 로 깔고(`overview.html:55`)
+    그 위에 `--text-1` 을 얹는다 — 앞선 두 스윕은 `--text-2`·`--text-3`·`--accent-text`
+    만 세므로 이 글자는 열려 있어도 관측 밖이었다.
+
+    red 로 만드는 뮤테이션: 배너 바탕을 `var(--warning)` 100% 로 바꾸면
+    (진한 주황 위 밝은 글자) 네 테마 중 여럿이 미달로 잡힌다.
+    """
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.goto(f"{base_url}/")
+    assert "localhost" in seeded_page.url, (
+        f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
+    seeded_page.evaluate("(t) => applyTheme(t)", theme)
+    applied = seeded_page.evaluate("() => document.documentElement.dataset.theme")
+    assert applied == theme, (
+        f"테마가 {applied!r} 로 걸렸다 — {theme!r} 을 재려 했는데 다른 화면을 쟀다")
+    seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
+    seeded_page.wait_for_timeout(350)
+    _reveal_all(seeded_page)
+
+    banners = seeded_page.evaluate(
+        "() => document.querySelectorAll('.ov-unclaimed-banner').length")
+    assert banners == 1, (
+        f"미청구 배너가 {banners}개 — 시드가 열지 못했다(`unclaimed_count` 가 0이다). "
+        "재지 못한 것이지 통과한 것이 아니다")
+
+    res = seeded_page.evaluate(_BANNER_TEXT1_AUDIT_JS)
+    assert not res.get("error"), res.get("error")
+    seen = res["seen"]["--text-1"]
+    assert seen > 0, (
+        f"[{theme}] 배너 안에서 `--text-1` 글자를 하나도 찾지 못했다 — "
+        "이 시험이 재는 대상이 없다(배너 글자색이 토큰을 벗어났는지 볼 것)")
+    assert not res["bad"], (
+        f"[{theme}] 미청구 배너 글자 {len(res['bad'])}건이 AA 미달 (관측 {seen}건):\n  "
+        + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
+                      for b in res["bad"][:10]))

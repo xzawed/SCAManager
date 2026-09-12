@@ -522,6 +522,13 @@ def _seed_graded_analyses(db_path: str) -> dict[str, int]:
 # Gate blocks hidden under the default config; seed a second repo so both states are swept.
 GATED_REPO = "owner/gatedrepo"
 
+# 🔴 «소유자 미등록» 리포 — 웹훅이 만들었지만 아무도 `/repos/add` 로 청구하지 않은 상태.
+#    `settings.py:243` 의 `repo_is_claimed = repo.user_id is not None` 이 False 가 되고
+#    그 한 플래그가 설정 화면의 팔 셋을 동시에 뒤집는다(자격증명 가림 · 안내 힌트 ·
+#    저장 버튼 숨김). e2e 의 두 리포는 전부 청구돼 있어 이 상태는 한 번도 렌더된 적이 없다.
+# An unclaimed repo (webhook-created, never claimed): one flag flips three settings arms.
+UNCLAIMED_REPO = "owner/unclaimedrepo"
+
 
 def _seed_gated_repo(db_path: str) -> str:
     """게이트 블록이 «열린» 설정의 리포를 만든다 → full_name.
@@ -773,6 +780,66 @@ def security_alerts(live_server):
     db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
     _seed_repo(live_server, db_path)
     return _seed_security_alerts(db_path)
+
+
+def _seed_unclaimed_repo(db_path: str) -> str:
+    """소유자 미등록 리포 + railway webhook 토큰 → full_name.
+
+    🔴 **토큰까지 넣어야 팔 넷이 다 열린다.** `user_id=None` 만으로는 셋만 열리고
+       railway 블록은 «미설정(pending)» 팔로 간다 —
+       `railway_webhook_unclaimed = bool(token) and not claimed`(`settings.py:258-264`).
+       Grok `01a093db` 이 「NULL-owner 한 줄이면 넷이 열린다」는 내 주장을 이 대목에서 깎았다.
+    🔴 이 시드는 **기준선을 여럿 옮긴다** — 알고 쓴다:
+       ① `kpi.active_repos.total` 2→3 (`dashboard.html:1088`)
+       ② `/` 에 «미청구» 배너가 생긴다(`overview.html:210-215`) + 리포 카드 1장 추가
+       ③ repos 모드의 연결 리포 수·등급바 분모·선택 목록(`dashboard.html:509`·`:524`·`:581`)
+       그 숫자를 고정하는 시험을 새로 쓰지 말 것.
+    🔴 **전역 시드로 만들지 않는다.** `/` 의 리포 카드가 늘면
+       `e2e/test_overview_score.py:125` 의 `click(".repo-card")` 가 strict 위반이 되고,
+       정렬이 `created_at desc` 라 새 카드가 «첫 번째» 로 온다. 이 픽스처를 요청하는
+       시험만 그 상태를 본다(알파벳 순으로 마지막 파일).
+    Seed an unclaimed repo *with* a railway webhook token — the token is what opens the
+    fourth arm. Deliberately not a global seed: `/` would gain a repo card.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from src.models.repo_config import RepoConfig  # noqa: PLC0415
+    from src.models.repository import Repository  # noqa: PLC0415
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    session = sessionmaker(bind=engine)()
+    try:
+        if not session.query(Repository).filter_by(full_name=UNCLAIMED_REPO).first():
+            session.add(Repository(full_name=UNCLAIMED_REPO, user_id=None))
+        cfg = session.query(RepoConfig).filter_by(repo_full_name=UNCLAIMED_REPO).first()
+        if cfg is None:
+            cfg = RepoConfig(repo_full_name=UNCLAIMED_REPO)
+            session.add(cfg)
+        # 자격증명이 «설정돼 있는데 가려지는» 상태라야 가림 로직이 관측된다
+        # (`renderable_secrets(..., claimed=False)` 가 빈 문자열을 돌려준다).
+        cfg.railway_webhook_token = "e2e-unclaimed-railway-token-0001"
+        cfg.notify_chat_id = "1234567890"
+        session.commit()
+        got_repo = session.query(Repository).filter_by(full_name=UNCLAIMED_REPO).first()
+        got_cfg = session.query(RepoConfig).filter_by(repo_full_name=UNCLAIMED_REPO).first()
+        claimed = got_repo.user_id is not None if got_repo else None
+        token = got_cfg.railway_webhook_token if got_cfg else None
+    finally:
+        session.close()
+        engine.dispose()
+
+    assert claimed is False, (
+        f"미청구 상태가 아니다 (user_id 존재 여부={claimed!r}) — 팔이 열리지 않는다")
+    assert token, "railway webhook 토큰이 비었다 — 네 번째 팔이 «미설정» 으로 간다"
+    return UNCLAIMED_REPO
+
+
+@pytest.fixture(scope="session")
+def unclaimed_repo(live_server):
+    """소유자 미등록 리포 — 설정 화면의 «청구 필요» 팔 넷이 열린다."""
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    return _seed_unclaimed_repo(db_path)
 
 
 @pytest.fixture(scope="session")
