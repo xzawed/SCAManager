@@ -617,6 +617,71 @@ def _seed_absence_analysis(db_path: str) -> int:
     return got[0]
 
 
+def _seed_security_alerts(db_path: str) -> int:
+    """보안 알림 2건 — 대기 1 · 처리완료 1 → 시드한 행 수.
+
+    🔴 `?mode=security` 는 세 갈래다(`dashboard.html`):
+       kill-switch → `total_alerts == 0` 빈 상태 → **4카드 그리드**.
+       e2e 는 알림이 0건이라 언제나 «빈 상태» 만 그렸다 — 카드·분류 수치·대기 목록은
+       한 번도 관측되지 않았다(#1639 W12-b).
+    🔴 «기존 리포를 재사용» 한다. 새 리포를 만들면 `active_repos.total` 이 또 움직인다
+       (`dashboard_service.py::_kpi_active_repos` 의 `total` 은 Repository 수를 센다).
+       보안 알림 자체는 `analyses` 를 거치지 않아 평균 점수·HIGH KPI 를 건드리지 않는다.
+    🔴 ORM 으로 넣는다 — `processed_at` 은 파이썬 측 `default` 라 원시 SQL 에서는
+       NOT NULL 위반이 되고 `INSERT OR IGNORE` 가 그것을 조용히 삼킨다(#1652 실측).
+    Seed two alerts so the security mode renders its 4-card grid instead of the empty state.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from src.models.repository import Repository  # noqa: PLC0415
+    from src.models.security_alert_log import SecurityAlertProcessLog  # noqa: PLC0415
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    session = sessionmaker(bind=engine)()
+    try:
+        repo = session.query(Repository).filter_by(full_name="owner/testrepo").first()
+        if repo is None:
+            raise RuntimeError("_seed_security_alerts: owner/testrepo must exist first")
+        rows = [
+            # 대기 — `user_decision IS NULL` 이라야 `list_pending` 에 잡힌다.
+            {"alert_number": 9001, "ai_classification": "actual_violation",
+             "severity": "high", "rule_id": "py/sql-injection", "user_decision": None,
+             "ai_confidence": 0.92, "ai_reason": "e2e: 사용자 입력이 쿼리에 직접 들어간다"},
+            # 처리완료 — `processed_count > 0` 을 만든다.
+            {"alert_number": 9002, "ai_classification": "false_positive",
+             "severity": "medium", "rule_id": "py/clear-text-logging",
+             "user_decision": "accept_ai", "ai_confidence": 0.71,
+             "ai_reason": "e2e: 테스트 픽스처에서만 쓰인다"},
+        ]
+        made = 0
+        for r in rows:
+            exists = session.query(SecurityAlertProcessLog).filter_by(
+                repo_id=repo.id, alert_type="code_scanning",
+                alert_number=r["alert_number"]).first()
+            if exists is None:
+                session.add(SecurityAlertProcessLog(
+                    repo_id=repo.id, alert_type="code_scanning", user_id=_E2E_USER_ID, **r))
+                made += 1
+        session.commit()
+        total = session.query(SecurityAlertProcessLog).count()
+    finally:
+        session.close()
+        engine.dispose()
+    assert total >= 2, (
+        f"보안 알림이 {total}건 — 2건 이상이어야 그리드가 열린다. "
+        "0이면 «못 쟀음» 이지 통과가 아니다")
+    return made
+
+
+@pytest.fixture(scope="session")
+def security_alerts(live_server):
+    """보안 알림이 있는 상태 — `?mode=security` 가 4카드 그리드를 그린다."""
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    _seed_repo(live_server, db_path)
+    return _seed_security_alerts(db_path)
+
+
 @pytest.fixture(scope="session")
 def absence_analysis(live_server, gated_settings_repo):
     """점수 NULL · 위치 없는 이슈를 가진 분석 id."""

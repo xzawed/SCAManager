@@ -1824,3 +1824,64 @@ def test_token_text_meets_aa_for_a_repo_with_no_analyses(
         f"[{theme}] 분석 없는 리포 화면 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
         + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
                       for b in bad[:10]))
+
+
+# ── E-5. 보안 모드의 «데이터 있는» 상태 — 4카드 그리드 (#1639 W12-b 3차) ──────
+#
+# `?mode=security` 는 세 갈래다 — kill-switch · `total_alerts == 0` 빈 상태 · 4카드 그리드.
+# e2e 는 알림이 0건이라 **언제나 빈 상태만** 그렸다. 카드 수치·분류 집계·대기 목록은
+# 한 번도 관측되지 않았다. 빈 상태 분기는 단위 i18n 렌더 시험이 따로 덮는다
+# (`tests/unit/templates/test_dashboard_i18n_render.py`).
+#
+# 🔴 이 자리를 고르는 데 Grok `01a092f6` 이 기여했다 — 내 초안은 insight 모드를 함께
+#    넣으려 했는데, 그쪽은 `ANTHROPIC_API_KEY` + 캐시 행 + 로케일 일치가 모두 필요하고
+#    기존 `test_dashboard_insight.py` 가 «status div 가 그려질 것» 을 단언한다. 분리했다.
+
+
+def _assert_security_grid_was_rendered(page) -> None:
+    """🔴 측정이 «끝난 뒤» 그리드가 실제로 그려졌는지 되짚는다.
+
+    red 로 만드는 뮤테이션: 시드를 0건으로 되돌리면 빈 상태가 그려져 red.
+    """
+    res = page.evaluate("""() => {
+        const grid = document.querySelector('.dash-insight-grid');
+        const status = document.querySelector('.dash-insight-status');
+        return {grid: !!grid,
+                cards: grid ? grid.children.length : 0,
+                status: status ? status.textContent.trim().slice(0, 40) : null};
+    }""")
+    assert res["grid"], (
+        f"보안 그리드가 없다 — 빈 상태/kill-switch 가 그려졌다(status={res['status']!r}). "
+        "재지 못한 것이지 통과한 것이 아니다")
+    assert res["cards"] > 0, "그리드는 있는데 카드가 0개 — 빈 상자를 쟀다"
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_token_text_meets_aa_in_security_mode_with_alerts(
+        seeded_page, base_url, security_alerts, theme):
+    """🔴 보안 모드가 «알림이 있을 때» 그리는 4카드 그리드에서 글자가 AA 를 넘는가."""
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.goto(f"{base_url}/dashboard?mode=security")
+    assert "localhost" in seeded_page.url, (
+        f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
+    seeded_page.evaluate("(t) => applyTheme(t)", theme)
+    seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
+    seeded_page.wait_for_timeout(350)
+    _reveal_all(seeded_page)
+
+    total, bad = 0, []
+    for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+                      (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
+        res = seeded_page.evaluate(js)
+        assert not res.get("error"), res.get("error")
+        total += sum(res["seen"][n] for n in names)
+        bad += res["bad"]
+
+    _assert_security_grid_was_rendered(seeded_page)
+    assert total > 0, (
+        f"[{theme}] 보안 그리드에서 토큰 글자를 하나도 찾지 못했다 — "
+        "재지 못한 것이지 통과한 것이 아니다")
+    assert not bad, (
+        f"[{theme}] 보안 그리드 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
+        + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
+                      for b in bad[:10]))
