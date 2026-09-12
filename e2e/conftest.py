@@ -1007,6 +1007,26 @@ def _assert_still_on_our_app(page, path: str, resp=None) -> None:
         f"{path} 에 우리 `nav` 가 없다 — localhost 이지만 우리 화면이 아니다")
 
 
+def apply_theme(page, theme: str) -> None:
+    """테마를 걸고 «실제로 걸렸는지» 확인한다 — 네 갈래가 같은 화면이 되지 않도록.
+
+    🔴 `applyTheme` 은 모르는 이름을 **조용히 `dark` 로 되돌린다**(`base.html:770-771`).
+       확인하지 않으면 `@parametrize("theme", [...4개...])` 가 같은 화면을 네 번 재고도
+       초록이다 — 「안 쟀음」과 「통과」가 구별되지 않는다.
+    🔴 실측(2026-09-12): 5개 경로 × 4테마가 **전부 서로 다른 팔레트**(4/4 고유)이고
+       `data-theme` 도 일치했다. 즉 지금은 결함이 아니라 **그 상태를 유지시키는 장치**다.
+       테마 목록이 바뀌는 날 이 단언이 유일한 관측자가 된다.
+
+    Applies the theme and verifies it stuck; an unknown name silently falls back to dark,
+    which would make a four-theme parametrisation measure one screen four times.
+    """
+    page.evaluate("(t) => applyTheme(t)", theme)
+    applied = page.evaluate("() => document.documentElement.dataset.theme")
+    assert applied == theme, (
+        f"테마가 {applied!r} 로 걸렸다 — {theme!r} 을 재려 했는데 다른 화면을 잰다 "
+        "(`applyTheme` 이 모르는 이름을 dark 로 되돌렸는지 볼 것)")
+
+
 @pytest.fixture
 def admin_page(seeded_page):
     """🔴 admin 화면을 여는 «유일한» 관용구 — 세션 쿠키가 붙은 페이지.

@@ -220,3 +220,83 @@ def test_the_shared_admin_idiom_lives_in_conftest():
     assert users, (
         "`assert_still_on_our_app` 을 쓰는 e2e 시험이 없다 — 정의만 있고 배선이 없는 "
         "헬퍼는 다음 사람에게 «이미 지켜진다» 로 읽힌다")
+
+
+def _function_body_source(node) -> str:
+    """docstring 을 뺀 함수 본문 소스 — 서술과 호출을 구별한다.
+
+    🔴 `ast.unparse(node)` 는 docstring 을 포함한다. 그러면 「여기서는 부르지 않는다」고
+    **적어 둔** 시험이 위반자로 잡힌다(실측: `test_stored_theme_applies_on_first_paint`).
+    """
+    body = node.body
+    if (body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant)
+            and isinstance(body[0].value.value, str)):
+        body = body[1:]
+    return "\n".join(ast.unparse(n) for n in body)
+
+
+def test_themes_are_applied_only_through_the_shared_helper():
+    """🔴 테마는 «관용구» 로만 건다 — 직접 부르면 걸렸는지 아무도 확인하지 않는다.
+
+    `applyTheme` 은 모르는 이름을 **조용히 `dark` 로 되돌린다**(`base.html:770-771`).
+    확인 없이 부르면 `@parametrize("theme", [...4개...])` 가 같은 화면을 네 번 재고도
+    초록이다 — 「안 쟀음」과 「통과」가 구별되지 않는다.
+
+    실측(2026-09-12): 지금은 5경로 × 4테마가 전부 서로 다른 팔레트(4/4 고유)다. 즉 이
+    가드는 오늘의 결함이 아니라 **테마 목록이 바뀌는 날의 유일한 관측자**다.
+
+    🔴 파일이 아니라 시험 «함수» 단위로 본다(admin 관용구 가드와 같은 이유 — 같은 파일의
+    다른 시험이 관용구를 쓰면 파일 단위 판정은 통과한다).
+
+    🔴 이 판정이 못 보는 것(알고 둔다, Grok `01a094b9`):
+      · `window['applyTheme']('x')` 처럼 이름을 문자열로 조립하면 통과한다 — 가드는 사고를
+        막는 장치이지 우회를 막는 장치가 아니다.
+      · `ast.unparse` 는 «문자열 리터럴» 을 남긴다. JS 블롭 안의 `applyTheme(` 은 위반으로
+        잡힌다(거짓 위반이지만 조용하지 않다 — 그때 이 주석을 읽고 판단하면 된다).
+    🔴 탈출구: 무효 테마명으로 «dark 폴백» 을 확인하려는 시험은 헬퍼를 쓸 수 없다
+    (헬퍼가 `applied == theme` 를 단언한다). 그때는 헬퍼에 기대값 인자를 더한다 —
+    가드를 우회하려고 문자열을 쪼개지 말 것.
+    """
+    # 🔴 `_e2e_files()` 는 `test_*.py` 만 본다 — 헬퍼 모듈(`e2e/_*.py`)이 테마를 직접
+    #    걸면 그대로 빠져나간다(Grok `01a094b9`). 여기서는 conftest 만 빼고 전부 본다
+    #    (conftest 에는 관용구 «정의» 가 있어야 하므로 제외가 맞다).
+    scanned = [q for q in sorted((_ROOT / "e2e").glob("*.py"))
+               if q.name not in ("conftest.py", "__init__.py")]
+    assert scanned, "e2e 파이썬 파일을 0개 찾았다 — 스캔이 죽었다(공허한 초록)"
+    offenders, users = [], []
+    for path in scanned:
+        src = path.read_text(encoding="utf-8")
+        if "applyTheme" not in src and "apply_theme" not in src:
+            continue
+        for node in ast.walk(ast.parse(src)):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            body = _function_body_source(node)
+            if "apply_theme(" in body:
+                users.append(f"{path.name}::{node.name}")
+            if "applyTheme(" in body:
+                offenders.append(f"{path.name}::{node.name}")
+    # 🔴 정의만으로는 부족하다 — 실제로 «쓰여야» 한다(헬퍼가 죽은 채 남는 것을 막는다).
+    assert users, (
+        "`apply_theme` 을 쓰는 e2e 시험이 하나도 없다 — 공용 헬퍼가 죽은 채면 "
+        "이 가드는 아무것도 지키지 않는다")
+    assert not offenders, (
+        "테마를 공용 헬퍼(`e2e.conftest.apply_theme`) 없이 직접 건다 — 걸렸는지 확인하지 "
+        "않으면 네 갈래가 같은 화면을 네 번 재고도 초록이다:\n  " + "\n  ".join(offenders))
+
+
+def test_the_shared_theme_helper_verifies_what_it_applied():
+    """🔴 헬퍼가 «걸었다» 로 끝나면 관용구를 강제해도 아무것도 확인되지 않는다.
+
+    red 로 만드는 뮤테이션: `apply_theme` 에서 단언을 지우면 이 시험이 red.
+    """
+    conftest = (_ROOT / "e2e" / "conftest.py").read_text(encoding="utf-8")
+    tree = ast.parse(conftest)
+    fn = next((n for n in tree.body
+               if isinstance(n, ast.FunctionDef) and n.name == "apply_theme"), None)
+    assert fn is not None, "`apply_theme` 이 conftest 에 없다 — 관용구가 공용 위치에 있어야 한다"
+    body = _function_body_source(fn)
+    assert "applyTheme(t)" in body, "헬퍼가 테마를 걸지 않는다"
+    assert "dataset.theme" in body and "assert" in body, (
+        "헬퍼가 «걸린 결과» 를 되읽어 단언하지 않는다 — 모르는 이름이 dark 로 조용히 "
+        "되돌아가도 통과한다")
