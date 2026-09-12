@@ -215,6 +215,25 @@ def test_the_contrast_sweep_opens_every_dashboard_mode():
 
 # ── 상호작용 «상태» — 클릭해야 나타나는 표면 ──────────────────────────────────
 
+def _details_tags(src: str) -> list[str]:
+    """이 소스의 `<details ...>` 여는 태그 목록."""
+    return re.findall(r"<details\b[^>]*>", src)
+
+
+def _details_selector(tag: str, src: str) -> str | None:
+    """그 `<details>` 를 «유일하게» 가리키는 셀렉터 — id 우선, 없으면 유일한 클래스."""
+    mid = re.search(r'id="([\w-]+)"', tag)
+    if mid:
+        return f"#{mid.group(1)}"
+    cls = re.search(r'class="([^"]*)"', tag)
+    tags = _details_tags(src)
+    for c in (cls.group(1).split() if cls else []):
+        hits = sum(1 for t in tags if re.search(rf'class="[^"]*(?<![\w-]){re.escape(c)}(?![\w-])', t))
+        if hits == 1:
+            return f".{c}"
+    return None
+
+
 def interactive_states() -> dict[str, str]:
     """{셀렉터: 어디} — 클릭·입력으로만 나타나는 상태를 **소스에서 파생**한다.
 
@@ -235,6 +254,10 @@ def interactive_states() -> dict[str, str]:
         #    «데이터 조건» 분기(#1639 W12)이지 클릭으로 여는 상태가 아니다 — 섞으면 이
         #    가드가 시드 문제까지 떠안아 영영 red 다. 태그를 지우면 그 class 는 빈다.
         src = re.sub(r"\{%.*?%\}|\{\{.*?\}\}", "", raw, flags=re.S)
+        # 🔴 주석도 걷는다 — 주석 «안» 의 마크업은 화면에 없다. 실측: 셋업 액션
+        #    설명에 `<details>` 라는 낱말이 있어 규칙 (e) 가 «이름 없는 상태» 로
+        #    잡았다. 주석을 사용으로 세는 것은 이 저장소가 반복해 밟은 함정이다.
+        src = re.sub(r"\{#.*?#\}|<!--.*?-->", "", src, flags=re.S)
         where = path.name
         # 🔴 속성 «순서» 를 가정하지 않는다 — 이슈 모달은 `class=... id=...` 순서라
         #    `id="…"[^>]*class=` 정규식이 통째로 놓쳤다. 태그를 통으로 잡고 안을 본다.
@@ -270,6 +293,19 @@ def interactive_states() -> dict[str, str]:
         for m in re.finditer(r"\.([\w-]+)\.([\w-]+)\s*\{", src):
             if m.group(1) in base_hidden:
                 out[f".{m.group(1)}"] = f"{where} (c:state-class)"
+        # (e) 네이티브 `<details>` — 접히면 UA 가 내용을 «칠하지 않는다». 그 숨김은 이
+        #     파일 어디에도 CSS 로 적혀 있지 않아 (a)~(d) 가 통째로 못 본다(#1664 실측:
+        #     감사가 그 글자를 «상자가 있다» 는 이유로 세고 있었고, 되짚기는 열림/닫힘을
+        #     구별하지 못했다).
+        #     🔴 «내용» 을 가리킨다 — `<details>` 자신은 닫혀도 summary 때문에 보인다.
+        #     🔴 id 를 우선한다 — 공유 클래스(`.preset-details` ×3)로 적으면 언제나 첫
+        #        카드만 잡혀 나머지 둘이 조용히 빠진다(Grok `01a096d6`).
+        for tag in _details_tags(src):
+            sel = _details_selector(tag, src)
+            assert sel, (
+                f"{where}: `<details>` 에 id 도 «유일한» 클래스도 없다 — 이름 붙일 수 "
+                f"없는 상태는 파생·스윕 어느 쪽에서도 가리킬 수 없다: {tag[:70]}")
+            out[f"{sel} > :not(summary)"] = f"{where} (e:details)"
     return out
 
 
@@ -305,6 +341,66 @@ _OPENED_ELSEWHERE = {
 }
 
 
+def _details_region(src: str, selector: str) -> str | None:
+    """그 `<details>` 의 «내용» 영역(여는 태그·`<summary>` 제외) 소스."""
+    for m in re.finditer(r"<details\b[^>]*>", src):
+        tag = m.group(0)
+        if selector.startswith("#"):
+            hit = re.search(rf'id="{re.escape(selector[1:])}"', tag)
+        else:
+            hit = re.search(rf'class="[^"]*(?<![\w-]){re.escape(selector[1:])}(?![\w-])', tag)
+        if not hit:
+            continue
+        depth, i = 1, m.end()
+        while depth and i < len(src):
+            nxt = re.search(r"<details\b|</details>", src[i:])
+            if not nxt:
+                break
+            depth += 1 if nxt.group(0) == "<details" else -1
+            i += nxt.end()
+        region = src[m.end():i]
+        return re.sub(r"<summary\b.*?</summary>", "", region, flags=re.S)
+    return None
+
+
+def _details_states_claimed_by_a_descendant(states: dict, openers: set) -> set:
+    """`(e:details)` 상태 중 «내용 안에 다른 opener 키가 실재하는» 것.
+
+    🔴 opener 의 JS 를 파싱하지 않는다 — `getElementById('x')` 를 «언급» 만 해도
+       청구되는 같은 부류의 버그가 된다(Grok `01a096d6` 이 그 안을 반려했다).
+       구조로 본다: 그 `<details>` 의 내용 영역(summary 제외)에 opener 키가 실재하는가.
+       실제 예 — 프리셋 3종은 `#pt-label-*`(인라인 display 상태)이 그 안에 있고, 그 시험이
+       카드를 열지 않으면 라벨의 `painted` 되짚기가 먼저 red 다.
+    🔴 알고 두는 구멍: 그 opener 가 «다른 경로» 를 여는 것일 수 있다 — 경로↔템플릿
+       대응이 정적으로 없다. 지금 해당하는 셋은 모두 같은 설정 화면이다.
+    """
+    claimed = set()
+    simple = {k for k in openers if re.fullmatch(r"[#.][\w-]+", k)}
+    for state, where in states.items():
+        if "(e:details)" not in where or " > :not(summary)" not in state:
+            continue
+        selector = state.split(" > ")[0]
+        src = _template_source(where.split(" ")[0])
+        region = _details_region(src, selector)
+        if region is None:
+            continue
+        for key in simple:
+            found = (re.search(rf'id="{re.escape(key[1:])}"', region) if key.startswith("#")
+                     else re.search(rf'class="[^"]*(?<![\w-]){re.escape(key[1:])}(?![\w-])',
+                                    region))
+            if found:
+                claimed.add(state)
+                break
+    return claimed
+
+
+def _template_source(name: str) -> str:
+    """주석·Jinja 를 걷은 템플릿 소스 — 파생과 같은 전처리를 쓴다."""
+    raw = (_ROOT / "src" / "templates" / name).read_text(encoding="utf-8")
+    src = re.sub(r"\{%.*?%\}|\{\{.*?\}\}", "", raw, flags=re.S)
+    return re.sub(r"\{#.*?#\}|<!--.*?-->", "", src, flags=re.S)
+
+
 def test_interactive_states_and_what_the_sweep_opens_are_the_same_set():
     """🔴 클릭해야 나타나는 상태는 «열지 않으면» 어떤 픽셀 감사도 그 면을 보지 못한다.
 
@@ -322,7 +418,9 @@ def test_interactive_states_and_what_the_sweep_opens_are_the_same_set():
     a subset guard goes green whenever the derivation itself shrinks.
     """
     states = interactive_states()
-    claimed = _sweep_state_openers() | set(_STATE_EXEMPT) | set(_OPENED_ELSEWHERE)
+    openers = _sweep_state_openers()
+    claimed = (openers | set(_STATE_EXEMPT) | set(_OPENED_ELSEWHERE)
+               | _details_states_claimed_by_a_descendant(states, openers))
 
     unopened = sorted(f"{sel}  ({states[sel]})" for sel in states.keys() - claimed)
     assert not unopened, (

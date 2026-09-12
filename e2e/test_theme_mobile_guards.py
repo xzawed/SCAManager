@@ -1728,6 +1728,19 @@ _STATE_OPENERS = {
         document.getElementById('preset-strict').open = true;
         document.getElementById('pt-label-strict').style.display = 'block';
     }"""),
+    # 🔴 설정의 «접힌 두 면» — 네이티브 `<details>` 라 닫히면 브라우저가 내용을 칠하지
+    #    않는다(#1663 이후 감사가 그 글자를 건너뛴다 = 진짜로 관측 밖). 파괴적 동작
+    #    안내와 웹훅 재등록 안내가 그 안이다. 키는 파생이 내는 «내용» 셀렉터와 같아야
+    #    한다(`test_a11y_route_coverage` 의 양방향 등식). `<details>` 자신은 닫혀도
+    #    summary 때문에 보이므로 되짚기가 열림/닫힘을 못 가른다.
+    ".danger-summary-wrap > :not(summary)": ("/repos/owner%2Ftestrepo/settings", """() => {
+        document.body.setAttribute('data-settings-mode', 'advanced');
+        document.querySelector('.danger-summary-wrap > summary').click();
+    }"""),
+    ".setup-actions > :not(summary)": ("/repos/owner%2Ftestrepo/settings", """() => {
+        document.body.setAttribute('data-settings-mode', 'advanced');
+        document.querySelector('.setup-actions > summary').click();
+    }"""),
     # `add_repo.html::toast.classList.add('show')` — 등록 실패 경로의 토스트.
     ".toast": ("/repos/add", """() => {
         const t = document.getElementById('errorToast');
