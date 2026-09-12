@@ -142,7 +142,9 @@
               transition: all 0.15s ease; display: inline-flex; align-items: center; gap: 0.3rem; }
     .fb-btn:hover { background: var(--bg-hover); transform: translateY(-1px); }
     /* Step D: 시맨틱 토큰 — color-mix 반투명 배경 / Semantic tokens — color-mix alpha bg */
-    /* 🔴 3종 세트 — 위 `.severity-low` 와 같은 이유. */
+    /* 🔴 면·테두리·글자를 «함께» 고른 3종 세트(`--grade-a-bg`/`--grade-a`).
+       `--success` 를 틴트로 깔고 글자로도 쓰면 밝은 테마에서 3.88~3.96 이다(실측).
+       Pick surface, border and text together; --success as tint+text fails on light themes. */
     .fb-btn.active.fb-up   { background: var(--grade-a-bg); border-color: var(--grade-a); color: var(--grade-a); }
     .fb-btn.active.fb-down { background: color-mix(in srgb, var(--danger) 13%, transparent);  border-color: var(--danger);  color: var(--danger); }
     .fb-btn:disabled { opacity: 0.5; cursor: not-allowed; }
