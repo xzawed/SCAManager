@@ -632,6 +632,65 @@ def test_token_text_meets_aa_against_painted_background(seeded_page, base_url, t
     _assert_token_text_aa(seeded_page, base_url, theme, path)
 
 
+# 🔴 «크롬 밖» 을 세는 축 — 바닥이 nav 만으로 만족되지 않게 한다.
+#
+# 실측(2026-09-13, 9경로 × 4테마): 어느 화면에서도 nav·헤더·푸터의 글자만으로
+# **10~17건**이 잡힌다. 그러니 `total > 0` 은 «본문이 통째로 사라져도» 초록이다
+# (Grok `01a09667`·`01a09702` 가 두 번 지적한 «공허한 바닥»).
+# 화면 고유 글자는 2~31건이었다 — 그 축을 따로 세어 0이면 red 로 만든다.
+#
+# 🔴 경로별 «숫자» 를 커밋하지 않는다 — 그 수는 시드와 파일 순서를 따라다니고
+#    (`/dashboard` 는 이 세션에서만 세 번 움직였다), 「초록 될 때까지 숫자 올리기」를
+#    부른다(Grok `01a09702`). 목록 없이 **구조**(크롬 안인가 밖인가)로 판정한다.
+_CHROME_SEL = "nav, header, footer, .nav-links, .nav-inner, .site-header, .top-nav"
+
+_OWN_TEXT_COUNT_JS = r"""
+(payload) => {
+  const [names, chromeSel] = payload;
+  const probe = document.createElement('span');
+  document.body.appendChild(probe);
+  const want = names.map(n => { probe.style.color = 'var(' + n + ')';
+                                return getComputedStyle(probe).color; });
+  probe.remove();
+  const eff = n => { let a = 1;
+    for (let x = n; x; x = x.parentElement) {
+      const o = parseFloat(getComputedStyle(x).opacity); if (!isNaN(o)) a *= o; }
+    return a; };
+  let chrome = 0, own = 0; const samples = [];
+  for (const el of document.querySelectorAll('body *')) {
+    const own_text = Array.from(el.childNodes)
+      .filter(n => n.nodeType === 3 && n.textContent.trim());
+    if (!own_text.length) continue;
+    const cs = getComputedStyle(el);
+    if (cs.visibility === 'hidden' || cs.display === 'none' || +cs.opacity === 0) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width < 1 || r.height < 1) continue;
+    if (el.checkVisibility && !el.checkVisibility({opacityProperty: true,
+                                                   visibilityProperty: true})) continue;
+    if (eff(el) <= 0.005) continue;
+    if (!want.includes(cs.color)) continue;
+    if (el.closest(chromeSel)) { chrome++; continue; }
+    own++;
+    if (samples.length < 4) samples.push((el.className || '').toString().slice(0, 24));
+  }
+  return {chrome, own, samples};
+}
+"""
+
+
+def _assert_page_body_was_measured(page, theme, path) -> None:
+    """🔴 «이 화면 고유의» 글자가 관측됐는가 — 크롬만 세고 통과하지 않게.
+
+    red 로 만드는 뮤테이션: 본문 컨테이너를 통째로 숨기면(`.settings-wrap`·`.dashboard-page`
+    등에 `display:none`) `total > 0` 은 nav 덕분에 여전히 초록인데 이 단언은 red 다.
+    """
+    res = page.evaluate(_OWN_TEXT_COUNT_JS,
+                        [["--text-2", "--text-3", "--accent-text"], _CHROME_SEL])
+    assert res["own"] > 0, (
+        f"[{theme}] {path}: 관측된 토큰 글자 {res['chrome']}건이 **전부 nav·헤더**다 — "
+        "이 화면 고유의 글자는 하나도 재지 못했다. 「안 쟀음」과 「통과」는 다르다")
+
+
 def _assert_token_text_aa(page, base_url, theme, path, viewport=None, prepare=None):
     """한 화면·한 테마에서 토큰 글자의 AA 를 잰다 — 세 시험이 공유한다.
 
@@ -669,6 +728,7 @@ def _assert_token_text_aa(page, base_url, theme, path, viewport=None, prepare=No
     seen = res["seen"]
     # 🔴 아무것도 못 골랐으면 «통과» 가 아니라 red 다 — 토큰 이름이 바뀌었거나
     #    테마가 적용되지 않은 것이고, 그때 이 시험은 아무 것도 재지 않는다.
+    _assert_page_body_was_measured(page, theme, path)
     assert seen["--text-2"] + seen["--text-3"] > 0, (
         f"[{theme}] {path} 에서 --text-2/--text-3 로 칠해진 글자를 하나도 찾지 못했다 — "
         "재지 못한 것이지 통과한 것이 아니다"
