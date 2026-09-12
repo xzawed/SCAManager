@@ -16,7 +16,7 @@
 
 ## 🔴 틴트 칩 — 색만 바꿔서는 못 고친다
 
-`.severity-low`·`.issue-badge--closed`·`.fb-btn.active.fb-up`·`.hook-alert.ok`·
+`.issue-badge--closed`·`.fb-btn.active.fb-up`·`.hook-alert.ok`·
 `.save-toast-ok` 는 같은 규칙에서 틴트 면·테두리·글자를 모두 `--success` 로 잡았다.
 바탕용으로 진하게 만든 `--success-text` 를 얹어도 틴트 위에서는 **3.88(light) /
 3.96(pastel)** 이라 여전히 미달이다.
@@ -182,10 +182,13 @@ def test_filled_success_controls_use_the_on_token():
 def test_migrated_chips_keep_their_siblings_border_treatment():
     """🔴 형제와 «테두리 취급» 이 갈리지 않아야 한다.
 
-    `.severity-low` 는 `.severity-high`(`--danger`)·`.severity-medium`(`--warning`) 과
-    나란히 놓인다. 셋 다 **불투명** 테두리였는데, 3종 세트로 옮기며 low 만
-    `--grade-a-bd`(반투명/연한 민트, 카드 대비 1.28~2.41)로 바뀌면 셋의 모양이 갈린다.
-    `.fb-btn.active.fb-up` 도 형제 `.fb-btn.active.fb-down` 이 불투명 `--danger` 를 쓴다.
+    `.fb-btn.active.fb-up` 은 형제 `.fb-btn.active.fb-down` 이 불투명 `--danger` 를 쓴다.
+    3종 세트로 옮기며 위쪽만 `--grade-a-bd`(반투명/연한 민트, 카드 대비 1.28~2.41)로
+    바뀌면 둘의 모양이 갈린다.
+
+    🔴 종전에는 `.severity-low` ↔ `.severity-high`/`.severity-medium` 쌍도 함께 봤다.
+    그 세 규칙은 **어떤 마크업에도 붙지 않아** 삭제했다(#1639 후속) — 죽은 규칙을 계속
+    핀으로 잡으면 「지켜지고 있다」는 거짓 신호만 남는다.
 
     🔴 이건 **1.4.11 위반이 아니다.** 이 리포는 「보이는 글자가 있는 컨트롤은 경계 표시
     요구 대상이 아니다」를 실측으로 확립했다(#1621, 185/216 → 1/58). 여기서 잡는 것은
@@ -201,8 +204,8 @@ def test_migrated_chips_keep_their_siblings_border_treatment():
         + "\n"
         + (ROOT / "src" / "static" / "css" / "components.css").read_text(encoding="utf-8")
     )
-    pairs = [(".severity-low", (".severity-high", ".severity-medium")),
-             (".fb-btn.active.fb-up", (".fb-btn.active.fb-down",))]
+    pairs = [(".fb-btn.active.fb-up", (".fb-btn.active.fb-down",))]
+    assert pairs, "검사할 쌍이 0개다 — 이 가드는 아무것도 재지 않는다"
     bad = []
     for target, siblings in pairs:
         m = re.search(re.escape(target) + r"\s*\{([^}]*)\}", src)
