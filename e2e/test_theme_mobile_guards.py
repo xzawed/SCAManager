@@ -15,7 +15,8 @@
 
 import pytest
 
-from e2e.conftest import INSIGHT_LANGUAGE, apply_theme
+from e2e.conftest import (INSIGHT_LANGUAGE, VARIANT_BREAKDOWN,
+                          VARIANT_FEEDBACKS, apply_theme)
 
 
 # ── A. catppuccin 토큰 회귀 가드 (cleanup PR #169 사고 차단) ─────────────────
@@ -2549,3 +2550,203 @@ def test_token_text_meets_aa_in_insight_success_grid(
         f"[{theme}] insight 그리드 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
         + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
                       for b in bad[:10]))
+
+
+# ── E-9. analysis_detail 의 «한 번도 안 그려진» 팔들 (#1639 · 분기 프로브 좌표) ────────
+#
+# 전체 e2e 분기 실측(2026-09-13)에서 **양쪽 팔 모두 미관측**으로 나온 노드 중
+# `analysis_detail.html` 몫: `:239·240·241`(AI 상태 세 갈래) · `:276`(점수 막대
+# high/mid/low) · `:333`(카테고리 피드백) · `:409`(result 없는 레거시 행, **양쪽 팔**).
+# 전부 result JSON 이 정하므로 시드만으로 열린다.
+
+_VARIANT_STATUS_KEY = {
+    "no_api_key": "analysis_detail.ai_defaults.no_api_key",
+    "api_error": "analysis_detail.ai_defaults.api_error",
+    "empty_diff": "analysis_detail.ai_defaults.empty_diff",
+    "parse_error": "analysis_detail.ai_defaults.parse_error",
+    "disabled": "analysis_detail.ai_defaults.disabled",
+    "other": "analysis_detail.ai_defaults.other",
+}
+_LEGACY_KEY = "analysis_detail.empty.legacy_no_result_part1"
+_NO_RESULT_KEY = "analysis_detail.empty.no_result"
+# 🔴 픽스처가 한 종류를 **빼면** 루프가 그 팔을 아예 안 돈다 — 그때 대조군은 저절로
+#    통과하므로 시험은 초록인데 팔은 죽어 있다(Grok `01a0998d` 반례 #5). 그래서 이름
+#    집합을 못박고 양방향으로 대조한다.
+_EXPECTED_VARIANT_KINDS = frozenset(
+    set(_VARIANT_STATUS_KEY) | {"legacy", "legacy_scored"})
+# 템플릿(`:268`)의 루프 상수 — 여기 적은 값이 화면의 막대 폭을 정한다. 템플릿이 바뀌면
+# 이 시험이 red 가 되는 것이 맞다(막대의 «뜻» 이 바뀐 것이므로).
+_BREAKDOWN_MAX = (("code_quality", 25), ("security", 20), ("commit_message", 15),
+                  ("ai_review", 25), ("test_coverage", 15))
+
+# 🔴 `querySelectorAll` 은 «누가 그렸는지» 도 «보이는지» 도 안 본다. 그래서
+#    ① 문구는 그 팔이 만드는 **요소 안** 에서만 찾고(`.ad-ai-card`·`.ad-empty`),
+#    ② 막대는 **보이는 것만** 세고 인라인 폭을 함께 읽는다(시드 대조용).
+_VARIANT_PROBE_JS = r"""() => {
+    // 🔴 막대는 `checkVisibility` 만 본다 — 값이 0 인 항목은 폭 0% 라 상자 너비도 0 이지만
+    //    `low` 클래스는 실제로 계산돼 붙는다(그 팔이 돈 증거다). 글자는 상자까지 본다.
+    const shown = el => el.checkVisibility({opacityProperty: true, visibilityProperty: true});
+    const vis = el => shown(el) && el.getBoundingClientRect().width > 0;
+    const txt = sel => [...document.querySelectorAll(sel)].filter(vis)
+                         .map(el => el.innerText).join('\n');
+    return {
+        aiCard: txt('.ad-ai-card'),
+        empty: txt('.ad-empty'),
+        feedback: [...document.querySelectorAll('.ad-feedback-item .ad-feedback-text')]
+                    .filter(vis).map(el => el.innerText.trim()).filter(Boolean),
+        bars: [...document.querySelectorAll('.ad-bar-fill')].filter(shown).map(el => ({
+            cls: [...el.classList].filter(c => c !== 'ad-bar-fill'),
+            pct: parseFloat(el.style.width),
+        })),
+    };
+}"""
+
+
+def _band(pct: float) -> str:
+    """템플릿(`:276`)이 폭에서 고르는 대역 — `{% if pct >= 75 %}high{% elif >= 50 %}mid{%…"""
+    return "high" if pct >= 75 else "mid" if pct >= 50 else "low"
+
+
+def _expected_bars() -> list[tuple[float, str]]:
+    """시드한 breakdown 이 만들어야 할 (폭, 대역) 목록 — 화면과 정렬해 대조한다."""
+    out = []
+    for key, mx in _BREAKDOWN_MAX:
+        pct = VARIANT_BREAKDOWN.get(key, 0) / mx * 100
+        out.append((round(pct, 2), _band(pct)))
+    return sorted(out)
+
+
+# 🔴 시드가 «팔을 열 수 있는 값» 인지부터 못박는다. 아래 판정은 기대값을 **시드에서
+#    파생**하므로, 시드만 바꾸면 기대값이 따라 움직여 조용히 공허해진다 — 실측(뮤테이션):
+#    security 12→19 로 바꾸면 `mid` 대역이 사라지는데도 초록이었고, 피드백을 하나 지워도
+#    초록이었다. 이 두 줄이 그 둘을 red 로 만든다.
+assert {b for _, b in _expected_bars()} == {"high", "mid", "low"}, (
+    f"시드한 breakdown 이 세 대역을 못 연다 {_expected_bars()} — `:276` 의 세 팔이 한 "
+    "화면에서 동시에 나야 한다")
+assert len(VARIANT_FEEDBACKS) >= 2, (
+    f"시드한 카테고리 피드백이 {len(VARIANT_FEEDBACKS)}건 — `:333` 의 «참» 팔을 여러 번, "
+    "«거짓» 팔을 나머지 항목에서 열려면 둘 이상이어야 한다")
+
+
+def _variant_arm_failures(probe, kind, texts) -> list[str]:
+    r"""이 화면이 `kind` 의 «팔» 을 실제로 그렸는가 — 어긋난 것들을 돌려준다(빈 목록=그렸다).
+
+    🔴 계기를 믿기 전에 뒤집는다(verify.md 4). 소스를 열기 전에 적은 두 목록:
+      claimed = 계기의 «이름» 이 포함한다고 적은 것 = {그 변종 **전용** 안내 문구가
+                **AI 상태 카드 안** 에, **시드한 breakdown 이 정하는** 폭·대역의 막대가
+                그대로, **시드한 피드백 문자열** 이 그대로, 레거시 **양쪽** 팔이 서로 다른 문구}
+      cheap   = 첫 출력만 보고 적은 «가장 싼 과정» = 「분석 상세가 200 으로 떴다」 =
+                {페이지 제목, 카드 골격, 막대가 있다, 피드백 항목이 «2건 이상» 있다,
+                 `.ad-empty` 가 있다, 본문 어딘가에 그 문자열이 있다}
+    - claimed\cheap(반드시 잡혀야) = 전용 문구가 **그 팔이 만든 요소 안** · (폭, 대역) 목록이
+      **시드와 정확히** 일치 · 피드백 문자열 집합이 **시드와 정확히** 일치 · 레거시 두 행이
+      **다른** 문구.
+    - cheap\claimed(반드시 무시돼야) = `.ad-empty` 존재 · 막대 존재 · 피드백 «개수» ·
+      본문 어딘가의 문자열 · 다른 변종의 문구.
+
+    🔴 Grok `01a0998d` 이 두 판을 연달아 깼다. 1차: 본문 전체 `innerText` + 클래스 개수 →
+       문구를 다른 카드에 심고 막대에 `class="high mid low"` 를 박으면 초록. 2차: 개수만
+       보는 판정 → 더미 `.ad-feedback-item` 2개·가짜 막대 3개를 박으면 초록. 그래서 개수를
+       버리고 **DB 를 거쳐야 나오는 값**(시드한 폭·시드한 문자열)과 대조한다.
+    🔴 **여기까지가 DOM 의 한계다.** 같은 문자열을 «다른 줄의 같은 조건» 이 찍으면 화면은
+       구별되지 않는다 — 「그 노드가 돌았는가」의 심판은 분기 프로브(`nodes.If` 계기)이지
+       이 시험이 아니다. 이 시험의 몫은 **그 화면 상태를 계속 도달 가능하게** 두고 거기
+       글자의 대비를 재는 것이다.
+    """
+    bad: list[str] = []
+    if kind in ("legacy", "legacy_scored"):
+        want, deny = (("legacy", "no_result") if kind == "legacy"
+                      else ("no_result", "legacy"))
+        if texts[want] not in probe["empty"]:
+            bad.append(f"`.ad-empty` 안에 {want} 문구가 없다 — `:409` 의 해당 팔이 안 열렸다")
+        if texts[deny] in probe["empty"]:
+            bad.append(f"`.ad-empty` 안에 {deny} 문구가 **함께** 떴다 — 두 팔이 갈라지지 "
+                       "않는다(조건 없이 늘 찍는 구현과 구별 불가)")
+        return bad
+    if texts[kind] not in probe["aiCard"]:
+        bad.append(f"AI 상태 카드 «안» 에 {kind} 전용 문구가 없다 — `:237~241` 해당 팔")
+    others = [k for k in _VARIANT_STATUS_KEY if k != kind and texts[k] in probe["aiCard"]]
+    if others:
+        bad.append(f"AI 상태 카드에 다른 변종 문구가 함께 떴다 {others}")
+    seen_bars = sorted((round(b["pct"], 2), b["cls"][0] if len(b["cls"]) == 1 else b["cls"])
+                       for b in probe["bars"])
+    if seen_bars != _expected_bars():
+        bad.append(f"막대 (폭, 대역) 이 시드와 다르다\n      화면={seen_bars}\n      "
+                   f"시드={_expected_bars()} — `:276` 의 삼항이 그 폭으로 돌지 않았다")
+    if sorted(probe["feedback"]) != sorted(VARIANT_FEEDBACKS.values()):
+        bad.append(f"카테고리 피드백 문자열이 시드와 다르다 {probe['feedback']} — `:333` 팔")
+    return bad
+
+
+def _variant_texts(page):
+    """화면이 쓰는 로케일 그대로 정본 문자열을 뽑는다 — 언어를 손으로 적지 않는다."""
+    from src.i18n.loader import get_text  # noqa: PLC0415
+
+    locale = page.evaluate("() => document.documentElement.lang") or "ko"
+    texts = {k: get_text(key, locale) for k, key in _VARIANT_STATUS_KEY.items()}
+    texts["legacy"] = get_text(_LEGACY_KEY, locale)
+    texts["no_result"] = get_text(_NO_RESULT_KEY, locale)
+    assert all(texts.values()), f"정본 문자열을 못 뽑았다 {texts} — 로케일 {locale!r}"
+    # 🔴 하나가 다른 하나의 부분문자열이면 위의 «함께 뜨면 red» 대조가 조용히
+    #    공허해진다 — 모든 쌍을 본다(로컬이 바뀌어도 따라온다).
+    from itertools import permutations  # noqa: PLC0415
+
+    clash = [(a, b) for a, b in permutations(texts, 2) if texts[a] in texts[b]]
+    assert not clash, f"정본 문구가 서로를 포함한다 {clash} — 교차 대조가 공허해진다"
+    return texts
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_token_text_meets_aa_on_analysis_detail_variants(
+        seeded_page, base_url, analysis_variants, seeded_analysis, theme):
+    """🔴 AI 상태 안내·점수 막대·피드백·레거시 두 화면의 글자가 AA 를 넘는가.
+
+    마지막에 **손대지 않은 기존 성공 분석**을 같은 계기로 재고, 다섯 판정이 **전부 어긋나야**
+    통과한다 — 「분석 상세가 뜨기만 하면 초록」인 계기였다면 여기서 잡힌다.
+    """
+    assert set(analysis_variants) == set(_EXPECTED_VARIANT_KINDS), (
+        f"픽스처가 낸 변종 {sorted(analysis_variants)} != 기대 "
+        f"{sorted(_EXPECTED_VARIANT_KINDS)} — 한 종류가 빠지면 그 팔은 «재지 않은» 것이지 "
+        "통과한 것이 아니다")
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    for kind, analysis_id in sorted(analysis_variants.items()):
+        seeded_page.goto(f"{base_url}/repos/owner%2Fgatedrepo/analyses/{analysis_id}")
+        assert "localhost" in seeded_page.url, (
+            f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
+        apply_theme(seeded_page, theme)
+        seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
+        seeded_page.wait_for_timeout(300)
+        _reveal_all(seeded_page)
+
+        total, bad = 0, []
+        for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+                          (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
+            res = seeded_page.evaluate(js)
+            assert not res.get("error"), res.get("error")
+            total += sum(res["seen"][n] for n in names)
+            bad += res["bad"]
+
+        texts = _variant_texts(seeded_page)
+        missing = _variant_arm_failures(seeded_page.evaluate(_VARIANT_PROBE_JS), kind, texts)
+        assert not missing, f"[{theme}] {kind} 변종 화면:\n  " + "\n  ".join(missing)
+        _assert_body_contributed(seeded_page, axis=theme, where=f"variant:{kind}",
+                                 selector="body *",
+                                 colors=["--text-2", "--text-3", "--accent-text"])
+        assert total > 0, (
+            f"[{theme}] {kind} 화면에서 토큰 글자를 하나도 찾지 못했다 — "
+            "재지 못한 것이지 통과한 것이 아니다")
+        assert not bad, (
+            f"[{theme}] {kind} 화면 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
+            + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
+                          for b in bad[:10]))
+
+    # 🔴 반드시 «무시돼야» 하는 쪽 — 기존 성공 분석에는 이 팔들이 하나도 없다.
+    seeded_page.goto(f"{base_url}/repos/owner%2Ftestrepo/analyses/{seeded_analysis}")
+    apply_theme(seeded_page, theme)
+    _reveal_all(seeded_page)
+    control = seeded_page.evaluate(_VARIANT_PROBE_JS)
+    control_texts = _variant_texts(seeded_page)
+    for kind in sorted(_EXPECTED_VARIANT_KINDS):
+        assert _variant_arm_failures(control, kind, control_texts), (
+            f"[{theme}] 손대지 않은 성공 분석 화면이 {kind} 팔을 «그렸다» 고 판정됐다 — "
+            "계기가 「분석 상세가 뜨기만 하면 초록」으로 무너져 있다")
