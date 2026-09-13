@@ -3174,3 +3174,182 @@ def test_token_text_meets_aa_on_dashboard_delta_arms(
         assert _delta_kpi_failures(control, kind, texts), (
             f"[{theme}] 손대지 않은 사용자 1 의 KPI 가 {kind} 의 부호를 «그렸다» 고 "
             "판정됐다 — 계기가 「delta 줄이 있으면 초록」으로 무너져 있다")
+
+
+# ── E-12. 점수 정합도 표 + 랜딩 오류 배너 (#1639 · 남은 «전무» 노드) ────────────
+
+_CALIB_ROW_JS = r"""() => {
+    const rows = [...document.querySelectorAll('.cal-bar')].map(b => b.closest('tbody tr'))
+        .filter(Boolean);
+    return rows.map(tr => {
+        const td = [...tr.children].map(c => c.innerText.trim());
+        return {cells: td, shown: tr.checkVisibility(
+            {opacityProperty: true, visibilityProperty: true})};
+    });
+}"""
+
+
+def _calibration_failures(rows, expected) -> list[str]:
+    r"""정합도 표가 **시드한 구간만** 그렸는가.
+
+    🔴 계기를 믿기 전에 뒤집는다(verify.md 4). 소스를 열기 전에 적은 두 목록:
+      claimed = {시드한 구간이 **그 건수·비율 그대로** 한 줄씩 · 시드 안 한 구간은 **없음**}
+      cheap   = {`/` 가 200 으로 떴다 · 표가 있다 · 줄이 하나 이상 있다}
+    - claimed\cheap(반드시 잡혀야) = 구간 «집합» 이 정확히 일치 + 시드가 정하는 건수·비율.
+    - cheap\claimed(반드시 무시돼야) = 표의 존재 · 줄의 존재.
+    빈 구간이 함께 그려지면 red 다 — 「줄이 있으면 초록」과 갈라지는 지점이다.
+
+    🔴 **여기 못 가르는 것이 하나 있다**(Grok `01a09aeb`). 라우트에서 빈 구간을 **미리
+       걸러내면**(`{k: v for k, v in calibration.items() if v["count"] > 0}`) 루프가 빈
+       구간을 아예 안 보므로 `:366` 의 «거짓» 팔이 돌지 않는데, 화면은 **완전히 같다** —
+       그 팔은 원래 아무것도 안 그리기 때문이다. 「아무것도 안 그리는 팔」은 DOM 으로
+       판정할 수 없다(#1671 의 `:564:2` 와 같은 모양이다). 그 심판은 **분기 프로브**다.
+    """
+    bad: list[str] = []
+    seen = {}
+    for row in rows:
+        if not row["shown"]:
+            bad.append(f"정합도 줄이 보이지 않는다 {row['cells']}")
+        if len(row["cells"]) < 3:
+            bad.append(f"정합도 줄의 칸이 {len(row['cells'])}개 {row['cells']}")
+            continue
+        seen[row["cells"][0]] = (row["cells"][1], row["cells"][2])
+    if set(seen) != set(expected):
+        bad.append(f"그려진 구간이 {sorted(seen)} — 시드는 {sorted(expected)} 다. "
+                   "빈 구간이 함께 떴다면 `:366` 의 «참» 팔이 조건 없이 도는 것이다")
+        return bad
+    for name, want in expected.items():
+        count_txt, ratio_txt = seen[name]
+        if count_txt != str(want["count"]):
+            bad.append(f"{name}: 건수가 {count_txt!r} — 시드는 {want['count']}")
+        want_ratio = f"{want['up_ratio'] * 100:.1f}%"
+        if ratio_txt != want_ratio:
+            bad.append(f"{name}: 비율이 {ratio_txt!r} — 시드는 {want_ratio}")
+    return bad
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_token_text_meets_aa_in_calibration_table(
+        seeded_page, base_url, calibration_feedback, theme):
+    """🔴 점수 정합도 표의 글자가 AA 를 넘는가 — 값이 **있을 때**의 화면이다."""
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.goto(f"{base_url}/")
+    assert "localhost" in seeded_page.url, (
+        f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
+    apply_theme(seeded_page, theme)
+    seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
+    seeded_page.wait_for_timeout(200)
+    _reveal_all(seeded_page)
+
+    missing = _calibration_failures(seeded_page.evaluate(_CALIB_ROW_JS),
+                                    calibration_feedback)
+    assert not missing, f"[{theme}] 정합도 표:\n  " + "\n  ".join(missing)
+
+    total, bad = 0, []
+    for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+                      (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
+        res = seeded_page.evaluate(js)
+        assert not res.get("error"), res.get("error")
+        total += sum(res["seen"][n] for n in names)
+        bad += res["bad"]
+    _assert_body_contributed(seeded_page, axis=theme, where="overview/calibration",
+                             selector="body *",
+                             colors=["--text-2", "--text-3", "--accent-text"])
+    assert total > 0, (
+        f"[{theme}] 정합도 화면에서 토큰 글자를 하나도 찾지 못했다 — "
+        "재지 못한 것이지 통과한 것이 아니다")
+    assert not bad, (
+        f"[{theme}] 정합도 화면 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
+        + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
+                      for b in bad[:10]))
+
+
+# ── 랜딩(비로그인)의 OAuth 오류 배너 두 갈래 (landing.html:432) ────────────────
+#
+# 🔴 라우트는 `?error=` 를 허용 목록(`oauth_failed` · `auth_failed`)으로 거른다.
+#    `oauth_failed` 는 전용 문구, 나머지는 일반 문구다. e2e 는 오류 파라미터를
+#    한 번도 붙인 적이 없어 배너 자체가 미관측이었다.
+_LANDING_ERROR_KEY = {"oauth_failed": "landing.error_oauth_failed",
+                      "auth_failed": "landing.error_generic"}
+
+_LANDING_BANNER_JS = r"""() => {
+    const b = document.querySelector('.auth-error-banner');
+    return b ? {text: b.innerText.trim(), shown: b.checkVisibility(
+        {opacityProperty: true, visibilityProperty: true})} : null;
+}"""
+
+
+def _landing_texts(page):
+    from src.i18n.loader import get_text  # noqa: PLC0415
+
+    locale = page.evaluate("() => document.documentElement.lang") or "ko"
+    out = {k: get_text(key, locale) for k, key in _LANDING_ERROR_KEY.items()}
+    assert all(out.values()), f"정본 문구를 못 뽑았다 {out} — 로케일 {locale!r}"
+    assert out["oauth_failed"] not in out["auth_failed"], out
+    assert out["auth_failed"] not in out["oauth_failed"], out
+    return out
+
+
+def _landing_banner_failures(probe, want, texts) -> list[str]:
+    r"""배너가 **그 갈래의** 문구를 냈는가.
+
+    claimed = {그 오류의 정본 문구가 배너 «안» 에 보이게} · cheap = {랜딩이 떴다 · 배너가 있다}.
+    - claimed\cheap(반드시 잡혀야) = 그 갈래 전용 문구.
+    - cheap\claimed(반드시 무시돼야) = 배너의 존재 · 랜딩이 200 이다.
+    """
+    if probe is None:
+        return ["오류 배너가 없다 — `?error=` 가 허용 목록에서 걸러졌거나 랜딩이 아니다"]
+    bad: list[str] = []
+    if not probe["shown"]:
+        bad.append("오류 배너가 보이지 않는다")
+    if texts[want] not in probe["text"]:
+        bad.append(f"{want} 문구가 배너에 없다 {probe['text'][:70]!r}")
+    other = next(k for k in _LANDING_ERROR_KEY if k != want)
+    if texts[other] in probe["text"]:
+        bad.append(f"{other} 문구가 함께 떴다 — 두 갈래가 갈라지지 않는다")
+    return bad
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_token_text_meets_aa_on_landing_error_banner(anonymous_page, base_url, theme):
+    """🔴 비로그인 랜딩의 OAuth 오류 배너 두 갈래 글자가 AA 를 넘는가."""
+    anonymous_page.set_viewport_size({"width": 1440, "height": 900})
+    texts = None
+    for want in _LANDING_ERROR_KEY:
+        anonymous_page.goto(f"{base_url}/?error={want}")
+        assert "localhost" in anonymous_page.url, (
+            f"{anonymous_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
+        apply_theme(anonymous_page, theme)
+        anonymous_page.add_style_tag(
+            content="*,*::before,*::after{transition:none !important}")
+        anonymous_page.wait_for_timeout(200)
+        _reveal_all(anonymous_page)
+        texts = texts or _landing_texts(anonymous_page)
+        missing = _landing_banner_failures(
+            anonymous_page.evaluate(_LANDING_BANNER_JS), want, texts)
+        assert not missing, f"[{theme}] {want}:\n  " + "\n  ".join(missing)
+
+        total, bad = 0, []
+        for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+                          (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
+            res = anonymous_page.evaluate(js)
+            assert not res.get("error"), res.get("error")
+            total += sum(res["seen"][n] for n in names)
+            bad += res["bad"]
+        assert total > 0, (
+            f"[{theme}] 랜딩({want})에서 토큰 글자를 하나도 찾지 못했다 — "
+            "재지 못한 것이지 통과한 것이 아니다")
+        assert not bad, (
+            f"[{theme}] 랜딩({want}) 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
+            + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
+                          for b in bad[:10]))
+
+    # 🔴 반드시 «무시돼야» 하는 쪽 — 오류 파라미터가 없으면 배너 자체가 없다.
+    anonymous_page.goto(f"{base_url}/")
+    apply_theme(anonymous_page, theme)
+    _reveal_all(anonymous_page)
+    control = anonymous_page.evaluate(_LANDING_BANNER_JS)
+    for want in _LANDING_ERROR_KEY:
+        assert _landing_banner_failures(control, want, texts), (
+            f"[{theme}] 오류 없는 랜딩이 {want} 배너를 «그렸다» 고 판정됐다 — "
+            "계기가 「랜딩이 뜨면 초록」으로 무너져 있다")

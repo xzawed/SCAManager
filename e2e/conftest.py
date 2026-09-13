@@ -1457,14 +1457,28 @@ def apply_theme(page, theme: str) -> None:
        `data-theme` 도 일치했다. 즉 지금은 결함이 아니라 **그 상태를 유지시키는 장치**다.
        테마 목록이 바뀌는 날 이 단언이 유일한 관측자가 된다.
 
+    🔴 **랜딩은 다른 길이다.** `landing.html` 은 `base.html` 을 상속하지 않아 `applyTheme`
+       이 없고, 자기 스크립트가 **로드 시점에** `localStorage['sca-theme']` 를 읽어
+       `<body data-theme>` 에 건다(`landing.html` 하단 초기화 스크립트). 그래서 저장하고
+       다시 불러온 뒤 `body` 쪽을 확인한다. 두 길을 여기 한 곳에 둔다 — 시험이 각자
+       테마를 거는 순간 「네 테마가 같은 화면」이 조용히 돌아온다.
+
     Applies the theme and verifies it stuck; an unknown name silently falls back to dark,
     which would make a four-theme parametrisation measure one screen four times.
+    The landing page has no `applyTheme`: it reads localStorage at load and themes `<body>`.
     """
-    page.evaluate("(t) => applyTheme(t)", theme)
-    applied = page.evaluate("() => document.documentElement.dataset.theme")
+    if page.evaluate("() => typeof applyTheme === 'function'"):
+        page.evaluate("(t) => applyTheme(t)", theme)
+        applied = page.evaluate("() => document.documentElement.dataset.theme")
+        where = "documentElement"
+    else:
+        page.evaluate("(t) => localStorage.setItem('sca-theme', t)", theme)
+        page.reload()
+        applied = page.evaluate("() => document.body.dataset.theme")
+        where = "body(랜딩)"
     assert applied == theme, (
-        f"테마가 {applied!r} 로 걸렸다 — {theme!r} 을 재려 했는데 다른 화면을 잰다 "
-        "(`applyTheme` 이 모르는 이름을 dark 로 되돌렸는지 볼 것)")
+        f"테마가 {applied!r} 로 걸렸다({where}) — {theme!r} 을 재려 했는데 다른 화면을 "
+        "잰다 (`applyTheme` 이 모르는 이름을 dark 로 되돌렸는지 볼 것)")
 
 
 @pytest.fixture
@@ -1487,3 +1501,66 @@ def assert_still_on_our_app():
     아무도 안 쓰는 헬퍼가 되는 것을 막는다(Grok `01a08b4a` 가 그 상태를 지적했다).
     """
     return _assert_still_on_our_app
+
+
+# ── 점수 정합도 표를 «채우는» 피드백 (#1639 · overview.html:366) ──────────────
+#
+# 🔴 `{% for range_name, data in calibration.items() %}{% if data.count > 0 %}` 는
+#    양쪽 팔 모두 미관측이었다 — e2e 에 피드백이 **0건**이라 다섯 구간이 전부 0 이었고,
+#    그러면 «참» 팔은 물론 «거짓» 팔도… 는 아니다. 거짓 팔은 돌았어야 한다.
+#    실제로는 로그인 사용자의 `/` 만 이 표를 그리는데 e2e 의 `/` 방문이 그 표까지
+#    내려가 본 적이 없었다(첫 화면 아래).
+# 🔴 등급 시드가 다섯 구간을 **전부** 덮는다(95·82·68·52·30). 그래서 둘에만 심는다 —
+#    다섯 다 심으면 «거짓» 팔(count == 0)이 영영 안 열린다.
+# 🔴 피드백은 (analysis_id, user_id) 유니크다. 한 분석에 둘을 달려면 사용자가 둘 있어야
+#    한다 — `EMPTY_USER_ID` 를 빌린다(그 사용자는 리포가 없어야 하고, 피드백은 리포를
+#    만들지 않는다).
+CALIBRATION_SEED = {"A": ((1, +1), (EMPTY_USER_ID, -1)), "F": ((1, +1),)}
+
+
+def _seed_calibration_feedback(db_path: str, graded: dict[str, int]) -> dict[str, dict]:
+    """등급 A·F 분석에 피드백을 달고 → {구간 이름: {"count": n, "up_ratio": r}}.
+
+    돌려주는 것은 **화면이 그려야 할 값**이다. 시험은 이것과 대조한다.
+    """
+    from sqlalchemy import create_engine, text  # noqa: PLC0415
+
+    ranges = (("0-44", 0, 44), ("45-59", 45, 59), ("60-74", 60, 74),
+              ("75-89", 75, 89), ("90-100", 90, 100))
+    expected: dict[str, dict] = {}
+    engine = create_engine(f"sqlite:///{db_path}")
+    try:
+        with engine.connect() as conn:
+            for grade, votes in CALIBRATION_SEED.items():
+                analysis_id = graded[grade]
+                score = conn.execute(text("SELECT score FROM analyses WHERE id=:i"),
+                                     {"i": analysis_id}).scalar()
+                assert score is not None, f"{grade} 분석에 점수가 없다 — 구간을 못 정한다"
+                for user_id, thumbs in votes:
+                    conn.execute(text(
+                        "INSERT OR IGNORE INTO analysis_feedbacks"
+                        " (analysis_id, user_id, thumbs, created_at, updated_at)"
+                        " VALUES (:a, :u, :t, datetime('now'), datetime('now'))"
+                    ), {"a": analysis_id, "u": user_id, "t": thumbs})
+                name = next(n for n, lo, hi in ranges if lo <= score <= hi)
+                ups = sum(1 for _, t in votes if t > 0)
+                expected[name] = {"count": len(votes), "up_ratio": ups / len(votes)}
+            conn.commit()
+            got = conn.execute(text("SELECT COUNT(*) FROM analysis_feedbacks")).scalar()
+        wanted = sum(len(v) for v in CALIBRATION_SEED.values())
+        assert got == wanted, f"피드백 {got}건 (기대 {wanted}) — 유니크 충돌이 삼켰다"
+    finally:
+        engine.dispose()
+    # 🔴 시드가 «양쪽 팔» 을 열 수 있는지 못박는다 — 다 채우면 count == 0 팔이,
+    #    아무것도 안 채우면 count > 0 팔이 안 열린다. 파생되지 않는 바닥이다.
+    assert 0 < len(expected) < len(ranges), (
+        f"채운 구간이 {len(expected)}/{len(ranges)} — 하나 이상 채우고 하나 이상 비워야 "
+        "`overview.html:366` 의 두 팔이 다 열린다")
+    return expected
+
+
+@pytest.fixture(scope="session")
+def calibration_feedback(live_server, graded_analyses, empty_user):
+    """점수 정합도 표의 «값이 있는 구간» 과 «빈 구간» 을 동시에 만든다."""
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    return _seed_calibration_feedback(db_path, graded_analyses)
