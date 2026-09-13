@@ -3,6 +3,7 @@
 tests/ conftest.py와 분리되어 asyncio_mode=auto 없이 실행됨.
 """
 import asyncio
+import contextlib
 import hashlib
 import hmac
 import json
@@ -1043,9 +1044,9 @@ def _seed_insight_success_cache(db_path: str, *, language: str = INSIGHT_LANGUAG
     return response
 
 
-@pytest.fixture
-def insight_success(live_server, seeded_analysis):
-    """insight 성공 그리드가 열린 상태 — **이 시험 동안만** API 키를 켠다.
+@contextlib.contextmanager
+def insight_key_window():
+    """insight 경로가 «키가 있는» 상태로 도는 창 — 이 창 밖에서는 원래대로 돌려놓는다.
 
     🔴 키를 세션 전역 env 로 넣지 않는다. 키가 있으면 `/repos/<repo>/insights` 의
        리포 내러티브도 깨어나 매 방문마다 실패 호출 + `claude_api_calls` 행을 쓴다
@@ -1056,19 +1057,108 @@ def insight_success(live_server, seeded_analysis):
     """
     from src.config import settings  # noqa: PLC0415
 
-    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
-    payload = _seed_insight_success_cache(db_path)
     prev_key, prev_base = settings.anthropic_api_key, os.environ.get("ANTHROPIC_BASE_URL")
     settings.anthropic_api_key = "e2e-dummy-not-a-real-key"
     os.environ["ANTHROPIC_BASE_URL"] = "http://127.0.0.1:1"
     try:
-        yield payload
+        yield
     finally:
         settings.anthropic_api_key = prev_key
         if prev_base is None:
             os.environ.pop("ANTHROPIC_BASE_URL", None)
         else:
             os.environ["ANTHROPIC_BASE_URL"] = prev_base
+
+
+@contextlib.contextmanager
+def acting_as(user_id: int, login: str = "e2e-other"):
+    """이 창 동안 `/dashboard` 가 **다른 사용자**로 돈다.
+
+    🔴 `require_login` 을 갈아야 한다 — `/dashboard` 가 무는 것이 그것이다
+       (`src/ui/routes/dashboard.py`). `get_current_user` 만 갈면 아무것도 안 바뀐다:
+       `require_login` 은 그것을 **평범한 함수로** 부르므로 FastAPI override 가 안 탄다
+       (Grok `01a09a3b` 이 내 계획의 이 대목을 잡았다). 템플릿의 nav 를 위해 둘 다 간다.
+    ⚠️ 앱 전역 상태다 — 순차 실행 전제(이 스위트가 그렇다).
+    """
+    from src.auth.session import CurrentUser, get_current_user, require_login  # noqa: PLC0415
+    from src.main import app  # noqa: PLC0415
+
+    other = CurrentUser(id=user_id, github_login=login, email=f"{login}@test.com",
+                        display_name=login, plaintext_token="gho_e2e_test_token")
+    saved = {k: app.dependency_overrides.get(k) for k in (require_login, get_current_user)}
+    app.dependency_overrides[require_login] = lambda: other
+    app.dependency_overrides[get_current_user] = lambda: other
+    try:
+        yield other
+    finally:
+        for key, prev in saved.items():
+            if prev is None:
+                app.dependency_overrides.pop(key, None)
+            else:
+                app.dependency_overrides[key] = prev
+
+
+# ── 리포를 하나도 안 가진 사용자 ────────────────────────────────────────────
+#
+# 🔴 `?mode=insight` 의 `no_data`(dashboard.html:979)는 **분석이 0건**일 때만 나온다.
+#    그 상태를 «신선한 캐시 행» 으로 위조할 수는 없다 — `record_error` 는 error 를
+#    `expires_at=now` 로 적어 **절대 신선하지 않다**(앱이 못 내는 상태를 심는 셈).
+# 🔴 소유 필터는 `Repository.user_id == me OR user_id IS NULL` 이라, NULL 소유 리포에
+#    분석이 생기면 이 사용자도 그것을 본다. 지금 NULL 소유는 `owner/unclaimedrepo`
+#    하나이고 분석이 없다 — 시험이 그 전제를 직접 단언한다(Grok `01a09a3b`).
+EMPTY_USER_ID = 9001
+
+
+def _seed_empty_user(db_path: str) -> int:
+    """리포도 분석도 없는 사용자 한 명 → user_id."""
+    from sqlalchemy import create_engine, text  # noqa: PLC0415
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    try:
+        with engine.connect() as conn:
+            conn.execute(text(
+                "INSERT OR IGNORE INTO users "
+                "(id, github_id, github_login, github_access_token, email, display_name,"
+                " created_at) VALUES (:id, :gid, :login, :token, :email, :name,"
+                " datetime('now'))"
+            ), {"id": EMPTY_USER_ID, "gid": EMPTY_USER_ID, "login": "e2e-empty",
+                "token": "gho_e2e_empty", "email": "empty@test.com", "name": "E2E Empty"})
+            conn.commit()
+            owned = conn.execute(text(
+                "SELECT COUNT(*) FROM repositories WHERE user_id = :uid"
+            ), {"uid": EMPTY_USER_ID}).scalar()
+            # 🔴 소유 필터가 `user_id == me OR user_id IS NULL` 이라, **NULL 소유 리포에
+            #    분석이 하나라도 생기면** 이 사용자의 analysis_count 도 0 이 아니게 되고
+            #    `?mode=insight` 는 `no_data` 가 아니라 `api_error` 로 간다. 그때 시험은
+            #    red 가 되지만 이유가 멀다 — 여기서 바로 말한다.
+            legacy = conn.execute(text(
+                "SELECT COUNT(*) FROM analyses a JOIN repositories r ON r.id = a.repo_id"
+                " WHERE r.user_id IS NULL"
+            )).scalar()
+        assert owned == 0, f"빈 사용자가 리포 {owned}개를 가졌다 — no_data 전제가 깨졌다"
+        assert legacy == 0, (
+            f"소유자 없는(user_id IS NULL) 리포에 분석이 {legacy}건 있다 — 모든 사용자가 "
+            "그것을 보므로 «분석 0건» 사용자를 만들 수 없다. 그 분석을 소유자 있는 리포로 "
+            "옮기거나, no_data 를 여는 다른 길을 찾아야 한다")
+    finally:
+        engine.dispose()
+    return EMPTY_USER_ID
+
+
+@pytest.fixture(scope="session")
+def empty_user(live_server):
+    """리포가 없는 사용자 — `?mode=insight` 가 `no_data` 로 간다."""
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    return _seed_empty_user(db_path)
+
+
+@pytest.fixture
+def insight_success(live_server, seeded_analysis):
+    """insight 성공 그리드가 열린 상태 — **이 시험 동안만** API 키를 켠다."""
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    payload = _seed_insight_success_cache(db_path)
+    with insight_key_window():
+        yield payload
 
 
 @pytest.fixture(scope="session")
