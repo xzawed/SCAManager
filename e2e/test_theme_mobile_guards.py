@@ -13,10 +13,12 @@
 """
 # E2E regression guards — catppuccin token regression + WCAG 2.5.5 mobile click area.
 
+import os
+
 import pytest
 
-from e2e.conftest import (INSIGHT_LANGUAGE, VARIANT_BREAKDOWN,
-                          VARIANT_FEEDBACKS, apply_theme)
+from e2e.conftest import (INSIGHT_LANGUAGE, VARIANT_BREAKDOWN, VARIANT_FEEDBACKS,
+                          acting_as, apply_theme, insight_key_window)
 
 
 # ── A. catppuccin 토큰 회귀 가드 (cleanup PR #169 사고 차단) ─────────────────
@@ -2750,3 +2752,170 @@ def test_token_text_meets_aa_on_analysis_detail_variants(
         assert _variant_arm_failures(control, kind, control_texts), (
             f"[{theme}] 손대지 않은 성공 분석 화면이 {kind} 팔을 «그렸다» 고 판정됐다 — "
             "계기가 「분석 상세가 뜨기만 하면 초록」으로 무너져 있다")
+
+
+# ── E-10. `?mode=insight` 의 «한 번도 안 그려진» 상태 갈래 (#1639 · 분기 프로브 좌표) ──
+#
+# `dashboard.html:979`(`no_data`) · `:983`(`disabled`) 는 양쪽 팔 모두 미관측이었다.
+# e2e 는 키가 비어 있어 **언제나 `no_api_key`**(:977)에서 사슬이 끝났고, 성공 캐시를
+# 심은 #1662 는 첫 갈래에서 끝났다. 그래서 그 뒤의 세 갈래가 통째로 관측 밖이었다.
+#
+# 🔴 세 갈래를 여는 방법이 서로 다르다:
+#   ① `disabled` — `INSIGHT_DISABLED=1`. 킬스위치는 **매 호출 `os.environ` 을 읽고**
+#      (`feature_kill_switch.py`), e2e 서버는 **같은 프로세스의 스레드**라 시험이 켜면
+#      다음 요청부터 먹는다. 키 검사보다 **앞**이라 키가 없어도 열린다.
+#   ② `no_data` — 분석이 0건인 사용자. 신선한 «no_data 캐시» 를 심는 길은 **없다**:
+#      `record_error` 가 error 를 `expires_at=now` 로 적어 절대 신선하지 않다. 앱이
+#      못 내는 상태를 심는 것은 팔을 «연» 것이 아니다.
+#   ③ `else`(load_failed) — 키는 있고 캐시는 비었고 호출은 실패. `?refresh=1` 로
+#      캐시를 무효화하면 루프백(`127.0.0.1:1`)으로 나가 즉시 실패한다 →`api_error`.
+#      이 방문 하나가 `:979` 와 `:983` 의 **거짓** 팔을 함께 연다.
+#
+# 🔴 ③ 은 `claude_api_calls` 에 **토큰 0** 행을 하나 남긴다(연결 자체가 실패하면 값이
+#    갱신되지 않는다 — `dashboard_service.py` 의 `_tokens` 주석). 비용 KPI 의 값은
+#    0.0 그대로이고 delta 는 이전 창이 비어 있어 여전히 None 이다.
+
+_INSIGHT_STATE_KEY = {
+    "disabled": "dashboard.insight.disabled",
+    "no_data": "dashboard.insight.no_data",
+    "no_api_key": "dashboard.insight.no_api_key",
+}
+_INSIGHT_FAILED_KEY = "dashboard.insight.load_failed"
+
+_INSIGHT_STATUS_JS = r"""() => {
+    const box = document.querySelector('.dash-insight-status');
+    return {
+        text: box ? box.innerText.trim() : null,
+        shown: !!box && box.checkVisibility({opacityProperty: true, visibilityProperty: true}),
+        grid: !!document.querySelector('.dash-insight-grid'),
+    };
+}"""
+
+
+def _insight_texts(page, days):
+    """화면이 쓰는 로케일 그대로 정본 문구를 뽑는다 — 언어를 손으로 적지 않는다."""
+    from src.i18n.loader import get_text  # noqa: PLC0415
+
+    locale = page.evaluate("() => document.documentElement.lang") or "ko"
+    texts = {k: get_text(key, locale) for k, key in _INSIGHT_STATE_KEY.items()}
+    texts["no_data"] = texts["no_data"].replace("{days}", str(days))
+    # 🔴 `{% else %}` 는 상태 «이름» 을 문장에 끼워 넣는다. 연결이 실패하면 그 이름은
+    #    `api_error` 다(`dashboard_service.py:1078-1080`). 이름까지 채워 **완전 일치**로
+    #    비교한다 — 접두만 보면 감싸기를 못 가른다.
+    texts["failed"] = get_text(_INSIGHT_FAILED_KEY, locale).replace("{status}", "api_error")
+    assert all(texts.values()), f"정본 문구를 못 뽑았다 {texts} — 로케일 {locale!r}"
+    assert "{" not in "".join(texts.values()), f"채우지 못한 자리표시자가 남았다 {texts}"
+    assert len(set(texts.values())) == len(texts), f"정본 문구가 겹친다 {texts}"
+    return texts
+
+
+def _insight_state_failures(probe, want, texts) -> list[str]:
+    r"""이 화면이 `want` 상태의 «팔» 을 실제로 그렸는가 — 어긋난 것들을 돌려준다.
+
+    🔴 계기를 믿기 전에 뒤집는다(verify.md 4). 소스를 열기 전에 적은 두 목록:
+      claimed = {그 상태의 **정본 문구**가 `.dash-insight-status` 안에 보이게 있다 ·
+                 4카드 그리드는 없다 · 다른 상태의 문구는 없다}
+      cheap   = {`?mode=insight` 가 200 으로 떴다 · 상태 상자가 하나 있다 · 그 안에 글자가
+                 있다} — 오늘의 `no_api_key` 가 이미 전부 만족한다.
+    - claimed\cheap(반드시 잡혀야) = **그 상태의** 정본 문구.
+    - cheap\claimed(반드시 무시돼야) = 상태 상자의 존재 · 글자가 있다 · 200 이다.
+    그래서 마지막에 **손대지 않은 평범한 방문**(키 없음·킬스위치 없음 = `no_api_key`)을
+    같은 계기로 재고, 세 판정이 **전부** 어긋나야 통과한다.
+    """
+    bad: list[str] = []
+    if not probe["shown"]:
+        bad.append("`.dash-insight-status` 가 보이지 않는다 — 상태 갈래 자체가 안 그려졌다")
+        return bad
+    if probe["grid"]:
+        bad.append("4카드 그리드가 함께 떴다 — 첫 갈래(success)로 갔다")
+    text = (probe["text"] or "").strip()
+    if text != texts[want]:
+        why = ""
+        if want != "failed" and texts[want] in text:
+            why = (" — 그 문장이 **다른 문장 안에** 들어 있다. `{% else %}` 가 상태 이름을 "
+                   "끼워 넣은 모습이다(서비스가 status 에 토큰 대신 문장을 넣으면 그 팔은 "
+                   "죽은 채로 이 글자가 나온다)")
+        bad.append(f"{want} 정본 문구와 «일치» 하지 않는다 {text[:70]!r}{why}")
+    return bad
+
+
+def _open_insight(page, base_url, theme):
+    page.goto(f"{base_url}/dashboard?mode=insight")
+    assert "localhost" in page.url, f"{page.url[:60]} 로 나갔다 — 남의 페이지를 잰다"
+    apply_theme(page, theme)
+    page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
+    page.wait_for_timeout(200)
+    _reveal_all(page)
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_token_text_meets_aa_in_insight_status_states(
+        seeded_page, base_url, seeded_analysis, empty_user, theme):
+    """🔴 insight 의 «비활성 · 데이터 없음 · 불러오기 실패» 안내 글자가 AA 를 넘는가."""
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    texts = None
+
+    def measure(where):
+        _reveal_all(seeded_page)   # 감사를 돌리는 자리가 스스로 스크롤한다(첫 화면 아래도 잰다)
+        total, bad = 0, []
+        for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+                          (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
+            res = seeded_page.evaluate(js)
+            assert not res.get("error"), res.get("error")
+            total += sum(res["seen"][n] for n in names)
+            bad += res["bad"]
+        assert total > 0, (
+            f"[{theme}] {where} 에서 토큰 글자를 하나도 찾지 못했다 — "
+            "재지 못한 것이지 통과한 것이 아니다")
+        assert not bad, (
+            f"[{theme}] {where} 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
+            + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
+                          for b in bad[:10]))
+
+    # ① disabled — 킬스위치. 키 검사보다 앞이라 키 없이도 열린다.
+    prev = os.environ.get("INSIGHT_DISABLED")
+    os.environ["INSIGHT_DISABLED"] = "1"
+    try:
+        _open_insight(seeded_page, base_url, theme)
+        texts = _insight_texts(seeded_page, days=7)
+        missing = _insight_state_failures(
+            seeded_page.evaluate(_INSIGHT_STATUS_JS), "disabled", texts)
+        assert not missing, f"[{theme}] disabled:\n  " + "\n  ".join(missing)
+        measure("insight/disabled")
+    finally:
+        if prev is None:
+            os.environ.pop("INSIGHT_DISABLED", None)
+        else:
+            os.environ["INSIGHT_DISABLED"] = prev
+
+    # ② no_data — 리포도 분석도 없는 사용자. 캐시로는 위조할 수 없는 상태다.
+    with insight_key_window(), acting_as(empty_user, login="e2e-empty"):
+        _open_insight(seeded_page, base_url, theme)
+        missing = _insight_state_failures(
+            seeded_page.evaluate(_INSIGHT_STATUS_JS), "no_data", texts)
+        assert not missing, f"[{theme}] no_data:\n  " + "\n  ".join(missing)
+        measure("insight/no_data")
+
+    # ③ load_failed — 키는 있고 캐시는 비웠고 호출은 루프백으로 나가 실패한다.
+    with insight_key_window():
+        seeded_page.goto(f"{base_url}/dashboard?mode=insight&refresh=1")
+        apply_theme(seeded_page, theme)
+        seeded_page.add_style_tag(
+            content="*,*::before,*::after{transition:none !important}")
+        seeded_page.wait_for_timeout(200)
+        _reveal_all(seeded_page)
+        missing = _insight_state_failures(
+            seeded_page.evaluate(_INSIGHT_STATUS_JS), "failed", texts)
+        assert not missing, f"[{theme}] load_failed:\n  " + "\n  ".join(missing)
+        measure("insight/load_failed")
+
+    # 🔴 반드시 «무시돼야» 하는 쪽 — 손대지 않은 평범한 방문은 `no_api_key` 다.
+    _open_insight(seeded_page, base_url, theme)
+    control = seeded_page.evaluate(_INSIGHT_STATUS_JS)
+    assert not _insight_state_failures(control, "no_api_key", texts), (
+        f"[{theme}] 평범한 방문이 `no_api_key` 가 아니다 {control['text']!r} — "
+        "앞 창들이 되돌려지지 않았다(전역 상태 누수)")
+    for want in ("disabled", "no_data", "failed"):
+        assert _insight_state_failures(control, want, texts), (
+            f"[{theme}] 손대지 않은 방문이 {want} 팔을 «그렸다» 고 판정됐다 — "
+            "계기가 「상태 상자가 있으면 초록」으로 무너져 있다")
