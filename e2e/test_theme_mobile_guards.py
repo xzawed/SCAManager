@@ -17,7 +17,8 @@ import os
 
 import pytest
 
-from e2e.conftest import (DELTA_DAYS, DELTA_REPO_SCORES, DELTA_USERS,
+from e2e.conftest import (DELTA_DAYS, DELTA_REPO_SCORES, DELTA_SUGGESTION_COUNTS,
+                          DELTA_USERS,
                           INSIGHT_LANGUAGE, VARIANT_BREAKDOWN, VARIANT_FEEDBACKS,
                           acting_as, apply_theme, delta_repo_name,
                           expected_avg_delta, expected_cost_delta,
@@ -3353,3 +3354,118 @@ def test_token_text_meets_aa_on_landing_error_banner(anonymous_page, base_url, t
         assert _landing_banner_failures(control, want, texts), (
             f"[{theme}] 오류 없는 랜딩이 {want} 배너를 «그렸다» 고 판정됐다 — "
             "계기가 「랜딩이 뜨면 초록」으로 무너져 있다")
+
+# ── E-13. 리포 인사이트의 «한 번도 안 그려진» 팔 (#1639 · repo_insights.html) ────
+#
+# `:72`(`kpi.score_delta > 0`) · `:74`(`< 0`) · `:266`(`s.count > 1`) 이 남아 있었다.
+# 앞의 둘은 delta 리포 셋(+20 · −30 · 정확히 0)이 그대로 열어준다 — 리포 페이지의
+# `repo_kpi` 는 대시보드와 같은 헬퍼다. `:266` 은 **같은 제안이 두 번 이상** 나와야
+# 열리는데, `repo_ai_suggestions` 는 **30일 창만** 보므로 현재 창에 분석이 둘 필요하다.
+
+
+_RI_PROBE_JS = r"""() => {
+    const shown = el => el.checkVisibility(
+        {opacityProperty: true, visibilityProperty: true});
+    const badge = sel => {
+        const el = document.querySelector(sel);
+        return el && shown(el) ? el.innerText.trim() : null;
+    };
+    return {
+        up: badge('.ri-delta-up'),
+        down: badge('.ri-delta-down'),
+        suggestions: [...document.querySelectorAll('.ri-suggestion-item')]
+            .filter(shown).map(li => ({
+                text: (li.querySelector('.ri-suggestion-text') || {}).innerText || '',
+                count: (li.querySelector('.ri-suggestion-count') || {}).innerText || null,
+            })),
+    };
+}"""
+
+
+def _ri_failures(probe, suffix) -> list[str]:
+    r"""리포 인사이트가 **시드한 부호와 건수** 를 그렸는가.
+
+    🔴 계기를 믿기 전에 뒤집는다(verify.md 4). 소스를 열기 전에 적은 두 목록:
+      claimed = {그 리포의 부호에 맞는 배지 하나(↑ / ↓ / 없음)와 **시드한 변화량** ·
+                 제안 목록에 «2회» 뱃지가 붙은 항목과 안 붙은 항목이 **함께**}
+      cheap   = {인사이트 페이지가 200 으로 떴다 · 배지가 어딘가 있다 · 제안 줄이 있다}
+    - claimed\cheap(반드시 잡혀야) = 부호별 배지의 **유무 조합** + 시드한 변화량 +
+      건수 뱃지가 붙은 항목의 **집합**.
+    - cheap\claimed(반드시 무시돼야) = 배지의 존재 · 제안 줄의 존재.
+    세 리포가 서로의 대조군이다(↑ 리포 · ↓ 리포 · 배지 없는 리포).
+
+    🔴 «건수 뱃지가 없는 항목» 은 `:266` 의 거짓 팔이지만, 그 팔은 아무것도 그리지 않는다 —
+       `{% if %}` 를 지우고 뱃지를 늘 그려도 «있는 쪽» 만 보는 판정은 못 잡는다. 그래서
+       **붙은 집합과 안 붙은 집합을 둘 다** 시드와 맞춘다. 그래도 「루프 밖에서 걸러내는」
+       구현과는 못 가른다 — 그 심판은 분기 프로브다(#1671 `:564:2` 와 같은 모양).
+    """
+    bad: list[str] = []
+    want = expected_score_delta("mixed", suffix)
+    if want > 0:
+        if probe["up"] is None or probe["down"] is not None:
+            bad.append(f"↑ 배지가 없거나 ↓ 가 함께 떴다 up={probe['up']!r} "
+                       f"down={probe['down']!r} — 시드 delta={want}")
+        elif f"{abs(want):g}" not in probe["up"]:
+            bad.append(f"↑ 배지에 변화량 {abs(want):g} 가 없다 {probe['up']!r}")
+    elif want < 0:
+        if probe["down"] is None or probe["up"] is not None:
+            bad.append(f"↓ 배지가 없거나 ↑ 가 함께 떴다 up={probe['up']!r} "
+                       f"down={probe['down']!r} — 시드 delta={want}")
+        elif f"{abs(want):g}" not in probe["down"]:
+            bad.append(f"↓ 배지에 변화량 {abs(want):g} 가 없다 {probe['down']!r}")
+    elif probe["up"] is not None or probe["down"] is not None:
+        bad.append(f"delta 가 정확히 0 인데 배지가 떴다 up={probe['up']!r} "
+                   f"down={probe['down']!r}")
+
+    seen_all = {s["text"].strip() for s in probe["suggestions"]}
+    seen_badged = {s["text"].strip() for s in probe["suggestions"] if s["count"]}
+    want_all = set(DELTA_SUGGESTION_COUNTS)
+    want_badged = {t for t, n in DELTA_SUGGESTION_COUNTS.items() if n > 1}
+    if seen_all != want_all:
+        bad.append(f"제안 목록이 {sorted(seen_all)} — 시드는 {sorted(want_all)}")
+    elif seen_badged != want_badged:
+        bad.append(f"건수 뱃지가 붙은 제안이 {sorted(seen_badged)} — 시드는 "
+                   f"{sorted(want_badged)}. 붙지 않아야 할 항목에 붙었다면 `:266` 이 "
+                   "조건 없이 도는 것이다")
+    return bad
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_token_text_meets_aa_on_repo_insights_deltas(
+        seeded_page, base_url, delta_users, theme):
+    """🔴 리포 인사이트의 ↑ / ↓ / 없음 배지와 제안 건수 뱃지 글자가 AA 를 넘는가."""
+    from urllib.parse import quote  # noqa: PLC0415
+
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    with acting_as(delta_users["mixed"], login="e2e-delta-mixed"):
+        for suffix in sorted(DELTA_REPO_SCORES["mixed"]):
+            name = delta_repo_name("mixed", suffix)
+            seeded_page.goto(f"{base_url}/repos/{quote(name, safe='')}/insights")
+            assert "localhost" in seeded_page.url, (
+                f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
+            apply_theme(seeded_page, theme)
+            seeded_page.add_style_tag(
+                content="*,*::before,*::after{transition:none !important}")
+            seeded_page.wait_for_timeout(200)
+            _reveal_all(seeded_page)
+
+            missing = _ri_failures(seeded_page.evaluate(_RI_PROBE_JS), suffix)
+            assert not missing, f"[{theme}] {name}:\n  " + "\n  ".join(missing)
+
+            total, bad = 0, []
+            for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+                              (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
+                res = seeded_page.evaluate(js)
+                assert not res.get("error"), res.get("error")
+                total += sum(res["seen"][n] for n in names)
+                bad += res["bad"]
+            _assert_body_contributed(seeded_page, axis=theme, where=f"insights:{suffix}",
+                                     selector="body *",
+                                     colors=["--text-2", "--text-3", "--accent-text"])
+            assert total > 0, (
+                f"[{theme}] {name} 에서 토큰 글자를 하나도 찾지 못했다 — "
+                "재지 못한 것이지 통과한 것이 아니다")
+            assert not bad, (
+                f"[{theme}] {name} 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
+                + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
+                              for b in bad[:10]))

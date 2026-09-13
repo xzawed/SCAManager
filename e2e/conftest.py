@@ -1170,6 +1170,20 @@ DELTA_REPO_SCORES = {
 # {사용자: (이전 창 비용, 현재 창 비용)} — 셋 다 이전 창이 **비면 안 된다**(비면 delta 가
 # None 이 되어 바깥 else 로 가고 elif 팔은 아예 평가되지 않는다).
 DELTA_COSTS = {"mixed": (0.5, 0.5), "up": (0.5, 2.0), "down": (2.0, 0.5)}
+# 🔴 `repo_insights.html:266`(`s.count > 1`)은 **같은 제안이 두 번 이상** 나와야 열린다.
+#    `repo_ai_suggestions` 는 60자 prefix 로 묶고 `ai_review_status == "success"` 인
+#    분석만 센다(`repo_insight_service.py`). 그래서 두 창의 분석에 **공통 제안 하나** 와
+#    **각자 고유 제안 하나** 를 넣는다 — 전자가 «참» 팔(2회), 후자가 «거짓» 팔(1회)이다.
+DELTA_SHARED_SUGGESTION = "e2e: 반복되는 제안 — 예외를 삼키지 말고 로그를 남기세요"
+DELTA_UNIQUE_SUGGESTION = {"prev": "e2e: 이전 창에만 있는 제안 — 테스트를 추가하세요",
+                           "cur": "e2e: 현재 창 A 의 제안 — 함수를 쪼개세요",
+                           "cur2": "e2e: 현재 창 B 의 제안 — 상수를 이름으로 빼세요"}
+# 30일 창 안에서 보이게 될 제안과 건수 — 시험이 이것과 대조한다.
+DELTA_SUGGESTION_COUNTS = {
+    DELTA_SHARED_SUGGESTION: 2,
+    DELTA_UNIQUE_SUGGESTION["cur"]: 1,
+    DELTA_UNIQUE_SUGGESTION["cur2"]: 1,
+}
 
 
 def delta_repo_name(kind: str, suffix: str) -> str:
@@ -1209,7 +1223,10 @@ def _seed_delta_users(db_path: str) -> dict[str, int]:
     from src.scorer.calculator import calculate_grade  # noqa: PLC0415
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)
-    cur_at, prev_at = now - timedelta(days=5), now - timedelta(days=45)
+    # 🔴 현재 창에 분석이 **둘** 필요하다 — `repo_ai_suggestions` 는 30일 창만 보므로
+    #    이전 창 분석은 제안 집계에 안 들어간다. 같은 점수로 넣어 평균·delta 는 그대로 둔다.
+    cur_at, cur2_at = now - timedelta(days=5), now - timedelta(days=6)
+    prev_at = now - timedelta(days=45)
     engine = create_engine(f"sqlite:///{db_path}")
     session = sessionmaker(bind=engine)()
     try:
@@ -1229,14 +1246,18 @@ def _seed_delta_users(db_path: str) -> dict[str, int]:
                     session.add(repo)
                     session.flush()
                 for tag, score, at in (("prev", prev_score, prev_at),
-                                       ("cur", cur_score, cur_at)):
+                                       ("cur", cur_score, cur_at),
+                                       ("cur2", cur_score, cur2_at)):
                     sha = f"delta-{kind}-{suffix}-{tag}"
                     if session.query(Analysis).filter_by(commit_sha=sha).first() is None:
                         session.add(Analysis(
                             repo_id=repo.id, commit_sha=sha,
                             commit_message=f"e2e delta {kind}/{suffix} {tag}",
                             score=score, grade=calculate_grade(score),
-                            result={"summary": f"e2e delta {tag}", "issues": []},
+                            result={"summary": f"e2e delta {tag}", "issues": [],
+                                    "ai_review_status": "success",
+                                    "ai_suggestions": [DELTA_SHARED_SUGGESTION,
+                                                       DELTA_UNIQUE_SUGGESTION[tag]]},
                             author_login="e2e-tester", score_unreliable=False,
                             created_at=at))
             prev_cost, cur_cost = DELTA_COSTS[kind]
@@ -1254,6 +1275,19 @@ def _seed_delta_users(db_path: str) -> dict[str, int]:
             assert owned == len(DELTA_REPO_SCORES[kind]), (
                 f"{kind}: 리포 {owned}개 (기대 {len(DELTA_REPO_SCORES[kind])}) — "
                 "시드가 어긋나면 부호가 바뀐다")
+        # 🔴 제안 시드가 «두 팔» 을 열 수 있는지 못박는다 — 공통 제안이 없으면 `count > 1`
+        #    팔이, 고유 제안이 없으면 그 «거짓» 팔이 안 열린다. 파생되지 않는 바닥이다.
+        assert DELTA_SHARED_SUGGESTION not in DELTA_UNIQUE_SUGGESTION.values(), (
+            "공통 제안과 고유 제안이 같다 — `:266` 의 두 팔이 갈라지지 않는다")
+        assert len(set(DELTA_UNIQUE_SUGGESTION.values())) == 3, (
+            "창마다 고유한 제안이 하나씩 있어야 «1회» 항목이 생긴다")
+        assert len({s[:60] for s in
+                    [DELTA_SHARED_SUGGESTION, *DELTA_UNIQUE_SUGGESTION.values()]}) == 4, (
+            "60자 prefix 가 겹친다 — `repo_ai_suggestions` 가 그 단위로 묶으므로 "
+            "겹치면 건수가 합쳐진다")
+        assert set(DELTA_SUGGESTION_COUNTS.values()) == {1, 2}, (
+            f"제안 건수가 {sorted(set(DELTA_SUGGESTION_COUNTS.values()))} — "
+            "`repo_insights.html:266` 은 «2회 이상» 과 «1회» 가 **함께** 있어야 두 팔이 열린다")
         legacy = session.query(ClaudeApiCall).join(
             Repository, ClaudeApiCall.repo_id == Repository.id).filter(
             Repository.user_id.is_(None)).count()
