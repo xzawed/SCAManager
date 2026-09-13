@@ -856,6 +856,117 @@ def unclaimed_repo(live_server):
     return _seed_unclaimed_repo(db_path)
 
 
+# ── analysis_detail 변종 시드의 «값» — 시험이 기대값으로 되읽는다 ────────────
+#
+# 🔴 DOM 만 보는 판정은 위조된다(Grok `01a0998d`): 더미 `.ad-feedback-item` 두 개나
+#    가짜 막대 세 개를 템플릿에 박으면 「개수·클래스」 판정은 그대로 초록이다. 그래서
+#    시험은 **여기 심은 값** 과 대조한다 — 화면이 그 값을 내려면 DB 를 거쳐야 한다.
+# 🔴 세 값이 한 화면에서 high(≥75)·mid(50~74)·low(<50) 팔을 **동시에** 연다
+#    (`pct = val / mx * 100`, 최대치는 템플릿 루프 상수: code_quality 25 · security 20).
+VARIANT_BREAKDOWN = {"code_quality": 25, "security": 12, "commit_message": 1}
+VARIANT_FEEDBACKS = {
+    "commit_message_feedback": "e2e: 커밋 메시지가 규칙을 따릅니다 / follows the convention",
+    "security_feedback": "e2e: 하드코딩된 비밀이 없습니다 / no hardcoded secrets",
+}
+
+
+def _seed_analysis_variants(db_path: str) -> dict[str, int]:
+    """analysis_detail 의 «한 번도 안 그려진» 팔들을 여는 분석 8건 → {이름: id}.
+
+    🔴 분기 프로브(전체 e2e 실측, 2026-09-13)가 지목한 좌표다 — `analysis_detail.html`
+       237~241(AI 상태 사슬 전부) · 276(점수 막대 high/mid/low) · 333(카테고리 피드백) ·
+       409(result 없는 레거시 행 — 점수 없는 쪽·있는 쪽 **양쪽**). 전부 **result JSON 만으로** 열린다
+       (`{% set ai_status = r.get('ai_review_status', 'success') %}` 처럼 템플릿이 직접 읽는다).
+    🔴 `owner/gatedrepo` 에 **점수 NULL** 로 심는다 — 평균 점수·등급 집계를 건드리지 않기
+       위해서다(그 리포의 «분석 없음» 화면을 재는 시험이 있다). 분석 «건수» 는 움직인다.
+    🔴 ORM 으로 넣는다 — `score_unreliable` 은 server_default true 라 빠뜨리면 집계에서
+       빠지고, 원시 SQL + `INSERT OR IGNORE` 는 NOT NULL 위반을 조용히 삼킨다.
+    """
+    from datetime import datetime, timedelta, timezone  # noqa: PLC0415
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from src.models.analysis import Analysis  # noqa: PLC0415
+    from src.models.repository import Repository  # noqa: PLC0415
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    base_result = {
+        "summary": "e2e: analysis_detail 변종 / variant page",
+        "issues": [],
+        "breakdown": VARIANT_BREAKDOWN,
+        **VARIANT_FEEDBACKS,
+    }
+    # 🔴 `other` 는 **아는 이름이 아닌** 상태다 — 세 `elif` 를 전부 거짓으로 지나
+    #    `{% else %}`(:242) 로 떨어뜨려 `:241` 의 «거짓» 팔을 연다. `no_api_key` 는
+    #    `:237` 의 «참» 팔. 이 둘이 있어야 상태 사슬 다섯 노드가 양쪽 다 관측된다.
+    variants = {
+        "no_api_key": dict(base_result, ai_review_status="no_api_key"),
+        "api_error": dict(base_result, ai_review_status="api_error"),
+        "empty_diff": dict(base_result, ai_review_status="empty_diff"),
+        "parse_error": dict(base_result, ai_review_status="parse_error"),
+        "disabled": dict(base_result, ai_review_status="disabled"),
+        "other": dict(base_result, ai_review_status="e2e-unknown-status"),
+    }
+    ids: dict[str, int] = {}
+    engine = create_engine(f"sqlite:///{db_path}")
+    session = sessionmaker(bind=engine)()
+    try:
+        repo = session.query(Repository).filter_by(full_name=GATED_REPO).first()
+        if repo is None:
+            raise RuntimeError("_seed_analysis_variants: gated repo must exist first")
+        for i, (name, result) in enumerate(variants.items()):
+            sha = f"variant-{name}"
+            row = session.query(Analysis).filter_by(commit_sha=sha).first()
+            if row is None:
+                row = Analysis(repo_id=repo.id, commit_sha=sha,
+                               commit_message=f"e2e: {name} variant",
+                               score=None, grade=None, result=result,
+                               author_login="e2e-tester", score_unreliable=True,
+                               created_at=now - timedelta(minutes=i + 1))
+                session.add(row)
+            ids[name] = 0
+        # 🔴 레거시 행 — `result` 가 **없다**. `{% if analysis.score is none %}`(:409)는
+        #    result 가 없는 갈래 «안» 에 있어서, 점수만 NULL 인 기존 시드로는 안 열린다.
+        legacy_sha = "variant-legacy-no-result"
+        if session.query(Analysis).filter_by(commit_sha=legacy_sha).first() is None:
+            session.add(Analysis(repo_id=repo.id, commit_sha=legacy_sha,
+                                 commit_message="e2e: legacy row without result",
+                                 score=None, grade=None, result=None,
+                                 author_login="e2e-tester", score_unreliable=True,
+                                 created_at=now - timedelta(minutes=9)))
+        # 🔴 `:409` 의 **거짓 팔**(`:418`) — result 는 없는데 점수는 있는 행. 두 팔을 한
+        #    시험에서 **비교** 해야 「조건 없이 늘 레거시 문구를 찍는」 구현과 갈라진다
+        #    (Grok `01a0998d` 가 앞선 판을 이 대목에서 깨다). `score_unreliable=True` 라
+        #    집계에선 빠진다 — `src/ui/routes/overview.py` 의 `score_unreliable.isnot(True)`.
+        scored_sha = "variant-legacy-scored"
+        if session.query(Analysis).filter_by(commit_sha=scored_sha).first() is None:
+            session.add(Analysis(repo_id=repo.id, commit_sha=scored_sha,
+                                 commit_message="e2e: legacy row, no result but scored",
+                                 score=77, grade="C", result=None,
+                                 author_login="e2e-tester", score_unreliable=True,
+                                 created_at=now - timedelta(minutes=10)))
+        session.commit()
+        shas = {name: f"variant-{name}" for name in variants}
+        shas["legacy"] = legacy_sha
+        shas["legacy_scored"] = scored_sha
+        for name, sha in shas.items():
+            row = session.query(Analysis).filter_by(commit_sha=sha).first()
+            assert row is not None, f"시드한 {sha} 행을 되읽지 못했다"
+            ids[name] = row.id
+    finally:
+        session.close()
+        engine.dispose()
+    return ids
+
+
+@pytest.fixture(scope="session")
+def analysis_variants(live_server, gated_settings_repo):
+    """analysis_detail 의 AI 상태·점수 막대·피드백·레거시 팔을 여는 분석 id 들."""
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    return _seed_analysis_variants(db_path)
+
+
 @pytest.fixture(scope="session")
 def merge_history(live_server, seeded_analysis):
     """머지 이력이 있는 상태 — overview 가 실패 사유 목록 + auto-merge KPI 를 그린다."""
