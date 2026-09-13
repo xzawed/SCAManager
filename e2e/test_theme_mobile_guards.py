@@ -17,8 +17,11 @@ import os
 
 import pytest
 
-from e2e.conftest import (INSIGHT_LANGUAGE, VARIANT_BREAKDOWN, VARIANT_FEEDBACKS,
-                          acting_as, apply_theme, insight_key_window)
+from e2e.conftest import (DELTA_DAYS, DELTA_REPO_SCORES, DELTA_USERS,
+                          INSIGHT_LANGUAGE, VARIANT_BREAKDOWN, VARIANT_FEEDBACKS,
+                          acting_as, apply_theme, delta_repo_name,
+                          expected_avg_delta, expected_cost_delta,
+                          expected_score_delta, insight_key_window)
 
 
 # ── A. catppuccin 토큰 회귀 가드 (cleanup PR #169 사고 차단) ─────────────────
@@ -2919,3 +2922,255 @@ def test_token_text_meets_aa_in_insight_status_states(
         assert _insight_state_failures(control, want, texts), (
             f"[{theme}] 손대지 않은 방문이 {want} 팔을 «그렸다» 고 판정됐다 — "
             "계기가 「상태 상자가 있으면 초록」으로 무너져 있다")
+
+
+# ── E-11. 대시보드 delta 팔 (#1639 · dashboard.html 564·1036·1153·1155) ──────────
+#
+# 다섯 노드 전부 «부호» 를 묻는 elif 사슬이라 **양수 · 음수 · 정확히 0** 세 상태가 필요하다
+# (뒤 elif 의 «거짓» 팔은 앞 조건이 모두 거짓일 때만 도달 = delta == 0). e2e 는 이전 창에
+# 데이터가 없어 delta 가 **언제나 None** 이었고, 그래서 바깥 «비교 대상 없음» 만 그렸다.
+#
+# 🔴 점수 창은 `?days=N`, 비용 창은 **고정 30일** 이다(`_kpi_cost`). 한 시각으로 둘을
+#    채울 수 없어 방문을 전부 `?days=30` 으로 한다 — 그러면 두 창이 겹친다
+#    (Grok `01a09a74` 가 이 함정을 짚었다).
+# 🔴 비용 카드의 클래스는 **뒤집혀 있다** — 비용이 오르면 `kpi__delta--down`(나쁨) 이다.
+#    그래서 부호를 클래스가 아니라 **시드한 금액**과 대조한다.
+
+_DELTA_ROW_JS = r"""() => Object.fromEntries(
+    [...document.querySelectorAll('.repos-warning-item')].map(el => {
+        const link = el.querySelector('.repos-warning-link');
+        const score = el.querySelector('.repos-warning-score');
+        const t = score ? score.innerText : '';
+        return [link ? link.innerText.trim() : '?', {
+            up: t.includes('▲'), down: t.includes('▼'), text: t.trim(),
+            shown: !!score && score.checkVisibility(
+                {opacityProperty: true, visibilityProperty: true}),
+        }];
+    }))"""
+
+_DELTA_KPI_JS = r"""(labels) => Object.fromEntries(labels.map(([key, label]) => {
+    const card = [...document.querySelectorAll('.kpi')].find(
+        // 🔴 라벨은 CSS 로 대문자 변환된다 — innerText 는 «그려진» 글자를 준다.
+        c => (c.querySelector('.kpi__label')?.innerText || '')
+               .toLowerCase().includes(label.toLowerCase()));
+    const d = card ? card.querySelector('.kpi__delta') : null;
+    return [key, {
+        card: !!card,
+        delta: d ? {
+            cls: [...d.classList].filter(c => c.startsWith('kpi__delta--')),
+            text: d.innerText.trim(),
+            shown: d.checkVisibility({opacityProperty: true, visibilityProperty: true}),
+        } : null,
+    }];
+}))"""
+
+
+def _signs(values) -> set[int]:
+    return {0 if v == 0 else (1 if v > 0 else -1) for v in values}
+
+
+# 🔴 시드가 «세 부호» 를 실제로 만드는지부터 못박는다. 아래 판정은 기대값을 **시드에서
+#    파생**하므로, 시드만 바꾸면 기대값이 따라 움직여 조용히 공허해진다 — 실측(뮤테이션):
+#    `up` 리포를 (20,40)→(40,20) 으로 뒤집어도, `flat` 을 (35,35)→(35,36) 으로 바꿔도,
+#    비용의 이전 창을 0 으로 만들어도 전부 초록이었다. 이 네 줄이 그 셋을 red 로 만든다.
+assert _signs(expected_score_delta("mixed", s) for s in DELTA_REPO_SCORES["mixed"]) == {1, -1, 0}, (
+    "mixed 의 리포 delta 가 «양수·음수·정확히 0» 을 다 덮지 않는다 — `:564` 의 네 팔이 "
+    "한 화면에서 다 열리려면 셋이 다 있어야 한다")
+assert (expected_avg_delta("mixed") or 0) < 0, (
+    f"mixed 의 전역 평균 delta 가 {expected_avg_delta('mixed')} — `:1036` 의 «참» 팔은 "
+    "음수여야 열린다")
+assert expected_avg_delta("up") == 0, (
+    f"up 의 전역 평균 delta 가 {expected_avg_delta('up')} — `:1036` 의 «거짓» 팔은 "
+    "**정확히 0** 일 때만 도달한다(양수면 앞 `:1034` 에서 멈춘다)")
+assert expected_avg_delta("down") is None, (
+    "down 은 분석이 없어야 «비교 대상 없음» 갈래를 함께 확인할 수 있다")
+assert _signs(expected_cost_delta(k) for k in DELTA_USERS) == {1, -1, 0}, (
+    "비용 delta 가 «양수·음수·정확히 0» 을 다 덮지 않는다 — `:1153`·`:1155` 의 네 팔이 "
+    "다 열리지 않는다")
+
+
+def _delta_row_failures(rows, kind) -> list[str]:
+    r"""`?mode=repos` 의 경고 리포 행들이 **시드한 부호대로** 그려졌는가.
+
+    🔴 계기를 믿기 전에 뒤집는다(verify.md 4). 소스를 열기 전에 적은 두 목록:
+      claimed = {리포마다 **그 리포의** 방향 표시(▲ / ▼ / 없음)와 **시드한 절대값**이
+                 같은 행에 보이게 있다}
+      cheap   = {`?mode=repos` 가 200 으로 떴다 · 경고 리포 행이 있다 · 어떤 화살표가
+                 어딘가 있다 · 점수 숫자가 있다}
+    - claimed\cheap(반드시 잡혀야) = **리포별로** 옳은 방향 + 시드가 정하는 절대값.
+    - cheap\claimed(반드시 무시돼야) = 행의 존재 · 화살표의 존재 · 숫자의 존재.
+    그래서 방향을 «어딘가 ▲ 가 있다» 로 세지 않고 **행 단위로** 맞춘다. 세 행이 한 화면에
+    같이 있어 서로가 서로의 대조군이다(▲ 행과 ▼ 행과 표시 없는 행).
+
+    🔴 **여기 못 가르는 것이 하나 있다**(Grok `01a09a8b`). 삼항을 `{% if r.score_delta %}`
+       처럼 «0 이 아닐 때만» 로 감싸면 `:564:2` 의 **거짓** 팔(= delta 가 정확히 0)은 아예
+       평가되지 않는데, 화면은 **완전히 같다** — 0 일 때 화살표가 없는 것도, 그 옆의 `0`
+       이 사슬 «밖» 에서 찍히는 것도 그대로다. DOM 으로 그 둘을 가르는 방법은 없다.
+       「그 노드가 돌았는가」의 심판은 **분기 프로브**(`nodes.If` 계기)다. 이 시험의 몫은
+       그 세 상태를 **계속 도달 가능하게** 두고 거기 글자의 대비를 재는 것이다.
+    """
+    bad: list[str] = []
+    for suffix in DELTA_REPO_SCORES[kind]:
+        name = delta_repo_name(kind, suffix)
+        row = rows.get(name)
+        if row is None:
+            bad.append(f"{name} 행이 경고 리포 목록에 없다 (본 행: {sorted(rows)})")
+            continue
+        if not row["shown"]:
+            bad.append(f"{name} 행의 점수 칸이 보이지 않는다")
+        want = expected_score_delta(kind, suffix)
+        up, down = want > 0, want < 0
+        if (row["up"], row["down"]) != (up, down):
+            bad.append(f"{name}: 방향 표시가 다르다 (▲={row['up']} ▼={row['down']}, "
+                       f"시드 delta={want}) — `:564` 의 삼항이 그 부호로 돌지 않았다")
+        if f"{abs(want):g}" not in row["text"].replace(".0", ""):
+            bad.append(f"{name}: 변화량 {abs(want):g} 가 행에 없다 {row['text']!r}")
+    return bad
+
+
+def _delta_kpi_failures(cards, kind, texts) -> list[str]:
+    r"""KPI 카드의 delta 가 **시드가 정하는 부호·수치**로 그려졌는가.
+
+    claimed = {평균점수 카드와 비용 카드 각각이 시드가 정하는 부호의 클래스와 금액을 낸다}
+    cheap   = {KPI 카드가 있다 · delta 줄이 하나 있다}
+    - claimed\cheap = 부호별 클래스 + **시드한 금액 문자열**.
+    - cheap\claimed = 카드/줄의 존재.
+    🔴 비용 카드의 클래스는 뒤집혀 있다(오르면 `--down`). 그래서 금액까지 함께 본다.
+    """
+    bad: list[str] = []
+    want_avg, want_cost = expected_avg_delta(kind), expected_cost_delta(kind)
+    for key, want, inverted in (("avg", want_avg, False), ("cost", want_cost, True)):
+        slot = cards.get(key) or {"card": False, "delta": None}
+        if not slot["card"]:
+            # 🔴 «카드가 없다» 와 «delta 줄이 없다» 는 다른 병이다 — 뭉뚱그리면 모드가
+            #    엉뚱한 곳으로 갔을 때 «이전 창이 비었다» 로 오진한다(실측으로 겪었다).
+            bad.append(f"{key}: KPI 카드 자체가 화면에 없다 — overview 모드가 아니다")
+            continue
+        card = slot["delta"]
+        if want is None:
+            # 🔴 delta 가 None 이어도 줄은 **뜬다** — 바깥 else 가 «비교 대상 없음» 을
+            #    같은 `--flat` 클래스로 그린다(`dashboard.html:1042`). 「줄이 없어야
+            #    한다」로 적었다가 틀렸다. 그래서 그 **문구**로 가른다.
+            if card is None:
+                bad.append(f"{key}: «비교 대상 없음» 줄조차 없다 — 카드 구조가 바뀌었다")
+            elif texts["no_comparison"] not in card["text"]:
+                bad.append(f"{key}: 비교 대상이 없어야 하는데 {card['text']!r} 가 떴다")
+            continue
+        if card is None:
+            bad.append(f"{key}: delta 줄이 없다 — 이전 창이 비어 바깥 else 로 갔다")
+            continue
+        if not card["shown"]:
+            bad.append(f"{key}: delta 줄이 보이지 않는다")
+        if want > 0:
+            mod = "kpi__delta--down" if inverted else "kpi__delta--up"
+        elif want < 0:
+            mod = "kpi__delta--up" if inverted else "kpi__delta--down"
+        else:
+            mod = "kpi__delta--flat"
+        if mod not in card["cls"]:
+            bad.append(f"{key}: 클래스가 {card['cls']} — 시드 delta={want} 면 {mod} 여야 한다")
+        if want == 0:
+            if texts["no_change"] not in card["text"]:
+                bad.append(f"{key}: «변화 없음» 문구가 없다 {card['text']!r}")
+            if texts["no_comparison"] in card["text"]:
+                bad.append(f"{key}: «비교 대상 없음» 이 떴다 — 이전 창이 비었다는 뜻이고 "
+                           "그것은 «정확히 0» 이 아니다(둘 다 `--flat` 이라 클래스로는 "
+                           "못 가른다)")
+        else:
+            shown = f"{abs(want):.4f}" if key == "cost" else f"{abs(want):g}"
+            if shown not in card["text"]:
+                bad.append(f"{key}: 시드가 정하는 값 {shown} 이 줄에 없다 {card['text']!r}")
+    return bad
+
+
+def _delta_texts(page):
+    from src.i18n.loader import get_text  # noqa: PLC0415
+
+    locale = page.evaluate("() => document.documentElement.lang") or "ko"
+    out = {"no_change": get_text("dashboard.delta.no_change", locale),
+           "no_comparison": get_text("dashboard.delta.no_comparison", locale),
+           "avg_label": get_text("dashboard.kpi.avg_score", locale),
+           "cost_label": get_text("dashboard.kpi.monthly_cost", locale)}
+    assert all(out.values()), f"정본 문구를 못 뽑았다 {out} — 로케일 {locale!r}"
+    # 🔴 «변화 없음» 과 «비교 대상 없음» 이 서로를 포함하면 위의 가름이 공허해진다.
+    assert out["no_change"] not in out["no_comparison"], out
+    assert out["no_comparison"] not in out["no_change"], out
+    return out
+
+
+def _kpi_cards(page, texts):
+    return page.evaluate(_DELTA_KPI_JS,
+                         [["avg", texts["avg_label"]], ["cost", texts["cost_label"]]])
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_token_text_meets_aa_on_dashboard_delta_arms(
+        seeded_page, base_url, delta_users, theme):
+    """🔴 «올랐다 · 내렸다 · 그대로» 세 표시의 글자가 4테마에서 AA 를 넘는가."""
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+
+    def visit(kind, mode):
+        # 🔴 모드를 **언제나** 적는다 — 대시보드는 앞 방문의 모드를 localStorage 에
+        #    남기고, `?mode=` 가 없으면 그것을 따라간다. 「그냥 /dashboard」 로 열면
+        #    앞의 `repos` 가 따라와 KPI 카드가 아예 없는 화면을 재게 된다(실측).
+        seeded_page.goto(f"{base_url}/dashboard?days={DELTA_DAYS}&mode={mode}")
+        assert "localhost" in seeded_page.url, (
+            f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
+        apply_theme(seeded_page, theme)
+        seeded_page.add_style_tag(
+            content="*,*::before,*::after{transition:none !important}")
+        seeded_page.wait_for_timeout(200)
+        _reveal_all(seeded_page)
+
+    def measure(where):
+        _reveal_all(seeded_page)
+        total, bad = 0, []
+        for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+                          (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
+            res = seeded_page.evaluate(js)
+            assert not res.get("error"), res.get("error")
+            total += sum(res["seen"][n] for n in names)
+            bad += res["bad"]
+        assert total > 0, (
+            f"[{theme}] {where} 에서 토큰 글자를 하나도 찾지 못했다 — "
+            "재지 못한 것이지 통과한 것이 아니다")
+        assert not bad, (
+            f"[{theme}] {where} 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
+            + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
+                          for b in bad[:10]))
+
+    # ① mixed 의 `?mode=repos` — ▲ · ▼ · 표시 없음이 **한 화면에** 같이 있다.
+    with acting_as(delta_users["mixed"], login="e2e-delta-mixed"):
+        visit("mixed", "repos")
+        missing = _delta_row_failures(seeded_page.evaluate(_DELTA_ROW_JS), "mixed")
+        assert not missing, f"[{theme}] repos 모드:\n  " + "\n  ".join(missing)
+        measure("delta/repos")
+
+        # ② 같은 사용자의 KPI — 평균은 내렸고(음수) 비용은 그대로(정확히 0).
+        visit("mixed", "overview")
+        texts = _delta_texts(seeded_page)
+        missing = _delta_kpi_failures(_kpi_cards(seeded_page, texts), "mixed", texts)
+        assert not missing, f"[{theme}] mixed KPI:\n  " + "\n  ".join(missing)
+        measure("delta/kpi-mixed")
+
+    # ③ up — 평균은 정확히 0, 비용은 올랐다.
+    with acting_as(delta_users["up"], login="e2e-delta-up"):
+        visit("up", "overview")
+        missing = _delta_kpi_failures(_kpi_cards(seeded_page, texts), "up", texts)
+        assert not missing, f"[{theme}] up KPI:\n  " + "\n  ".join(missing)
+        measure("delta/kpi-up")
+
+    # ④ down — 비용이 내렸다(평균은 분석이 없어 비교 대상 자체가 없다).
+    with acting_as(delta_users["down"], login="e2e-delta-down"):
+        visit("down", "overview")
+        missing = _delta_kpi_failures(_kpi_cards(seeded_page, texts), "down", texts)
+        assert not missing, f"[{theme}] down KPI:\n  " + "\n  ".join(missing)
+        measure("delta/kpi-down")
+
+    # 🔴 반드시 «무시돼야» 하는 쪽 — 손대지 않은 사용자 1 은 이 부호들을 갖지 않는다.
+    visit("user1", "overview")
+    control = _kpi_cards(seeded_page, texts)
+    for kind in DELTA_USERS:
+        assert _delta_kpi_failures(control, kind, texts), (
+            f"[{theme}] 손대지 않은 사용자 1 의 KPI 가 {kind} 의 부호를 «그렸다» 고 "
+            "판정됐다 — 계기가 「delta 줄이 있으면 초록」으로 무너져 있다")

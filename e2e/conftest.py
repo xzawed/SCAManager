@@ -1145,6 +1145,134 @@ def _seed_empty_user(db_path: str) -> int:
     return EMPTY_USER_ID
 
 
+# ── delta 팔을 여는 전용 사용자 세 명 (#1639 · dashboard.html 564·1036·1153·1155) ──
+#
+# 🔴 그 다섯 노드는 전부 «부호» 를 묻는 elif 사슬이라, 팔을 다 열려면 **양수 · 음수 ·
+#    정확히 0** 세 상태가 필요하다(뒤쪽 elif 의 «거짓» 팔은 앞 조건이 전부 거짓일 때만
+#    도달한다 = delta == 0). 한 DB 에 세 상태를 동시에 두는 길은 **사용자를 나누는 것**뿐이다.
+# 🔴 사용자 1 의 수치는 움직이지 않는다 — 소유 필터가 `user_id == me OR user_id IS NULL`
+#    이라 새 사용자의 리포는 사용자 1 에게 안 보인다. 반대로 **NULL 소유 리포에는 아무것도
+#    붙이지 않는다** — 그것은 모든 사용자에게 보인다(비용 서브쿼리도 마찬가지다,
+#    `claude_api_cost_repo._owned_repo_ids_subquery`; Grok `01a09a3b` 이 이 대목을 정정했다).
+# 🔴 창이 둘이다 — 점수는 `?days=N`, 비용은 **고정 30일**(`_kpi_cost`). 한 시각으로 둘을
+#    채울 수 없어서 시험이 `?days=30` 으로 방문한다. 그러면 두 창이 겹친다:
+#    현재 `[now-30d, now]` · 이전 `[now-60d, now-30d)`. 시드는 5일 전·45일 전에 둔다.
+# 🔴 `score_unreliable` 은 server_default true 다 — 빠뜨리면 집계에서 통째로 빠진다.
+DELTA_DAYS = 30
+DELTA_USERS = {"mixed": 9101, "up": 9102, "down": 9103}
+# {사용자: {리포 접미사: (이전 창 점수, 현재 창 점수)}} — 현재 점수가 등급을 정하고,
+# 45 미만이면 F 라 «경고 리포» 가 된다(`dashboard.py:_REPORT_WARNING_GRADES`).
+DELTA_REPO_SCORES = {
+    "mixed": {"up": (20, 40), "down": (60, 30), "flat": (35, 35)},
+    "up": {"even": (50, 50)},
+    "down": {},
+}
+# {사용자: (이전 창 비용, 현재 창 비용)} — 셋 다 이전 창이 **비면 안 된다**(비면 delta 가
+# None 이 되어 바깥 else 로 가고 elif 팔은 아예 평가되지 않는다).
+DELTA_COSTS = {"mixed": (0.5, 0.5), "up": (0.5, 2.0), "down": (2.0, 0.5)}
+
+
+def delta_repo_name(kind: str, suffix: str) -> str:
+    return f"owner/e2edelta-{kind}-{suffix}"
+
+
+def expected_score_delta(kind: str, suffix: str) -> float:
+    prev, cur = DELTA_REPO_SCORES[kind][suffix]
+    return round(float(cur) - float(prev), 1)
+
+
+def expected_avg_delta(kind: str) -> float | None:
+    """그 사용자의 전역 평균 점수 delta — 분석 «건별» 평균이다(리포별 평균의 평균이 아니다)."""
+    pairs = list(DELTA_REPO_SCORES[kind].values())
+    if not pairs:
+        return None
+    cur = round(sum(c for _, c in pairs) / len(pairs), 1)
+    prev = round(sum(p for p, _ in pairs) / len(pairs), 1)
+    return round(cur - prev, 1)
+
+
+def expected_cost_delta(kind: str) -> float:
+    prev, cur = DELTA_COSTS[kind]
+    return round(cur - prev, 6)
+
+
+def _seed_delta_users(db_path: str) -> dict[str, int]:
+    """세 사용자 + 각자의 리포·분석·비용 행 → {이름: user_id}."""
+    from datetime import datetime, timedelta, timezone  # noqa: PLC0415
+
+    from sqlalchemy import create_engine, text  # noqa: PLC0415
+    from sqlalchemy.orm import sessionmaker  # noqa: PLC0415
+
+    from src.models.analysis import Analysis  # noqa: PLC0415
+    from src.models.claude_api_call import ClaudeApiCall  # noqa: PLC0415
+    from src.models.repository import Repository  # noqa: PLC0415
+    from src.scorer.calculator import calculate_grade  # noqa: PLC0415
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    cur_at, prev_at = now - timedelta(days=5), now - timedelta(days=45)
+    engine = create_engine(f"sqlite:///{db_path}")
+    session = sessionmaker(bind=engine)()
+    try:
+        for kind, uid in DELTA_USERS.items():
+            session.execute(text(
+                "INSERT OR IGNORE INTO users (id, github_id, github_login,"
+                " github_access_token, email, display_name, created_at)"
+                " VALUES (:id, :gid, :login, :tok, :mail, :name, datetime('now'))"
+            ), {"id": uid, "gid": uid, "login": f"e2e-delta-{kind}",
+                "tok": f"gho_e2e_delta_{kind}", "mail": f"delta-{kind}@test.com",
+                "name": f"E2E delta {kind}"})
+            for suffix, (prev_score, cur_score) in DELTA_REPO_SCORES[kind].items():
+                name = delta_repo_name(kind, suffix)
+                repo = session.query(Repository).filter_by(full_name=name).first()
+                if repo is None:
+                    repo = Repository(full_name=name, user_id=uid)
+                    session.add(repo)
+                    session.flush()
+                for tag, score, at in (("prev", prev_score, prev_at),
+                                       ("cur", cur_score, cur_at)):
+                    sha = f"delta-{kind}-{suffix}-{tag}"
+                    if session.query(Analysis).filter_by(commit_sha=sha).first() is None:
+                        session.add(Analysis(
+                            repo_id=repo.id, commit_sha=sha,
+                            commit_message=f"e2e delta {kind}/{suffix} {tag}",
+                            score=score, grade=calculate_grade(score),
+                            result={"summary": f"e2e delta {tag}", "issues": []},
+                            author_login="e2e-tester", score_unreliable=False,
+                            created_at=at))
+            prev_cost, cur_cost = DELTA_COSTS[kind]
+            for tag, cost, at in (("prev", prev_cost, prev_at), ("cur", cur_cost, cur_at)):
+                marker = f"e2e-delta-{kind}-{tag}"
+                if session.query(ClaudeApiCall).filter_by(error_type=marker).first() is None:
+                    # 🔴 `repo_id` 를 비운다 — NULL 소유 리포에 달면 모든 사용자에게 샌다.
+                    session.add(ClaudeApiCall(
+                        created_at=at, model="claude-haiku-4-5-20251001", status="success",
+                        input_tokens=1, output_tokens=1, cost_usd=cost, duration_ms=1.0,
+                        repo_id=None, user_id=uid, error_type=marker))
+        session.commit()
+        for kind, uid in DELTA_USERS.items():
+            owned = session.query(Repository).filter_by(user_id=uid).count()
+            assert owned == len(DELTA_REPO_SCORES[kind]), (
+                f"{kind}: 리포 {owned}개 (기대 {len(DELTA_REPO_SCORES[kind])}) — "
+                "시드가 어긋나면 부호가 바뀐다")
+        legacy = session.query(ClaudeApiCall).join(
+            Repository, ClaudeApiCall.repo_id == Repository.id).filter(
+            Repository.user_id.is_(None)).count()
+        assert legacy == 0, (
+            f"소유자 없는 리포에 비용 행이 {legacy}건 — 그 비용은 **모든** 사용자의 "
+            "monthly_cost 에 들어가 이 시험의 부호를 무너뜨린다")
+    finally:
+        session.close()
+        engine.dispose()
+    return dict(DELTA_USERS)
+
+
+@pytest.fixture(scope="session")
+def delta_users(live_server):
+    """delta 팔(+ · − · 정확히 0)을 여는 전용 사용자 세 명 → {이름: user_id}."""
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    return _seed_delta_users(db_path)
+
+
 @pytest.fixture(scope="session")
 def empty_user(live_server):
     """리포가 없는 사용자 — `?mode=insight` 가 `no_data` 로 간다."""
