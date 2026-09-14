@@ -1668,3 +1668,80 @@ def calibration_feedback(live_server, graded_analyses, empty_user):
     """점수 정합도 표의 «값이 있는 구간» 과 «빈 구간» 을 동시에 만든다."""
     db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
     return _seed_calibration_feedback(db_path, graded_analyses)
+
+
+# ── 설정 화면의 «켜진» 상태를 다 가진 리포 (#1639 · settings 묶음) ────────────
+#
+# 🔴 리포가 **둘** 필요하다(Grok `01a09e76`). AI 리뷰를 끄면 CSS 가
+#    `.ai-review-group:has(input[name="ai_review_enabled"]:not(:checked))` 로
+#    `.ai-review-dependent` 와 `.ai-review-model` 을 `display:none` 한다 — 한 리포에서
+#    「AI 리뷰 끔」과 「PR 코멘트·모델 선택이 보임」을 동시에 잴 수 없다.
+# 🔴 **새 사용자**를 쓴다. delta 사용자에 리포를 더하면 `_seed_delta_users` 의 바닥 단언
+#    (`owned == len(DELTA_REPO_SCORES[kind])`)이 red 가 된다 — 그 단언이 제 일을 한 것이다.
+# 🔴 대조군도 **그 사용자가 볼 수 있는** 리포여야 한다. `get_accessible_repo` 는 남의
+#    리포에 404 를 준다(`src/ui/_helpers.py`) — 그래서 «끈» 리포가 대조군을 겸한다.
+CONFIG_USER_ID = 9104
+CONFIG_REPO_ON = "owner/e2econf-on"
+CONFIG_REPO_OFF = "owner/e2econf-off"
+CONFIG_MODEL_ID = "claude-haiku-4-5-20251001"   # `src.constants.CLAUDE_MODELS` 의 실재 id
+CONFIG_ON_VALUES = {
+    "ai_review_enabled": True,      # 켜야 그 아래 두 필드가 화면에 그려진다
+    "pr_review_comment": False,     # 기본이 True — 꺼야 «미체크» 팔이 열린다
+    "create_issue": True,           # 기본이 False — 켜야 «체크» 팔이 열린다
+    "review_model": CONFIG_MODEL_ID,
+    "discord_webhook_url": "https://discord.example.invalid/e2e",
+    "slack_webhook_url": "https://slack.example.invalid/e2e",
+    "email_recipients": "e2e@test.invalid",
+    "custom_webhook_url": "https://custom.example.invalid/e2e",
+    "n8n_webhook_url": "https://n8n.example.invalid/e2e",
+    "railway_api_token": "e2e-not-a-real-token",   # 렌더는 `bool(...)` 만 본다
+}
+
+
+def _seed_configured_repos(db_path: str) -> dict[str, str]:
+    """설정이 «다 켜진» 리포와 «AI 리뷰만 끈» 리포 → {이름: full_name}."""
+    from sqlalchemy import create_engine, text  # noqa: PLC0415
+    from sqlalchemy.orm import sessionmaker  # noqa: PLC0415
+
+    from src.models.repo_config import RepoConfig  # noqa: PLC0415
+    from src.models.repository import Repository  # noqa: PLC0415
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    session = sessionmaker(bind=engine)()
+    try:
+        session.execute(text(
+            "INSERT OR IGNORE INTO users (id, github_id, github_login,"
+            " github_access_token, email, display_name, created_at)"
+            " VALUES (:id, :gid, :login, :tok, :mail, :name, datetime('now'))"
+        ), {"id": CONFIG_USER_ID, "gid": CONFIG_USER_ID, "login": "e2e-config",
+            "tok": "gho_e2e_config", "mail": "config@test.com", "name": "E2E Config"})
+        for full_name, values in ((CONFIG_REPO_ON, CONFIG_ON_VALUES),
+                                  (CONFIG_REPO_OFF, {"ai_review_enabled": False})):
+            if session.query(Repository).filter_by(full_name=full_name).first() is None:
+                session.add(Repository(full_name=full_name, user_id=CONFIG_USER_ID))
+            cfg = session.query(RepoConfig).filter_by(repo_full_name=full_name).first()
+            if cfg is None:
+                cfg = RepoConfig(repo_full_name=full_name)
+                session.add(cfg)
+            for k, v in values.items():
+                setattr(cfg, k, v)
+        session.commit()
+        # 🔴 되읽어 확인한다 — 컬럼 이름이 바뀌면 `setattr` 은 조용히 새 속성을 만든다.
+        for full_name, values in ((CONFIG_REPO_ON, CONFIG_ON_VALUES),
+                                  (CONFIG_REPO_OFF, {"ai_review_enabled": False})):
+            cfg = session.query(RepoConfig).filter_by(repo_full_name=full_name).first()
+            assert cfg is not None, f"{full_name} 설정을 되읽지 못했다"
+            wrong = {k: (getattr(cfg, k, "<없음>"), v) for k, v in values.items()
+                     if getattr(cfg, k, "<없음>") != v}
+            assert not wrong, f"{full_name} 시드가 되읽히지 않는다 {wrong}"
+    finally:
+        session.close()
+        engine.dispose()
+    return {"on": CONFIG_REPO_ON, "off": CONFIG_REPO_OFF}
+
+
+@pytest.fixture(scope="session")
+def configured_repos(live_server):
+    """설정 화면의 «켜진» 상태를 다 가진 리포 + AI 리뷰만 끈 리포."""
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    return _seed_configured_repos(db_path)
