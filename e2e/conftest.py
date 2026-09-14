@@ -205,6 +205,15 @@ def live_server(tmp_path_factory):
 
     # 서버가 200을 반환할 때까지 대기 (최대 30초)
     # Wait until the server returns 200 (up to 30 seconds).
+    # 🔴 «누가» 200 을 주는지 확인한다. 포트가 고정(E2E_PORT)이라 **다른 e2e 세션이
+    #    이미 그 포트를 쥐고 있으면** 우리 uvicorn 은 bind 에 실패해 스레드가 죽는데,
+    #    `/health` 는 **그쪽 서버**가 200 을 준다. 그러면 우리 DB·픽스처는 아무도 안
+    #    열어본 채로, 남의 프로세스 앱을 재게 된다.
+    #    실측(2026-09-14): 그 상태에서 시험은 **엉뚱한 red** 를 냈고 — 이 하네스는 대부분
+    #    in-process 패치(설정·의존성 override)에 기대므로 충돌하면 대개 red 다 — 원인을
+    #    찾는 데 네 번의 실행이 들었다. 「조용한 초록」은 재현하지 못했지만, in-process
+    #    상태에 기대지 않는 시험은 남의 앱을 상대로 통과할 수 있다.
+    #    `uvicorn.Server.started` 는 **우리가** 바인드에 성공했을 때만 True 다.
     ready = False
     # 🔴 마지막 실패 이유를 남긴다 — 없으면 "응답하지 않았다" 만 알고 **왜인지는 모른다**
     # (연결 거부인지 500 인지 타임아웃인지). R58 이 skip 을 실패로 바꾼 목적은 실패를
@@ -212,9 +221,20 @@ def live_server(tmp_path_factory):
     # Keep the last failure so the error can say *why* the server never came up.
     last_error: str = "(시도 기록 없음)"
     for _ in range(60):
+        if not thread.is_alive() and not server.started:
+            raise RuntimeError(
+                f"e2e 서버 스레드가 떴다가 죽었다 — {BASE_URL} 포트를 이미 다른 "
+                "프로세스가 쥐고 있는지 볼 것(다른 e2e 세션이 동시에 돌고 있으면 그 "
+                "서버가 /health 에 200 을 주고, 우리는 **그쪽** 앱을 재게 된다)")
         try:
             r = requests.get(f"{BASE_URL}/health", timeout=1)
             if r.status_code == 200:
+                if not server.started:
+                    raise RuntimeError(
+                        f"{BASE_URL} 이 200 을 주는데 **우리 서버가 아니다** "
+                        "(`Server.started` 가 False). 다른 e2e 세션이 같은 포트를 쥐고 "
+                        "있다 — 그대로 두면 그쪽 DB·픽스처를 재게 된다. "
+                        "먼저 돌던 세션이 끝난 뒤 다시 실행할 것.")
                 ready = True
                 break
             last_error = f"HTTP {r.status_code}"
@@ -1068,6 +1088,39 @@ def insight_key_window():
             os.environ.pop("ANTHROPIC_BASE_URL", None)
         else:
             os.environ["ANTHROPIC_BASE_URL"] = prev_base
+
+
+@contextlib.contextmanager
+def rls_catalog_double(*, force: bool = True, bypasses: bool = True):
+    """PG 카탈로그 실측 두 개를 **이 창 동안만** True 로 — «FORCE 는 걸렸는데 접속 role 이
+    RLS 를 우회한다» 상태(Phase 3~4 사이의 거짓 안심 창)를 화면으로 띄운다.
+
+    🔴 이것은 «앱이 못 내는 상태를 심는 것» 이 아니다. 그 상태는 **실 PostgreSQL 에서
+       실재**하고 `tests/unit/migrations/test_0020_round_trip.py::
+       test_migration_0041_force_round_trip_postgres` 가 pg 잡에서 두 값이 True 임을
+       이미 실측한다. e2e 가 못 여는 이유는 SQLite 라 두 함수가 **카탈로그를 지어내지 않고
+       False 를 돌려주기** 때문 — 방언 격차다. 그래서 «카탈로그 대역»(catalog double)이지
+       상태 위조가 아니다(판단 근거: Grok `01a09d28`).
+    🔴 반대로, 쓰기 경로가 **절대 만들지 않는** 모양(예: 신선한 insight 오류 캐시 행)은
+       심지 않는다. 그 구분이 이 창을 허용하는 이유다.
+    ⚠️ 앱 전역 상태다 — 순차 실행 전제(이 스위트가 그렇다).
+    """
+    from src.services import saas_service  # noqa: PLC0415
+
+    names = ("_measure_force_applied", "_measure_connection_bypasses_rls")
+    saved = {n: getattr(saas_service, n) for n in names}
+    # 🔴 두 값을 **따로** 준다 — 네 조합이 다 필요하다. `force=True, bypasses=False` 는
+    #    건강한 Phase 4(그래야 `:37` 의 «거짓» 팔에 도달한다)이고,
+    #    `force=False, bypasses=True` 는 두 경고가 **배타** 임을 재는 유일한 조합이다
+    #    (그 조합을 안 보면 `elif` 를 형제 `if` 로 바꿔도 아무 시험이 안 깨진다 —
+    #    Grok `01a09d62`).
+    setattr(saas_service, names[0], lambda _db: force)
+    setattr(saas_service, names[1], lambda _db: bypasses)
+    try:
+        yield
+    finally:
+        for n, fn in saved.items():
+            setattr(saas_service, n, fn)
 
 
 @contextlib.contextmanager
