@@ -3610,3 +3610,181 @@ def test_token_text_meets_aa_on_rls_bypass_warning(admin_page, base_url, theme):
             saas_service._measure_connection_bypasses_rls) == before, (
         f"[{theme}] 카탈로그 대역이 창 밖으로 샜다 — 뒤 시험들이 «PG 인 척하는» 앱을 "
         "재게 된다")
+
+# ── E-15. 쿼리 파라미터만으로 열리는 팔 (#1639 · 부류 A) ────────────────────
+#
+# 남은 «한쪽 팔만 미관측» 을 부류로 나눴을 때, **시드가 전혀 필요 없는** 여덟 개가 나왔다.
+# 여섯은 설정 화면의 PRG(post-redirect-get) 배너 플래그이고 둘은 대시보드 기간 탭이다.
+#
+# 🔴 그래도 «URL 만으로» 는 아니었다(Grok `01a09e4e` 가 내 계획을 BROKEN 으로 깎았다):
+#   ① 여섯 배너는 `.s-card.adv-only` 안이라 **간단 모드에서 `display:none`** 이다.
+#   ② 게다가 닫힌 `<details class="setup-actions">` 안이라 브라우저가 안 그린다.
+#   → 이 파일의 다른 설정 스윕과 **같은 관용구**로 연다(고급 모드 + details 열기).
+# 🔴 세 문구는 `| safe` 라 `<strong>` 을 품는다 — 원문 그대로 innerText 와 비교하면
+#    **거짓 red** 가 난다. 태그를 벗겨 비교한다.
+
+
+_SETTINGS_FLAG_KEY = {
+    "webhook_ok": "settings_page.inbound.webhook_ok",
+    "webhook_partial": "settings_page.inbound.webhook_partial",
+    "webhook_fail": "settings_page.inbound.webhook_fail",
+    "hook_ok": "settings_page.inbound.hook_ok",
+    "hook_fail": "settings_page.inbound.hook_fail",
+}
+_STALE_FORM_KEY = "errors.stale_unclaimed_form"
+
+_HOOK_ALERT_JS = r"""() => [...document.querySelectorAll('.hook-alert')]
+    .filter(el => el.checkVisibility({opacityProperty: true, visibilityProperty: true}))
+    .map(el => el.innerText.trim())"""
+
+
+def _strip_tags(text: str) -> str:
+    import re  # noqa: PLC0415
+
+    return re.sub(r"<[^>]+>", "", text).strip()
+
+
+def _settings_flag_texts(page):
+    from src.i18n.loader import get_text  # noqa: PLC0415
+
+    locale = page.evaluate("() => document.documentElement.lang") or "ko"
+    out = {k: _strip_tags(get_text(key, locale))
+           for k, key in _SETTINGS_FLAG_KEY.items()}
+    assert all(out.values()), f"정본 문구를 못 뽑았다 {out} — 로케일 {locale!r}"
+    assert len(set(out.values())) == len(out), f"정본 문구가 겹친다 {out}"
+    return out
+
+
+def _flag_banner_failures(alerts, want, texts) -> list[str]:
+    r"""그 플래그의 배너 «만» 떴는가.
+
+    claimed = {그 플래그의 정본 문구가 보이는 `.hook-alert` 안에 · 다른 플래그의 문구는 없음}
+    cheap   = {설정 화면이 200 으로 떴다 · 배너가 하나 있다 · 고급 모드를 켰다}
+    - claimed\cheap(반드시 잡혀야) = **그 플래그의** 문구.
+    - cheap\claimed(반드시 무시돼야) = 배너의 존재 · 화면이 떴다.
+    파라미터를 하나씩만 붙이므로 다섯이 서로의 대조군이다.
+    """
+    joined = "\n".join(alerts)
+    bad: list[str] = []
+    if texts[want] not in joined:
+        bad.append(f"{want} 배너가 없다 (본 배너 {len(alerts)}개: {alerts[:2]})")
+    others = [k for k in _SETTINGS_FLAG_KEY if k != want and texts[k] in joined]
+    if others:
+        bad.append(f"다른 플래그의 배너가 함께 떴다 {others} — 파라미터는 하나만 붙였다")
+    return bad
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_token_text_meets_aa_on_settings_prg_banners(
+        seeded_page, base_url, gated_settings_repo, theme):
+    """🔴 설정 화면의 PRG 배너 다섯 + 낡은 폼 경고의 글자가 AA 를 넘는가."""
+    from urllib.parse import quote  # noqa: PLC0415
+
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    repo = quote(gated_settings_repo, safe="")
+
+    def visit(query):
+        seeded_page.goto(f"{base_url}/repos/{repo}/settings?{query}")
+        assert "localhost" in seeded_page.url, (
+            f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
+        apply_theme(seeded_page, theme)
+        # 🔴 배너는 `.adv-only` + 닫힌 `<details>` 안이다 — 이 파일의 다른 설정 스윕과
+        #    같은 관용구로 연다(사용자가 고급 모드를 켜고 접힘을 펴는 것과 같다).
+        seeded_page.evaluate(
+            "() => { document.body.setAttribute('data-settings-mode', 'advanced');"
+            " document.querySelectorAll('details').forEach(d => d.open = true); }")
+        seeded_page.add_style_tag(
+            content="*,*::before,*::after{transition:none !important}")
+        seeded_page.wait_for_timeout(200)
+        _reveal_all(seeded_page)
+
+    def measure(where):
+        _reveal_all(seeded_page)
+        total, bad = 0, []
+        for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+                          (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
+            res = seeded_page.evaluate(js)
+            assert not res.get("error"), res.get("error")
+            total += sum(res["seen"][n] for n in names)
+            bad += res["bad"]
+        assert total > 0, (
+            f"[{theme}] {where} 에서 토큰 글자를 하나도 찾지 못했다 — "
+            "재지 못한 것이지 통과한 것이 아니다")
+        assert not bad, (
+            f"[{theme}] {where} 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
+            + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
+                          for b in bad[:10]))
+
+    texts = None
+    for flag in sorted(_SETTINGS_FLAG_KEY):
+        visit(f"{flag}=1")
+        texts = texts or _settings_flag_texts(seeded_page)
+        missing = _flag_banner_failures(
+            seeded_page.evaluate(_HOOK_ALERT_JS), flag, texts)
+        assert not missing, f"[{theme}] {flag}:\n  " + "\n  ".join(missing)
+        measure(f"settings/{flag}")
+
+    # 낡은 폼 경고 — `.adv-only` 밖이라 모드와 무관하다.
+    from src.i18n.loader import get_text  # noqa: PLC0415
+
+    visit("stale_form=1")
+    locale = seeded_page.evaluate("() => document.documentElement.lang") or "ko"
+    stale = _strip_tags(get_text(_STALE_FORM_KEY, locale))
+    shown = seeded_page.evaluate("""() => {
+        const el = document.getElementById('staleFormBanner');
+        return el && el.checkVisibility({opacityProperty: true, visibilityProperty: true})
+            ? el.innerText.trim() : null;
+    }""")
+    assert shown and stale in shown, (
+        f"[{theme}] 낡은 폼 경고가 없다 {str(shown)[:70]!r}")
+    measure("settings/stale_form")
+
+    # 🔴 반드시 «무시돼야» 하는 쪽 — 파라미터가 없으면 배너도 경고도 없다.
+    visit("")
+    control = seeded_page.evaluate(_HOOK_ALERT_JS)
+    for flag in _SETTINGS_FLAG_KEY:
+        assert _flag_banner_failures(control, flag, texts), (
+            f"[{theme}] 파라미터 없이도 {flag} 배너가 «떴다» 고 판정됐다 — "
+            "계기가 「설정 화면이 뜨면 초록」으로 무너져 있다")
+    assert not seeded_page.evaluate(
+        "() => !!document.getElementById('staleFormBanner')"), (
+        f"[{theme}] 파라미터 없이 낡은 폼 경고가 남았다")
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_token_text_meets_aa_on_dashboard_range_tabs(seeded_page, base_url, theme):
+    """🔴 기간 탭(1d·90d)이 «선택됨» 일 때의 글자가 AA 를 넘는가."""
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    for days in (1, 90):
+        seeded_page.goto(f"{base_url}/dashboard?mode=overview&days={days}")
+        assert "localhost" in seeded_page.url, (
+            f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
+        apply_theme(seeded_page, theme)
+        seeded_page.add_style_tag(
+            content="*,*::before,*::after{transition:none !important}")
+        seeded_page.wait_for_timeout(200)
+        _reveal_all(seeded_page)
+
+        # 🔴 «어딘가 active 가 있다» 가 아니라 **기간 토글 안에서 그 탭만** active 여야
+        #    한다. `a[href*="days="]` 로 넓게 잡으면 **모드 탭**까지 걸린다 — 그 href 에도
+        #    `days=` 가 들어가고 현재 모드는 늘 active 다(실측: 1d 인데 active 가 2개).
+        active = seeded_page.evaluate(
+            """() => [...document.querySelectorAll('.dash-range-toggle a')]
+            .filter(a => a.classList.contains('active'))
+            .map(a => new URL(a.href, location.origin).searchParams.get('days'))""")
+        assert active == [str(days)], (
+            f"[{theme}] days={days} 인데 active 탭이 {active} — 정확히 그 하나여야 한다")
+
+        total, bad = 0, []
+        for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+                          (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
+            res = seeded_page.evaluate(js)
+            assert not res.get("error"), res.get("error")
+            total += sum(res["seen"][n] for n in names)
+            bad += res["bad"]
+        assert total > 0, (
+            f"[{theme}] days={days} 화면에서 토큰 글자를 하나도 찾지 못했다")
+        assert not bad, (
+            f"[{theme}] days={days} 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
+            + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
+                          for b in bad[:10]))
