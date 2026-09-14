@@ -3579,6 +3579,22 @@ def test_token_text_meets_aa_on_rls_bypass_warning(admin_page, base_url, theme):
             f"[{theme}] FORCE 미설정 + 우회 상태:\n  " + "\n  ".join(missing)
             + "\n  (두 경고는 배타여야 한다 — 앞 갈래가 잡으면 뒤 elif 는 안 그린다)")
 
+    # ④ 정책이 «빠진» 테이블이 한 줄 — 요약의 미적용 뱃지와 그 행의 «미적용» 뱃지.
+    #    운영 상수로는 안 나오지만 템플릿이 표시하려고 쓴 상태다(단위 렌더 시험이 먹인다).
+    with rls_catalog_double(matrix_missing=True):
+        visit()
+        res = admin_page.evaluate("""() => ({
+            danger: [...document.querySelectorAll('.badge--danger')]
+                .filter(el => el.checkVisibility(
+                    {opacityProperty: true, visibilityProperty: true}))
+                .map(el => el.innerText.trim()),
+            rows: document.querySelectorAll('tbody tr').length,
+        })""")
+        assert len(res["danger"]) == 2, (
+            f"[{theme}] 위험 뱃지가 {res['danger']} — 요약의 «미적용 N건» 하나와 그 행의 "
+            "«미적용» 하나, 정확히 둘이어야 한다(대역이 한 줄만 바꾼다)")
+        assert res["rows"] >= 13, f"[{theme}] 매트릭스 행이 {res['rows']}개 — 13 이상이어야"
+
     # 🔴 반드시 «무시돼야» 하는 쪽 — 창 밖에서는 정확히 반대 카드가 떠야 한다.
     visit()
     control = admin_page.evaluate(_RLS_CARD_JS)
@@ -3587,6 +3603,9 @@ def test_token_text_meets_aa_on_rls_bypass_warning(admin_page, base_url, theme):
     assert _rls_card_failures(control, "bypass", texts), (
         f"[{theme}] 창 밖인데 우회 경고를 «그렸다» 고 판정됐다 — "
         "계기가 「카드가 있으면 초록」으로 무너져 있다")
+    assert not admin_page.evaluate(
+        "() => [...document.querySelectorAll('.badge--danger')].length"), (
+        f"[{theme}] 창 밖인데 위험 뱃지가 남았다 — 매트릭스 대역이 안 풀렸다")
     assert (saas_service._measure_force_applied,
             saas_service._measure_connection_bypasses_rls) == before, (
         f"[{theme}] 카탈로그 대역이 창 밖으로 샜다 — 뒤 시험들이 «PG 인 척하는» 앱을 "
