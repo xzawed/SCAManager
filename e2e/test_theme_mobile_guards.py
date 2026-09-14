@@ -18,6 +18,7 @@ import os
 import pytest
 
 from e2e.conftest import (CONFIG_MODEL_ID, CONFIG_USER_ID, DELTA_DAYS,
+                          EMPTY_USER_ID, NOANALYSIS_USER_ID,
                           DELTA_REPO_SCORES, DELTA_SUGGESTION_COUNTS,
                           DELTA_USERS,
                           INSIGHT_LANGUAGE, VARIANT_BREAKDOWN, VARIANT_FEEDBACKS,
@@ -3934,3 +3935,159 @@ def test_token_text_meets_aa_on_configured_settings(
              "dots_on": False})
         assert not missing, f"[{theme}] 끈 설정:\n  " + "\n  ".join(missing)
         measure("settings/configured-off")
+
+# ── E-17. «데이터가 없는» 대시보드 화면들 (#1639 · dashboard 묶음) ───────────
+#
+# 사용량 모드의 빈 상태(`:867`)와 지표 «없음» 둘(`:889`·`:909`), 리포 모드의 요약 셋
+# (`:504` 평균 없음 · `:514` 경고 0 · `:554` 경고 리포 없음).
+#
+# 🔴 사용자 **둘**이 필요하다(Grok `01a09ea7`). `repo_count == 0` 이면 빈 상태 화면이
+#    먼저 잡아 그 아래 지표 블록이 **아예 안 그려진다** — 「리포는 있고 분석은 없는」
+#    사용자라야 `last_analysis_at`·`avg_score` 의 «없음» 팔에 닿는다.
+# 🔴 `:525`(`total_repos > 0` 의 거짓 팔)는 **이 스위트에서 열 수 없다** — 리포 목록은
+#    `user_id == me OR IS NULL` 이라 `owner/unclaimedrepo` 가 늘 보이고, 그 픽스처는
+#    세션 공유 DB 에 남는다. 죽은 코드는 아니다(리포가 정말 0 인 배포에서는 나온다).
+
+
+# 🔴 `:909` 는 **라벨이 아니라 값**만 바뀐다 — 평균 라벨은 늘 그려지고 값이 점수 또는
+#    `-` 다. 「라벨이 없어야 한다」로 적었다가 틀렸다(실측). 반면 `:889`(마지막 분석)는
+#    지표 «행 전체» 가 조건 안이라 라벨째 사라진다. 둘을 다르게 재야 한다.
+_USAGE_METRIC_JS = r"""(args) => {
+    const vis = el => el.checkVisibility(
+        {opacityProperty: true, visibilityProperty: true});
+    const seen = [...document.querySelectorAll('.dash-insight-metric-label')]
+        .filter(vis).map(el => el.innerText.trim());
+    const avgCard = [...document.querySelectorAll('.dash-insight-card')].filter(vis)
+        .find(c => (c.querySelector('.dash-insight-title')?.innerText || '')
+                     .includes(args.avgTitle));
+    return {
+        labels: seen,
+        status: [...document.querySelectorAll('.dash-insight-status')]
+            .filter(vis).map(el => el.innerText.trim()).join('\n'),
+        grid: [...document.querySelectorAll('.dash-insight-grid')].filter(vis).length,
+        avgValue: avgCard
+            ? (avgCard.querySelector('.dash-insight-metric-value')?.innerText || '').trim()
+            : null,
+        wanted: (args.labels || []).filter(l => seen.some(s => s.includes(l))),
+    };
+}"""
+
+_REPOS_SUMMARY_JS = r"""() => {
+    const vis = el => el.checkVisibility(
+        {opacityProperty: true, visibilityProperty: true});
+    const kpis = [...document.querySelectorAll('.repos-kpi-grid .kpi')].filter(vis)
+        .map(k => [(k.querySelector('.kpi__label')?.innerText || '').trim(),
+                   (k.querySelector('.t-num')?.innerText || '').trim()]);
+    return {
+        kpis,
+        warnings: [...document.querySelectorAll('.repos-warning-item')].filter(vis).length,
+        // 🔴 조건을 지우면 **빈 래퍼**가 그려진다 — 항목 «개수» 만 보면 못 잡는다(실측).
+        wrapper: document.querySelectorAll('.repos-warnings').length,
+    };
+}"""
+
+
+def _usage_texts(page):
+    from src.i18n.loader import get_text  # noqa: PLC0415
+
+    locale = page.evaluate("() => document.documentElement.lang") or "ko"
+    out = {"empty": get_text("dashboard.usage.empty_title", locale),
+           "last": get_text("dashboard.usage.last_analysis_label", locale),
+           "avg_title": get_text("dashboard.usage.avg_score_title", locale),
+           "total": get_text("dashboard.usage.total_analyses_label", locale)}
+    assert all(out.values()), f"정본 문구를 못 뽑았다 {out} — 로케일 {locale!r}"
+    return out
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_token_text_meets_aa_on_empty_usage_screens(
+        seeded_page, base_url, empty_user, analysis_free_repo, seeded_analysis, theme):
+    """🔴 «리포가 없다»·«분석이 없다» 화면의 글자가 AA 를 넘는가."""
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+
+    def visit(mode):
+        seeded_page.goto(f"{base_url}/dashboard?mode={mode}")
+        assert "localhost" in seeded_page.url, (
+            f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
+        apply_theme(seeded_page, theme)
+        seeded_page.add_style_tag(
+            content="*,*::before,*::after{transition:none !important}")
+        seeded_page.wait_for_timeout(200)
+        _reveal_all(seeded_page)
+
+    def measure(where):
+        _reveal_all(seeded_page)
+        total, bad = 0, []
+        for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+                          (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
+            res = seeded_page.evaluate(js)
+            assert not res.get("error"), res.get("error")
+            total += sum(res["seen"][n] for n in names)
+            bad += res["bad"]
+        assert total > 0, (
+            f"[{theme}] {where} 에서 토큰 글자를 하나도 찾지 못했다 — "
+            "재지 못한 것이지 통과한 것이 아니다")
+        assert not bad, (
+            f"[{theme}] {where} 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
+            + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
+                          for b in bad[:10]))
+
+    # ① 리포가 하나도 없는 사용자 — 사용량 «빈 상태» 와 리포 요약의 «없음» 셋.
+    with acting_as(EMPTY_USER_ID, login="e2e-empty"):
+        visit("usage")
+        texts = _usage_texts(seeded_page)
+        res = seeded_page.evaluate(
+            _USAGE_METRIC_JS, {"labels": [texts["total"]], "avgTitle": texts["avg_title"]})
+        assert texts["empty"] in res["status"], (
+            f"[{theme}] 사용량 빈 상태 문구가 없다 {res['status'][:70]!r}")
+        assert not res["grid"], (
+            f"[{theme}] 리포가 0인데 지표 그리드가 떴다 — `:867` 이 안 잡혔다")
+        measure("usage/empty")
+
+        visit("repos")
+        summary = seeded_page.evaluate(_REPOS_SUMMARY_JS)
+        nums = [v for _, v in summary["kpis"]]
+        assert "—" in nums, (
+            f"[{theme}] 평균 점수가 «—» 가 아니다 {summary['kpis']} — 분석이 없으면 "
+            "`:504` 의 거짓 팔이다")
+        assert "0" in nums, (
+            f"[{theme}] 경고 리포 수가 0 이 아니다 {summary['kpis']} — `:514` 거짓 팔")
+        assert summary["warnings"] == 0, (
+            f"[{theme}] 경고 리포 항목이 {summary['warnings']}개 — `:554` 거짓 팔")
+        assert summary["wrapper"] == 0, (
+            f"[{theme}] 경고 리포가 없는데 `.repos-warnings` 래퍼가 "
+            f"{summary['wrapper']}개 그려졌다 — `:554` 의 조건이 도는지는 «항목 개수» 가 "
+            "아니라 래퍼의 유무로 갈린다(조건을 지우면 빈 래퍼가 남는다)")
+        measure("repos/empty")
+
+    # ② 리포는 있고 분석은 없는 사용자 — 지표 그리드는 뜨되 «마지막 분석»·«평균» 은 없다.
+    with acting_as(NOANALYSIS_USER_ID, login="e2e-noanalysis"):
+        visit("usage")
+        res = seeded_page.evaluate(
+            _USAGE_METRIC_JS,
+            {"labels": [texts["last"], texts["total"]], "avgTitle": texts["avg_title"]})
+        assert res["grid"], (
+            f"[{theme}] 리포가 1인데 지표 그리드가 없다 — 빈 상태로 갔다 "
+            f"{res['status'][:60]!r}")
+        assert texts["total"] in " ".join(res["labels"]), (
+            f"[{theme}] «누적 분석» 지표가 없다 {res['labels']} — 그리드가 반쯤 그려졌다")
+        assert not any(texts["last"] in s for s in res["labels"]), (
+            f"[{theme}] 분석이 없는데 «마지막 분석» 지표 행이 떴다 {res['labels']} — "
+            "`:889` 의 거짓 팔이 안 열렸다(그 행은 조건 «안» 에 통째로 있다)")
+        assert res["avgValue"] == "-", (
+            f"[{theme}] 평균 점수 값이 {res['avgValue']!r} — 분석이 없으면 `-` 여야 한다"
+            " (`:909` 의 거짓 팔. 이 팔은 라벨이 아니라 **값** 만 바꾼다)")
+        measure("usage/no-analysis")
+
+    # 🔴 반드시 «무시돼야» 하는 쪽 — 데이터가 있는 사용자에게는 그 지표가 있다.
+    #    `seeded_analysis` 를 **명시로 받는다** — 안 받으면 `-k` 로 거른 실행에서 사용자 1
+    #    에게도 분석이 없어 대조군이 무너진다(실측: 그 상태로 red 가 났다).
+    visit("usage")
+    res = seeded_page.evaluate(
+        _USAGE_METRIC_JS, {"labels": [texts["last"]], "avgTitle": texts["avg_title"]})
+    assert res["wanted"], (
+        f"[{theme}] 데이터가 있는 사용자인데 «마지막 분석» 지표가 없다 "
+        f"{res['labels']} — 계기가 「그리드가 있으면 초록」으로 무너져 있다")
+    assert res["avgValue"] not in (None, "-"), (
+        f"[{theme}] 데이터가 있는 사용자인데 평균 값이 {res['avgValue']!r} — "
+        "`:909` 의 «참» 팔과 갈라지지 않는다")

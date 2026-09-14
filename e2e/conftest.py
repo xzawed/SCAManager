@@ -1379,7 +1379,14 @@ def delta_users(live_server):
 
 @pytest.fixture(scope="session")
 def empty_user(live_server):
-    """리포가 없는 사용자 — `?mode=insight` 가 `no_data` 로 간다."""
+    """리포가 없는 사용자 — `?mode=insight` 가 `no_data` 로 간다.
+
+    🔴 **이름만큼 비어 있지 않다.** 리포 «목록» 을 만드는 `find_all_by_user` 는
+       `user_id == me OR user_id IS NULL` 이라 이 사용자도 `owner/unclaimedrepo` 를
+       본다 — `?mode=repos` 의 `total_repos` 는 0 이 아니다. 「분석이 0건」인 것은
+       맞다(그것이 `no_data` 를 여는 조건이다). 사용량 모드의 `repo_count` 는
+       `Repository.user_id == me` **직접** 이라 0 이 맞다.
+    """
     db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
     return _seed_empty_user(db_path)
 
@@ -1745,3 +1752,58 @@ def configured_repos(live_server):
     """설정 화면의 «켜진» 상태를 다 가진 리포 + AI 리뷰만 끈 리포."""
     db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
     return _seed_configured_repos(db_path)
+
+
+# ── 리포는 있는데 분석이 하나도 없는 사용자 (#1639 · dashboard 사용량 모드) ──
+#
+# 🔴 `empty_user`(리포 0)로는 `usage.last_analysis_at` / `usage.avg_score` 의 «없음» 팔에
+#    **도달할 수 없다** — `{% if usage and usage.repo_count == 0 %}` 이 먼저 잡아 빈 상태
+#    화면으로 가고, 그 아래 지표 블록은 아예 안 그려진다(Grok `01a09ea7`).
+#    그래서 «리포는 있고 분석은 없는» 프로필이 따로 필요하다.
+# 🔴 `dashboard_usage` 는 `Repository.user_id == user_id` **직접** 이다(NULL 예외 없음) —
+#    그래서 이 사용자의 `repo_count` 는 정확히 1 이 된다.
+NOANALYSIS_USER_ID = 9105
+NOANALYSIS_REPO = "owner/e2enoanalysis"
+
+
+def _seed_analysis_free_repo(db_path: str) -> str:
+    """분석이 하나도 없는 리포를 가진 사용자 → 그 리포 full_name."""
+    from sqlalchemy import create_engine, text  # noqa: PLC0415
+    from sqlalchemy.orm import sessionmaker  # noqa: PLC0415
+
+    from src.models.analysis import Analysis  # noqa: PLC0415
+    from src.models.repository import Repository  # noqa: PLC0415
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    session = sessionmaker(bind=engine)()
+    try:
+        session.execute(text(
+            "INSERT OR IGNORE INTO users (id, github_id, github_login,"
+            " github_access_token, email, display_name, created_at)"
+            " VALUES (:id, :gid, :login, :tok, :mail, :name, datetime('now'))"
+        ), {"id": NOANALYSIS_USER_ID, "gid": NOANALYSIS_USER_ID,
+            "login": "e2e-noanalysis", "tok": "gho_e2e_noanalysis",
+            "mail": "noanalysis@test.com", "name": "E2E NoAnalysis"})
+        repo = session.query(Repository).filter_by(full_name=NOANALYSIS_REPO).first()
+        if repo is None:
+            repo = Repository(full_name=NOANALYSIS_REPO, user_id=NOANALYSIS_USER_ID)
+            session.add(repo)
+            session.flush()
+        session.commit()
+        owned = session.query(Repository).filter_by(user_id=NOANALYSIS_USER_ID).count()
+        assert owned == 1, f"리포가 {owned}개 — 정확히 하나여야 `repo_count == 0` 갈래를 지난다"
+        n = session.query(Analysis).filter_by(repo_id=repo.id).count()
+        assert n == 0, (
+            f"이 리포에 분석이 {n}건 있다 — «분석 없음» 팔을 열 수 없다. 다른 픽스처가 "
+            "이 리포에 분석을 심었는지 볼 것")
+    finally:
+        session.close()
+        engine.dispose()
+    return NOANALYSIS_REPO
+
+
+@pytest.fixture(scope="session")
+def analysis_free_repo(live_server):
+    """리포는 있고 분석은 없는 사용자 — 사용량 모드의 «지표 없음» 팔이 열린다."""
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    return _seed_analysis_free_repo(db_path)
