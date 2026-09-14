@@ -21,6 +21,7 @@ from e2e.conftest import (DELTA_DAYS, DELTA_REPO_SCORES, DELTA_SUGGESTION_COUNTS
                           DELTA_USERS,
                           INSIGHT_LANGUAGE, VARIANT_BREAKDOWN, VARIANT_FEEDBACKS,
                           acting_as, apply_theme, delta_repo_name,
+                          rls_catalog_double,
                           expected_avg_delta, expected_cost_delta,
                           expected_score_delta, insight_key_window)
 
@@ -3469,3 +3470,124 @@ def test_token_text_meets_aa_on_repo_insights_deltas(
                 f"[{theme}] {name} 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
                 + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
                               for b in bad[:10]))
+
+
+# ── E-14. RLS 감사의 «FORCE 는 걸렸는데 접속이 우회» 경고 (#1639 마지막 노드) ──
+#
+# `admin_rls_audit.html:37` 은 양쪽 팔 모두 미관측이었다. SQLite 에서는
+# `_measure_force_applied` 가 False 라 **앞 갈래(`{% if not summary.force_applied %}`)가
+# 늘 잡고**, 그 `elif` 는 평가조차 되지 않는다. 두 실측 함수를 이 시험 동안만 True 로
+# 돌려 그 화면을 띄운다 — 실 PG 에서 실재하는 상태이고(pg 잡의 0041 왕복 시험이 두 값을
+# 이미 실측한다) e2e 가 못 여는 이유는 방언 격차뿐이다.
+
+_RLS_CARD_KEY = {"bypass": "admin.rls_audit.bypass_warning_title",
+                 "force": "admin.rls_audit.force_warning_title"}
+
+_RLS_CARD_JS = r"""() => [...document.querySelectorAll('.admin-info-card')]
+    .filter(el => el.checkVisibility({opacityProperty: true, visibilityProperty: true}))
+    .map(el => el.innerText.trim())"""
+
+
+def _rls_texts(page):
+    from src.i18n.loader import get_text  # noqa: PLC0415
+
+    locale = page.evaluate("() => document.documentElement.lang") or "ko"
+    out = {k: get_text(key, locale) for k, key in _RLS_CARD_KEY.items()}
+    assert all(out.values()), f"정본 문구를 못 뽑았다 {out} — 로케일 {locale!r}"
+    assert out["bypass"] not in out["force"] and out["force"] not in out["bypass"], out
+    return out
+
+
+def _rls_card_failures(cards, want, texts) -> list[str]:
+    r"""그 경고 카드가 **그 갈래로** 떴는가.
+
+    claimed = {`want` 쪽 제목이 보이는 카드 안에 있고, 다른 쪽 제목은 **없다**}
+    cheap   = {`/admin/rls-audit` 가 200 으로 떴다 · 안내 카드가 하나 있다}
+    - claimed\cheap(반드시 잡혀야) = 그 갈래 **전용** 제목.
+    - cheap\claimed(반드시 무시돼야) = 카드의 존재 · 페이지가 떴다.
+    두 갈래가 배타라서 서로가 서로의 대조군이다 — 창 밖에서는 정확히 반대가 나와야 한다.
+    """
+    joined = "\n".join(cards)
+    other = next(k for k in _RLS_CARD_KEY if k != want)
+    bad: list[str] = []
+    if texts[want] not in joined:
+        bad.append(f"{want} 경고 카드가 없다 (본 카드 {len(cards)}개)")
+    if texts[other] in joined:
+        bad.append(f"{other} 경고가 함께 떴다 — 두 갈래는 배타여야 한다")
+    return bad
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_token_text_meets_aa_on_rls_bypass_warning(admin_page, base_url, theme):
+    """🔴 «FORCE 는 걸렸는데 접속이 RLS 를 우회» 경고 카드 글자가 AA 를 넘는가."""
+    from src.services import saas_service  # noqa: PLC0415
+
+    admin_page.set_viewport_size({"width": 1440, "height": 900})
+    # 🔴 창이 끝난 뒤 **둘 다** 제자리인지 신원으로 확인한다. 화면만 보면 `force` 복원만
+    #    증명된다 — `force` 가 거짓이면 앞 갈래가 잡아 `bypasses` 누수는 안 보인다
+    #    (Grok `01a09d62`).
+    before = (saas_service._measure_force_applied,
+              saas_service._measure_connection_bypasses_rls)
+
+    def visit():
+        admin_page.goto(f"{base_url}/admin/rls-audit")
+        assert "localhost" in admin_page.url, (
+            f"{admin_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
+        apply_theme(admin_page, theme)
+        admin_page.add_style_tag(
+            content="*,*::before,*::after{transition:none !important}")
+        admin_page.wait_for_timeout(200)
+        _reveal_all(admin_page)
+
+    with rls_catalog_double():
+        visit()
+        texts = _rls_texts(admin_page)
+        missing = _rls_card_failures(admin_page.evaluate(_RLS_CARD_JS), "bypass", texts)
+        assert not missing, f"[{theme}] 우회 경고:\n  " + "\n  ".join(missing)
+
+        total, bad = 0, []
+        for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+                          (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
+            res = admin_page.evaluate(js)
+            assert not res.get("error"), res.get("error")
+            total += sum(res["seen"][n] for n in names)
+            bad += res["bad"]
+        assert total > 0, (
+            f"[{theme}] 우회 경고 화면에서 토큰 글자를 하나도 찾지 못했다 — "
+            "재지 못한 것이지 통과한 것이 아니다")
+        assert not bad, (
+            f"[{theme}] 우회 경고 화면 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
+            + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
+                          for b in bad[:10]))
+
+    # ② FORCE 도 걸렸고 우회도 아닌 **건강한** 상태 — 경고가 **둘 다** 없어야 한다.
+    #    이것이 `:37` 의 «거짓» 팔이다(앞 갈래가 거짓이라 그 elif 가 평가된다).
+    with rls_catalog_double(bypasses=False):
+        visit()
+        cards = "\n".join(admin_page.evaluate(_RLS_CARD_JS))
+        stray = [k for k, v in texts.items() if v in cards]
+        assert not stray, (
+            f"[{theme}] 건강한 상태인데 경고가 떴다 {stray} — FORCE 가 걸렸고 접속도 "
+            "우회하지 않으면 두 카드 다 없어야 한다")
+
+    # ③ FORCE 는 안 걸렸는데 접속은 우회 — 두 경고가 **배타** 임을 재는 유일한 조합이다.
+    #    `elif` 가 형제 `if` 로 바뀌면 여기서 둘 다 떠서 red 가 된다.
+    with rls_catalog_double(force=False, bypasses=True):
+        visit()
+        missing = _rls_card_failures(admin_page.evaluate(_RLS_CARD_JS), "force", texts)
+        assert not missing, (
+            f"[{theme}] FORCE 미설정 + 우회 상태:\n  " + "\n  ".join(missing)
+            + "\n  (두 경고는 배타여야 한다 — 앞 갈래가 잡으면 뒤 elif 는 안 그린다)")
+
+    # 🔴 반드시 «무시돼야» 하는 쪽 — 창 밖에서는 정확히 반대 카드가 떠야 한다.
+    visit()
+    control = admin_page.evaluate(_RLS_CARD_JS)
+    assert not _rls_card_failures(control, "force", texts), (
+        f"[{theme}] 창 밖인데 FORCE 미설정 경고가 아니다 — 대역이 안 풀렸다(전역 상태 누수)")
+    assert _rls_card_failures(control, "bypass", texts), (
+        f"[{theme}] 창 밖인데 우회 경고를 «그렸다» 고 판정됐다 — "
+        "계기가 「카드가 있으면 초록」으로 무너져 있다")
+    assert (saas_service._measure_force_applied,
+            saas_service._measure_connection_bypasses_rls) == before, (
+        f"[{theme}] 카탈로그 대역이 창 밖으로 샜다 — 뒤 시험들이 «PG 인 척하는» 앱을 "
+        "재게 된다")
