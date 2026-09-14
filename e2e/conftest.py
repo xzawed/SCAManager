@@ -1091,7 +1091,8 @@ def insight_key_window():
 
 
 @contextlib.contextmanager
-def rls_catalog_double(*, force: bool = True, bypasses: bool = True):
+def rls_catalog_double(*, force: bool = True, bypasses: bool = True,
+                       matrix_missing: bool = False):
     """PG 카탈로그 실측 두 개를 **이 창 동안만** True 로 — «FORCE 는 걸렸는데 접속 role 이
     RLS 를 우회한다» 상태(Phase 3~4 사이의 거짓 안심 창)를 화면으로 띄운다.
 
@@ -1116,11 +1117,27 @@ def rls_catalog_double(*, force: bool = True, bypasses: bool = True):
     #    Grok `01a09d62`).
     setattr(saas_service, names[0], lambda _db: force)
     setattr(saas_service, names[1], lambda _db: bypasses)
+    # 🔴 `matrix_missing` = 정책이 «빠진» 테이블이 한 줄 있는 상태. `_RLS_MATRIX` 는 지금
+    #    13행 전부 `applied` 인 상수라 운영 데이터로는 안 나오지만, 템플릿은 그 상태를
+    #    표시하려고 쓰였고 단위 렌더 시험이 이미 그것을 먹인다
+    #    (`tests/unit/templates/test_admin_settings_i18n_render.py::_rls_ctx`).
+    #    즉 «죽은 팔» 이 아니라 **아직 화면으로 안 재본 팔**이다 — 정책이 빠진 테이블이
+    #    생기면 운영에서 그대로 나온다(Grok `01a09e0b` 이 내 «죽은 코드» 분류를 깎았다).
+    saved_matrix = saas_service.rls_audit_matrix
+    if matrix_missing:
+        rows = [dict(r) for r in saved_matrix()]
+        assert rows, "행이 비었다 — 한 줄을 «미적용» 으로 바꿀 수 없다"
+        assert all(r["status"] == "applied" for r in rows), (
+            f"이미 미적용 행이 있다 {[r for r in rows if r['status'] != 'applied'][:2]} — "
+            "대역이 필요 없거나 전제가 바뀌었다")
+        rows[-1]["status"] = "missing"
+        saas_service.rls_audit_matrix = lambda: rows
     try:
         yield
     finally:
         for n, fn in saved.items():
             setattr(saas_service, n, fn)
+        saas_service.rls_audit_matrix = saved_matrix
 
 
 @contextlib.contextmanager
