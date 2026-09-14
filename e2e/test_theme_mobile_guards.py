@@ -17,7 +17,8 @@ import os
 
 import pytest
 
-from e2e.conftest import (DELTA_DAYS, DELTA_REPO_SCORES, DELTA_SUGGESTION_COUNTS,
+from e2e.conftest import (CONFIG_MODEL_ID, CONFIG_USER_ID, DELTA_DAYS,
+                          DELTA_REPO_SCORES, DELTA_SUGGESTION_COUNTS,
                           DELTA_USERS,
                           INSIGHT_LANGUAGE, VARIANT_BREAKDOWN, VARIANT_FEEDBACKS,
                           acting_as, apply_theme, delta_repo_name,
@@ -3788,3 +3789,148 @@ def test_token_text_meets_aa_on_dashboard_range_tabs(seeded_page, base_url, them
             f"[{theme}] days={days} 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
             + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
                           for b in bad[:10]))
+
+# ── E-16. 설정 화면의 «켜진» 상태 열 팔 (#1639 · settings 묶음) ──────────────
+#
+# 토글 두 개(체크 안 됨)·모델 선택·이슈 생성·알림 연결 점 다섯·Railway 토큰.
+# 전부 `RepoConfig` 한 행이 정한다.
+#
+# 🔴 리포가 둘이다(Grok `01a09e76`). AI 리뷰를 끄면 CSS 가
+#    `.ai-review-group:has(input[name="ai_review_enabled"]:not(:checked))` 로
+#    `.ai-review-dependent`·`.ai-review-model` 을 `display:none` 한다 — 한 화면에서
+#    「AI 리뷰 끔」과 「그 아래 필드가 보임」을 같이 잴 수 없다. 분기 프로브는 그래도
+#    기록하지만 **대비는 못 잰다**. 그래서 켠 리포에서 아래 필드를 재고, 끈 리포에서
+#    토글의 «미체크» 팔을 잰다.
+# 🔴 대조군도 **그 사용자가 볼 수 있는** 리포여야 한다 — `get_accessible_repo` 는 남의
+#    리포에 404 를 준다. 그래서 «끈» 리포가 대조군을 겸한다(알림 연결이 전부 꺼져 있다).
+
+
+_CONN_DOT_FIELDS = ("discord_webhook_url", "slack_webhook_url", "email_recipients",
+                    "custom_webhook_url", "n8n_webhook_url")
+
+# 🔴 체크박스 «입력» 자체는 커스텀 스위치라 화면에 안 보인다(`.toggle-switch` 안에
+#    숨고 옆의 `.toggle-track` 이 칠해진다). 그래서 상태는 입력에서 읽고, «보이는가» 는
+#    그 트랙으로 판단한다. 입력의 가시성을 요구하면 늘 red 다(실측).
+# 🔴 `.conn-dot` 은 화면에 여덟 개 넘게 있다(텔레그램 등 내가 시드하지 않은 것 포함).
+#    그래서 **필드별 라벨**(`label[for="<필드>"]`)로 정확히 집는다.
+_SETTINGS_STATE_JS = r"""(dotFields) => {
+    const vis = el => el && el.checkVisibility(
+        {opacityProperty: true, visibilityProperty: true});
+    const box = name => {
+        const el = document.querySelector(`input[name="${name}"]`);
+        if (!el) return null;
+        const track = el.closest('.toggle-switch')?.querySelector('.toggle-track');
+        return {checked: el.checked, shown: vis(track)};
+    };
+    const sel = document.querySelector('select[name="review_model"]');
+    return {
+        ai_review_enabled: box('ai_review_enabled'),
+        pr_review_comment: box('pr_review_comment'),
+        create_issue: box('create_issue'),
+        model: sel ? {value: sel.value, shown: vis(sel)} : null,
+        dots: Object.fromEntries(dotFields.map(f => {
+            const el = document.querySelector(`label[for="${f}"] .conn-dot`);
+            return [f, el ? {on: el.classList.contains('is-on'), shown: vis(el)} : null];
+        })),
+    };
+}"""
+
+
+def _settings_state_failures(state, expect) -> list[str]:
+    r"""설정 화면이 **시드한 설정 그대로** 그려졌는가.
+
+    🔴 계기를 믿기 전에 뒤집는다(verify.md 4). 소스를 열기 전에 적은 두 목록:
+      claimed = {세 체크박스가 **시드한 값** 대로 · 모델 select 가 **시드한 id** ·
+                 연결 점 다섯이 **전부 켜짐/전부 꺼짐**}
+      cheap   = {설정 화면이 200 으로 떴다 · 체크박스가 있다 · 점이 있다}
+    - claimed\cheap(반드시 잡혀야) = 값이 시드와 일치.
+    - cheap\claimed(반드시 무시돼야) = 요소의 존재.
+    두 리포가 서로의 대조군이라, 같은 판정을 반대 기대값으로 두 번 돌린다.
+    """
+    bad: list[str] = []
+    for name, want in expect["boxes"].items():
+        got = state[name]
+        if got is None:
+            bad.append(f"{name} 체크박스가 화면에 없다")
+        elif not got["shown"]:
+            bad.append(f"{name} 체크박스가 보이지 않는다 — CSS 가 가렸다")
+        elif got["checked"] is not want:
+            bad.append(f"{name} 이 {got['checked']} — 시드는 {want}")
+    want_model = expect.get("model")
+    if want_model is not None:
+        if state["model"] is None:
+            bad.append("모델 select 가 화면에 없다")
+        elif not state["model"]["shown"]:
+            bad.append("모델 select 가 보이지 않는다 — AI 리뷰가 꺼져 CSS 가 가렸다")
+        elif state["model"]["value"] != want_model:
+            bad.append(f"선택된 모델이 {state['model']['value']!r} — 시드는 {want_model!r}")
+    want_on = expect["dots_on"]
+    for field in _CONN_DOT_FIELDS:
+        dot = state["dots"].get(field)
+        if dot is None:
+            bad.append(f"{field} 의 연결 점을 못 찾았다 (`label[for=...]` 구조가 바뀌었다)")
+        elif not dot["shown"]:
+            bad.append(f"{field} 의 연결 점이 보이지 않는다")
+        elif dot["on"] is not want_on:
+            bad.append(f"{field} 연결 점이 {'켜짐' if dot['on'] else '꺼짐'} — "
+                       f"시드는 {'켜짐' if want_on else '꺼짐'}")
+    return bad
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_token_text_meets_aa_on_configured_settings(
+        seeded_page, base_url, configured_repos, theme):
+    """🔴 설정이 «다 켜진» 화면과 «AI 리뷰를 끈» 화면의 글자가 AA 를 넘는가."""
+    from urllib.parse import quote  # noqa: PLC0415
+
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+
+    def visit(full_name):
+        seeded_page.goto(f"{base_url}/repos/{quote(full_name, safe='')}/settings")
+        assert "localhost" in seeded_page.url, (
+            f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
+        apply_theme(seeded_page, theme)
+        seeded_page.evaluate(
+            "() => { document.body.setAttribute('data-settings-mode', 'advanced');"
+            " document.querySelectorAll('details').forEach(d => d.open = true); }")
+        seeded_page.add_style_tag(
+            content="*,*::before,*::after{transition:none !important}")
+        seeded_page.wait_for_timeout(200)
+        _reveal_all(seeded_page)
+
+    def measure(where):
+        _reveal_all(seeded_page)
+        total, bad = 0, []
+        for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+                          (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
+            res = seeded_page.evaluate(js)
+            assert not res.get("error"), res.get("error")
+            total += sum(res["seen"][n] for n in names)
+            bad += res["bad"]
+        assert total > 0, (
+            f"[{theme}] {where} 에서 토큰 글자를 하나도 찾지 못했다 — "
+            "재지 못한 것이지 통과한 것이 아니다")
+        assert not bad, (
+            f"[{theme}] {where} 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
+            + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
+                          for b in bad[:10]))
+
+    with acting_as(CONFIG_USER_ID, login="e2e-config"):
+        # ① 다 켜진 리포 — 토글 하나 꺼짐 · 모델 선택 · 이슈 생성 켜짐 · 연결 점 전부 켜짐.
+        visit(configured_repos["on"])
+        missing = _settings_state_failures(
+            seeded_page.evaluate(_SETTINGS_STATE_JS, list(_CONN_DOT_FIELDS)),
+            {"boxes": {"ai_review_enabled": True, "pr_review_comment": False,
+                       "create_issue": True},
+             "model": CONFIG_MODEL_ID, "dots_on": True})
+        assert not missing, f"[{theme}] 켜진 설정:\n  " + "\n  ".join(missing)
+        measure("settings/configured-on")
+
+        # ② AI 리뷰를 끈 리포 — 그 토글의 «미체크» 팔. 알림은 전부 꺼져 있어 대조군을 겸한다.
+        visit(configured_repos["off"])
+        missing = _settings_state_failures(
+            seeded_page.evaluate(_SETTINGS_STATE_JS, list(_CONN_DOT_FIELDS)),
+            {"boxes": {"ai_review_enabled": False, "create_issue": False},
+             "dots_on": False})
+        assert not missing, f"[{theme}] 끈 설정:\n  " + "\n  ".join(missing)
+        measure("settings/configured-off")
