@@ -1907,3 +1907,93 @@ def detail_field_variants(live_server, gated_settings_repo):
     """분석 상세의 PR 번호·소스 레이블·AI 요약·파일 피드백·줄번호 없는 이슈."""
     db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
     return _seed_detail_field_variants(db_path)
+
+
+# ── «줄어든» 사용자 — KPI 세 개가 동시에 음수 (#1639 · dashboard 1061·1076·1092) ──
+#
+# 🔴 세 delta 는 전부 **현재 창 − 이전 창** 개수다(점수/신뢰도 필터 없음 —
+#    그것은 `_kpi_avg` 만 건다). 그래서 이전 창을 더 많게 심으면 셋이 함께 음수가 된다:
+#      analysis_count = len(cur) - len(prev)
+#      high_security  = HIGH 이슈 수(cur) - (prev)
+#      active_repos   = 서로 다른 repo_id 수(cur) - (prev)
+# 🔴 HIGH 이슈는 **`category == "security"` 정확히** + `severity.upper() in
+#    ("HIGH","ERROR")` 라야 세어진다(`_count_high_security`). `"Security"` 나 LOW 는 안 센다.
+# 🔴 창은 cur `[now-30d, now]` 포함 · prev `[now-60d, now-30d)` **배타** 다. 5일/45일은 안전.
+# 🔴 `DELTA_USERS` 에 넣지 않는다 — E-11 이 그 dict 를 순회하며 부호 집합을 단언한다.
+SHRINK_USER_ID = 9106
+SHRINK_REPOS = ("owner/e2eshrink-a", "owner/e2eshrink-b")
+# (현재 창 분석 수, 이전 창 분석 수) — 리포별
+SHRINK_LAYOUT = {SHRINK_REPOS[0]: (1, 2), SHRINK_REPOS[1]: (0, 1)}
+SHRINK_EXPECTED = {"analysis_count": -2, "high_security": -1, "active_repos": -1}
+
+
+def _seed_shrinking_user(db_path: str) -> dict[str, int]:
+    """이전 창이 더 풍성한 사용자 → 기대 delta dict."""
+    from datetime import datetime, timedelta, timezone  # noqa: PLC0415
+
+    from sqlalchemy import create_engine, text  # noqa: PLC0415
+    from sqlalchemy.orm import sessionmaker  # noqa: PLC0415
+
+    from src.models.analysis import Analysis  # noqa: PLC0415
+    from src.models.repository import Repository  # noqa: PLC0415
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    cur_at, prev_at = now - timedelta(days=5), now - timedelta(days=45)
+    high_issue = {"message": "e2e: 하드코딩된 비밀 / hardcoded secret",
+                  "category": "security", "severity": "HIGH", "path": "src/e2e.py"}
+    engine = create_engine(f"sqlite:///{db_path}")
+    session = sessionmaker(bind=engine)()
+    try:
+        session.execute(text(
+            "INSERT OR IGNORE INTO users (id, github_id, github_login,"
+            " github_access_token, email, display_name, created_at)"
+            " VALUES (:id, :gid, :login, :tok, :mail, :name, datetime('now'))"
+        ), {"id": SHRINK_USER_ID, "gid": SHRINK_USER_ID, "login": "e2e-shrink",
+            "tok": "gho_e2e_shrink", "mail": "shrink@test.com", "name": "E2E Shrink"})
+        for full_name, (n_cur, n_prev) in SHRINK_LAYOUT.items():
+            repo = session.query(Repository).filter_by(full_name=full_name).first()
+            if repo is None:
+                repo = Repository(full_name=full_name, user_id=SHRINK_USER_ID)
+                session.add(repo)
+                session.flush()
+            for tag, n, at in (("cur", n_cur, cur_at), ("prev", n_prev, prev_at)):
+                for i in range(n):
+                    sha = f"shrink-{full_name.split('/')[-1]}-{tag}-{i}"
+                    if session.query(Analysis).filter_by(commit_sha=sha).first():
+                        continue
+                    # 🔴 HIGH 이슈는 **이전 창의 첫 분석 하나에만** 넣는다 — 그래야
+                    #    high_security delta 가 -1 이 된다.
+                    issues = ([dict(high_issue)]
+                              if tag == "prev" and full_name == SHRINK_REPOS[0] and i == 0
+                              else [])
+                    session.add(Analysis(
+                        repo_id=repo.id, commit_sha=sha,
+                        commit_message=f"e2e shrink {tag} {i}",
+                        score=None, grade=None,
+                        result={"summary": f"e2e shrink {tag}", "issues": issues},
+                        author_login="e2e-tester", score_unreliable=True, created_at=at))
+        session.commit()
+        cur_n = sum(n for n, _ in SHRINK_LAYOUT.values())
+        prev_n = sum(n for _, n in SHRINK_LAYOUT.values())
+        cur_repos = sum(1 for n, _ in SHRINK_LAYOUT.values() if n)
+        prev_repos = sum(1 for _, n in SHRINK_LAYOUT.values() if n)
+        # 🔴 시드가 «셋 다 음수» 를 만드는지 못박는다 — 파생되지 않는 바닥이다.
+        derived = {"analysis_count": cur_n - prev_n, "high_security": -1,
+                   "active_repos": cur_repos - prev_repos}
+        assert derived == SHRINK_EXPECTED, f"시드가 기대와 다르다 {derived}"
+        assert all(v < 0 for v in SHRINK_EXPECTED.values()), (
+            f"셋 다 음수여야 세 elif 팔이 한 화면에서 열린다 {SHRINK_EXPECTED}")
+        assert high_issue["category"] == "security" and high_issue["severity"] == "HIGH", (
+            "HIGH 이슈는 category 가 정확히 'security' 이고 severity 가 HIGH/ERROR 여야 "
+            "`_count_high_security` 가 센다")
+    finally:
+        session.close()
+        engine.dispose()
+    return dict(SHRINK_EXPECTED)
+
+
+@pytest.fixture(scope="session")
+def shrinking_user(live_server):
+    """분석 수·보안 이슈·활성 리포가 모두 «줄어든» 사용자 → 기대 delta dict."""
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    return _seed_shrinking_user(db_path)

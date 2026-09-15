@@ -20,6 +20,7 @@ import pytest
 from e2e.conftest import (CONFIG_MODEL_ID, CONFIG_USER_ID, DELTA_DAYS,
                           DETAIL_AI_SUMMARY, DETAIL_FILE_FEEDBACK_PATH,
                           DETAIL_PR_NUMBER, EMPTY_USER_ID, NOANALYSIS_USER_ID,
+                          SHRINK_USER_ID,
                           DELTA_REPO_SCORES, DELTA_SUGGESTION_COUNTS,
                           DELTA_USERS,
                           INSIGHT_LANGUAGE, VARIANT_BREAKDOWN, VARIANT_FEEDBACKS,
@@ -4244,3 +4245,109 @@ def test_token_text_meets_aa_on_detail_field_variants(
             f"[{theme}] 분석이 없는데 2열(반복 이슈·도넛) 블록이 떴다 — `:135` 부모가 "
             "거짓이어야 한다")
         measure("insights/no-analysis")
+
+
+# ── E-19. KPI 가 «줄었을 때» 세 팔 (#1639 · dashboard 1061·1076·1092) ────────
+#
+# 분석 수 · HIGH 보안 이슈 · 활성 리포 — 셋 다 이전 창보다 줄어든 사용자 한 명이
+# 한 화면에서 세 elif 를 연다.
+#
+# 🔴 **클래스로 판정하지 않는다.** 보안 카드는 뒤집혀 있다 — 줄어들면 «좋음» 이라
+#    `kpi__delta--up` 을 쓴다(분석 수·활성 리포는 줄면 `--down`). 부호는 **시드가 정하는
+#    수치**로 본다(Grok `01a0a332` 가 이 대목을 짚었다).
+
+_KPI_DELTA_JS = r"""(labels) => Object.fromEntries(labels.map(([key, label]) => {
+    const vis = el => el.checkVisibility(
+        {opacityProperty: true, visibilityProperty: true});
+    const card = [...document.querySelectorAll('.kpi')].filter(vis).find(
+        c => (c.querySelector('.kpi__label')?.innerText || '')
+               .toLowerCase().includes(label.toLowerCase()));
+    const d = card ? card.querySelector('.kpi__delta') : null;
+    return [key, {card: !!card, text: d && vis(d) ? d.innerText.trim() : null}];
+}))"""
+
+
+def _kpi_down_failures(cards, expected, *, want_down: bool) -> list[str]:
+    r"""세 KPI 가 **시드가 정하는 음수** 를 보여주는가.
+
+    claimed = {세 카드 각각의 delta 줄에 «▼» 와 **시드한 값**(-2 · -1 · -1)이 있다}
+    cheap   = {대시보드가 떴다 · KPI 카드가 있다 · delta 줄이 있다 · 어딘가 ▼ 가 있다}
+    - claimed\cheap(반드시 잡혀야) = 카드마다 **그 카드의** 값.
+    - cheap\claimed(반드시 무시돼야) = 카드/줄/화살표의 존재.
+    🔴 클래스(`--up`/`--down`)로는 못 가른다 — 보안 카드는 줄면 `--up` 이다.
+    """
+    bad: list[str] = []
+    for key, want in expected.items():
+        slot = cards.get(key) or {"card": False, "text": None}
+        if not slot["card"]:
+            bad.append(f"{key} KPI 카드가 화면에 없다 — overview 모드가 아니다")
+            continue
+        if slot["text"] is None:
+            bad.append(f"{key}: delta 줄이 없다(또는 안 보인다)")
+            continue
+        if want_down:
+            if str(want) not in slot["text"]:
+                bad.append(f"{key}: delta 줄이 {slot['text']!r} — 시드는 {want}")
+            if "▼" not in slot["text"]:
+                bad.append(f"{key}: ▼ 가 없다 {slot['text']!r} — 줄었으면 내림 표시다")
+        elif "▼" in slot["text"]:
+            bad.append(f"{key}: 줄지 않았는데 ▼ 가 떴다 {slot['text']!r}")
+    return bad
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_token_text_meets_aa_on_kpi_down_deltas(
+        seeded_page, base_url, shrinking_user, delta_users, theme):
+    """🔴 «분석 수·보안 이슈·활성 리포가 줄었다» 표시의 글자가 AA 를 넘는가."""
+    from src.i18n.loader import get_text  # noqa: PLC0415
+
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+
+    def visit():
+        seeded_page.goto(f"{base_url}/dashboard?mode=overview&days={DELTA_DAYS}")
+        assert "localhost" in seeded_page.url, (
+            f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
+        apply_theme(seeded_page, theme)
+        seeded_page.add_style_tag(
+            content="*,*::before,*::after{transition:none !important}")
+        seeded_page.wait_for_timeout(200)
+        _reveal_all(seeded_page)
+
+    def cards():
+        locale = seeded_page.evaluate("() => document.documentElement.lang") or "ko"
+        labels = [["analysis_count", get_text("dashboard.kpi.analysis_count", locale)],
+                  ["high_security", get_text("dashboard.kpi.high_security", locale)],
+                  ["active_repos", get_text("dashboard.kpi.active_repos", locale)]]
+        assert all(lbl for _, lbl in labels), f"정본 라벨을 못 뽑았다 {labels}"
+        return seeded_page.evaluate(_KPI_DELTA_JS, labels)
+
+    with acting_as(SHRINK_USER_ID, login="e2e-shrink"):
+        visit()
+        missing = _kpi_down_failures(cards(), shrinking_user, want_down=True)
+        assert not missing, f"[{theme}] 줄어든 KPI:\n  " + "\n  ".join(missing)
+
+        total, bad = 0, []
+        for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+                          (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
+            res = seeded_page.evaluate(js)
+            assert not res.get("error"), res.get("error")
+            total += sum(res["seen"][n] for n in names)
+            bad += res["bad"]
+        assert total > 0, (
+            f"[{theme}] 줄어든 KPI 화면에서 토큰 글자를 하나도 찾지 못했다")
+        assert not bad, (
+            f"[{theme}] 줄어든 KPI 화면 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
+            + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
+                          for b in bad[:10]))
+
+    # 🔴 반드시 «무시돼야» 하는 쪽 — 늘어난/그대로인 사용자에게는 ▼ 가 없다.
+    with acting_as(delta_users["up"], login="e2e-delta-up"):
+        visit()
+        control = _kpi_down_failures(cards(), shrinking_user, want_down=False)
+        assert not control, (
+            f"[{theme}] 줄지 않은 사용자인데 내림 표시가 떴다:\n  " + "\n  ".join(control))
+        for key in shrinking_user:
+            assert _kpi_down_failures({key: (cards() or {}).get(key, {})},
+                                      {key: shrinking_user[key]}, want_down=True), (
+                f"[{theme}] 줄지 않은 사용자의 {key} 가 «줄었다» 고 판정됐다 — "
+                "계기가 「delta 줄이 있으면 초록」으로 무너져 있다")
