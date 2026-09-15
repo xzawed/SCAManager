@@ -205,6 +205,15 @@ def live_server(tmp_path_factory):
 
     # 서버가 200을 반환할 때까지 대기 (최대 30초)
     # Wait until the server returns 200 (up to 30 seconds).
+    # 🔴 «누가» 200 을 주는지 확인한다. 포트가 고정(E2E_PORT)이라 **다른 e2e 세션이
+    #    이미 그 포트를 쥐고 있으면** 우리 uvicorn 은 bind 에 실패해 스레드가 죽는데,
+    #    `/health` 는 **그쪽 서버**가 200 을 준다. 그러면 우리 DB·픽스처는 아무도 안
+    #    열어본 채로, 남의 프로세스 앱을 재게 된다.
+    #    실측(2026-09-14): 그 상태에서 시험은 **엉뚱한 red** 를 냈고 — 이 하네스는 대부분
+    #    in-process 패치(설정·의존성 override)에 기대므로 충돌하면 대개 red 다 — 원인을
+    #    찾는 데 네 번의 실행이 들었다. 「조용한 초록」은 재현하지 못했지만, in-process
+    #    상태에 기대지 않는 시험은 남의 앱을 상대로 통과할 수 있다.
+    #    `uvicorn.Server.started` 는 **우리가** 바인드에 성공했을 때만 True 다.
     ready = False
     # 🔴 마지막 실패 이유를 남긴다 — 없으면 "응답하지 않았다" 만 알고 **왜인지는 모른다**
     # (연결 거부인지 500 인지 타임아웃인지). R58 이 skip 을 실패로 바꾼 목적은 실패를
@@ -212,9 +221,20 @@ def live_server(tmp_path_factory):
     # Keep the last failure so the error can say *why* the server never came up.
     last_error: str = "(시도 기록 없음)"
     for _ in range(60):
+        if not thread.is_alive() and not server.started:
+            raise RuntimeError(
+                f"e2e 서버 스레드가 떴다가 죽었다 — {BASE_URL} 포트를 이미 다른 "
+                "프로세스가 쥐고 있는지 볼 것(다른 e2e 세션이 동시에 돌고 있으면 그 "
+                "서버가 /health 에 200 을 주고, 우리는 **그쪽** 앱을 재게 된다)")
         try:
             r = requests.get(f"{BASE_URL}/health", timeout=1)
             if r.status_code == 200:
+                if not server.started:
+                    raise RuntimeError(
+                        f"{BASE_URL} 이 200 을 주는데 **우리 서버가 아니다** "
+                        "(`Server.started` 가 False). 다른 e2e 세션이 같은 포트를 쥐고 "
+                        "있다 — 그대로 두면 그쪽 DB·픽스처를 재게 된다. "
+                        "먼저 돌던 세션이 끝난 뒤 다시 실행할 것.")
                 ready = True
                 break
             last_error = f"HTTP {r.status_code}"
@@ -1071,6 +1091,56 @@ def insight_key_window():
 
 
 @contextlib.contextmanager
+def rls_catalog_double(*, force: bool = True, bypasses: bool = True,
+                       matrix_missing: bool = False):
+    """PG 카탈로그 실측 두 개를 **이 창 동안만** True 로 — «FORCE 는 걸렸는데 접속 role 이
+    RLS 를 우회한다» 상태(Phase 3~4 사이의 거짓 안심 창)를 화면으로 띄운다.
+
+    🔴 이것은 «앱이 못 내는 상태를 심는 것» 이 아니다. 그 상태는 **실 PostgreSQL 에서
+       실재**하고 `tests/unit/migrations/test_0020_round_trip.py::
+       test_migration_0041_force_round_trip_postgres` 가 pg 잡에서 두 값이 True 임을
+       이미 실측한다. e2e 가 못 여는 이유는 SQLite 라 두 함수가 **카탈로그를 지어내지 않고
+       False 를 돌려주기** 때문 — 방언 격차다. 그래서 «카탈로그 대역»(catalog double)이지
+       상태 위조가 아니다(판단 근거: Grok `01a09d28`).
+    🔴 반대로, 쓰기 경로가 **절대 만들지 않는** 모양(예: 신선한 insight 오류 캐시 행)은
+       심지 않는다. 그 구분이 이 창을 허용하는 이유다.
+    ⚠️ 앱 전역 상태다 — 순차 실행 전제(이 스위트가 그렇다).
+    """
+    from src.services import saas_service  # noqa: PLC0415
+
+    names = ("_measure_force_applied", "_measure_connection_bypasses_rls")
+    saved = {n: getattr(saas_service, n) for n in names}
+    # 🔴 두 값을 **따로** 준다 — 네 조합이 다 필요하다. `force=True, bypasses=False` 는
+    #    건강한 Phase 4(그래야 `:37` 의 «거짓» 팔에 도달한다)이고,
+    #    `force=False, bypasses=True` 는 두 경고가 **배타** 임을 재는 유일한 조합이다
+    #    (그 조합을 안 보면 `elif` 를 형제 `if` 로 바꿔도 아무 시험이 안 깨진다 —
+    #    Grok `01a09d62`).
+    setattr(saas_service, names[0], lambda _db: force)
+    setattr(saas_service, names[1], lambda _db: bypasses)
+    # 🔴 `matrix_missing` = 정책이 «빠진» 테이블이 한 줄 있는 상태. `_RLS_MATRIX` 는 지금
+    #    13행 전부 `applied` 인 상수라 운영 데이터로는 안 나오지만, 템플릿은 그 상태를
+    #    표시하려고 쓰였고 단위 렌더 시험이 이미 그것을 먹인다
+    #    (`tests/unit/templates/test_admin_settings_i18n_render.py::_rls_ctx`).
+    #    즉 «죽은 팔» 이 아니라 **아직 화면으로 안 재본 팔**이다 — 정책이 빠진 테이블이
+    #    생기면 운영에서 그대로 나온다(Grok `01a09e0b` 이 내 «죽은 코드» 분류를 깎았다).
+    saved_matrix = saas_service.rls_audit_matrix
+    if matrix_missing:
+        rows = [dict(r) for r in saved_matrix()]
+        assert rows, "행이 비었다 — 한 줄을 «미적용» 으로 바꿀 수 없다"
+        assert all(r["status"] == "applied" for r in rows), (
+            f"이미 미적용 행이 있다 {[r for r in rows if r['status'] != 'applied'][:2]} — "
+            "대역이 필요 없거나 전제가 바뀌었다")
+        rows[-1]["status"] = "missing"
+        saas_service.rls_audit_matrix = lambda: rows
+    try:
+        yield
+    finally:
+        for n, fn in saved.items():
+            setattr(saas_service, n, fn)
+        saas_service.rls_audit_matrix = saved_matrix
+
+
+@contextlib.contextmanager
 def acting_as(user_id: int, login: str = "e2e-other"):
     """이 창 동안 `/dashboard` 가 **다른 사용자**로 돈다.
 
@@ -1309,7 +1379,14 @@ def delta_users(live_server):
 
 @pytest.fixture(scope="session")
 def empty_user(live_server):
-    """리포가 없는 사용자 — `?mode=insight` 가 `no_data` 로 간다."""
+    """리포가 없는 사용자 — `?mode=insight` 가 `no_data` 로 간다.
+
+    🔴 **이름만큼 비어 있지 않다.** 리포 «목록» 을 만드는 `find_all_by_user` 는
+       `user_id == me OR user_id IS NULL` 이라 이 사용자도 `owner/unclaimedrepo` 를
+       본다 — `?mode=repos` 의 `total_repos` 는 0 이 아니다. 「분석이 0건」인 것은
+       맞다(그것이 `no_data` 를 여는 조건이다). 사용량 모드의 `repo_count` 는
+       `Repository.user_id == me` **직접** 이라 0 이 맞다.
+    """
     db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
     return _seed_empty_user(db_path)
 
@@ -1598,3 +1675,325 @@ def calibration_feedback(live_server, graded_analyses, empty_user):
     """점수 정합도 표의 «값이 있는 구간» 과 «빈 구간» 을 동시에 만든다."""
     db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
     return _seed_calibration_feedback(db_path, graded_analyses)
+
+
+# ── 설정 화면의 «켜진» 상태를 다 가진 리포 (#1639 · settings 묶음) ────────────
+#
+# 🔴 리포가 **둘** 필요하다(Grok `01a09e76`). AI 리뷰를 끄면 CSS 가
+#    `.ai-review-group:has(input[name="ai_review_enabled"]:not(:checked))` 로
+#    `.ai-review-dependent` 와 `.ai-review-model` 을 `display:none` 한다 — 한 리포에서
+#    「AI 리뷰 끔」과 「PR 코멘트·모델 선택이 보임」을 동시에 잴 수 없다.
+# 🔴 **새 사용자**를 쓴다. delta 사용자에 리포를 더하면 `_seed_delta_users` 의 바닥 단언
+#    (`owned == len(DELTA_REPO_SCORES[kind])`)이 red 가 된다 — 그 단언이 제 일을 한 것이다.
+# 🔴 대조군도 **그 사용자가 볼 수 있는** 리포여야 한다. `get_accessible_repo` 는 남의
+#    리포에 404 를 준다(`src/ui/_helpers.py`) — 그래서 «끈» 리포가 대조군을 겸한다.
+CONFIG_USER_ID = 9104
+CONFIG_REPO_ON = "owner/e2econf-on"
+CONFIG_REPO_OFF = "owner/e2econf-off"
+CONFIG_MODEL_ID = "claude-haiku-4-5-20251001"   # `src.constants.CLAUDE_MODELS` 의 실재 id
+CONFIG_ON_VALUES = {
+    "ai_review_enabled": True,      # 켜야 그 아래 두 필드가 화면에 그려진다
+    "pr_review_comment": False,     # 기본이 True — 꺼야 «미체크» 팔이 열린다
+    "create_issue": True,           # 기본이 False — 켜야 «체크» 팔이 열린다
+    "review_model": CONFIG_MODEL_ID,
+    "discord_webhook_url": "https://discord.example.invalid/e2e",
+    "slack_webhook_url": "https://slack.example.invalid/e2e",
+    "email_recipients": "e2e@test.invalid",
+    "custom_webhook_url": "https://custom.example.invalid/e2e",
+    "n8n_webhook_url": "https://n8n.example.invalid/e2e",
+    "railway_api_token": "e2e-not-a-real-token",   # 렌더는 `bool(...)` 만 본다
+}
+
+
+def _seed_configured_repos(db_path: str) -> dict[str, str]:
+    """설정이 «다 켜진» 리포와 «AI 리뷰만 끈» 리포 → {이름: full_name}."""
+    from sqlalchemy import create_engine, text  # noqa: PLC0415
+    from sqlalchemy.orm import sessionmaker  # noqa: PLC0415
+
+    from src.models.repo_config import RepoConfig  # noqa: PLC0415
+    from src.models.repository import Repository  # noqa: PLC0415
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    session = sessionmaker(bind=engine)()
+    try:
+        session.execute(text(
+            "INSERT OR IGNORE INTO users (id, github_id, github_login,"
+            " github_access_token, email, display_name, created_at)"
+            " VALUES (:id, :gid, :login, :tok, :mail, :name, datetime('now'))"
+        ), {"id": CONFIG_USER_ID, "gid": CONFIG_USER_ID, "login": "e2e-config",
+            "tok": "gho_e2e_config", "mail": "config@test.com", "name": "E2E Config"})
+        for full_name, values in ((CONFIG_REPO_ON, CONFIG_ON_VALUES),
+                                  (CONFIG_REPO_OFF, {"ai_review_enabled": False})):
+            if session.query(Repository).filter_by(full_name=full_name).first() is None:
+                session.add(Repository(full_name=full_name, user_id=CONFIG_USER_ID))
+            cfg = session.query(RepoConfig).filter_by(repo_full_name=full_name).first()
+            if cfg is None:
+                cfg = RepoConfig(repo_full_name=full_name)
+                session.add(cfg)
+            for k, v in values.items():
+                setattr(cfg, k, v)
+        session.commit()
+        # 🔴 되읽어 확인한다 — 컬럼 이름이 바뀌면 `setattr` 은 조용히 새 속성을 만든다.
+        for full_name, values in ((CONFIG_REPO_ON, CONFIG_ON_VALUES),
+                                  (CONFIG_REPO_OFF, {"ai_review_enabled": False})):
+            cfg = session.query(RepoConfig).filter_by(repo_full_name=full_name).first()
+            assert cfg is not None, f"{full_name} 설정을 되읽지 못했다"
+            wrong = {k: (getattr(cfg, k, "<없음>"), v) for k, v in values.items()
+                     if getattr(cfg, k, "<없음>") != v}
+            assert not wrong, f"{full_name} 시드가 되읽히지 않는다 {wrong}"
+    finally:
+        session.close()
+        engine.dispose()
+    return {"on": CONFIG_REPO_ON, "off": CONFIG_REPO_OFF}
+
+
+@pytest.fixture(scope="session")
+def configured_repos(live_server):
+    """설정 화면의 «켜진» 상태를 다 가진 리포 + AI 리뷰만 끈 리포."""
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    return _seed_configured_repos(db_path)
+
+
+# ── 리포는 있는데 분석이 하나도 없는 사용자 (#1639 · dashboard 사용량 모드) ──
+#
+# 🔴 `empty_user`(리포 0)로는 `usage.last_analysis_at` / `usage.avg_score` 의 «없음» 팔에
+#    **도달할 수 없다** — `{% if usage and usage.repo_count == 0 %}` 이 먼저 잡아 빈 상태
+#    화면으로 가고, 그 아래 지표 블록은 아예 안 그려진다(Grok `01a09ea7`).
+#    그래서 «리포는 있고 분석은 없는» 프로필이 따로 필요하다.
+# 🔴 `dashboard_usage` 는 `Repository.user_id == user_id` **직접** 이다(NULL 예외 없음) —
+#    그래서 이 사용자의 `repo_count` 는 정확히 1 이 된다.
+NOANALYSIS_USER_ID = 9105
+NOANALYSIS_REPO = "owner/e2enoanalysis"
+
+
+def _seed_analysis_free_repo(db_path: str) -> str:
+    """분석이 하나도 없는 리포를 가진 사용자 → 그 리포 full_name."""
+    from sqlalchemy import create_engine, text  # noqa: PLC0415
+    from sqlalchemy.orm import sessionmaker  # noqa: PLC0415
+
+    from src.models.analysis import Analysis  # noqa: PLC0415
+    from src.models.repository import Repository  # noqa: PLC0415
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    session = sessionmaker(bind=engine)()
+    try:
+        session.execute(text(
+            "INSERT OR IGNORE INTO users (id, github_id, github_login,"
+            " github_access_token, email, display_name, created_at)"
+            " VALUES (:id, :gid, :login, :tok, :mail, :name, datetime('now'))"
+        ), {"id": NOANALYSIS_USER_ID, "gid": NOANALYSIS_USER_ID,
+            "login": "e2e-noanalysis", "tok": "gho_e2e_noanalysis",
+            "mail": "noanalysis@test.com", "name": "E2E NoAnalysis"})
+        repo = session.query(Repository).filter_by(full_name=NOANALYSIS_REPO).first()
+        if repo is None:
+            repo = Repository(full_name=NOANALYSIS_REPO, user_id=NOANALYSIS_USER_ID)
+            session.add(repo)
+            session.flush()
+        session.commit()
+        owned = session.query(Repository).filter_by(user_id=NOANALYSIS_USER_ID).count()
+        assert owned == 1, f"리포가 {owned}개 — 정확히 하나여야 `repo_count == 0` 갈래를 지난다"
+        n = session.query(Analysis).filter_by(repo_id=repo.id).count()
+        assert n == 0, (
+            f"이 리포에 분석이 {n}건 있다 — «분석 없음» 팔을 열 수 없다. 다른 픽스처가 "
+            "이 리포에 분석을 심었는지 볼 것")
+    finally:
+        session.close()
+        engine.dispose()
+    return NOANALYSIS_REPO
+
+
+@pytest.fixture(scope="session")
+def analysis_free_repo(live_server):
+    """리포는 있고 분석은 없는 사용자 — 사용량 모드의 «지표 없음» 팔이 열린다."""
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    return _seed_analysis_free_repo(db_path)
+
+
+# ── 분석 상세의 «필드가 있을 때» 팔들 (#1639 · analysis_detail 묶음) ─────────
+#
+# `:58`(PR 번호) · `:68`(source cli) · `:69`(source pr) · `:290`(AI 요약) ·
+# `:345`(파일별 피드백) · `:384`(이슈에 줄번호가 «없을» 때).
+#
+# 🔴 `source` 는 컬럼이 아니라 `result["source"]` 이고, 없으면
+#    `"pr" if pr_number else "push"` 로 떨어진다(`src/ui/routes/detail.py`). 그래서
+#    cli 는 result 로, pr 은 `pr_number` 로 만든다 — 두 팔은 **다른 분석**이라야 한다
+#    (`{% if cli %}{% elif pr %}` 이라 cli 면 pr 은 평가조차 안 된다).
+# 🔴 `:52`(commit_sha 가 거짓)는 열지 않는다 — 컬럼이 `nullable=False` 이고 빈 문자열은
+#    앱이 쓰는 값이 아니다. 「앱이 그 상태를 낼 수 있는가」에서 걸린다.
+# 🔴 점수 NULL + `score_unreliable=True` 로 심는다 — 집계를 안 건드린다.
+DETAIL_PR_NUMBER = 4242
+DETAIL_AI_SUMMARY = "e2e: AI 한줄 요약 / one-line AI summary"
+# 🔴 파일 피드백의 경로와 이슈의 경로를 **다르게** 둔다. 같게 두면 파일 피드백 블록을
+#    죽여도 그 경로가 이슈 줄에 남아 시험이 통과한다(실측: 뮤테이션 D5 가 초록이었다).
+#    «잡혀야 할» 표식이 두 곳에서 나오면 그것은 그 블록의 표식이 아니다.
+DETAIL_FILE_FEEDBACK_PATH = "src/e2e_feedback_only.py"
+DETAIL_ISSUE_PATH = "src/e2e_issue_only.py"
+DETAIL_ISSUE_NO_LINE = "e2e: 줄번호가 없는 이슈 / issue without a line number"
+
+
+def _seed_detail_field_variants(db_path: str) -> dict[str, int]:
+    """분석 상세의 필드 팔들을 여는 분석 2건 → {이름: analysis_id}."""
+    from datetime import datetime, timedelta, timezone  # noqa: PLC0415
+
+    from sqlalchemy import create_engine  # noqa: PLC0415
+    from sqlalchemy.orm import sessionmaker  # noqa: PLC0415
+
+    from src.models.analysis import Analysis  # noqa: PLC0415
+    from src.models.repository import Repository  # noqa: PLC0415
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    common = {
+        "summary": "e2e: 필드 변종 / field variant",
+        "ai_review_status": "success",
+        "ai_summary": DETAIL_AI_SUMMARY,
+        # 🔴 템플릿은 `ff['file']` 과 `ff['issues']` 를 읽는다(`analysis_detail.html:353-356`).
+        #    `path`/`feedback` 으로 넣으면 블록은 뜨지만 **경로가 안 그려진다** — 처음에
+        #    그렇게 넣고도 통과했는데, 그건 같은 경로가 이슈 줄에 있어서였다(뮤테이션 D5).
+        "file_feedbacks": [{"file": DETAIL_FILE_FEEDBACK_PATH,
+                            "issues": ["e2e: 이 파일에 대한 의견 / per-file note"]}],
+        # 🔴 `line` 을 **빼야** `:384` 의 거짓 팔이 열린다. 경로는 남긴다.
+        "issues": [{"message": DETAIL_ISSUE_NO_LINE, "path": DETAIL_ISSUE_PATH,
+                    "severity": "LOW", "category": "style"}],
+    }
+    rows = {
+        # PR 번호가 있으면 source 가 "pr" 로 떨어진다 → `:58` 참 + `:69` 참
+        "pr": {"commit_sha": "detail-field-pr", "pr_number": DETAIL_PR_NUMBER,
+               "result": dict(common)},
+        # result 가 source 를 직접 말하면 그것이 이긴다 → `:68` 참
+        "cli": {"commit_sha": "detail-field-cli", "pr_number": None,
+                "result": dict(common, source="cli")},
+    }
+    ids: dict[str, int] = {}
+    engine = create_engine(f"sqlite:///{db_path}")
+    session = sessionmaker(bind=engine)()
+    try:
+        repo = session.query(Repository).filter_by(full_name=GATED_REPO).first()
+        if repo is None:
+            raise RuntimeError("_seed_detail_field_variants: gated repo must exist first")
+        for i, (name, spec) in enumerate(rows.items()):
+            if session.query(Analysis).filter_by(commit_sha=spec["commit_sha"]).first() is None:
+                session.add(Analysis(
+                    repo_id=repo.id, commit_sha=spec["commit_sha"],
+                    commit_message=f"e2e: detail field {name}",
+                    pr_number=spec["pr_number"], score=None, grade=None,
+                    result=spec["result"], author_login="e2e-tester",
+                    score_unreliable=True, created_at=now - timedelta(minutes=20 + i)))
+        session.commit()
+        for name, spec in rows.items():
+            row = session.query(Analysis).filter_by(commit_sha=spec["commit_sha"]).first()
+            assert row is not None, f"시드한 {spec['commit_sha']} 를 되읽지 못했다"
+            ids[name] = row.id
+        # 🔴 시드가 «두 팔» 을 여는지 못박는다 — 하나가 둘 다 맡으면 `:68`/`:69` 중 하나는
+        #    평가조차 안 된다(앞 조건이 잡으면 뒤 elif 는 안 돈다).
+        assert rows["pr"]["pr_number"] and "source" not in rows["pr"]["result"], (
+            "pr 쪽은 pr_number 로만 source 를 정해야 한다")
+        assert rows["cli"]["result"].get("source") == "cli" and not rows["cli"]["pr_number"], (
+            "cli 쪽은 result 로만 source 를 정해야 한다")
+        assert all(ff.get("file") for ff in common["file_feedbacks"]), (
+            "파일 피드백은 `file` 키로 경로를 넣어야 화면에 그려진다(`path` 가 아니다)")
+        assert DETAIL_FILE_FEEDBACK_PATH != DETAIL_ISSUE_PATH, (
+            "파일 피드백과 이슈가 같은 경로면 한쪽 블록을 죽여도 다른 쪽에 남아 "
+            "판정이 공허해진다")
+        assert all("line" not in i for i in common["issues"]), (
+            "이슈에 `line` 이 있으면 `:384` 의 거짓 팔이 안 열린다")
+    finally:
+        session.close()
+        engine.dispose()
+    return ids
+
+
+@pytest.fixture(scope="session")
+def detail_field_variants(live_server, gated_settings_repo):
+    """분석 상세의 PR 번호·소스 레이블·AI 요약·파일 피드백·줄번호 없는 이슈."""
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    return _seed_detail_field_variants(db_path)
+
+
+# ── «줄어든» 사용자 — KPI 세 개가 동시에 음수 (#1639 · dashboard 1061·1076·1092) ──
+#
+# 🔴 세 delta 는 전부 **현재 창 − 이전 창** 개수다(점수/신뢰도 필터 없음 —
+#    그것은 `_kpi_avg` 만 건다). 그래서 이전 창을 더 많게 심으면 셋이 함께 음수가 된다:
+#      analysis_count = len(cur) - len(prev)
+#      high_security  = HIGH 이슈 수(cur) - (prev)
+#      active_repos   = 서로 다른 repo_id 수(cur) - (prev)
+# 🔴 HIGH 이슈는 **`category == "security"` 정확히** + `severity.upper() in
+#    ("HIGH","ERROR")` 라야 세어진다(`_count_high_security`). `"Security"` 나 LOW 는 안 센다.
+# 🔴 창은 cur `[now-30d, now]` 포함 · prev `[now-60d, now-30d)` **배타** 다. 5일/45일은 안전.
+# 🔴 `DELTA_USERS` 에 넣지 않는다 — E-11 이 그 dict 를 순회하며 부호 집합을 단언한다.
+SHRINK_USER_ID = 9106
+SHRINK_REPOS = ("owner/e2eshrink-a", "owner/e2eshrink-b")
+# (현재 창 분석 수, 이전 창 분석 수) — 리포별
+SHRINK_LAYOUT = {SHRINK_REPOS[0]: (1, 2), SHRINK_REPOS[1]: (0, 1)}
+SHRINK_EXPECTED = {"analysis_count": -2, "high_security": -1, "active_repos": -1}
+
+
+def _seed_shrinking_user(db_path: str) -> dict[str, int]:
+    """이전 창이 더 풍성한 사용자 → 기대 delta dict."""
+    from datetime import datetime, timedelta, timezone  # noqa: PLC0415
+
+    from sqlalchemy import create_engine, text  # noqa: PLC0415
+    from sqlalchemy.orm import sessionmaker  # noqa: PLC0415
+
+    from src.models.analysis import Analysis  # noqa: PLC0415
+    from src.models.repository import Repository  # noqa: PLC0415
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    cur_at, prev_at = now - timedelta(days=5), now - timedelta(days=45)
+    high_issue = {"message": "e2e: 하드코딩된 비밀 / hardcoded secret",
+                  "category": "security", "severity": "HIGH", "path": "src/e2e.py"}
+    engine = create_engine(f"sqlite:///{db_path}")
+    session = sessionmaker(bind=engine)()
+    try:
+        session.execute(text(
+            "INSERT OR IGNORE INTO users (id, github_id, github_login,"
+            " github_access_token, email, display_name, created_at)"
+            " VALUES (:id, :gid, :login, :tok, :mail, :name, datetime('now'))"
+        ), {"id": SHRINK_USER_ID, "gid": SHRINK_USER_ID, "login": "e2e-shrink",
+            "tok": "gho_e2e_shrink", "mail": "shrink@test.com", "name": "E2E Shrink"})
+        for full_name, (n_cur, n_prev) in SHRINK_LAYOUT.items():
+            repo = session.query(Repository).filter_by(full_name=full_name).first()
+            if repo is None:
+                repo = Repository(full_name=full_name, user_id=SHRINK_USER_ID)
+                session.add(repo)
+                session.flush()
+            for tag, n, at in (("cur", n_cur, cur_at), ("prev", n_prev, prev_at)):
+                for i in range(n):
+                    sha = f"shrink-{full_name.split('/')[-1]}-{tag}-{i}"
+                    if session.query(Analysis).filter_by(commit_sha=sha).first():
+                        continue
+                    # 🔴 HIGH 이슈는 **이전 창의 첫 분석 하나에만** 넣는다 — 그래야
+                    #    high_security delta 가 -1 이 된다.
+                    issues = ([dict(high_issue)]
+                              if tag == "prev" and full_name == SHRINK_REPOS[0] and i == 0
+                              else [])
+                    session.add(Analysis(
+                        repo_id=repo.id, commit_sha=sha,
+                        commit_message=f"e2e shrink {tag} {i}",
+                        score=None, grade=None,
+                        result={"summary": f"e2e shrink {tag}", "issues": issues},
+                        author_login="e2e-tester", score_unreliable=True, created_at=at))
+        session.commit()
+        cur_n = sum(n for n, _ in SHRINK_LAYOUT.values())
+        prev_n = sum(n for _, n in SHRINK_LAYOUT.values())
+        cur_repos = sum(1 for n, _ in SHRINK_LAYOUT.values() if n)
+        prev_repos = sum(1 for _, n in SHRINK_LAYOUT.values() if n)
+        # 🔴 시드가 «셋 다 음수» 를 만드는지 못박는다 — 파생되지 않는 바닥이다.
+        derived = {"analysis_count": cur_n - prev_n, "high_security": -1,
+                   "active_repos": cur_repos - prev_repos}
+        assert derived == SHRINK_EXPECTED, f"시드가 기대와 다르다 {derived}"
+        assert all(v < 0 for v in SHRINK_EXPECTED.values()), (
+            f"셋 다 음수여야 세 elif 팔이 한 화면에서 열린다 {SHRINK_EXPECTED}")
+        assert high_issue["category"] == "security" and high_issue["severity"] == "HIGH", (
+            "HIGH 이슈는 category 가 정확히 'security' 이고 severity 가 HIGH/ERROR 여야 "
+            "`_count_high_security` 가 센다")
+    finally:
+        session.close()
+        engine.dispose()
+    return dict(SHRINK_EXPECTED)
+
+
+@pytest.fixture(scope="session")
+def shrinking_user(live_server):
+    """분석 수·보안 이슈·활성 리포가 모두 «줄어든» 사용자 → 기대 delta dict."""
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    return _seed_shrinking_user(db_path)
