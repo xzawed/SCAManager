@@ -18,7 +18,8 @@ import os
 import pytest
 
 from e2e.conftest import (CONFIG_MODEL_ID, CONFIG_USER_ID, DELTA_DAYS,
-                          EMPTY_USER_ID, NOANALYSIS_USER_ID,
+                          DETAIL_AI_SUMMARY, DETAIL_FILE_FEEDBACK_PATH,
+                          DETAIL_PR_NUMBER, EMPTY_USER_ID, NOANALYSIS_USER_ID,
                           DELTA_REPO_SCORES, DELTA_SUGGESTION_COUNTS,
                           DELTA_USERS,
                           INSIGHT_LANGUAGE, VARIANT_BREAKDOWN, VARIANT_FEEDBACKS,
@@ -4091,3 +4092,155 @@ def test_token_text_meets_aa_on_empty_usage_screens(
     assert res["avgValue"] not in (None, "-"), (
         f"[{theme}] 데이터가 있는 사용자인데 평균 값이 {res['avgValue']!r} — "
         "`:909` 의 «참» 팔과 갈라지지 않는다")
+
+# ── E-18. 분석 상세의 «필드가 있을 때» + 리포 인사이트의 «분석이 없을 때» ────
+#
+# analysis_detail `:58`(PR 번호) · `:68`(cli) · `:69`(pr) · `:290`(AI 요약) ·
+# `:345`(파일별 피드백) · `:384`(줄번호 «없는» 이슈)
+# repo_insights `:94`(평균 «—») · `:276`(분석 없음 카드)
+#
+# 🔴 `repo_insights:141`·`:186` 은 이 배치가 **아니다**(Grok `01a0a28d`). 둘은
+#    `{% if recurring_issues or breakdown.total > 0 %}`(`:135`) 안에 있어서, 분석이 아예
+#    없으면 **부모가 사라져** 그 팔들은 평가조차 안 된다. 열려면 «한쪽만 있는» 시드가
+#    따로 필요하다 — 다음 배치의 일이다.
+# 🔴 `analysis_detail:52`(commit_sha 가 거짓)도 열지 않는다 — 컬럼이 `nullable=False`
+#    이고 빈 문자열은 앱이 쓰는 값이 아니다.
+
+
+_DETAIL_FIELD_JS = r"""(args) => {
+    const vis = el => el.checkVisibility(
+        {opacityProperty: true, visibilityProperty: true});
+    const text = [...document.querySelectorAll('body *')].filter(vis)
+        .map(el => el.childNodes.length === 1 ? el.innerText : '').join('\n');
+    return {
+        prLink: [...document.querySelectorAll('a[href*="/pull/"]')].filter(vis)
+            .map(a => a.getAttribute('href')),
+        sourceLabels: args.sources.filter(s => text.includes(s)),
+        hasSummary: text.includes(args.aiSummary),
+        hasFileFeedback: text.includes(args.filePath),
+        issuePaths: [...document.querySelectorAll('.issue__path')].filter(vis)
+            .map(el => el.innerText.trim()),
+    };
+}"""
+
+
+def _detail_texts(page):
+    from src.i18n.loader import get_text  # noqa: PLC0415
+
+    locale = page.evaluate("() => document.documentElement.lang") or "ko"
+    out = {k: get_text(f"analysis_detail.source_{k}", locale)
+           for k in ("cli", "pr", "push")}
+    assert all(out.values()), f"정본 문구를 못 뽑았다 {out} — 로케일 {locale!r}"
+    assert len(set(out.values())) == 3, f"소스 레이블이 겹친다 {out}"
+    return out
+
+
+def _detail_field_failures(probe, kind, texts) -> list[str]:
+    r"""분석 상세가 **시드한 필드 그대로** 그렸는가.
+
+    claimed = {PR 번호가 있으면 그 번호로 가는 링크 · 소스 레이블이 **그 하나** ·
+               시드한 AI 요약 문구 · 시드한 파일 경로 · 이슈 경로에 **줄번호가 없음**}
+    cheap   = {상세 페이지가 200 으로 떴다 · 어딘가 링크가 있다 · 글자가 있다}
+    - claimed\cheap(반드시 잡혀야) = 시드한 값 그대로.
+    - cheap\claimed(반드시 무시돼야) = 링크·글자의 존재.
+    두 분석이 서로의 대조군이다(pr 쪽엔 링크가 있고 cli 쪽엔 없다).
+    """
+    bad: list[str] = []
+    want_source = texts[kind if kind in ("cli", "pr") else "push"]
+    if probe["sourceLabels"] != [want_source]:
+        bad.append(f"소스 레이블이 {probe['sourceLabels']} — {kind} 면 {want_source!r} "
+                   "하나여야 한다")
+    if kind == "pr":
+        if not any(f"/pull/{DETAIL_PR_NUMBER}" in h for h in probe["prLink"]):
+            bad.append(f"PR {DETAIL_PR_NUMBER} 링크가 없다 {probe['prLink']} — `:58` 참 팔")
+    elif probe["prLink"]:
+        bad.append(f"PR 번호가 없는데 PR 링크가 떴다 {probe['prLink']}")
+    if not probe["hasSummary"]:
+        bad.append("시드한 AI 요약 문구가 없다 — `:290` 참 팔")
+    if not probe["hasFileFeedback"]:
+        bad.append("시드한 파일별 피드백 경로가 없다 — `:345` 참 팔")
+    if not probe["issuePaths"]:
+        bad.append("이슈 경로 줄이 없다 — 이슈가 안 그려졌다")
+    elif any(":" in p for p in probe["issuePaths"]):
+        bad.append(f"이슈 경로에 줄번호가 붙었다 {probe['issuePaths']} — 시드한 이슈에는 "
+                   "`line` 이 없으므로 `:384` 의 거짓 팔이어야 한다")
+    return bad
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_token_text_meets_aa_on_detail_field_variants(
+        seeded_page, base_url, detail_field_variants, analysis_free_repo, theme):
+    """🔴 PR 링크·소스 레이블·AI 요약·파일 피드백·줄번호 없는 이슈 · 빈 인사이트의 대비."""
+    from urllib.parse import quote  # noqa: PLC0415
+
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+
+    def prepare():
+        apply_theme(seeded_page, theme)
+        seeded_page.add_style_tag(
+            content="*,*::before,*::after{transition:none !important}")
+        seeded_page.wait_for_timeout(200)
+        _reveal_all(seeded_page)
+
+    def measure(where):
+        _reveal_all(seeded_page)
+        total, bad = 0, []
+        for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+                          (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
+            res = seeded_page.evaluate(js)
+            assert not res.get("error"), res.get("error")
+            total += sum(res["seen"][n] for n in names)
+            bad += res["bad"]
+        assert total > 0, (
+            f"[{theme}] {where} 에서 토큰 글자를 하나도 찾지 못했다 — "
+            "재지 못한 것이지 통과한 것이 아니다")
+        assert not bad, (
+            f"[{theme}] {where} 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
+            + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
+                          for b in bad[:10]))
+
+    texts = None
+    for kind, analysis_id in sorted(detail_field_variants.items()):
+        seeded_page.goto(f"{base_url}/repos/owner%2Fgatedrepo/analyses/{analysis_id}")
+        assert "localhost" in seeded_page.url, (
+            f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
+        prepare()
+        texts = texts or _detail_texts(seeded_page)
+        probe = seeded_page.evaluate(_DETAIL_FIELD_JS, {
+            "sources": list(texts.values()), "aiSummary": DETAIL_AI_SUMMARY,
+            "filePath": DETAIL_FILE_FEEDBACK_PATH})
+        missing = _detail_field_failures(probe, kind, texts)
+        assert not missing, f"[{theme}] detail/{kind}:\n  " + "\n  ".join(missing)
+        measure(f"detail/{kind}")
+
+    # ── 리포 인사이트 «분석이 하나도 없을 때» ─────────────────────────────
+    from src.i18n.loader import get_text  # noqa: PLC0415
+
+    with acting_as(NOANALYSIS_USER_ID, login="e2e-noanalysis"):
+        seeded_page.goto(
+            f"{base_url}/repos/{quote(analysis_free_repo, safe='')}/insights")
+        assert "localhost" in seeded_page.url, (
+            f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
+        prepare()
+        locale = seeded_page.evaluate("() => document.documentElement.lang") or "ko"
+        empty = get_text("repo_insights.empty_no_data", locale).split("{")[0].strip()
+        res = seeded_page.evaluate("""(empty) => {
+            const vis = el => el.checkVisibility(
+                {opacityProperty: true, visibilityProperty: true});
+            const box = [...document.querySelectorAll('.ri-empty')].filter(vis)
+                .map(el => el.innerText).join('\\n');
+            const grade = document.querySelector('.ri-grade-badge');
+            return {
+                empty: !!empty && box.includes(empty),
+                score: (document.querySelector('.ri-kpi-value')
+                        || document.querySelector('.kpi__value'))?.innerText.trim() || null,
+                twoCol: [...document.querySelectorAll('.ri-two-col')].filter(vis).length,
+                gradeShown: !!grade && vis(grade),
+            };
+        }""", empty)
+        assert res["empty"], (
+            f"[{theme}] 분석이 없는데 «데이터 없음» 카드가 없다 — `:276` 참 팔 {res}")
+        assert not res["twoCol"], (
+            f"[{theme}] 분석이 없는데 2열(반복 이슈·도넛) 블록이 떴다 — `:135` 부모가 "
+            "거짓이어야 한다")
+        measure("insights/no-analysis")
