@@ -17,10 +17,15 @@ import os
 
 import pytest
 
-from e2e.conftest import (DELTA_DAYS, DELTA_REPO_SCORES, DELTA_SUGGESTION_COUNTS,
+from e2e.conftest import (CONFIG_MODEL_ID, CONFIG_USER_ID, DELTA_DAYS,
+                          DETAIL_AI_SUMMARY, DETAIL_FILE_FEEDBACK_PATH,
+                          DETAIL_PR_NUMBER, EMPTY_USER_ID, NOANALYSIS_USER_ID,
+                          SHRINK_USER_ID,
+                          DELTA_REPO_SCORES, DELTA_SUGGESTION_COUNTS,
                           DELTA_USERS,
                           INSIGHT_LANGUAGE, VARIANT_BREAKDOWN, VARIANT_FEEDBACKS,
                           acting_as, apply_theme, delta_repo_name,
+                          rls_catalog_double,
                           expected_avg_delta, expected_cost_delta,
                           expected_score_delta, insight_key_window)
 
@@ -3469,3 +3474,880 @@ def test_token_text_meets_aa_on_repo_insights_deltas(
                 f"[{theme}] {name} 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
                 + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
                               for b in bad[:10]))
+
+
+# ── E-14. RLS 감사의 «FORCE 는 걸렸는데 접속이 우회» 경고 (#1639 마지막 노드) ──
+#
+# `admin_rls_audit.html:37` 은 양쪽 팔 모두 미관측이었다. SQLite 에서는
+# `_measure_force_applied` 가 False 라 **앞 갈래(`{% if not summary.force_applied %}`)가
+# 늘 잡고**, 그 `elif` 는 평가조차 되지 않는다. 두 실측 함수를 이 시험 동안만 True 로
+# 돌려 그 화면을 띄운다 — 실 PG 에서 실재하는 상태이고(pg 잡의 0041 왕복 시험이 두 값을
+# 이미 실측한다) e2e 가 못 여는 이유는 방언 격차뿐이다.
+
+_RLS_CARD_KEY = {"bypass": "admin.rls_audit.bypass_warning_title",
+                 "force": "admin.rls_audit.force_warning_title"}
+
+_RLS_CARD_JS = r"""() => [...document.querySelectorAll('.admin-info-card')]
+    .filter(el => el.checkVisibility({opacityProperty: true, visibilityProperty: true}))
+    .map(el => el.innerText.trim())"""
+
+
+def _rls_texts(page):
+    from src.i18n.loader import get_text  # noqa: PLC0415
+
+    locale = page.evaluate("() => document.documentElement.lang") or "ko"
+    out = {k: get_text(key, locale) for k, key in _RLS_CARD_KEY.items()}
+    assert all(out.values()), f"정본 문구를 못 뽑았다 {out} — 로케일 {locale!r}"
+    assert out["bypass"] not in out["force"] and out["force"] not in out["bypass"], out
+    return out
+
+
+def _rls_card_failures(cards, want, texts) -> list[str]:
+    r"""그 경고 카드가 **그 갈래로** 떴는가.
+
+    claimed = {`want` 쪽 제목이 보이는 카드 안에 있고, 다른 쪽 제목은 **없다**}
+    cheap   = {`/admin/rls-audit` 가 200 으로 떴다 · 안내 카드가 하나 있다}
+    - claimed\cheap(반드시 잡혀야) = 그 갈래 **전용** 제목.
+    - cheap\claimed(반드시 무시돼야) = 카드의 존재 · 페이지가 떴다.
+    두 갈래가 배타라서 서로가 서로의 대조군이다 — 창 밖에서는 정확히 반대가 나와야 한다.
+    """
+    joined = "\n".join(cards)
+    other = next(k for k in _RLS_CARD_KEY if k != want)
+    bad: list[str] = []
+    if texts[want] not in joined:
+        bad.append(f"{want} 경고 카드가 없다 (본 카드 {len(cards)}개)")
+    if texts[other] in joined:
+        bad.append(f"{other} 경고가 함께 떴다 — 두 갈래는 배타여야 한다")
+    return bad
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_token_text_meets_aa_on_rls_bypass_warning(admin_page, base_url, theme):
+    """🔴 «FORCE 는 걸렸는데 접속이 RLS 를 우회» 경고 카드 글자가 AA 를 넘는가."""
+    from src.services import saas_service  # noqa: PLC0415
+
+    admin_page.set_viewport_size({"width": 1440, "height": 900})
+    # 🔴 창이 끝난 뒤 **둘 다** 제자리인지 신원으로 확인한다. 화면만 보면 `force` 복원만
+    #    증명된다 — `force` 가 거짓이면 앞 갈래가 잡아 `bypasses` 누수는 안 보인다
+    #    (Grok `01a09d62`).
+    before = (saas_service._measure_force_applied,
+              saas_service._measure_connection_bypasses_rls)
+
+    def visit():
+        admin_page.goto(f"{base_url}/admin/rls-audit")
+        assert "localhost" in admin_page.url, (
+            f"{admin_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
+        apply_theme(admin_page, theme)
+        admin_page.add_style_tag(
+            content="*,*::before,*::after{transition:none !important}")
+        admin_page.wait_for_timeout(200)
+        _reveal_all(admin_page)
+
+    with rls_catalog_double():
+        visit()
+        texts = _rls_texts(admin_page)
+        missing = _rls_card_failures(admin_page.evaluate(_RLS_CARD_JS), "bypass", texts)
+        assert not missing, f"[{theme}] 우회 경고:\n  " + "\n  ".join(missing)
+
+        total, bad = 0, []
+        for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+                          (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
+            res = admin_page.evaluate(js)
+            assert not res.get("error"), res.get("error")
+            total += sum(res["seen"][n] for n in names)
+            bad += res["bad"]
+        assert total > 0, (
+            f"[{theme}] 우회 경고 화면에서 토큰 글자를 하나도 찾지 못했다 — "
+            "재지 못한 것이지 통과한 것이 아니다")
+        assert not bad, (
+            f"[{theme}] 우회 경고 화면 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
+            + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
+                          for b in bad[:10]))
+
+    # ② FORCE 도 걸렸고 우회도 아닌 **건강한** 상태 — 경고가 **둘 다** 없어야 한다.
+    #    이것이 `:37` 의 «거짓» 팔이다(앞 갈래가 거짓이라 그 elif 가 평가된다).
+    with rls_catalog_double(bypasses=False):
+        visit()
+        cards = "\n".join(admin_page.evaluate(_RLS_CARD_JS))
+        stray = [k for k, v in texts.items() if v in cards]
+        assert not stray, (
+            f"[{theme}] 건강한 상태인데 경고가 떴다 {stray} — FORCE 가 걸렸고 접속도 "
+            "우회하지 않으면 두 카드 다 없어야 한다")
+
+    # ③ FORCE 는 안 걸렸는데 접속은 우회 — 두 경고가 **배타** 임을 재는 유일한 조합이다.
+    #    `elif` 가 형제 `if` 로 바뀌면 여기서 둘 다 떠서 red 가 된다.
+    with rls_catalog_double(force=False, bypasses=True):
+        visit()
+        missing = _rls_card_failures(admin_page.evaluate(_RLS_CARD_JS), "force", texts)
+        assert not missing, (
+            f"[{theme}] FORCE 미설정 + 우회 상태:\n  " + "\n  ".join(missing)
+            + "\n  (두 경고는 배타여야 한다 — 앞 갈래가 잡으면 뒤 elif 는 안 그린다)")
+
+    # ④ 정책이 «빠진» 테이블이 한 줄 — 요약의 미적용 뱃지와 그 행의 «미적용» 뱃지.
+    #    운영 상수로는 안 나오지만 템플릿이 표시하려고 쓴 상태다(단위 렌더 시험이 먹인다).
+    with rls_catalog_double(matrix_missing=True):
+        visit()
+        res = admin_page.evaluate("""() => ({
+            danger: [...document.querySelectorAll('.badge--danger')]
+                .filter(el => el.checkVisibility(
+                    {opacityProperty: true, visibilityProperty: true}))
+                .map(el => el.innerText.trim()),
+            rows: document.querySelectorAll('tbody tr').length,
+        })""")
+        assert len(res["danger"]) == 2, (
+            f"[{theme}] 위험 뱃지가 {res['danger']} — 요약의 «미적용 N건» 하나와 그 행의 "
+            "«미적용» 하나, 정확히 둘이어야 한다(대역이 한 줄만 바꾼다)")
+        assert res["rows"] >= 13, f"[{theme}] 매트릭스 행이 {res['rows']}개 — 13 이상이어야"
+
+    # 🔴 반드시 «무시돼야» 하는 쪽 — 창 밖에서는 정확히 반대 카드가 떠야 한다.
+    visit()
+    control = admin_page.evaluate(_RLS_CARD_JS)
+    assert not _rls_card_failures(control, "force", texts), (
+        f"[{theme}] 창 밖인데 FORCE 미설정 경고가 아니다 — 대역이 안 풀렸다(전역 상태 누수)")
+    assert _rls_card_failures(control, "bypass", texts), (
+        f"[{theme}] 창 밖인데 우회 경고를 «그렸다» 고 판정됐다 — "
+        "계기가 「카드가 있으면 초록」으로 무너져 있다")
+    assert not admin_page.evaluate(
+        "() => [...document.querySelectorAll('.badge--danger')].length"), (
+        f"[{theme}] 창 밖인데 위험 뱃지가 남았다 — 매트릭스 대역이 안 풀렸다")
+    assert (saas_service._measure_force_applied,
+            saas_service._measure_connection_bypasses_rls) == before, (
+        f"[{theme}] 카탈로그 대역이 창 밖으로 샜다 — 뒤 시험들이 «PG 인 척하는» 앱을 "
+        "재게 된다")
+
+# ── E-15. 쿼리 파라미터만으로 열리는 팔 (#1639 · 부류 A) ────────────────────
+#
+# 남은 «한쪽 팔만 미관측» 을 부류로 나눴을 때, **시드가 전혀 필요 없는** 여덟 개가 나왔다.
+# 여섯은 설정 화면의 PRG(post-redirect-get) 배너 플래그이고 둘은 대시보드 기간 탭이다.
+#
+# 🔴 그래도 «URL 만으로» 는 아니었다(Grok `01a09e4e` 가 내 계획을 BROKEN 으로 깎았다):
+#   ① 여섯 배너는 `.s-card.adv-only` 안이라 **간단 모드에서 `display:none`** 이다.
+#   ② 게다가 닫힌 `<details class="setup-actions">` 안이라 브라우저가 안 그린다.
+#   → 이 파일의 다른 설정 스윕과 **같은 관용구**로 연다(고급 모드 + details 열기).
+# 🔴 세 문구는 `| safe` 라 `<strong>` 을 품는다 — 원문 그대로 innerText 와 비교하면
+#    **거짓 red** 가 난다. 태그를 벗겨 비교한다.
+
+
+_SETTINGS_FLAG_KEY = {
+    "webhook_ok": "settings_page.inbound.webhook_ok",
+    "webhook_partial": "settings_page.inbound.webhook_partial",
+    "webhook_fail": "settings_page.inbound.webhook_fail",
+    "hook_ok": "settings_page.inbound.hook_ok",
+    "hook_fail": "settings_page.inbound.hook_fail",
+}
+_STALE_FORM_KEY = "errors.stale_unclaimed_form"
+
+_HOOK_ALERT_JS = r"""() => [...document.querySelectorAll('.hook-alert')]
+    .filter(el => el.checkVisibility({opacityProperty: true, visibilityProperty: true}))
+    .map(el => el.innerText.trim())"""
+
+
+def _strip_tags(text: str) -> str:
+    import re  # noqa: PLC0415
+
+    return re.sub(r"<[^>]+>", "", text).strip()
+
+
+def _settings_flag_texts(page):
+    from src.i18n.loader import get_text  # noqa: PLC0415
+
+    locale = page.evaluate("() => document.documentElement.lang") or "ko"
+    out = {k: _strip_tags(get_text(key, locale))
+           for k, key in _SETTINGS_FLAG_KEY.items()}
+    assert all(out.values()), f"정본 문구를 못 뽑았다 {out} — 로케일 {locale!r}"
+    assert len(set(out.values())) == len(out), f"정본 문구가 겹친다 {out}"
+    return out
+
+
+def _flag_banner_failures(alerts, want, texts) -> list[str]:
+    r"""그 플래그의 배너 «만» 떴는가.
+
+    claimed = {그 플래그의 정본 문구가 보이는 `.hook-alert` 안에 · 다른 플래그의 문구는 없음}
+    cheap   = {설정 화면이 200 으로 떴다 · 배너가 하나 있다 · 고급 모드를 켰다}
+    - claimed\cheap(반드시 잡혀야) = **그 플래그의** 문구.
+    - cheap\claimed(반드시 무시돼야) = 배너의 존재 · 화면이 떴다.
+    파라미터를 하나씩만 붙이므로 다섯이 서로의 대조군이다.
+    """
+    joined = "\n".join(alerts)
+    bad: list[str] = []
+    if texts[want] not in joined:
+        bad.append(f"{want} 배너가 없다 (본 배너 {len(alerts)}개: {alerts[:2]})")
+    others = [k for k in _SETTINGS_FLAG_KEY if k != want and texts[k] in joined]
+    if others:
+        bad.append(f"다른 플래그의 배너가 함께 떴다 {others} — 파라미터는 하나만 붙였다")
+    return bad
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_token_text_meets_aa_on_settings_prg_banners(
+        seeded_page, base_url, gated_settings_repo, theme):
+    """🔴 설정 화면의 PRG 배너 다섯 + 낡은 폼 경고의 글자가 AA 를 넘는가."""
+    from urllib.parse import quote  # noqa: PLC0415
+
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    repo = quote(gated_settings_repo, safe="")
+
+    def visit(query):
+        seeded_page.goto(f"{base_url}/repos/{repo}/settings?{query}")
+        assert "localhost" in seeded_page.url, (
+            f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
+        apply_theme(seeded_page, theme)
+        # 🔴 배너는 `.adv-only` + 닫힌 `<details>` 안이다 — 이 파일의 다른 설정 스윕과
+        #    같은 관용구로 연다(사용자가 고급 모드를 켜고 접힘을 펴는 것과 같다).
+        seeded_page.evaluate(
+            "() => { document.body.setAttribute('data-settings-mode', 'advanced');"
+            " document.querySelectorAll('details').forEach(d => d.open = true); }")
+        seeded_page.add_style_tag(
+            content="*,*::before,*::after{transition:none !important}")
+        seeded_page.wait_for_timeout(200)
+        _reveal_all(seeded_page)
+
+    def measure(where):
+        _reveal_all(seeded_page)
+        total, bad = 0, []
+        for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+                          (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
+            res = seeded_page.evaluate(js)
+            assert not res.get("error"), res.get("error")
+            total += sum(res["seen"][n] for n in names)
+            bad += res["bad"]
+        assert total > 0, (
+            f"[{theme}] {where} 에서 토큰 글자를 하나도 찾지 못했다 — "
+            "재지 못한 것이지 통과한 것이 아니다")
+        assert not bad, (
+            f"[{theme}] {where} 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
+            + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
+                          for b in bad[:10]))
+
+    texts = None
+    for flag in sorted(_SETTINGS_FLAG_KEY):
+        visit(f"{flag}=1")
+        texts = texts or _settings_flag_texts(seeded_page)
+        missing = _flag_banner_failures(
+            seeded_page.evaluate(_HOOK_ALERT_JS), flag, texts)
+        assert not missing, f"[{theme}] {flag}:\n  " + "\n  ".join(missing)
+        measure(f"settings/{flag}")
+
+    # 낡은 폼 경고 — `.adv-only` 밖이라 모드와 무관하다.
+    from src.i18n.loader import get_text  # noqa: PLC0415
+
+    visit("stale_form=1")
+    locale = seeded_page.evaluate("() => document.documentElement.lang") or "ko"
+    stale = _strip_tags(get_text(_STALE_FORM_KEY, locale))
+    shown = seeded_page.evaluate("""() => {
+        const el = document.getElementById('staleFormBanner');
+        return el && el.checkVisibility({opacityProperty: true, visibilityProperty: true})
+            ? el.innerText.trim() : null;
+    }""")
+    assert shown and stale in shown, (
+        f"[{theme}] 낡은 폼 경고가 없다 {str(shown)[:70]!r}")
+    measure("settings/stale_form")
+
+    # 🔴 반드시 «무시돼야» 하는 쪽 — 파라미터가 없으면 배너도 경고도 없다.
+    visit("")
+    control = seeded_page.evaluate(_HOOK_ALERT_JS)
+    for flag in _SETTINGS_FLAG_KEY:
+        assert _flag_banner_failures(control, flag, texts), (
+            f"[{theme}] 파라미터 없이도 {flag} 배너가 «떴다» 고 판정됐다 — "
+            "계기가 「설정 화면이 뜨면 초록」으로 무너져 있다")
+    assert not seeded_page.evaluate(
+        "() => !!document.getElementById('staleFormBanner')"), (
+        f"[{theme}] 파라미터 없이 낡은 폼 경고가 남았다")
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_token_text_meets_aa_on_dashboard_range_tabs(seeded_page, base_url, theme):
+    """🔴 기간 탭(1d·90d)이 «선택됨» 일 때의 글자가 AA 를 넘는가."""
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    for days in (1, 90):
+        seeded_page.goto(f"{base_url}/dashboard?mode=overview&days={days}")
+        assert "localhost" in seeded_page.url, (
+            f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
+        apply_theme(seeded_page, theme)
+        seeded_page.add_style_tag(
+            content="*,*::before,*::after{transition:none !important}")
+        seeded_page.wait_for_timeout(200)
+        _reveal_all(seeded_page)
+
+        # 🔴 «어딘가 active 가 있다» 가 아니라 **기간 토글 안에서 그 탭만** active 여야
+        #    한다. `a[href*="days="]` 로 넓게 잡으면 **모드 탭**까지 걸린다 — 그 href 에도
+        #    `days=` 가 들어가고 현재 모드는 늘 active 다(실측: 1d 인데 active 가 2개).
+        active = seeded_page.evaluate(
+            """() => [...document.querySelectorAll('.dash-range-toggle a')]
+            .filter(a => a.classList.contains('active'))
+            .map(a => new URL(a.href, location.origin).searchParams.get('days'))""")
+        assert active == [str(days)], (
+            f"[{theme}] days={days} 인데 active 탭이 {active} — 정확히 그 하나여야 한다")
+
+        total, bad = 0, []
+        for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+                          (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
+            res = seeded_page.evaluate(js)
+            assert not res.get("error"), res.get("error")
+            total += sum(res["seen"][n] for n in names)
+            bad += res["bad"]
+        assert total > 0, (
+            f"[{theme}] days={days} 화면에서 토큰 글자를 하나도 찾지 못했다")
+        assert not bad, (
+            f"[{theme}] days={days} 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
+            + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
+                          for b in bad[:10]))
+
+# ── E-16. 설정 화면의 «켜진» 상태 열 팔 (#1639 · settings 묶음) ──────────────
+#
+# 토글 두 개(체크 안 됨)·모델 선택·이슈 생성·알림 연결 점 다섯·Railway 토큰.
+# 전부 `RepoConfig` 한 행이 정한다.
+#
+# 🔴 리포가 둘이다(Grok `01a09e76`). AI 리뷰를 끄면 CSS 가
+#    `.ai-review-group:has(input[name="ai_review_enabled"]:not(:checked))` 로
+#    `.ai-review-dependent`·`.ai-review-model` 을 `display:none` 한다 — 한 화면에서
+#    「AI 리뷰 끔」과 「그 아래 필드가 보임」을 같이 잴 수 없다. 분기 프로브는 그래도
+#    기록하지만 **대비는 못 잰다**. 그래서 켠 리포에서 아래 필드를 재고, 끈 리포에서
+#    토글의 «미체크» 팔을 잰다.
+# 🔴 대조군도 **그 사용자가 볼 수 있는** 리포여야 한다 — `get_accessible_repo` 는 남의
+#    리포에 404 를 준다. 그래서 «끈» 리포가 대조군을 겸한다(알림 연결이 전부 꺼져 있다).
+
+
+_CONN_DOT_FIELDS = ("discord_webhook_url", "slack_webhook_url", "email_recipients",
+                    "custom_webhook_url", "n8n_webhook_url")
+
+# 🔴 체크박스 «입력» 자체는 커스텀 스위치라 화면에 안 보인다(`.toggle-switch` 안에
+#    숨고 옆의 `.toggle-track` 이 칠해진다). 그래서 상태는 입력에서 읽고, «보이는가» 는
+#    그 트랙으로 판단한다. 입력의 가시성을 요구하면 늘 red 다(실측).
+# 🔴 `.conn-dot` 은 화면에 여덟 개 넘게 있다(텔레그램 등 내가 시드하지 않은 것 포함).
+#    그래서 **필드별 라벨**(`label[for="<필드>"]`)로 정확히 집는다.
+_SETTINGS_STATE_JS = r"""(dotFields) => {
+    const vis = el => el && el.checkVisibility(
+        {opacityProperty: true, visibilityProperty: true});
+    const box = name => {
+        const el = document.querySelector(`input[name="${name}"]`);
+        if (!el) return null;
+        const track = el.closest('.toggle-switch')?.querySelector('.toggle-track');
+        return {checked: el.checked, shown: vis(track)};
+    };
+    const sel = document.querySelector('select[name="review_model"]');
+    return {
+        ai_review_enabled: box('ai_review_enabled'),
+        pr_review_comment: box('pr_review_comment'),
+        create_issue: box('create_issue'),
+        model: sel ? {value: sel.value, shown: vis(sel)} : null,
+        dots: Object.fromEntries(dotFields.map(f => {
+            const el = document.querySelector(`label[for="${f}"] .conn-dot`);
+            return [f, el ? {on: el.classList.contains('is-on'), shown: vis(el)} : null];
+        })),
+    };
+}"""
+
+
+def _settings_state_failures(state, expect) -> list[str]:
+    r"""설정 화면이 **시드한 설정 그대로** 그려졌는가.
+
+    🔴 계기를 믿기 전에 뒤집는다(verify.md 4). 소스를 열기 전에 적은 두 목록:
+      claimed = {세 체크박스가 **시드한 값** 대로 · 모델 select 가 **시드한 id** ·
+                 연결 점 다섯이 **전부 켜짐/전부 꺼짐**}
+      cheap   = {설정 화면이 200 으로 떴다 · 체크박스가 있다 · 점이 있다}
+    - claimed\cheap(반드시 잡혀야) = 값이 시드와 일치.
+    - cheap\claimed(반드시 무시돼야) = 요소의 존재.
+    두 리포가 서로의 대조군이라, 같은 판정을 반대 기대값으로 두 번 돌린다.
+    """
+    bad: list[str] = []
+    for name, want in expect["boxes"].items():
+        got = state[name]
+        if got is None:
+            bad.append(f"{name} 체크박스가 화면에 없다")
+        elif not got["shown"]:
+            bad.append(f"{name} 체크박스가 보이지 않는다 — CSS 가 가렸다")
+        elif got["checked"] is not want:
+            bad.append(f"{name} 이 {got['checked']} — 시드는 {want}")
+    want_model = expect.get("model")
+    if want_model is not None:
+        if state["model"] is None:
+            bad.append("모델 select 가 화면에 없다")
+        elif not state["model"]["shown"]:
+            bad.append("모델 select 가 보이지 않는다 — AI 리뷰가 꺼져 CSS 가 가렸다")
+        elif state["model"]["value"] != want_model:
+            bad.append(f"선택된 모델이 {state['model']['value']!r} — 시드는 {want_model!r}")
+    want_on = expect["dots_on"]
+    for field in _CONN_DOT_FIELDS:
+        dot = state["dots"].get(field)
+        if dot is None:
+            bad.append(f"{field} 의 연결 점을 못 찾았다 (`label[for=...]` 구조가 바뀌었다)")
+        elif not dot["shown"]:
+            bad.append(f"{field} 의 연결 점이 보이지 않는다")
+        elif dot["on"] is not want_on:
+            bad.append(f"{field} 연결 점이 {'켜짐' if dot['on'] else '꺼짐'} — "
+                       f"시드는 {'켜짐' if want_on else '꺼짐'}")
+    return bad
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_token_text_meets_aa_on_configured_settings(
+        seeded_page, base_url, configured_repos, theme):
+    """🔴 설정이 «다 켜진» 화면과 «AI 리뷰를 끈» 화면의 글자가 AA 를 넘는가."""
+    from urllib.parse import quote  # noqa: PLC0415
+
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+
+    def visit(full_name):
+        seeded_page.goto(f"{base_url}/repos/{quote(full_name, safe='')}/settings")
+        assert "localhost" in seeded_page.url, (
+            f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
+        apply_theme(seeded_page, theme)
+        seeded_page.evaluate(
+            "() => { document.body.setAttribute('data-settings-mode', 'advanced');"
+            " document.querySelectorAll('details').forEach(d => d.open = true); }")
+        seeded_page.add_style_tag(
+            content="*,*::before,*::after{transition:none !important}")
+        seeded_page.wait_for_timeout(200)
+        _reveal_all(seeded_page)
+
+    def measure(where):
+        _reveal_all(seeded_page)
+        total, bad = 0, []
+        for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+                          (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
+            res = seeded_page.evaluate(js)
+            assert not res.get("error"), res.get("error")
+            total += sum(res["seen"][n] for n in names)
+            bad += res["bad"]
+        assert total > 0, (
+            f"[{theme}] {where} 에서 토큰 글자를 하나도 찾지 못했다 — "
+            "재지 못한 것이지 통과한 것이 아니다")
+        assert not bad, (
+            f"[{theme}] {where} 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
+            + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
+                          for b in bad[:10]))
+
+    with acting_as(CONFIG_USER_ID, login="e2e-config"):
+        # ① 다 켜진 리포 — 토글 하나 꺼짐 · 모델 선택 · 이슈 생성 켜짐 · 연결 점 전부 켜짐.
+        visit(configured_repos["on"])
+        missing = _settings_state_failures(
+            seeded_page.evaluate(_SETTINGS_STATE_JS, list(_CONN_DOT_FIELDS)),
+            {"boxes": {"ai_review_enabled": True, "pr_review_comment": False,
+                       "create_issue": True},
+             "model": CONFIG_MODEL_ID, "dots_on": True})
+        assert not missing, f"[{theme}] 켜진 설정:\n  " + "\n  ".join(missing)
+        measure("settings/configured-on")
+
+        # ② AI 리뷰를 끈 리포 — 그 토글의 «미체크» 팔. 알림은 전부 꺼져 있어 대조군을 겸한다.
+        visit(configured_repos["off"])
+        missing = _settings_state_failures(
+            seeded_page.evaluate(_SETTINGS_STATE_JS, list(_CONN_DOT_FIELDS)),
+            {"boxes": {"ai_review_enabled": False, "create_issue": False},
+             "dots_on": False})
+        assert not missing, f"[{theme}] 끈 설정:\n  " + "\n  ".join(missing)
+        measure("settings/configured-off")
+
+# ── E-17. «데이터가 없는» 대시보드 화면들 (#1639 · dashboard 묶음) ───────────
+#
+# 사용량 모드의 빈 상태(`:867`)와 지표 «없음» 둘(`:889`·`:909`), 리포 모드의 요약 셋
+# (`:504` 평균 없음 · `:514` 경고 0 · `:554` 경고 리포 없음).
+#
+# 🔴 사용자 **둘**이 필요하다(Grok `01a09ea7`). `repo_count == 0` 이면 빈 상태 화면이
+#    먼저 잡아 그 아래 지표 블록이 **아예 안 그려진다** — 「리포는 있고 분석은 없는」
+#    사용자라야 `last_analysis_at`·`avg_score` 의 «없음» 팔에 닿는다.
+# 🔴 `:525`(`total_repos > 0` 의 거짓 팔)는 **이 스위트에서 열 수 없다** — 리포 목록은
+#    `user_id == me OR IS NULL` 이라 `owner/unclaimedrepo` 가 늘 보이고, 그 픽스처는
+#    세션 공유 DB 에 남는다. 죽은 코드는 아니다(리포가 정말 0 인 배포에서는 나온다).
+
+
+# 🔴 `:909` 는 **라벨이 아니라 값**만 바뀐다 — 평균 라벨은 늘 그려지고 값이 점수 또는
+#    `-` 다. 「라벨이 없어야 한다」로 적었다가 틀렸다(실측). 반면 `:889`(마지막 분석)는
+#    지표 «행 전체» 가 조건 안이라 라벨째 사라진다. 둘을 다르게 재야 한다.
+_USAGE_METRIC_JS = r"""(args) => {
+    const vis = el => el.checkVisibility(
+        {opacityProperty: true, visibilityProperty: true});
+    const seen = [...document.querySelectorAll('.dash-insight-metric-label')]
+        .filter(vis).map(el => el.innerText.trim());
+    const avgCard = [...document.querySelectorAll('.dash-insight-card')].filter(vis)
+        .find(c => (c.querySelector('.dash-insight-title')?.innerText || '')
+                     .includes(args.avgTitle));
+    return {
+        labels: seen,
+        status: [...document.querySelectorAll('.dash-insight-status')]
+            .filter(vis).map(el => el.innerText.trim()).join('\n'),
+        grid: [...document.querySelectorAll('.dash-insight-grid')].filter(vis).length,
+        avgValue: avgCard
+            ? (avgCard.querySelector('.dash-insight-metric-value')?.innerText || '').trim()
+            : null,
+        wanted: (args.labels || []).filter(l => seen.some(s => s.includes(l))),
+    };
+}"""
+
+_REPOS_SUMMARY_JS = r"""() => {
+    const vis = el => el.checkVisibility(
+        {opacityProperty: true, visibilityProperty: true});
+    const kpis = [...document.querySelectorAll('.repos-kpi-grid .kpi')].filter(vis)
+        .map(k => [(k.querySelector('.kpi__label')?.innerText || '').trim(),
+                   (k.querySelector('.t-num')?.innerText || '').trim()]);
+    return {
+        kpis,
+        warnings: [...document.querySelectorAll('.repos-warning-item')].filter(vis).length,
+        // 🔴 조건을 지우면 **빈 래퍼**가 그려진다 — 항목 «개수» 만 보면 못 잡는다(실측).
+        wrapper: document.querySelectorAll('.repos-warnings').length,
+    };
+}"""
+
+
+def _usage_texts(page):
+    from src.i18n.loader import get_text  # noqa: PLC0415
+
+    locale = page.evaluate("() => document.documentElement.lang") or "ko"
+    out = {"empty": get_text("dashboard.usage.empty_title", locale),
+           "last": get_text("dashboard.usage.last_analysis_label", locale),
+           "avg_title": get_text("dashboard.usage.avg_score_title", locale),
+           "total": get_text("dashboard.usage.total_analyses_label", locale)}
+    assert all(out.values()), f"정본 문구를 못 뽑았다 {out} — 로케일 {locale!r}"
+    return out
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_token_text_meets_aa_on_empty_usage_screens(
+        seeded_page, base_url, empty_user, analysis_free_repo, seeded_analysis, theme):
+    """🔴 «리포가 없다»·«분석이 없다» 화면의 글자가 AA 를 넘는가."""
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+
+    def visit(mode):
+        seeded_page.goto(f"{base_url}/dashboard?mode={mode}")
+        assert "localhost" in seeded_page.url, (
+            f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
+        apply_theme(seeded_page, theme)
+        seeded_page.add_style_tag(
+            content="*,*::before,*::after{transition:none !important}")
+        seeded_page.wait_for_timeout(200)
+        _reveal_all(seeded_page)
+
+    def measure(where):
+        _reveal_all(seeded_page)
+        total, bad = 0, []
+        for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+                          (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
+            res = seeded_page.evaluate(js)
+            assert not res.get("error"), res.get("error")
+            total += sum(res["seen"][n] for n in names)
+            bad += res["bad"]
+        assert total > 0, (
+            f"[{theme}] {where} 에서 토큰 글자를 하나도 찾지 못했다 — "
+            "재지 못한 것이지 통과한 것이 아니다")
+        assert not bad, (
+            f"[{theme}] {where} 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
+            + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
+                          for b in bad[:10]))
+
+    # ① 리포가 하나도 없는 사용자 — 사용량 «빈 상태» 와 리포 요약의 «없음» 셋.
+    with acting_as(EMPTY_USER_ID, login="e2e-empty"):
+        visit("usage")
+        texts = _usage_texts(seeded_page)
+        res = seeded_page.evaluate(
+            _USAGE_METRIC_JS, {"labels": [texts["total"]], "avgTitle": texts["avg_title"]})
+        assert texts["empty"] in res["status"], (
+            f"[{theme}] 사용량 빈 상태 문구가 없다 {res['status'][:70]!r}")
+        assert not res["grid"], (
+            f"[{theme}] 리포가 0인데 지표 그리드가 떴다 — `:867` 이 안 잡혔다")
+        measure("usage/empty")
+
+        visit("repos")
+        summary = seeded_page.evaluate(_REPOS_SUMMARY_JS)
+        nums = [v for _, v in summary["kpis"]]
+        assert "—" in nums, (
+            f"[{theme}] 평균 점수가 «—» 가 아니다 {summary['kpis']} — 분석이 없으면 "
+            "`:504` 의 거짓 팔이다")
+        assert "0" in nums, (
+            f"[{theme}] 경고 리포 수가 0 이 아니다 {summary['kpis']} — `:514` 거짓 팔")
+        assert summary["warnings"] == 0, (
+            f"[{theme}] 경고 리포 항목이 {summary['warnings']}개 — `:554` 거짓 팔")
+        assert summary["wrapper"] == 0, (
+            f"[{theme}] 경고 리포가 없는데 `.repos-warnings` 래퍼가 "
+            f"{summary['wrapper']}개 그려졌다 — `:554` 의 조건이 도는지는 «항목 개수» 가 "
+            "아니라 래퍼의 유무로 갈린다(조건을 지우면 빈 래퍼가 남는다)")
+        measure("repos/empty")
+
+    # ② 리포는 있고 분석은 없는 사용자 — 지표 그리드는 뜨되 «마지막 분석»·«평균» 은 없다.
+    with acting_as(NOANALYSIS_USER_ID, login="e2e-noanalysis"):
+        visit("usage")
+        res = seeded_page.evaluate(
+            _USAGE_METRIC_JS,
+            {"labels": [texts["last"], texts["total"]], "avgTitle": texts["avg_title"]})
+        assert res["grid"], (
+            f"[{theme}] 리포가 1인데 지표 그리드가 없다 — 빈 상태로 갔다 "
+            f"{res['status'][:60]!r}")
+        assert texts["total"] in " ".join(res["labels"]), (
+            f"[{theme}] «누적 분석» 지표가 없다 {res['labels']} — 그리드가 반쯤 그려졌다")
+        assert not any(texts["last"] in s for s in res["labels"]), (
+            f"[{theme}] 분석이 없는데 «마지막 분석» 지표 행이 떴다 {res['labels']} — "
+            "`:889` 의 거짓 팔이 안 열렸다(그 행은 조건 «안» 에 통째로 있다)")
+        assert res["avgValue"] == "-", (
+            f"[{theme}] 평균 점수 값이 {res['avgValue']!r} — 분석이 없으면 `-` 여야 한다"
+            " (`:909` 의 거짓 팔. 이 팔은 라벨이 아니라 **값** 만 바꾼다)")
+        measure("usage/no-analysis")
+
+    # 🔴 반드시 «무시돼야» 하는 쪽 — 데이터가 있는 사용자에게는 그 지표가 있다.
+    #    `seeded_analysis` 를 **명시로 받는다** — 안 받으면 `-k` 로 거른 실행에서 사용자 1
+    #    에게도 분석이 없어 대조군이 무너진다(실측: 그 상태로 red 가 났다).
+    visit("usage")
+    res = seeded_page.evaluate(
+        _USAGE_METRIC_JS, {"labels": [texts["last"]], "avgTitle": texts["avg_title"]})
+    assert res["wanted"], (
+        f"[{theme}] 데이터가 있는 사용자인데 «마지막 분석» 지표가 없다 "
+        f"{res['labels']} — 계기가 「그리드가 있으면 초록」으로 무너져 있다")
+    assert res["avgValue"] not in (None, "-"), (
+        f"[{theme}] 데이터가 있는 사용자인데 평균 값이 {res['avgValue']!r} — "
+        "`:909` 의 «참» 팔과 갈라지지 않는다")
+
+# ── E-18. 분석 상세의 «필드가 있을 때» + 리포 인사이트의 «분석이 없을 때» ────
+#
+# analysis_detail `:58`(PR 번호) · `:68`(cli) · `:69`(pr) · `:290`(AI 요약) ·
+# `:345`(파일별 피드백) · `:384`(줄번호 «없는» 이슈)
+# repo_insights `:94`(평균 «—») · `:276`(분석 없음 카드)
+#
+# 🔴 `repo_insights:141`·`:186` 은 이 배치가 **아니다**(Grok `01a0a28d`). 둘은
+#    `{% if recurring_issues or breakdown.total > 0 %}`(`:135`) 안에 있어서, 분석이 아예
+#    없으면 **부모가 사라져** 그 팔들은 평가조차 안 된다. 열려면 «한쪽만 있는» 시드가
+#    따로 필요하다 — 다음 배치의 일이다.
+# 🔴 `analysis_detail:52`(commit_sha 가 거짓)도 열지 않는다 — 컬럼이 `nullable=False`
+#    이고 빈 문자열은 앱이 쓰는 값이 아니다.
+
+
+_DETAIL_FIELD_JS = r"""(args) => {
+    const vis = el => el.checkVisibility(
+        {opacityProperty: true, visibilityProperty: true});
+    const text = [...document.querySelectorAll('body *')].filter(vis)
+        .map(el => el.childNodes.length === 1 ? el.innerText : '').join('\n');
+    return {
+        prLink: [...document.querySelectorAll('a[href*="/pull/"]')].filter(vis)
+            .map(a => a.getAttribute('href')),
+        sourceLabels: args.sources.filter(s => text.includes(s)),
+        hasSummary: text.includes(args.aiSummary),
+        hasFileFeedback: text.includes(args.filePath),
+        issuePaths: [...document.querySelectorAll('.issue__path')].filter(vis)
+            .map(el => el.innerText.trim()),
+    };
+}"""
+
+
+def _detail_texts(page):
+    from src.i18n.loader import get_text  # noqa: PLC0415
+
+    locale = page.evaluate("() => document.documentElement.lang") or "ko"
+    out = {k: get_text(f"analysis_detail.source_{k}", locale)
+           for k in ("cli", "pr", "push")}
+    assert all(out.values()), f"정본 문구를 못 뽑았다 {out} — 로케일 {locale!r}"
+    assert len(set(out.values())) == 3, f"소스 레이블이 겹친다 {out}"
+    return out
+
+
+def _detail_field_failures(probe, kind, texts) -> list[str]:
+    r"""분석 상세가 **시드한 필드 그대로** 그렸는가.
+
+    claimed = {PR 번호가 있으면 그 번호로 가는 링크 · 소스 레이블이 **그 하나** ·
+               시드한 AI 요약 문구 · 시드한 파일 경로 · 이슈 경로에 **줄번호가 없음**}
+    cheap   = {상세 페이지가 200 으로 떴다 · 어딘가 링크가 있다 · 글자가 있다}
+    - claimed\cheap(반드시 잡혀야) = 시드한 값 그대로.
+    - cheap\claimed(반드시 무시돼야) = 링크·글자의 존재.
+    두 분석이 서로의 대조군이다(pr 쪽엔 링크가 있고 cli 쪽엔 없다).
+    """
+    bad: list[str] = []
+    want_source = texts[kind if kind in ("cli", "pr") else "push"]
+    if probe["sourceLabels"] != [want_source]:
+        bad.append(f"소스 레이블이 {probe['sourceLabels']} — {kind} 면 {want_source!r} "
+                   "하나여야 한다")
+    if kind == "pr":
+        if not any(f"/pull/{DETAIL_PR_NUMBER}" in h for h in probe["prLink"]):
+            bad.append(f"PR {DETAIL_PR_NUMBER} 링크가 없다 {probe['prLink']} — `:58` 참 팔")
+    elif probe["prLink"]:
+        bad.append(f"PR 번호가 없는데 PR 링크가 떴다 {probe['prLink']}")
+    if not probe["hasSummary"]:
+        bad.append("시드한 AI 요약 문구가 없다 — `:290` 참 팔")
+    if not probe["hasFileFeedback"]:
+        bad.append("시드한 파일별 피드백 경로가 없다 — `:345` 참 팔")
+    if not probe["issuePaths"]:
+        bad.append("이슈 경로 줄이 없다 — 이슈가 안 그려졌다")
+    elif any(":" in p for p in probe["issuePaths"]):
+        bad.append(f"이슈 경로에 줄번호가 붙었다 {probe['issuePaths']} — 시드한 이슈에는 "
+                   "`line` 이 없으므로 `:384` 의 거짓 팔이어야 한다")
+    return bad
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_token_text_meets_aa_on_detail_field_variants(
+        seeded_page, base_url, detail_field_variants, analysis_free_repo, theme):
+    """🔴 PR 링크·소스 레이블·AI 요약·파일 피드백·줄번호 없는 이슈 · 빈 인사이트의 대비."""
+    from urllib.parse import quote  # noqa: PLC0415
+
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+
+    def prepare():
+        apply_theme(seeded_page, theme)
+        seeded_page.add_style_tag(
+            content="*,*::before,*::after{transition:none !important}")
+        seeded_page.wait_for_timeout(200)
+        _reveal_all(seeded_page)
+
+    def measure(where):
+        _reveal_all(seeded_page)
+        total, bad = 0, []
+        for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+                          (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
+            res = seeded_page.evaluate(js)
+            assert not res.get("error"), res.get("error")
+            total += sum(res["seen"][n] for n in names)
+            bad += res["bad"]
+        assert total > 0, (
+            f"[{theme}] {where} 에서 토큰 글자를 하나도 찾지 못했다 — "
+            "재지 못한 것이지 통과한 것이 아니다")
+        assert not bad, (
+            f"[{theme}] {where} 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
+            + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
+                          for b in bad[:10]))
+
+    texts = None
+    for kind, analysis_id in sorted(detail_field_variants.items()):
+        seeded_page.goto(f"{base_url}/repos/owner%2Fgatedrepo/analyses/{analysis_id}")
+        assert "localhost" in seeded_page.url, (
+            f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
+        prepare()
+        texts = texts or _detail_texts(seeded_page)
+        probe = seeded_page.evaluate(_DETAIL_FIELD_JS, {
+            "sources": list(texts.values()), "aiSummary": DETAIL_AI_SUMMARY,
+            "filePath": DETAIL_FILE_FEEDBACK_PATH})
+        missing = _detail_field_failures(probe, kind, texts)
+        assert not missing, f"[{theme}] detail/{kind}:\n  " + "\n  ".join(missing)
+        measure(f"detail/{kind}")
+
+    # ── 리포 인사이트 «분석이 하나도 없을 때» ─────────────────────────────
+    from src.i18n.loader import get_text  # noqa: PLC0415
+
+    with acting_as(NOANALYSIS_USER_ID, login="e2e-noanalysis"):
+        seeded_page.goto(
+            f"{base_url}/repos/{quote(analysis_free_repo, safe='')}/insights")
+        assert "localhost" in seeded_page.url, (
+            f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
+        prepare()
+        locale = seeded_page.evaluate("() => document.documentElement.lang") or "ko"
+        empty = get_text("repo_insights.empty_no_data", locale).split("{")[0].strip()
+        res = seeded_page.evaluate("""(empty) => {
+            const vis = el => el.checkVisibility(
+                {opacityProperty: true, visibilityProperty: true});
+            const box = [...document.querySelectorAll('.ri-empty')].filter(vis)
+                .map(el => el.innerText).join('\\n');
+            const grade = document.querySelector('.ri-grade-badge');
+            return {
+                empty: !!empty && box.includes(empty),
+                score: (document.querySelector('.ri-kpi-value')
+                        || document.querySelector('.kpi__value'))?.innerText.trim() || null,
+                twoCol: [...document.querySelectorAll('.ri-two-col')].filter(vis).length,
+                gradeShown: !!grade && vis(grade),
+            };
+        }""", empty)
+        assert res["empty"], (
+            f"[{theme}] 분석이 없는데 «데이터 없음» 카드가 없다 — `:276` 참 팔 {res}")
+        assert not res["twoCol"], (
+            f"[{theme}] 분석이 없는데 2열(반복 이슈·도넛) 블록이 떴다 — `:135` 부모가 "
+            "거짓이어야 한다")
+        measure("insights/no-analysis")
+
+
+# ── E-19. KPI 가 «줄었을 때» 세 팔 (#1639 · dashboard 1061·1076·1092) ────────
+#
+# 분석 수 · HIGH 보안 이슈 · 활성 리포 — 셋 다 이전 창보다 줄어든 사용자 한 명이
+# 한 화면에서 세 elif 를 연다.
+#
+# 🔴 **클래스로 판정하지 않는다.** 보안 카드는 뒤집혀 있다 — 줄어들면 «좋음» 이라
+#    `kpi__delta--up` 을 쓴다(분석 수·활성 리포는 줄면 `--down`). 부호는 **시드가 정하는
+#    수치**로 본다(Grok `01a0a332` 가 이 대목을 짚었다).
+
+_KPI_DELTA_JS = r"""(labels) => Object.fromEntries(labels.map(([key, label]) => {
+    const vis = el => el.checkVisibility(
+        {opacityProperty: true, visibilityProperty: true});
+    const card = [...document.querySelectorAll('.kpi')].filter(vis).find(
+        c => (c.querySelector('.kpi__label')?.innerText || '')
+               .toLowerCase().includes(label.toLowerCase()));
+    const d = card ? card.querySelector('.kpi__delta') : null;
+    return [key, {card: !!card, text: d && vis(d) ? d.innerText.trim() : null}];
+}))"""
+
+
+def _kpi_down_failures(cards, expected, *, want_down: bool) -> list[str]:
+    r"""세 KPI 가 **시드가 정하는 음수** 를 보여주는가.
+
+    claimed = {세 카드 각각의 delta 줄에 «▼» 와 **시드한 값**(-2 · -1 · -1)이 있다}
+    cheap   = {대시보드가 떴다 · KPI 카드가 있다 · delta 줄이 있다 · 어딘가 ▼ 가 있다}
+    - claimed\cheap(반드시 잡혀야) = 카드마다 **그 카드의** 값.
+    - cheap\claimed(반드시 무시돼야) = 카드/줄/화살표의 존재.
+    🔴 클래스(`--up`/`--down`)로는 못 가른다 — 보안 카드는 줄면 `--up` 이다.
+    """
+    bad: list[str] = []
+    for key, want in expected.items():
+        slot = cards.get(key) or {"card": False, "text": None}
+        if not slot["card"]:
+            bad.append(f"{key} KPI 카드가 화면에 없다 — overview 모드가 아니다")
+            continue
+        if slot["text"] is None:
+            bad.append(f"{key}: delta 줄이 없다(또는 안 보인다)")
+            continue
+        if want_down:
+            if str(want) not in slot["text"]:
+                bad.append(f"{key}: delta 줄이 {slot['text']!r} — 시드는 {want}")
+            if "▼" not in slot["text"]:
+                bad.append(f"{key}: ▼ 가 없다 {slot['text']!r} — 줄었으면 내림 표시다")
+        elif "▼" in slot["text"]:
+            bad.append(f"{key}: 줄지 않았는데 ▼ 가 떴다 {slot['text']!r}")
+    return bad
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_token_text_meets_aa_on_kpi_down_deltas(
+        seeded_page, base_url, shrinking_user, delta_users, theme):
+    """🔴 «분석 수·보안 이슈·활성 리포가 줄었다» 표시의 글자가 AA 를 넘는가."""
+    from src.i18n.loader import get_text  # noqa: PLC0415
+
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+
+    def visit():
+        seeded_page.goto(f"{base_url}/dashboard?mode=overview&days={DELTA_DAYS}")
+        assert "localhost" in seeded_page.url, (
+            f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
+        apply_theme(seeded_page, theme)
+        seeded_page.add_style_tag(
+            content="*,*::before,*::after{transition:none !important}")
+        seeded_page.wait_for_timeout(200)
+        _reveal_all(seeded_page)
+
+    def cards():
+        locale = seeded_page.evaluate("() => document.documentElement.lang") or "ko"
+        labels = [["analysis_count", get_text("dashboard.kpi.analysis_count", locale)],
+                  ["high_security", get_text("dashboard.kpi.high_security", locale)],
+                  ["active_repos", get_text("dashboard.kpi.active_repos", locale)]]
+        assert all(lbl for _, lbl in labels), f"정본 라벨을 못 뽑았다 {labels}"
+        return seeded_page.evaluate(_KPI_DELTA_JS, labels)
+
+    with acting_as(SHRINK_USER_ID, login="e2e-shrink"):
+        visit()
+        missing = _kpi_down_failures(cards(), shrinking_user, want_down=True)
+        assert not missing, f"[{theme}] 줄어든 KPI:\n  " + "\n  ".join(missing)
+
+        total, bad = 0, []
+        for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+                          (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
+            res = seeded_page.evaluate(js)
+            assert not res.get("error"), res.get("error")
+            total += sum(res["seen"][n] for n in names)
+            bad += res["bad"]
+        assert total > 0, (
+            f"[{theme}] 줄어든 KPI 화면에서 토큰 글자를 하나도 찾지 못했다")
+        assert not bad, (
+            f"[{theme}] 줄어든 KPI 화면 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
+            + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
+                          for b in bad[:10]))
+
+    # 🔴 반드시 «무시돼야» 하는 쪽 — 늘어난/그대로인 사용자에게는 ▼ 가 없다.
+    with acting_as(delta_users["up"], login="e2e-delta-up"):
+        visit()
+        control = _kpi_down_failures(cards(), shrinking_user, want_down=False)
+        assert not control, (
+            f"[{theme}] 줄지 않은 사용자인데 내림 표시가 떴다:\n  " + "\n  ".join(control))
+        for key in shrinking_user:
+            assert _kpi_down_failures({key: (cards() or {}).get(key, {})},
+                                      {key: shrinking_user[key]}, want_down=True), (
+                f"[{theme}] 줄지 않은 사용자의 {key} 가 «줄었다» 고 판정됐다 — "
+                "계기가 「delta 줄이 있으면 초록」으로 무너져 있다")
