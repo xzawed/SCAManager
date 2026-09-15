@@ -1807,3 +1807,103 @@ def analysis_free_repo(live_server):
     """리포는 있고 분석은 없는 사용자 — 사용량 모드의 «지표 없음» 팔이 열린다."""
     db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
     return _seed_analysis_free_repo(db_path)
+
+
+# ── 분석 상세의 «필드가 있을 때» 팔들 (#1639 · analysis_detail 묶음) ─────────
+#
+# `:58`(PR 번호) · `:68`(source cli) · `:69`(source pr) · `:290`(AI 요약) ·
+# `:345`(파일별 피드백) · `:384`(이슈에 줄번호가 «없을» 때).
+#
+# 🔴 `source` 는 컬럼이 아니라 `result["source"]` 이고, 없으면
+#    `"pr" if pr_number else "push"` 로 떨어진다(`src/ui/routes/detail.py`). 그래서
+#    cli 는 result 로, pr 은 `pr_number` 로 만든다 — 두 팔은 **다른 분석**이라야 한다
+#    (`{% if cli %}{% elif pr %}` 이라 cli 면 pr 은 평가조차 안 된다).
+# 🔴 `:52`(commit_sha 가 거짓)는 열지 않는다 — 컬럼이 `nullable=False` 이고 빈 문자열은
+#    앱이 쓰는 값이 아니다. 「앱이 그 상태를 낼 수 있는가」에서 걸린다.
+# 🔴 점수 NULL + `score_unreliable=True` 로 심는다 — 집계를 안 건드린다.
+DETAIL_PR_NUMBER = 4242
+DETAIL_AI_SUMMARY = "e2e: AI 한줄 요약 / one-line AI summary"
+# 🔴 파일 피드백의 경로와 이슈의 경로를 **다르게** 둔다. 같게 두면 파일 피드백 블록을
+#    죽여도 그 경로가 이슈 줄에 남아 시험이 통과한다(실측: 뮤테이션 D5 가 초록이었다).
+#    «잡혀야 할» 표식이 두 곳에서 나오면 그것은 그 블록의 표식이 아니다.
+DETAIL_FILE_FEEDBACK_PATH = "src/e2e_feedback_only.py"
+DETAIL_ISSUE_PATH = "src/e2e_issue_only.py"
+DETAIL_ISSUE_NO_LINE = "e2e: 줄번호가 없는 이슈 / issue without a line number"
+
+
+def _seed_detail_field_variants(db_path: str) -> dict[str, int]:
+    """분석 상세의 필드 팔들을 여는 분석 2건 → {이름: analysis_id}."""
+    from datetime import datetime, timedelta, timezone  # noqa: PLC0415
+
+    from sqlalchemy import create_engine  # noqa: PLC0415
+    from sqlalchemy.orm import sessionmaker  # noqa: PLC0415
+
+    from src.models.analysis import Analysis  # noqa: PLC0415
+    from src.models.repository import Repository  # noqa: PLC0415
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    common = {
+        "summary": "e2e: 필드 변종 / field variant",
+        "ai_review_status": "success",
+        "ai_summary": DETAIL_AI_SUMMARY,
+        # 🔴 템플릿은 `ff['file']` 과 `ff['issues']` 를 읽는다(`analysis_detail.html:353-356`).
+        #    `path`/`feedback` 으로 넣으면 블록은 뜨지만 **경로가 안 그려진다** — 처음에
+        #    그렇게 넣고도 통과했는데, 그건 같은 경로가 이슈 줄에 있어서였다(뮤테이션 D5).
+        "file_feedbacks": [{"file": DETAIL_FILE_FEEDBACK_PATH,
+                            "issues": ["e2e: 이 파일에 대한 의견 / per-file note"]}],
+        # 🔴 `line` 을 **빼야** `:384` 의 거짓 팔이 열린다. 경로는 남긴다.
+        "issues": [{"message": DETAIL_ISSUE_NO_LINE, "path": DETAIL_ISSUE_PATH,
+                    "severity": "LOW", "category": "style"}],
+    }
+    rows = {
+        # PR 번호가 있으면 source 가 "pr" 로 떨어진다 → `:58` 참 + `:69` 참
+        "pr": {"commit_sha": "detail-field-pr", "pr_number": DETAIL_PR_NUMBER,
+               "result": dict(common)},
+        # result 가 source 를 직접 말하면 그것이 이긴다 → `:68` 참
+        "cli": {"commit_sha": "detail-field-cli", "pr_number": None,
+                "result": dict(common, source="cli")},
+    }
+    ids: dict[str, int] = {}
+    engine = create_engine(f"sqlite:///{db_path}")
+    session = sessionmaker(bind=engine)()
+    try:
+        repo = session.query(Repository).filter_by(full_name=GATED_REPO).first()
+        if repo is None:
+            raise RuntimeError("_seed_detail_field_variants: gated repo must exist first")
+        for i, (name, spec) in enumerate(rows.items()):
+            if session.query(Analysis).filter_by(commit_sha=spec["commit_sha"]).first() is None:
+                session.add(Analysis(
+                    repo_id=repo.id, commit_sha=spec["commit_sha"],
+                    commit_message=f"e2e: detail field {name}",
+                    pr_number=spec["pr_number"], score=None, grade=None,
+                    result=spec["result"], author_login="e2e-tester",
+                    score_unreliable=True, created_at=now - timedelta(minutes=20 + i)))
+        session.commit()
+        for name, spec in rows.items():
+            row = session.query(Analysis).filter_by(commit_sha=spec["commit_sha"]).first()
+            assert row is not None, f"시드한 {spec['commit_sha']} 를 되읽지 못했다"
+            ids[name] = row.id
+        # 🔴 시드가 «두 팔» 을 여는지 못박는다 — 하나가 둘 다 맡으면 `:68`/`:69` 중 하나는
+        #    평가조차 안 된다(앞 조건이 잡으면 뒤 elif 는 안 돈다).
+        assert rows["pr"]["pr_number"] and "source" not in rows["pr"]["result"], (
+            "pr 쪽은 pr_number 로만 source 를 정해야 한다")
+        assert rows["cli"]["result"].get("source") == "cli" and not rows["cli"]["pr_number"], (
+            "cli 쪽은 result 로만 source 를 정해야 한다")
+        assert all(ff.get("file") for ff in common["file_feedbacks"]), (
+            "파일 피드백은 `file` 키로 경로를 넣어야 화면에 그려진다(`path` 가 아니다)")
+        assert DETAIL_FILE_FEEDBACK_PATH != DETAIL_ISSUE_PATH, (
+            "파일 피드백과 이슈가 같은 경로면 한쪽 블록을 죽여도 다른 쪽에 남아 "
+            "판정이 공허해진다")
+        assert all("line" not in i for i in common["issues"]), (
+            "이슈에 `line` 이 있으면 `:384` 의 거짓 팔이 안 열린다")
+    finally:
+        session.close()
+        engine.dispose()
+    return ids
+
+
+@pytest.fixture(scope="session")
+def detail_field_variants(live_server, gated_settings_repo):
+    """분석 상세의 PR 번호·소스 레이블·AI 요약·파일 피드백·줄번호 없는 이슈."""
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    return _seed_detail_field_variants(db_path)
