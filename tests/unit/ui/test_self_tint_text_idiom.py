@@ -23,6 +23,11 @@
    #1683 이 `.ri-badge-*` 두 곳을 고쳤지만 **같은 관용구의 형제 여섯 곳이 남아 있었다.**
    그것이 이 가드가 선택자 목록이 아니라 «관용구» 를 보는 이유다.
 
+🔴 그리고 그 «관용구» 도 처음엔 한 가지 **표기** 로만 봤다. Grok claim-review `01a0a9e5` 가
+   `color-mix(in srgb, transparent, var(--X) 15%)` 를 반례로 냈다 — 뜻은 같은데 인자 순서가
+   반대라 빠져나갔다. 리포에 그 형태가 실재하지는 않았다(실측 0건). 실재하지 않는 회피
+   경로를 열어 둔 채 「리포 전체에서 금지한다」고 적어 둔 것이 결함이었다.
+
 Forbid painting text with the very token that tints its own background.
 """
 from __future__ import annotations
@@ -35,10 +40,30 @@ from ._contrast import ROOT, strip_css_comments
 # 글자용으로 설계된 토큰 — 자기 틴트를 깔아도 면이 거의 안 움직인다.
 _TEXT_TOKENS = {"--text-1", "--text-2", "--text-3"}
 
-_MIX = re.compile(r"color-mix\([^)]*var\((--[\w-]+)\)[^)]*transparent[^)]*\)")
 _COLOR = re.compile(r"(?<![-\w])color:\s*var\((--[\w-]+)\)")
 _BG = re.compile(r"(?<![-\w])background(?:-color)?:\s*([^;]+);")
 _RULE = re.compile(r"([^{}]+)\{([^}]*)\}")
+_VAR = re.compile(r"var\(\s*(--[\w-]+)")
+
+
+def _tinted_tokens(value: str) -> set[str]:
+    """`color-mix(...)` 가 `transparent` 와 함께 섞는 토큰 이름들.
+
+    🔴 인자 «순서» 를 보지 않는다. `color-mix(in srgb, transparent, var(--d) 15%)` 는
+       `color-mix(in srgb, var(--d) 15%, transparent)` 와 같은 뜻인데,
+       순서를 박아 둔 정규식은 앞쪽만 잡았다 — Grok claim-review `01a0a9e5` 의 반례다.
+    Order-independent: color-mix arguments may be written either way round.
+    """
+    out: set[str] = set()
+    for m in re.finditer(r"color-mix\(", value):
+        depth, j = 1, m.end()
+        while j < len(value) and depth:
+            depth += (value[j] == "(") - (value[j] == ")")
+            j += 1
+        inner = value[m.end():j - 1]
+        if "transparent" in inner:
+            out |= {v.group(1) for v in _VAR.finditer(inner)}
+    return out
 
 
 def _sources() -> dict[str, str]:
@@ -63,10 +88,23 @@ def _self_tint_sites() -> list[tuple[str, str, str]]:
             bg, col = _BG.search(body), _COLOR.search(body)
             if not (bg and col):
                 continue
-            mix = _MIX.search(bg.group(1))
-            if mix and mix.group(1) == col.group(1):
-                sites.append((name, selector[-60:], mix.group(1)))
+            if col.group(1) in _tinted_tokens(bg.group(1)):
+                sites.append((name, selector[-60:], col.group(1)))
     return sites
+
+
+def test_the_idiom_is_caught_written_either_way_round():
+    """🔴 Grok claim-review `01a0a9e5` 의 반례 — 인자 순서를 뒤집으면 빠져나갔다.
+
+    리포에 그 형태가 실재하지는 않았다(실측 0건). 실재하지 않는 회피 경로를 열어 둔 채
+    「리포 전체에서 금지한다」고 적어 둔 것이 결함이다.
+    """
+    token_first = "color-mix(in srgb, var(--danger) 15%, transparent)"
+    transparent_first = "color-mix(in srgb, transparent, var(--danger) 15%)"
+    assert _tinted_tokens(token_first) == {"--danger"}
+    assert _tinted_tokens(transparent_first) == {"--danger"}
+    # 🔴 파생되지 않은 바닥 — `transparent` 가 없으면 자기 틴트가 아니다.
+    assert _tinted_tokens("color-mix(in srgb, var(--danger) 15%, var(--bg-1))") == set()
 
 
 def test_the_scan_actually_reaches_both_static_css_and_template_styles():
