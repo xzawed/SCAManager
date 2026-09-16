@@ -146,7 +146,9 @@
        `--success` 를 틴트로 깔고 글자로도 쓰면 밝은 테마에서 3.88~3.96 이다(실측).
        Pick surface, border and text together; --success as tint+text fails on light themes. */
     .fb-btn.active.fb-up   { background: var(--grade-a-bg); border-color: var(--grade-a); color: var(--grade-a); }
-    .fb-btn.active.fb-down { background: color-mix(in srgb, var(--danger) 13%, transparent);  border-color: var(--danger);  color: var(--danger); }
+    /* 🔴 `.fb-up` 과 같은 잠긴 3종 세트로 — `--danger` 를 면과 글자에 같이 쓰면
+       밝은 테마에서 무너진다(실측 pastel 3.91 · catppuccin 4.42). */
+    .fb-btn.active.fb-down { background: var(--grade-f-bg); border-color: var(--grade-f); color: var(--grade-f); }
     .fb-btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .fb-status { font-size: 12px; color: var(--text-2); margin-left: 0.5rem; }
     /* Step D: 피드백 상태 시맨틱 토큰 / Feedback status semantic tokens */

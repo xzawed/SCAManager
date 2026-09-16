@@ -334,10 +334,12 @@
   .hook-alert { padding:.55rem .9rem; border-radius:8px; font-size:13px; margin-bottom:.6rem; }
   /* 🔴 면·테두리·글자를 «함께» 고른 3종 세트 — `--success` 를 틴트로 깔고 글자로도 쓰면 밝은 테마에서 3.88~3.96 이다(실측). */
   .hook-alert.ok   { background: var(--grade-a-bg); color: var(--grade-a); }
-  .hook-alert.fail { background: color-mix(in srgb, var(--danger) 15%, transparent); color: var(--danger); }
+  /* 🔴 `.ok` 와 같은 3종 세트로 — 실측 pastel 3.76 · catppuccin 4.18 이었다. */
+  .hook-alert.fail { background: var(--grade-f-bg); color: var(--grade-f); }
   /* 🔴 부분 성공 — ok(초록)도 fail(빨강)도 아닌 제3의 상태 (#1504 R1).
-     둘 중 하나로 칠하면 「다 됐다」 또는 「아무것도 안 됐다」로 오독된다. */
-  .hook-alert.warn { background: color-mix(in srgb, var(--warning) 15%, transparent); color: var(--warning); }
+     둘 중 하나로 칠하면 「다 됐다」 또는 「아무것도 안 됐다」로 오독된다.
+     🔴 실측 light 4.08 · pastel 2.44 — 3종 세트 `--grade-c` 로 옮긴다(제3의 상태는 그대로). */
+  .hook-alert.warn { background: var(--grade-c-bg); color: var(--grade-c); }
 
   /* Masked field */
   .masked-field { position:relative; display:flex; align-items:center; }
@@ -363,7 +365,7 @@
   }
   /* 🔴 3종 세트 — 위와 같은 이유. */
   .save-toast-ok  { background: var(--grade-a-bg); border: 1px solid var(--grade-a); color: var(--grade-a); }
-  .save-toast-err { background: color-mix(in srgb, var(--danger) 15%, transparent); border: 1px solid var(--danger); color: var(--danger); }
+  .save-toast-err { background: var(--grade-f-bg); border: 1px solid var(--grade-f); color: var(--grade-f); }
   @keyframes toastIn  { from { opacity:0; transform:translateX(-50%) translateY(-10px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
   @keyframes toastOut { from { opacity:1; } to { opacity:0; pointer-events:none; } }
 
@@ -489,7 +491,14 @@
   .s-card-hdr { padding:.72rem 1.1rem; display:flex; align-items:center; gap:.55rem; }
   .s-card-hdr .hdr-icon { font-size:16px; }
   .s-card-hdr .hdr-title { font-size:13px; font-weight:700; color: var(--btn-on-accent); flex:1; }
-  .s-card-hdr .hdr-badge { background: color-mix(in srgb, var(--btn-on-accent) 22%, transparent); color: var(--btn-on-accent); font-size:11px; padding:2px 9px; border-radius:10px; }
+  /* 🔴 면을 «자기 글자색의 22% 틴트» 로 깔면 글자와 면이 서로 가까워진다 — 알약이
+     헤더 그라디언트를 그 글자색 쪽으로 밀어 올리기 때문이다(실측 3.20~3.30, 11px 은
+     큰 글자가 아니라 4.5 가 필요하다). 형제 `.hdr-title` 은 같은 색을 «면 없이» 쓰고
+     통과한다 — 알약 모양은 테두리로 남기고 글자는 그 통과하는 면 위에 그대로 둔다.
+     테두리는 글자가 아니라 1.4.3 대상이 아니다(1.4.11 의 3:1 은 45% 로 충족). */
+  .s-card-hdr .hdr-badge { background: transparent;
+    border: 1px solid color-mix(in srgb, var(--btn-on-accent) 45%, transparent);
+    color: var(--btn-on-accent); font-size:11px; padding:2px 9px; border-radius:10px; }
   .hdr-gate   { background:var(--grad-gate); }
   .hdr-merge  { background:var(--grad-merge); }
   .hdr-notify { background:var(--grad-notify); }
