@@ -230,3 +230,6 @@ gh pr view 1684 --json state,baseRefName,mergedAt   # MERGED · main · 실행 �
 - 🔴 `context` 는 **문자열** 로 넘긴다. `--json` 출력을 파싱해 객체로 주면 프롬프트에서
   `[object Object]` 가 되어 전 에이전트가 세션 맥락을 잃는다.
 - 이번 창에 `#1684` 가 포함됐음을 기억한다 — 기계는 `#1683` 까지만 셌다.
+- 🔴 **이 리포트를 추가하면 단위 테스트가 2건 는다** — `tests/unit/scripts/test_gate_claim_consistency.py`
+  가 문서마다 파라미터화하기 때문이다. 리포트 PR 의 `docs/STATE.md` 와 본문 수치는 그
+  2건을 **포함한** 값이어야 한다(이번에 그걸 놓쳐 CI 가 red 였다).
