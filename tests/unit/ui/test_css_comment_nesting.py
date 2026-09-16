@@ -30,6 +30,15 @@ r"""브라우저가 «통째로 버리는» CSS 규칙을 만드는 주석 구�
    두 번째로 싼 과정(`re.sub(r"/\*.*?\*/", "", src)` 뒤 `*/` 찾기)도 재봤다 — 중첩 시도는
    맞히지만 문자열 안 종결자를 **오탐** 한다. 문자열을 아는 것이 이 계기의 구분점이다.
 
+🔴 그러고도 계기가 두 번 더 거짓말했다 — 「오탐 없음」은 주장이지 측정이 아니었다.
+
+   | 오탐 | 찾은 사람 | 왜 적법한가 |
+   |---|---|---|
+   | `url(data:image/svg+xml;x=*/y)` | 적대 스윕 12건 | 따옴표 없는 url 토큰은 통째로 한 토큰 |
+   | `.a{--x:*/;}` | Grok claim-review `01a0a9da` | 커스텀 속성 값은 거의 모든 토큰을 담는다 |
+
+   둘 다 **Chromium 실측으로 «적법» 을 확인한 뒤에** 고쳤다. 내 판단으로 고치지 않았다.
+
 Forbid comment nesting that makes a browser silently discard the following rule.
 """
 from __future__ import annotations
@@ -43,13 +52,28 @@ from ._contrast import ROOT
 STRAY_TERMINATOR = "주석 밖 `*/`"
 UNTERMINATED = "닫히지 않은 `/*`"
 
+# `--name:` — 커스텀 속성 선언의 시작. `var(--name)` 은 `:` 가 없어 걸리지 않는다.
+# The start of a custom-property declaration; var(--name) has no colon and is excluded.
+_CUSTOM_PROP = re.compile(r"--[\w-]+\s*:")
+
+
+def _skip_quoted(src: str, i: int, n: int) -> int:
+    """여는 따옴표에서 닫는 따옴표 다음 자리로. 줄바꿈이 먼저 오면 거기서 끝난다.
+    From an opening quote to just past the closing one; a raw newline ends it."""
+    quote, j = src[i], i + 1
+    while j < n and src[j] != quote and src[j] != "\n":
+        j += 2 if src[j] == "\\" else 1
+    return j + 1
+
 
 def comment_defects(src: str) -> list[tuple[int, str]]:
     """주석 구조가 깨진 자리를 (줄번호, 종류) 로 돌려준다.
 
-    문자열 리터럴과 따옴표 없는 `url(...)` 안은 주석 표시로 보지 않는다 —
-    `content: "*/"` 도 `url(...x=*/y)` 도 적법한 CSS 다.
-    Strings and unquoted url() tokens are opaque: comment markers inside them are not comments.
+    아래 셋 안은 주석 표시로 보지 않는다 — 전부 적법한 CSS 다.
+      · 문자열 리터럴          `content: "*/"`
+      · 따옴표 없는 `url(...)`  `url(data:image/svg+xml;x=*/y)`
+      · 커스텀 속성 값          `--x: */`
+    Strings, unquoted url() tokens and custom-property values are opaque.
     """
     defects: list[tuple[int, str]] = []
     i, line, n = 0, 1, len(src)
@@ -78,12 +102,23 @@ def comment_defects(src: str) -> list[tuple[int, str]]:
             line += src.count("\n", i, close)
             i = close + 1
         elif ch in "\"'":
-            # 이스케이프를 건너뛰며 닫는 따옴표까지. 줄바꿈이 먼저 오면 거기서 끝난다.
-            # Skip to the closing quote, honouring escapes; a raw newline ends it.
-            j = i + 1
-            while j < n and src[j] != ch and src[j] != "\n":
-                j += 2 if src[j] == "\\" else 1
-            i = j + 1
+            i = _skip_quoted(src, i, n)
+        elif (m := _CUSTOM_PROP.match(src, i)):
+            # 🔴 커스텀 속성 값은 거의 모든 토큰을 담아 `*/` 도 **적법** 하다.
+            #    Chromium 실측 — `.a{--x:*/;}` 는 규칙 둘이 다 살고 `--x` 가 `*/` 로 읽힌다.
+            #    (같은 자리의 «주석 밖» 종결자는 뒤 규칙을 죽인다: 규칙 2 → 1.)
+            #    값 안에서 `/*` 를 만나면 거기서 손을 떼 본래 갈래가 판정하게 둔다.
+            # A custom-property value is opaque: `*/` inside it is legal CSS.
+            j = m.end()
+            while j < n and src[j] not in ";}" and not src.startswith("/*", j):
+                if src[j] == "\n":
+                    line += 1
+                    j += 1
+                elif src[j] in "\"'":
+                    j = _skip_quoted(src, j, n)
+                else:
+                    j += 1
+            i = j
         else:
             i += 1
     return defects
@@ -131,6 +166,21 @@ def test_ignores_a_terminator_inside_an_unquoted_url():
     """
     seeded = ".a { background: url(data:image/svg+xml;x=*/y); }\n.b { color: red; }"
     assert comment_defects(seeded) == []
+
+
+def test_ignores_a_terminator_inside_a_custom_property_value():
+    r"""🔴 Grok claim-review `01a0a9da` 가 낸 반례 — 내 계기가 적법한 CSS 를 위반으로 셌다.
+
+    Chromium 실측으로 «적법» 을 확인하고서야 고쳤다:
+      `.a{--x:*/;}`           → 규칙 2개 생존 · `--x` 가 `*/` 로 읽힘 · 뒤 규칙 빨강
+      `.a{color:blue} */ .b…` → 규칙 **1개** · 뒤 규칙이 통째로 사라짐(검정)
+    같은 두 글자가 한 자리에서는 적법하고 다른 자리에서는 규칙을 죽인다.
+    """
+    seeded = ".a { --x: */; }\n.b { color: red; }"
+    assert comment_defects(seeded) == []
+    # 🔴 파생되지 않은 바닥 — 값 밖의 같은 종결자는 여전히 잡혀야 한다.
+    assert [d for _, d in comment_defects(".a { color: blue; } */ .b { color: red; }")] \
+        == [STRAY_TERMINATOR]
 
 
 def test_the_scan_actually_reaches_both_static_css_and_template_styles():
