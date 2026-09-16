@@ -32,7 +32,6 @@ Forbid painting text with the very token that tints its own background.
 """
 from __future__ import annotations
 
-import pathlib
 import re
 
 from ._contrast import ROOT, strip_css_comments
