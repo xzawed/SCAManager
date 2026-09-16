@@ -532,3 +532,68 @@ def test_rendered_json_attributes_are_not_truncated(env: jinja2.Environment):
     # 잘렸다면 JSON 파편이 속성 이름으로 파싱돼 개수가 폭증한다.
     stray = [k for k in p.panel_attrs if k.startswith(("{", "[", '"')) or ":" in k]
     assert not stray, f"JSON 파편이 속성으로 파싱됐다 — 값이 잘렸다: {stray[:5]}"
+
+
+# ─── #1639 W12 — 앱이 낼 수 있는 «빈 commit_sha» 팔 ──────────────────────────
+#
+# 🔴 이 팔은 「열 수 없다」로 분류돼 있었다. 근거는 「컬럼이 `nullable=False` 이고 빈
+#    문자열은 앱이 쓰는 값이 아니다」였다. 앞 절반은 참이지만 무관하다 — `""` 는 NULL 이
+#    아니다. 뒷 절반은 실측으로 반증됐다: `POST /api/hook/result` 의 요청 모델은
+#    `commit_sha: str` 에 최소 길이 제약이 없고, 토큰 검증·리포 조회·중복 검사 어느 것도
+#    빈 sha 를 막지 않은 채 `Analysis(commit_sha=body.commit_sha, ...)` 로 간다.
+#    판정 기준은 「지금 데이터가 그걸 내는가」가 아니라 **「앱이 그 상태를 낼 수 있는가」**다.
+#
+# 🔴 이 팔의 거짓 쪽은 **아무것도 그리지 않는다** — DOM 존재로는 판정할 수 없고 부재로
+#    판정해야 한다. 부재 단언은 혼자 두면 공허하다(선택자를 틀려도 초록). 그래서 파생되지
+#    않은 바닥 — 같은 계기로 「있을 때 있다」 — 를 옆에 건다.
+#
+# 실측(렌더 후 파서): sha 가 있으면 `<code>` 1개(`title` = 그 sha), 비면 `<code>` 0개.
+#
+# The false arm draws nothing, so it is judged by absence; the non-derived floor beside it
+# keeps that absence from being vacuous.
+
+
+class _CodeTitleCollector(HTMLParser):
+    """`title` 을 가진 `<code>` 요소를 순서대로 모은다 — 부분문자열이 아니라 구조로 본다."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.titles: list[str] = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag != "code":
+            return
+        d = {k: (v or "") for k, v in attrs}
+        if "title" in d:
+            self.titles.append(d["title"])
+
+
+def _sha_chip_titles(html: str) -> list[str]:
+    p = _CodeTitleCollector()
+    p.feed(html)
+    return p.titles
+
+
+def _render_with_sha(env: jinja2.Environment, sha: str) -> str:
+    analysis = SimpleNamespace(**{**vars(_ANALYSIS), "commit_sha": sha})
+    return env.get_template("analysis_detail.html").render(
+        **{**_CTX_WITH_TREND, "analysis": analysis}
+    )
+
+
+def test_commit_sha_chip_renders_when_the_sha_is_present(env: jinja2.Environment):
+    """파생되지 않은 바닥 — 이것이 red 면 아래 부재 단언은 아무것도 재지 않는다."""
+    assert _sha_chip_titles(_render_with_sha(env, "abc1234567890")) == ["abc1234567890"], (
+        "sha 칩이 렌더되지 않았다 — 계기(선택자·컨텍스트)를 먼저 의심하라"
+    )
+
+
+def test_commit_sha_chip_absent_when_the_app_writes_an_empty_sha(env: jinja2.Environment):
+    """🔴 `POST /api/hook/result` 가 낼 수 있는 상태 — 빈 sha 에서는 칩이 없어야 한다.
+
+    조건 `{% if analysis.commit_sha %}` 가 사라지면 `analysis.commit_sha[:7]` 가 `""` 라
+    **빈 칩**이 남는다. 그 회귀를 이 단언이 잡는다(뮤테이션 실증).
+    """
+    assert _sha_chip_titles(_render_with_sha(env, "")) == [], (
+        "빈 sha 인데 `<code>` 칩이 렌더됐다 — `{% if analysis.commit_sha %}` 를 확인하라"
+    )
