@@ -29,7 +29,10 @@ from src.constants import (
     AI_RAW_COMMIT_MAX, AI_RAW_DIRECTION_MAX, AI_RAW_TEST_MAX,
 )
 from src.shared.anthropic_caching import first_text_block, build_cached_system_param
-from src.shared.claude_metrics import aclose_anthropic_client, extract_anthropic_usage, log_claude_api_call
+from src.shared.claude_metrics import (
+    ANTHROPIC_RETRY_AFTER_CAP_PIPELINE_SECONDS, aclose_anthropic_client, extract_anthropic_usage,
+    log_claude_api_call, new_async_anthropic,
+)
 from src.shared.feature_kill_switch import is_disabled
 
 logger = logging.getLogger(__name__)
@@ -179,13 +182,18 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
     #
     # 🔴 `max_retries=1` — 재시도는 **생성을 처음부터 다시 시작**한다. 긴 출력이 원인일 때
     #    재시도는 해법이 아니라 같은 벽에 다시 부딪히는 것이다(위 12건이 그 증거다).
-    #    일시적 5xx·연결 오류에는 1회로 충분하다. 2회를 유지하면 90s × 3 = 4.5분이 된다.
+    #    일시적 5xx·연결 오류에는 1회로 충분하다. 2회를 유지하면 90s × 3 = 4.5분에 재시도 대기가 더해진다
+    #    (SDK 는 그 대기를 묶지 않는다 — 상한은 `new_async_anthropic` 이 건다, #1690).
     #    (2번째 재시도까지 간 건은 실측 7 / 847.)
     #
     # Measured in production: the 60s cap truncated the distribution (single-attempt max 59.7s).
     # Latency is near-linear in OUTPUT tokens, so retries restart the same long generation.
-    # 90s covers the p50 of the slowest output bucket; retries drop to 1.
-    client = anthropic.AsyncAnthropic(api_key=api_key, timeout=90.0, max_retries=1)
+    # 90s covers the p50 of the slowest output bucket; retries drop to 1. The SDK does not bound
+    # the wait between attempts, so the factory caps Retry-After (#1690).
+    client = new_async_anthropic(
+        api_key=api_key, timeout=90.0, max_retries=1,
+        caller="ai_review", retry_after_cap=ANTHROPIC_RETRY_AFTER_CAP_PIPELINE_SECONDS,
+    )
     model = model or settings.claude_review_model
     # 출력 토큰 상한 — settings 경유 configurable.
     # 구값 1500 은 한국어 리뷰 JSON(~2660 토큰)을 잘라 stop_reason=max_tokens → parse_error 로

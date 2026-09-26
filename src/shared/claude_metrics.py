@@ -18,9 +18,95 @@ Anthropic API 가격 정책 (USD per 1M tokens, **2026-09 기준**):
 import inspect
 import logging
 
+import anthropic
+
 from src.constants import CLAUDE_RETIRED_MODEL_PRICING
+from src.shared.log_safety import sanitize_for_log
 
 logger = logging.getLogger(__name__)
+
+# anthropic SDK 가 따를 Retry-After 상한(초) — SDK ≥1.6 은 상한 없이 기다린다 (#1690).
+#   파이프라인 60s = 1.5.0 의 판정값(`0 < retry_after <= 60`). 슬롯 최악 90×2 + 60 = 240s.
+#   페이지 15s = 사용자 요청 안의 대기라 더 짧다. 최악 60×3 + 2×15 = 210s < Railway 무응답 300s.
+# Retry-After cap the SDK may honour (SDK >= 1.6 waits unbounded). Pipeline keeps 1.5.0's 60s;
+# the page routes wait inside a user request, so they get 15s.
+ANTHROPIC_RETRY_AFTER_CAP_PIPELINE_SECONDS = 60.0
+ANTHROPIC_RETRY_AFTER_CAP_PAGE_SECONDS = 15.0
+
+
+def _sdk_will_retry(response) -> bool:
+    """SDK `_should_retry` 와 같은 판정 — 재시도하지 않을 응답은 건드리지 않는다.
+    Mirrors the SDK's `_should_retry`; responses it will not retry are left untouched.
+    """
+    flag = response.headers.get("x-should-retry")
+    if flag in ("true", "false"):
+        return flag == "true"
+    return response.status_code in (408, 409, 429) or response.status_code >= 500
+
+
+def _retry_after_within_cap(headers, cap: float) -> bool:
+    """SDK 와 같은 순서(`retry-after-ms` → `retry-after`)·같은 `float()` 로 읽어 상한 이하가
+    **증명될 때만** True. 날짜·쓰레기·inf·nan 은 상한 초과로 본다 — 틀려도 대기가 짧아진다.
+    True only when provably <= cap, parsed like the SDK; anything else counts as over the cap.
+    """
+    ms = headers.get("retry-after-ms")
+    if ms is not None:
+        try:
+            return float(ms) / 1000 <= cap
+        except ValueError:
+            pass
+    raw = headers.get("retry-after")
+    if raw is None:
+        return True
+    try:
+        return float(raw) <= cap
+    except ValueError:
+        return False
+
+
+class _RetryAfterCap(anthropic.Middleware):  # pylint: disable=too-few-public-methods
+    """상한을 넘는 Retry-After 를 SDK 자체 backoff(0.5~8s)로 돌린다 (#1690).
+
+    SDK 가 재시도할 응답에만 `retry-after-ms: 0` 을 쓴다 — SDK 가 먼저 읽고 0 은 `> 0` 을
+    못 넘는다. `retry-after` 는 절대 바꾸지 않아 `error_retry_after` 는 벤더 원문 그대로다.
+    🔴 이 미들웨어(와 안쪽 미들웨어)는 APIStatusError 를 raise 하지 않는다 — 그 경로는 재작성을 우회한다.
+    Rewrites only responses the SDK will retry; `retry-after` itself is never modified.
+    Never raise APIStatusError from this or an inner middleware: that path bypasses the rewrite.
+    """
+
+    def __init__(self, *, caller: str, retry_after_cap: float) -> None:
+        self._caller = caller
+        self.retry_after_cap = retry_after_cap
+
+    async def handle_async(self, request, call_next):
+        response = await call_next(request)
+        http = response.http_response
+        if (http.is_success or not _sdk_will_retry(http)
+                or _retry_after_within_cap(http.headers, self.retry_after_cap)):
+            return response
+        logger.warning(
+            "anthropic Retry-After 상한 초과 → SDK backoff / Retry-After over cap: "
+            "caller=%s status=%d attempt=%d cap=%g retry_after=%s retry_after_ms=%s request_id=%s",
+            self._caller, http.status_code, request.retries_taken + 1, self.retry_after_cap,
+            sanitize_for_log(http.headers.get("retry-after"), max_len=64),
+            sanitize_for_log(http.headers.get("retry-after-ms"), max_len=64),
+            sanitize_for_log(http.headers.get("request-id"), max_len=64),
+        )
+        http.headers["retry-after-ms"] = "0"
+        return response
+
+
+def new_async_anthropic(
+    *, api_key: str, timeout: float, max_retries: int, caller: str, retry_after_cap: float,
+) -> anthropic.AsyncAnthropic:
+    """AsyncAnthropic 생성 단일 지점 — Retry-After 상한 미들웨어를 붙인다 (#1690).
+    클래스를 호출 시점에 조회한다 — 기존 `patch(...anthropic.AsyncAnthropic)` 더블이 그대로 가로챈다.
+    Single construction point; the class is looked up at call time so patch doubles still intercept.
+    """
+    return anthropic.AsyncAnthropic(
+        api_key=api_key, timeout=timeout, max_retries=max_retries,
+        middleware=[_RetryAfterCap(caller=caller, retry_after_cap=retry_after_cap)],
+    )
 
 
 async def aclose_anthropic_client(client) -> None:

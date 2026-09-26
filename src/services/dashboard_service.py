@@ -41,7 +41,10 @@ from src.models.repository import Repository
 from src.scorer.calculator import calculate_grade
 from src.scorer.reliability import score_is_unreliable
 from src.shared.anthropic_caching import first_text_block, build_cached_system_param
-from src.shared.claude_metrics import aclose_anthropic_client, extract_anthropic_usage, log_claude_api_call
+from src.shared.claude_metrics import (
+    ANTHROPIC_RETRY_AFTER_CAP_PAGE_SECONDS, aclose_anthropic_client, extract_anthropic_usage,
+    log_claude_api_call, new_async_anthropic,
+)
 from src.shared.feature_kill_switch import is_disabled
 from src.repositories import insight_narrative_cache_repo
 from src.shared.lang_names import LANG_NAMES
@@ -1064,9 +1067,12 @@ async def insight_narrative(  # pylint: disable=too-many-locals,too-many-return-
         language=language,
     )
 
-    # ai_review.py 와 동일 timeout/max_retries 패턴 — SDK 기본값 변경 면역
-    # Same timeout/max_retries pattern as ai_review.py — immune to SDK default changes
-    client = anthropic.AsyncAnthropic(api_key=effective_key, timeout=60.0, max_retries=2)
+    # timeout/max_retries 는 명시한다. SDK 는 재시도 대기를 묶지 않아 페이지 상한을 건다 (#1690)
+    # Explicit timeout/max_retries; the SDK does not bound retry waits, so apply the page cap
+    client = new_async_anthropic(
+        api_key=effective_key, timeout=60.0, max_retries=2,
+        caller="dashboard_insight", retry_after_cap=ANTHROPIC_RETRY_AFTER_CAP_PAGE_SECONDS,
+    )
     # Phase 2 d-🅓 (사이클 74) — Insight 영역 한정 Haiku (67% 비용 절감, AI 리뷰 Sonnet 보존)
     # Phase 2 d-🅓 (Cycle 74) — Insight-only Haiku (67% cheaper, AI review keeps Sonnet)
     text = await _call_insight_claude_api(
