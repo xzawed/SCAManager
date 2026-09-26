@@ -156,8 +156,8 @@ revision:
 # Playwright 브라우저 설치
 # Install Playwright and Chromium browser.
 install-playwright:
-	pip install playwright pytest-playwright
-	playwright install chromium
+	python -m pip install -r requirements-dev.txt
+	python -m playwright install chromium
 
 # E2E 테스트 (headless)
 # Run E2E tests in headless mode.
