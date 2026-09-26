@@ -2,11 +2,10 @@
 
 - `tests/unit` — `py -3 -m pytest tests/unit -q`
 - `tests/integration` — `-m "slow"`(자동 마킹)
-- `e2e/` — `py -3 -m pytest e2e/ -p no:asyncio -v`
+- `e2e/` — `py -3 -m pytest e2e/ -p no:asyncio -v`. playwright 핀이 바뀌면 먼저
+  `py -3 -m playwright install chromium`
 
-루트 `pytest.ini`: `testpaths=tests` · `asyncio_mode=auto` · `--timeout=30`.
-`e2e/pytest.ini` 에 `asyncio_mode` 없음 — e2e 는 `-p no:asyncio` 로 `tests/` 와
-**다른 프로세스**에서 돌린다.
+`e2e/pytest.ini` 는 루트와 달리 `asyncio_mode` 가 없어 `tests/` 와 **다른 프로세스**에서 돌린다.
 
 ### push 전 절차
 
