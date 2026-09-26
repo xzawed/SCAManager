@@ -35,8 +35,10 @@ ANTHROPIC_RETRY_AFTER_CAP_PAGE_SECONDS = 15.0
 
 
 def _sdk_will_retry(response) -> bool:
-    """SDK `_should_retry` 와 같은 판정 — 재시도하지 않을 응답은 건드리지 않는다.
-    Mirrors the SDK's `_should_retry`; responses it will not retry are left untouched.
+    """SDK `_should_retry` 와 같은 **응답** 판정 — 이 판정이 거짓인 응답은 건드리지 않는다.
+    남은 재시도 수는 보지 않는다 — 마지막 시도도 참이면 재작성·기록되고, 그때는 대기가 없다.
+    Response-level mirror of the SDK's `_should_retry`; it ignores the remaining retry count,
+    so the final attempt is rewritten and logged too (no backoff follows it).
     """
     flag = response.headers.get("x-should-retry")
     if flag in ("true", "false"):
@@ -65,12 +67,16 @@ def _retry_after_within_cap(headers, cap: float) -> bool:
 
 
 class _RetryAfterCap(anthropic.Middleware):  # pylint: disable=too-few-public-methods
-    """상한을 넘는 Retry-After 를 SDK 자체 backoff(0.5~8s)로 돌린다 (#1690).
+    """상한을 넘는 Retry-After 를 무효화한다 — SDK 가 재시도하면 자체 backoff(0.5~8s)를 쓴다 (#1690).
 
-    SDK 가 재시도할 응답에만 `retry-after-ms: 0` 을 쓴다 — SDK 가 먼저 읽고 0 은 `> 0` 을
-    못 넘는다. `retry-after` 는 절대 바꾸지 않아 `error_retry_after` 는 벤더 원문 그대로다.
+    `_sdk_will_retry` 가 참인 응답에 `retry-after-ms: 0` 을 쓴다 — SDK 가 먼저 읽고 0 은 `> 0` 을
+    못 넘는다. 남은 재시도 수는 보지 않으므로 **마지막 시도**도 재작성·기록되고, 그 응답은 대기
+    없이 예외가 된다(예외 헤더에 `retry-after-ms: 0` 이 남는다). `retry-after` 는 절대 바꾸지
+    않아 `error_retry_after` 는 벤더 원문 그대로다.
     🔴 이 미들웨어(와 안쪽 미들웨어)는 APIStatusError 를 raise 하지 않는다 — 그 경로는 재작성을 우회한다.
-    Rewrites only responses the SDK will retry; `retry-after` itself is never modified.
+    Neutralises an over-cap Retry-After; if the SDK retries, it uses its own backoff. The final
+    attempt is rewritten and logged too and becomes the exception with no wait; `retry-after`
+    itself is never modified.
     Never raise APIStatusError from this or an inner middleware: that path bypasses the rewrite.
     """
 
@@ -85,7 +91,8 @@ class _RetryAfterCap(anthropic.Middleware):  # pylint: disable=too-few-public-me
                 or _retry_after_within_cap(http.headers, self.retry_after_cap)):
             return response
         logger.warning(
-            "anthropic Retry-After 상한 초과 → SDK backoff / Retry-After over cap: "
+            "anthropic Retry-After 상한 초과 → retry-after-ms 0 (재시도하면 SDK backoff) / "
+            "Retry-After over cap, retry-after-ms set to 0 (SDK backoff if it retries): "
             "caller=%s status=%d attempt=%d cap=%g retry_after=%s retry_after_ms=%s request_id=%s",
             self._caller, http.status_code, request.retries_taken + 1, self.retry_after_cap,
             sanitize_for_log(http.headers.get("retry-after"), max_len=64),

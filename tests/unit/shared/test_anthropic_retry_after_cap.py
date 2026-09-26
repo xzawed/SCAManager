@@ -16,15 +16,16 @@ from __future__ import annotations
 import ast
 import asyncio
 import email.utils
-import functools
 import logging
 import pathlib
+import subprocess
 import time
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import anthropic
 import anthropic._base_client as _sdk_base
+import anthropic._constants as _sdk_constants
 import httpx2
 import pytest
 
@@ -32,10 +33,15 @@ from src.analyzer.io.ai_review import review_code
 from src.config import settings
 from src.services import dashboard_service
 from src.services.repo_insight_service import repo_insight_narrative
+from src.shared.claude_metrics import _sdk_will_retry
 
 _REAL_CTOR = anthropic.AsyncAnthropic
-# SDK 자체 backoff 의 최댓값(MAX_RETRY_DELAY) — 이 이하면 상한 경로로 본다.
-# The SDK's own backoff ceiling; a sleep at or below it means the capped path was taken.
+# SDK 자체 backoff 의 범위 — 최댓값 MAX_RETRY_DELAY 8.0, 첫 대기 하한 = INITIAL_RETRY_DELAY 0.5 × 최소 지터 0.75.
+#   (anthropic/_constants.py · `_calculate_retry_timeout`: `min(0.5 * 2**n, 8.0) * (1 - 0.25 * random())`)
+#   하한이 없으면 `retry-after-ms: "1"`(1ms 대기)도 「backoff」로 통과한다.
+# The SDK's own backoff range: at most 8.0, at least 0.5 x 0.75 = 0.375 (first retry, min jitter).
+# Without the floor a 1 ms honoured wait would pass as "backoff".
+_BACKOFF_MIN = 0.375
 _BACKOFF_MAX = 8.0
 
 _SITES = ["ai_review", "dashboard_insight", "repo_insight"]
@@ -60,25 +66,34 @@ _ERR_BODY = {"type": "error", "error": {"type": "rate_limit_error", "message": "
 @pytest.fixture
 def real_sdk(monkeypatch):
     """실제 SDK 재시도 루프 — 전송은 MockTransport, 대기는 기록만 / real loop; transport + sleep faked."""
-    h = SimpleNamespace(script=[], calls=0, sleeps=[])
+    h = SimpleNamespace(script=[], calls=0, sleeps=[], responses=[])
 
     def handler(_req):
         i = h.calls
         h.calls += 1
         status, headers = h.script[min(i, len(h.script) - 1)]
         body = _OK_BODY if status == 200 else _ERR_BODY
-        return httpx2.Response(status, json=body, headers={"request-id": f"req_{i}", **headers})
+        resp = httpx2.Response(status, json=body, headers={"request-id": f"req_{i}", **headers})
+        # 미들웨어는 이 객체의 헤더를 제자리에서 고친다 — 위조 여부를 여기서 잰다.
+        # The middleware edits this very object's headers in place; forged headers show up here.
+        h.responses.append(resp)
+        return resp
 
     async def fake_sleep(seconds, *_a, **_k):
         h.sleeps.append(seconds)
 
+    def ctor(*args, **kwargs):
+        # 생성마다 새 전송 클라이언트 — 공유하면 첫 호출부의 aclose 가 다음 호출부의 전송을 닫아
+        # 전송 0회 APIConnectionError 가 난다(두 호출부를 잇달아 부르는 테스트가 공허 초록이 된다).
+        # A fresh transport client per construction: a shared one is closed by the first site's aclose.
+        return _REAL_CTOR(*args, base_url="http://anthropic.test",
+                          http_client=httpx2.AsyncClient(transport=httpx2.MockTransport(handler)),
+                          **kwargs)
+
     monkeypatch.setattr(_sdk_base.anyio, "sleep", fake_sleep)
     # 전역 속성을 바꾼다 — 호출부가 어떤 경로로 생성하든 이 전송을 탄다.
     # Patch the global attribute so every construction path uses this transport.
-    monkeypatch.setattr(anthropic, "AsyncAnthropic", functools.partial(
-        _REAL_CTOR, base_url="http://anthropic.test",
-        http_client=httpx2.AsyncClient(transport=httpx2.MockTransport(handler)),
-    ))
+    monkeypatch.setattr(anthropic, "AsyncAnthropic", ctor)
     # 조기 반환을 모두 끈다 — 킬스위치·키 부재(.env 키가 새지 않게 명시 설정).
     # Defeat every early return; set the key explicitly so a developer .env key never leaks in.
     monkeypatch.delenv("AI_REVIEW_DISABLED", raising=False)
@@ -115,6 +130,11 @@ def _status(site, out):
     return out.status if site == "ai_review" else out["status"]
 
 
+def _assert_backoff(sleeps, n=1):
+    """대기 n 번이 전부 SDK backoff 범위 [0.375, 8.0] 안 / every one of n sleeps is SDK backoff."""
+    assert len(sleeps) == n and all(_BACKOFF_MIN <= s <= _BACKOFF_MAX for s in sleeps), sleeps
+
+
 async def _bounded(coro):
     """가짜 sleep 이 가로채지 못하면 5초 안에 red / red within 5s if the fake sleep stops intercepting."""
     return await asyncio.wait_for(coro, 5)
@@ -145,7 +165,7 @@ async def test_call_site_does_not_sleep_past_cap(real_sdk, site):
 
     assert real_sdk.calls == _ATTEMPTS[site], "재시도 횟수가 바뀌었다 — 상한은 재시도를 없애지 않는다"
     assert real_sdk.sleeps, "대기가 한 번도 없었다 — 재시도 루프를 안 탔다(공허 초록)"
-    assert max(real_sdk.sleeps) <= _BACKOFF_MAX, f"상한 초과 Retry-After 를 그대로 기다렸다: {real_sdk.sleeps}"
+    _assert_backoff(real_sdk.sleeps, _ATTEMPTS[site] - 1)
     assert _status(site, out) == "api_error"
     if site == "ai_review":
         # 벤더 증거는 원문 그대로 — retry-after 는 절대 바꾸지 않는다.
@@ -169,7 +189,7 @@ async def test_retry_after_just_above_site_cap_uses_backoff(real_sdk, site):
     real_sdk.script[:] = [(429, {"retry-after": _JUST_ABOVE[site]}), (200, {})]
     await _bounded(_RUN[site]())
 
-    assert len(real_sdk.sleeps) == 1 and real_sdk.sleeps[0] <= _BACKOFF_MAX, real_sdk.sleeps
+    _assert_backoff(real_sdk.sleeps)
 
 
 # ── 헤더 형태 표 (ai_review, 상한 60) / header-form table ──
@@ -182,7 +202,8 @@ def _http_date(seconds_from_now: float) -> str:
     ({"retry-after": "30"}, [30.0]),
     ({"retry-after": "60"}, [60.0]),
     ({"retry-after-ms": "30000", "retry-after": "120"}, [30.0]),   # ms 를 먼저 읽는다 / ms is read first
-    ({"retry-after-ms": "abc", "retry-after": "30"}, [30.0]),      # ms 파싱 실패 → retry-after
+    # ms 파싱 실패 → retry-after 를 읽는다 / unparseable ms falls back to retry-after
+    ({"retry-after-ms": "abc", "retry-after": "30"}, [30.0]),
     ({"retry-after": "61"}, "backoff"),
     ({"retry-after-ms": "90000"}, "backoff"),
     ({"retry-after-ms": "90000", "retry-after": "5"}, "backoff"),  # SDK 는 ms 만 본다 / SDK reads ms only
@@ -196,7 +217,7 @@ async def test_retry_after_header_forms(real_sdk, headers, expected):
     await _bounded(_run_ai_review())
 
     if expected == "backoff":
-        assert len(real_sdk.sleeps) == 1 and real_sdk.sleeps[0] <= _BACKOFF_MAX, real_sdk.sleeps
+        _assert_backoff(real_sdk.sleeps)
     else:
         assert real_sdk.sleeps == expected
 
@@ -208,22 +229,28 @@ async def test_http_date_within_cap_goes_to_backoff_not_honoured(real_sdk):
     real_sdk.script[:] = [(429, {"retry-after": _http_date(30)}), (200, {})]
     await _bounded(_run_ai_review())
 
-    assert len(real_sdk.sleeps) == 1 and real_sdk.sleeps[0] <= _BACKOFF_MAX, real_sdk.sleeps
+    _assert_backoff(real_sdk.sleeps)
 
 
 # ── 부수 효과 / side effects ──
 
-async def test_unparseable_retry_after_date_keeps_vendor_error_typed(real_sdk):
+async def test_unparseable_retry_after_date_keeps_vendor_error_typed(real_sdk, caplog):
     """SDK 의 `mktime_tz` 가 `year 99999` 에서 try 밖 ValueError 를 던진다 — 수정 전 ValueError/internal_error.
-    상한 경로(ms=0)는 날짜 분기에 닿지 않아 벤더 오류 타입이 남는다.
+    상한 경로(ms=0)는 날짜 분기에 닿지 않아 벤더 오류 타입이 남는다. 두 호출부 모두 전송을 실제로 탄다.
+    The capped path never reaches the SDK's date branch; both sites really hit the transport.
     """
     real_sdk.script[:] = [(429, {"retry-after": "Fri, 31 Dec 99999 23:59:59 GMT"})]
     out = await _bounded(_run_ai_review())
     assert (out.error_type, out.error_status_code) == ("RateLimitError", 429)
+    assert real_sdk.calls == 2
 
     real_sdk.calls, real_sdk.sleeps[:] = 0, []
     out = await _bounded(_run_repo_insight())
     assert out["status"] == "api_error"
+    # 전송 0회(연결 오류)도 api_error 다 — 시도 수와 예외 타입까지 잰다.
+    # Zero transport calls (a connection error) is api_error too; measure attempts and type.
+    assert real_sdk.calls == 3
+    assert type(_raised(caplog, "src.services.repo_insight_service")) is anthropic.RateLimitError
 
 
 async def test_transient_5xx_with_long_retry_after_still_recovers(real_sdk):
@@ -232,7 +259,71 @@ async def test_transient_5xx_with_long_retry_after_still_recovers(real_sdk):
     out = await _bounded(_run_repo_insight())
 
     assert out["status"] == "success"
-    assert real_sdk.calls == 2 and max(real_sdk.sleeps) <= _BACKOFF_MAX, real_sdk.sleeps
+    assert real_sdk.calls == 2
+    _assert_backoff(real_sdk.sleeps)
+
+
+@pytest.mark.parametrize("status", [408, 409, 500])
+async def test_other_retryable_statuses_with_long_retry_after_use_backoff(real_sdk, caplog, status):
+    """429·529 말고도 SDK 가 재시도하는 상태(408·409·500)에 상한이 걸린다 — 실제 SDK 루프로.
+    Other statuses the SDK retries (408, 409, 500) are capped too, through the real loop.
+    """
+    caplog.set_level(logging.WARNING, logger="src.shared.claude_metrics")
+    real_sdk.script[:] = [(status, {"retry-after": "120"}), (200, {})]
+    out = await _bounded(_run_repo_insight())
+
+    assert out["status"] == "success" and real_sdk.calls == 2
+    _assert_backoff(real_sdk.sleeps)
+    assert len(_cap_warnings(caplog)) == 1
+
+
+@pytest.mark.parametrize("status", [529, 429])
+async def test_missing_retry_after_is_left_alone(real_sdk, caplog, status):
+    """Retry-After 가 없으면 상한을 넘은 것이 아니다 — 경고·헤더 위조 없이 SDK backoff 그대로.
+    No Retry-After is not over the cap: no warning, no forged header, plain SDK backoff.
+    """
+    caplog.set_level(logging.WARNING, logger="src.shared.claude_metrics")
+    real_sdk.script[:] = [(status, {}), (200, {})]
+    out = await _bounded(_run_repo_insight())
+
+    assert out["status"] == "success" and real_sdk.calls == 2
+    _assert_backoff(real_sdk.sleeps)
+    assert _cap_warnings(caplog) == []
+    assert "retry-after-ms" not in real_sdk.responses[0].headers, "Retry-After 없는 응답에 헤더를 위조했다"
+
+
+# ── 재시도 판정 = 실제 SDK `_should_retry` 오라클 / retry predicate vs the real SDK oracle ──
+#
+# 술어가 이름으로 부르는 상태(408·409·429·≥500)만 넣으면 초록은 아무것도 증명하지 않는다.
+# 이름 밖 상태(200·4xx·413·422·502~529)와 `x-should-retry` 의 비정규 표기를 실제 SDK 판정과 겨룬다.
+# Statuses the predicate never names, and off-spec x-should-retry spellings, against the real SDK.
+
+# witness-corpus: 술어가 이름으로 부르지 않는 상태 코드 — 성공·4xx·413·422·5xx 변종이 같은 판정 부류다
+_ORACLE_STATUSES = (200, 400, 401, 403, 404, 408, 409, 413, 422, 429, 500, 502, 503, 504, 529)
+# witness-corpus: x-should-retry 의 비정규 표기 — 대문자·숫자·빈 값은 SDK 가 무시하고 상태로 간다
+_ORACLE_FLAGS = (None, "true", "false", "TRUE", "False", "1", "")
+
+
+def test_sdk_will_retry_matches_the_real_sdk_should_retry():
+    """🔴 `_sdk_will_retry` 는 SDK 판정의 사본이다 — 상태 × 헤더 표 전체에서 실제 SDK 와 같아야 한다.
+    SDK 가 판정을 바꾸면(또는 사본이 좁아지면) 여기가 red 가 된다.
+    The copy must agree with the real SDK over the whole status x header table.
+    """
+    oracle = _REAL_CTOR(api_key="sk-test", base_url="http://anthropic.test")
+    diffs = []
+    for status in _ORACLE_STATUSES:
+        for flag in _ORACLE_FLAGS:
+            resp = httpx2.Response(status, headers={} if flag is None else {"x-should-retry": flag})
+            if _sdk_will_retry(resp) != oracle._should_retry(resp):  # pylint: disable=protected-access
+                diffs.append((status, flag))
+    assert diffs == [], f"SDK `_should_retry` 와 다르다: {diffs}"
+
+
+def test_sdk_backoff_constants_match_the_literal_bounds():
+    """backoff 범위 리터럴(0.375·8.0)의 근거 — SDK 상수가 바뀌면 여기가 먼저 red.
+    The literal backoff bounds come from these SDK constants.
+    """
+    assert (_sdk_constants.INITIAL_RETRY_DELAY, _sdk_constants.MAX_RETRY_DELAY) == (0.5, 8.0)
 
 
 @pytest.mark.parametrize("headers, expected_ra", [
@@ -274,7 +365,7 @@ async def test_should_retry_true_on_400_is_capped(real_sdk):
     out = await _bounded(_run_repo_insight())
 
     assert out["status"] == "success"
-    assert len(real_sdk.sleeps) == 1 and real_sdk.sleeps[0] <= _BACKOFF_MAX, real_sdk.sleeps
+    _assert_backoff(real_sdk.sleeps)
 
 
 # ── 관측성 / observability ──
@@ -307,6 +398,8 @@ async def test_honoured_retry_logs_nothing(real_sdk, caplog):
 _SRC = pathlib.Path(__file__).resolve().parents[3] / "src"
 _FACTORY_FILE = "src/shared/claude_metrics.py"
 _CTORS = {"AsyncAnthropic", "Anthropic"}
+# 기존 클라이언트를 복제하며 미들웨어를 갈아끼울 수 있는 SDK 메서드 / SDK methods that copy a client
+_CLIENT_COPIES = {"with_options", "copy"}
 
 
 def _client_construction_sites(tree: ast.AST) -> list[int]:
@@ -314,15 +407,16 @@ def _client_construction_sites(tree: ast.AST) -> list[int]:
 
     잡는 것: `anthropic.AsyncAnthropic`/`Anthropic` 참조(호출·상속·변수 대입 전부),
     `from anthropic import AsyncAnthropic as AC` 별칭의 참조, `getattr(x, "AsyncAnthropic")`,
-    `middleware=` 키워드를 넘기는 모든 호출(`with_options`/`copy` 로 미들웨어를 떼는 경로).
-    타입 주석 안의 참조와 docstring·주석 산문은 세지 않는다.
+    `middleware=` 를 넘기는 `.with_options(...)`/`.copy(...)`(미들웨어를 떼는 경로).
+    타입 주석 안의 참조와 docstring·주석 산문, 다른 라이브러리의 `middleware=`(`Starlette(...)`)는 세지 않는다.
 
     🔴 못 잡는 것(정적 판정의 한계 — 「전부 막는다」고 읽지 마라): `from anthropic import *`,
     계산된 문자열의 `getattr`, `importlib.import_module`, `exec`, `**kwargs` 로 넘긴 `middleware`,
     `anthropic` 모듈 자체를 다른 이름에 담아 속성 없이 넘기는 경로, 동기 `Anthropic` 에 쓸
     `handle` 미구현(현재 동기 클라이언트는 `src/` 에 없다).
-    Catches ctor references (outside annotations), anthropic import aliases, literal getattr and any
-    `middleware=` call; misses star imports, computed getattr, importlib/exec and **kwargs splats.
+    Catches ctor references (outside annotations), anthropic import aliases, literal getattr and
+    `.with_options`/`.copy` calls passing `middleware=`; ignores other libraries' `middleware=`.
+    Misses star imports, computed getattr, importlib/exec and **kwargs splats.
     """
     aliases: set[str] = set()
     for n in ast.walk(tree):
@@ -354,14 +448,25 @@ def _client_construction_sites(tree: ast.AST) -> list[int]:
             if (isinstance(n.func, ast.Name) and n.func.id == "getattr" and len(n.args) >= 2
                     and isinstance(n.args[1], ast.Constant) and n.args[1].value in _CTORS):
                 hits.append(n.lineno)
-            elif any(kw.arg == "middleware" for kw in n.keywords):
+            elif (isinstance(n.func, ast.Attribute) and n.func.attr in _CLIENT_COPIES
+                  and any(kw.arg == "middleware" for kw in n.keywords)):
                 hits.append(n.lineno)
     return hits
 
 
+def _tracked_src_files() -> list[pathlib.Path]:
+    """git 이 추적하는 `src/**.py` — `rglob` 는 `.gitignore` 를 무시해 로컬 잔재까지 센다.
+    git-tracked files only; rglob ignores .gitignore and counts local leftovers. Dedupe (merge conflicts).
+    """
+    root = _SRC.parent
+    proc = subprocess.run(["git", "ls-files", "-z", "--", "src"], cwd=root, capture_output=True, check=True)
+    paths = {p for p in proc.stdout.decode("utf-8").split("\0") if p.endswith(".py")}
+    return [root / p for p in sorted(paths) if (root / p).exists()]
+
+
 def _offenders() -> set[str]:
     out = set()
-    for f in sorted(_SRC.rglob("*.py")):
+    for f in _tracked_src_files():
         if _client_construction_sites(ast.parse(f.read_text(encoding="utf-8"))):
             out.add(f.relative_to(_SRC.parent).as_posix())
     return out
@@ -369,14 +474,15 @@ def _offenders() -> set[str]:
 
 def test_scanner_catches_planted_ctor_and_ignores_prose():
     """계기 자기검증 — `claimed\\cheap`(별칭 생성·상속·getattr·미들웨어 제거)은 잡고,
-    `cheap\\claimed`(docstring·주석·타입 주석의 이름 언급)는 무시해야 한다.
-    같은 심음을 **손대지 않은 운영 파일**에 끼워 넣어도 뒤집혀야 한다.
+    `cheap\\claimed`(docstring·주석·타입 주석의 이름 언급, 다른 라이브러리의 `middleware=`)는
+    무시해야 한다. 같은 심음을 **손대지 않은 운영 파일**에 끼워 넣어도 뒤집혀야 한다.
     """
     must_catch = [
         "from anthropic import AsyncAnthropic as AC\nc = AC(api_key='k')\n",
         "import anthropic\nclass Mine(anthropic.AsyncAnthropic):\n    pass\n",
         "import anthropic\nctor = getattr(anthropic, 'AsyncAnthropic')\n",
         "def f(c):\n    return c.with_options(middleware=[])\n",
+        "def f(c):\n    return c.copy(middleware=[])\n",
         "import anthropic\nmake = anthropic.Anthropic\n",
     ]
     must_ignore = (
@@ -386,6 +492,9 @@ def test_scanner_catches_planted_ctor_and_ignores_prose():
         "def g(client: anthropic.AsyncAnthropic) -> 'anthropic.AsyncAnthropic':\n"
         "    x: anthropic.AsyncAnthropic = client\n"
         "    return x\n"
+        "from starlette.applications import Starlette\n"
+        "from starlette.middleware import Middleware\n"
+        "app = Starlette(middleware=[Middleware(object)])\n"
     )
     for src in must_catch:
         assert _client_construction_sites(ast.parse(src)), f"심은 생성 경로를 놓쳤다: {src!r}"
