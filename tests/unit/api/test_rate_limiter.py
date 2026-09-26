@@ -501,7 +501,7 @@ def test_forwarded_trust_detector_catches_synthetic_violation(command):
 def test_railway_start_command_does_not_trust_forwarded_headers():
     """railway.toml startCommand 는 forwarded-allow-ips 를 넓히지 않는다.
     railway.toml's startCommand must not widen forwarded-allow-ips."""
-    root =Path(__file__).resolve().parents[3]
+    root = Path(__file__).resolve().parents[3]
     start = tomllib.loads((root / "railway.toml").read_text(encoding="utf-8"))["deploy"]["startCommand"]
     assert "--proxy-headers" in start, "startCommand 형태가 바뀌었다 — 이 가드의 전제를 다시 볼 것"
     assert not _widens_forwarded_trust(start), (

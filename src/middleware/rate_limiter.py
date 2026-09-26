@@ -57,6 +57,24 @@ def _is_trusted_proxy(ip) -> bool:
     return any(ip in net for net in _TRUSTED_PROXY_NETWORKS)
 
 
+def _client_ip_from_header(values: list[str]):
+    """신뢰 프록시가 보낸 X-Real-IP 줄에서 쓸 수 있는 클라이언트 IP. 못 쓰면 사유를 알리고 None.
+    The usable client IP from a trusted proxy's X-Real-IP lines; None (reason announced) otherwise."""
+    if not values:
+        _announce("missing", "no X-Real-IP from trusted proxy; keying by uvicorn client address")
+        return None
+    if len(values) > 1:
+        _announce("multiple", "several X-Real-IP lines; keying by uvicorn client address")
+        return None
+    client_ip = _parse_ip(values[0])
+    # 프록시 대역 값은 거절 — 헤더 키와 폴백 키를 서로소로 둔다(100.64.x 키 = 폴백)
+    # Reject proxy-range values so header-derived keys never collide with fallback keys.
+    if client_ip is None or _is_trusted_proxy(client_ip):
+        _announce("malformed", "unusable X-Real-IP; keying by uvicorn client address")
+        return None
+    return client_ip
+
+
 def rate_limit_key(request: Request) -> str:
     """Railway 프록시 뒤 실제 클라이언트 기준 키. 애매하면 uvicorn 이 본 클라이언트 주소로 폴백한다.
     Key by the real client behind Railway's proxy; anything ambiguous falls back to uvicorn's client.
@@ -80,17 +98,8 @@ def rate_limit_key(request: Request) -> str:
             _announce("untrusted-peer",
                       "X-Real-IP from a peer outside the trusted proxy range; keys may be client-derived")
         return peer
-    if not values:
-        _announce("missing", "no X-Real-IP from trusted proxy; keying by uvicorn client address")
-        return peer
-    if len(values) > 1:
-        _announce("multiple", "several X-Real-IP lines; keying by uvicorn client address")
-        return peer
-    client_ip = _parse_ip(values[0])
-    # 프록시 대역 값은 거절 — 헤더 키와 폴백 키를 서로소로 둔다(100.64.x 키 = 폴백)
-    # Reject proxy-range values so header-derived keys never collide with fallback keys.
-    if client_ip is None or _is_trusted_proxy(client_ip):
-        _announce("malformed", "unusable X-Real-IP; keying by uvicorn client address")
+    client_ip = _client_ip_from_header(values)
+    if client_ip is None:
         return peer
     _announce("x-real-ip")
     if client_ip.version == 6:
