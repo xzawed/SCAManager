@@ -74,7 +74,6 @@ def test_every_route_limit_uses_rate_limit_key():
     slowapi binds key_func per route at decoration; walk the live registry, not just _key_func.
     """
     from src.main import app  # pylint: disable=import-outside-toplevel
-    from src.middleware import rate_limiter as rl  # pylint: disable=import-outside-toplevel
 
     assert app.routes, "라우트가 0개 — 앱이 조립되지 않았다"
     key = getattr(rl, "rate_limit_key", None)
@@ -331,24 +330,46 @@ def _hit(client, real_ip=None, **extra) -> int:
 
 
 def test_two_clients_behind_one_railway_proxy_do_not_share_a_bucket(deployed):
+    """같은 엣지 피어 뒤의 두 클라이언트는 버킷을 나누지 않는다.
+    Two clients behind the same edge peer get separate buckets."""
     c = deployed()
-    spent = [_hit(c, "203.0.113.10", **{"X-Forwarded-For": "203.0.113.10"}) for _ in range(_budget() + 1)]
+    spent = [_hit(c, "203.0.113.10") for _ in range(_budget() + 1)]
     # 양성 대조 — 한도가 실제로 걸린다
     # Positive control: the limit really applies.
     assert spent[:-1] == [404] * _budget() and spent[-1] == 429
     assert _hit(c, "198.51.100.20") == 404, "다른 사용자가 429 — 키가 엣지 프록시 주소다 (#1691)"
 
 
+def test_rotating_x_forwarded_for_from_edge_cannot_mint_buckets(deployed):
+    """엣지 피어가 매번 다른 X-Forwarded-For 를 실어도 uvicorn 은 그것을 client 로 쓰지 않는다.
+    uvicorn must not adopt X-Forwarded-For from the edge; rotating it cannot escape the limit.
+
+    forwarded-allow-ips 가 엣지를 믿게 되면 client 가 XFF 맨 왼쪽 값이 되어 매 요청 새 키다.
+    If forwarded-allow-ips trusted the edge, each rotated XFF would become a fresh key."""
+    c = deployed()
+    statuses = [_hit(c, "203.0.113.10", **{"X-Forwarded-For": f"198.51.100.{i % 250 + 1}"})
+                for i in range(_budget() + 1)]
+    assert statuses[:-1] == [404] * _budget() and statuses[-1] == 429, (
+        "XFF 를 바꿔 한도를 피했다 — uvicorn 이 엣지의 forwarded 헤더를 믿는다 (#1691)"
+    )
+
+
 def test_one_client_through_two_railway_proxies_shares_one_bucket(deployed):
+    """한 클라이언트가 엣지 피어를 바꿔 들어와도 같은 버킷이다.
+    One client arriving through two edge peers shares one bucket."""
     first, second = deployed("100.64.0.7"), deployed("100.64.0.8")  # NOSONAR python:S1313
     assert [_hit(first, "203.0.113.10") for _ in range(_budget())] == [404] * _budget()
     assert _hit(second, "203.0.113.10") == 429, "프록시를 바꾸면 한도가 초기화된다 — 피어당 버킷"
 
 
 def test_ipv6_clients_bucket_per_64(deployed):
+    """IPv6 는 /64 단위 버킷이다 — 위로도(/65·/96) 아래로도(/63) 넓이가 고정된다.
+    IPv6 buckets are exactly /64: the second address differs at bit 65, the other /64 at bit 64."""
     c = deployed()
     assert [_hit(c, "2001:db8:1:2::1") for _ in range(_budget())] == [404] * _budget()
-    assert _hit(c, "2001:db8:1:2::ffff") == 429, "같은 /64 안에서 주소를 바꿔 한도를 피했다"
+    # 65번째 비트가 다른 같은 /64 주소 — /65 이상으로 좁히면 새 버킷이 되어 red
+    # Same /64, differs at bit 65: any prefix longer than /64 splits it and goes red.
+    assert _hit(c, "2001:db8:1:2:8000::1") == 429, "같은 /64 안에서 주소를 바꿔 한도를 피했다"
     assert _hit(c, "2001:db8:1:3::1") == 404, "다른 /64 가 429 — 버킷이 공유된다"
 
 
@@ -356,6 +377,8 @@ def test_ipv6_clients_bucket_per_64(deployed):
 # Loopback, and the address just outside the /10 (catches a "100." prefix mutation).
 @pytest.mark.parametrize("peer", ["127.0.0.1", "100.128.0.0"])  # NOSONAR python:S1313
 def test_x_real_ip_from_untrusted_peer_cannot_mint_buckets(deployed, peer):
+    """신뢰 대역 밖 피어의 X-Real-IP 로는 버킷을 만들 수 없다.
+    An untrusted peer cannot mint buckets through X-Real-IP."""
     c = deployed(peer)
     statuses = [_hit(c, f"203.0.113.{i % 250 + 1}") for i in range(_budget() + 1)]
     assert statuses[-1] == 429, "신뢰 대역 밖 피어가 X-Real-IP 로 버킷을 무한 생성한다"
@@ -365,6 +388,8 @@ def test_x_real_ip_from_untrusted_peer_cannot_mint_buckets(deployed, peer):
 # slowapi skips the limit on an empty key; every fallback must be non-empty.
 @pytest.mark.parametrize("value", ["", "   ", None], ids=["empty", "blank", "missing"])
 def test_empty_x_real_ip_from_edge_still_limited(deployed, value):
+    """빈·공백·없는 X-Real-IP 는 피어 키로 폴백해 여전히 429 에 닿는다.
+    Empty, blank or absent X-Real-IP falls back to the peer key and still reaches 429."""
     c = deployed()
     statuses = [_hit(c, value) for _ in range(_budget() + 1)]
     assert statuses[:-1] == [404] * _budget() and statuses[-1] == 429
@@ -385,26 +410,60 @@ def _key(request) -> str:
 
 @pytest.mark.parametrize("values", [
     (), ("",), ("not-an-ip",), ("203.0.113.1, 198.51.100.2",), ("203.0.113.1:443",),
-    ("203.0.113.1", "198.51.100.2"), ("fe80::1%eth0",), ("100.64.3.3",), ("x" * 5000,),
+    ("203.0.113.1", "198.51.100.2"), ("fe80::1%eth0",),
+    ("100.64.3.3",),  # NOSONAR python:S1313
+    ("x" * 5000,),
 ], ids=["missing", "empty", "garbage", "comma", "port", "two-lines", "scoped", "proxy-range", "huge"])
 def test_unusable_x_real_ip_falls_back_to_peer(values):
+    """쓸 수 없는 X-Real-IP 는 전부 피어 주소로 폴백한다.
+    Every unusable X-Real-IP falls back to the peer address."""
     assert _key(_req(_EDGE, *values)) == _EDGE
 
 
+def test_padded_x_real_ip_is_trimmed_not_rejected():
+    """앞뒤 공백만 붙은 유효 주소는 폴백이 아니라 그 주소로 키가 된다.
+    A valid address with surrounding whitespace keys by that address, not the fallback."""
+    assert _key(_req(_EDGE, " \t203.0.113.1 ")) == "203.0.113.1"
+
+
 @pytest.mark.parametrize("peer,trusted", [
-    ("100.64.0.0", True), ("100.127.255.255", True), ("::ffff:100.64.0.9", True),
-    ("100.63.255.255", False), ("100.128.0.0", False), ("testclient", False), (None, False),
-])  # NOSONAR python:S1313
+    ("100.64.0.0", True), ("100.127.255.255", True),  # NOSONAR python:S1313
+    ("::ffff:100.64.0.9", True),  # NOSONAR python:S1313
+    ("100.63.255.255", False), ("100.128.0.0", False),  # NOSONAR python:S1313
+    ("testclient", False), (None, False),
+])
 def test_edge_cidr_boundaries(peer, trusted):
+    """/10 경계 안쪽 피어만 X-Real-IP 를 쓴다 — 비 IP·없는 피어도 비어 있지 않은 키다.
+    Only peers inside the /10 are trusted; non-IP or missing peers still yield a non-empty key."""
     key = _key(_req(peer, "203.0.113.1"))
     assert key and (key == "203.0.113.1") is trusted
 
 
 def test_mapped_v4_client_folds_to_ipv4():
+    """IPv4-mapped IPv6 클라이언트는 IPv4 키로 접힌다.
+    An IPv4-mapped client folds to its IPv4 key."""
     assert _key(_req(_EDGE, "::ffff:203.0.113.1")) == "203.0.113.1"
 
 
+def test_every_fallback_outcome_warns_even_when_first(caplog):
+    """폴백 4종은 프로세스 첫 로그여도 전부 WARNING 이고, 헤더 채택 INFO 는 없다.
+    All four fallback outcomes warn, even as the first record; no INFO without a used header."""
+    with caplog.at_level(logging.INFO, logger=rl.__name__):
+        _key(_req(_EDGE, "203.0.113.1", "198.51.100.2"))
+        _key(_req(_EDGE))
+        _key(_req(_EDGE, "not-an-ip"))
+        _key(_req("198.51.100.9", "203.0.113.10"))
+    mine = [r for r in caplog.records if r.name == rl.__name__]
+    assert [(r.levelname, r.args[0]) for r in mine] == [
+        ("WARNING", "multiple"), ("WARNING", "missing"),
+        ("WARNING", "malformed"), ("WARNING", "untrusted-peer"),
+    ]
+    assert all(r.args[1] for r in mine), "폴백 WARNING 에 사유가 비었다"
+
+
 def test_key_outcome_logged_once_without_header_values(caplog):
+    """판정 결과별 로그는 1회이고 헤더 값은 싣지 않는다.
+    Each outcome logs once and never carries the header value."""
     with caplog.at_level(logging.INFO, logger=rl.__name__):
         for _ in range(3):
             _key(_req(_EDGE, "203.0.113.10"))
@@ -434,11 +493,15 @@ def _widens_forwarded_trust(start_command: str) -> bool:
     "UVICORN_FORWARDED_ALLOW_IPS=* uvicorn src.main:app --proxy-headers",
 ])
 def test_forwarded_trust_detector_catches_synthetic_violation(command):
+    """탐지기가 합성 위반 3형태를 잡는다 — 아래 가드가 공허하지 않다는 근거.
+    The detector catches three synthetic violations, so the guard below is not vacuous."""
     assert _widens_forwarded_trust(command)
 
 
 def test_railway_start_command_does_not_trust_forwarded_headers():
-    root = Path(__file__).resolve().parents[3]
+    """railway.toml startCommand 는 forwarded-allow-ips 를 넓히지 않는다.
+    railway.toml's startCommand must not widen forwarded-allow-ips."""
+    root =Path(__file__).resolve().parents[3]
     start = tomllib.loads((root / "railway.toml").read_text(encoding="utf-8"))["deploy"]["startCommand"]
     assert "--proxy-headers" in start, "startCommand 형태가 바뀌었다 — 이 가드의 전제를 다시 볼 것"
     assert not _widens_forwarded_trust(start), (

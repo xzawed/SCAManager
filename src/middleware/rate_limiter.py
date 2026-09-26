@@ -24,22 +24,18 @@ _IPV6_BUCKET_PREFIX = 64
 # 판정 결과별 프로세스당 1회만 로그 — 헤더 값(공격자 입력·PII)은 싣지 않고 고정 ASCII 만 쓴다.
 # Log each outcome once per process with a fixed ASCII reason; never the header value.
 _announced: set[str] = set()
-_FALLBACK_NOTES = {
-    "missing": "no X-Real-IP from trusted proxy; keying by uvicorn client address",
-    "multiple": "several X-Real-IP lines; keying by uvicorn client address",
-    "malformed": "unusable X-Real-IP; keying by uvicorn client address",
-    "untrusted-peer": "X-Real-IP from a peer outside the trusted proxy range; keys may be client-derived",
-}
 
 
-def _announce(outcome: str) -> None:
+def _announce(outcome: str, fallback_note: str | None = None) -> None:
+    """사유가 있으면 폴백(WARNING), 없으면 헤더 채택(INFO). 사유는 호출부가 고정 문자열로 준다.
+    A note marks a fallback (WARNING); none means the header was used (INFO)."""
     if outcome in _announced:
         return
     _announced.add(outcome)
-    if outcome == "x-real-ip":
+    if fallback_note is None:
         logger.info("rate-limit key: X-Real-IP from trusted proxy peer")
     else:
-        logger.warning("rate-limit key fallback (%s): %s", outcome, _FALLBACK_NOTES[outcome])
+        logger.warning("rate-limit key fallback (%s): %s", outcome, fallback_note)
 
 
 def _parse_ip(value: str):
@@ -81,16 +77,20 @@ def rate_limit_key(request: Request) -> str:
         # 엣지 대역 이동, 또는 uvicorn 이 client 를 XFF 로 바꿨다는 드리프트 신호
         # Drift tripwire: the edge left the range, or uvicorn rewrote the client from XFF.
         if values:
-            _announce("untrusted-peer")
+            _announce("untrusted-peer",
+                      "X-Real-IP from a peer outside the trusted proxy range; keys may be client-derived")
         return peer
-    if len(values) != 1:
-        _announce("missing" if not values else "multiple")
+    if not values:
+        _announce("missing", "no X-Real-IP from trusted proxy; keying by uvicorn client address")
+        return peer
+    if len(values) > 1:
+        _announce("multiple", "several X-Real-IP lines; keying by uvicorn client address")
         return peer
     client_ip = _parse_ip(values[0])
     # 프록시 대역 값은 거절 — 헤더 키와 폴백 키를 서로소로 둔다(100.64.x 키 = 폴백)
     # Reject proxy-range values so header-derived keys never collide with fallback keys.
     if client_ip is None or _is_trusted_proxy(client_ip):
-        _announce("malformed")
+        _announce("malformed", "unusable X-Real-IP; keying by uvicorn client address")
         return peer
     _announce("x-real-ip")
     if client_ip.version == 6:
