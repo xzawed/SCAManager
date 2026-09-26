@@ -1,11 +1,33 @@
 """API Rate Limiting 테스트.
 API rate limiting tests.
 """
+import logging
+import tomllib
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
+from starlette.requests import Request as StarletteRequest
+from uvicorn.config import Config
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+
+from src.middleware import rate_limiter as rl
+
+# Railway 엣지 피어 대역(100.64.0.0/10) 안의 테스트 주소
+# A test peer inside Railway's edge range (100.64.0.0/10)
+_EDGE = "100.64.0.7"  # NOSONAR python:S1313
+
+
+@pytest.fixture(autouse=True)
+def _reset_key_announcements(monkeypatch):
+    """판정 로그는 프로세스당 1회라 전역 상태다 — 테스트 순서가 로그 단언을 바꾸지 않게 매번 비운다.
+    The once-per-process log state is module-global; reset it so test order cannot matter."""
+    monkeypatch.setattr(rl, "_announced", set(), raising=False)
 
 
 def test_rate_limiter_constants():
@@ -45,15 +67,25 @@ def test_rate_limit_exceeded_returns_429():
     assert resp.status_code == 429
 
 
-def test_rate_limiter_uses_remote_address_key_func():
-    """Limiter의 key_func이 get_remote_address여야 한다.
-    Limiter must use get_remote_address as key_func.
-    """
-    from src.middleware.rate_limiter import limiter  # pylint: disable=import-outside-toplevel
+def test_every_route_limit_uses_rate_limit_key():
+    """🔴 slowapi 는 key_func 를 데코레이션 시점에 각 라우트 Limit 에 복사한다.
 
-    # get_remote_address는 slowapi 표준 IP 기반 키 함수
-    # get_remote_address is the standard slowapi IP-based key function
-    assert limiter._key_func is get_remote_address
+    그래서 `limiter._key_func` 만 보면 거짓 초록이다 — 살아 있는 라우트 레지스트리를 전수한다.
+    slowapi binds key_func per route at decoration; walk the live registry, not just _key_func.
+    """
+    from src.main import app  # pylint: disable=import-outside-toplevel
+    from src.middleware import rate_limiter as rl  # pylint: disable=import-outside-toplevel
+
+    assert app.routes, "라우트가 0개 — 앱이 조립되지 않았다"
+    key = getattr(rl, "rate_limit_key", None)
+    limits = [lim for lims in rl.limiter._route_limits.values() for lim in lims]  # pylint: disable=protected-access
+    assert limits, "제한 등록 0개 — 이 검사가 공허하다"
+    wrong = sorted({lim.key_func.__name__ for lim in limits if key is None or lim.key_func is not key})
+    assert not wrong, f"rate_limit_key 가 아닌 key_func: {wrong} (#1691 — 프록시 주소 버킷)"
+    assert rl.limiter._key_func is key  # pylint: disable=protected-access
+    # 호출형 한도는 이 전수에서 빠진다 — 생기면 위 검사를 넓혀야 한다.
+    # Callable (dynamic) limits escape the walk above; widen it before adding one.
+    assert not rl.limiter._dynamic_route_limits  # pylint: disable=protected-access
 
 
 def test_health_endpoint_no_rate_limit():
@@ -247,4 +279,168 @@ def test_critical_mutating_routes_are_registered_with_the_limiter():
     assert not missing, (
         f"제한이 사라진 라우트: {missing}\n"
         f"→ 해당 엔드포인트에 @limiter.limit 를 되돌릴 것. 현재 등록됨={sorted(registered)}"
+    )
+
+
+# ─── 🔴 키는 Railway 프록시가 아니라 실제 클라이언트다 (#1691) ──────────────────
+#
+# 운영은 `railway.toml` 의 `--proxy-headers` 로 uvicorn 의 실제 ProxyHeadersMiddleware 를 앞에 두고,
+# FORWARDED_ALLOW_IPS 가 없어 엣지(100.64.0.0/10)의 X-Forwarded-For 를 믿지 않는다.
+# 아래 하네스는 그 래핑을 그대로 재현하고, 실제 slowapi 데코레이터가 붙은 라우트를 두드린다.
+# The harness reproduces production's wrapping (uvicorn's real ProxyHeadersMiddleware, no
+# FORWARDED_ALLOW_IPS) and hits a route carrying the real slowapi decorator.
+
+def _session_with_no_repo():
+    # 미등록 리포 → verify_hook 는 결정적으로 404 (500 이 비-429 로 통과하지 못하게)
+    # Unregistered repo -> a deterministic 404, so a 500 can never pass as "not 429".
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = None
+    ctx = MagicMock()
+    ctx.__enter__ = MagicMock(return_value=db)
+    ctx.__exit__ = MagicMock(return_value=False)
+    return ctx
+
+
+@pytest.fixture
+def deployed(monkeypatch):
+    """railway.toml 의 startCommand 와 같은 래핑으로 앱을 띄운다. 인자 = TCP 피어 주소.
+    Serve the app wrapped as in production; the argument is the TCP peer address."""
+    from src.main import app  # pylint: disable=import-outside-toplevel
+
+    monkeypatch.delenv("FORWARDED_ALLOW_IPS", raising=False)
+    cfg = Config(app=app, proxy_headers=True, log_config=None)
+    cfg.load()
+    # uvicorn 이 래핑 방식을 바꾸면 조용히 우회하지 말고 여기서 깨진다
+    # Break loudly if a future uvicorn stops wrapping this way.
+    assert isinstance(cfg.loaded_app, ProxyHeadersMiddleware)
+    rl.limiter.reset()
+    with patch("src.api.hook.SessionLocal", return_value=_session_with_no_repo()):
+        yield lambda peer=_EDGE: TestClient(cfg.loaded_app, raise_server_exceptions=False, client=(peer, 40000))
+    rl.limiter.reset()
+
+
+def _budget() -> int:
+    return int(rl.RATE_LIMIT_API.split("/")[0])
+
+
+def _hit(client, real_ip=None, **extra) -> int:
+    headers = {"Authorization": "Bearer t", **extra}
+    if real_ip is not None:
+        headers["X-Real-IP"] = real_ip
+    return client.get("/api/hook/verify", params={"repo": "o/r"}, headers=headers).status_code
+
+
+def test_two_clients_behind_one_railway_proxy_do_not_share_a_bucket(deployed):
+    c = deployed()
+    spent = [_hit(c, "203.0.113.10", **{"X-Forwarded-For": "203.0.113.10"}) for _ in range(_budget() + 1)]
+    # 양성 대조 — 한도가 실제로 걸린다
+    # Positive control: the limit really applies.
+    assert spent[:-1] == [404] * _budget() and spent[-1] == 429
+    assert _hit(c, "198.51.100.20") == 404, "다른 사용자가 429 — 키가 엣지 프록시 주소다 (#1691)"
+
+
+def test_one_client_through_two_railway_proxies_shares_one_bucket(deployed):
+    first, second = deployed("100.64.0.7"), deployed("100.64.0.8")  # NOSONAR python:S1313
+    assert [_hit(first, "203.0.113.10") for _ in range(_budget())] == [404] * _budget()
+    assert _hit(second, "203.0.113.10") == 429, "프록시를 바꾸면 한도가 초기화된다 — 피어당 버킷"
+
+
+def test_ipv6_clients_bucket_per_64(deployed):
+    c = deployed()
+    assert [_hit(c, "2001:db8:1:2::1") for _ in range(_budget())] == [404] * _budget()
+    assert _hit(c, "2001:db8:1:2::ffff") == 429, "같은 /64 안에서 주소를 바꿔 한도를 피했다"
+    assert _hit(c, "2001:db8:1:3::1") == 404, "다른 /64 가 429 — 버킷이 공유된다"
+
+
+# 루프백 · /10 바로 밖("100." 접두 판정 변이를 잡는다)
+# Loopback, and the address just outside the /10 (catches a "100." prefix mutation).
+@pytest.mark.parametrize("peer", ["127.0.0.1", "100.128.0.0"])  # NOSONAR python:S1313
+def test_x_real_ip_from_untrusted_peer_cannot_mint_buckets(deployed, peer):
+    c = deployed(peer)
+    statuses = [_hit(c, f"203.0.113.{i % 250 + 1}") for i in range(_budget() + 1)]
+    assert statuses[-1] == 429, "신뢰 대역 밖 피어가 X-Real-IP 로 버킷을 무한 생성한다"
+
+
+# 🔴 slowapi 는 빈 키면 `if all(args)` 에서 한도를 건너뛴다 — 폴백은 늘 비어 있지 않아야 한다.
+# slowapi skips the limit on an empty key; every fallback must be non-empty.
+@pytest.mark.parametrize("value", ["", "   ", None], ids=["empty", "blank", "missing"])
+def test_empty_x_real_ip_from_edge_still_limited(deployed, value):
+    c = deployed()
+    statuses = [_hit(c, value) for _ in range(_budget() + 1)]
+    assert statuses[:-1] == [404] * _budget() and statuses[-1] == 429
+
+
+def _req(peer, *values):
+    scope = {"type": "http", "headers": [(b"x-real-ip", v.encode("latin-1")) for v in values]}
+    if peer is not None:
+        scope["client"] = (peer, 1)
+    return StarletteRequest(scope)
+
+
+def _key(request) -> str:
+    # 라우트에 실제로 배선된 키 함수를 호출한다
+    # Call the key function actually wired into the limiter.
+    return rl.limiter._key_func(request)  # pylint: disable=protected-access
+
+
+@pytest.mark.parametrize("values", [
+    (), ("",), ("not-an-ip",), ("203.0.113.1, 198.51.100.2",), ("203.0.113.1:443",),
+    ("203.0.113.1", "198.51.100.2"), ("fe80::1%eth0",), ("100.64.3.3",), ("x" * 5000,),
+], ids=["missing", "empty", "garbage", "comma", "port", "two-lines", "scoped", "proxy-range", "huge"])
+def test_unusable_x_real_ip_falls_back_to_peer(values):
+    assert _key(_req(_EDGE, *values)) == _EDGE
+
+
+@pytest.mark.parametrize("peer,trusted", [
+    ("100.64.0.0", True), ("100.127.255.255", True), ("::ffff:100.64.0.9", True),
+    ("100.63.255.255", False), ("100.128.0.0", False), ("testclient", False), (None, False),
+])  # NOSONAR python:S1313
+def test_edge_cidr_boundaries(peer, trusted):
+    key = _key(_req(peer, "203.0.113.1"))
+    assert key and (key == "203.0.113.1") is trusted
+
+
+def test_mapped_v4_client_folds_to_ipv4():
+    assert _key(_req(_EDGE, "::ffff:203.0.113.1")) == "203.0.113.1"
+
+
+def test_key_outcome_logged_once_without_header_values(caplog):
+    with caplog.at_level(logging.INFO, logger=rl.__name__):
+        for _ in range(3):
+            _key(_req(_EDGE, "203.0.113.10"))
+        for _ in range(2):
+            _key(_req(_EDGE, "not-an-ip"))
+        _key(_req("198.51.100.9", "203.0.113.10"))
+    mine = [r for r in caplog.records if r.name == rl.__name__]
+    assert [r.levelname for r in mine] == ["INFO", "WARNING", "WARNING"]
+    assert [r.args[0] for r in mine[1:]] == ["malformed", "untrusted-peer"]
+    # 신뢰 대역 밖 피어 = uvicorn 이 클라이언트를 XFF 로 바꿨을 수 있다 → 키가 클라이언트 입력일 수 있다
+    # An untrusted peer may mean uvicorn rewrote the client from XFF: keys may be client-derived.
+    assert "client-derived" in mine[2].getMessage()
+    leaked = [r.getMessage() for r in mine if "203.0.113" in r.getMessage() or "not-an-ip" in r.getMessage()]
+    assert not leaked, f"헤더 값이 로그에 실렸다: {leaked}"
+
+
+# 🔴 폴백 키는 «uvicorn 이 본 클라이언트» 다. forwarded-allow-ips 로 엣지를 믿으면 uvicorn 이
+# 클라이언트가 쓴 X-Forwarded-For 맨 왼쪽 값으로 client 를 바꾸고, 그 값이 곧 키가 된다(한도 우회).
+# The fallback key is uvicorn's view of the client; trusting the edge makes it client-controlled XFF.
+def _widens_forwarded_trust(start_command: str) -> bool:
+    return "forwarded-allow-ips" in start_command.lower() or "forwarded_allow_ips" in start_command.lower()
+
+
+@pytest.mark.parametrize("command", [
+    "uvicorn src.main:app --proxy-headers --forwarded-allow-ips='*'",
+    "FORWARDED_ALLOW_IPS=* uvicorn src.main:app --proxy-headers",
+    "UVICORN_FORWARDED_ALLOW_IPS=* uvicorn src.main:app --proxy-headers",
+])
+def test_forwarded_trust_detector_catches_synthetic_violation(command):
+    assert _widens_forwarded_trust(command)
+
+
+def test_railway_start_command_does_not_trust_forwarded_headers():
+    root = Path(__file__).resolve().parents[3]
+    start = tomllib.loads((root / "railway.toml").read_text(encoding="utf-8"))["deploy"]["startCommand"]
+    assert "--proxy-headers" in start, "startCommand 형태가 바뀌었다 — 이 가드의 전제를 다시 볼 것"
+    assert not _widens_forwarded_trust(start), (
+        "railway.toml startCommand 가 forwarded-allow-ips 를 넓혔다 — 레이트리밋 키가 스푸핑 가능해진다 (#1691)"
     )
