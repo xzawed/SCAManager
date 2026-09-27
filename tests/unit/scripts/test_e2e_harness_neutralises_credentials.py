@@ -15,6 +15,15 @@ GitHub·Telegram·세션 같은 자격증명을 더미로 덮어쓰지만 **목�
 
 새 벤더 키가 `Settings` 에 생기면 이 가드가 **먼저** 빨개진다. 손으로 적은 목록은
 새 항목이 조용히 빠지는 자리를 다시 만든다.
+
+## 🔴 자격증명만이 아니다 — 연결 대상 · 운영 모드 스위치
+
+첫 판의 단어(`key`·`token`·`secret`·`password`·`dsn`)는 `SMTP_PASS`(`pass`≠`password`)·
+`SMTP_USER` 를 놓쳤고, 더 큰 구멍은 **값이 곧 연결 대상인 필드**였다 —
+`DATABASE_URL_WORKER`·`DATABASE_URL_FALLBACK`·`MIGRATION_DATABASE_URL`(비밀번호 든 DB 주소),
+`VERIFIER_BASE_URL`·`SMTP_HOST`. 그리고 `APP_BASE_URL` 이 https 거나 `ENVIRONMENT=production`
+이면 e2e 가 **운영 모드**(스케줄러 기동 · Secure 쿠키)로 뜬다. 운영 모드 스위치는 이름이 아니라
+`Settings.is_production` 이 읽는 필드로 파생한다.
 """
 import ast
 import re
@@ -24,17 +33,34 @@ ROOT = Path(__file__).resolve().parents[3]
 _CONFIG = ROOT / "src" / "config.py"
 _CONFTEST = ROOT / "e2e" / "conftest.py"
 
-# 이름으로 «자격증명» 을 고른다 — 값이 새면 돈·권한이 새는 부류.
-_CRED_WORDS = ("key", "token", "secret", "password", "dsn")
+# 이름으로 고른다 — 값이 새면 돈·권한이 새는 부류(자격증명)와 앱이 어디로 붙는지 정하는 부류(연결 대상).
+# Credentials, plus fields whose value decides where the app connects or sends.
+_CRED_WORDS = ("key", "token", "secret", "password", "pass", "user", "dsn")
+_ROUTE_WORDS = ("url", "host")
 
 
-def _credential_settings() -> set[str]:
-    """`Settings` 의 문자열 자격증명 필드 → 환경변수 이름 집합(대문자)."""
+def _settings_class() -> ast.ClassDef:
     tree = ast.parse(_CONFIG.read_text(encoding="utf-8"))
     cls = next((n for n in ast.walk(tree)
                 if isinstance(n, ast.ClassDef) and n.name == "Settings"), None)
     assert cls is not None, "`Settings` 클래스를 찾지 못했다 — 파생이 죽었다"
-    out = set()
+    return cls
+
+
+def _production_switches() -> set[str]:
+    """`Settings.is_production` 이 읽는 필드 → 이름 집합(대문자). 이 값들이 e2e 를 운영 모드로 띄운다.
+    The fields `is_production` reads — they would boot e2e in production mode."""
+    fn = next((n for n in _settings_class().body
+               if isinstance(n, ast.FunctionDef) and n.name == "is_production"), None)
+    assert fn is not None, "`Settings.is_production` 을 찾지 못했다 — 파생이 죽었다"
+    return {n.attr.upper() for n in ast.walk(fn)
+            if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == "self"}
+
+
+def _credential_settings() -> set[str]:
+    """`Settings` 의 문자열 자격증명·연결 대상 필드 + 운영 모드 스위치 → 환경변수 이름 집합(대문자)."""
+    cls = _settings_class()
+    out = set(_production_switches())
     for node in cls.body:
         if not isinstance(node, ast.AnnAssign) or not isinstance(node.target, ast.Name):
             continue
@@ -45,9 +71,25 @@ def _credential_settings() -> set[str]:
         #    부팅이 깨진다. 타입까지 봐야 판정이 상태를 대신한다.
         if "str" not in ann:
             continue
-        if any(w in name for w in _CRED_WORDS):
+        if any(w in name for w in _CRED_WORDS + _ROUTE_WORDS):
             out.add(name.upper())
     return out
+
+
+def test_derivation_reaches_routing_fields_and_production_switches():
+    """🔴 파생이 실제로 넓어졌는가 — 첫 판이 놓친 이름이 들어오고, 무관한 필드는 안 들어온다.
+
+    red 로 만드는 뮤테이션: `_ROUTE_WORDS` 를 비우거나 `_production_switches()` 를 빼면 red.
+    Checks the widened derivation catches what the first version missed and stays narrow.
+    """
+    creds = _credential_settings()
+    for must in ("SMTP_PASS", "SMTP_USER", "SMTP_HOST", "DATABASE_URL_WORKER",
+                 "DATABASE_URL_FALLBACK", "MIGRATION_DATABASE_URL", "VERIFIER_BASE_URL",
+                 "APP_BASE_URL", "ENVIRONMENT", "ANTHROPIC_API_KEY"):
+        assert must in creds, f"{must} 가 파생에서 빠졌다"
+    assert _production_switches() >= {"ENVIRONMENT", "APP_BASE_URL"}
+    for unrelated in ("CLAUDE_REVIEW_MODEL", "DEFAULT_LOCALE", "SMTP_PORT"):
+        assert unrelated not in creds, f"{unrelated} 는 자격증명·연결 대상이 아니다"
 
 
 def _harness_assigned() -> set[str]:
@@ -112,3 +154,20 @@ def test_the_anthropic_base_url_is_unroutable_in_e2e():
     url = m.group(1)
     assert url.startswith("http://127.0.0.1:") or url.startswith("http://localhost:"), (
         f"`ANTHROPIC_BASE_URL` 이 {url!r} — 루프백이 아니면 호출이 밖으로 나갈 수 있다")
+
+
+def test_the_github_warmup_ping_stays_on_loopback_in_e2e():
+    """🔴 lifespan 의 GitHub warm-up(`src/main.py::GITHUB_API}/zen`)이 e2e 마다 실제 api.github.com 을
+    부르지 않는다 — 하네스가 `src.main` 의 `GITHUB_API` 를 루프백으로 돌린다.
+
+    `src.main` 은 `from src.constants import GITHUB_API` 로 받아 lifespan 이 호출 시점에 전역을
+    읽으므로, import 뒤 모듈 속성 대입이 먹는다.
+    red 로 만드는 뮤테이션: 그 대입을 지우거나 루프백이 아닌 주소로 바꾸면 red.
+    """
+    fn_src = _CONFTEST.read_text(encoding="utf-8")
+    body = fn_src[fn_src.index("def _start_uvicorn"):]
+    body = body[:body.index("\ndef ", 1)]
+    m = re.search(r"\.GITHUB_API\s*=\s*[\"']([^\"']+)[\"']", body)
+    assert m, "`_start_uvicorn` 이 `src.main.GITHUB_API` 를 돌려놓지 않는다 — warm-up 이 밖으로 나간다"
+    assert m.group(1).startswith(("http://127.0.0.1:", "http://localhost:")), (
+        f"warm-up 대상이 {m.group(1)!r} — 루프백이 아니다")

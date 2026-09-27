@@ -127,8 +127,14 @@ def _start_uvicorn(db_path: str) -> tuple:
     #    않도록 `tests/unit/scripts/test_e2e_harness_neutralises_credentials.py` 가
     #    `Settings` 에서 파생해 강제한다.
     # A developer .env leaks into e2e: pin every credential to its CI-equivalent value.
+    #    자격증명만이 아니다 — 연결 대상(DB 보조 URL·SMTP·검증자 base URL)과 운영 모드 스위치
+    #    (`APP_BASE_URL`·`ENVIRONMENT` — `is_production`)도 CI 기본값 `""` 로 못박는다.
+    #    Pin routing targets and the production-mode switches too, not only credentials.
     for _cred in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "TELEGRAM_WEBHOOK_SECRET",
-                  "INTERNAL_CRON_API_KEY", "TOKEN_ENCRYPTION_KEY", "N8N_WEBHOOK_SECRET"):
+                  "INTERNAL_CRON_API_KEY", "TOKEN_ENCRYPTION_KEY", "N8N_WEBHOOK_SECRET",
+                  "SMTP_HOST", "SMTP_USER", "SMTP_PASS", "VERIFIER_BASE_URL",
+                  "DATABASE_URL_FALLBACK", "DATABASE_URL_WORKER", "MIGRATION_DATABASE_URL",
+                  "APP_BASE_URL", "ENVIRONMENT"):
         os.environ[_cred] = ""
     # 🔴 벨트+멜빵 — 키가 어떤 경로로든 살아나도 호출이 **기계 밖으로 나가지 않는다**.
     #    `anthropic` SDK 는 `base_url` 미지정 시 이 env 를 읽는다(1.3.0 실측, Grok `01a095b6`).
@@ -141,6 +147,12 @@ def _start_uvicorn(db_path: str) -> tuple:
 
     from src.main import app  # noqa: PLC0415
     from src.auth.session import require_login, get_current_user, CurrentUser  # noqa: PLC0415
+    import src.main as _main_module  # noqa: PLC0415
+
+    # 🔴 lifespan 의 GitHub warm-up(`/zen`)이 실행마다 실제 api.github.com 을 부르지 않게 돌린다 —
+    #    lifespan 이 호출 시점에 이 모듈 전역을 읽으므로 import 뒤 대입이 먹는다.
+    # Keep the lifespan's GitHub warm-up ping on loopback; it reads this module global at call time.
+    _main_module.GITHUB_API = "http://127.0.0.1:1"
 
     # E2E용 테스트 사용자 — require_login + get_current_user 의존성 우회
     # require_login: 인증 필수 라우트 / get_current_user: overview 등 공개 라우트의 optional 인증
