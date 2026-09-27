@@ -36,7 +36,7 @@ CSS 순서 = `src/templates/base.html::css/tokens.css">` — tokens → themes �
 5. `input`/`select` = i18n `aria-label`, `.field-label` = `for`.
 6. 외부 CDN 금지(CSP `src/main.py::Content-Security-Policy` = `'self'`) — `src/static/vendor/` 참조.
 7. Tailwind 유틸 신규 시 `npm run build`. `dist/tailwind.css` = gitignore(커밋 금지).
-8. 표 행(`tr`)엔 ::before·::after 금지 — Chromium 이 열로 센다. 강조선은 `td:first-child::before`(`tests/unit/ui/test_table_row_pseudo_element.py::def test_no_table_row`).
+8. 표 행(`tr`·행에 단 클래스)엔 ::before·::after 금지 — Chromium 이 열로 센다. 강조선은 `td:first-child::before`(`tests/unit/ui/test_table_row_pseudo_element.py::def test_no_table_row`).
 
 ## 검증
 

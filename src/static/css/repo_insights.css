@@ -253,6 +253,12 @@
   color: var(--text-2);
 }
 
+/* 숫자 열은 머리글도 칸과 같이 오른쪽 — 없으면 위 `th { text-align: left }` 가 이긴다 */
+/* The numeric header aligns right like its cells; otherwise the `th` rule above wins */
+.ri-issues-table th.ri-num {
+  text-align: right;
+}
+
 /* ── 심각도 배지 / Severity badge ───────────────────────── */
 .ri-badge {
   display: inline-flex;
