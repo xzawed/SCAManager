@@ -289,8 +289,11 @@
   }
 
   /* ── 분석 행 hover accent bar / Analysis row hover left accent bar ── */
-  .analysis-row { position: relative; transition: background 0.15s; }
-  .analysis-row::before {
+  /* 강조선은 첫 칸에 단다 — 행(`tr`)의 ::before 는 Chromium 이 열 하나로 세어 본문이 한 칸 밀린다
+     The bar lives on the first cell: Chromium counts a row pseudo-element as a column */
+  .analysis-row { transition: background 0.15s; }
+  .analysis-row td:first-child { position: relative; }
+  .analysis-row td:first-child::before {
     content: '';
     position: absolute;
     left: 0;
@@ -303,7 +306,7 @@
     transition: transform 0.15s;
     border-radius: 0 2px 2px 0;
   }
-  .analysis-row:hover::before { transform: scaleY(1); }
+  .analysis-row:hover td:first-child::before { transform: scaleY(1); }
   .analysis-row:hover { background: var(--table-row-hover, transparent); }
 
   /* ── 필터 바 ─────────────────────────── */

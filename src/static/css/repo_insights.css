@@ -205,7 +205,6 @@
 }
 
 .ri-issues-table tbody tr {
-  position: relative;
   border-bottom: 1px solid var(--border-subtle);
   transition: background 0.15s;
 }
@@ -214,7 +213,13 @@
   border-bottom: none;
 }
 
-.ri-issues-table tbody tr::before {
+/* 행 강조선은 첫 칸에 단다 — `tr::before` 는 Chromium 이 열 하나로 세어 본문이 한 칸 밀린다 */
+/* Row accent lives on the first cell: Chromium counts `tr::before` as a column */
+.ri-issues-table tbody td:first-child {
+  position: relative;
+}
+
+.ri-issues-table tbody td:first-child::before {
   content: "";
   position: absolute;
   left: 0; top: 0; bottom: 0;
@@ -226,7 +231,7 @@
   transition: transform 0.15s;
 }
 
-.ri-issues-table tbody tr:hover::before {
+.ri-issues-table tbody tr:hover td:first-child::before {
   transform: scaleY(1);
 }
 
@@ -246,6 +251,12 @@
   font-variant-numeric: tabular-nums;
   font-weight: 600;
   color: var(--text-2);
+}
+
+/* 숫자 열은 머리글도 칸과 같이 오른쪽 — 없으면 위 `th { text-align: left }` 가 이긴다 */
+/* The numeric header aligns right like its cells; otherwise the `th` rule above wins */
+.ri-issues-table th.ri-num {
+  text-align: right;
 }
 
 /* ── 심각도 배지 / Severity badge ───────────────────────── */
@@ -515,7 +526,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .ri-kpi-card,
-  .ri-issues-table tbody tr::before,
+  .ri-issues-table tbody td:first-child::before,
   .ri-file-bar {
     transition: none;
   }
