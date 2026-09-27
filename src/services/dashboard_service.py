@@ -21,6 +21,7 @@ now 인자 의존성 주입 패턴 (analytics_service 와 동일).
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -42,8 +43,8 @@ from src.scorer.calculator import calculate_grade
 from src.scorer.reliability import score_is_unreliable
 from src.shared.anthropic_caching import first_text_block, build_cached_system_param
 from src.shared.claude_metrics import (
-    ANTHROPIC_RETRY_AFTER_CAP_PAGE_SECONDS, aclose_anthropic_client, extract_anthropic_usage,
-    log_claude_api_call, new_async_anthropic,
+    ANTHROPIC_PAGE_DEADLINE_SECONDS, ANTHROPIC_RETRY_AFTER_CAP_PAGE_SECONDS, aclose_anthropic_client,
+    extract_anthropic_usage, log_claude_api_call, new_async_anthropic, release_session_before_claude,
 )
 from src.shared.feature_kill_switch import is_disabled
 from src.repositories import insight_narrative_cache_repo
@@ -873,19 +874,22 @@ async def _call_insight_claude_api(
         "cache_read_tokens": 0, "cache_creation_tokens": 0,
     }
     try:
-        response = await client.messages.create(
-            model=model,
-            max_tokens=1500,
-            system=build_cached_system_param(_INSIGHT_SYSTEM_PROMPT),
-            # 🔴 응답 형식을 스키마로 강제 (backlog R51) — 위 프롬프트가 선언하는 4 카드와
-            #    같은 계약이다. 닫히는 것은 스키마 축뿐이고, non-dict·null 배열 방어
-            #    (`_parse_insight_cards`)는 절단·호출실패를 위해 그대로 둔다.
-            # Schema-enforced shape; the non-dict/null guards below stay for truncation/failure.
-            output_config={
-                "format": {"type": "json_schema", "schema": _INSIGHT_RESPONSE_SCHEMA}
-            },
-            messages=[{"role": "user", "content": user_prompt}],
-        )
+        # 전체 기한은 이 try 안에 둔다 — 호출부에서 감싸면 취소가 아래 except 와 aclose 를 건너뛴다 (#1697).
+        # The deadline lives inside this try; wrapped by the caller, the cancel skips this except.
+        async with asyncio.timeout(ANTHROPIC_PAGE_DEADLINE_SECONDS):
+            response = await client.messages.create(
+                model=model,
+                max_tokens=1500,
+                system=build_cached_system_param(_INSIGHT_SYSTEM_PROMPT),
+                # 🔴 응답 형식을 스키마로 강제 (backlog R51) — 위 프롬프트가 선언하는 4 카드와
+                #    같은 계약이다. 닫히는 것은 스키마 축뿐이고, non-dict·null 배열 방어
+                #    (`_parse_insight_cards`)는 절단·호출실패를 위해 그대로 둔다.
+                # Schema-enforced shape; the non-dict/null guards below stay for truncation/failure.
+                output_config={
+                    "format": {"type": "json_schema", "schema": _INSIGHT_RESPONSE_SCHEMA}
+                },
+                messages=[{"role": "user", "content": user_prompt}],
+            )
         duration_ms = (time.perf_counter() - start) * 1000
         input_tokens, output_tokens = extract_anthropic_usage(response)
         usage = getattr(response, "usage", None)
@@ -1067,20 +1071,25 @@ async def insight_narrative(  # pylint: disable=too-many-locals,too-many-return-
         language=language,
     )
 
+    # 🔴 Claude 를 기다리는 동안 풀 연결·열린 트랜잭션을 쥐지 않는다 — 이후 캐시 쓰기는 새 트랜잭션 (#1697).
+    # Release the pooled connection before the Claude await; later cache writes open a new transaction.
+    release_session_before_claude(db)
     # timeout/max_retries 는 명시한다. SDK 는 재시도 대기를 묶지 않아 페이지 상한을 건다 (#1690)
     # Explicit timeout/max_retries; the SDK does not bound retry waits, so apply the page cap
     client = new_async_anthropic(
         api_key=effective_key, timeout=60.0, max_retries=2,
         caller="dashboard_insight", retry_after_cap=ANTHROPIC_RETRY_AFTER_CAP_PAGE_SECONDS,
     )
-    # Phase 2 d-🅓 (사이클 74) — Insight 영역 한정 Haiku (67% 비용 절감, AI 리뷰 Sonnet 보존)
-    # Phase 2 d-🅓 (Cycle 74) — Insight-only Haiku (67% cheaper, AI review keeps Sonnet)
-    text = await _call_insight_claude_api(
-        client, settings.claude_insight_model, user_prompt, user_id=user_id,
-    )
-    # 헬퍼 호출 직후 AsyncAnthropic httpx 커넥션 풀 해제 (이후 client 미사용) — FD 누수 차단 (WBS P1).
-    # Close the AsyncAnthropic pool right after the helper call (client is unused afterward).
-    await aclose_anthropic_client(client)
+    try:
+        # Phase 2 d-🅓 (사이클 74) — Insight 영역 한정 Haiku (67% 비용 절감, AI 리뷰 Sonnet 보존)
+        # Phase 2 d-🅓 (Cycle 74) — Insight-only Haiku (67% cheaper, AI review keeps Sonnet)
+        text = await _call_insight_claude_api(
+            client, settings.claude_insight_model, user_prompt, user_id=user_id,
+        )
+    finally:
+        # 취소(CancelledError)에도 AsyncAnthropic httpx 커넥션 풀을 닫는다 — FD 누수 차단 (WBS P1 · #1697).
+        # Close the AsyncAnthropic pool even when the await is cancelled.
+        await aclose_anthropic_client(client)
     if text is None:
         return _handle_insight_error(
             db, user_id=user_id, days=days, language=language, error_type="api_error", now=_now,
