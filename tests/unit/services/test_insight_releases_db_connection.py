@@ -26,7 +26,7 @@ import anthropic
 import httpx
 import pytest
 from sqlalchemy import create_engine, event, select
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 
 from src.config import settings
 from src.database import Base
