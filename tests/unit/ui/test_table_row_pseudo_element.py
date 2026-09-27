@@ -18,6 +18,8 @@ r"""표의 행에 ::before/::after 를 달지 않는다 — Chromium 은 그것�
    · 타입 없는 복합이 결합만으로 행을 고른다 — `tbody|thead|tfoot > 그것`(행 그룹의 자식은 `tr`
      뿐이라 `.x` 도) · `tbody|thead|tfoot|table 그것`(자손 — 클래스·id 없는 `*`·`:…`·`[…]` 만) ·
      `행 + 그것`·`행 ~ 그것`(행의 형제는 행 · `thead + *` 는 행 그룹이라 아니다).
+     맨 앞 `:is(…)`/`:where(…)` 는 인자의 주어로 읽는다 — `:is(td, th)` 는 타입 있는 셀,
+     `:is(tbody, tfoot) > *` 는 행 그룹의 자식.
    행 클래스·id = git 추적 `src/templates/**/*.html`(본문·`<script>` 문자열 전부)과
    `src/static/js/**/*.js` 에서 `<tr … class="a b" id="c">` 로 붙은 것(속성값 속 `>` 를 건너뛴다) +
    `document.createElement('tr')` 를 받은 변수나 그 체인에 `.className =`/`+=`·`.classList(?.)add(`
@@ -52,8 +54,9 @@ r"""표의 행에 ::before/::after 를 달지 않는다 — Chromium 은 그것�
    · 변수로 이어 붙인 클래스(`'<tr' + rowCls + '>'` — `settings.html` 의 `pt-row-same`),
      실행 중 아무 요소에나 붙는 클래스(`.reveal` 에 붙는 `visible`), `setAttribute('class')`
      · `classList.toggle`.
-   · 과잉 수집(시끄러운 red 쪽): JS 주석 속 `<tr class>`, `createElement('tr')` 변수 이름을
-     같은 파일에서 다른 요소에 다시 쓴 경우(변수는 파일 안 «이름» 으로 따라간다).
+   · 과잉 수집·판정(시끄러운 red 쪽): JS 주석 속 `<tr class>`, `createElement('tr')` 변수 이름을
+     같은 파일에서 다른 요소에 다시 쓴 경우(변수는 파일 안 «이름» 으로 따라간다),
+     `table :not(tr)::before`(행을 뺀 `:not` 도 타입 없는 자손으로 센다).
    · JS 가 주입하는 스타일, gitignore 된 `dist/tailwind.css`, `src/static/mockup-polar.html`.
 
 Table rows must not carry ::before/::after: Chromium lays the row pseudo-element out as an
@@ -205,18 +208,38 @@ def _by_context(masked_sel: str, spans: list[tuple[int, str]], i: int,
     Whether a typeless compound selects rows through its combinator context alone."""
     prev_start, prev = spans[i - 1]
     start, comp = spans[i]
-    if not _TYPELESS.match(comp):
+    subjects = _subjects(comp)
+    # `:is(td, th)` 처럼 인자가 전부 행 아닌 타입이면 타입 있는 복합이다(Grok 3차 거짓 red).
+    if not _TYPELESS.match(comp) or all(
+            _IDENT.match(s) and not _TYPE_TR.match(_mask(s)) for s in subjects):
         return None
     gap = masked_sel[prev_start + len(prev):start]
-    masked, prev_masked = _mask(comp), _mask(prev)
     if "+" in gap or "~" in gap:
         reason = _row_reason(prev, row_classes)
         return f"{reason} {'+' if '+' in gap else '~'} *" if reason else None
+    prev_subjects = [_mask(s) for s in _subjects(prev)]
     if ">" in gap:
-        return prev.lower() + " > *" if _ROW_GROUP.match(prev_masked) else None
-    if _ROW_GROUP_OR_TABLE.match(prev_masked) and not (_CLASS.search(masked) or _ID.search(masked)):
+        return prev.lower() + " > *" if any(_ROW_GROUP.match(s) for s in prev_subjects) else None
+    classed = any(_CLASS.search(_mask(s)) or _ID.search(_mask(s)) for s in subjects)
+    if any(_ROW_GROUP_OR_TABLE.match(s) for s in prev_subjects) and not classed:
         return prev.lower() + " *"
     return None
+
+
+def _subjects(compound: str) -> list[str]:
+    """복합이 `:is(`/`:where(` 로 시작하면 그 인자들의 주어 복합, 아니면 복합 자신.
+    The subject compounds of a leading `:is()`/`:where()`, else the compound itself."""
+    masked = _mask(compound)
+    fn = _IS_WHERE.match(masked)
+    close = masked.find(")", fn.end()) if fn else -1
+    if close < 0:
+        return [compound]
+    out = []
+    for _, arg in _spans(compound[fn.end():close], r"[^,]+"):
+        parts = _compounds(arg)
+        if parts:
+            out.append(parts[-1][1].strip())
+    return out or [compound]
 
 
 def row_compounds(css: str, row_classes: frozenset[str] = frozenset()
@@ -234,7 +257,7 @@ def row_compounds(css: str, row_classes: frozenset[str] = frozenset()
             line = text.count("\n", 0, pm.start(1) + off + lead) + 1
             spans = _compounds(sel)
             masked_sel = _mask(sel)
-            for i, (start, comp) in enumerate(spans):
+            for i, (_, comp) in enumerate(spans):
                 reason = _row_reason(comp, row_classes) or (
                     _by_context(masked_sel, spans, i, row_classes) if i else None)
                 if reason:
@@ -354,6 +377,7 @@ _ROWS = frozenset({"row-accent", "analysis-row", "#special-row"})
     ".analysis-row + .any::before { content: ''; }",
     ".x table *::before { content: ''; }",
     ":has(td)::before { content: ''; }",
+    ":is(tbody, tfoot) > *::before { content: ''; }",
 ])
 def test_catches_every_row_pseudo_form(css):
     r"""claimed\cheap 포함 — 부분문자열 `tr::before` 와 1차 정규식(괄호 한 겹)은 여럿을 놓친다."""
@@ -390,6 +414,11 @@ def test_catches_every_row_pseudo_form(css):
     ".x table .caption::before { content: ''; }",
     "tbody > tr > td::before { content: ''; }",
     "tbody:hover::after { content: ''; }",
+    # Grok 3차 — `:is()` 인자가 셀 타입이면 셀이다(인자를 가려 `*` 로 읽던 거짓 red)
+    "tbody :is(td, th):first-child::before { content: ''; }",
+    ".admin-table tbody :is(td, th):first-child::before { content: ''; }",
+    "table :is(td, th)::before { content: ''; }",
+    ".x tbody :is(.num, .date)::before { content: ''; }",
 ])
 def test_ignores_cells_classes_and_comments(css):
     r"""cheap\claimed 포함 — `row` 가 든 이름(`.issue-row`)은 행 클래스가 아니다."""
