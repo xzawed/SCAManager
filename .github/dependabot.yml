@@ -73,11 +73,14 @@ updates:
       - dependency-name: "semgrep"
         versions: [">=1.171.0"]
 
-  # npm 의존성 (package.json + package-lock.json — scamanager-ui Tailwind/eslint 빌드 툴체인)
-  # npm dependencies (UI build toolchain — all devDependencies, not shipped at runtime)
-  # 2026-07-22 회고 P1-④ 사용자 결정: monitor-only (fail-closed CI 게이트 대신 dependabot 감시).
-  #   사유 = devDeps·빌드/lint 전용이라 런타임 노출 낮음(정책 17 안정성>규격). pip 축과 대칭
-  #   커버리지를 확보하되 빌드 차단 마찰은 만들지 않음. #1169(brace-expansion) 같은 반응형 fix 예방.
+  # npm 의존성 (package.json + package-lock.json — Tailwind 빌드 + 런타임 eslint 분석기)
+  # npm dependencies (Tailwind build + the runtime eslint analyzer)
+  # 🔴 devDependencies 로 선언했지만 운영 빌드(railway.toml buildCommand 의 `npm ci`)가 설치하고 런타임 eslint 분석기
+  #    설정(src/analyzer/configs/eslint.config.mjs)이 리포 node_modules 의 `@typescript-eslint/parser` 를 읽는다
+  #    — Dependabot 의 dev-scope 자동 기각은 운영에 실리는 취약점을 숨긴다.
+  # Declared dev-only, yet the prod build installs them and the runtime analyzer loads them: dev-scope auto-dismiss hides shipped vulns.
+  # 2026-07-22 회고 P1-④ 사용자 결정: monitor-only (fail-closed CI 게이트 대신 dependabot 감시) —
+  #   빌드 차단 마찰 없이 pip 축과 대칭 커버리지(정책 17 안정성>규격). #1169(brace-expansion) 같은 반응형 fix 예방.
   # 2026-07-22 retro P1-④ user decision: monitor-only (dependabot watch instead of a fail-closed CI gate).
   - package-ecosystem: "npm"
     directory: "/"
@@ -90,8 +93,8 @@ updates:
     labels:
       - "dependencies"
       - "javascript"
-    # npm 의존성은 전부 devDependencies (tailwindcss·eslint) — dev 묶음만.
-    # All npm deps are devDependencies (tailwindcss·eslint) — group dev minor/patch.
+    # package.json 이 전부 devDependencies 로 선언하므로(운영에도 실린다 — 위 🔴) dev 묶음만.
+    # package.json declares every npm dep as a devDependency (they still ship, see above) — group dev.
     groups:
       npm-dev:
         dependency-type: "development"

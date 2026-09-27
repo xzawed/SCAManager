@@ -39,7 +39,9 @@ async def aclose_openai_client(client) -> None:
         return
     result = closer()
     if inspect.isawaitable(result):
-        await result
+        # 맨 `await` 는 CodeQL py/ineffectual-statement 대상이고 기각은 줄이 옮겨지면 되살아난다.
+        # A bare `await` trips CodeQL py/ineffectual-statement; a dismissal reappears when the line moves.
+        _ = await result
 
 
 def estimate_openai_cost_usd(*, model: str, input_tokens: int, output_tokens: int) -> float:
