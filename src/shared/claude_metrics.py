@@ -169,7 +169,11 @@ async def aclose_anthropic_client(client) -> None:
         return
     result = closer()
     if inspect.isawaitable(result):
-        await result
+        # 맨 `await result` 는 CodeQL 이 효과 없는 문장(py/ineffectual-statement)으로 본다 — 기각(#567)은
+        # 줄이 옮겨지면 새 알림(#614)으로 되살아나 코드로 끝낸다.
+        # A bare `await result` trips CodeQL py/ineffectual-statement; a dismissal reappears when the
+        # line moves (#567 -> #614), so bind the result instead.
+        _ = await result
 
 # 모델 패밀리별 가격 (USD per 1M tokens, input/output) — 2026-09 기준
 # Model family pricing (USD per 1M tokens, input/output) — 2026-09 basis

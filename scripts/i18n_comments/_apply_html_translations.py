@@ -2,7 +2,6 @@
 """One-shot script to add English translations to Korean HTML developer comments."""
 from pathlib import Path
 import sys
-import re
 
 
 def _make_stdout_safe() -> None:
