@@ -21,18 +21,20 @@ import pathlib
 import subprocess
 import time
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import anthropic
 import anthropic._base_client as _sdk_base
 import anthropic._constants as _sdk_constants
 import httpx2
 import pytest
+from sqlalchemy.orm import Session
 
 from src.analyzer.io.ai_review import review_code
 from src.config import settings
-from src.services import dashboard_service
+from src.services import dashboard_service, repo_insight_service
 from src.services.repo_insight_service import repo_insight_narrative
+from src.shared import claude_metrics
 from src.shared.claude_metrics import _sdk_will_retry
 
 _REAL_CTOR = anthropic.AsyncAnthropic
@@ -109,17 +111,19 @@ async def _run_ai_review():
 async def _run_dashboard():
     # user_id=None → 캐시 조회를 타지 않는다. KPI 헬퍼는 데이터가 있다고 답한다(no_data 조기 반환 차단).
     # user_id=None skips the cache; KPI helpers report data so the no_data early return is defeated.
+    # 세션은 바인드 없는 빈 `Session` — 호출 전 커밋(#1697)이 미완료 쓰기 가드를 실제 집합으로 읽는다.
+    # An unbound empty Session: the pre-await commit (#1697) reads real pending-write sets.
     with patch.object(dashboard_service, "dashboard_kpi", return_value={"analysis_count": {"value": 3}}), \
          patch.object(dashboard_service, "dashboard_trend", return_value={}), \
          patch.object(dashboard_service, "frequent_issues_v2", return_value=[]), \
          patch.object(dashboard_service, "auto_merge_kpi", return_value={}), \
          patch.object(dashboard_service, "_build_insight_user_prompt", return_value="prompt"):
-        return await dashboard_service.insight_narrative(None, 7, api_key="sk-test", user_id=None)
+        return await dashboard_service.insight_narrative(Session(), 7, api_key="sk-test", user_id=None)
 
 
 async def _run_repo_insight():
     return await repo_insight_narrative(
-        None, 1, 30, repo_full_name="o/r", kpi={"analysis_count": 3}, recurring=[], user_id=None,
+        Session(), 1, 30, repo_full_name="o/r", kpi={"analysis_count": 3}, recurring=[], user_id=None,
     )
 
 
@@ -391,6 +395,84 @@ async def test_honoured_retry_logs_nothing(real_sdk, caplog):
 
     assert real_sdk.sleeps == [15.0]
     assert _cap_warnings(caplog) == []
+
+
+# ── 페이지 전체 기한 (#1697) ──
+# ── Total page deadline ──
+#
+# 상한(15s)은 대기 **한 번**을 묶을 뿐이다 — 시도 3회 × 읽기 60s + 대기 2 × 15s = 210s 가 남는다.
+# 여기서는 대기를 가짜로 바꾸지 않는다: 응답 없는 전송과 **상한 안이라 따르는** 15s 대기 둘 다
+# 실제 시간으로 흐르고, 기한(0.2s 로 줄인 모듈 속성)만이 그것을 끊는다.
+# The per-wait cap leaves 210s; nothing is faked here but the transport, and only the deadline
+# (the module attribute, shrunk to 0.2s) cuts a hung attempt or an honoured 15s wait.
+
+_PAGE_MODULES = {"dashboard_insight": dashboard_service, "repo_insight": repo_insight_service}
+
+
+@pytest.fixture
+def live_sdk(monkeypatch):
+    """실제 SDK + 실제 대기 — 전송만 가짜.
+
+    Real SDK and real sleeps; only the transport is faked.
+    """
+    h = SimpleNamespace(mode="hang", calls=0, clients=[])
+
+    async def handler(_req):
+        h.calls += 1
+        if h.mode == "hang":
+            await asyncio.sleep(3600)
+        return httpx2.Response(429, json=_ERR_BODY, headers={"retry-after": "15"})
+
+    def ctor(*args, **kwargs):
+        client = httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
+        h.clients.append(client)
+        return _REAL_CTOR(*args, base_url="http://anthropic.test", http_client=client, **kwargs)
+
+    monkeypatch.setattr(anthropic, "AsyncAnthropic", ctor)
+    monkeypatch.delenv("INSIGHT_DISABLED", raising=False)
+    monkeypatch.setattr(settings, "anthropic_api_key", "sk-test")
+    return h
+
+
+@pytest.mark.parametrize("mode", ["hang", "retry_after_15"])
+@pytest.mark.parametrize("site", ["dashboard_insight", "repo_insight"])
+async def test_page_call_stops_at_total_deadline(live_sdk, monkeypatch, site, mode):
+    """🔴 수정 전: `hang` 은 읽기 타임아웃 60s × 3 까지, `retry_after_15` 는 실제 15s 를 잔다(5s 안에 red)."""
+    module = _PAGE_MODULES[site]
+    live_sdk.mode = mode
+    log = MagicMock()
+    monkeypatch.setattr(module, "log_claude_api_call", log)
+    # raising=False — 수정 전엔 속성이 없다. 그래도 AttributeError 가 아니라 «행동» 으로 red 가 된다.
+    # raising=False so the pre-fix run is red on behaviour, not on a missing attribute.
+    monkeypatch.setattr(module, "ANTHROPIC_PAGE_DEADLINE_SECONDS", 0.2, raising=False)
+
+    t0 = time.perf_counter()
+    out = await _bounded(_RUN[site]())
+    elapsed = time.perf_counter() - t0
+
+    assert _status(site, out) == "api_error"
+    assert elapsed < 2, f"기한이 끊지 않았다: {elapsed:.2f}s"
+    assert live_sdk.calls == 1, "기한 안에 재시도가 돌았다 — 시도 1회에서 끊겨야 한다"
+    assert live_sdk.clients and all(c.is_closed for c in live_sdk.clients), "httpx 풀을 닫지 않았다"
+    assert log.call_count == 1, log.call_args_list
+    kw = log.call_args.kwargs
+    assert (kw["status"], kw["error_type"], kw["output_tokens"]) == ("error", "TimeoutError", 0)
+
+
+async def test_page_deadline_is_45s_literal(real_sdk, monkeypatch):
+    """기한은 리터럴 45.0 이고, 페이지 호출부가 넘기는 **시도당 타임아웃보다 짧다**.
+
+    시도당 타임아웃이 기한 아래로 내려가면 멈춘 시도를 SDK 가 먼저 끊고 재시도해 기한이
+    다시 여러 시도를 품는다. The deadline must stay below the per-attempt timeout the pages pass.
+    """
+    assert claude_metrics.ANTHROPIC_PAGE_DEADLINE_SECONDS == 45.0
+    real_sdk.script[:] = [(200, {})]
+    for site, module in _PAGE_MODULES.items():
+        spy = MagicMock(wraps=module.new_async_anthropic)
+        monkeypatch.setattr(module, "new_async_anthropic", spy)
+        await _bounded(_RUN[site]())
+        assert spy.call_count == 1, site
+        assert module.ANTHROPIC_PAGE_DEADLINE_SECONDS < spy.call_args.kwargs["timeout"], site
 
 
 # ── 생성 단일 지점 가드 (AST) / single-factory guard ──

@@ -27,11 +27,19 @@ logger = logging.getLogger(__name__)
 
 # anthropic SDK 가 따를 Retry-After 상한(초) — SDK ≥1.6 은 상한 없이 기다린다 (#1690).
 #   파이프라인 60s = 1.5.0 의 판정값(`0 < retry_after <= 60`). 슬롯 최악 90×2 + 60 = 240s.
-#   페이지 15s = 사용자 요청 안의 대기라 더 짧다. 최악 60×3 + 2×15 = 210s < Railway 무응답 300s.
+#   페이지 15s = 사용자 요청 안의 대기라 더 짧다. 페이지 호출 전체는 아래 기한이 끊는다(#1697).
 # Retry-After cap the SDK may honour (SDK >= 1.6 waits unbounded). Pipeline keeps 1.5.0's 60s;
 # the page routes wait inside a user request, so they get 15s.
 ANTHROPIC_RETRY_AFTER_CAP_PIPELINE_SECONDS = 60.0
 ANTHROPIC_RETRY_AFTER_CAP_PAGE_SECONDS = 15.0
+# 페이지 Claude 호출 전체 기한(초) — 시도·backoff·Retry-After 대기를 모두 묶는다 (#1697).
+#   실측(Haiku 4.5 · 출력 1201~1800 토큰 · n=141): p50 16.2s · p90 31.6s · p99 39.0s.
+#   단일 시도는 ~p99 까지 통과, 15s Retry-After 를 따른 뒤의 재시도는 ~p90 부터 끊긴다.
+#   시도당 읽기 타임아웃(60s)보다 짧아야 멈춘 첫 시도를 끊는다.
+# Total page-call deadline. Measured (Haiku 4.5, 1201-1800 output tokens, n=141): p50 16.2s,
+# p90 31.6s, p99 39.0s. A single attempt passes to ~p99; a retry after an honoured 15s
+# Retry-After is cut from ~p90. It must stay below the 60s per-attempt timeout.
+ANTHROPIC_PAGE_DEADLINE_SECONDS = 45.0
 
 
 def _sdk_will_retry(response) -> bool:
@@ -114,6 +122,26 @@ def new_async_anthropic(
         api_key=api_key, timeout=timeout, max_retries=max_retries,
         middleware=[_RetryAfterCap(caller=caller, retry_after_cap=retry_after_cap)],
     )
+
+
+def release_session_before_claude(db) -> None:
+    """Claude 를 기다리기 전에 요청 세션의 트랜잭션을 끝내 풀 연결을 돌려준다 (#1697).
+
+    await 동안 연결을 쥐면 풀이 차고, 다음 요청의 동기 체크아웃이 이벤트 루프 자체를
+    `pool_timeout` 만큼 멈춘다(쥔 쪽도 재개하지 못해 풀어 주지 못한다).
+    🔴 호출부의 미완료 쓰기는 커밋하지 않고 **거부**한다 — 건너뛰어도 뒤따르는 캐시 쓰기가
+    스스로 커밋하므로 멈추는 것만이 막는다. 이미 flush 된 쓰기는 이 검사가 못 본다.
+    Ends the request session's transaction so no pooled connection is held across the Claude
+    await. Raises instead of committing a caller's pending writes (skipping would not help: the
+    later cache writes commit themselves). Already-flushed writes are invisible to this check.
+    """
+    pending = len(db.new) + len(db.dirty) + len(db.deleted)
+    if pending:
+        raise RuntimeError(
+            f"{pending} pending ORM change(s) in the request session — commit or roll back "
+            "before the Claude call; the insight service will not commit them for you"
+        )
+    db.commit()
 
 
 async def aclose_anthropic_client(client) -> None:

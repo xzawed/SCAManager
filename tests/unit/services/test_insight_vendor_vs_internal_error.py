@@ -35,6 +35,7 @@ already split them. Applies #1458's prescription where the measured evidence act
 # pylint: disable=redefined-outer-name
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -260,6 +261,46 @@ async def test_non_sdk_exception_from_the_call_itself_is_internal_error(db, repo
     assert result["status"] == "internal_error", (
         f"SDK 밖 예외가 벤더 실패로 분류된다: {result['status']!r}"
     )
+
+
+@pytest.mark.asyncio
+async def test_timeout_error_not_from_our_deadline_is_internal_error(db, repo):
+    """🔴 심은 싼 쪽 — `TimeoutError` 라는 **클래스만으로는** 벤더가 아니다 (#1697).
+
+    기한 초과만 `api_error` 로 바꾼다. 우리 기한이 끝나지 않았는데 난 `TimeoutError` 는 우리 쪽이다.
+    `isinstance(exc, (APIError, TimeoutError))` 로 넓히면 여기가 red.
+    A TimeoutError our deadline did not raise stays internal_error.
+    """
+    with patch("src.services.repo_insight_service.log_claude_api_call") as log:
+        result = await _run(db, repo, side_effect=TimeoutError("ours"))
+
+    assert result["status"] == "internal_error"
+    assert log.call_args.kwargs["error_type"] == "TimeoutError"
+
+
+@pytest.mark.asyncio
+async def test_parse_error_after_expired_deadline_is_internal_error(db, repo, monkeypatch):
+    """🔴 Grok 반례 — 기한이 끝났어도 예외가 **파싱 실패**면 우리 쪽이다 (#1697).
+
+    SDK 가 취소를 삼키고 응답을 돌려주면 `deadline.expired()` 는 참인데 예외는 `JSONDecodeError` 다.
+    `APIError or deadline.expired()` 로 쓰면 여기가 red. 짝(진짜 기한 초과 → api_error)은
+    `test_anthropic_retry_after_cap.py::test_page_call_stops_at_total_deadline[repo_insight-*]`.
+    Deadline expired but the exception is our parser's: still internal_error.
+    """
+    from src.services import repo_insight_service  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    monkeypatch.setattr(repo_insight_service, "ANTHROPIC_PAGE_DEADLINE_SECONDS", 0.05, raising=False)
+
+    async def swallow_cancel(**_kwargs):
+        try:
+            await asyncio.sleep(0.5)
+        except asyncio.CancelledError:
+            asyncio.current_task().uncancel()
+        return _text_response("JSON 아님 {{{")
+
+    result = await _run(db, repo, side_effect=swallow_cancel)
+
+    assert result["status"] == "internal_error"
 
 
 @pytest.mark.asyncio

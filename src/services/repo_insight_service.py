@@ -7,6 +7,7 @@ All aggregation functions process Analysis.result JSON Python-side (max 30 rows)
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -24,8 +25,8 @@ from src.models.analysis import Analysis
 from src.scorer.calculator import calculate_grade
 from src.scorer.reliability import score_is_unreliable
 from src.shared.claude_metrics import (
-    ANTHROPIC_RETRY_AFTER_CAP_PAGE_SECONDS, aclose_anthropic_client, extract_anthropic_usage,
-    log_claude_api_call, new_async_anthropic,
+    ANTHROPIC_PAGE_DEADLINE_SECONDS, ANTHROPIC_RETRY_AFTER_CAP_PAGE_SECONDS, aclose_anthropic_client,
+    extract_anthropic_usage, log_claude_api_call, new_async_anthropic, release_session_before_claude,
 )
 from src.shared.feature_kill_switch import is_disabled
 from src.shared.lang_names import LANG_NAMES
@@ -389,7 +390,7 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
     Repo-level Claude AI narrative — 1h TTL cache + refresh support.
     Returns: {"text": str, "status": "success"|"no_api_key"|"no_data"|"api_error"
                                 |"internal_error"|"disabled"}
-      🔴 `api_error` = 벤더(`anthropic.APIError`), `internal_error` = 우리 코드.
+      🔴 `api_error` = 벤더(`anthropic.APIError` · 페이지 기한 초과), `internal_error` = 우리 코드.
       api_error means the vendor failed; internal_error means our code did.
     """
     # 비용 제어 — INSIGHT_DISABLED=1 시 리포 내러티브 전면 차단(API 호출 0).
@@ -445,6 +446,9 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
         "next steps. Respond with strict JSON only: {\"text\": \"...narrative...\"}"
     )
 
+    # 🔴 Claude 를 기다리는 동안 풀 연결·열린 트랜잭션을 쥐지 않는다 — 이후 캐시 쓰기는 새 트랜잭션 (#1697).
+    # Release the pooled connection before the Claude await; later cache writes open a new transaction.
+    release_session_before_claude(db)
     start = time.perf_counter()
     # 🔴 **실제로 소비된 토큰은 error 경로에서도 보고한다** (backlog R65).
     # 응답을 받은 뒤 파싱이 실패해도 토큰은 **이미 과금**됐다 — 0 으로 적으면 비용 과소 계상.
@@ -455,26 +459,30 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
         api_key=api_key, timeout=60.0, max_retries=2,
         caller="repo_insight", retry_after_cap=ANTHROPIC_RETRY_AFTER_CAP_PAGE_SECONDS,
     )
+    # 전체 기한 — 안에는 SDK 호출만 둔다. 파싱이 밖이어야 벤더/우리 코드 라벨이 갈린다 (#1697).
+    # Total deadline around the SDK call only; parsing stays outside so the vendor/ours split holds.
+    deadline = asyncio.timeout(ANTHROPIC_PAGE_DEADLINE_SECONDS)
     try:
-        response = await client.messages.create(
-            model=settings.claude_insight_model,
-            max_tokens=600,
-            # 🔴 응답 형식을 스키마로 강제 (backlog R51). 아래 `data.get("text", raw)`
-            #    폴백은 절단·호출실패를 위해 그대로 둔다 — 스키마는 그 축을 닫지 않는다.
-            # Schema-enforced shape; the raw-text fallback below stays for truncation/failure.
-            output_config={
-                "format": {
-                    "type": "json_schema",
-                    "schema": {
-                        "type": "object",
-                        "properties": {"text": {"type": "string"}},
-                        "required": ["text"],
-                        "additionalProperties": False,
-                    },
-                }
-            },
-            messages=[{"role": "user", "content": user_prompt}],
-        )
+        async with deadline:
+            response = await client.messages.create(
+                model=settings.claude_insight_model,
+                max_tokens=600,
+                # 🔴 응답 형식을 스키마로 강제 (backlog R51). 아래 `data.get("text", raw)`
+                #    폴백은 절단·호출실패를 위해 그대로 둔다 — 스키마는 그 축을 닫지 않는다.
+                # Schema-enforced shape; the raw-text fallback below stays for truncation/failure.
+                output_config={
+                    "format": {
+                        "type": "json_schema",
+                        "schema": {
+                            "type": "object",
+                            "properties": {"text": {"type": "string"}},
+                            "required": ["text"],
+                            "additionalProperties": False,
+                        },
+                    }
+                },
+                messages=[{"role": "user", "content": user_prompt}],
+            )
         duration_ms = (time.perf_counter() - start) * 1000
         input_tokens, output_tokens = extract_anthropic_usage(response)
         _tokens.update(input_tokens=input_tokens, output_tokens=output_tokens)
@@ -509,7 +517,13 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
         #   판정 근거는 `anthropic.APIError` 하위 여부뿐이다(형제 호출부와 동일한 축).
         # Split vendor failures from our own bugs: this try covers the API call AND the
         # parsing that follows it, so a JSONDecodeError used to be recorded as api_error.
-        status = "api_error" if isinstance(exc, anthropic.APIError) else "internal_error"
+        #   기한 초과도 벤더 지연이다 — 단 `TimeoutError` 이고 «우리» 기한이 끝났을 때만 (#1697).
+        #   클래스만 보면 우리 코드의 TimeoutError 가, expired() 만 보면 기한 뒤 파싱 실패가 벤더로 샌다.
+        # A deadline miss is vendor too, but only a TimeoutError raised when OUR deadline expired.
+        vendor = isinstance(exc, anthropic.APIError) or (
+            isinstance(exc, TimeoutError) and deadline.expired()
+        )
+        status = "api_error" if vendor else "internal_error"
         duration_ms = (time.perf_counter() - start) * 1000
         log_claude_api_call(
             model=settings.claude_insight_model,
