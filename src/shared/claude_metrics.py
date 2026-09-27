@@ -75,7 +75,7 @@ def _retry_after_within_cap(headers, cap: float) -> bool:
 
 
 class _RetryAfterCap(anthropic.Middleware):  # pylint: disable=too-few-public-methods
-    """상한을 넘는 Retry-After 를 무효화한다 — SDK 가 재시도하면 자체 backoff(0.5~8s)를 쓴다 (#1690).
+    """상한을 넘는 Retry-After 를 무효화한다 — SDK 가 재시도하면 자체 backoff(0.375~8s)를 쓴다 (#1690).
 
     `_sdk_will_retry` 가 참인 응답에 `retry-after-ms: 0` 을 쓴다 — SDK 가 먼저 읽고 0 은 `> 0` 을
     못 넘는다. 남은 재시도 수는 보지 않으므로 **마지막 시도**도 재작성·기록되고, 그 응답은 대기
@@ -95,19 +95,18 @@ class _RetryAfterCap(anthropic.Middleware):  # pylint: disable=too-few-public-me
     async def handle_async(self, request, call_next):
         response = await call_next(request)
         http = response.http_response
-        if (http.is_success or not _sdk_will_retry(http)
-                or _retry_after_within_cap(http.headers, self.retry_after_cap)):
-            return response
-        logger.warning(
-            "anthropic Retry-After 상한 초과 → retry-after-ms 0 (재시도하면 SDK backoff) / "
-            "Retry-After over cap, retry-after-ms set to 0 (SDK backoff if it retries): "
-            "caller=%s status=%d attempt=%d cap=%g retry_after=%s retry_after_ms=%s request_id=%s",
-            self._caller, http.status_code, request.retries_taken + 1, self.retry_after_cap,
-            sanitize_for_log(http.headers.get("retry-after"), max_len=64),
-            sanitize_for_log(http.headers.get("retry-after-ms"), max_len=64),
-            sanitize_for_log(http.headers.get("request-id"), max_len=64),
-        )
-        http.headers["retry-after-ms"] = "0"
+        if (not http.is_success and _sdk_will_retry(http)
+                and not _retry_after_within_cap(http.headers, self.retry_after_cap)):
+            logger.warning(
+                "anthropic Retry-After 상한 초과 → retry-after-ms 0 (재시도하면 SDK backoff) / "
+                "Retry-After over cap, retry-after-ms set to 0 (SDK backoff if it retries): "
+                "caller=%s status=%d attempt=%d cap=%g retry_after=%s retry_after_ms=%s request_id=%s",
+                self._caller, http.status_code, request.retries_taken + 1, self.retry_after_cap,
+                sanitize_for_log(http.headers.get("retry-after"), max_len=64),
+                sanitize_for_log(http.headers.get("retry-after-ms"), max_len=64),
+                sanitize_for_log(http.headers.get("request-id"), max_len=64),
+            )
+            http.headers["retry-after-ms"] = "0"
         return response
 
 
