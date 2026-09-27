@@ -38,6 +38,18 @@ logger = logging.getLogger(__name__)
 # Max analyses per aggregation — caps Python loop O(N×issues)
 _MAX_ANALYSES = 30
 
+# 서술 출력 상한 — 600 은 운영 6건 중 5건이 정확히 닿았다(#1700). 대시보드 서술과 같은 1500:
+#   잘리지 않은 유일한 실측이 589 토큰이라 약 2.5배 여유, Haiku p10 처리율 ~54 tok/s 로도 ~28s 라 45s 기한 안이다.
+# Narrative output cap: 600 was hit by 5 of 6 production calls. 1500 as on the dashboard narrative,
+#   ~2.5x the only uncut sample (589) and ~28s at Haiku's p10 rate, inside the 45s page deadline.
+_NARRATIVE_MAX_TOKENS = 1500
+
+
+class _NarrativeTruncated(Exception):
+    """출력 상한에서 잘린 응답 — 파서 버그와 구별해 `max_tokens` 로 기록한다.
+    A response cut at the output cap, recorded as `max_tokens` rather than as a parser failure.
+    """
+
 
 def _fetch_analyses(
     db: Session, repo_id: int, days: int, now: datetime
@@ -466,7 +478,7 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
         async with deadline:
             response = await client.messages.create(
                 model=settings.claude_insight_model,
-                max_tokens=600,
+                max_tokens=_NARRATIVE_MAX_TOKENS,
                 # 🔴 응답 형식을 스키마로 강제 (backlog R51). 아래 `data.get("text", raw)`
                 #    폴백은 절단·호출실패를 위해 그대로 둔다 — 스키마는 그 축을 닫지 않는다.
                 # Schema-enforced shape; the raw-text fallback below stays for truncation/failure.
@@ -490,6 +502,12 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
         # 기록하고 그 뒤 파싱이 실패하면 except 가 `status="error"` 를 **또** 남겨,
         # 한 번의 API 호출이 비용 테이블에 **2행**을 만들었다(성공률·비용 집계 왜곡).
         # Extract and parse before logging: the old order produced two rows for one call.
+        # 🔴 잘림은 파싱 **전에** 본다 — 잘렸는데 우연히 닫힌 JSON 도 부분 서술이다 (#1700).
+        #   SDK `StopReason` 의 정확한 값 비교다. `model_context_window_exceeded` 는 이 짧은 프롬프트로는
+        #   닿지 않고, 닿더라도 아래 파싱 실패로 남아 success 로 새지 않는다.
+        # Check truncation before parsing: a cut response that happens to close is still partial.
+        if getattr(response, "stop_reason", None) == "max_tokens":
+            raise _NarrativeTruncated
         raw = first_text_block(response)
         data = json.loads(_extract_narrative_json(raw))
         result: dict[str, Any] = {"text": str(data.get("text", raw)), "status": "success"}
@@ -523,23 +541,34 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
         vendor = isinstance(exc, anthropic.APIError) or (
             isinstance(exc, TimeoutError) and deadline.expired()
         )
+        #   잘림은 새 status 없이 기존 `internal_error`(수정 전 JSONDecodeError 경로와 같은 값)로 두고
+        #   error_type 만 `max_tokens` 로 가른다 — 상한은 우리 설정이다.
+        # Truncation keeps the existing internal_error status; only error_type says max_tokens.
         status = "api_error" if vendor else "internal_error"
+        truncated = isinstance(exc, _NarrativeTruncated)
+        error_type = "max_tokens" if truncated else type(exc).__name__
         duration_ms = (time.perf_counter() - start) * 1000
         log_claude_api_call(
             model=settings.claude_insight_model,
             duration_ms=duration_ms,
             status="error",
-            error_type=type(exc).__name__,
+            error_type=error_type,
             repo_id=repo_id,
             user_id=user_id,
             **_tokens,
         )
-        logger.exception(
-            "repo_insight_narrative failed (status=%s, exc=%s)", status, type(exc).__name__,
-        )
+        if truncated:
+            logger.warning(
+                "repo_insight_narrative truncated at max_tokens=%d (output_tokens=%d)",
+                _NARRATIVE_MAX_TOKENS, _tokens["output_tokens"],
+            )
+        else:
+            logger.exception(
+                "repo_insight_narrative failed (status=%s, exc=%s)", status, error_type,
+            )
         _record_narrative_error(
             db, user_id=user_id, repo_id=repo_id, days=days,
-            language=language, error_type=type(exc).__name__, now=_now,
+            language=language, error_type=error_type, now=_now,
         )
         return {"text": "", "status": status}
     finally:
