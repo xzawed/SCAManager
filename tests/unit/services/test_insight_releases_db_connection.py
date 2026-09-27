@@ -298,6 +298,6 @@ async def test_outer_cancel_still_closes_client(world, monkeypatch, site):
         await asyncio.wait_for(entered.wait(), 5)
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
-            await task
+            await asyncio.wait_for(task, timeout=5)
 
     world.close.assert_awaited_once()
