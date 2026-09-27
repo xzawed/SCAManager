@@ -14,8 +14,10 @@ r"""표의 행에 ::before/::after 를 달지 않는다 — Chromium 은 그것�
 🔴 «행» 의 정의 — 가상 요소를 **직접** 단 복합 셀렉터가
    · 타입 `tr` 이거나(대소문자 무시) `:is()`·`:where()` 인자의 주어가 행이거나,
    · 「행 클래스」 `.cls` 나 「행 id」 `#id` 를 가지거나(`:not()` 등 함수 안은 세지 않는다),
-   · `:has(> td|th)` 이거나, 행 그룹(`tbody`·`thead`·`tfoot`) 바로 아래의 타입 없는 복합이다
-     (`>` 면 `.x` 도 행 — 행 그룹의 자식은 `tr` 뿐 · 자손이면 클래스·id 없는 `*`·`:…`·`[…]` 만).
+   · 타입 없는 복합이면서 최상위 `:has(…)` 인자에 `td`/`th` 가 있거나(`:not()` 안은 제외),
+   · 타입 없는 복합이 결합만으로 행을 고른다 — `tbody|thead|tfoot > 그것`(행 그룹의 자식은 `tr`
+     뿐이라 `.x` 도) · `tbody|thead|tfoot|table 그것`(자손 — 클래스·id 없는 `*`·`:…`·`[…]` 만) ·
+     `행 + 그것`·`행 ~ 그것`(행의 형제는 행 · `thead + *` 는 행 그룹이라 아니다).
    행 클래스·id = git 추적 `src/templates/**/*.html`(본문·`<script>` 문자열 전부)과
    `src/static/js/**/*.js` 에서 `<tr … class="a b" id="c">` 로 붙은 것(속성값 속 `>` 를 건너뛴다) +
    `document.createElement('tr')` 를 받은 변수나 그 체인에 `.className =`/`+=`·`.classList(?.)add(`
@@ -45,7 +47,8 @@ r"""표의 행에 ::before/::after 를 달지 않는다 — Chromium 은 그것�
      의 `@custom-variant` 에만 있다 — 실측).
    · 속성으로 고른 행(`[class~="x"]::before` — 행 그룹 바로 아래가 아닐 때) · `thead`/`tbody`
      자신의 가상 요소(`table > *`) · `display: table-row` 를 준 비-`tr` 요소 ·
-     CSS 이스케이프로 쓴 타입(`\74 r`).
+     CSS 이스케이프로 쓴 타입(`\74 r`) · 셀렉터 속성 문자열 안의 `{`(`tr[data-x="{"]` —
+     셀렉터 머리가 `{` 에서 끊긴다) · 결합으로만 행이 되는 복합의 다음 형제(`tbody > * + *`).
    · 변수로 이어 붙인 클래스(`'<tr' + rowCls + '>'` — `settings.html` 의 `pt-row-same`),
      실행 중 아무 요소에나 붙는 클래스(`.reveal` 에 붙는 `visible`), `setAttribute('class')`
      · `classList.toggle`.
@@ -55,8 +58,9 @@ r"""표의 행에 ::before/::after 를 달지 않는다 — Chromium 은 그것�
 
 Table rows must not carry ::before/::after: Chromium lays the row pseudo-element out as an
 extra first column, shifting every body cell one column right of its header. A row is the `tr`
-type (also inside `:is()`/`:where()`), a class or id the templates/JS put on a `tr`, `:has(> td)`,
-or a typeless compound right under a row group; the pseudo must sit on that compound itself
+type (also inside `:is()`/`:where()`), a class or id the templates/JS put on a `tr`, a typeless
+`:has(td)`, or a typeless compound whose combinator context makes it a row (`tbody > *`,
+`table *`, `tr + *`); the pseudo must sit on that compound itself
 (`.row td:first-child::before` is a cell). Not covered: CSS nesting, attribute-selected rows
 outside a row group, row-group pseudos, CSS escapes, classes spliced in through a variable or
 added at runtime to generic elements.
@@ -87,7 +91,10 @@ _IS_WHERE = re.compile(r":(?:is|where)\(", re.I)
 # A typeless compound right under a row group selects rows (`tbody > *`, `tbody :nth-child(odd)`).
 _ROW_GROUP = re.compile(r"(?:tbody|thead|tfoot)(?![\w-])", re.I)
 _TYPELESS = re.compile(r"[*:\[.#]")
-_HAS_CELL_CHILD = re.compile(r":has\(\s*>\s*(?:td|th)(?![\w-])", re.I)
+_HAS = re.compile(r":has\(", re.I)
+_CELL_TYPE = re.compile(r"(?<![\w-])(?:td|th)(?![\w-])", re.I)
+# 행 그룹 — `>` 자식이면 tbody·thead·tfoot, 자손이면 table 도(그 안의 `*` 는 행을 포함한다).
+_ROW_GROUP_OR_TABLE = re.compile(r"(?:tbody|thead|tfoot|table)(?![\w-])", re.I)
 
 # 행 클래스 수집. `<tr` 다음 글자가 공백·`>`·`/` 여야 `<track` · `<tref` 가 빠진다.
 # 속성값 안의 `>`(`title="HP > 50"`)에서 끊기지 않게 따옴표를 건너뛰고, 따옴표가 짝이 안 맞으면
@@ -164,8 +171,8 @@ def _row_reason(compound: str, row_classes: frozenset[str]) -> str | None:
     for ident in _ID.findall(masked):
         if "#" + ident in row_classes:
             return "#" + ident
-    if _HAS_CELL_CHILD.search(compound):
-        return ":has(> td)"
+    if _TYPELESS.match(compound) and _has_cell(compound, masked):
+        return ":has(td)"
     for fn in _IS_WHERE.finditer(masked):
         close = masked.find(")", fn.end())
         if close < 0:
@@ -178,20 +185,37 @@ def _row_reason(compound: str, row_classes: frozenset[str]) -> str | None:
     return None
 
 
-def _under_row_group(masked_sel: str, spans: list[tuple[int, str]], i: int) -> str | None:
-    """행 그룹(`tbody`·`thead`·`tfoot`) 바로 아래 복합이 행을 고르는가.
-    `>` 로 이어지면 타입 없는 복합은 전부 행이다(`tbody > .x`) — 행 그룹의 자식은 `tr` 뿐이다.
-    자손 결합이면 셀도 고를 수 있으니 클래스·id 없는 `*`·`:…`·`[…]` 만 행으로 센다.
-    Under a row group: with `>`, any typeless compound is a row; with a descendant combinator,
-    only a bare `*` / pseudo-class / attribute compound (it also matches the rows)."""
+def _has_cell(compound: str, masked: str) -> bool:
+    """최상위 `:has(…)` 인자에 `td`/`th` 가 있는가 — 셀을 품은 요소는 행이거나 행을 포함한다.
+    `:not(:has(> td))` 처럼 다른 함수 안의 `:has` 는 세지 않는다.
+    A top-level `:has(...)` mentioning `td`/`th`; a `:has` nested in `:not()` does not count."""
+    for fn in _HAS.finditer(masked):
+        close = masked.find(")", fn.end())
+        if close >= 0 and _CELL_TYPE.search(compound[fn.end():close]):
+            return True
+    return False
+
+
+def _by_context(masked_sel: str, spans: list[tuple[int, str]], i: int,
+                row_classes: frozenset[str]) -> str | None:
+    """타입 없는 복합(`*`·`:…`·`[…]`·`.x`·`#x`)이 앞 복합과의 관계만으로 행을 고르는가.
+    · `tbody|thead|tfoot > 그것` — 행 그룹의 자식은 `tr` 뿐이다.
+    · `tbody|thead|tfoot|table 그것`(자손) — 클래스·id 없는 `*`·`:…`·`[…]` 는 행도 고른다.
+    · `행 + 그것` · `행 ~ 그것` — 행의 형제는 행이다. `thead + *` 는 행 그룹이라 아니다.
+    Whether a typeless compound selects rows through its combinator context alone."""
     prev_start, prev = spans[i - 1]
     start, comp = spans[i]
-    if not _ROW_GROUP.match(_mask(prev)) or not _TYPELESS.match(comp):
+    if not _TYPELESS.match(comp):
         return None
-    child = ">" in masked_sel[prev_start + len(prev):start]
-    masked = _mask(comp)
-    if child or not (_CLASS.search(masked) or _ID.search(masked)):
-        return prev.lower() + (" > " if child else " ") + "*"
+    gap = masked_sel[prev_start + len(prev):start]
+    masked, prev_masked = _mask(comp), _mask(prev)
+    if "+" in gap or "~" in gap:
+        reason = _row_reason(prev, row_classes)
+        return f"{reason} {'+' if '+' in gap else '~'} *" if reason else None
+    if ">" in gap:
+        return prev.lower() + " > *" if _ROW_GROUP.match(prev_masked) else None
+    if _ROW_GROUP_OR_TABLE.match(prev_masked) and not (_CLASS.search(masked) or _ID.search(masked)):
+        return prev.lower() + " *"
     return None
 
 
@@ -212,7 +236,7 @@ def row_compounds(css: str, row_classes: frozenset[str] = frozenset()
             masked_sel = _mask(sel)
             for i, (start, comp) in enumerate(spans):
                 reason = _row_reason(comp, row_classes) or (
-                    _under_row_group(masked_sel, spans, i) if i else None)
+                    _by_context(masked_sel, spans, i, row_classes) if i else None)
                 if reason:
                     found.append((line, " ".join(sel.split()), reason,
                                   bool(_PSEUDO_EL.search(_mask(comp)))))
@@ -323,6 +347,13 @@ _ROWS = frozenset({"row-accent", "analysis-row", "#special-row"})
     ".x tbody > .anything::before { content: ''; }",
     ":has(> td)::before { content: ''; }",
     "#special-row::before { content: ''; }",
+    # Grok claim-review `06606bf6` 2차 반례 — 행의 형제 · `table` 아래 자손 · `>` 없는 `:has(td)`
+    "tr + *::before { content: ''; }",
+    ".x tr ~ *::after { content: ''; }",
+    "tbody > tr + *::before { content: ''; }",
+    ".analysis-row + .any::before { content: ''; }",
+    ".x table *::before { content: ''; }",
+    ":has(td)::before { content: ''; }",
 ])
 def test_catches_every_row_pseudo_form(css):
     r"""claimed\cheap 포함 — 부분문자열 `tr::before` 와 1차 정규식(괄호 한 겹)은 여럿을 놓친다."""
@@ -352,6 +383,13 @@ def test_catches_every_row_pseudo_form(css):
     ".x tbody tr > *::before { content: ''; }",
     "#special-cell::before { content: ''; }",
     ".x td:has(> span)::before { content: ''; }",
+    "thead + *::before { content: ''; }",
+    ":not(:has(> td))::before { content: ''; }",
+    ".x td + *::before { content: ''; }",
+    "table > *::before { content: ''; }",
+    ".x table .caption::before { content: ''; }",
+    "tbody > tr > td::before { content: ''; }",
+    "tbody:hover::after { content: ''; }",
 ])
 def test_ignores_cells_classes_and_comments(css):
     r"""cheap\claimed 포함 — `row` 가 든 이름(`.issue-row`)은 행 클래스가 아니다."""
