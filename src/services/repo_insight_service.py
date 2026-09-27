@@ -364,6 +364,22 @@ def _extract_narrative_json(text: str) -> str:
     return cleaned
 
 
+def _log_narrative_failure(exc: Exception, status: str, output_tokens: int) -> str:
+    """실패를 로그에 남기고 기록할 error_type 을 돌려준다 — 잘림은 WARNING + `max_tokens` (#1700).
+
+    except 블록 안에서 부른다 — `logger.exception` 이 처리 중인 예외를 싣는다.
+    Called inside the except block; truncation is a WARNING and `max_tokens`, the rest keep the class name.
+    """
+    if isinstance(exc, _NarrativeTruncated):
+        logger.warning(
+            "repo_insight_narrative truncated at max_tokens=%d (output_tokens=%d)",
+            _NARRATIVE_MAX_TOKENS, output_tokens,
+        )
+        return "max_tokens"
+    logger.exception("repo_insight_narrative failed (status=%s, exc=%s)", status, type(exc).__name__)
+    return type(exc).__name__
+
+
 def _record_narrative_error(
     db: Session, *, user_id: int | None, repo_id: int, days: int,
     language: str, error_type: str, now: datetime,
@@ -545,9 +561,8 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
         #   error_type 만 `max_tokens` 로 가른다 — 상한은 우리 설정이다.
         # Truncation keeps the existing internal_error status; only error_type says max_tokens.
         status = "api_error" if vendor else "internal_error"
-        truncated = isinstance(exc, _NarrativeTruncated)
-        error_type = "max_tokens" if truncated else type(exc).__name__
         duration_ms = (time.perf_counter() - start) * 1000
+        error_type = _log_narrative_failure(exc, status, _tokens["output_tokens"])
         log_claude_api_call(
             model=settings.claude_insight_model,
             duration_ms=duration_ms,
@@ -557,15 +572,6 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
             user_id=user_id,
             **_tokens,
         )
-        if truncated:
-            logger.warning(
-                "repo_insight_narrative truncated at max_tokens=%d (output_tokens=%d)",
-                _NARRATIVE_MAX_TOKENS, _tokens["output_tokens"],
-            )
-        else:
-            logger.exception(
-                "repo_insight_narrative failed (status=%s, exc=%s)", status, error_type,
-            )
         _record_narrative_error(
             db, user_id=user_id, repo_id=repo_id, days=days,
             language=language, error_type=error_type, now=_now,
