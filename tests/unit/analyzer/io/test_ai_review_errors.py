@@ -1038,10 +1038,14 @@ class TestTimeoutIsSetFromMeasuredLatency:
         """🔴 반대 방향 — 너무 크면 실패 건이 슬롯을 오래 점유한다.
 
         이 파이프라인은 in-process BackgroundTask 이고 Railway 재배포가 SIGTERM 을
-        보낸다. 실패 1건이 차지하는 최악 시간 = timeout × (max_retries + 1).
+        보낸다. 실패 1건이 차지하는 최악 시간 = timeout × (max_retries + 1)
+        + max_retries × Retry-After 상한. SDK ≥1.6 은 그 대기를 스스로 묶지 않으므로(#1690)
+        상한은 **실제로 넘어간 미들웨어**에서 읽는다 — 없으면 대기가 무한이다.
         """
         kw = await _capture_client_kwargs()
-        worst_case = kw["timeout"] * (kw["max_retries"] + 1)
+        caps = [m.retry_after_cap for m in kw.get("middleware") or () if hasattr(m, "retry_after_cap")]
+        assert len(caps) == 1, f"Retry-After 상한 미들웨어가 없다 — 재시도 대기가 무한이다: {kw.get('middleware')}"
+        worst_case = kw["timeout"] * (kw["max_retries"] + 1) + kw["max_retries"] * caps[0]
 
         assert worst_case <= 240, (
             f"최악 {worst_case}s — 실패 1건이 슬롯을 4분 넘게 점유한다. "

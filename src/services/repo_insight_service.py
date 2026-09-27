@@ -23,7 +23,10 @@ from src.config import settings
 from src.models.analysis import Analysis
 from src.scorer.calculator import calculate_grade
 from src.scorer.reliability import score_is_unreliable
-from src.shared.claude_metrics import aclose_anthropic_client, extract_anthropic_usage, log_claude_api_call
+from src.shared.claude_metrics import (
+    ANTHROPIC_RETRY_AFTER_CAP_PAGE_SECONDS, aclose_anthropic_client, extract_anthropic_usage,
+    log_claude_api_call, new_async_anthropic,
+)
 from src.shared.feature_kill_switch import is_disabled
 from src.shared.lang_names import LANG_NAMES
 from src.shared.time_utils import to_naive_utc
@@ -448,7 +451,10 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
     # 호출 자체가 실패하면 값이 갱신되지 않아 0 이 남고, 그 경우엔 0 이 맞다.
     # Report tokens actually consumed on the error path too; they are billed once the API responds.
     _tokens: dict[str, int] = {"input_tokens": 0, "output_tokens": 0}
-    client = anthropic.AsyncAnthropic(api_key=api_key, timeout=60.0, max_retries=2)
+    client = new_async_anthropic(
+        api_key=api_key, timeout=60.0, max_retries=2,
+        caller="repo_insight", retry_after_cap=ANTHROPIC_RETRY_AFTER_CAP_PAGE_SECONDS,
+    )
     try:
         response = await client.messages.create(
             model=settings.claude_insight_model,
