@@ -874,7 +874,7 @@ async def _call_insight_claude_api(
         "cache_read_tokens": 0, "cache_creation_tokens": 0,
     }
     try:
-        # 전체 기한은 이 try 안에 둔다 — 호출부에서 감싸면 취소가 아래 except 와 aclose 를 건너뛴다 (#1697).
+        # 전체 기한은 이 try 안에 둔다 — 호출부에서 감싸면 취소가 아래 except 를 건너뛴다 (#1697).
         # The deadline lives inside this try; wrapped by the caller, the cancel skips this except.
         async with asyncio.timeout(ANTHROPIC_PAGE_DEADLINE_SECONDS):
             response = await client.messages.create(

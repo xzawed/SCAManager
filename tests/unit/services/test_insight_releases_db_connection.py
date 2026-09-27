@@ -185,9 +185,12 @@ async def test_no_pooled_connection_held_while_awaiting_claude(world, site, refr
 async def test_success_still_caches_after_release(world, site):
     """성공은 캐시되고, 요청 세션에 이미 올린 ORM 객체는 호출 뒤에도 붙어 있고 읽힌다.
 
-    🔴 해제를 `close()` 로 하면 객체가 떨어져 나가 템플릿의 `repo.*` 가 DetachedInstanceError.
+    🔴 해제를 `close()` 로 하면 객체가 세션에서 떨어진다(`repo in db` 가 거짓). 템플릿의 `repo.*` 가
+    DetachedInstanceError 가 되는 것은 캐시 무효화 커밋이 객체를 만료시키는 refresh=1 경로다.
     Success is cached, and ORM objects already loaded on the request session stay attached
-    and readable afterwards (a `close()` release would detach them).
+    and readable afterwards. A `close()` release detaches them (`repo in db` is False); the
+    template's `repo.*` raises DetachedInstanceError on the refresh=1 path, where the cache
+    invalidation commit has expired the object.
     """
     world.reply = _text_response(_OK_CARDS if site == "dashboard" else _OK_REPO)
     with world.make() as db:
@@ -213,7 +216,8 @@ async def test_success_still_caches_after_release(world, site):
 
 
 def _plant_new(_h, db):
-    """새 행을 add 만 해 둔다 / add a row, unflushed."""
+    """새 행을 add 만 해 둔다(flush 전).
+    Add a row, unflushed."""
     db.add(User(github_id=99, github_login="planted", email="p@x.com", display_name="P"))
 
     def persisted(s):
@@ -222,7 +226,8 @@ def _plant_new(_h, db):
 
 
 def _plant_dirty(h, db):
-    """시드 행을 고쳐 둔다 / modify a seeded row, unflushed."""
+    """시드 행을 고쳐 둔다(flush 전).
+    Modify a seeded row, unflushed."""
     db.get(User, h.user_id).display_name = "PLANTED"
 
     def persisted(s):
@@ -231,7 +236,8 @@ def _plant_dirty(h, db):
 
 
 def _plant_deleted(_h, db):
-    """시드 행을 지워 둔다 / delete a seeded row, unflushed."""
+    """시드 행을 지워 둔다(flush 전).
+    Delete a seeded row, unflushed."""
     db.delete(db.scalar(select(Analysis).where(Analysis.commit_sha == "sha0")))
 
     def persisted(s):
