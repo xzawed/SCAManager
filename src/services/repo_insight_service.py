@@ -46,8 +46,8 @@ _NARRATIVE_MAX_TOKENS = 1500
 
 
 class _NarrativeTruncated(Exception):
-    """출력 상한에서 잘린 응답 — 파서 버그와 구별해 `max_tokens` 로 기록한다.
-    A response cut at the output cap, recorded as `max_tokens` rather than as a parser failure.
+    """상한에서 멈췄고 본문도 읽을 수 없는 응답 — 파서 버그와 구별해 `max_tokens` 로 기록한다.
+    Stopped at the output cap with an unreadable body; recorded as `max_tokens`, not a parser failure.
     """
 
 
@@ -364,6 +364,28 @@ def _extract_narrative_json(text: str) -> str:
     return cleaned
 
 
+def _narrative_text(raw: str, *, at_cap: bool) -> str:
+    """응답에서 서술 문자열을 꺼낸다 — 상한에서 멈췄으면 `{"text": 문자열}` 로 닫힌 본문만 받는다 (#1700).
+
+    스키마가 `{"text": string}` 하나라 본문이 닫혔다는 것은 모델이 문자열을 끝냈다는 뜻이다 — ai_review 와 같은 관용.
+    상한에서 멈췄는데 읽을 수 없으면 `_NarrativeTruncated`, 상한이 아니면 원래 예외 그대로다.
+    With the {"text": string} schema a closed body means the string was finished, so at the cap it is kept
+    (the ai_review idiom); an unreadable body at the cap raises _NarrativeTruncated, otherwise the original error.
+    """
+    try:
+        data = json.loads(_extract_narrative_json(raw))
+        text = str(data.get("text", raw))
+    except (ValueError, AttributeError) as exc:
+        if at_cap:
+            raise _NarrativeTruncated from exc
+        raise
+    # 상한에서는 `text` 폴백(raw)을 받지 않는다 — 기대한 모양이 아니면 읽을 수 없는 본문이다.
+    # At the cap the raw-text fallback is refused: anything but {"text": str} is unreadable.
+    if at_cap and not isinstance(data.get("text"), str):
+        raise _NarrativeTruncated
+    return text
+
+
 def _log_narrative_failure(exc: Exception, status: str, output_tokens: int) -> str:
     """실패를 로그에 남기고 기록할 error_type 을 돌려준다 — 잘림은 WARNING + `max_tokens` (#1700).
 
@@ -386,10 +408,12 @@ def _record_narrative_error(
 ) -> None:
     """user_id 가 있으면 내러티브 캐시에 에러 기록 (no_data/api_error/internal_error 공통).
 
-    기록하는 것은 **예외 클래스명**(`error_type`)이지 반환 status 가 아니다 — #1458 의
+    기록하는 것은 `error_type` 이지 반환 status 가 아니다 — 예외 클래스명이거나 리터럴
+    `no_data` · `max_tokens`(상한에서 멈췄고 본문을 읽을 수 없음, #1700)다. #1458 의
     벤더/우리코드 분류는 반환 dict 에만 있고 캐시 동작은 바뀌지 않는다.
-    Records the exception class name, not the returned status: the #1458 vendor/ours split
-    lives in the return dict only and does not change caching behaviour.
+    Records error_type, not the returned status: an exception class name or the literal
+    `no_data` / `max_tokens` (stopped at the cap with an unreadable body). The #1458
+    vendor/ours split lives in the return dict only and does not change caching behaviour.
     """
     if user_id is None:
         return
@@ -518,15 +542,18 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
         # 기록하고 그 뒤 파싱이 실패하면 except 가 `status="error"` 를 **또** 남겨,
         # 한 번의 API 호출이 비용 테이블에 **2행**을 만들었다(성공률·비용 집계 왜곡).
         # Extract and parse before logging: the old order produced two rows for one call.
-        # 🔴 잘림은 파싱 **전에** 본다 — 잘렸는데 우연히 닫힌 JSON 도 부분 서술이다 (#1700).
-        #   SDK `StopReason` 의 정확한 값 비교다. `model_context_window_exceeded` 는 이 짧은 프롬프트로는
-        #   닿지 않고, 닿더라도 아래 파싱 실패로 남아 success 로 새지 않는다.
-        # Check truncation before parsing: a cut response that happens to close is still partial.
-        if getattr(response, "stop_reason", None) == "max_tokens":
-            raise _NarrativeTruncated
+        # 🔴 상한 판정은 `stop_reason` 으로만 한다 — 출력 토큰 수로 추정하지 않는다 (#1700).
+        #   SDK `StopReason` 의 정확한 값 비교다. 닫힌 본문은 success + 경고, 못 읽으면 `max_tokens`.
+        #   `stop_sequence` · `refusal` 등 다른 값은 상한이 아니다 — 파싱 결과가 그대로 판정한다.
+        # Cap detection reads stop_reason only; a closed body at the cap is kept with a warning.
+        at_cap = getattr(response, "stop_reason", None) == "max_tokens"
         raw = first_text_block(response)
-        data = json.loads(_extract_narrative_json(raw))
-        result: dict[str, Any] = {"text": str(data.get("text", raw)), "status": "success"}
+        result: dict[str, Any] = {"text": _narrative_text(raw, at_cap=at_cap), "status": "success"}
+        if at_cap:
+            logger.warning(
+                "repo_insight_narrative reached max_tokens=%d (output_tokens=%d), body closed and kept",
+                _NARRATIVE_MAX_TOKENS, output_tokens,
+            )
         # 🔴 로그는 **결과 조립이 끝난 뒤**다 (R63 · Grok `32b9a2f9` 2차 적발).
         # 1차 수정은 `json.loads` 뒤로만 옮겼는데, 유효 JSON 이 **dict 가 아니면**
         # (`"문자열"` · `[1,2]`) 그 다음 줄의 `data.get` 이 터져 여전히

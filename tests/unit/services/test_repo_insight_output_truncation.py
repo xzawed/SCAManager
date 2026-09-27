@@ -1,10 +1,12 @@
 """리포 인사이트 서술 — 출력 상한에서 잘린 응답을 파싱 전에 알아본다 (#1700).
 
 운영 `claude_api_calls` 6건 중 5건이 출력 600 토큰(상한)에 정확히 닿았고 4건이 `JSONDecodeError` 였다.
-잘림은 파서 버그처럼 기록됐다. 여기서는 `AsyncAnthropic` 을 더블로 바꾸지 않고 **실제 SDK** 가
+잘림은 파서 버그처럼 기록됐다. 상한에서 멈췄어도 `{"text": 문자열}` 로 닫힌 본문은 success + 경고,
+읽을 수 없으면 `max_tokens` 로 남긴다(ai_review 와 같은 관용). 여기서는 `AsyncAnthropic` 을 더블로 바꾸지 않고 **실제 SDK** 가
 응답 본문을 `Message` 로 만든다 — 전송만 `httpx2.MockTransport` 다. 그래서 `stop_reason` 은
 SDK 가 실제로 주는 모양 그대로이고, 요청 본문의 `max_tokens` 도 실제로 나간 값을 잰다.
 
+At the cap a closed {"text": str} body is kept with a warning; an unreadable one is `max_tokens`.
 Drives the real SDK (transport faked only) so stop_reason has the genuine response shape and the
 request's max_tokens is what would actually be sent.
 """
@@ -35,7 +37,7 @@ _REAL_CTOR = anthropic.AsyncAnthropic
 _KPI = {"analysis_count": 3, "avg_score": 70, "grade": "C"}
 # 스키마가 여는 `{"text": "` 뒤에서 끊긴 본문 — 운영 4건의 모양 / body cut after the schema's opening
 _CUT_BODY = '{"text": "이 리포는 최근 30일 동안 점수가 안정적이었고, 반복 이슈는 주로'
-# 잘렸는데도 우연히 닫힌 본문 — 파싱만 보면 성공으로 샌다 / cut yet closed: parses fine
+# 상한에서 멈췄는데 닫힌 본문 — 스키마상 문자열을 끝낸 것이다 / closed at the cap: the string finished
 _CUT_BUT_CLOSED = '{"text": "이 리포는 최근 30일 동안"}'
 _FULL_BODY = '{"text": "점수가 안정적이다. 다음 단계는 테스트 보강이다."}'
 
@@ -131,20 +133,96 @@ async def test_max_tokens_stop_is_recorded_as_truncation(db, owned_repo, sdk, ca
     warned = [r for r in caplog.records
               if r.levelno == logging.WARNING and "max_tokens=1500" in r.getMessage()]
     assert len(warned) == 1, [r.getMessage() for r in caplog.records]
+    assert "truncated" in warned[0].getMessage()
 
 
-async def test_max_tokens_stop_with_parsable_body_is_still_truncation(db, owned_repo, sdk):
-    """🔴 심은 것(잡혀야) — 잘렸는데 본문이 우연히 닫혀 파싱된다. 파싱 결과가 아니라 `stop_reason` 을 본다.
+def _cap_warnings(caplog):
+    return [r.getMessage() for r in caplog.records
+            if r.levelno == logging.WARNING and "max_tokens=" in r.getMessage()]
 
-    「JSONDecodeError 면 잘림」 같은 싼 판정은 이것을 success 로 흘린다. 수정 전 실측: success.
-    Cut but parsable: the check must read stop_reason, not infer truncation from a parse failure.
+
+async def test_max_tokens_stop_with_closed_body_is_kept_with_warning(db, owned_repo, sdk, caplog):
+    """🔴 상한에서 멈췄어도 `{"text": 문자열}` 로 닫힌 본문은 success 로 받고 경고 1건을 남긴다.
+
+    스키마가 문자열 하나라 닫혔다는 것은 모델이 문자열을 끝냈다는 뜻이다. 캐시에도 오류가 남지 않는다.
+    A closed body at the cap is kept as success with exactly one cap warning, and is cached.
     """
     sdk.stop_reason, sdk.text, sdk.output_tokens = "max_tokens", _CUT_BUT_CLOSED, 1500
 
+    with caplog.at_level(logging.WARNING, logger=repo_insight_service.__name__):
+        out, logged = await _run(db, owned_repo)
+
+    assert out == {"text": "이 리포는 최근 30일 동안", "status": "success"}
+    assert logged["status"] == "success"
+    assert _cached_error_type(db, owned_repo) is None
+    warned = _cap_warnings(caplog)
+    assert len(warned) == 1, warned
+    assert "max_tokens=1500" in warned[0] and "output_tokens=1500" in warned[0], warned
+
+
+async def test_max_tokens_stop_with_non_text_json_is_truncation(db, owned_repo, sdk):
+    """상한에서 멈췄는데 기대한 `{"text": 문자열}` 모양이 아니면 폴백(raw)으로 받지 않고 `max_tokens` 다.
+    At the cap, a parsable body without a string `text` is not kept via the raw fallback.
+    """
+    sdk.stop_reason, sdk.text, sdk.output_tokens = "max_tokens", '{"summary": "x"}', 1500
+
     out, logged = await _run(db, owned_repo)
 
-    assert out["status"] == "internal_error"
+    assert out == {"text": "", "status": "internal_error"}
     assert logged["error_type"] == "max_tokens"
+
+
+async def test_end_turn_at_high_output_tokens_is_not_the_cap(db, owned_repo, sdk, caplog):
+    """🔴 심은 것(무시돼야) — 출력 토큰이 상한과 같아도 `end_turn` 이면 상한 경고도 오류도 없다.
+    stop_reason decides, not output_tokens: end_turn at 1500 tokens is a plain success with no cap warning.
+    """
+    sdk.stop_reason, sdk.text, sdk.output_tokens = "end_turn", _FULL_BODY, 1500
+
+    with caplog.at_level(logging.WARNING, logger=repo_insight_service.__name__):
+        out, logged = await _run(db, owned_repo)
+
+    assert out["status"] == "success"
+    assert logged["status"] == "success"
+    assert _cap_warnings(caplog) == []
+
+
+async def test_max_tokens_stop_at_low_output_tokens_is_still_the_cap(db, owned_repo, sdk):
+    """🔴 심은 것(잡혀야) — 보고된 출력 토큰이 적어도 `max_tokens` 로 멈추고 본문이 깨졌으면 `max_tokens` 다.
+    A max_tokens stop with a low token count and a broken body is still recorded as max_tokens.
+    """
+    sdk.stop_reason, sdk.text, sdk.output_tokens = "max_tokens", _CUT_BODY, 12
+
+    out, logged = await _run(db, owned_repo)
+
+    assert out == {"text": "", "status": "internal_error"}
+    assert logged["error_type"] == "max_tokens"
+    assert _cached_error_type(db, owned_repo) == "max_tokens"
+
+
+@pytest.mark.parametrize("stop_reason", ["stop_sequence", "refusal"])
+async def test_other_stop_reasons_are_not_the_cap(db, owned_repo, sdk, caplog, stop_reason):
+    """🔴 심은 것(무시돼야) — `stop_sequence`·`refusal` 은 상한이 아니다. 닫힌 본문은 경고 없는 success.
+    Other stop reasons are not the cap: a full body is a plain success with no cap warning.
+    """
+    sdk.stop_reason, sdk.text = stop_reason, _FULL_BODY
+
+    with caplog.at_level(logging.WARNING, logger=repo_insight_service.__name__):
+        out, logged = await _run(db, owned_repo)
+
+    assert out["status"] == "success"
+    assert logged["status"] == "success"
+    assert _cap_warnings(caplog) == []
+
+
+async def test_stop_sequence_with_broken_body_keeps_its_class(db, owned_repo, sdk):
+    """`stop_sequence` 에서 깨진 본문은 상한이 아니라 파서 실패 그대로다.
+    A broken body under stop_sequence stays a JSONDecodeError, not max_tokens.
+    """
+    sdk.stop_reason, sdk.text = "stop_sequence", _CUT_BODY
+
+    _, logged = await _run(db, owned_repo)
+
+    assert logged["error_type"] == "JSONDecodeError"
 
 
 async def test_parse_failure_without_max_tokens_stop_keeps_its_class(db, owned_repo, sdk):
