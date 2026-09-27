@@ -158,6 +158,10 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
+            # autogenerate 렌더링에만 적용된다 — 손으로 쓴 op.* 는 batch 가 아니라서 빈 SQLite 의
+            # 전체 체인(upgrade head)은 0009 에서 멈춘다. 지원하지 않는다: 앱은 PG, 테스트는 create_all.
+            # Affects autogenerate rendering only; hand-written op.* calls are not batched, so a full
+            # chain on empty SQLite stops at 0009. Unsupported: the app runs on PG, tests use create_all.
             render_as_batch=connection.dialect.name == "sqlite",
         )
 
