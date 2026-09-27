@@ -77,8 +77,8 @@ updates:
   # npm dependencies (Tailwind build + the runtime eslint analyzer)
   # 🔴 devDependencies 로 선언했지만 운영 빌드(railway.toml buildCommand 의 `npm ci`)가 설치하고 런타임 eslint 분석기
   #    설정(src/analyzer/configs/eslint.config.mjs)이 리포 node_modules 의 `@typescript-eslint/parser` 를 읽는다
-  #    — Dependabot 의 dev-scope 자동 기각은 운영에 실리는 취약점을 숨긴다.
-  # Declared dev-only, yet the prod build installs them and the runtime analyzer loads them: dev-scope auto-dismiss hides shipped vulns.
+  #    — Dependabot 의 dev-scope 자동 기각 규칙은 운영에 실리는 취약점 알림 일부를 기각할 수 있다.
+  # Declared dev-only, yet the prod build installs them and the runtime analyzer loads them: dev-scope auto-dismiss can hide shipped vulns.
   # 2026-07-22 회고 P1-④ 사용자 결정: monitor-only (fail-closed CI 게이트 대신 dependabot 감시) —
   #   빌드 차단 마찰 없이 pip 축과 대칭 커버리지(정책 17 안정성>규격). #1169(brace-expansion) 같은 반응형 fix 예방.
   # 2026-07-22 retro P1-④ user decision: monitor-only (dependabot watch instead of a fail-closed CI gate).
