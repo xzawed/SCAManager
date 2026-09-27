@@ -49,7 +49,8 @@ _OK_REPO = '{"text": "좋은 리포다"}'
 _TABLES = (Analysis, ClaudeApiCall, InsightNarrativeCache, Repository, User)
 
 
-# ─── 계기 / instrument ──────────────────────────────────────────────────────
+# ─── 계기 ───
+# ─── Instrument ───
 
 
 @pytest.fixture
@@ -78,7 +79,7 @@ def world(tmp_path, monkeypatch):
         s.commit()
         user_id, repo_id = user.id, repo.id
 
-    h = SimpleNamespace(timeline=[], create_calls=0, reply=None, close=AsyncMock(),
+    h = SimpleNamespace(timeline=[], create_calls=0, ctor_calls=0, reply=None, close=AsyncMock(),
                         engine=engine, make=make, user_id=user_id, repo_id=repo_id, db=None)
 
     @event.listens_for(engine, "after_cursor_execute")
@@ -94,12 +95,14 @@ def world(tmp_path, monkeypatch):
         return h.reply
 
     def ctor(*_a, **_k):
+        h.ctor_calls += 1
         return SimpleNamespace(messages=SimpleNamespace(create=create), close=h.close)
 
     monkeypatch.setattr(anthropic, "AsyncAnthropic", ctor)
     monkeypatch.delenv("INSIGHT_DISABLED", raising=False)
     monkeypatch.setattr(settings, "anthropic_api_key", "sk-test")
-    # 비용 행은 별도 엔진으로 간다 — 여기선 기록만 / cost rows go to another engine; record only
+    # 비용 행은 별도 엔진으로 간다 — 여기선 기록만.
+    # Cost rows go to another engine; record only.
     monkeypatch.setattr(dashboard_service, "log_claude_api_call", MagicMock())
     monkeypatch.setattr(repo_insight_service, "log_claude_api_call", MagicMock())
     yield h
@@ -144,7 +147,8 @@ def _await_entry(h):
     return awaits[0], h.timeline.index(awaits[0])
 
 
-# ─── T5: await 동안 연결을 쥐지 않는다 / no connection held across the await ──
+# ─── T5: await 동안 연결을 쥐지 않는다 ───
+# ─── T5: no connection held across the await ───
 
 
 @pytest.mark.asyncio
@@ -166,20 +170,33 @@ async def test_no_pooled_connection_held_while_awaiting_claude(world, site, refr
     assert ("sql", 1) in world.timeline[:idx], f"계기가 쥔 연결을 한 번도 못 봤다(공허): {world.timeline}"
     assert entry[1:] == (0, False), f"Claude 를 기다리는 동안 연결·트랜잭션을 쥐었다: {entry}"
     assert out["status"] == "api_error"
-    # 커밋 뒤의 쓰기가 여전히 된다 — 새 세션으로 읽는다 / writes after the commit still land
+    # 커밋 뒤의 쓰기가 여전히 된다 — 새 세션으로 읽는다.
+    # Writes after the commit still land; read them on a fresh session.
     rows = _cache_rows(world)
     assert [r.error_count for r in rows] == [1], rows
 
 
-# ─── T6: 성공 응답은 여전히 캐시된다 / success still caches ──────────────────
+# ─── T6: 성공 응답은 여전히 캐시된다 ───
+# ─── T6: success still caches ───
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("site", ["dashboard", "repo"])
 async def test_success_still_caches_after_release(world, site):
+    """성공은 캐시되고, 요청 세션에 이미 올린 ORM 객체는 호출 뒤에도 붙어 있고 읽힌다.
+
+    🔴 해제를 `close()` 로 하면 객체가 떨어져 나가 템플릿의 `repo.*` 가 DetachedInstanceError.
+    Success is cached, and ORM objects already loaded on the request session stay attached
+    and readable afterwards (a `close()` release would detach them).
+    """
     world.reply = _text_response(_OK_CARDS if site == "dashboard" else _OK_REPO)
     with world.make() as db:
+        # 라우트처럼 호출 전에 리포를 요청 세션으로 읽어 둔다.
+        # Like the routes, load the repo on the request session before the call.
+        repo = db.get(Repository, world.repo_id)
         out = await _call(world, db, site)
+        assert repo in db, "해제가 세션에서 객체를 떼어 냈다"
+        assert repo.full_name == "o/r"
     assert out["status"] == "success"
 
     with world.make() as s:
@@ -191,37 +208,71 @@ async def test_success_still_caches_after_release(world, site):
     assert cached is not None and cached["status"] == "success"
 
 
-# ─── 커밋 계약: 호출부의 미완료 쓰기를 몰래 커밋하지 않는다 / never commit a caller's pending writes ──
+# ─── 커밋 계약: 호출부의 미완료 쓰기를 몰래 커밋하지 않는다 ───
+# ─── Commit contract: never commit a caller's pending writes ───
+
+
+def _plant_new(_h, db):
+    """새 행을 add 만 해 둔다 / add a row, unflushed."""
+    db.add(User(github_id=99, github_login="planted", email="p@x.com", display_name="P"))
+
+    def persisted(s):
+        return s.scalar(select(User).where(User.github_login == "planted")) is not None
+    return persisted
+
+
+def _plant_dirty(h, db):
+    """시드 행을 고쳐 둔다 / modify a seeded row, unflushed."""
+    db.get(User, h.user_id).display_name = "PLANTED"
+
+    def persisted(s):
+        return s.get(User, h.user_id).display_name == "PLANTED"
+    return persisted
+
+
+def _plant_deleted(_h, db):
+    """시드 행을 지워 둔다 / delete a seeded row, unflushed."""
+    db.delete(db.scalar(select(Analysis).where(Analysis.commit_sha == "sha0")))
+
+    def persisted(s):
+        return s.scalar(select(Analysis).where(Analysis.commit_sha == "sha0")) is None
+    return persisted
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("plant", [_plant_new, _plant_dirty, _plant_deleted],
+                         ids=["new", "dirty", "deleted"])
 @pytest.mark.parametrize("site", ["dashboard", "repo"])
-async def test_pending_caller_write_is_refused_not_committed(world, site):
-    """🔴 심은 반례 — 호출부가 세션에 쓰기를 남겨 둔 채 부르면 거부한다(맨 `commit()` 이면 red).
+async def test_pending_caller_write_is_refused_not_committed(world, site, plant):
+    """🔴 심은 반례 — 호출부가 세션에 쓰기(new·dirty·deleted)를 남겨 둔 채 부르면 거부한다.
 
     log-and-skip 이 아니라 raise 인 이유: 건너뛰어도 뒤따르는 캐시 쓰기(`record_error`·`upsert`)
     가 스스로 커밋하므로 그 쓰기는 결국 커밋된다. 막는 길은 멈추는 것뿐이다.
-    A bare commit (or skipping it) would still commit the planted row via the later cache writes.
+    가드는 클라이언트 생성보다 앞이어야 한다 — 뒤면 거부 경로에서 httpx 풀이 닫히지 않는다.
+    Each pending kind (new, dirty, deleted) is refused before the paid call and before the
+    client exists; a bare commit or skip would commit it via the later cache writes.
     """
     with world.make() as db:
-        db.add(User(github_id=99, github_login="planted", email="p@x.com", display_name="P"))
+        persisted = plant(world, db)
         with pytest.raises(RuntimeError, match="pending"):
             await _call(world, db, site)
         db.rollback()
 
     assert world.create_calls == 0, "거부 전에 유료 호출을 했다"
+    assert world.ctor_calls == 0, "거부 전에 클라이언트를 만들었다(거부 경로에서 닫히지 않는다)"
     with world.make() as s:
-        assert s.scalar(select(User).where(User.github_login == "planted")) is None, \
-            "호출부의 미완료 쓰기가 커밋됐다"
+        assert not persisted(s), "호출부의 미완료 쓰기가 커밋됐다"
 
 
-# ─── T7: 바깥 취소에도 클라이언트를 닫는다 / outer cancel still closes the client ──
+# ─── T7: 바깥 취소에도 클라이언트를 닫는다 ───
+# ─── T7: outer cancel still closes the client ───
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("site", [
     "dashboard",
-    # 대조군 — repo 는 이미 finally 에서 닫는다 / control: repo already closes in finally
+    # 대조군 — repo 는 이미 finally 에서 닫는다.
+    # Control: repo already closes in finally.
     "repo",
 ])
 async def test_outer_cancel_still_closes_client(world, monkeypatch, site):

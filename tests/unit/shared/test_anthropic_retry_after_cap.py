@@ -110,8 +110,8 @@ async def _run_ai_review():
 
 async def _run_dashboard():
     # user_id=None → 캐시 조회를 타지 않는다. KPI 헬퍼는 데이터가 있다고 답한다(no_data 조기 반환 차단).
-    # 세션은 바인드 없는 빈 `Session` — 호출 전 커밋(#1697)이 미완료 쓰기 가드를 실제 집합으로 읽는다.
     # user_id=None skips the cache; KPI helpers report data so the no_data early return is defeated.
+    # 세션은 바인드 없는 빈 `Session` — 호출 전 커밋(#1697)이 미완료 쓰기 가드를 실제 집합으로 읽는다.
     # An unbound empty Session: the pre-await commit (#1697) reads real pending-write sets.
     with patch.object(dashboard_service, "dashboard_kpi", return_value={"analysis_count": {"value": 3}}), \
          patch.object(dashboard_service, "dashboard_trend", return_value={}), \
@@ -397,7 +397,8 @@ async def test_honoured_retry_logs_nothing(real_sdk, caplog):
     assert _cap_warnings(caplog) == []
 
 
-# ── 페이지 전체 기한 (#1697) / total page deadline ──
+# ── 페이지 전체 기한 (#1697) ──
+# ── Total page deadline ──
 #
 # 상한(15s)은 대기 **한 번**을 묶을 뿐이다 — 시도 3회 × 읽기 60s + 대기 2 × 15s = 210s 가 남는다.
 # 여기서는 대기를 가짜로 바꾸지 않는다: 응답 없는 전송과 **상한 안이라 따르는** 15s 대기 둘 다
@@ -410,7 +411,10 @@ _PAGE_MODULES = {"dashboard_insight": dashboard_service, "repo_insight": repo_in
 
 @pytest.fixture
 def live_sdk(monkeypatch):
-    """실제 SDK + 실제 대기 — 전송만 가짜 / real SDK and real sleeps; only the transport is faked."""
+    """실제 SDK + 실제 대기 — 전송만 가짜.
+
+    Real SDK and real sleeps; only the transport is faked.
+    """
     h = SimpleNamespace(mode="hang", calls=0, clients=[])
 
     async def handler(_req):
