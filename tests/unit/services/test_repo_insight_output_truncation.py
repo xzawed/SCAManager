@@ -238,7 +238,8 @@ async def test_parse_failure_without_max_tokens_stop_keeps_its_class(db, owned_r
     assert _cached_error_type(db, owned_repo) == "JSONDecodeError"
 
 
-async def test_full_response_still_succeeds(db, owned_repo, sdk):
+@pytest.mark.usefixtures("sdk")
+async def test_full_response_still_succeeds(db, owned_repo):
     """대조군 — 끝까지 쓴 응답(`end_turn`)은 그대로 success 이고 캐시에 오류가 남지 않는다.
     A complete response still succeeds and leaves no cached error.
     """

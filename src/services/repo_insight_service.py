@@ -519,9 +519,10 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
             response = await client.messages.create(
                 model=settings.claude_insight_model,
                 max_tokens=_NARRATIVE_MAX_TOKENS,
-                # 🔴 응답 형식을 스키마로 강제 (backlog R51). 아래 `data.get("text", raw)`
-                #    폴백은 절단·호출실패를 위해 그대로 둔다 — 스키마는 그 축을 닫지 않는다.
-                # Schema-enforced shape; the raw-text fallback below stays for truncation/failure.
+                # 🔴 응답 형식을 스키마로 강제 (backlog R51). `data.get("text", raw)` 폴백은 상한이
+                #    아닌 멈춤에만 쓴다 — 상한(max_tokens)에서 멈추면 `_narrative_text` 가 거절한다.
+                # Schema-enforced shape; the raw-text fallback applies only to a non-cap stop
+                # (`_narrative_text` refuses it at max_tokens).
                 output_config={
                     "format": {
                         "type": "json_schema",
