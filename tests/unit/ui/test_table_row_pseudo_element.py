@@ -13,11 +13,13 @@ r"""표의 행에 ::before/::after 를 달지 않는다 — Chromium 은 그것�
 
 🔴 «행» 의 정의 — 가상 요소를 **직접** 단 복합 셀렉터가
    · 타입 `tr` 이거나(대소문자 무시) `:is()`·`:where()` 인자의 주어가 행이거나,
-   · 「행 클래스」 `.cls` 를 가진다(`:not()` 등 함수 안의 클래스는 세지 않는다).
-   행 클래스 = git 추적 `src/templates/**/*.html`(본문·`<script>` 문자열 전부)과
-   `src/static/js/**/*.js` 에서 `<tr … class="a b">` 로 붙은 것 +
-   `document.createElement('tr')` 를 받은 변수에 `.className =`·`.classList.add(` 로 붙은 것.
-   Jinja·JS 보간(`{{ }}`·`{% %}`·`{# #}`·`${}`·`' + x + '`)과 HTML 주석은 걷어 낸다.
+   · 「행 클래스」 `.cls` 나 「행 id」 `#id` 를 가지거나(`:not()` 등 함수 안은 세지 않는다),
+   · `:has(> td|th)` 이거나, 행 그룹(`tbody`·`thead`·`tfoot`) 바로 아래의 타입 없는 복합이다
+     (`>` 면 `.x` 도 행 — 행 그룹의 자식은 `tr` 뿐 · 자손이면 클래스·id 없는 `*`·`:…`·`[…]` 만).
+   행 클래스·id = git 추적 `src/templates/**/*.html`(본문·`<script>` 문자열 전부)과
+   `src/static/js/**/*.js` 에서 `<tr … class="a b" id="c">` 로 붙은 것(속성값 속 `>` 를 건너뛴다) +
+   `document.createElement('tr')` 를 받은 변수나 그 체인에 `.className =`/`+=`·`.classList(?.)add(`
+   ·`.id =` 로 붙은 것. Jinja·JS 보간(`{{ }}`·`{% %}`·`{# #}`·`${}`·`' + x + '`)과 HTML 주석은 걷어 낸다.
    `.analysis-row td:first-child::before` 는 가상 요소가 `td` 복합에 있으므로 행이 아니다.
 
 🔴 계기를 뒤집어 봤다(`docs/workflow/verify.md` 「판정식을 쓸 때」 4).
@@ -41,8 +43,9 @@ r"""표의 행에 ::before/::after 를 달지 않는다 — Chromium 은 그것�
 🔴 이 계기가 **못 보는** 것 — 여기 걸리지 않아도 안전하다는 뜻이 아니다.
    · CSS 중첩 `tr { &::before {} }` — 이 리포 CSS 는 중첩을 쓰지 않는다(`&` 는 `main.css`
      의 `@custom-variant` 에만 있다 — 실측).
-   · 속성으로 고른 행(`[class~="x"]::before`) · `thead`/`tbody` 의 가상 요소 ·
-     `display: table-row` 를 준 비-`tr` 요소.
+   · 속성으로 고른 행(`[class~="x"]::before` — 행 그룹 바로 아래가 아닐 때) · `thead`/`tbody`
+     자신의 가상 요소(`table > *`) · `display: table-row` 를 준 비-`tr` 요소 ·
+     CSS 이스케이프로 쓴 타입(`\74 r`).
    · 변수로 이어 붙인 클래스(`'<tr' + rowCls + '>'` — `settings.html` 의 `pt-row-same`),
      실행 중 아무 요소에나 붙는 클래스(`.reveal` 에 붙는 `visible`), `setAttribute('class')`
      · `classList.toggle`.
@@ -52,10 +55,11 @@ r"""표의 행에 ::before/::after 를 달지 않는다 — Chromium 은 그것�
 
 Table rows must not carry ::before/::after: Chromium lays the row pseudo-element out as an
 extra first column, shifting every body cell one column right of its header. A row is the `tr`
-type (also inside `:is()`/`:where()`) or a class the templates/JS put on a `tr`; the pseudo must
-sit on that compound itself (`.row td:first-child::before` is a cell). Not covered: CSS nesting,
-attribute-selected rows, row groups, classes spliced in through a variable or added at runtime
-to generic elements.
+type (also inside `:is()`/`:where()`), a class or id the templates/JS put on a `tr`, `:has(> td)`,
+or a typeless compound right under a row group; the pseudo must sit on that compound itself
+(`.row td:first-child::before` is a cell). Not covered: CSS nesting, attribute-selected rows
+outside a row group, row-group pseudos, CSS escapes, classes spliced in through a variable or
+added at runtime to generic elements.
 """
 from __future__ import annotations
 
@@ -77,13 +81,22 @@ _STYLE = re.compile(r"<style[^>]*>(.*?)</style>", re.S | re.I)
 _PSEUDO_EL = re.compile(r"::?(?:before|after)(?![\w-])", re.I)
 _TYPE_TR = re.compile(r"tr(?![\w-])", re.I)
 _CLASS = re.compile(r"\.(-?[_a-zA-Z][\w-]*)")
+_ID = re.compile(r"#(-?[_a-zA-Z][\w-]*)")
 _IS_WHERE = re.compile(r":(?:is|where)\(", re.I)
+# 타입이 없는 복합(`*`·`:nth-child()`·`[x]` 로 시작)이 행 그룹 바로 아래면 행을 고른다.
+# A typeless compound right under a row group selects rows (`tbody > *`, `tbody :nth-child(odd)`).
+_ROW_GROUP = re.compile(r"(?:tbody|thead|tfoot)(?![\w-])", re.I)
+_TYPELESS = re.compile(r"[*:\[.#]")
+_HAS_CELL_CHILD = re.compile(r":has\(\s*>\s*(?:td|th)(?![\w-])", re.I)
 
 # 행 클래스 수집. `<tr` 다음 글자가 공백·`>`·`/` 여야 `<track` · `<tref` 가 빠진다.
-# Row-class collection; the lookahead keeps `<track` out.
-_TR_TAG = re.compile(r"<tr(?=[\s>/])([^>]*)>", re.I)
+# 속성값 안의 `>`(`title="HP > 50"`)에서 끊기지 않게 따옴표를 건너뛰고, 따옴표가 짝이 안 맞으면
+# 옛 형태(`[^>]*`)로 물러선다. Quote-aware, falling back to the plain form on unbalanced quotes.
+_TR_TAG = re.compile(r"<tr(?=[\s>/])(?:((?:[^>\"']|\"[^\"]*\"|'[^']*')*)|([^>]*))>", re.I)
 _CLASS_ATTR = re.compile(r"(?<![\w-])class\s*=\s*(?:(\\?[\"'])(.*?)\1|([\w-]+))", re.I | re.S)
+_ID_ATTR = re.compile(r"(?<![\w-])id\s*=\s*(?:(\\?[\"'])(.*?)\1|([\w-]+))", re.I | re.S)
 _CREATE_TR = re.compile(r"([A-Za-z_$][\w$]*)\s*=\s*document\.createElement\(\s*([\"'`])(?i:tr)\2\s*\)")
+_CREATE_TR_CHAIN = r"document\.createElement\(\s*([\"'`])(?i:tr)\1\s*\)"
 _HTML_COMMENT = re.compile(r"<!--.*?-->", re.S)
 _JINJA = re.compile(r"\{\{.*?\}\}|\{%.*?%\}|\{#.*?#\}", re.S)
 _JS_INTERP = re.compile(r"\$\{[^}]*\}|([\"'`])\s*\+.*?\+\s*\1", re.S)
@@ -148,6 +161,11 @@ def _row_reason(compound: str, row_classes: frozenset[str]) -> str | None:
     for cls in _CLASS.findall(masked):
         if cls in row_classes:
             return "." + cls
+    for ident in _ID.findall(masked):
+        if "#" + ident in row_classes:
+            return "#" + ident
+    if _HAS_CELL_CHILD.search(compound):
+        return ":has(> td)"
     for fn in _IS_WHERE.finditer(masked):
         close = masked.find(")", fn.end())
         if close < 0:
@@ -157,6 +175,23 @@ def _row_reason(compound: str, row_classes: frozenset[str]) -> str | None:
             inner = _row_reason(parts[-1][1], row_classes) if parts else None
             if inner:
                 return f":is({inner})"
+    return None
+
+
+def _under_row_group(masked_sel: str, spans: list[tuple[int, str]], i: int) -> str | None:
+    """행 그룹(`tbody`·`thead`·`tfoot`) 바로 아래 복합이 행을 고르는가.
+    `>` 로 이어지면 타입 없는 복합은 전부 행이다(`tbody > .x`) — 행 그룹의 자식은 `tr` 뿐이다.
+    자손 결합이면 셀도 고를 수 있으니 클래스·id 없는 `*`·`:…`·`[…]` 만 행으로 센다.
+    Under a row group: with `>`, any typeless compound is a row; with a descendant combinator,
+    only a bare `*` / pseudo-class / attribute compound (it also matches the rows)."""
+    prev_start, prev = spans[i - 1]
+    start, comp = spans[i]
+    if not _ROW_GROUP.match(_mask(prev)) or not _TYPELESS.match(comp):
+        return None
+    child = ">" in masked_sel[prev_start + len(prev):start]
+    masked = _mask(comp)
+    if child or not (_CLASS.search(masked) or _ID.search(masked)):
+        return prev.lower() + (" > " if child else " ") + "*"
     return None
 
 
@@ -173,8 +208,11 @@ def row_compounds(css: str, row_classes: frozenset[str] = frozenset()
         for off, sel in _spans(prelude, r"[^,]+"):
             lead = len(sel) - len(sel.lstrip())
             line = text.count("\n", 0, pm.start(1) + off + lead) + 1
-            for _, comp in _compounds(sel):
-                reason = _row_reason(comp, row_classes)
+            spans = _compounds(sel)
+            masked_sel = _mask(sel)
+            for i, (start, comp) in enumerate(spans):
+                reason = _row_reason(comp, row_classes) or (
+                    _under_row_group(masked_sel, spans, i) if i else None)
                 if reason:
                     found.append((line, " ".join(sel.split()), reason,
                                   bool(_PSEUDO_EL.search(_mask(comp)))))
@@ -193,21 +231,33 @@ def _class_tokens(value: str) -> set[str]:
     return {t for t in _JS_INTERP.sub(" ", value).split() if _IDENT.fullmatch(t)}
 
 
+def _attr_value(m: re.Match) -> str:
+    return m.group(2) if m.group(2) is not None else m.group(3)
+
+
 def row_classes_in(text: str) -> set[str]:
-    """템플릿·JS 원문에서 표의 행(`tr`)에 붙는 클래스 이름을 모은다.
-    Class names this template/JS text puts on table rows."""
+    """템플릿·JS 원문에서 표의 행(`tr`)에 붙는 클래스 이름과 `#id` 를 모은다.
+    Class names (and `#id`s) this template/JS text puts on table rows."""
     text = _JINJA.sub(" ", _HTML_COMMENT.sub(" ", text))
     out: set[str] = set()
     for tag in _TR_TAG.finditer(text):
-        for attr in _CLASS_ATTR.finditer(tag.group(1)):
-            out |= _class_tokens(attr.group(2) if attr.group(2) is not None else attr.group(3))
-    for var in {m.group(1) for m in _CREATE_TR.finditer(text)}:
-        name = re.escape(var)
-        for m in re.finditer(rf"(?<![\w$.]){name}\.className\s*=\s*([\"'`])(.*?)\1", text):
-            out |= _class_tokens(m.group(2))
-        for m in re.finditer(rf"(?<![\w$.]){name}\.classList\.add\(([^)]*)\)", text):
-            for lit in re.finditer(r"([\"'`])(.*?)\1", m.group(1)):
+        attrs = tag.group(1) if tag.group(1) is not None else tag.group(2)
+        for attr in _CLASS_ATTR.finditer(attrs):
+            out |= _class_tokens(_attr_value(attr))
+        for attr in _ID_ATTR.finditer(attrs):
+            out |= {"#" + t for t in _class_tokens(_attr_value(attr))}
+    # 변수로 받은 `createElement('tr')` 와, 받지 않고 바로 이어 쓴 체인 둘 다.
+    # Both a bound `createElement('tr')` variable and an unbound chain.
+    targets = [rf"(?<![\w$.]){re.escape(m.group(1))}" for m in _CREATE_TR.finditer(text)]
+    targets.append(_CREATE_TR_CHAIN)
+    for target in dict.fromkeys(targets):
+        for m in re.finditer(rf"{target}\.className\s*\+?=\s*(?P<q>[\"'`])(?P<v>.*?)(?P=q)", text):
+            out |= _class_tokens(m.group("v"))
+        for m in re.finditer(rf"{target}\.classList\??\.add\((?P<args>[^)]*)\)", text):
+            for lit in re.finditer(r"([\"'`])(.*?)\1", m.group("args")):
                 out |= _class_tokens(lit.group(2))
+        for m in re.finditer(rf"{target}\.id\s*=\s*(?P<q>[\"'`])(?P<v>.*?)(?P=q)", text):
+            out |= {"#" + t for t in _class_tokens(m.group("v"))}
     return out
 
 
@@ -247,7 +297,7 @@ def _row_classes() -> frozenset[str]:
         *(row_classes_in((ROOT / rel).read_text(encoding="utf-8")) for rel in rels))
 
 
-_ROWS = frozenset({"row-accent", "analysis-row"})
+_ROWS = frozenset({"row-accent", "analysis-row", "#special-row"})
 
 
 @pytest.mark.parametrize("css", [
@@ -266,6 +316,13 @@ _ROWS = frozenset({"row-accent", "analysis-row"})
     ".row-accent::before { content: ''; }",
     ".x tbody > .analysis-row:hover::before { transform: scaleY(1); }",
     ".row-accent.reveal:not(.x)::after { content: ''; }",
+    # Grok claim-review `06606bf6` 반례 — 행 그룹 아래 타입 없는 복합 · 셀을 자식으로 가진 요소 · 행 id
+    "tbody > *::before { content: ''; }",
+    ".x tbody > :nth-child(odd)::before { content: ''; }",
+    ".x tbody *::after { content: ''; }",
+    ".x tbody > .anything::before { content: ''; }",
+    ":has(> td)::before { content: ''; }",
+    "#special-row::before { content: ''; }",
 ])
 def test_catches_every_row_pseudo_form(css):
     r"""claimed\cheap 포함 — 부분문자열 `tr::before` 와 1차 정규식(괄호 한 겹)은 여럿을 놓친다."""
@@ -290,6 +347,11 @@ def test_catches_every_row_pseudo_form(css):
     "/* tbody tr::before */\n.x td { color: red; }",
     ".x tbody tr { position: relative; }",
     ".analysis-row { transition: background 0.15s; }",
+    ".x tbody td *::before { content: ''; }",
+    ".x tbody .cell::before { content: ''; }",
+    ".x tbody tr > *::before { content: ''; }",
+    "#special-cell::before { content: ''; }",
+    ".x td:has(> span)::before { content: ''; }",
 ])
 def test_ignores_cells_classes_and_comments(css):
     r"""cheap\claimed 포함 — `row` 가 든 이름(`.issue-row`)은 행 클래스가 아니다."""
@@ -317,6 +379,14 @@ def test_row_class_needs_a_tr_that_carries_it():
     ("const r = document.createElement('tr');\nr.className = 'made-row';\n"
      "r.classList.add('added', \"also\");\n"
      "const td = document.createElement('td');\ntd.className = 'cell-only';", {"made-row", "added", "also"}),
+    # Grok claim-review `06606bf6` 반례 — 속성값 속 `>` · 행 id · 받지 않은 체인 · `?.`·`+=`
+    ('<tr title="HP > 50" class="hot">', {"hot"}),
+    ("return '<tr data-label=\"Score > 80\" class=\"analysis-row\">';", {"analysis-row"}),
+    ("<tr class=\"ok\" data-x='oops>", {"ok"}),
+    ('<tr id="special-row" class="a">', {"a", "#special-row"}),
+    ("document.createElement('tr').className = 'chain-row';", {"chain-row"}),
+    ("const r = document.createElement('tr');\nr.classList?.add('opt');\n"
+     "r.className += ' plus';\nr.id = 'made-id';", {"opt", "plus", "#made-id"}),
 ])
 def test_collects_row_classes_from_markup_and_scripts(text, expected):
     r"""claimed\cheap — 이름에 `row` 가 없어도, JS 문자열·보간 사이에 있어도 모은다."""
@@ -332,6 +402,8 @@ def test_collects_row_classes_from_markup_and_scripts(text, expected):
     "const td = document.createElement('td');\ntd.className = 'filter-empty';",
     "const row = document.createElement('tr');\nrow.appendChild(cell);",
     "html += '<tr' + rowCls + '>';",
+    "const c = document.createElement('td');\nc.id = 'cell-id';\nc.classList?.add('cell-opt');",
+    '<td id="td-id" title="a > b" class="td-cls"></td>',
 ])
 def test_does_not_collect_non_row_classes(text):
     r"""cheap\claimed — 둘째로 싼 과정(`<tr[^>]*class="…"`)이 넘어질 자리들."""
