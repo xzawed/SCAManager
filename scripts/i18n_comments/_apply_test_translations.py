@@ -6,7 +6,6 @@ Run from repo root:
 """
 from pathlib import Path
 import sys
-import re
 
 
 def _make_stdout_safe() -> None:
