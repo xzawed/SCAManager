@@ -150,6 +150,11 @@ def test_dashboard_non_failure_states_have_no_refresh(status):
 class _FakeRepo:
     full_name = "owner/repo"
     id = 1
+    user_id = 1
+
+
+class _FakeUnclaimedRepo(_FakeRepo):
+    user_id = None
 
 
 def _repo_ctx(**overrides) -> dict:
@@ -182,6 +187,24 @@ def test_repo_no_failure_flag_means_no_failure_line():
     html = _render("repo_insights.html", locale="ko", **_repo_ctx())
     assert _refresh_links(html, "/repos/owner/repo/insights") == []
     assert get_text("repo_insights.narrative_failed", "ko") not in html
+
+
+@pytest.mark.parametrize("narrative, failed", [
+    (None, True),
+    ({"text": "좋은 리포다", "status": "success"}, False),
+])
+def test_unclaimed_repo_offers_no_refresh_link(narrative, failed):
+    """🔴 소유자 없는 리포는 `refresh=1` 이 403 이다(`src/ui/routes/repo_insights.py` 의 가드) —
+    그 페이지에 새로 고침 링크를 그리면 «반드시 실패하는 링크» 다(Grok claim-review 9ea413ed 반례).
+    실패 문구·서술은 그대로 두고 링크만 뺀다.
+    An unclaimed repo 403s on refresh=1, so no Refresh link is drawn; the sentence/narrative stays."""
+    html = _render("repo_insights.html", locale="ko",
+                   **_repo_ctx(repo=_FakeUnclaimedRepo(), narrative=narrative, narrative_failed=failed))
+    assert _refresh_links(html, "/repos/owner/repo/insights") == []
+    if failed:
+        assert get_text("repo_insights.narrative_failed", "ko") in html
+    else:
+        assert "좋은 리포다" in html
 
 
 def test_repo_success_narrative_is_unchanged():
