@@ -1,0 +1,44 @@
+# 이미지 빌드 컨텍스트에서 뺄 것 — 시크릿과, 런타임이 읽지 않는 트리.
+# 루트 설정 파일(setup.cfg 등)은 남긴다: 분석기가 작업 디렉토리 /app 에서 설정을 찾는다.
+# Excluded from the build context: secrets and trees the runtime never reads. Root config
+# files stay, because analyzers look for their config from the /app working directory.
+
+# 시크릿 / secrets
+.env
+.env.*
+**/.env
+.dbpw
+*.dbpw
+db_probe.py
+
+# VCS · 에이전트 · 워크트리 / VCS, agent state, worktrees
+.git
+.github
+.claude
+.worktrees
+review-tmp-*
+
+# 빌드 안에서 다시 만든다 / rebuilt inside the image
+node_modules
+src/static/css/dist
+.venv
+venv
+env
+
+# 런타임이 읽지 않는 트리 / not read at runtime
+docs
+tests
+e2e
+scripts
+
+# 캐시·산출물 / caches and artifacts
+**/__pycache__
+**/*.py[cod]
+.pytest_cache
+.coverage
+htmlcov
+coverage*.xml
+coverage.json
+cov_*.json
+*.db
+*.sqlite3

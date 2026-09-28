@@ -91,7 +91,7 @@ class _TscAnalyzer:
             # 실측(2026-07-31): 정상=exit 0 · 타입오류=exit 2(+진단 매치) · **무효 플래그=exit 1 이고
             # 출력이 `error TS5023: Unknown compiler option '--x'.` 라 `file(line,col):` 접두가 없어
             # 정규식에 안 걸린다** → 조용히 `[]`. major 버전 drift 로 플래그가 바뀌면 그대로 재현된다
-            # (`railway.toml` 은 `npm install -g typescript` 를 **버전 핀 없이** 설치한다).
+            # (당시 빌드는 typescript 를 **버전 핀 없이** 설치했다 — 지금은 `Dockerfile` 이 핀한다).
             # exit 0 + 진단 0 = 진짜 깨끗함이므로 raise 하지 않는다(정상 경로 보존).
             # 🔴 Fail-closed: a non-zero exit with ZERO parsed diagnostics means we do not know what
             # happened; returning [] would be indistinguishable from "analyzed, clean" and inflate the

@@ -2,13 +2,13 @@
 
 ## 왜 이 파일이 따로 있나 (2026-07-19 회고 P1)
 
-`test_build_command_deps.py`(#1119)는 **buildCommand 가 호출하는 명령**의 조달 출처를 강제한다
+`test_build_command_deps.py`(#1119)는 **이미지 빌드가 호출하는 명령**의 조달 출처를 강제한다
 — `unzip` 부재로 tflint 가 죽은 클래스를 잡는 가드다. 그런데 그 방향만으로는
 **"등록은 됐는데 바이너리가 아예 조달되지 않는 analyzer"** 를 구조적으로 볼 수 없다.
-buildCommand 에 언급조차 없으면 검사 대상에 들어오지 않기 때문이다.
+빌드 단계에 언급조차 없으면 검사 대상에 들어오지 않기 때문이다.
 
 실측: `src/analyzer/io/static.py` 가 **24종**을 register 하는데 그중 **8종**의
-바이너리가 buildCommand·aptPkgs·requirements 어디에도 없다 — tflint 실패 모드의 **9배 일반화**다.
+바이너리가 빌드 설치·apt·requirements 어디에도 없다 — tflint 실패 모드의 **9배 일반화**다.
 `#1119` 는 이 클래스를 "봉인했다" 고 선언했으나 1/10 만 고친 상태였다.
 
 Measured: 23 analyzers registered, 9 with no provisioning anywhere — #1119 sealed 1 of 10.
@@ -18,7 +18,7 @@ Measured: 23 analyzers registered, 9 with no provisioning anywhere — #1119 sea
 이 파일로 `test_build_command_deps.py` 를 대체하지 **않는다**. 축을 갈아끼우면
 `#1119` 의 원래 결함(설치 단계가 부르는 헬퍼 명령이 없는 경우)이 다시 열린다.
 
-- **축 A** (`test_build_command_deps.py`): buildCommand 가 **호출하는 명령** ⊆ 조달 출처
+- **축 A** (`test_build_command_deps.py`): `Dockerfile` RUN 이 **호출하는 명령** ⊆ 조달 출처
 - **축 B** (이 파일): **등록된 analyzer** → 조달 모드 전단사(bijection)
 
 ## `optional_absent_ok` 가 도피처가 되지 않도록
@@ -26,22 +26,19 @@ Measured: 23 analyzers registered, 9 with no provisioning anywhere — #1119 sea
 `#1119` 는 이 클래스를 한 번 "봉인" 이라 선언하고 틀렸다. 그래서 optional 에 통제를 건다:
 1. 모드는 **닫힌 집합** — 자유 문자열 금지
 2. optional 은 **사유 문자열 의무**
-3. buildCommand/apt/pip 에 **실제로 있는** 바이너리를 optional 로 표기 금지(모순)
+3. Dockerfile 설치·apt·pip 에 **실제로 있는** 바이너리를 optional 로 표기 금지(모순)
 4. **전부 optional 로 표기 금지** — 실제 조달되는 analyzer 가 다수여야 한다
 """
 import re
-import tomllib
-from pathlib import Path
 
-_ROOT = Path(__file__).resolve().parents[3]
-_RAILWAY = _ROOT / "railway.toml"
-_NIXPACKS = _ROOT / "nixpacks.toml"
-_REQUIREMENTS = _ROOT / "requirements.txt"
-_STATIC = _ROOT / "src" / "analyzer" / "io" / "static.py"
+from tests.unit.scripts._dockerfile import DOCKERFILE, ROOT, all_invocations, apt_installs, run_steps
+
+_REQUIREMENTS = ROOT / "requirements.txt"
+_STATIC = ROOT / "src" / "analyzer" / "io" / "static.py"
 
 # 조달 모드 — 닫힌 집합 / closed set of provisioning modes
-BUILD, APT, PIP, SETUP, OPTIONAL = "build_install", "apt", "pip", "nixpacks_setup", "optional_absent_ok"
-_MODES = frozenset({BUILD, APT, PIP, SETUP, OPTIONAL})
+BUILD, APT, PIP, OPTIONAL = "build_install", "apt", "pip", "optional_absent_ok"
+_MODES = frozenset({BUILD, APT, PIP, OPTIONAL})
 
 # analyzer 모듈 → (요구 바이너리, 조달 모드, optional 사유)
 # 🔴 신규 analyzer 추가 시 여기 등재 의무 — 미등재는 CI FAIL (이 클래스의 재발 차단).
@@ -54,7 +51,7 @@ _PROVENANCE = {
     "golangci_lint": ("golangci-lint", BUILD, ""),
     "hadolint": ("hadolint", BUILD, ""),
     # 🔴 htmlhint·stylelint 는 위 7종(언어 툴체인 부재)과 성격이 다르다 — **npm 패키지**이고
-    #   buildCommand 는 이미 `npm install -g` 를 3회 돌린다. 즉 못 넣은 게 아니라 빠진 것으로
+    #   이미지 빌드는 이미 `npm install -g` 를 3회 돌린다. 즉 못 넣은 게 아니라 빠진 것으로
     #   보이며, 의도 미확인 상태다. 사용자 결정 전까지 optional 로 두되 사유에 그 사실을 남긴다.
     "htmlhint": ("htmlhint", OPTIONAL, "npm 설치 가능하나 미설치 — 의도 미확인(사용자 결정 대기)"),
     "stylelint": ("stylelint", OPTIONAL, "npm 설치 가능하나 미설치 — 의도 미확인(사용자 결정 대기)"),
@@ -81,7 +78,8 @@ def _registered_modules() -> set:
 
 
 def _build_command() -> str:
-    return tomllib.loads(_RAILWAY.read_text(encoding="utf-8"))["build"]["buildCommand"]
+    """이미지 빌드의 설치 명령 — `Dockerfile` RUN 만(주석 줄은 파서가 버린다)."""
+    return " ".join(run_steps(DOCKERFILE.read_text(encoding="utf-8")))
 
 
 # echo 인용 산문 제거용 — `echo '...'` / `echo "..."` 세그먼트를 통째로 지운다.
@@ -90,7 +88,7 @@ _ECHO_PROSE = re.compile(r"""echo\s+(['"])[^'"]*\1""")
 
 
 def _build_command_installs_only() -> str:
-    """🔴 buildCommand 에서 **echo 경고 산문을 제거**한 실제 설치 명령만.
+    """🔴 빌드 명령에서 **echo 경고 산문을 제거**한 실제 설치 명령만.
 
     ## 2026-07-20 세션5 회고 P1
 
@@ -115,18 +113,15 @@ _PROVIDER_PACKAGE = {
 }
 
 
-def _apt_packages() -> list:
-    return tomllib.loads(_NIXPACKS.read_text(encoding="utf-8"))["phases"]["setup"]["aptPkgs"]
-
-
-def _setup_cmds() -> str:
-    return "\n".join(tomllib.loads(_NIXPACKS.read_text(encoding="utf-8"))["phases"]["setup"]["cmds"])
+def _apt_packages() -> set:
+    return {p for argv in all_invocations(DOCKERFILE.read_text(encoding="utf-8"))
+            for p in apt_installs(argv)}
 
 
 def _is_actually_provisioned(binary: str) -> bool:
     """이 바이너리가 어딘가에서 **실제로** 조달되는가 (모드 선언과 무관한 사실 확인).
 
-    🔴 buildCommand 는 **echo 경고 산문을 제거한** 실제 설치 명령만 본다(위 함수 참조).
+    🔴 빌드 명령은 **echo 경고 산문을 제거한** 실제 설치 명령만 본다(위 함수 참조).
     바이너리명과 설치 패키지명이 다르면 `_PROVIDER_PACKAGE` 로 실제 설치 토큰을 매칭한다.
     """
     # 바이너리명 + 알려진 제공자 패키지명 — 둘 중 하나라도 실제로 조달되면 인정.
@@ -137,7 +132,6 @@ def _is_actually_provisioned(binary: str) -> bool:
     build = _build_command_installs_only()  # 🔴 echo 산문 제거본
     reqs = _REQUIREMENTS.read_text(encoding="utf-8")
     apt = _apt_packages()
-    setup = _setup_cmds()
 
     for tok in tokens:
         # 🔴 하이픈·`@`·단어 이웃을 제외한 엄격 경계 — `\b` 는 `@typescript-eslint/parser` 의
@@ -147,8 +141,6 @@ def _is_actually_provisioned(binary: str) -> bool:
         if re.search(rf"(?<![-@\w]){re.escape(tok)}(?![-\w])", build):
             return True
         if any(tok == p or tok in p for p in apt):
-            return True
-        if tok in setup:
             return True
         if re.search(rf"^{re.escape(tok)}[=<>\[]", reqs, re.M | re.I):
             return True
@@ -195,7 +187,7 @@ def test_non_optional_analyzers_are_actually_provisioned():
     }
     assert not broken, (
         f"조달된다고 선언했으나 실제 출처가 없는 analyzer: {broken}\n"
-        "→ buildCommand/aptPkgs/requirements 중 한 곳에 추가하거나 optional 로 재분류할 것."
+        "→ Dockerfile 설치/apt/requirements 중 한 곳에 추가하거나 optional 로 재분류할 것."
     )
 
 
@@ -246,7 +238,7 @@ def test_guard_detects_unregistered_new_analyzer():
 
 def test_provisioning_detector_distinguishes_present_and_absent():
     """조달 탐지기 양성/음성 통제 — 항상 True/False 를 뱉으면 위 단언이 전부 무의미하다."""
-    assert _is_actually_provisioned("tflint") is True, "buildCommand 설치분을 못 본다"
-    assert _is_actually_provisioned("cppcheck") is True, "aptPkgs 를 못 본다"
+    assert _is_actually_provisioned("tflint") is True, "Dockerfile 설치분을 못 본다"
+    assert _is_actually_provisioned("cppcheck") is True, "apt 설치를 못 본다"
     assert _is_actually_provisioned("pylint") is True, "requirements 를 못 본다"
     assert _is_actually_provisioned("definitely-not-a-real-binary-xyz") is False, "항상 True 를 뱉는다"

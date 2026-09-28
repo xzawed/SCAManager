@@ -170,6 +170,8 @@ def _stdin(payload: str):
     ("src/templates/x.html", True),
     ("alembic/versions/0001_x.py", True),
     ("railway.toml", True),
+    ("Dockerfile", True),
+    (".dockerignore", True),
     ("src/main.py", False),
 ])
 def test_shared_predicate_still_classifies_the_documented_paths(path, expected):

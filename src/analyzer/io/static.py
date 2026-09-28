@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 # (`uncovered_language` 와 동급). 이 구분이 없으면 조달 계획이 없는 언어의 리포는
 # auto-merge 가 **영구 불가**가 된다 — 손댈 수 없는 이유로 차단되는 것이라 게이트가 아니라 벽이다.
 #
-# 🔴 이 목록은 산문이 아니라 **계약**이다. `railway.toml`·`nixpacks.toml`·`requirements.txt`·
+# 🔴 이 목록은 산문이 아니라 **계약**이다. `Dockerfile`·`requirements.txt`·
 # `package.json` 의 실제 조달과 대조하는 회귀 가드가 있다
 # (`tests/unit/analyzer/test_procurement_contract.py`) — 조달을 추가/제거하면 여기도 바꿔야 한다.
 # 목록이 실제 조달과 갈라지면 (a) 조달했는데 미등재 = 회귀를 못 잡음 (b) 미조달인데 등재 =
@@ -51,9 +51,9 @@ logger = logging.getLogger(__name__)
 # regression (block); an unlisted tool's absence means the product never covered that language
 # (surface only). A guard cross-checks this against the real provisioning files.
 PROVISIONED_ANALYZERS: frozenset[str] = frozenset({
-    # nixpacks.toml aptPkgs
+    # Dockerfile apt-get · gem
     "shellcheck", "cppcheck", "rubocop",
-    # railway.toml buildCommand (직접 설치 / installed explicitly)
+    # Dockerfile 직접 설치 / installed explicitly
     "golangci-lint", "hadolint", "ktlint", "tflint",
     # Python 의존성 (requirements.txt)
     "pylint", "flake8", "bandit", "semgrep", "sqlfluff", "yamllint", "slither",
@@ -332,7 +332,7 @@ def analyze_file(  # pylint: disable=too-many-locals
         # `unavailable_tools`(바이너리 부재)를 무조건 incomplete 로 올리면, 배포 이미지가
         # **애초에 설치하지 않는** 도구의 언어는 auto-merge 가 **영구 불가**가 된다. 실측:
         # 등록 24 분석기 중 8종(buf_lint·clippy·dart_analyze·htmlhint·phpstan·psscriptanalyzer·
-        # stylelint·swiftlint)이 railway.toml·nixpacks.toml·requirements.txt·package.json
+        # stylelint·swiftlint)이 Dockerfile·requirements.txt·package.json
         # 어디에도 조달 흔적이 없다 → rust·dart·php·powershell·css·swift·protobuf·html
         # 리포는 손댈 수 없는 이유로 영구 차단이었다. (C# 은 전담 어댑터가 아예 없다 — #1565) `#1245` 본문이 스스로
         # "차단 없이 가시화만" 이라 적은 것과 정면 모순이기도 하다.

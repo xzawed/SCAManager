@@ -434,11 +434,11 @@ jobs:
       # 🔴 `npm ci` 필수 — eslint 분석기의 flat config(`src/analyzer/configs/*.mjs`)가
       # `@typescript-eslint/parser` 를 **리포 로컬**에서 import 한다. 전역 설치본은 설정 파일
       # 위치 기준 해석에 걸리지 않아 `ERR_MODULE_NOT_FOUND` 로 죽는다(#1226 CI 실측).
-      # 운영(railway.toml)은 buildCommand 끝에서 이미 `npm ci` 를 돌리므로 이 step 이 CI 를
+      # 운영 이미지(`Dockerfile`)도 `npm ci --ignore-scripts` 를 돌리므로 이 step 이 CI 를
       # 운영과 일치시킨다. `--ignore-scripts` = 공급망 hardening(빌드 산출물 미사용).
       # 🔴 `npm ci` is required: the analyzer's flat config imports @typescript-eslint/parser from
       # the repo-local node_modules; a global install is not resolvable from the config's location.
-      # Railway already runs `npm ci`, so this aligns CI with production.
+      # The production image runs the same `npm ci`, so this aligns CI with production.
       - name: Install npm dependencies (analyzer eslint flat config)
         run: npm ci --ignore-scripts
 
@@ -458,19 +458,16 @@ jobs:
       # 에 실바이너리 테스트가 0건이었다 — 조달되지 않으니 쓸 수가 없었다.
       # 계약의 뜻은 「이 도구가 사라지면 배포 회귀다」인데, 그 주장을 아무도 확인한 적이 없었다.
       #
-      # 🔴 `|| echo WARNING` 으로 삼키지 않는다. `railway.toml` 은 배포 가용성을 위해 삼키고
-      # 그 부재는 런타임이 `incomplete` 로 잡는다(#1410). CI 는 반대다 — **여기가 조달이
-      # 실제로 되는지 확인하는 유일한 자리**이므로 실패는 red 여야 한다. 일시적 네트워크
-      # 실패는 `gh run rerun --failed` 로 처리한다(인프라 실패는 재실행, 재발은 롤백).
+      # 🔴 `|| echo WARNING` 으로 삼키지 않는다 — 실패는 red 다. 일시적 네트워크 실패는
+      # `gh run rerun --failed` 로 처리한다(인프라 실패는 재실행, 재발은 롤백).
       #
-      # 🔴 버전은 `railway.toml` 과 맞춘다 — CI 가 운영과 다른 버전을 검증하면 그 초록은
-      # 운영에 대해 아무 말도 하지 않는다.
-      # Provision the whole contract in CI; failures are red here (unlike Railway, which
-      # degrades gracefully because runtime detection catches absence).
-      - name: Install contracted analyzers (조달 계약 전량 — railway.toml 과 동일 버전)
+      # 🔴 버전은 운영 이미지(`Dockerfile`)와 맞춘다 — CI 가 운영과 다른 버전을 검증하면 그
+      # 초록은 운영에 대해 아무 말도 하지 않는다(`test_ci_provisions_the_contract.py` 가 대조).
+      # Provision the whole contract in CI with the Dockerfile's pins; failures are red.
+      - name: Install contracted analyzers (조달 계약 전량 — Dockerfile 과 동일 버전)
         run: |
           set -euo pipefail
-          # 🔴 `sudo` — Railway 빌드는 root 로 돌지만 GitHub 러너는 아니다. `--bindir /usr/bin`
+          # 🔴 `sudo` — 이미지 빌드는 root 로 돌지만 GitHub 러너는 아니다. `--bindir /usr/bin`
           #    같은 시스템 경로 쓰기는 여기서 `Gem::FilePermissionError` 가 된다(CI 실측).
           #    경로는 운영과 맞춘다(`/usr/bin`) — 경로가 갈리면 PATH 해석 차이가 숨는다.
           sudo gem install rubocop-ast -v 1.36.2 --no-document --bindir /usr/bin
@@ -478,7 +475,7 @@ jobs:
           curl -sSfL --retry 3 https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh \
             | sudo sh -s -- -b /usr/bin v1.55.2
           # 🔴 이 3종은 `latest` 였다 (2026-08-19 정정). 형제는 전부 핀인데 여기만 상류 릴리스가
-          #    리포 변경 0줄로 파이프라인을 바꿀 수 있었고, CI 와 Railway 가 `latest` 를 **다른
+          #    리포 변경 0줄로 파이프라인을 바꿀 수 있었고, CI 와 운영이 `latest` 를 **다른
           #    시점에** 해석해 조용히 갈렸다. 버전을 올릴 때는
           #    `tests/integration/test_contracted_analyzers_real_binary.py` 가 새 바이너리의
           #    출력으로 파서 계약을 다시 잰다 — 핀만 바꾸고 그 테스트를 안 돌리면 의미가 없다.
@@ -495,7 +492,7 @@ jobs:
           npm install -g 'typescript@>=6.0.3 <6.1.0'
           # slither 는 pip(requirements.txt)로 오지만 Solidity 를 실제로 분석하려면 solc 가 필요하다.
           # 🔴 `solc-select` 는 requirements.txt 에 **없다** — slither-analyzer 의 전이 의존에
-          #    기대고 있다(railway.toml 도 같은 가정). 전이가 끊기면 이 step 이 하드 실패하므로
+          #    기대고 있다(Dockerfile 도 같은 가정). 전이가 끊기면 이 step 이 하드 실패하므로
           #    부재 시에만 명시 설치한다. 있으면 no-op 이라 운영과 갈리지 않는다.
           # solc-select is only a transitive dep; install it explicitly if that ever breaks.
           command -v solc-select >/dev/null || pip install solc-select
@@ -639,6 +636,83 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
 
+  # 운영 이미지 — 루트 `Dockerfile` 이 썩지 않게 매 PR 에서 빌드하고, 그 안에서 분석기를 실제로 돌린다.
+  # 빌드 자체가 `PROVISIONED_ANALYZERS` 부재를 실패로 만든다. 여기서는 그 위에 (1) 런타임 사용자
+  # (비-root)로 각 도구가 **실행되는지** (2) 정확 핀 도구의 버전이 Dockerfile 핀과 같은지
+  # (3) `$PORT` 로 기동해 `/health` 가 200 인지를 본다.
+  # Build the production image on every PR and exercise it: analyzers run as the non-root user,
+  # exact-pinned versions match the Dockerfile, and the app serves /health on the injected $PORT.
+  docker-image:
+    name: Dockerfile build + analyzer contract
+    runs-on: ubuntu-latest
+    needs: secret-scan
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      # gha 캐시 — 분석기·pip 레이어가 캐시되면 코드만 바뀐 PR 은 수십 초로 끝난다.
+      # The gha cache keeps analyzer and pip layers warm; code-only PRs rebuild in seconds.
+      - name: Build image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          tags: scam-ci:local
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # 🔴 목록은 코드에서, 기대 버전은 이미지 안의 Dockerfile 에서 읽는다 — 여기에 사본을 두지 않는다.
+      #    ktlint 는 JVM 이 없으면 실행하지 않는다 — 어댑터도 같은 이유로 게이트한다(#1578).
+      # Tools come from the code and expected versions from the image's own Dockerfile: no copies here.
+      - name: Analyzers run as the runtime user with the pinned versions
+        run: |
+          docker run --rm -i scam-ci:local python - <<'PY'
+          import re, shutil, subprocess, sys
+          from src.analyzer.io.static import PROVISIONED_ANALYZERS
+          lines = open("Dockerfile", encoding="utf-8").read().splitlines()
+          steps = re.sub(r"\\\s*\n\s*", " ", "\n".join(l for l in lines if not l.lstrip().startswith("#")))
+          pins = dict(re.findall(r"(hadolint|tflint)/releases/download/v([\d.]+)/", steps))
+          pins |= dict(re.findall(r"gem\s+install\s+(rubocop)\s+-v\s+([\d.]+)", steps))
+          pins |= {"golangci-lint": re.search(r"install\.sh.*?-b\s+/usr/bin\s+v([\d.]+)", steps).group(1),
+                   "solc": re.search(r"solc-select\s+install\s+([\d.]+)", steps).group(1)}
+          bad = []
+          for tool in sorted(PROVISIONED_ANALYZERS | {"solc", "alembic", "uvicorn"}):
+              if shutil.which(tool) is None:
+                  bad.append(f"{tool}: PATH 에 없음")
+                  continue
+              if tool == "ktlint" and shutil.which("java") is None:
+                  print(f"{tool:14} 실행 생략 — JVM 미조달(어댑터가 java 로 게이트)")
+                  continue
+              r = subprocess.run([tool, "--version"], capture_output=True, text=True, timeout=120)
+              out = (r.stdout + r.stderr).strip()
+              print(f"{tool:14} rc={r.returncode} {out.splitlines()[:2]}")
+              if r.returncode != 0:
+                  bad.append(f"{tool}: --version rc={r.returncode}")
+              elif tool in pins and pins[tool] not in out:
+                  bad.append(f"{tool}: 핀 {pins[tool]} 이 아니다")
+          if len(pins) < 5:
+              bad.append(f"Dockerfile 핀을 {len(pins)}개만 읽었다 — 정규식이 깨졌다: {pins}")
+          print("pins:", pins)
+          sys.exit("🔴 " + " · ".join(bad) if bad else 0)
+          PY
+
+      # 🔴 Railway 는 `$PORT` 를 주입한다. 이미지 CMD 가 그것을 확장하지 못하면 여기서 red 다.
+      # Railway injects $PORT; if the image CMD cannot expand it, this step is red.
+      - name: Image serves /health on the injected $PORT
+        run: |
+          docker run -d --name smoke -p 8123:8123 -e PORT=8123 \
+            -e DATABASE_URL=sqlite:////tmp/smoke.db -e TELEGRAM_BOT_TOKEN=123:ABC \
+            -e TELEGRAM_CHAT_ID=-100123 scam-ci:local
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8123/health; then docker rm -f smoke >/dev/null; exit 0; fi
+            sleep 2
+          done
+          docker logs smoke
+          exit 1
+
   # SKIP LOCKED 동시성 증명 — Postgres service container (SQLite 미지원 FOR UPDATE SKIP LOCKED).
   # claim_batch 의 SKIP LOCKED 회귀를 CI 에서 실측 차단 (Theme B S3). test-and-analyze 와 병렬(needs: secret-scan).
   # SKIP LOCKED concurrency proof — needs a real Postgres (SQLite has no FOR UPDATE SKIP LOCKED).
@@ -757,7 +831,7 @@ jobs:
       # 없다 → 서버가 404(HTML)를 주고 브라우저가 `Refused to apply style from …` 을 낸다.
       # 실제로 `test_dashboard_no_js_runtime_errors` 가 이 이유로 red 였고, 그것을 CSP
       # 결함(#1294)과 **구별할 수 없었다** — 한 테스트에 두 원인이 겹쳐 있었다.
-      # `railway.toml` 의 배포 빌드도 `npm ci && npm run build` 로 끝난다(동일 형태 맞춤).
+      # 운영 이미지(`Dockerfile`)도 `npm ci --ignore-scripts` 뒤 `npm run build` 를 돌린다(동일 형태 맞춤).
       # Without the CSS build the job tests a shape that cannot exist in production.
       - name: Set up Node
         uses: actions/setup-node@v7

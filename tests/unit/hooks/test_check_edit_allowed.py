@@ -98,6 +98,9 @@ _PROTECTED_PATHS = [
     "alembic/versions/0001_x.py",
     "src/templates/settings.html",
     "railway.toml",
+    "Dockerfile",
+    ".dockerignore",
+    "D:\\Source\\SCAManager\\Dockerfile",
     "alembic.ini",
     # Windows 백슬래시 형 — :56 replace("\\", "/") 정규화 동작 보존 검증.
     # Windows backslash form — preserves the :56 replace("\\", "/") normalization.
@@ -159,6 +162,11 @@ def test_protected_path_allowed_when_test_env_exists(hook, monkeypatch):
         # Not matched due to the end anchor — `railway\.toml$` rejects suffixed names.
         "railway.toml.bak",
         "myalembic.ini.md",
+        # `(^|/)Dockerfile$` — 접두·접미가 붙은 이름과 소문자 분석기 모듈은 비보호다.
+        # Prefixed/suffixed names and the lowercase analyzer module are not protected.
+        "Dockerfile.bak",
+        "MyDockerfile",
+        "src/analyzer/pure/review_guides/tier3/dockerfile.py",
     ],
 )
 def test_similar_but_unprotected_paths_are_not_blocked(hook, monkeypatch, path):

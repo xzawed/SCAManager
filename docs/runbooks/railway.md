@@ -1,11 +1,10 @@
 # Railway 배포·운영
 
 ## 빌드·배포
-- push 성공 ≠ 빌드 성공 — `railway.toml`·`nixpacks.toml`·`requirements*` 변경은 빌드 로그 실측.
-- 빌드 명령은 `railway.toml` `buildCommand` 에만 — npm 있으면 NIXPACKS 가 `npm run build` 추가, 억제 수단은 이것뿐.
-- 시스템 패키지 = `nixpacks.toml` `aptPkgs`(`unzip` 없으면 tflint 실패). Python 은 기본 venv+pip — `[phases.install]`·`nixPkgs` = pip exit 127.
-- 전역 설치는 `|| echo WARNING` 로 감싸고 gem/npm transitive 도 핀(`rubocop-ast`).
-- 게이트 = `preDeployCommand = alembic upgrade head`, 대시보드 Pre-deploy 는 비운다.
+- push 성공 ≠ 빌드 성공 — `Dockerfile`·`railway.toml`·`requirements*` 변경은 빌드 로그 실측(`Using detected Dockerfile`).
+- 빌드 정본 = 루트 `Dockerfile`. 설치 실패를 삼키지 않는다(삼킨 실패는 레이어에 캐시된다). gem transitive 도 핀(`rubocop-ast`).
+- 시작 명령은 exec 형 — 대시보드 Start Command 는 비우거나(이미지 `CMD`) `/bin/sh -c "exec …"` 로 감싼다.
+- 게이트 = `preDeployCommand = alembic upgrade head` — 대시보드 Pre-deploy 도 같은 값(2026-12-01 뒤 유일 출처).
 - `GET /health`=`{"status":"ok"}`(timeout 60), 내부 상태 미노출(`tests/unit/test_main.py`).
 
 ## DB
