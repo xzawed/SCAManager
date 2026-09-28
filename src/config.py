@@ -41,6 +41,20 @@ def _drop_blank_sslmode(url: str) -> str:
     return head + ('?' + rest if rest else '') + hmark + frag
 
 
+def _query_separator(url: str) -> str:
+    """`sslmode=require` 앞에 붙일 구분자 — `_drop_blank_sslmode` 와 같은 원문 분할로 정한다.
+
+    `?` 가 없으면 `?`, 맨 `?`(빈 쿼리)면 빈 문자열, 아니면 `&`. urlparse 로 정하면 안 된다 —
+    urlsplit 은 TAB/CR/LF 를 지워 `?\\r` 같은 원문 쿼리를 빈 쿼리로 읽고 `?` 를 한 번 더 붙인다.
+    The separator for the appended `sslmode=require`, from the same raw split the blank-token cut
+    uses; urlparse strips TAB/CR/LF and would read a raw `?\\r` query as empty.
+    """
+    body = url.partition('#')[0]
+    if '?' not in body:
+        return '?'
+    return '&' if body.partition('?')[2] else ''
+
+
 class Settings(BaseSettings):
     """Centralised configuration — all values read from environment / .env file."""
     database_url: str
@@ -252,7 +266,7 @@ class Settings(BaseSettings):
         is_supabase = host.endswith('.supabase.co') or host.endswith('.supabase.com')
         if is_supabase and 'sslmode' not in parse_qs(parsed.query):
             v = _drop_blank_sslmode(v)
-            v += ('&' if urlparse(v).query else '?') + 'sslmode=require'
+            v += _query_separator(v) + 'sslmode=require'
         return v
 
     @field_validator("claude_review_model", "claude_insight_model", mode="before")

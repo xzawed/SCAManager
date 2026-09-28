@@ -270,6 +270,25 @@ def test_supabase_blank_sslmode_becomes_single_require(monkeypatch, raw, expecte
     assert make_url(s.database_url).query["sslmode"] == "require"
 
 
+@pytest.mark.parametrize("raw, expected", [
+    # 맨 `?`(빈 쿼리) — 전에는 `??sslmode=require` 였다(psycopg2 가 "?sslmode" 옵션으로 거절).
+    ("postgresql://u:p@db.abc.supabase.co/postgres?",
+     "postgresql+psycopg2://u:p@db.abc.supabase.co/postgres?sslmode=require"),
+    # 빈 토큰을 자른 뒤 남는 것이 제어 문자뿐 — urlparse 는 TAB/CR/LF 를 지워 쿼리가 빈 줄로 읽고
+    # `?` 를 한 번 더 붙였다(독립 리뷰 적발). 구분자는 자른 원문 쿼리로 정한다.
+    ("postgresql://u:p@db.abc.supabase.co/postgres?sslmode=&\r",
+     "postgresql+psycopg2://u:p@db.abc.supabase.co/postgres?\r&sslmode=require"),
+    ("postgresql://u:p@db.abc.supabase.co/postgres?\t&sslmode=",
+     "postgresql+psycopg2://u:p@db.abc.supabase.co/postgres?\t&sslmode=require"),
+])
+def test_supabase_require_is_appended_with_a_single_query_mark(monkeypatch, raw, expected):
+    # 구분자는 `_drop_blank_sslmode` 가 쪼갠 «원문» 쿼리로 정한다 — urlparse 의 정규화된 쿼리가 아니다.
+    # The separator follows the raw query the blank-token cut split, not urlparse's normalised one.
+    s = _reload_settings(monkeypatch, extra={"DATABASE_URL": raw})
+    assert s.database_url == expected
+    assert s.database_url.count("?") == 1
+
+
 @pytest.mark.parametrize("url", [
     # 실제 값이 있으면 운영자 선택이다 / a real value is the operator's choice
     f"{_SB_PINNED}?sslmode=disable",
