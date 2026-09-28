@@ -26,6 +26,7 @@ from src.logging_config import configure_logging
 from src.constants import GITHUB_API
 from src.middleware.rate_limiter import limiter
 from src.shared.http_client import close_http_client, init_http_client
+from src.shared.loop_lag import start_loop_lag_probe, stop_loop_lag_probe
 from src.webhook.router import router as webhook_router
 from src.api.repos import router as api_repos_router
 from src.api.repo_report import router as api_repo_report_router
@@ -333,10 +334,14 @@ async def lifespan(_app: FastAPI):
     # 운영(is_production)에서만 기동 — 테스트/로컬의 lifespan 은 태스크를 띄우지 않는다.
     # In-app scheduler replacing the Railway cron config that never ran; production-only.
     scheduler_tasks = scheduler.start(settings)
+    # 이벤트 루프 지연 프로브 — 루프를 막는 동기 호출을 창마다 WARNING 한 줄로 남긴다(`event loop lag`).
+    # Event-loop lag probe: one WARNING per window (`event loop lag`) when sync work blocks the loop.
+    lag_probe = start_loop_lag_probe()
 
     try:
         yield
     finally:
+        await stop_loop_lag_probe(lag_probe)
         await scheduler.stop(scheduler_tasks)
         await close_http_client()
 

@@ -367,3 +367,26 @@ async def test_scheduler_tasks_do_not_leak_after_lifespan(boot_env, monkeypatch)
         f"lifespan 종료 후 루프에 스케줄러 태스크 잔류: "
         f"{[t.get_name() for t in _live_scheduler_tasks()]}"
     )
+
+
+# --------------------------------------------------------------------------------------
+# 4. 이벤트 루프 지연 프로브 / event-loop lag probe
+# --------------------------------------------------------------------------------------
+
+async def test_lifespan_runs_one_loop_lag_probe_and_stops_it(boot_env):  # pylint: disable=unused-argument
+    """🔴 lifespan 이 루프 지연 프로브를 **하나** 띄우고, 끝나면 멈춘다 — 루프에서 직접 관측한다.
+
+    프로브가 없으면 루프를 막는 동기 호출(웹훅 202 가 10~48 s 늦은 원인)이 운영 로그에 흔적을 남기지 않는다.
+    Without the probe, a sync call blocking the loop leaves no trace in the production log.
+    """
+    from src.shared.loop_lag import PROBE_TASK_NAME  # pylint: disable=import-outside-toplevel
+
+    def _probes() -> list:
+        return [t for t in asyncio.all_tasks() if t.get_name() == PROBE_TASK_NAME]
+
+    async with lifespan(app):
+        started = _probes()
+        assert len(started) == 1, [t.get_name() for t in asyncio.all_tasks()]
+
+    assert started[0].done(), "lifespan 종료 후에도 프로브가 돌고 있다 — stop 미호출/미대기"
+    assert not _probes()
