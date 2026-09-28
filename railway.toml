@@ -5,7 +5,8 @@ builder = "DOCKERFILE"
 
 [deploy]
 # 🔴 셸 래핑 필수 — Dockerfile 빌드의 시작 명령은 exec 형이라 `$PORT` 를 확장하지 않는다.
-#   이 키를 빼면 대시보드의 래핑 안 된 Start Command 가 적용돼 기동이 깨진다(이미지 CMD 와 같은 명령).
+#   이 값은 이미지 CMD 와 같은 명령이다(포트 기본값만 다름). 이 키를 빼면 대시보드에 저장된
+#   래핑 안 된 Start Command 가 적용돼 기동이 깨진다.
 # Must be shell-wrapped: Dockerfile start commands run in exec form and never expand $PORT.
 startCommand = '/bin/sh -c "exec uvicorn src.main:app --host 0.0.0.0 --port $PORT --proxy-headers"'
 # Pre-deploy: 새 컨테이너가 트래픽 받기 전 DB 마이그레이션 실행 (loud-fail — 실패 시 배포 중단).
