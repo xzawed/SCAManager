@@ -49,10 +49,10 @@ def _query_separator(url: str) -> str:
     The separator for the appended `sslmode=require`, from the same raw split the blank-token cut
     uses; urlparse strips TAB/CR/LF and would read a raw `?\\r` query as empty.
     """
-    body = url.partition('#')[0]
-    if '?' not in body:
+    _, mark, query = url.partition('#')[0].partition('?')
+    if not mark:
         return '?'
-    return '&' if body.partition('?')[2] else ''
+    return '&' if query else ''
 
 
 class Settings(BaseSettings):
