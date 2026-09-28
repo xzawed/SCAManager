@@ -8,7 +8,7 @@
 | /docs·/redoc·/openapi.json 차단 | prod 만 | `src/main.py::docs_url=` |
 | 세션 쿠키 Secure·lax·7일 | Secure 는 prod 만 | `src/main.py::max_age=60 * 60 * 24 * 7` |
 | CORS = APP_BASE_URL 단일 출처 | APP_BASE_URL 있을 때 | `src/main.py::allow_origins=[_CORS_ORIGIN]` |
-| Rate limit 60/분 (메모리) · 키 = 피어가 Railway 엣지 `100.64.0.0/10` 이면 X-Real-IP(IPv6 /64), 아니면 uvicorn client | 데코레이터 부착 라우트 | `src/middleware/rate_limiter.py::def rate_limit_key` |
+| Rate limit 60/분 (메모리) · 키 = 피어가 Railway 엣지 `100.64.0.0/10` 이면 X-Real-IP(IPv6 /64), 아니면 uvicorn client · 429 WARNING 에 이 키가 남는다(Railway HTTP 로그 `@srcIp` 와 같은 정보 — 수락) | 데코레이터 부착 라우트 | `src/middleware/rate_limiter.py::def rate_limit_key` |
 | RLS user_id 전파 | 모든 HTTP | `src/middleware/rls_session.py::async def __call__` |
 | 로그 시크릿 마스킹 | 전 로거 | `src/logging_config.py::def _redact(` |
 
