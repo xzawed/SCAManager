@@ -294,7 +294,8 @@ def test_insights_without_refresh_null_owner_still_returns_200(insights_client, 
 
 
 def test_insights_refresh_owner_still_returns_200(insights_client, db_session, viewer):
-    """소유자 리포 강제 갱신(?refresh=1) → 200 (기존 계약 불변)."""
+    """소유자 리포 강제 갱신(?refresh=1) → 303(PRG) 뒤 도착 페이지 200 — TestClient 가 리다이렉트를 따른다.
+    Owner refresh → 303 (PRG), then 200 at the destination; TestClient follows the redirect."""
     owned = Repository(full_name="owner/owned", user_id=viewer.id)
     db_session.add(owned)
     db_session.commit()

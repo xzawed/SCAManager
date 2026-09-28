@@ -12,6 +12,7 @@ factory is the single entry point where cost starts, so that is what these tests
 from __future__ import annotations
 
 import uuid
+from contextlib import ExitStack
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -315,3 +316,151 @@ async def test_repo_short_circuit_maps_the_recorded_class(db, owner, t0, recorde
 def test_recorded_error_status_mapping(recorded, status):
     """#1458 의 벤더/우리 구분을 기록된 클래스명으로 되살린다 — 이름 모양이 아니라 클래스 계보로."""
     assert repo_insight_service._status_for_recorded_error(recorded) == status  # pylint: disable=protected-access
+
+
+# ─── 실패 시각 = 기록 시점 (요청 시작이 아니다) ──────────────────────────────
+#
+# 호출 뒤 실패를 요청 시작 `_now` 로 찍으면 45 s 기한 실패 뒤의 부정 캐시 창이 120 s 에서 75 s 로
+# 준다. 운영은 `now=None` 이라 시각은 서비스·저장소가 스스로 읽는다 — 그래서 여기서도 now 를
+# 넘기지 않고, 가짜 호출이 두 모듈이 읽는 시계를 45 s 민다.
+# Stamping a post-call failure with the request-start `_now` shrinks the negative window from
+# 120 s to 75 s after a 45 s deadline miss. Production passes `now=None`, so these tests do too
+# and let the fake call advance the clock both modules read.
+
+
+class _Clock:
+    """서비스·캐시 저장소의 `datetime.now` 를 한 시계로 묶는다.
+    One clock behind `datetime.now` in the service and the cache repository."""
+
+    def __init__(self, t0):
+        self.t = t0
+
+    def advance(self, seconds):
+        self.t += timedelta(seconds=seconds)
+
+    def install(self, stack, *modules):
+        clock = self
+
+        class _Now(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return clock.t.astimezone(tz) if tz else clock.t.replace(tzinfo=None)
+
+        for m in modules:
+            stack.enter_context(patch.object(m, "datetime", _Now))
+
+
+def _taking(clock, seconds, make_failure):
+    """`seconds` 만큼 걸리는 실패 호출 — 운영의 45 s 기한 실패를 흉내 낸다.
+    A failing call that takes `seconds`, like the 45 s deadline miss in production."""
+    inner = make_failure()
+
+    async def create(*args, **kwargs):
+        clock.advance(seconds)
+        return await inner(*args, **kwargs)
+    return AsyncMock(side_effect=create)
+
+
+def _utc(dt):
+    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", sorted(_DASH_FAILURES))
+async def test_dashboard_failure_is_stamped_when_recorded(db, owner, t0, status):
+    user_id, repo_id = owner
+    _seed_analyses(db, repo_id, t0)
+    clock = _Clock(t0)
+    with ExitStack() as stack:
+        clock.install(stack, dashboard_service, insight_narrative_cache_repo)
+        sdk = stack.enter_context(_Sdk(dashboard_service, _taking(clock, 45, _DASH_FAILURES[status])))
+        first = await dashboard_service.insight_narrative(
+            db, days=7, api_key="sk-test", user_id=user_id, language="en")
+        assert first["status"] == status
+        stamped = _utc(db.query(InsightNarrativeCache).one().last_error_at)
+        assert stamped == t0 + timedelta(seconds=45), (
+            f"실패를 요청 시작({t0})으로 찍었다: {stamped} — 창이 호출 시간만큼 준다")
+
+        clock.advance(100)  # 실패 100 s 뒤, 요청 시작 145 s 뒤 / 100 s after the failure, 145 s after the start
+        again = await dashboard_service.insight_narrative(
+            db, days=7, api_key="sk-test", user_id=user_id, language="en")
+    assert again["status"] == status
+    assert sdk.factory.call_count == 1, "실패 뒤 120 s 창 안의 재조회가 클라이언트를 또 만들었다"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", sorted(_REPO_FAILURES))
+async def test_repo_failure_is_stamped_when_recorded(db, owner, t0, status):
+    clock = _Clock(t0)
+    with ExitStack() as stack:
+        clock.install(stack, repo_insight_service, insight_narrative_cache_repo)
+        sdk = stack.enter_context(_Sdk(repo_insight_service, _taking(clock, 45, _REPO_FAILURES[status])))
+        first = await _repo(db, owner, now=None)
+        assert first == {"text": "", "status": status}
+        stamped = _utc(db.query(InsightNarrativeCache).one().last_error_at)
+        assert stamped == t0 + timedelta(seconds=45), (
+            f"실패를 요청 시작({t0})으로 찍었다: {stamped} — 창이 호출 시간만큼 준다")
+
+        clock.advance(100)
+        again = await _repo(db, owner, now=None)
+    assert again == {"text": "", "status": status}
+    assert sdk.factory.call_count == 1, "실패 뒤 120 s 창 안의 재조회가 클라이언트를 또 만들었다"
+
+
+# ─── 조회 순서 = 성공 캐시 → 부정 캐시 ───────────────────────────────────────
+#
+# 한 키의 행이 신선한 성공과 창 안의 실패를 함께 가질 수 있다 — 캐시를 놓친 두 요청 중 하나가
+# 성공을 올린 뒤 늦게 끝난 다른 하나가 같은 행에 실패를 적으면(`record_error*` 는 응답·만료를
+# 건드리지 않는다). 그때 재조회는 성공을 돌려줘야 한다.
+# One key's row can hold a fresh success and an in-window failure at once: of two requests that
+# missed the cache, one upserts a success and the slower one then records a failure on the same
+# row (`record_error*` leaves the response and expiry alone). A reload must serve the success.
+
+_OK_DASH = {
+    "positive_highlights": ["잘했다"], "focus_areas": [], "key_metrics": [], "next_actions": [],
+    "status": "success", "generated_at": "2026-09-28T00:00:00Z", "days": 7,
+}
+
+
+@pytest.mark.asyncio
+async def test_dashboard_fresh_success_wins_over_recent_error(db, owner, t0):
+    user_id, repo_id = owner
+    _seed_analyses(db, repo_id, t0)
+    insight_narrative_cache_repo.upsert(
+        db, user_id=user_id, days=7, language="en", response=_OK_DASH, now=t0)
+    insight_narrative_cache_repo.record_error(
+        db, user_id=user_id, days=7, language="en", error_type="api_error",
+        now=t0 + timedelta(seconds=5))
+    at = t0 + timedelta(seconds=10)
+    # 두 신호가 모두 살아 있다 — 한쪽이 죽어 있으면 순서를 재지 못한다.
+    # Both signals are live; with either dead the order would go unmeasured.
+    assert insight_narrative_cache_repo.get_fresh(
+        db, user_id=user_id, days=7, language="en", now=at) == _OK_DASH
+    assert insight_narrative_cache_repo.recent_error(
+        db, user_id=user_id, days=7, language="en", now=at) == "api_error"
+
+    with _Sdk(dashboard_service, _DASH_FAILURES["api_error"]()) as sdk:
+        out = await _dash(db, user_id, now=at)
+    assert out == _OK_DASH, f"신선한 성공 대신 {out['status']} 를 돌려줬다"
+    assert sdk.factory.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_repo_fresh_success_wins_over_recent_error(db, owner, t0):
+    user_id, repo_id = owner
+    ok = {"text": "진단 서술", "status": "success"}
+    insight_narrative_cache_repo.upsert_repo(
+        db, user_id=user_id, repo_id=repo_id, days=30, language="en", response=ok, now=t0)
+    insight_narrative_cache_repo.record_error_repo(
+        db, user_id=user_id, repo_id=repo_id, days=30, language="en", error_type="APIConnectionError",
+        now=t0 + timedelta(seconds=5))
+    at = t0 + timedelta(seconds=10)
+    assert insight_narrative_cache_repo.get_fresh_repo(
+        db, user_id=user_id, repo_id=repo_id, days=30, language="en", now=at) == ok
+    assert insight_narrative_cache_repo.recent_error_repo(
+        db, user_id=user_id, repo_id=repo_id, days=30, language="en", now=at) == "APIConnectionError"
+
+    with _Sdk(repo_insight_service, _REPO_FAILURES["api_error"]()) as sdk:
+        out = await _repo(db, owner, now=at)
+    assert out == ok, f"신선한 성공 대신 {out['status']} 를 돌려줬다"
+    assert sdk.factory.call_count == 0

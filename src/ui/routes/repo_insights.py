@@ -8,7 +8,7 @@ import logging
 from typing import Annotated, Generator
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -18,6 +18,7 @@ from src.database import SessionLocal
 from src.i18n.loader import get_text
 from src.models.repository import Repository
 from src.services.repo_insight_service import (
+    invalidate_repo_insight_narrative,
     repo_ai_suggestions,
     repo_category_breakdown,
     repo_insight_narrative,
@@ -26,7 +27,7 @@ from src.services.repo_insight_service import (
     repo_recurring_issues,
 )
 from src.shared.log_safety import sanitize_for_log
-from src.ui._helpers import get_locale, templates
+from src.ui._helpers import get_locale, redirect_without_refresh, templates
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +72,7 @@ async def repo_insights(  # pylint: disable=too-many-positional-arguments
     db: Annotated[Session, Depends(_get_db)],
     days: int = Query(default=30, ge=1, le=365),
     refresh: int = 0,
-) -> HTMLResponse:
+) -> Response:
     """리포별 코드 인사이트 페이지.
 
     Per-repository code insights page.
@@ -102,6 +103,14 @@ async def repo_insights(  # pylint: disable=too-many-positional-arguments
             detail=get_text("errors.repo_unclaimed", get_locale(request)),
         )
 
+    # 새로 고침은 PRG — 위 가드를 모두 지난 뒤 캐시만 지우고 refresh 를 뺀 주소로 303.
+    #   재생성은 그 GET 이 캐시 miss 로 한다. 주소에 refresh 가 남으면 F5 마다 유료 호출이 다시 나간다.
+    # Refresh is PRG: past every guard above, invalidate and 303 to the URL without refresh; that
+    #   GET regenerates on the miss. A URL keeping refresh restarted a paid call on every F5.
+    if refresh:
+        invalidate_repo_insight_narrative(db, user_id=current_user.id, repo_id=repo.id, days=days)
+        return redirect_without_refresh(request)
+
     kpi = repo_kpi(db, repo.id, days)
     recurring = repo_recurring_issues(db, repo.id, days)
     problem_files = repo_problem_files(db, repo.id, days)
@@ -120,7 +129,6 @@ async def repo_insights(  # pylint: disable=too-many-positional-arguments
             repo_full_name=repo.full_name,
             kpi=kpi,
             recurring=recurring,
-            refresh=bool(refresh),
             user_id=current_user.id,
             language=get_locale(request),
         )
