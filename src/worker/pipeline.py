@@ -1,6 +1,9 @@
 """Analysis pipeline — orchestrates static analysis, AI review, scoring, and notifications."""
 import asyncio
+import contextvars
 import logging
+import time
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -8,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from src.database import WorkerSessionLocal as SessionLocal
 from src.config import settings
+from src.constants import PIPELINE_MAX_CONCURRENCY
 from src.shared.log_safety import sanitize_for_log
 from src.shared.stage_metrics import stage_timer
 from src.github_client.diff import get_pr_files, get_push_files, ChangedFile
@@ -953,7 +957,135 @@ async def _send_notifications(notify_tasks: list, task_names: list[str]) -> None
                              exc_info=(type(exc), exc, exc.__traceback__))
 
 
-async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disable=too-many-locals,too-many-statements
+@dataclass
+class _SlotGeneration:
+    """한 이벤트 루프·한 상한에 묶인 파이프라인 슬롯 — 세마포어와 지금 기다리는 수.
+    Pipeline slots bound to one event loop and one limit — the semaphore and the waiter count.
+    """
+
+    loop: asyncio.AbstractEventLoop
+    limit: int
+    semaphore: asyncio.Semaphore
+    waiting: int = 0
+
+
+_slot_state: dict[str, _SlotGeneration] = {}
+
+# 지금 슬롯을 쥔 **태스크** — 참/거짓 표시가 아니다. 슬롯 안에서 만든 태스크는 문맥을 복사해 이 값을
+# 물려받지만 자기 자신이 아니므로 재진입으로 거절되지 않는다(상한만 받는다).
+# The *task* holding a slot, not a flag: tasks spawned inside inherit this value with the context
+# but are not that task, so they are capped rather than rejected as re-entry.
+_slot_holder: contextvars.ContextVar["asyncio.Task[object] | None"] = contextvars.ContextVar(
+    "pipeline_slot_holder", default=None,
+)
+
+
+def _current_slots() -> _SlotGeneration:
+    """실행 중인 루프의 슬롯을 돌려준다 — 루프가 바뀌었으면 그 루프의 상한으로 새로 만든다.
+    Return the running loop's slots, rebuilt with the current limit when the loop changed.
+
+    🔴 `asyncio.Semaphore` 는 처음 기다리는 순간 그 루프에 묶여, 다른 루프에서 기다리면 RuntimeError 다.
+    운영은 루프가 하나지만 테스트는 매번 새 루프를 쓴다. 루프는 약참조하지 않는다 — uvloop 의 Loop 는
+    약참조를 못 받을 수 있다(붙잡는 것은 마지막 루프 하나뿐이다).
+    A Semaphore binds to a loop on its first wait; production has one loop, tests use a fresh one
+    each time. The loop is held strongly (only the latest) since uvloop's Loop may reject weakrefs.
+    """
+    loop = asyncio.get_running_loop()
+    slots = _slot_state.get("current")
+    if slots is None or slots.loop is not loop:
+        slots = _SlotGeneration(loop, PIPELINE_MAX_CONCURRENCY, asyncio.Semaphore(PIPELINE_MAX_CONCURRENCY))
+        _slot_state["current"] = slots
+    return slots
+
+
+@asynccontextmanager
+async def _pipeline_slot():
+    """분석 파이프라인 슬롯 하나를 쥔다 — 비었으면 바로, 아니면 도착 순서대로 기다린다.
+    Hold one analysis-pipeline slot — immediately if free, otherwise wait FIFO.
+
+    기다려야 할 때만 INFO 두 줄(대기 시작·대기 끝)을 남겨 운영 로그에서 버스트가 보이게 한다.
+    Logs two INFO lines (queued / dequeued) only when it has to wait, so bursts show in the logs.
+
+    🔴 이미 슬롯을 쥔 태스크가 또 잡으면 기다리지 않고 바로 RuntimeError — 상한 2 에서는 남는 자리가
+    교착을 가려 테스트는 초록이다가 파이프라인 2 개가 겹치는 운영에서 멈춘다.
+    A task that already holds a slot gets RuntimeError instead of waiting: at a limit of 2 the spare
+    permit hides that deadlock in tests until two pipelines overlap in production.
+    """
+    me = asyncio.current_task()
+    if me is not None and _slot_holder.get() is me:
+        raise RuntimeError("this task already holds a pipeline slot — a nested acquire would deadlock")
+    slots = _current_slots()
+    queued_at: float | None = None
+    if slots.semaphore.locked():
+        queued_at = time.monotonic()
+        # 대기 수 증가와 대기 로그도 try 안 — 로그가 예외를 내도 finally 가 수를 되돌린다.
+        # The increment and the queued log sit inside the try so a raising log cannot drift the count.
+        try:
+            slots.waiting += 1
+            logger.info("pipeline queued: waiting=%d limit=%d", slots.waiting, slots.limit)
+            await slots.semaphore.acquire()
+        finally:
+            slots.waiting -= 1
+    else:
+        await slots.semaphore.acquire()
+    # 🔴 acquire 직후부터는 전부 이 try 안이다 — 대기 끝 로그도 여기서 남겨야 그것이 예외를 내도 슬롯이
+    #   새지 않는다(Grok claim-review 적발: try 밖이면 로그 예외 한 번에 슬롯 하나가 영구히 사라진다).
+    # Everything after acquire sits inside this try — even the dequeued log, or an exception
+    #   there would leak the permit for good (found by Grok claim-review).
+    holder_token = None
+    try:
+        holder_token = _slot_holder.set(me)
+        if queued_at is not None:
+            logger.info(
+                "pipeline dequeued: waited_ms=%d waiting=%d",
+                int((time.monotonic() - queued_at) * 1000), slots.waiting,
+            )
+        yield
+    finally:
+        # 반환이 먼저 — 표시 해제가 (다른 문맥에서 닫혀) 예외를 내도 슬롯은 이미 돌아갔다.
+        # Release first, so even a failing reset (closed from another context) cannot leak the permit.
+        slots.semaphore.release()
+        if holder_token is not None:
+            _slot_holder.reset(holder_token)
+
+
+def _has_no_commit_to_analyse(event: str, data: dict) -> bool:
+    """본문이 DB 에 닿기 전에 끝낼 이벤트인가 — 브랜치/태그 삭제처럼 SHA 가 비었거나 all-zeros.
+    Will the body return before any DB work — a blank or all-zeros SHA (branch/tag delete)?
+
+    판정이 예외를 내면 False — 그 페이로드는 평소처럼 슬롯을 거쳐 본문의 터미널 except 가 다룬다.
+    A raising check answers False, so that payload takes the slot path to the body's terminal except.
+    """
+    try:
+        return _is_blank_sha(_extract_event_metadata(event, data)[1])
+    except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+        return False
+
+
+async def run_analysis_pipeline(event: str, data: dict) -> None:
+    """분석 파이프라인 진입점 — 슬롯을 쥔 뒤에만 본문을 돈다(동시 `PIPELINE_MAX_CONCURRENCY` 개).
+    Pipeline entry point — runs the body only while holding a slot (at most PIPELINE_MAX_CONCURRENCY).
+
+    본문은 이벤트 루프 위에서 동기 DB 블록을 돌린다. 상한이 없으면 버스트 때 새 웹훅의 202 가 그 블록들
+    뒤에 줄 서 GitHub 10초 타임아웃에 걸린다. 무엇을 하는지는 바꾸지 않고 언제 도는지만 정한다.
+    🔴 본문(`_run_pipeline_body`)과 그 아래에서 이 함수를 다시 부르지 않는다 — 같은 태스크면
+    RuntimeError 지만, 본문이 만들어 기다리는 태스크에서 부르면 상한만큼 겹칠 때 멈춘다.
+    분석할 커밋이 없는 이벤트(브랜치 삭제)는 슬롯 없이 본문을 돌아 줄 서지 않는다.
+    The body runs sync DB blocks on the event loop; uncapped bursts made new webhooks' 202 queue
+    behind them into GitHub's 10 s timeout. This decides only *when* a pipeline runs. Never call this
+    from inside the body: the same task gets RuntimeError, but a task the body spawns and awaits
+    deadlocks once N overlap. Events with no commit (branch delete) run the body slot-free.
+    """
+    if _has_no_commit_to_analyse(event, data):
+        # 본문도 같은 판정으로 DB 에 닿기 전에 로그 한 줄 남기고 끝난다 — 동작은 그대로, 대기만 없다.
+        # The body makes the same check and returns before any DB work — same behaviour, no queueing.
+        await _run_pipeline_body(event, data)
+        return
+    async with _pipeline_slot():
+        await _run_pipeline_body(event, data)
+
+
+async def _run_pipeline_body(event: str, data: dict) -> None:  # pylint: disable=too-many-locals,too-many-statements
     """Webhook 이벤트를 받아 정적분석 + AI 리뷰 → 점수 → Gate → 알림 파이프라인을 실행한다.
 
     Args:
