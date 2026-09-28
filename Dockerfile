@@ -101,6 +101,12 @@ COPY . .
 RUN npm run build \
  && python -c "import sys; from src.analyzer.io.static import PROVISIONED_ANALYZERS as P, _binary_is_absent as absent; missing = sorted(t for t in P if absent(t)); print('provisioned analyzers missing:', missing or 'none', '/', len(P)); sys.exit(1 if missing else 0)"
 
+# 🔴 런타임 사용자의 HOME 을 못박는다 — 런타임이 /etc/passwd 로 채워 주지 않으면 golangci-lint 가
+#   빌드 캐시를 못 만들어 Go 파일이 조용히 「문제 없음」이 된다(리뷰 실측). 모든 RUN 뒤에 둬야
+#   root 로 도는 빌드 단계의 캐시가 이 디렉터리에 root 소유로 쌓이지 않는다.
+# Pin HOME for the runtime user (golangci-lint's build cache). After every RUN so root caches never land there.
+ENV HOME=/home/app
+
 # 비-root 실행 — 분석기는 PR 의 신뢰할 수 없는 코드를 돈다.
 # Run as non-root: analyzers process untrusted PR code.
 USER 10001:10001

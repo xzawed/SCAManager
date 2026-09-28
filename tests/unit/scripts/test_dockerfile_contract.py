@@ -15,6 +15,7 @@ The root Dockerfile is the build source: start command, builder and build-contex
 Exec-form start commands do not expand `$PORT`; the dashboard still holds the raw command,
 so railway.toml keeps a shell-wrapped startCommand until the file is retired.
 """
+import ast
 import fnmatch
 import re
 import shlex
@@ -26,8 +27,13 @@ from tests.unit.scripts._dockerfile import (
     DOCKERFILE,
     DOCKERIGNORE,
     RAILWAY_TOML,
+    all_invocations,
     dockerignore_patterns,
+    final_check_script,
     instructions,
+    or_operators,
+    run_steps,
+    runtime_home,
     serves_injected_port,
     start_argv,
     uvicorn_argv,
@@ -111,6 +117,97 @@ def test_image_does_not_run_as_root():
     users = [args for keyword, args in instructions(_dockerfile()) if keyword == "USER"]
     assert users, "USER 지시어가 없다 — 컨테이너가 root 로 돈다"
     assert users[-1].split(":")[0] not in ("root", "0")
+
+
+@pytest.mark.parametrize("dockerfile, expected", [
+    ("RUN useradd --create-home app\nENV HOME=/home/app\nUSER 10001", "/home/app"),
+    ("ENV A=1 HOME=/home/app\nUSER 10001", "/home/app"),
+    ("ENV HOME /home/app\nUSER 10001", "/home/app"),  # 옛 형식 / legacy form
+    # 🔴 RUN 앞 — root 로 도는 빌드 단계가 그 디렉터리에 root 소유 캐시를 남긴다
+    ("ENV HOME=/home/app\nRUN npm ci\nUSER 10001", None),
+    # 🔴 비슷한 이름·주석은 HOME 이 아니다
+    ("ENV HOMEDIR=/home/app\nUSER 10001", None),
+    ("# ENV HOME=/home/app\nUSER 10001", None),
+])
+def test_runtime_home_judgement_on_planted_dockerfiles(dockerfile, expected):
+    assert runtime_home(dockerfile) == expected
+
+
+def test_runtime_user_has_a_pinned_home():
+    """🔴 HOME 이 비면 golangci-lint 가 빌드 캐시를 못 만들어 Go 파일이 조용히 「문제 없음」이 된다.
+
+    Docker·runc 는 /etc/passwd 로 채워 주지만 모든 런타임이 그렇다는 보장은 없다(리뷰 실측).
+    Without HOME, golangci-lint cannot create its cache and every Go file silently looks clean.
+    """
+    text = _dockerfile()
+    assert runtime_home(text) == "/home/app"
+    useradds = [argv for argv in all_invocations(text) if argv[:1] == ["useradd"]]
+    assert len(useradds) == 1, useradds
+    assert "--create-home" in useradds[0], useradds[0]
+    assert useradds[0][-1] == "app", useradds[0]
+
+
+# ── 조달 계약을 빌드가 집행한다 — 실패한 Railway 빌드는 옛 배포를 유지한다 ─────────
+
+_CHECK = (
+    "from src.analyzer.io.static import PROVISIONED_ANALYZERS as P, _binary_is_absent as a; "
+    "import sys; m = [t for t in P if a(t)]; sys.exit(1 if m else 0)"
+)
+
+
+def _enforces_provisioning(script: str | None) -> bool:
+    """스크립트가 `PROVISIONED_ANALYZERS` 를 읽고 **상수가 아닌** 값으로 `sys.exit` 하는가(AST)."""
+    if script is None:
+        return False
+    nodes = list(ast.walk(ast.parse(script)))
+    reads = any(
+        isinstance(n, ast.ImportFrom) and n.module == "src.analyzer.io.static"
+        and any(alias.name == "PROVISIONED_ANALYZERS" for alias in n.names)
+        for n in nodes
+    )
+    exits = [
+        n for n in nodes
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "exit"
+        and isinstance(n.func.value, ast.Name) and n.func.value.id == "sys"
+    ]
+    return reads and any(call.args and not isinstance(call.args[0], ast.Constant) for call in exits)
+
+
+@pytest.mark.parametrize("dockerfile, expected", [
+    (f'COPY . .\nRUN npm run build && python -c "{_CHECK}"', True),
+    # 🔴 소스 복사 전 — 그 시점엔 src 가 없다
+    (f'RUN python -c "{_CHECK}"\nCOPY . .\nRUN npm run build', False),
+    # 🔴 늘 0 으로 끝난다 — 분석기가 빠져도 빌드가 초록
+    ('COPY . .\nRUN python -c "from src.analyzer.io.static import PROVISIONED_ANALYZERS; '
+     'import sys; sys.exit(0)"', False),
+    # 🔴 주석 속 확인은 실행되지 않는다
+    (f'COPY . .\n# RUN python -c "{_CHECK}"\nRUN npm run build', False),
+])
+def test_provisioning_check_judgement_on_planted_dockerfiles(dockerfile, expected):
+    assert _enforces_provisioning(final_check_script(dockerfile)) is expected
+
+
+def test_build_fails_when_a_contracted_analyzer_is_missing():
+    """🔴 소스 복사 뒤 마지막 RUN 이 조달 계약을 확인하고, 빠진 도구가 있으면 빌드를 실패시킨다."""
+    assert _enforces_provisioning(final_check_script(_dockerfile())), (
+        "마지막 RUN 에 PROVISIONED_ANALYZERS 확인(sys.exit(<판정>))이 없다 — 분석기가 빠진 이미지가 배포된다"
+    )
+
+
+@pytest.mark.parametrize("dockerfile, expected", [
+    ("RUN curl -fsSL x -o y || echo 'WARNING: disabled'", 1),
+    ("RUN curl -fsSL x -o y \\\n ||true", 1),  # 줄 이음 뒤 · 공백 없이도 연산자
+    ('RUN python -c "print(1 || 2)"', 0),  # 따옴표 안 — 연산자가 아니다
+    ("# RUN curl x || echo WARNING\nRUN curl -f x && tar xf y | tee z", 0),  # 주석 · 다른 연산자
+])
+def test_or_operator_judgement_on_planted_dockerfiles(dockerfile, expected):
+    assert sum(or_operators(step) for step in run_steps(dockerfile)) == expected
+
+
+def test_install_steps_never_swallow_a_failure():
+    """🔴 설치 실패를 `|| echo WARNING` 으로 삼키지 않는다 — 삼킨 실패는 레이어 캐시에 박혀 이후 빌드로 배포된다."""
+    swallowing = [step[:80] for step in run_steps(_dockerfile()) if or_operators(step)]
+    assert not swallowing, f"RUN 에 `||` 가 있다 — 실패가 삼켜진다: {swallowing}"
 
 
 # ── railway.toml — 컷오프 전까지 여전히 읽힌다 ─────────────────────────────

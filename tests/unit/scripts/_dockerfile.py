@@ -142,6 +142,63 @@ def apt_installs(argv: list[str]) -> set[str]:
     return {w for w in argv[2:] if not w.startswith("-")}
 
 
+def or_operators(script: str) -> int:
+    """셸 스크립트의 `||` **연산자** 개수 — 따옴표 안의 `||` 는 세지 않는다.
+
+    설치 단계의 `||` 는 실패를 삼키는 통로다(`curl … || echo WARNING`). 삼킨 실패는
+    레이어 캐시에 박혀 이후 모든 빌드로 배포된다.
+    Counts `||` operators outside quotes; in an install step it is the failure-swallowing path.
+    """
+    lexer = shlex.shlex(script, posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
+    return list(lexer).count("||")
+
+
+def env_assignments(args: str) -> list[tuple[str, str]]:
+    """ENV 인자 → (키, 값). `ENV K=V K2=V2` 와 옛 형식 `ENV K V` 둘 다."""
+    tokens = shlex.split(args)
+    if not tokens:
+        return []
+    key, sep, _ = tokens[0].partition("=")
+    if not sep:
+        return [(key, " ".join(tokens[1:]))]
+    return [(k, v) for k, _, v in (t.partition("=") for t in tokens)]
+
+
+def runtime_home(text: str) -> str | None:
+    """런타임 HOME — 마지막 RUN **뒤**의 ENV 로 정한 값만 센다. 없으면 None.
+
+    RUN 앞에서 정하면 root 로 도는 빌드 단계가 그 디렉터리에 root 소유 캐시를 남긴다.
+    Only an ENV HOME after the last RUN counts; earlier ones let root build steps own the directory.
+    """
+    home: str | None = None
+    for keyword, args in instructions(text):
+        if keyword == "RUN":
+            home = None
+        elif keyword == "ENV":
+            for key, value in env_assignments(args):
+                if key == "HOME":
+                    home = value
+    return home
+
+
+def final_check_script(text: str) -> str | None:
+    """소스 복사(`COPY . .`) 뒤 **마지막 RUN** 안의 `python -c <스크립트>`. 없으면 None."""
+    copied = False
+    last: str | None = None
+    for keyword, args in instructions(text):
+        if keyword == "COPY" and args.split()[-2:] == [".", "."]:
+            copied, last = True, None
+        elif keyword == "RUN" and copied:
+            last = args
+    if last is None:
+        return None
+    for argv in invocations(last):
+        if Path(argv[0]).name.startswith("python") and "-c" in argv[1:-1]:
+            return argv[argv.index("-c") + 1]
+    return None
+
+
 def dockerignore_patterns() -> list[str]:
     """`.dockerignore` 의 유효 패턴(주석·빈 줄 제외)."""
     return [

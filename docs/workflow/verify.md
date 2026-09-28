@@ -10,7 +10,6 @@
 ### push 전 절차
 
 1. `py -3 -m pytest tests/unit -q` **전체**. 파이프(`| tail`) 금지 — 종료코드 소실.
-   `N passed / M skipped` 보관.
 2. `py -3 scripts/pre_push_gate.py`(`--full` = pylint·bandit·unit 추가)
 3. 출력 끝 "보지 못하는 축"·인터프리터 줄 확인(로컬 초록 ≠ CI).
 4. `git push` → `gh pr create` → **도달 확인**. `git push` 의 exit 만으로는 부족하다:
@@ -63,6 +62,7 @@
 - `lint-changed-tests` — 변경 test: `flake8 --isolated --select=F401,F841` +
   dual-import · noqa 은닉 import · 미배선 dead code.
 - `repo-integrity` — stdlib 가드 전량(정본 = `pre_push_gate.py` `_INTEGRITY`).
+- `docker-image` — 운영 이미지 빌드 + 런타임 사용자로 분석기 핀·`$PORT` 의 `/health`.
 
 🔴 base 가 `main` 이 아닌 PR 은 CI 는 돌지만 **required check 가 적용되지 않는다** — 보호 대상이
 `main` 뿐이라 초록도 빨강도 머지를 막지 못한다(`repo-integrity` 가 배너로 알린다). 집행으로
