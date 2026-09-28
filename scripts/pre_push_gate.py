@@ -30,10 +30,7 @@
   어긋나 있었다. 목록이 늘면 손유지 숫자가 조용히 거짓이 된다(N지점 손유지).
   Counts are not duplicated here; the tuples above are the single source.
 
-**덮지 못한다** — 여기서 초록이어도 CI 는 red 일 수 있다:
-  · CodeQL · SonarCloud · Codecov(patch coverage) · TruffleHog · pip-audit  (서비스 의존)
-  · lint-js (node/eslint 필요) · PG-only job (PostgreSQL 서비스 필요)
-  · 통합 테스트(`tests/integration`) — `--full` 도 단위만 돈다(속도)
+**덮지 못한다** — 여기서 초록이어도 CI 는 red 일 수 있다. 목록 정본은 `_NOT_COVERED`.
 이 목록을 **출력 끝에 항상 인쇄한다** — "여기 초록 = CI 초록" 으로 읽히면 새 observer-lie 다.
 
 ## 사용법 / Usage
@@ -131,6 +128,11 @@ _NOT_COVERED = (
     "lint-js — node + eslint 필요",
     "PG-only job — PostgreSQL 서비스 필요",
     "tests/integration — 이 스크립트는 --full 에서도 단위만 돈다",
+    # 🔴 required check 인데 여기선 수집 건수(check_e2e_scope)만 본다 — 템플릿 변경이 4테마
+    #    AA 대비 e2e 를 깨뜨린 채 이 게이트가 전건 초록이었다.
+    # A required CI check; only its collection count is compared here, never a run.
+    "E2E (Playwright) — 브라우저 필요, 여기선 수집 건수만 대조. "
+    "로컬: `py -3 -m pytest e2e/ -p no:asyncio` (한 파일·`-k` 로 좁힐 수 있다)",
 )
 
 

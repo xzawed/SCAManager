@@ -231,6 +231,57 @@ def test_supabase_ssl_survives_driver_pin(monkeypatch, raw, expected):
     assert s.database_url == expected
 
 
+_SB = "postgresql://u:p@db.abc.supabase.co/postgres"
+_SB_PINNED = "postgresql+psycopg2://u:p@db.abc.supabase.co/postgres"
+
+
+@pytest.mark.parametrize("raw, expected", [
+    (f"{_SB}?sslmode=", f"{_SB_PINNED}?sslmode=require"),
+    (f"{_SB}?connect_timeout=10&sslmode=", f"{_SB_PINNED}?connect_timeout=10&sslmode=require"),
+    (f"{_SB}?sslmode=&connect_timeout=10", f"{_SB_PINNED}?connect_timeout=10&sslmode=require"),
+    (f"{_SB}?connect_timeout=10&sslmode=&application_name=x",
+     f"{_SB_PINNED}?connect_timeout=10&application_name=x&sslmode=require"),
+    # `=` 없는 맨 키도 parse_qs 가 버리는 빈 값이다 / a bare key is the same dropped blank
+    (f"{_SB}?sslmode&connect_timeout=10", f"{_SB_PINNED}?connect_timeout=10&sslmode=require"),
+    (f"{_SB}?sslmode=&sslmode=", f"{_SB_PINNED}?sslmode=require"),
+    ("postgresql://u:p@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres?sslmode=",
+     "postgresql+psycopg2://u:p@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres?sslmode=require"),
+    # 비밀번호 안의 `sslmode=` 는 쿼리가 아니다 — 인코딩형·리터럴형 둘 다 그대로 남는다.
+    # `sslmode=` inside the password is not the query; encoded and literal forms both survive.
+    ("postgresql://u:a%26sslmode%3D@db.x.supabase.co/postgres?sslmode=",
+     "postgresql+psycopg2://u:a%26sslmode%3D@db.x.supabase.co/postgres?sslmode=require"),
+    ("postgresql://u:a&sslmode=@db.x.supabase.co/postgres?sslmode=",
+     "postgresql+psycopg2://u:a&sslmode=@db.x.supabase.co/postgres?sslmode=require"),
+    ("postgresql://u:a%26sslmode%3D@db.x.supabase.co/postgres",
+     "postgresql+psycopg2://u:a%26sslmode%3D@db.x.supabase.co/postgres?sslmode=require"),
+])
+def test_supabase_blank_sslmode_becomes_single_require(monkeypatch, raw, expected):
+    # 빈 `sslmode=` 는 «없음» 이다 — 그 토큰을 남긴 채 덧붙이면 키가 둘인 URL 이 되고,
+    # 오늘은 SQLAlchemy 의 parse_qsl 이 빈 값을 버려서 require 가 우연히 이길 뿐이다.
+    # A blank sslmode is absent; appending beside it yields a duplicate key that only works
+    # because SQLAlchemy's parse_qsl happens to drop the blank.
+    from sqlalchemy.engine import make_url
+
+    s = _reload_settings(monkeypatch, extra={"DATABASE_URL": raw})
+    assert s.database_url == expected
+    # 소비자(SQLAlchemy)가 읽는 값 — 문자열 비교와 따로 선 바닥 / the consumer's own reading
+    assert make_url(s.database_url).query["sslmode"] == "require"
+
+
+@pytest.mark.parametrize("url", [
+    # 실제 값이 있으면 운영자 선택이다 / a real value is the operator's choice
+    f"{_SB_PINNED}?sslmode=disable",
+    f"{_SB_PINNED}?sslmode=verify-full&connect_timeout=10",
+    f"{_SB_PINNED}?sslmode=&sslmode=disable",
+    # Supabase 가 아니면 쓰지 않는다 — 빈 값이어도 / non-Supabase hosts are never rewritten
+    "postgresql+psycopg2://u:p@onprem-db.internal:5432/app?sslmode=",
+    "postgresql+psycopg2://u:p@onprem-db.internal:5432/app?connect_timeout=10&sslmode=",
+])
+def test_blank_sslmode_rewrite_leaves_other_urls_alone(monkeypatch, url):
+    s = _reload_settings(monkeypatch, extra={"DATABASE_URL": url})
+    assert s.database_url == url
+
+
 @pytest.mark.parametrize("env_name", ["DATABASE_URL_FALLBACK", "DATABASE_URL_WORKER", "MIGRATION_DATABASE_URL"])
 def test_empty_optional_pg_url_stays_empty(monkeypatch, env_name):
     # 빈 값은 «미설정» 이다 — 드라이버를 붙이면 빈 URL 이 설정된 URL 로 둔갑한다.
