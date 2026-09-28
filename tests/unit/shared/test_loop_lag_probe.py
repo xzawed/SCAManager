@@ -103,7 +103,7 @@ async def test_stop_inside_a_task_being_cancelled_returns_quietly():
     await asyncio.sleep(0)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
-        await task
+        _ = await task
 
     assert after_stop == [True]
     assert probe.done() and probe.cancelled()
@@ -120,7 +120,7 @@ async def test_stop_itself_cancelled_from_outside_propagates():
     assert not stopper.done()
     stopper.cancel()
     with pytest.raises(asyncio.CancelledError):
-        await stopper
+        _ = await stopper
 
     assert stopper.cancelled()
     assert probe.done()

@@ -312,7 +312,7 @@ async def test_slow_kpi_helper_does_not_stall_a_concurrent_ticker(world, monkeyp
     r = await _get(_url(page, days=14))
     elapsed = time.perf_counter() - started
     done.set()
-    await tick
+    _ = await tick
 
     assert r.status_code == 200
     # 양성 대조 — 느린 헬퍼가 실제로 불렸고 요청은 실제로 그만큼 걸렸다.

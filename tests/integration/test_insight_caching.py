@@ -24,6 +24,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
+from sqlalchemy.pool import StaticPool
 
 # ORM 모델 import 는 모듈 최상단 (lazy import 금지 — pytest-fixture-lazy-orm-import-trap.md)
 # Top-level ORM imports register Base.metadata (no lazy imports allowed)
@@ -44,7 +45,11 @@ def db():
 
     Provides an in-memory SQLite session with all ORM tables created.
     """
-    engine = create_engine("sqlite:///:memory:")
+    # 서비스가 동기 DB 를 스레드풀에서 돌리므로 한 연결을 스레드 간에 공유한다.
+    # The service runs its sync DB work in a threadpool, so share one connection across threads.
+    engine = create_engine(
+        "sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool,
+    )
     Base.metadata.create_all(engine)
     with Session(engine) as session:
         yield session

@@ -425,7 +425,7 @@ async def test_cancelled_lifespan_still_runs_every_cleanup(boot_env, monkeypatch
     assert len(probes) == 1, "전제 실패 — 프로브가 없으면 이 시나리오가 공허하다"
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
-        await task
+        _ = await task
 
     assert cleanups == ["scheduler.stop", "close_http_client"]
     assert probes[0].done()
