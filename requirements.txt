@@ -6,7 +6,7 @@ fastapi==0.141.1
 slowapi==0.1.10
 uvicorn[standard]==0.53.0
 pydantic-settings==2.15.0
-sqlalchemy==2.0.54
+sqlalchemy==2.1.0
 alembic==1.20.0
 # 온프레미스 프로덕션: psycopg2-binary → psycopg2 + libpq-dev(Ubuntu) / postgresql-devel(RHEL) 설치 권장
 # On-premises production: replace psycopg2-binary with psycopg2 + libpq-dev (Ubuntu) / postgresql-devel (RHEL).
