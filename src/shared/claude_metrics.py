@@ -316,7 +316,8 @@ def log_claude_api_call(  # pylint: disable=too-many-arguments
             경우에만 0 이다.
             Do not zero these on failure: tokens are billed once the API responded.
             0 is correct only when the call itself failed.
-        status: "success" | "error" | "timeout"
+        status: "success" | "error". 페이지 기한 초과도 "error" + error_type "TimeoutError" 다.
+            A page-deadline miss is also "error" with error_type "TimeoutError".
         error_type: 에러 타입 이름 (status=="error" 일 때)
         cache_read_tokens: prompt cache 에서 읽은 토큰 수 (기본 0).
             Anthropic 정가 대비 1/10 비용으로 청구됨.
