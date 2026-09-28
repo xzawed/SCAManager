@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from src.auth.session import CurrentUser, require_login
 from src.config import settings
@@ -64,6 +65,26 @@ def _find_repo(db: Session, repo_name: str, user_id: int):
     return repo
 
 
+def _load_page_aggregates(db: Session, repo_id: int, days: int) -> tuple:
+    """페이지의 다섯 집계 — 동기 DB 라 워커 스레드에서 부른다.
+    The page's five aggregates; sync DB work, called from a worker thread.
+    """
+    return (
+        repo_kpi(db, repo_id, days),
+        repo_recurring_issues(db, repo_id, days),
+        repo_problem_files(db, repo_id, days),
+        repo_ai_suggestions(db, repo_id, days),
+        repo_category_breakdown(db, repo_id, days),
+    )
+
+
+def _load_template_attributes(repo: Repository) -> None:
+    """템플릿이 읽는 컬럼을 채운다 — 만료된 객체면 여기서 한 번 SELECT, 아니면 DB 를 건드리지 않는다.
+    Load the columns the template reads: one SELECT if the object was expired, otherwise no DB access.
+    """
+    _ = (repo.full_name, repo.user_id)
+
+
 @router.get("/repos/{repo_name:path}/insights", response_class=HTMLResponse)
 async def repo_insights(  # pylint: disable=too-many-positional-arguments
     request: Request,
@@ -84,7 +105,11 @@ async def repo_insights(  # pylint: disable=too-many-positional-arguments
         sanitize_for_log(str(days), max_len=5),
     )
 
-    repo = _find_repo(db, repo_name, current_user.id)
+    # 🔴 이 페이지의 동기 DB(조회·집계·무효화)는 전부 워커 스레드에서 — 루프에서 돌면 운영 왕복(≈0.21 s)마다
+    #   프로세스의 모든 요청이 선다 (#1701). 세션은 한 번에 한 스레드만 쓴다(순차 인계).
+    # All sync DB work on this page runs in worker threads; on the loop each production round trip
+    #   stalled every request in the process. The session is handed over sequentially.
+    repo = await run_in_threadpool(_find_repo, db, repo_name, current_user.id)
     if repo is None:
         raise HTTPException(status_code=404, detail="Repository not found")
 
@@ -108,14 +133,14 @@ async def repo_insights(  # pylint: disable=too-many-positional-arguments
     # Refresh is PRG: past every guard above, invalidate and 303 to the URL without refresh; that
     #   GET regenerates on the miss. A URL keeping refresh restarted a paid call on every F5.
     if refresh:
-        invalidate_repo_insight_narrative(db, user_id=current_user.id, repo_id=repo.id, days=days)
+        await run_in_threadpool(
+            invalidate_repo_insight_narrative, db, user_id=current_user.id, repo_id=repo.id, days=days,
+        )
         return redirect_without_refresh(request)
 
-    kpi = repo_kpi(db, repo.id, days)
-    recurring = repo_recurring_issues(db, repo.id, days)
-    problem_files = repo_problem_files(db, repo.id, days)
-    ai_suggestions = repo_ai_suggestions(db, repo.id, days)
-    breakdown = repo_category_breakdown(db, repo.id, days)
+    kpi, recurring, problem_files, ai_suggestions, breakdown = await run_in_threadpool(
+        _load_page_aggregates, db, repo.id, days,
+    )
 
     # AI 내러티브 — API 키 있을 때만
     # AI narrative — only when API key is configured
@@ -137,6 +162,9 @@ async def repo_insights(  # pylint: disable=too-many-positional-arguments
         narrative_failed = bool(narrative) and narrative.get("status") not in _NARRATIVE_NOT_FAILED
         if narrative and narrative.get("status") != "success":
             narrative = None
+        # 서술 단계의 커밋이 `repo` 를 만료시켰으면 템플릿의 `repo.*` 가 루프 위에서 SELECT 한다 — 여기서 채운다.
+        # A commit in the narrative step expired `repo`; reload it here, not from the template on the loop.
+        await run_in_threadpool(_load_template_attributes, repo)
 
     return templates.TemplateResponse(
         request,

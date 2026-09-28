@@ -24,6 +24,7 @@ import httpx2
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
+from sqlalchemy.pool import StaticPool
 
 from src.config import settings
 from src.database import Base
@@ -44,7 +45,11 @@ _FULL_BODY = '{"text": "점수가 안정적이다. 다음 단계는 테스트 �
 
 @pytest.fixture()
 def db():
-    engine = create_engine("sqlite:///:memory:")
+    # 서비스가 동기 DB 를 워커 스레드로 넘긴다(#1701) — 스레드가 같은 인메모리 DB 를 보게 한다.
+    # The services run sync DB work in worker threads; share one in-memory DB across threads.
+    engine = create_engine(
+        "sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool,
+    )
     Base.metadata.create_all(engine)
     with Session(engine) as session:
         yield session

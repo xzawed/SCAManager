@@ -56,11 +56,11 @@ async def _probe(interval: float, threshold: float, window: float,
                     worst, over, samples, threshold, now - window_start,
                 )
             window_start, samples, over, worst = now, 0, 0, 0.0
-    except asyncio.CancelledError:
-        raise
     except Exception:  # pylint: disable=broad-exception-caught  # noqa: BLE001
         # 계측이 앱을 깨면 안 된다 — 남기고 멈춘다. 되살리면 같은 오류를 반복해 로그만 채운다.
+        #   취소(CancelledError)는 BaseException 이라 여기 걸리지 않고 그대로 나간다.
         # Instrumentation must never break the app: log and stop rather than loop on the same error.
+        #   Cancellation is a BaseException, so it passes through untouched.
         logger.exception("loop lag probe stopped after an internal error")
 
 

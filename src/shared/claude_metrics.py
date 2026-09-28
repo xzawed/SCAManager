@@ -17,6 +17,7 @@ Anthropic API 가격 정책 (USD per 1M tokens, **2026-09 기준**):
 """
 import inspect
 import logging
+import threading
 
 import anthropic
 
@@ -248,6 +249,7 @@ _cache_stats: dict[str, int | float] = {
     "input_tokens": 0,
 }
 _silent_fallback_streak: int = 0  # 연속 creation>0 + read==0 카운터  # pylint: disable=invalid-name
+_stats_lock = threading.Lock()
 
 
 def reset_cache_stats() -> None:
@@ -256,10 +258,11 @@ def reset_cache_stats() -> None:
     Reset counters — for test isolation and operational manual reset.
     """
     global _silent_fallback_streak  # pylint: disable=global-statement
-    _cache_stats.update(
-        total_calls=0, cache_read_tokens=0, cache_creation_tokens=0, input_tokens=0,
-    )
-    _silent_fallback_streak = 0
+    with _stats_lock:
+        _cache_stats.update(
+            total_calls=0, cache_read_tokens=0, cache_creation_tokens=0, input_tokens=0,
+        )
+        _silent_fallback_streak = 0
 
 
 def get_cache_stats() -> dict[str, int | float]:
@@ -344,18 +347,24 @@ def log_claude_api_call(  # pylint: disable=too-many-arguments
         cache_read_tokens=cache_read_tokens,
         cache_creation_tokens=cache_creation_tokens,
     )
-    # 누적 카운터 갱신 — silent fallback 차단 streak 추적 페어
-    # Update cumulative counters — pairs with silent-fallback streak guard.
+    # 누적 카운터 갱신 — silent fallback 차단 streak 추적 페어. 인사이트 페이지는 이 함수를
+    #   워커 스레드에서 부르므로(#1701) 읽고-더하고-쓰기를 잠금 안에서 한다.
+    # Update cumulative counters (silent-fallback streak pair) under a lock: the insight pages
+    #   call this from worker threads.
     global _silent_fallback_streak  # pylint: disable=global-statement
-    _cache_stats["total_calls"] += 1
-    _cache_stats["cache_read_tokens"] += cache_read_tokens
-    _cache_stats["cache_creation_tokens"] += cache_creation_tokens
-    _cache_stats["input_tokens"] += input_tokens
-    if status == "success":
-        if cache_creation_tokens > 0 and cache_read_tokens == 0:
-            _silent_fallback_streak += 1
-        else:
-            _silent_fallback_streak = 0
+    with _stats_lock:
+        _cache_stats["total_calls"] += 1
+        _cache_stats["cache_read_tokens"] += cache_read_tokens
+        _cache_stats["cache_creation_tokens"] += cache_creation_tokens
+        _cache_stats["input_tokens"] += input_tokens
+        if status == "success":
+            if cache_creation_tokens > 0 and cache_read_tokens == 0:
+                _silent_fallback_streak += 1
+            else:
+                _silent_fallback_streak = 0
+        streak = _silent_fallback_streak
+        if status == "success" and streak >= _SILENT_FALLBACK_THRESHOLD:
+            _silent_fallback_streak = 0  # 재 alert 방지
     extra = {
         "claude_model": model,
         "duration_ms": duration_ms,
@@ -379,13 +388,12 @@ def log_claude_api_call(  # pylint: disable=too-many-arguments
         )
         # silent fallback 의심 — caching 등록만 발생 + 읽기 0 → cache 미작동
         # Suspect silent fallback — only cache writes, no reads → caching inactive.
-        if _silent_fallback_streak >= _SILENT_FALLBACK_THRESHOLD:
+        if streak >= _SILENT_FALLBACK_THRESHOLD:
             logger.warning(
                 "claude_api_call silent_cache_fallback streak=%d "
                 "(cache_creation>0 + cache_read=0 N회 연속 — system_text 1024 토큰 미달 가능)",
-                _silent_fallback_streak,
+                streak,
             )
-            _silent_fallback_streak = 0  # 재 alert 방지
     else:
         # 🔴 실패 행도 토큰·비용을 **사람이 읽는 줄에** 싣는다 (backlog R65). `extra` 에만
         # 있으면 로그 shipper 를 안 거치는 운영자에게는 실패의 비용이 보이지 않는다.

@@ -30,7 +30,7 @@ src/
 ├── api/
 ├── auth/  # 세션 가드·GitHub OAuth
 ├── ui/
-├── shared/  # http_client·log_safety·ssrf·secure_compare·rls_context
+├── shared/  # http_client·log_safety·ssrf·secure_compare·rls_context·loop_lag
 ├── middleware/  # rls_session·rate_limiter·locale
 ├── i18n/  # translations/(en·ko·ja)
 ├── templates/
