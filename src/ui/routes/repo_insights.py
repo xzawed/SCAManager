@@ -32,6 +32,10 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# 새로 고침이 도울 수 있는 실패 status — no_data·disabled·no_api_key 는 다시 불러도 같다.
+# Failure statuses Refresh can help with; no_data / disabled / no_api_key would come back the same.
+_NARRATIVE_FAILED = frozenset({"api_error", "internal_error"})
+
 
 def _get_db() -> Generator[Session, None, None]:
     """DB 세션 의존성 — 테스트에서 override 가능.
@@ -105,6 +109,7 @@ async def repo_insights(  # pylint: disable=too-many-positional-arguments
     # AI 내러티브 — API 키 있을 때만
     # AI narrative — only when API key is configured
     narrative: dict | None = None
+    narrative_failed = False
     if settings.anthropic_api_key:
         narrative = await repo_insight_narrative(
             db,
@@ -117,6 +122,9 @@ async def repo_insights(  # pylint: disable=too-many-positional-arguments
             user_id=current_user.id,
             language=get_locale(request),
         )
+        # 실패(벤더·우리 코드)면 서술 자리에 실패 줄 + 새로 고침 — 부정 캐시를 사용자가 넘는 길.
+        # On failure (vendor or ours) show a failure line with Refresh — the user's way past the negative cache.
+        narrative_failed = bool(narrative) and narrative.get("status") in _NARRATIVE_FAILED
         if narrative and narrative.get("status") != "success":
             narrative = None
 
@@ -133,6 +141,7 @@ async def repo_insights(  # pylint: disable=too-many-positional-arguments
             "ai_suggestions": ai_suggestions,
             "breakdown": breakdown,
             "narrative": narrative,
+            "narrative_failed": narrative_failed,
             "locale": get_locale(request),
         },
     )

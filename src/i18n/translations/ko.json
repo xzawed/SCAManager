@@ -897,6 +897,7 @@
     "recurring_count": "{count}회 반복",
     "kpi_security_high": "보안 HIGH",
     "narrative_title": "AI 종합 진단",
+    "narrative_failed": "AI 종합 진단을 만들지 못했습니다.",
     "refresh": "갱신",
     "recurring_ranking_title": "반복 이슈 랭킹",
     "th_message": "이슈 메시지",

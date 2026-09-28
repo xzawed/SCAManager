@@ -129,6 +129,13 @@
          style="font-size:11px; color:var(--text-2); text-decoration:none; display:inline-flex; align-items:center; min-height:24px;">↺ {{ 'repo_insights.refresh' | i18n_args(locale | default('ko')) }}</a>
     </div>
   </div>
+  {% elif narrative_failed %}
+  {# 서술 실패 — 최근 실패는 잠시 재시도를 막으므로(부정 캐시) 새로 고침 링크로 넘는다. #}
+  {# Narrative failed: a recent failure briefly blocks retries, so offer Refresh to get past it. #}
+  <div class="ri-narrative-failed">
+    <span>🤖 {{ 'repo_insights.narrative_failed' | i18n_args(locale | default('ko')) }}</span>
+    <a class="ri-narrative-failed__refresh" href="/repos/{{ repo.full_name }}/insights?days={{ days }}&refresh=1">↺ {{ 'repo_insights.refresh' | i18n_args(locale | default('ko')) }}</a>
+  </div>
   {% endif %}
 
   {# ── 2열: 반복 이슈 테이블 + 카테고리 도넛 ──────────────── #}

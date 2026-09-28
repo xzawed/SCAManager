@@ -402,9 +402,29 @@ def _log_narrative_failure(exc: Exception, status: str, output_tokens: int) -> s
     return type(exc).__name__
 
 
+def _status_for_recorded_error(error_type: str) -> str:
+    """부정 캐시에 기록된 유형을 반환 status 로 되돌린다 — 아래 except 의 #1458 벤더/우리 구분과 같은 축.
+
+    `anthropic.APIError` 하위 클래스 이름이거나 `TimeoutError` 면 `api_error`, 나머지
+    (`max_tokens` · `JSONDecodeError` · 우리 코드 예외)는 `internal_error`.
+    🔴 근사다: 기록에는 클래스명만 남아 `deadline.expired()` 를 다시 볼 수 없으므로, 기록된
+    `TimeoutError` 는 페이지 기한 초과로 간주한다(우리 코드의 TimeoutError 도 여기선 api_error 가 된다).
+    Map a recorded type back to the returned status on the same axis as the #1458 split below: an
+    `anthropic.APIError` subclass name or `TimeoutError` is `api_error`, anything else `internal_error`.
+    Approximation: only the class name was recorded, so a recorded TimeoutError is assumed to be the
+    page deadline (a TimeoutError raised by our own code also maps to api_error here).
+    """
+    if error_type == "TimeoutError":
+        return "api_error"
+    cls = getattr(anthropic, error_type, None) if error_type else None
+    if isinstance(cls, type) and issubclass(cls, anthropic.APIError):
+        return "api_error"
+    return "internal_error"
+
+
 def _record_narrative_error(
     db: Session, *, user_id: int | None, repo_id: int, days: int,
-    language: str, error_type: str, now: datetime,
+    language: str, error_type: str, now: datetime | None,
 ) -> None:
     """user_id 가 있으면 내러티브 캐시에 에러 기록 (no_data/api_error/internal_error 공통).
 
@@ -414,6 +434,10 @@ def _record_narrative_error(
     Records error_type, not the returned status: an exception class name or the literal
     `no_data` / `max_tokens` (stopped at the cap with an unreadable body). The #1458
     vendor/ours split lives in the return dict only and does not change caching behaviour.
+    부정 캐시 적중 시 status 는 `_status_for_recorded_error` 가 이 유형에서 되살린다.
+    `now=None` 이면 기록 시각은 저장소가 찍는 **지금**이다.
+    On a negative-cache hit `_status_for_recorded_error` rebuilds the status from this type;
+    `now=None` stamps the failure at record time.
     """
     if user_id is None:
         return
@@ -424,7 +448,7 @@ def _record_narrative_error(
     )
 
 
-async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many-locals
+async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many-locals,too-many-return-statements
     db: Session,
     repo_id: int,
     days: int = 30,
@@ -474,6 +498,15 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
             )
             if cached:
                 return cached
+            # 부정 캐시 — 창 안의 최근 실패면 Claude 를 부르지 않고 같은 실패를 돌려준다.
+            #   부르지 않았으니 실패를 다시 기록하지도 비용 행을 남기지도 않는다. 새로 고침은 위에서 행을 지워 넘는다.
+            # Negative cache: a recent failure is returned without calling Claude.
+            #   No call was made, so nothing is recorded or logged; Refresh gets past it by deleting the row.
+            recorded = insight_narrative_cache_repo.recent_error_repo(
+                db, user_id=user_id, repo_id=repo_id, days=days, language=language, now=_now,
+            )
+            if recorded is not None:
+                return {"text": "", "status": _status_for_recorded_error(recorded)}
 
     if not kpi.get("analysis_count"):
         _record_narrative_error(
@@ -600,9 +633,11 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
             user_id=user_id,
             **_tokens,
         )
+        # 주입된 `now`(운영에선 None → 기록 시점)로 찍는다 — 요청 시작으로 찍으면 부정 캐시 창이 호출 시간만큼 준다.
+        # Stamp with the injected `now` (None in production → record time), not the request start.
         _record_narrative_error(
             db, user_id=user_id, repo_id=repo_id, days=days,
-            language=language, error_type=error_type, now=_now,
+            language=language, error_type=error_type, now=now,
         )
         return {"text": "", "status": status}
     finally:

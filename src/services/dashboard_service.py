@@ -792,16 +792,26 @@ def _handle_insight_error(
     days: int,
     language: str,
     error_type: str,
-    now: datetime,
+    now: datetime | None,
 ) -> dict[str, Any]:
     """에러 발생 시 cache에 기록(user_id 있을 때만) 후 error 응답 dict 반환.
     Records error in cache when user_id is set, then returns error response dict.
+    `now=None` 이면 기록 시각은 저장소가 찍는 **지금**이다. `None` stamps the failure at record time.
     """
     if user_id is not None:
         insight_narrative_cache_repo.record_error(
             db, user_id=user_id, days=days, language=language, error_type=error_type, now=now,
         )
     return _build_insight_response(status=error_type, days=days)
+
+
+def _recorded_insight_status(recorded: str) -> str:
+    """부정 캐시가 돌려준 유형 → 응답 status. 이 키에는 api_error·parse_error 만 기록되지만,
+    그 밖의 값이 있어도 응답 status 계약 밖으로 새지 않게 api_error 로 접는다.
+    Map a negative-cache hit to the response status; anything outside the two recorded
+    statuses folds to api_error so the documented status set holds.
+    """
+    return recorded if recorded in ("api_error", "parse_error") else "api_error"
 
 
 def _extract_insight_json(text: str) -> str:
@@ -1051,6 +1061,15 @@ async def insight_narrative(  # pylint: disable=too-many-locals,too-many-return-
             )
             if cached is not None:
                 return cached
+            # 부정 캐시 — 창 안의 최근 실패면 KPI 집계·Claude 호출 전에 같은 실패 카드를 돌려준다.
+            #   부르지 않았으니 실패를 다시 기록하지도 비용 행을 남기지도 않는다. 새로 고침은 위에서 행을 지워 넘는다.
+            # Negative cache: a recent failure returns the same card before any KPI work or Claude call.
+            #   No call was made, so nothing is recorded or logged; Refresh gets past it by deleting the row.
+            recorded = insight_narrative_cache_repo.recent_error(
+                db, user_id=user_id, days=days, language=language, now=_now,
+            )
+            if recorded is not None:
+                return _build_insight_response(status=_recorded_insight_status(recorded), days=days)
 
     # 4 dashboard 헬퍼 호출로 컨텍스트 수집 + Phase 3 PR 5 user_id 격리
     # Collect context by invoking the 4 dashboard helpers + PR 5 user_id isolation
@@ -1090,15 +1109,19 @@ async def insight_narrative(  # pylint: disable=too-many-locals,too-many-return-
         # 취소(CancelledError)에도 AsyncAnthropic httpx 커넥션 풀을 닫는다 — FD 누수 차단 (WBS P1 · #1697).
         # Close the AsyncAnthropic pool even when the await is cancelled.
         await aclose_anthropic_client(client)
+    # 호출 뒤 실패는 주입된 `now`(운영에선 None → 기록 시점)로 찍는다 — 요청 시작(`_now`)으로 찍으면
+    #   45 s 기한 실패 뒤 부정 캐시 창이 그만큼 줄어든다.
+    # Post-call failures are stamped with the injected `now` (None in production → record time);
+    #   stamping the request start would shrink the negative window by the 45 s the call took.
     if text is None:
         return _handle_insight_error(
-            db, user_id=user_id, days=days, language=language, error_type="api_error", now=_now,
+            db, user_id=user_id, days=days, language=language, error_type="api_error", now=now,
         )
 
     cards = _parse_insight_cards(text)
     if cards is None:
         return _handle_insight_error(
-            db, user_id=user_id, days=days, language=language, error_type="parse_error", now=_now,
+            db, user_id=user_id, days=days, language=language, error_type="parse_error", now=now,
         )
 
     response = _build_insight_response(status="success", days=days, cards=cards)
