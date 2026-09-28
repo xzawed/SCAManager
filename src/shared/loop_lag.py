@@ -86,12 +86,17 @@ async def stop_loop_lag_probe(task: asyncio.Task | None) -> None:
     """
     if task is None:
         return
+    # 들어올 때의 취소 요청 수 — 이미 취소 중인 호출자(lifespan 의 finally)는 0 이 아니다.
+    #   그 수만 보고 다시 던지면 finally 의 뒤따르는 정리가 건너뛰어진다.
+    # Cancel requests pending on entry; a caller already being cancelled (the lifespan finally) is
+    #   non-zero, and re-raising on that alone would skip the rest of its cleanup.
+    current = asyncio.current_task()
+    before = current.cancelling() if current is not None else 0
     task.cancel()
     try:
         await task
     except asyncio.CancelledError:
-        # 프로브 자신의 취소만 삼킨다 — 정지를 기다리던 쪽이 취소됐으면 그대로 전파한다.
-        # Swallow only the probe's own cancellation; if the caller is being cancelled, propagate.
-        current = asyncio.current_task()
-        if current is not None and current.cancelling():
+        # 기다리는 동안 새로 들어온 취소만 전파한다 — 프로브 자신의 취소는 삼킨다.
+        # Propagate only a cancellation that arrived while waiting; swallow the probe's own.
+        if current is not None and current.cancelling() > before:
             raise

@@ -83,6 +83,49 @@ async def test_stop_is_clean_and_idempotent():
     await loop_lag.stop_loop_lag_probe(None)
 
 
+async def test_stop_inside_a_task_being_cancelled_returns_quietly():
+    """🔴 이미 취소 중인 태스크의 정리 코드에서 불러도 예외 없이 돌아온다 — 뒤따르는 정리가 돌아야 한다.
+
+    취소 중이라는 사실만으로 다시 던지면 `finally` 의 다음 줄이 건너뛰어진다(lifespan 이 그 자리다).
+    Re-raising just because the caller is already being cancelled skips the rest of its `finally`.
+    """
+    probe = loop_lag.start_loop_lag_probe()
+    after_stop: list[bool] = []
+
+    async def owner():
+        try:
+            await asyncio.Event().wait()
+        finally:
+            await loop_lag.stop_loop_lag_probe(probe)
+            after_stop.append(True)
+
+    task = asyncio.create_task(owner())
+    await asyncio.sleep(0)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert after_stop == [True]
+    assert probe.done() and probe.cancelled()
+
+
+async def test_stop_itself_cancelled_from_outside_propagates():
+    """정지를 기다리는 동안 바깥에서 취소되면 CancelledError 가 그대로 나간다 — 삼키면 취소가 사라진다.
+
+    If the stopper itself is cancelled while waiting, the CancelledError must escape, not vanish.
+    """
+    probe = loop_lag.start_loop_lag_probe()
+    stopper = asyncio.create_task(loop_lag.stop_loop_lag_probe(probe))
+    await asyncio.sleep(0)  # 정지가 프로브를 취소하고 그 끝을 기다리는 자리까지 / stopper now awaits the probe
+    assert not stopper.done()
+    stopper.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await stopper
+
+    assert stopper.cancelled()
+    assert probe.done()
+
+
 async def test_probe_failure_never_raises_into_the_app(caplog):
     """프로브 내부가 깨져도 앱으로 새지 않는다 — 한 번 기록하고 조용히 끝난다."""
     caplog.set_level(logging.WARNING, logger=_LOGGER)

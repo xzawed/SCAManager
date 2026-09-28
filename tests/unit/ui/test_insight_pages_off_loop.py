@@ -20,6 +20,7 @@ the fake `messages.create`, awaited on the loop, records the loop thread as the 
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import threading
 import time
@@ -32,10 +33,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import anthropic
 import httpx
+import itsdangerous
 import pytest
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
+from starlette.middleware.sessions import SessionMiddleware
 
 from src.auth.session import CurrentUser, require_login
 from src.config import settings
@@ -48,6 +51,7 @@ from src.models.repository import Repository
 from src.models.user import User
 from src.repositories import insight_narrative_cache_repo
 from src.services import dashboard_service, repo_insight_service
+from src.shared.rls_context import get_rls_user_id, reset_rls_user_id, set_rls_user_id
 from src.ui.routes import dashboard as dashboard_route
 from src.ui.routes import repo_insights as repo_insights_route
 
@@ -317,3 +321,54 @@ async def test_slow_kpi_helper_does_not_stall_a_concurrent_ticker(world, monkeyp
     assert elapsed >= slow
     assert max(gaps) < 0.25, (
         f"티커 최대 간격 {max(gaps):.3f}s — 느린 동기 헬퍼가 루프를 {slow}s 막았다")
+
+
+# ─── 루프 밖 SQL 도 요청의 RLS 사용자 id 를 본다 ─────────────────────────────────
+
+
+def _session_cookie(user_id: int) -> str:
+    """앱의 SessionMiddleware 가 받아 주는 서명 쿠키 — 비밀은 앱에 등록된 그 미들웨어 설정에서 꺼낸다.
+    A signed cookie the app's SessionMiddleware accepts; the secret comes from that registration.
+    """
+    secret = next(m.kwargs["secret_key"] for m in app.user_middleware if m.cls is SessionMiddleware)
+    payload = base64.b64encode(json.dumps({"user_id": user_id}).encode()).decode()
+    return itsdangerous.TimestampSigner(str(secret)).sign(payload).decode()
+
+
+@pytest.mark.parametrize("outcome", ["success", "api_error", "refresh"])
+@pytest.mark.parametrize("page", ["dashboard", "repo"])
+async def test_off_loop_sql_sees_the_request_rls_user_id(world, db, owner, page, outcome):
+    """🔴 스레드풀에서 도는 SQL 도 요청의 RLS 사용자 id 를 본다 — 운영 PG 는 그 값으로 RLS 를 건다.
+
+    서명 세션 쿠키가 실제 SessionMiddleware → RLSSessionMiddleware 를 지나고, 운영 RLS 훅과 같은
+    `before_cursor_execute` 에서 `get_rls_user_id()` 를 적는다. contextvars 를 넘기지 않는 스레드풀이면
+    루프 밖 문장이 None 을 본다(PG 에서는 deny-all).
+    A signed session cookie crosses the real middleware; the same engine hook the production RLS
+    listener uses records `get_rls_user_id()`. A threadpool that drops contextvars would see None.
+    """
+    if outcome == "success":
+        world.reply = _reply(_OK_CARDS if page == "dashboard" else _OK_REPO)
+    seen: list[tuple[threading.Thread, int | None]] = []
+
+    def _on_sql(*_a, **_k):
+        seen.append((threading.current_thread(), get_rls_user_id()))
+
+    engine = db.get_bind()
+    event.listen(engine, "before_cursor_execute", _on_sql)
+    # 테스트 쪽 컨텍스트는 비워 둔다 — owner 는 미들웨어를 거쳐서만 들어올 수 있다.
+    # Blank the test's own context so the owner id can only arrive through the middleware.
+    token = set_rls_user_id(None)
+    try:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver",
+                                     cookies={"session": _session_cookie(owner)}) as ac:
+            r = await ac.get(_url(page, days=7, refresh=outcome == "refresh"))
+    finally:
+        reset_rls_user_id(token)
+        event.remove(engine, "before_cursor_execute", _on_sql)
+
+    assert r.status_code == (303 if outcome == "refresh" else 200), r.text[:300]
+    off_loop = [uid for t, uid in seen if t is not world.loop_thread]
+    assert off_loop, "루프 밖 SQL 이 한 문장도 없다 — 단언이 공허하다"
+    wrong = [uid for uid in off_loop if uid != owner]
+    assert not wrong, f"RLS 사용자 id 없이 스레드풀에서 돈 SQL {len(wrong)}/{len(off_loop)}: {wrong[:5]}"
