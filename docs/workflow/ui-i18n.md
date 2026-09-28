@@ -29,7 +29,7 @@ CSS 순서 = `src/templates/base.html::css/tokens.css">` — tokens → themes �
 
 ## 화면
 
-1. 색·간격·반경 = `var(--...)`. 새 토큰은 `src/static/css/tokens.css` `[data-theme]` 4블록(84·184·272·357) 전부.
+1. 색·간격·반경 = `var(--...)`. 새 토큰은 `src/static/css/tokens.css` `[data-theme]` 4블록 전부.
 2. 스타일: `components.css`(공용) · `pages.css` · `admin.css`(관리자) · `repo_insights.css`.
 3. 인라인 `<script>` top-level 은 `var`, 리스너는 named handler + `removeEventListener`/`AbortController`(hx-boost swap 이 재실행).
 4. `new Chart` 앞 `if (typeof Chart === 'undefined') return;`.

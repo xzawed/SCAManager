@@ -32,7 +32,9 @@ from src.services.repo_insight_service import (
     repo_score_trend,
 )
 from src.shared.log_safety import sanitize_for_log
-from src.ui._helpers import get_locale, templates  # noqa: F401  # get_locale = Phase 2 PR-6 페어
+from src.ui._helpers import (  # noqa: F401  # get_locale = Phase 2 PR-6 페어
+    get_locale, redirect_without_refresh, templates,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +159,14 @@ async def dashboard(  # pylint: disable=too-many-locals
             # Cycle 138 — always default to overview on /dashboard entry (removed auto-detect)
             effective_mode = "overview"
 
+        # 새로 고침은 PRG — 캐시만 지우고 refresh 를 뺀 주소로 303. 재생성은 그 GET 이 캐시 miss 로 한다.
+        #   주소에 refresh 가 남으면 F5 마다 캐시를 지우고 유료 호출을 또 시작한다(부정 캐시도 우회).
+        # Refresh is PRG: invalidate, then 303 to the URL without refresh; that GET regenerates on
+        #   the miss. A URL keeping refresh restarted a paid call on every F5, past the negative cache.
+        if refresh and effective_mode == "insight":
+            dashboard_service.invalidate_insight_narrative(db, user_id=current_user.id, days=days)
+            return redirect_without_refresh(request)
+
         # Telemetry — Phase 1 PR 5 자율 판단 (정책 3) + Phase 3 PR 3/4 mode 추가, 비식별.
         # Telemetry: log usage frequency (user.id + days + effective_mode + url_mode flag — no PII).
         logger.info(
@@ -257,11 +267,10 @@ async def dashboard(  # pylint: disable=too-many-locals
 
         if effective_mode == "insight":
             # Phase 3 PR 2 — Claude AI 4 카드 narrative (caching 적용) + PR 5 user_id 격리.
-            # Phase 2-B 🅑 (사이클 74 PR-B) — DB 캐싱 1h TTL + ?refresh=1 강제 무효화
-            # Phase 2-B 🅑 (Cycle 74 PR-B) — DB cache 1h TTL + ?refresh=1 forces invalidation.
+            # Phase 2-B 🅑 (사이클 74 PR-B) — DB 캐싱 1h TTL. ?refresh=1 은 위에서 무효화 후 303 으로 떠났다.
+            # Phase 2-B 🅑 (Cycle 74 PR-B) — DB cache 1h TTL; ?refresh=1 already invalidated and left above.
             insight = await dashboard_service.insight_narrative(
-                db, days=days, user_id=current_user.id, refresh=bool(refresh),
-                language=locale_value,
+                db, days=days, user_id=current_user.id, language=locale_value,
             )
             return templates.TemplateResponse(
                 request,

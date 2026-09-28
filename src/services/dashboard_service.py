@@ -805,6 +805,15 @@ def _handle_insight_error(
     return _build_insight_response(status=error_type, days=days)
 
 
+def invalidate_insight_narrative(db: Session, *, user_id: int, days: int) -> None:
+    """새로 고침 — (user_id, days) 대시보드 서술 캐시를 언어 무관하게 지운다(성공·실패 행 모두).
+    `refresh=True` 호출과 라우트의 PRG 가 같은 정의를 쓴다. 지우기만 하고 Claude 는 부르지 않는다.
+    Refresh: drop the (user_id, days) dashboard narrative rows in every language, success and
+    failure alike. Shared by `refresh=True` and the route's PRG; deletes only, never calls Claude.
+    """
+    insight_narrative_cache_repo.invalidate(db, user_id=user_id, days=days)
+
+
 def _recorded_insight_status(recorded: str) -> str:
     """부정 캐시가 돌려준 유형 → 응답 status. 이 키에는 api_error·parse_error 만 기록되지만,
     그 밖의 값이 있어도 응답 status 계약 밖으로 새지 않게 api_error 로 접는다.
@@ -1054,7 +1063,7 @@ async def insight_narrative(  # pylint: disable=too-many-locals,too-many-return-
     # Caching only when `user_id` set (admin/legacy paths bypass cache).
     if user_id is not None:
         if refresh:
-            insight_narrative_cache_repo.invalidate(db, user_id=user_id, days=days)
+            invalidate_insight_narrative(db, user_id=user_id, days=days)
         else:
             cached = insight_narrative_cache_repo.get_fresh(
                 db, user_id=user_id, days=days, language=language, now=_now,
