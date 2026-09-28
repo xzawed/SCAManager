@@ -6,7 +6,7 @@ mock 전략: helper 자체를 patch 하려면 `src.ui._helpers.<name>` 경로 �
 from __future__ import annotations
 
 import logging
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 from fastapi import HTTPException, Request
 from fastapi.responses import RedirectResponse
@@ -71,9 +71,13 @@ def redirect_without_refresh(request: Request) -> RedirectResponse:
     303 to the same path and query (order kept) minus every `refresh` key: PRG for Refresh. F5 on
     the destination is a plain GET served by the success or negative cache; with no refresh key
     left the destination cannot bounce back. For hx-boost, htmx pushes the redirected URL.
+    경로는 scope 의 디코드된 값을 다시 인코딩한다 — `request.url.path` 는 경로 안의 `?`·`#` 에서 잘리고,
+    디코드된 채 붙이면 그 뒤가 쿼리·조각이 된다.
+    The path is scope's decoded path, re-encoded: `request.url.path` is cut at a `?` or `#` inside the
+    path, and a raw decoded path would turn what follows into a query or fragment.
     """
     kept = [(k, v) for k, v in request.query_params.multi_items() if k != "refresh"]
-    target = request.url.path + (f"?{urlencode(kept)}" if kept else "")
+    target = quote(request.scope["path"]) + (f"?{urlencode(kept)}" if kept else "")
     return RedirectResponse(url=target, status_code=303)
 
 

@@ -17,11 +17,12 @@ import uuid
 from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
-from urllib.parse import parse_qsl, urlsplit
+from urllib.parse import parse_qsl, unquote, urlsplit
 
 import anthropic
 import httpx
 import pytest
+from fastapi import Request
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -38,6 +39,7 @@ from src.models.repository import Repository
 from src.models.user import User
 from src.repositories import insight_narrative_cache_repo
 from src.services import dashboard_service, repo_insight_service
+from src.ui._helpers import redirect_without_refresh
 from src.ui.routes.repo_insights import _get_db
 
 # KPI 비용 집계가 claude_api_calls 를 읽는다 — 단독 실행에서도 테이블이 있도록 등록을 확인한다.
@@ -243,14 +245,30 @@ def test_refresh_invalidates_then_redirects_303_without_refresh(
     assert landed.status_code == 200, f"{loc} → {landed.status_code}"
 
 
+@pytest.mark.parametrize("raw_path", [b"/repos/o/a%3Fb/insights", b"/repos/o/a%23b/insights",
+                                      b"/repos/o/a%25b/insights"])
+def test_redirect_points_at_the_same_path_when_it_holds_reserved_characters(raw_path):
+    """경로에 인코딩된 `?`·`#`·`%` 가 있어도 Location 은 같은 경로다 — 디코드된 채 붙이면 `?` 뒤가 쿼리가 된다.
+    (Grok 1422c56b 반례: `/repos/foo%3Fbar/insights?refresh=1` → `Location: /repos/foo?bar/insights`)"""
+    path = unquote(raw_path.decode())
+    request = Request({"type": "http", "method": "GET", "path": path, "raw_path": raw_path,
+                       "query_string": b"days=7&refresh=1", "headers": []})
+    loc = urlsplit(redirect_without_refresh(request).headers["location"])
+    assert unquote(loc.path) == path, f"{raw_path!r} → {loc.geturl()}"
+    assert parse_qsl(loc.query, keep_blank_values=True) == [("days", "7")]
+
+
 @pytest.mark.parametrize("path", [
     "/dashboard?mode=insight&days=7&refresh=0",
     "/dashboard?mode=insight&days=7",
+    # 마지막 mode 가 이긴다 — insight 가 아닌 대시보드에서 refresh 는 원래 아무 일도 하지 않는다(Grok 1422c56b)
+    # The last mode wins; outside insight mode refresh never did anything on the dashboard
+    "/dashboard?mode=insight&days=7&refresh=1&mode=overview",
     f"/repos/{_REPO}/insights?days=30&refresh=0",
     f"/repos/{_REPO}/insights?days=30",
 ])
 def test_no_refresh_does_not_redirect(db, owner, client_for, path):
-    """🔴 반드시 무시돼야 하는 쪽 — `refresh` 가 없거나 0 이면 리다이렉트도 무효화도 없다."""
+    """🔴 반드시 무시돼야 하는 쪽 — `refresh` 가 없거나 0 이거나 insight 모드가 아니면 리다이렉트도 무효화도 없다."""
     user_id, repo_id = owner
     days = 7 if path.startswith("/dashboard") else 30
     if path.startswith("/dashboard"):
