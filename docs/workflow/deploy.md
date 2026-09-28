@@ -1,18 +1,18 @@
 ## 배포 (Railway)
 
-`.github/workflows/` 에 배포 워크플로는 없다. main 푸시 → Railway GitHub 연동이 `railway.toml` 을 읽어 배포한다. 대시보드의 Build/Pre-deploy 명령 칸은 비워 둔다(railway.toml 단일 출처).
+`.github/workflows/` 에 배포 워크플로는 없다. main 푸시 → Railway 가 루트 `Dockerfile` 로 빌드하고 `railway.toml` 배포 설정을 얹는다(2026-12-01 부터는 대시보드 값).
 
 한 배포의 순서:
 
-1. **빌드** — NIXPACKS(`railway.toml::builder`). `nixpacks.toml::aptPkgs` aptPkgs + Node 20(`nixpacks.toml::setup_20.x`) 설치 후 `railway.toml::buildCommand` buildCommand 가 analyzer 바이너리 8종을 설치하고 `npm ci && npm run build`(Tailwind → `src/static/css/dist/tailwind.css`, `package.json::"build":`) 로 끝난다. Python 버전 정본은 `.python-version`(3.12).
+1. **빌드** — `Dockerfile`(`railway.toml::builder = "DOCKERFILE"`): apt·핀 분석기 + Node 20 → venv requirements → `npm ci` + `npm run build`(`package.json::"build":`). `PROVISIONED_ANALYZERS` 부재면 빌드 실패(이전 배포 유지). 핀은 `ci.yml` 조달 step 과 같은 커밋에서 바꾼다.
 2. **pre-deploy** — `alembic upgrade head`(`railway.toml::preDeployCommand =`). 실패하면 배포가 중단된다.
-3. **기동** — `uvicorn src.main:app --host 0.0.0.0 --port $PORT --proxy-headers`(`railway.toml::startCommand`). import 시점에 `src/config.py::settings = build_settings()` 가 돌아 설정 검증 실패면 기동이 막힌다.
+3. **기동** — `/bin/sh -c "exec uvicorn … --port $PORT …"`(`railway.toml::startCommand =` = 이미지 `CMD`). 시작 명령은 exec 형이라 셸로 감싸야 `$PORT` 가 확장된다. import 시점에 `src/config.py::settings = build_settings()` 가 돌아 설정 검증 실패면 기동이 막힌다.
 4. **lifespan** — `_validate_startup_config()` → `alembic upgrade head` 재실행([db.md](db.md) §적용) → 스케줄러·루프 지연 프로브 기동(`src/main.py::async def lifespan`). 루프가 막히면 30초 창마다 `event loop lag` WARNING 한 줄.
 5. **헬스체크** — `GET /health` 60초(`railway.toml::healthcheckPath`), 실패 시 최대 10회 재시작.
 
 replica 는 `[deploy.multiRegionConfig.us-east4-eqdc4a] numReplicas`(`railway.toml::[deploy.multiRegionConfig.us-east4-eqdc4a]`) 로만 지정한다 — `[deploy] numReplicas` 는 조용히 무시된다. 인앱 스케줄러(`src/scheduler.py::JOBS = (`)가 단일 인스턴스 전제라 2 이상이면 주간 리포트가 중복 발송된다.
 
-`railway.toml` 에 새 키를 넣을 때는 Railway 공식 레퍼런스로 존재를 확인한다 — 모르는 키는 에러 없이 무시된다. 가드: `tests/unit/scripts/test_railway_cron_guard.py` · `test_railway_scaling_guard.py`.
+`railway.toml` 에 새 키를 넣을 때는 Railway 공식 레퍼런스로 존재를 확인한다 — 모르는 키는 에러 없이 무시된다. 가드: `tests/unit/scripts/test_railway_cron_guard.py` · `test_railway_scaling_guard.py` · `test_dockerfile_contract.py`.
 
 ## 환경변수 추가
 
@@ -34,7 +34,7 @@ replica 는 `[deploy.multiRegionConfig.us-east4-eqdc4a] numReplicas`(`railway.to
 
 ## 배포 실패 시
 
-1. Railway 빌드 로그를 직접 본다 — push 성공은 빌드 성공이 아니다.
+1. Railway 빌드 로그를 직접 본다 — push 성공은 빌드 성공이 아니다. 로컬 재현은 `docker build -t scam-local .`.
 2. 실패 구간 앞뒤 30줄로 원인을 특정한다. 로그 없이 추측 수정하지 않는다.
 3. 서비스를 먼저 되돌린다 — Railway 에서 **이전 배포 재배포**. 그다음 원인을 고친다.
 4. 마이그레이션 단계 실패면 [db.md](db.md) §롤백.

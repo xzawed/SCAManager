@@ -144,7 +144,7 @@ def _matching_solc(content: str, installed) -> str | None:
     🔴 왜 **실행 전**에 고르는가 — slither 는 pragma 를 못 맞추면 **빈 stdout** 을 내는데,
     그것은 구문 오류·크래시와 구별되지 않는다(실측: 셋 다 exit 1 · stdout 0자).
     사후 판정이 원리적으로 불가능하므로 사전 점검만이 「환경 핀 때문에 못 돌렸다」와
-    「이 코드가 분석에 실패했다」를 가른다. `railway.toml` 은 solc **0.8.20 하나만** 핀한다.
+    「이 코드가 분석에 실패했다」를 가른다. `Dockerfile` 은 solc **0.8.20 하나만** 핀한다.
     못 고르면 `is_enabled` 가 False → 조달 축으로 가고, 그 파일은 semgrep 만 보게 되므로
     `static.py::no_dedicated_observer` 가 그 사실을 기록한다.
 
@@ -236,8 +236,8 @@ class _SlitherAnalyzer:
 
         🔴 컴파일러가 없으면 실행하지 않는다 — 조달 실패는 벽이 아니라 게이트여야 한다.
         slither 는 pip 패키지라 `which("slither")` 는 solc 유무와 무관하게 참이다.
-        `railway.toml` 은 `solc-select install` 이 실패하면 「slither analyzer will be
-        disabled」라고 적지만 그 비활성화가 구현된 적이 없었다. 그래서 solc 가 없으면
+        옛 빌드 명령은 `solc-select install` 이 실패하면 「slither analyzer will be
+        disabled」라고 적었지만 그 비활성화가 구현된 적이 없었다. 그래서 solc 가 없으면
         slither 가 실행되어 **빈 stdout** 을 내고, 그것을 미분석으로 올리는 순간
         모든 Solidity 파일이 `incomplete` 가 된다.
 

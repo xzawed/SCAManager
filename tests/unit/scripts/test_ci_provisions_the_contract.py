@@ -21,9 +21,12 @@ Contract ⊆ CI provisioning: adding a tool to the contract without provisioning
 is exactly the state that produced this issue.
 """
 import re
+import shlex
 from pathlib import Path
 
 import pytest
+
+from tests.unit.scripts._dockerfile import DOCKERFILE, run_steps
 
 _ROOT = Path(__file__).resolve().parents[3]
 _CI = _ROOT / ".github" / "workflows" / "ci.yml"
@@ -121,49 +124,81 @@ def test_the_three_tools_this_issue_names_are_provisioned(tool):
 
 # ── 조달 버전이 고정돼 있고 두 환경이 같은 것을 쓴다 (2026-08-19) ─────────
 #
-# 🔴 hadolint·ktlint·tflint 세 도구만 `releases/latest/download/` 였다. 형제는 전부 핀이다
-#    (rubocop 1.57.2 · rubocop-ast 1.36.2 · golangci-lint v1.55.2 · typescript 6.0.x).
+# 🔴 hadolint·ktlint·tflint 세 도구만 `releases/latest/download/` 였다. 형제는 전부 핀이다.
 #    계약 도구는 부재·오작동이 `incomplete` 로 승격해 auto-merge 를 막으므로,
 #    상류 릴리스 하나가 **리포 변경 0줄로** 파이프라인을 세울 수 있었다.
-#    그리고 CI 와 Railway 가 `latest` 를 **서로 다른 시점에** 해석하므로 둘이 조용히 갈렸다.
+#    그리고 CI 와 운영 빌드가 `latest` 를 **서로 다른 시점에** 해석하므로 둘이 조용히 갈렸다.
+# 운영 빌드 정본 = 루트 `Dockerfile`. 그 **RUN 만** 읽는다 — 주석 속 버전은 핀이 아니다.
+# The production pins live in the Dockerfile's RUN steps; comments never count as a pin.
 
-_RAILWAY = _ROOT / "railway.toml"
-_PINNED_TOOLS = ("hadolint", "ktlint", "tflint")
-_RELEASE_PIN = re.compile(
-    r"(hadolint|ktlint|tflint)/releases/download/([^/]+)/"
-)
+# 두 환경이 같은 값을 가져야 하는 핀 — 계약 도구 + 그 런타임(solc·node).
+# Pins both environments must share: contracted tools plus the runtimes they need.
+_PINNED = ("hadolint", "ktlint", "tflint", "rubocop", "rubocop-ast", "golangci-lint",
+           "typescript", "eslint", "solc", "node")
+_RELEASE_PIN = re.compile(r"(hadolint|ktlint|tflint)/releases/download/([^/]+)/")
 
 
-def _release_pins(text: str) -> dict:
-    """`<tool>/releases/download/<ver>/` 에서 (도구 → 버전)."""
-    return {tool: ver for tool, ver in _RELEASE_PIN.findall(text)}
+def _pins(text: str) -> dict:
+    """설치 명령에서 (도구 → 버전 표기). 줄 이음(`\\`)은 먼저 잇는다."""
+    text = re.sub(r"\\\s*\n\s*", " ", text)
+    pins = dict(_RELEASE_PIN.findall(text))
+    pins |= dict(re.findall(r"gem install (\S+) -v (\S+)", text))
+    if (m := re.search(r"golangci-lint/\S+/install\.sh.{0,40}?-b /usr/bin (v\d[\w.]*)", text)):
+        pins["golangci-lint"] = m.group(1)
+    for chunk in re.findall(r"npm install -g ([^\n&|]+)", text):
+        for word in shlex.split(chunk):
+            name, _, spec = word.lstrip("@").partition("@")
+            if spec:
+                pins[("@" if word.startswith("@") else "") + name] = spec
+    if (m := re.search(r"solc-select install (\S+)", text)):
+        pins["solc"] = m.group(1)
+    nodes = set(re.findall(r'node-version:\s*"?(\d+)', text)) | set(re.findall(r"node_(\d+)\.x", text))
+    if nodes:
+        # 둘 이상이면 어느 쪽과도 같지 않게 — 한 환경 안에서 갈린 것도 red 다.
+        # More than one value never equals the other side: a split inside one file is red too.
+        pins["node"] = ",".join(sorted(nodes))
+    return pins
+
+
+def _image_pins() -> dict:
+    assert DOCKERFILE.is_file(), "Dockerfile 이 없다 — 운영 빌드 핀을 읽을 곳이 없다"
+    return _pins("\n".join(run_steps(DOCKERFILE.read_text(encoding="utf-8"))))
+
+
+def test_pin_reader_on_planted_text():
+    """판정식 뒤집기 — 실제 설치 형태는 읽고, 주석 속 버전은 Dockerfile 에서 버린다."""
+    ci = ("gem install rubocop -v 1.57.2 --no-document\n"
+          "curl https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh \\\n"
+          "  | sudo sh -s -- -b /usr/bin v1.55.2\n"
+          "npm install -g 'typescript@>=6.0.3 <6.1.0'\n"
+          'node-version: "20"\n')
+    assert _pins(ci) == {"rubocop": "1.57.2", "golangci-lint": "v1.55.2",
+                         "typescript": ">=6.0.3 <6.1.0", "node": "20"}
+    planted = "# RUN gem install rubocop -v 9.9.9\nRUN gem install rubocop -v 1.57.2\n"
+    assert _pins("\n".join(run_steps(planted))) == {"rubocop": "1.57.2"}
 
 
 def test_no_procurement_installs_from_the_latest_tag():
-    """🔴 `releases/latest` 재발 차단 — 두 파일 모두.
+    """🔴 `releases/latest` 재발 차단 — CI 와 이미지 빌드 모두.
 
     이 문자열이 하나라도 살아나면 그 도구는 다시 상류 시점에 묶인다.
     """
-    for path in (_CI, _RAILWAY):
-        text = path.read_text(encoding="utf-8")
-        assert text.strip(), f"{path.name} 이 비었다 — 이 검사가 공허하다"
+    for name, text in (("ci.yml", _ci_text()),
+                       ("Dockerfile", "\n".join(run_steps(DOCKERFILE.read_text(encoding="utf-8"))))):
+        assert text.strip(), f"{name} 이 비었다 — 이 검사가 공허하다"
         assert "releases/latest" not in text, (
-            f"{path.name} 이 `releases/latest` 로 설치한다 — 버전을 고정할 것. "
+            f"{name} 이 `releases/latest` 로 설치한다 — 버전을 고정할 것. "
             "고정 후 tests/integration/test_contracted_analyzers_real_binary.py 로 파서를 다시 잰다."
         )
 
 
-def test_ci_and_railway_pin_the_same_versions():
+@pytest.mark.parametrize("tool", _PINNED)
+def test_ci_and_image_pin_the_same_versions(tool):
     """🔴 두 환경이 **같은 바이너리**를 쓴다 — 갈리면 CI 초록이 운영을 보증하지 못한다."""
-    ci = _release_pins(_CI.read_text(encoding="utf-8"))
-    railway = _release_pins(_RAILWAY.read_text(encoding="utf-8"))
-
-    assert ci, "ci.yml 에서 버전 핀을 하나도 못 읽었다 — 이 테스트가 공허하다"
-    assert railway, "railway.toml 에서 버전 핀을 하나도 못 읽었다 — 이 테스트가 공허하다"
-    for tool in _PINNED_TOOLS:
-        assert tool in ci, f"ci.yml 에 `{tool}` 핀이 없다"
-        assert tool in railway, f"railway.toml 에 `{tool}` 핀이 없다"
-        assert ci[tool] == railway[tool], (
-            f"`{tool}` 버전이 갈렸다 — CI {ci[tool]} vs Railway {railway[tool]}. "
-            "두 파일을 같은 커밋에서 고칠 것."
-        )
+    ci, image = _pins(_ci_text()), _image_pins()
+    assert tool in ci, f"ci.yml 에서 `{tool}` 핀을 못 읽었다"
+    assert tool in image, f"Dockerfile 에서 `{tool}` 핀을 못 읽었다"
+    assert ci[tool] == image[tool], (
+        f"`{tool}` 버전이 갈렸다 — CI {ci[tool]} vs Dockerfile {image[tool]}. "
+        "두 파일을 같은 커밋에서 고칠 것."
+    )

@@ -118,10 +118,9 @@ class TestKtlintAnalyzer:
 
 # ── ktlint 는 JVM 을 요구한다 (#1578) ─────────────────────────────────────────
 #
-# 🔴 `railway.toml` 이 받는 릴리스 에셋은 네이티브 실행파일이 아니라 **셸 래퍼**다 —
+# 🔴 `Dockerfile` 이 받는 릴리스 에셋은 네이티브 실행파일이 아니라 **셸 래퍼**다 —
 #    첫 줄이 `#!/bin/sh` 이고 Java 메이저 버전을 탐지해 내장 JAR 를 실행한다(실측: 에셋
-#    첫 바이트 직접 조회). 그런데 `nixpacks.toml` 의 `aptPkgs` 에 java 가 없다
-#    (`grep -ci "java|jdk|jre"` → railway.toml 0 · nixpacks.toml 0).
+#    첫 바이트 직접 조회). 그런데 `Dockerfile` 의 apt 설치에 java 가 없다.
 #
 # 🔴 `which("ktlint")` 는 **참**이다(파일은 있다). 그래서 조달 축이 발화하지 않고 `run()` 이
 #    호출되며, JSON 배열이 안 나와 `[]` 로 떨어진다 — 모든 Kotlin 파일이 「이슈 0건 · 완전」.

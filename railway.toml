@@ -1,23 +1,23 @@
+# 빌드 정본 = 루트 Dockerfile(분석기 설치·핀 포함). Railway 는 이 파일을 2026-12-01 부터 읽지 않는다.
+# The build lives in the root Dockerfile; Railway stops reading this file on 2026-12-01.
 [build]
-builder = "NIXPACKS"
-buildCommand = "(npm install -g eslint@9 @typescript-eslint/parser @typescript-eslint/eslint-plugin || echo 'WARNING: eslint global install failed — eslint analyzer will be disabled') && (solc-select install 0.8.20 && solc-select use 0.8.20 || echo 'WARNING: solc-select failed — slither analyzer will be disabled') && (gem install rubocop-ast -v 1.36.2 --no-document --bindir /usr/bin || echo 'WARNING: rubocop-ast install failed') && (gem install rubocop -v 1.57.2 --no-document --bindir /usr/bin || echo 'WARNING: rubocop install failed — rubocop analyzer will be disabled') && (curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b /usr/bin v1.55.2 || echo 'WARNING: golangci-lint install failed — go analyzer will be disabled') && (npm install -g 'typescript@>=6.0.3 <6.1.0'|| echo 'WARNING: tsc install failed — tsc analyzer will be disabled') && (npm install -g eslint-plugin-react eslint-plugin-react-hooks || echo 'WARNING: eslint react plugins install failed') && (curl -sSfL https://github.com/hadolint/hadolint/releases/download/v2.15.1/hadolint-Linux-x86_64 -o /usr/bin/hadolint && chmod +x /usr/bin/hadolint || echo 'WARNING: hadolint install failed — hadolint analyzer will be disabled') && (curl -sSfL https://github.com/pinterest/ktlint/releases/download/1.8.0/ktlint -o /usr/bin/ktlint && chmod +x /usr/bin/ktlint || echo 'WARNING: ktlint install failed — ktlint analyzer will be disabled') && (curl -sSfL https://github.com/terraform-linters/tflint/releases/download/v0.64.0/tflint_linux_amd64.zip -o /tmp/tflint.zip && unzip -o /tmp/tflint.zip -d /usr/bin/ && chmod +x /usr/bin/tflint || echo 'WARNING: tflint install failed — tflint analyzer will be disabled') && npm ci && npm run build"
+builder = "DOCKERFILE"
 
 [deploy]
-startCommand = "uvicorn src.main:app --host 0.0.0.0 --port $PORT --proxy-headers"
+# 🔴 셸 래핑 필수 — Dockerfile 빌드의 시작 명령은 exec 형이라 `$PORT` 를 확장하지 않는다.
+#   이 키를 빼면 대시보드의 래핑 안 된 Start Command 가 적용돼 기동이 깨진다(이미지 CMD 와 같은 명령).
+# Must be shell-wrapped: Dockerfile start commands run in exec form and never expand $PORT.
+startCommand = '/bin/sh -c "exec uvicorn src.main:app --host 0.0.0.0 --port $PORT --proxy-headers"'
 # Pre-deploy: 새 컨테이너가 트래픽 받기 전 DB 마이그레이션 실행 (loud-fail — 실패 시 배포 중단).
 #   main.py lifespan 도 alembic upgrade head 를 돌리나 (30s 타임아웃·broad-except = silent-fail),
 #   pre-deploy 는 실패 시 배포를 중단해 schema drift(0038 고착 같은)를 즉시 가시화한다. 양쪽 멱등 = 중복 무해.
 # Run DB migrations before the new container takes traffic (loud-fail: a failed migration aborts the deploy).
 #   The lifespan also runs `alembic upgrade head` (30s timeout + broad-except = silent-fail); the pre-deploy
 #   surfaces schema drift loudly. Both are idempotent (alembic stamps the head), so the overlap is harmless.
-# 🔴 Railway 대시보드 Settings→Deploy→Pre-deploy Command 는 **빈 값 권장**(railway.toml 단일 출처).
-#   전례 2026-06-15: railway.toml 에 preDeployCommand 가 **미정의**일 때 대시보드 stale `npm run migrate`
-#   (미존재 스크립트)가 사용됨 → "Pre-deploy command failed"·0038 고착. #906 으로 여기 정의했으니 대시보드를
-#   비워 railway.toml 를 단일 출처로 두면 stale 설정 혼동/drift 를 차단한다(부득이 설정 시 동일 값 유지).
-#   ⚠️ 대시보드 ↔ railway.toml 양쪽 정의 시 적용 우선순위는 Railway 버전/필드별로 혼동될 수 있으므로,
-#   transition-day 에는 Railway Deploy 로그에서 실제 실행된 pre-deploy 명령을 직접 확인할 것.
-# 🔴 Prefer leaving the dashboard Pre-deploy Command BLANK (railway.toml = single source); the 2026-06-15
-#   failure occurred while railway.toml did NOT define preDeployCommand, so a stale dashboard value was used.
+# 🔴 대시보드 Pre-deploy Command 는 **같은 값**(`alembic upgrade head`)으로 둔다 — 2026-12-01 뒤에는
+#   이 파일이 읽히지 않아 대시보드가 유일한 출처가 된다. 비우면 그때 마이그레이션 게이트가 사라진다.
+#   전례 2026-06-15: 대시보드의 stale `npm run migrate` 가 적용돼 0038 에서 고착됐다 — 값은 항상 같게.
+# 🔴 Keep the dashboard Pre-deploy Command identical: after 2026-12-01 it is the only source.
 preDeployCommand = "alembic upgrade head"
 healthcheckPath = "/health"
 healthcheckTimeout = 60

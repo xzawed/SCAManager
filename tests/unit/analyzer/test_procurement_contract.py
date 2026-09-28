@@ -29,14 +29,14 @@ import pytest
 
 import src.analyzer.io.static as static
 from src.analyzer.pure.registry import REGISTRY
+from tests.unit.scripts._dockerfile import run_steps
 
 _ROOT = Path(__file__).resolve().parents[3]
 
 # 조달 흔적을 찾는 파일들 — 하나라도 사라지면 파서가 공허해지므로 존재를 단언한다.
 # Files that carry procurement evidence; their existence is asserted so the parser can't go vacuous.
 _PROVISION_FILES = (
-    "nixpacks.toml",       # aptPkgs
-    "railway.toml",        # buildCommand 직접 설치
+    "Dockerfile",          # apt · gem · npm -g · 바이너리 직접 설치
     "requirements.txt",    # Python 도구
     "package.json",        # npm 도구
 )
@@ -44,18 +44,19 @@ _PROVISION_FILES = (
 # 분석기 이름 ↔ 조달 파일에 실제로 나타나는 토큰 (이름이 그대로 안 나오는 경우만).
 # Analyzer name → the token that actually appears in provisioning files, when they differ.
 _PROVISION_ALIAS = {
-    "rubocop": "ruby-full",       # nixpacks aptPkgs 가 루비 런타임을 깐다
     "tsc": "typescript",          # npm 패키지명
     "slither": "slither-analyzer",  # PyPI 배포명
 }
 
 
 def provisioning_text() -> str:
+    """조달 파일 본문 — 🔴 Dockerfile 은 **RUN 지시어만**(주석 산문이 조달로 세지면 안 된다)."""
     parts = []
     for rel in _PROVISION_FILES:
         path = _ROOT / rel
         assert path.exists(), f"조달 파일이 사라졌다 — 이 테스트가 공허해진다: {rel}"
-        parts.append(path.read_text(encoding="utf-8"))
+        text = path.read_text(encoding="utf-8")
+        parts.append("\n".join(run_steps(text)) if rel == "Dockerfile" else text)
     return "\n".join(parts)
 
 

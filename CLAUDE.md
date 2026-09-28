@@ -25,7 +25,7 @@ GitHub Push/PR → 정적 분석 + AI 리뷰 → 점수·등급 → 알림(Teleg
 | `src/worker/pipeline.py` · `src/analyzer/**` · `src/scorer/**` | [pipeline.md](docs/workflow/pipeline.md) |
 | `src/gate/**` · `src/notifier/**` · `src/webhook/**` | [gate-notify.md](docs/workflow/gate-notify.md) |
 | `src/models/**` · `src/repositories/**` · `alembic/**` | [db.md](docs/workflow/db.md) |
-| `railway.toml` · `nixpacks.toml` · `src/config.py` · `.env.example` | [deploy.md](docs/workflow/deploy.md) |
+| `Dockerfile` · `railway.toml` · `src/config.py` · `.env.example` | [deploy.md](docs/workflow/deploy.md) |
 | `tests/**` · `e2e/**` · `scripts/**` · `.github/workflows/**` | [verify.md](docs/workflow/verify.md) |
 | `src/templates/**` · `src/static/**` · `src/ui/**` · `src/i18n/**` | [ui-i18n.md](docs/workflow/ui-i18n.md) |
 | `src/auth/**` · `src/crypto.py` · `src/shared/**` · `.pre-commit-config.yaml` | [security.md](docs/workflow/security.md) |
@@ -58,7 +58,7 @@ py -3 -m pytest e2e/ -p no:asyncio  # E2E (tests/ 와 같이 돌리지 않는다
 
 ## 파일 수정 제한
 
-`alembic/versions/` · `src/templates/*.html` · `railway.toml` · `alembic.ini` 은 테스트 불가
+`alembic/versions/` · `src/templates/*.html` · `railway.toml` · `Dockerfile` · `.dockerignore` · `alembic.ini` 은 테스트 불가
 환경에서 훅이 차단한다(로컬 PC·Codespaces 는 허용).
 🔴 차단은 `Write|Edit|MultiEdit` 에만 걸린다. **Bash 로 고치면 막히지 않는다** — 같은 조건에서
 PostToolUse 가 «탐지해 알릴» 뿐이고 되돌리지도 않는다.

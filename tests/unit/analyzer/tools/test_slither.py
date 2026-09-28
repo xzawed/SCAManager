@@ -404,7 +404,7 @@ def test_disabled_when_neither_solc_select_nor_solc_is_present(monkeypatch):
 
 # ── pragma 사전 점검: 핀된 컴파일러가 못 맞추는 계약은 **벽이 아니라 skip** (#1568 B) ──
 #
-# `railway.toml` 은 solc **0.8.20 하나만** 핀한다. 그 컴파일러가 만족하지 못하는 pragma 를
+# `Dockerfile` 은 solc **0.8.20 하나만** 핀한다. 그 컴파일러가 만족하지 못하는 pragma 를
 # 가진 `.sol` 은 slither 가 **빈 stdout** 을 내고, #1564 가 그것을 미분석으로 올리므로
 # 모든 Solidity PR 이 `incomplete` 로 막힌다 — 리뷰 대상 코드의 결함이 아니라 **환경 핀**이
 # 만든 벽이다.

@@ -107,6 +107,9 @@ _SENSITIVE_PATTERNS: tuple[re.Pattern, ...] = tuple(
         # CI·배포 워크플로 + 공급망 정의 / CI, deploy & supply-chain definitions
         r"^\.github/workflows/",
         r"(^|/)Dockerfile$",
+        # 이미지 빌드 컨텍스트 — 한 줄이 빠지면 시크릿(`.env`)이 이미지 레이어에 실린다.
+        # The image build context: dropping one line ships secrets (`.env`) in a layer.
+        r"(^|/)\.dockerignore$",
         # 🔴 배포 빌드·의존성 핀 (공급망) — 2026-07-20 세션5 회고 P2.
         #   `requirements*.txt` 변경 = 새 의존성 도입(악성 패키지 공급망 공격 벡터),
         #   `railway.toml`/`nixpacks.toml` = buildCommand·설치 명령(임의 코드 실행).

@@ -20,7 +20,7 @@ prod 판정 = `ENVIRONMENT=production` 이거나 `APP_BASE_URL` 이 https (`src/
 2. `openssl rand -hex 32` → `SESSION_SECRET`. **커스텀 값이 32자 미만이면 기동 실패**(`src/config.py::def validate_session_secret`). 기본값(dev-secret)은 prod 판정(`ENVIRONMENT=production` 포함)일 때만 lifespan 이 RuntimeError 로 막고, 아니면 **기동을 막지 않는다**(`src/main.py::def _validate_startup_config`).
 3. `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` → `TOKEN_ENCRYPTION_KEY` + `STRICT_TOKEN_ENCRYPTION=1`. 없으면 OAuth·Railway 토큰이 평문으로 저장된다 (`src/crypto.py::def encrypt_token`).
 4. `API_KEY` · `GITHUB_WEBHOOK_SECRET` · `TELEGRAM_WEBHOOK_SECRET` · `INTERNAL_CRON_API_KEY` 설정 — `API_AUTH_DISABLED=1` 은 로컬 전용.
-   서비스 변수에 `FORWARDED_ALLOW_IPS`·`UVICORN_FORWARDED_ALLOW_IPS` 를 넣지 않는다 — uvicorn 이 client 를 X-Forwarded-For 값으로 바꿔 키가 엣지의 XFF 처리(미검증)에 달린다. 가드(`tests/unit/api/test_rate_limiter.py::test_railway_start_command`)는 railway.toml 만 본다. 엣지가 위 대역을 벗어나면 키가 프록시 주소로 합쳐진다. 신호 = 프로세스당 1회 WARNING `rate-limit key fallback`.
+   서비스 변수에 `FORWARDED_ALLOW_IPS`·`UVICORN_FORWARDED_ALLOW_IPS` 를 넣지 않는다 — uvicorn 이 client 를 X-Forwarded-For 값으로 바꿔 키가 엣지의 XFF 처리(미검증)에 달린다. 가드(`tests/unit/api/test_rate_limiter.py::test_railway_start_command`)는 railway.toml·Dockerfile 만 본다. 엣지가 위 대역을 벗어나면 키가 프록시 주소로 합쳐진다. 신호 = 프로세스당 1회 WARNING `rate-limit key fallback`.
 5. 기동 로그 `src/main.py::production hardening = %s` 가 ON 인지 확인.
 6. `curl -sI https://<host>/health` 로 CSP·HSTS 헤더 존재 확인.
 

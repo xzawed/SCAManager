@@ -34,6 +34,9 @@ _SENSITIVE_FIXTURES = [
     ".github/workflows/ci.yml", ".github/workflows/deploy.yaml",
     "src/crypto.py", "lib/secrets.py", "config/credentials.json",
     "Dockerfile", "docker/Dockerfile",
+    # 🔴 빌드 컨텍스트 — 한 줄이 빠지면 `.env` 가 이미지 레이어에 실린다
+    # The build context: dropping one line ships `.env` inside an image layer.
+    ".dockerignore", "svc/.dockerignore",
     # 🔴 공급망 형제 — 의존성 핀·빌드 설정 (세션5 회고 P2)
     "requirements.txt", "requirements-dev.txt", "railway.toml", "nixpacks.toml",
     "pyproject.toml", "package.json", "package-lock.json",

@@ -17,6 +17,7 @@ from uvicorn.config import Config
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from src.middleware import rate_limiter as rl
+from tests.unit.scripts._dockerfile import DOCKERFILE, instructions, start_argv
 
 # Railway 엣지 피어 대역(100.64.0.0/10) 안의 테스트 주소
 # A test peer inside Railway's edge range (100.64.0.0/10)
@@ -506,4 +507,18 @@ def test_railway_start_command_does_not_trust_forwarded_headers():
     assert "--proxy-headers" in start, "startCommand 형태가 바뀌었다 — 이 가드의 전제를 다시 볼 것"
     assert not _widens_forwarded_trust(start), (
         "railway.toml startCommand 가 forwarded-allow-ips 를 넓혔다 — 레이트리밋 키가 스푸핑 가능해진다 (#1691)"
+    )
+
+
+def test_image_does_not_trust_forwarded_headers():
+    """이미지 CMD·ENV 도 같은 규칙 — 대시보드 Start Command 를 비우면 CMD 가 운영 명령이 된다.
+    The image CMD and ENV follow the same rule; with the dashboard start command cleared, CMD runs."""
+    text = DOCKERFILE.read_text(encoding="utf-8")
+    cmd = " ".join(start_argv(text) or [])
+    assert "--proxy-headers" in cmd, "이미지 CMD 형태가 바뀌었다 — 이 가드의 전제를 다시 볼 것"
+    # ENV·ARG·CMD 어디에 넣어도 uvicorn 이 읽는다 — 주석을 뺀 지시어 전부를 본다.
+    # uvicorn reads it from ENV, ARG or CMD alike, so every non-comment instruction is checked.
+    live = " ".join(f"{keyword} {args}" for keyword, args in instructions(text))
+    assert not _widens_forwarded_trust(live), (
+        "Dockerfile 이 forwarded-allow-ips 를 넓혔다 — 레이트리밋 키가 스푸핑 가능해진다 (#1691)"
     )
