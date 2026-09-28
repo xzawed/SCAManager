@@ -9,6 +9,7 @@ failure card. Assertions read parsed anchors (where they sit, what their query s
 """
 from __future__ import annotations
 
+import re
 from html.parser import HTMLParser
 from unittest.mock import AsyncMock, patch
 from urllib.parse import parse_qs, urlsplit
@@ -111,7 +112,15 @@ def test_dashboard_failure_card_offers_refresh(status, locale):
     links = _refresh_links(html, "/dashboard")
     assert len(links) == 1, f"실패 카드의 새로 고침 링크 수 {len(links)} — 1 이어야 한다"
     link = links[0]
-    assert "dash-insight-status" in link["ancestors"], "링크가 실패 카드 안에 있지 않다"
+    # 🔴 상자 «밖» — e2e(`e2e/test_theme_mobile_guards.py::_INSIGHT_STATUS_JS`)가 상자 innerText 를
+    #    정본 문구와 정확히 대조한다. 링크가 안에 들어가면 4테마 전부 red 였다(독립 리뷰 실측).
+    # Outside the box: the e2e contrast check compares the box innerText with the exact sentence.
+    assert "dash-insight-status" not in link["ancestors"], "링크가 상태 상자 안에 있다 — 상자 글자가 정본 문구와 달라진다"
+    box = re.search(r'<div class="dash-insight-status">(.*?)</div>', html, re.S)
+    assert box, "실패 상태 상자가 없다"
+    want = get_text("dashboard.insight.load_failed", locale, status=status)
+    assert " ".join(re.sub(r"<[^>]+>", "", box.group(1)).split()) == " ".join(want.split()), (
+        "상태 상자 글자가 정본 문구와 다르다")
     assert link["query"] == {"mode": ["insight"], "days": ["14"], "refresh": ["1"]}
     assert link["text"].strip() == get_text("dashboard.insight.refresh", locale)
     assert "min-height:24px" in link["style"].replace(" ", ""), "WCAG 2.5.8 24px 하한이 빠졌다"
