@@ -164,7 +164,10 @@ async def dashboard(  # pylint: disable=too-many-locals
         # Refresh is PRG: invalidate, then 303 to the URL without refresh; that GET regenerates on
         #   the miss. A URL keeping refresh restarted a paid call on every F5, past the negative cache.
         if refresh and effective_mode == "insight":
-            dashboard_service.invalidate_insight_narrative(db, user_id=current_user.id, days=days)
+            # DELETE+COMMIT 은 동기 DB — 루프 밖에서 (#1701). / Sync DB write; off the loop.
+            await run_in_threadpool(
+                dashboard_service.invalidate_insight_narrative, db, user_id=current_user.id, days=days,
+            )
             return redirect_without_refresh(request)
 
         # Telemetry — Phase 1 PR 5 자율 판단 (정책 3) + Phase 3 PR 3/4 mode 추가, 비식별.
@@ -269,6 +272,8 @@ async def dashboard(  # pylint: disable=too-many-locals
             # Phase 3 PR 2 — Claude AI 4 카드 narrative (caching 적용) + PR 5 user_id 격리.
             # Phase 2-B 🅑 (사이클 74 PR-B) — DB 캐싱 1h TTL. ?refresh=1 은 위에서 무효화 후 303 으로 떠났다.
             # Phase 2-B 🅑 (Cycle 74 PR-B) — DB cache 1h TTL; ?refresh=1 already invalidated and left above.
+            # 서비스가 Claude await 앞뒤의 동기 DB 를 스스로 워커 스레드로 넘긴다 (#1701).
+            # The service moves its own sync DB work around the Claude await to worker threads.
             insight = await dashboard_service.insight_narrative(
                 db, days=days, user_id=current_user.id, language=locale_value,
             )

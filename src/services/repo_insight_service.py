@@ -18,6 +18,7 @@ from typing import Any
 import anthropic
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from src.shared.anthropic_caching import first_text_block
 from src.config import settings
@@ -495,54 +496,18 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
     # Keep aware here — this _now only feeds the cache repo, which uses an aware-normalization convention.
     _now = now or datetime.now(timezone.utc)
 
-    if user_id is not None:
-        # pylint: disable=import-outside-toplevel
-        from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415
-
-        if refresh:
-            invalidate_repo_insight_narrative(db, user_id=user_id, repo_id=repo_id, days=days)
-        else:
-            cached = insight_narrative_cache_repo.get_fresh_repo(
-                db, user_id=user_id, repo_id=repo_id, days=days, language=language, now=_now,
-            )
-            if cached:
-                return cached
-            # 부정 캐시 — 창 안의 최근 실패면 Claude 를 부르지 않고 같은 실패를 돌려준다.
-            #   부르지 않았으니 실패를 다시 기록하지도 비용 행을 남기지도 않는다. 새로 고침은 위에서 행을 지워 넘는다.
-            # Negative cache: a recent failure is returned without calling Claude.
-            #   No call was made, so nothing is recorded or logged; Refresh gets past it by deleting the row.
-            recorded = insight_narrative_cache_repo.recent_error_repo(
-                db, user_id=user_id, repo_id=repo_id, days=days, language=language, now=_now,
-            )
-            if recorded is not None:
-                return {"text": "", "status": _status_for_recorded_error(recorded)}
-
-    if not kpi.get("analysis_count"):
-        _record_narrative_error(
-            db, user_id=user_id, repo_id=repo_id, days=days,
-            language=language, error_type="no_data", now=_now,
-        )
-        return {"text": "", "status": "no_data"}
-
-    user_prompt = (
-        f"Repository: {repo_full_name}\n"
-        f"Period: last {days} days\n"
-        f"Avg score: {kpi.get('avg_score')} ({kpi.get('grade')}), "
-        f"delta: {kpi.get('score_delta')}\n"
-        f"Analyses: {kpi.get('analysis_count')}\n"
-        f"Security HIGH: {kpi.get('high_security_count')}\n"
-        f"Top recurring issue: {kpi.get('top_recurring_issue')} "
-        f"({kpi.get('top_recurring_count')} times)\n"
-        f"Top 5 issues: {json.dumps(recurring[:5], ensure_ascii=False)}\n\n"
-        f"Please provide a 2-3 paragraph diagnostic narrative "
-        f"in {LANG_NAMES.get(language, 'Korean')} summarizing "
-        "this repository's code quality status, key recurring problems, and concrete "
-        "next steps. Respond with strict JSON only: {\"text\": \"...narrative...\"}"
+    # 🔴 Claude await 앞뒤의 동기 DB 는 워커 스레드에서 — 루프에서 돌면 운영 왕복(≈0.21 s)마다
+    #   프로세스의 모든 요청(웹훅 202 포함)이 선다 (#1701). 세션은 한 번에 한 스레드만 쓴다(순차 인계):
+    #   anyio 취소는 스레드가 끝날 때까지 기다린다. Claude await 만 루프에 남는다.
+    # Sync DB work around the Claude await runs in a worker thread; on the loop every production round
+    #   trip stalled the whole process. The session is handed over sequentially, one thread at a time.
+    prepared = await run_in_threadpool(
+        _prepare_repo_narrative, db, repo_id, days, repo_full_name=repo_full_name, kpi=kpi,
+        recurring=recurring, now=_now, refresh=refresh, user_id=user_id, language=language,
     )
-
-    # 🔴 Claude 를 기다리는 동안 풀 연결·열린 트랜잭션을 쥐지 않는다 — 이후 캐시 쓰기는 새 트랜잭션 (#1697).
-    # Release the pooled connection before the Claude await; later cache writes open a new transaction.
-    release_session_before_claude(db)
+    if isinstance(prepared, dict):
+        return prepared
+    user_prompt = prepared
     start = time.perf_counter()
     # 🔴 **실제로 소비된 토큰은 error 경로에서도 보고한다** (backlog R65).
     # 응답을 받은 뒤 파싱이 실패해도 토큰은 **이미 과금**됐다 — 0 으로 적으면 비용 과소 계상.
@@ -604,7 +569,10 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
         # 지점** 이후에만 찍는다.
         # Log only after the result is fully built: a valid but non-dict JSON made
         # `data.get` raise *after* the success row was already written.
-        log_claude_api_call(
+        # 비용 행 INSERT(WorkerSessionLocal)는 동기 DB 다 — 루프 밖에서 (#1701).
+        # The cost-row INSERT is sync DB work; run it off the loop.
+        await run_in_threadpool(
+            log_claude_api_call,
             model=settings.claude_insight_model,
             duration_ms=duration_ms,
             status="success",
@@ -633,7 +601,8 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
         status = "api_error" if vendor else "internal_error"
         duration_ms = (time.perf_counter() - start) * 1000
         error_type = _log_narrative_failure(exc, status, _tokens["output_tokens"])
-        log_claude_api_call(
+        await run_in_threadpool(
+            log_claude_api_call,
             model=settings.claude_insight_model,
             duration_ms=duration_ms,
             status="error",
@@ -644,7 +613,8 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
         )
         # 주입된 `now`(운영에선 None → 기록 시점)로 찍는다 — 요청 시작으로 찍으면 부정 캐시 창이 호출 시간만큼 준다.
         # Stamp with the injected `now` (None in production → record time), not the request start.
-        _record_narrative_error(
+        await run_in_threadpool(
+            _record_narrative_error,
             db, user_id=user_id, repo_id=repo_id, days=days,
             language=language, error_type=error_type, now=now,
         )
@@ -655,12 +625,88 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
         await aclose_anthropic_client(client)
 
     if user_id is not None:
-        # pylint: disable=import-outside-toplevel
-        from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415
-
-        insight_narrative_cache_repo.upsert_repo(
-            db, user_id=user_id, repo_id=repo_id, days=days,
+        await run_in_threadpool(
+            _cache_repo_narrative, db, user_id=user_id, repo_id=repo_id, days=days,
             language=language, response=result, now=_now,
         )
 
     return result
+
+
+def _prepare_repo_narrative(  # pylint: disable=too-many-arguments
+    db: Session, repo_id: int, days: int, *, repo_full_name: str, kpi: dict[str, Any],
+    recurring: list[dict[str, Any]], now: datetime, refresh: bool, user_id: int | None,
+    language: str,
+) -> dict[str, Any] | str:
+    """Claude 호출 앞의 동기 단계 — 끝낼 응답(dict)이나 보낼 프롬프트(str)를 돌려준다(워커 스레드에서).
+
+    캐시·부정 캐시·데이터 0건이면 응답 dict 로 끝낸다. 프롬프트를 돌려줄 때는 세션의
+    트랜잭션을 끝내 풀 연결을 돌려준 뒤다 (#1697).
+    Sync phase before the Claude call (worker thread): a final response dict on cache / negative
+    cache / no data, otherwise the prompt string, after releasing the pooled connection.
+    """
+    if user_id is not None:
+        # pylint: disable=import-outside-toplevel
+        from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415
+
+        if refresh:
+            invalidate_repo_insight_narrative(db, user_id=user_id, repo_id=repo_id, days=days)
+        else:
+            cached = insight_narrative_cache_repo.get_fresh_repo(
+                db, user_id=user_id, repo_id=repo_id, days=days, language=language, now=now,
+            )
+            if cached:
+                return cached
+            # 부정 캐시 — 창 안의 최근 실패면 Claude 를 부르지 않고 같은 실패를 돌려준다.
+            #   부르지 않았으니 실패를 다시 기록하지도 비용 행을 남기지도 않는다. 새로 고침은 위에서 행을 지워 넘는다.
+            # Negative cache: a recent failure is returned without calling Claude.
+            #   No call was made, so nothing is recorded or logged; Refresh gets past it by deleting the row.
+            recorded = insight_narrative_cache_repo.recent_error_repo(
+                db, user_id=user_id, repo_id=repo_id, days=days, language=language, now=now,
+            )
+            if recorded is not None:
+                return {"text": "", "status": _status_for_recorded_error(recorded)}
+
+    if not kpi.get("analysis_count"):
+        _record_narrative_error(
+            db, user_id=user_id, repo_id=repo_id, days=days,
+            language=language, error_type="no_data", now=now,
+        )
+        return {"text": "", "status": "no_data"}
+
+    user_prompt = (
+        f"Repository: {repo_full_name}\n"
+        f"Period: last {days} days\n"
+        f"Avg score: {kpi.get('avg_score')} ({kpi.get('grade')}), "
+        f"delta: {kpi.get('score_delta')}\n"
+        f"Analyses: {kpi.get('analysis_count')}\n"
+        f"Security HIGH: {kpi.get('high_security_count')}\n"
+        f"Top recurring issue: {kpi.get('top_recurring_issue')} "
+        f"({kpi.get('top_recurring_count')} times)\n"
+        f"Top 5 issues: {json.dumps(recurring[:5], ensure_ascii=False)}\n\n"
+        f"Please provide a 2-3 paragraph diagnostic narrative "
+        f"in {LANG_NAMES.get(language, 'Korean')} summarizing "
+        "this repository's code quality status, key recurring problems, and concrete "
+        "next steps. Respond with strict JSON only: {\"text\": \"...narrative...\"}"
+    )
+
+    # 🔴 Claude 를 기다리는 동안 풀 연결·열린 트랜잭션을 쥐지 않는다 — 이후 캐시 쓰기는 새 트랜잭션 (#1697).
+    # Release the pooled connection before the Claude await; later cache writes open a new transaction.
+    release_session_before_claude(db)
+    return user_prompt
+
+
+def _cache_repo_narrative(
+    db: Session, *, user_id: int, repo_id: int, days: int, language: str,
+    response: dict[str, Any], now: datetime,
+) -> None:
+    """성공 서술을 캐시에 올린다 — 동기 DB 라 워커 스레드에서 부른다.
+    Cache a successful narrative; sync DB work, called from a worker thread.
+    """
+    # pylint: disable=import-outside-toplevel
+    from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415
+
+    insight_narrative_cache_repo.upsert_repo(
+        db, user_id=user_id, repo_id=repo_id, days=days,
+        language=language, response=response, now=now,
+    )

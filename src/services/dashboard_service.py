@@ -32,6 +32,7 @@ from typing import Any
 import anthropic
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from src.config import settings
 from src.models.analysis import Analysis
@@ -925,7 +926,10 @@ async def _call_insight_claude_api(
         # Extract before logging: the old order logged success, then error on failure — two
         # rows for one call, skewing cost and success-rate aggregates.
         text = first_text_block(response)
-        log_claude_api_call(
+        # 비용 행 INSERT(WorkerSessionLocal)는 동기 DB 다 — 루프 밖에서 (#1701).
+        # The cost-row INSERT is sync DB work; run it off the loop.
+        await run_in_threadpool(
+            log_claude_api_call,
             model=model,
             duration_ms=duration_ms,
             status="success",
@@ -937,7 +941,8 @@ async def _call_insight_claude_api(
         # anthropic / httpx / 네트워크 오류 모두 graceful fallback (caller 가 api_error 처리)
         # All anthropic/httpx/network errors fall through to graceful fallback (caller maps to api_error)
         duration_ms = (time.perf_counter() - start) * 1000
-        log_claude_api_call(
+        await run_in_threadpool(
+            log_claude_api_call,
             model=model,
             duration_ms=duration_ms,
             status="error",
@@ -1055,6 +1060,50 @@ async def insight_narrative(  # pylint: disable=too-many-locals,too-many-return-
     # Keep aware — this _now feeds the aware-convention cache repo; downstream KPI fns re-normalize.
     _now = now or datetime.now(timezone.utc)
 
+    # 🔴 Claude await 앞뒤의 동기 DB 는 워커 스레드에서 — 루프에서 돌면 운영 왕복(≈0.21 s)마다
+    #   프로세스의 모든 요청(웹훅 202 포함)이 선다 (#1701). 세션은 한 번에 한 스레드만 쓴다(순차 인계):
+    #   anyio 취소는 스레드가 끝날 때까지 기다린다. Claude await 만 루프에 남는다.
+    # Sync DB work around the Claude await runs in a worker thread; on the loop every production round
+    #   trip stalled the whole process. The session is handed over sequentially, one thread at a time.
+    prepared = await run_in_threadpool(
+        _prepare_insight_prompt, db, days=days, now=_now, user_id=user_id, refresh=refresh,
+        language=language,
+    )
+    if isinstance(prepared, dict):
+        return prepared
+
+    # timeout/max_retries 는 명시한다. SDK 는 재시도 대기를 묶지 않아 페이지 상한을 건다 (#1690)
+    # Explicit timeout/max_retries; the SDK does not bound retry waits, so apply the page cap
+    client = new_async_anthropic(
+        api_key=effective_key, timeout=60.0, max_retries=2,
+        caller="dashboard_insight", retry_after_cap=ANTHROPIC_RETRY_AFTER_CAP_PAGE_SECONDS,
+    )
+    try:
+        # Phase 2 d-🅓 (사이클 74) — Insight 영역 한정 Haiku (67% 비용 절감, AI 리뷰 Sonnet 보존)
+        # Phase 2 d-🅓 (Cycle 74) — Insight-only Haiku (67% cheaper, AI review keeps Sonnet)
+        text = await _call_insight_claude_api(
+            client, settings.claude_insight_model, prepared, user_id=user_id,
+        )
+    finally:
+        # 취소(CancelledError)에도 AsyncAnthropic httpx 커넥션 풀을 닫는다 — FD 누수 차단 (WBS P1 · #1697).
+        # Close the AsyncAnthropic pool even when the await is cancelled.
+        await aclose_anthropic_client(client)
+    return await run_in_threadpool(
+        _finish_insight, db, text, days=days, user_id=user_id, language=language,
+        now=now, cache_now=_now,
+    )
+
+
+def _prepare_insight_prompt(
+    db: Session, *, days: int, now: datetime, user_id: int | None, refresh: bool, language: str,
+) -> dict[str, Any] | str:
+    """Claude 호출 앞의 동기 단계 — 끝낼 응답(dict)이나 보낼 프롬프트(str)를 돌려준다(워커 스레드에서).
+
+    캐시·부정 캐시·데이터 0건이면 응답 dict 로 끝낸다. 프롬프트를 돌려줄 때는 세션의
+    트랜잭션을 끝내 풀 연결을 돌려준 뒤다 (#1697).
+    Sync phase before the Claude call (worker thread): a final response dict on cache / negative
+    cache / no data, otherwise the prompt string, after releasing the pooled connection.
+    """
     # Phase 2-B 🅑 (사이클 74 PR-B) — DB 캐싱 1h TTL (UX 영향 최소 + 60% 비용 절감)
     # `refresh=True` 시 강제 재생성 (사용자 명시 Refresh 버튼)
     # `user_id` 명시 시만 캐싱 (admin/legacy 영역 = 캐싱 X)
@@ -1066,7 +1115,7 @@ async def insight_narrative(  # pylint: disable=too-many-locals,too-many-return-
             invalidate_insight_narrative(db, user_id=user_id, days=days)
         else:
             cached = insight_narrative_cache_repo.get_fresh(
-                db, user_id=user_id, days=days, language=language, now=_now,
+                db, user_id=user_id, days=days, language=language, now=now,
             )
             if cached is not None:
                 return cached
@@ -1075,23 +1124,23 @@ async def insight_narrative(  # pylint: disable=too-many-locals,too-many-return-
             # Negative cache: a recent failure returns the same card before any KPI work or Claude call.
             #   No call was made, so nothing is recorded or logged; Refresh gets past it by deleting the row.
             recorded = insight_narrative_cache_repo.recent_error(
-                db, user_id=user_id, days=days, language=language, now=_now,
+                db, user_id=user_id, days=days, language=language, now=now,
             )
             if recorded is not None:
                 return _build_insight_response(status=_recorded_insight_status(recorded), days=days)
 
     # 4 dashboard 헬퍼 호출로 컨텍스트 수집 + Phase 3 PR 5 user_id 격리
     # Collect context by invoking the 4 dashboard helpers + PR 5 user_id isolation
-    kpi = dashboard_kpi(db, days, now=_now, user_id=user_id)
-    trend = dashboard_trend(db, days, now=_now, user_id=user_id)
-    frequent = frequent_issues_v2(db, days, now=_now, user_id=user_id)
-    auto_merge = auto_merge_kpi(db, days, now=_now, user_id=user_id)
+    kpi = dashboard_kpi(db, days, now=now, user_id=user_id)
+    trend = dashboard_trend(db, days, now=now, user_id=user_id)
+    frequent = frequent_issues_v2(db, days, now=now, user_id=user_id)
+    auto_merge = auto_merge_kpi(db, days, now=now, user_id=user_id)
 
     # 데이터 0건이면 Claude API 호출 비용 발생 안 시킴 (cost-saver early return)
     # Skip Claude API call when there's no data (cost-saver early return)
     if int(kpi.get("analysis_count", {}).get("value", 0) or 0) == 0:
         return _handle_insight_error(
-            db, user_id=user_id, days=days, language=language, error_type="no_data", now=_now,
+            db, user_id=user_id, days=days, language=language, error_type="no_data", now=now,
         )
 
     user_prompt = _build_insight_user_prompt(
@@ -1102,23 +1151,18 @@ async def insight_narrative(  # pylint: disable=too-many-locals,too-many-return-
     # 🔴 Claude 를 기다리는 동안 풀 연결·열린 트랜잭션을 쥐지 않는다 — 이후 캐시 쓰기는 새 트랜잭션 (#1697).
     # Release the pooled connection before the Claude await; later cache writes open a new transaction.
     release_session_before_claude(db)
-    # timeout/max_retries 는 명시한다. SDK 는 재시도 대기를 묶지 않아 페이지 상한을 건다 (#1690)
-    # Explicit timeout/max_retries; the SDK does not bound retry waits, so apply the page cap
-    client = new_async_anthropic(
-        api_key=effective_key, timeout=60.0, max_retries=2,
-        caller="dashboard_insight", retry_after_cap=ANTHROPIC_RETRY_AFTER_CAP_PAGE_SECONDS,
-    )
-    try:
-        # Phase 2 d-🅓 (사이클 74) — Insight 영역 한정 Haiku (67% 비용 절감, AI 리뷰 Sonnet 보존)
-        # Phase 2 d-🅓 (Cycle 74) — Insight-only Haiku (67% cheaper, AI review keeps Sonnet)
-        text = await _call_insight_claude_api(
-            client, settings.claude_insight_model, user_prompt, user_id=user_id,
-        )
-    finally:
-        # 취소(CancelledError)에도 AsyncAnthropic httpx 커넥션 풀을 닫는다 — FD 누수 차단 (WBS P1 · #1697).
-        # Close the AsyncAnthropic pool even when the await is cancelled.
-        await aclose_anthropic_client(client)
-    # 호출 뒤 실패는 주입된 `now`(운영에선 None → 기록 시점)로 찍는다 — 요청 시작(`_now`)으로 찍으면
+    return user_prompt
+
+
+def _finish_insight(
+    db: Session, text: str | None, *, days: int, user_id: int | None, language: str,
+    now: datetime | None, cache_now: datetime,
+) -> dict[str, Any]:
+    """Claude 호출 뒤의 동기 단계 — 파싱 후 성공은 캐시, 실패는 기록(워커 스레드에서).
+
+    Sync phase after the Claude call (worker thread): parse, cache a success or record a failure.
+    """
+    # 호출 뒤 실패는 주입된 `now`(운영에선 None → 기록 시점)로 찍는다 — 요청 시작(`cache_now`)으로 찍으면
     #   45 s 기한 실패 뒤 부정 캐시 창이 그만큼 줄어든다.
     # Post-call failures are stamped with the injected `now` (None in production → record time);
     #   stamping the request start would shrink the negative window by the 45 s the call took.
@@ -1138,7 +1182,7 @@ async def insight_narrative(  # pylint: disable=too-many-locals,too-many-return-
     # Phase 2-B 🅑 — cache only success (error/parse_error need retry).
     if user_id is not None:
         insight_narrative_cache_repo.upsert(
-            db, user_id=user_id, days=days, language=language, response=response, now=_now,
+            db, user_id=user_id, days=days, language=language, response=response, now=cache_now,
         )
     return response
 

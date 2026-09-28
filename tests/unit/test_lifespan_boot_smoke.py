@@ -367,3 +367,65 @@ async def test_scheduler_tasks_do_not_leak_after_lifespan(boot_env, monkeypatch)
         f"lifespan 종료 후 루프에 스케줄러 태스크 잔류: "
         f"{[t.get_name() for t in _live_scheduler_tasks()]}"
     )
+
+
+# --------------------------------------------------------------------------------------
+# 4. 이벤트 루프 지연 프로브 / event-loop lag probe
+# --------------------------------------------------------------------------------------
+
+async def test_lifespan_runs_one_loop_lag_probe_and_stops_it(boot_env):  # pylint: disable=unused-argument
+    """🔴 lifespan 이 루프 지연 프로브를 **하나** 띄우고, 끝나면 멈춘다 — 루프에서 직접 관측한다.
+
+    프로브가 없으면 루프를 막는 동기 호출(웹훅 202 가 10~48 s 늦은 원인)이 운영 로그에 흔적을 남기지 않는다.
+    Without the probe, a sync call blocking the loop leaves no trace in the production log.
+    """
+    from src.shared.loop_lag import PROBE_TASK_NAME  # pylint: disable=import-outside-toplevel
+
+    def _probes() -> list:
+        return [t for t in asyncio.all_tasks() if t.get_name() == PROBE_TASK_NAME]
+
+    async with lifespan(app):
+        started = _probes()
+        assert len(started) == 1, [t.get_name() for t in asyncio.all_tasks()]
+
+    assert started[0].done(), "lifespan 종료 후에도 프로브가 돌고 있다 — stop 미호출/미대기"
+    assert not _probes()
+
+
+async def test_cancelled_lifespan_still_runs_every_cleanup(boot_env, monkeypatch):  # pylint: disable=unused-argument
+    """🔴 서빙 중 lifespan 태스크가 취소돼도 정리(프로브·스케줄러·HTTP 클라이언트)가 전부 돈다.
+
+    프로브 정지가 «호출자가 취소 중» 이라는 것만 보고 CancelledError 를 다시 던지면, finally 첫 줄에서
+    빠져나가 scheduler.stop · close_http_client 가 건너뛰어진다. 취소 자체는 끝까지 전파돼야 한다.
+    If stopping the probe re-raises merely because the caller is being cancelled, the finally exits on
+    its first line and skips the scheduler and HTTP client; the cancellation itself must still propagate.
+    """
+    from src.shared.loop_lag import PROBE_TASK_NAME  # pylint: disable=import-outside-toplevel
+
+    cleanups: list[str] = []
+
+    async def _scheduler_stop(_tasks):
+        cleanups.append("scheduler.stop")
+
+    async def _close_http_client():
+        cleanups.append("close_http_client")
+
+    monkeypatch.setattr("src.main.scheduler.stop", _scheduler_stop)
+    monkeypatch.setattr("src.main.close_http_client", _close_http_client)
+    serving = asyncio.Event()
+
+    async def _serve():
+        async with lifespan(app):
+            serving.set()
+            await asyncio.Event().wait()  # 서빙 중 — 취소로만 끝난다 / serving until cancelled
+
+    task = asyncio.create_task(_serve())
+    await asyncio.wait_for(serving.wait(), timeout=30)
+    probes = [t for t in asyncio.all_tasks() if t.get_name() == PROBE_TASK_NAME]
+    assert len(probes) == 1, "전제 실패 — 프로브가 없으면 이 시나리오가 공허하다"
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        _ = await task
+
+    assert cleanups == ["scheduler.stop", "close_http_client"]
+    assert probes[0].done()

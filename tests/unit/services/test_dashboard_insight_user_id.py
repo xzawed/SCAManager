@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
+from sqlalchemy.pool import StaticPool
 
 from src.database import Base
 from src.models.analysis import Analysis  # noqa: F401  (Base.metadata 등록)
@@ -27,7 +28,11 @@ from src.models.user import User  # noqa: F401
 @pytest.fixture()
 def db():
     """모든 ORM 테이블이 생성된 in-memory SQLite 세션."""
-    engine = create_engine("sqlite:///:memory:")
+    # 서비스가 동기 DB 를 워커 스레드로 넘긴다(#1701) — 스레드가 같은 인메모리 DB 를 보게 한다.
+    # The services run sync DB work in worker threads; share one in-memory DB across threads.
+    engine = create_engine(
+        "sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool,
+    )
     Base.metadata.create_all(engine)
     with Session(engine) as session:
         yield session

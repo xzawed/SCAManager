@@ -93,6 +93,19 @@ _ORDERED = (
 )
 
 
+def _is_log_call(node: ast.AST) -> bool:
+    """비용 로그 호출 — 직접 호출이거나 워커 스레드로 넘긴 `run_in_threadpool(log_claude_api_call, …)` (#1701).
+    A cost-log call: direct, or handed to a worker thread via run_in_threadpool (#1701).
+    """
+    if not isinstance(node, ast.Call):
+        return False
+    name = getattr(node.func, "id", "")
+    if name == "log_claude_api_call":
+        return True
+    return (name == "run_in_threadpool" and bool(node.args)
+            and getattr(node.args[0], "id", "") == "log_claude_api_call")
+
+
 @pytest.mark.parametrize(("rel", "func"), _ORDERED)
 def test_success_log_comes_after_extraction(rel: str, func: str):
     """success 로그가 추출보다 **뒤**여야 한다 — 순서가 곧 계약이다.
@@ -105,8 +118,7 @@ def test_success_log_comes_after_extraction(rel: str, func: str):
                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == func), None)
     assert fn is not None, f"{rel}::{func} 를 못 찾았다 — 이름이 바뀌었으면 가드도 갱신할 것"
 
-    logs = [n.lineno for n in ast.walk(fn)
-            if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "log_claude_api_call"]
+    logs = [n.lineno for n in ast.walk(fn) if _is_log_call(n)]
     extracts = [n.lineno for n in ast.walk(fn)
                 if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "first_text_block"]
     assert logs and extracts, f"{rel}::{func} 에서 로그/추출 호출을 못 찾았다"
