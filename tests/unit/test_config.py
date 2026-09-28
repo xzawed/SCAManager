@@ -243,6 +243,8 @@ _SB_PINNED = "postgresql+psycopg2://u:p@db.abc.supabase.co/postgres"
      f"{_SB_PINNED}?connect_timeout=10&application_name=x&sslmode=require"),
     # `=` 없는 맨 키도 parse_qs 가 버리는 빈 값이다 / a bare key is the same dropped blank
     (f"{_SB}?sslmode&connect_timeout=10", f"{_SB_PINNED}?connect_timeout=10&sslmode=require"),
+    # 키는 디코드해서 본다 — parse_qs 가 그렇게 읽는다 / keys are compared decoded, as parse_qs does
+    (f"{_SB}?ssl%6Dode=&connect_timeout=10", f"{_SB_PINNED}?connect_timeout=10&sslmode=require"),
     (f"{_SB}?sslmode=&sslmode=", f"{_SB_PINNED}?sslmode=require"),
     ("postgresql://u:p@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres?sslmode=",
      "postgresql+psycopg2://u:p@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres?sslmode=require"),
@@ -271,6 +273,7 @@ def test_supabase_blank_sslmode_becomes_single_require(monkeypatch, raw, expecte
 @pytest.mark.parametrize("url", [
     # 실제 값이 있으면 운영자 선택이다 / a real value is the operator's choice
     f"{_SB_PINNED}?sslmode=disable",
+    f"{_SB_PINNED}?sslmode=require",  # 멱등 — 두 번 정규화해도 같다 / idempotent
     f"{_SB_PINNED}?sslmode=verify-full&connect_timeout=10",
     f"{_SB_PINNED}?sslmode=&sslmode=disable",
     # Supabase 가 아니면 쓰지 않는다 — 빈 값이어도 / non-Supabase hosts are never rewritten
