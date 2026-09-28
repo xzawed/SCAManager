@@ -1,20 +1,20 @@
 ## 이벤트 → 점수
 
-진입 = `src/webhook/providers/github.py::add_task(run_analysis_pipeline` (BackgroundTask). 이하 좌표는 `src/worker/pipeline.py`.
+진입 = `src/webhook/providers/github.py::add_task(run_analysis_pipeline` (BackgroundTask). 동시 상한 `src/constants.py::PIPELINE_MAX_CONCURRENCY` — 대기분은 흔적(3.) 없이 재배포에 사라진다. 본문에서 진입점 재호출 = 교착. 이하 좌표는 `src/worker/pipeline.py`.
 
 1. 메타 추출(`::def _extract_event_metadata`). sha 가 비었거나 all-zeros 면 즉시 반환(`::def _is_blank_sha`).
 2. repo 등록 + sha 중복 판정(`::def _ensure_repo`). 중복이면 PR 만 gate 재실행. CLI 훅 행(`source=="cli"`)은 중복이 아니라 교체 대상(`::def _is_cli_only`).
 3. `_begin_attempt`(`::_begin_attempt(_review_repo_id`) 는 비싼 작업 **앞**. `_finish_attempt`(`::def _finish_attempt`) 는 정상 종료 3곳에서만.
 4. 파일 수집(`::def _collect_files`) — 동기 I/O 는 `asyncio.to_thread` offload.
-5. 병렬 실행(`::asyncio.gather(*`) — `_run_static_with_timeout` + `review_code` gather.
-   - 정적: 파일별 순차, deadline 60초(`::PIPELINE_ANALYSIS_TIMEOUT =`), 도구당 30초(`src/constants.py::STATIC_ANALYSIS_TIMEOUT`). 초과 시 완료분 보존 + `incomplete`.
-   - AI: `src/analyzer/io/ai_review.py::async def review_code`. diff 16000자 절단(`src/analyzer/pure/review_prompt.py::MAX_DIFF_CHARS =`), 모델 기본 `claude-sonnet-5`(`src/config.py::claude_review_model:`).
+5. 병렬 실행(`::asyncio.gather(*`) — `_run_static_with_timeout` + `review_code`.
+   - 정적: 파일별 순차, deadline(`::PIPELINE_ANALYSIS_TIMEOUT =`), 도구당(`src/constants.py::STATIC_ANALYSIS_TIMEOUT`). 초과 시 완료분 보존 + `incomplete`.
+   - AI: `src/analyzer/io/ai_review.py::async def review_code`. diff 절단(`src/analyzer/pure/review_prompt.py::MAX_DIFF_CHARS =`), 모델 기본값(`src/config.py::claude_review_model:`).
 6. 채점(`::calculate_score(a`) → 저장·게이트(`::         await run_gate_check(`, PR 만 `run_gate_check`) → 알림(`::_send_notifications(notify_tasks:`).
 
 ## 점수
 
 `src/scorer/calculator.py::def calculate_score` — 코드품질 25 + 보안 20 + 커밋 15 + 방향성 25 + 테스트 15.
-감점(`AnalysisIssue.category` 기준, 도구명 무관): code_quality error −3 / warning −1(상한 25), security error −7 / warning −2. AI raw 20·20·10 → 15·25·15 스케일, 실패 시 기본값 13·21·10 + `ai_defaults_applied`. 등급 A90 B75 C60 D45(`src/constants.py::GRADE_THRESHOLDS:`).
+감점(`AnalysisIssue.category` 기준, 도구명 무관): code_quality error −3 / warning −1(상한 25), security error −7 / warning −2. AI raw 20·20·10 → 15·25·15 스케일, 실패 시 기본값 13·21·10 + `ai_defaults_applied`. 등급 기준(`src/constants.py::GRADE_THRESHOLDS:`).
 
 ## 불완전 마커
 
@@ -44,7 +44,7 @@
 
 ```bash
 py -3 -m pytest tests/unit/analyzer tests/unit/scorer tests/unit/worker
-py -3 -m pytest tests/unit/analyzer/test_procurement_contract.py tests/integration/test_static_analyzer.py
+py -3 -m pytest tests/integration/test_static_analyzer.py
 ```
 
 외부 린터는 실바이너리 통합 테스트를 같은 PR 에 넣는다(`test_eslint_analyzer.py`) — mock 은 무분석을 못 잡는다.

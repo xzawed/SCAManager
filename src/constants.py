@@ -107,6 +107,16 @@ VERIFIER_MAX_OUTPUT_TOKENS = 8192   # 검증자 응답 토큰 상한 — 소형 
 STATIC_ANALYSIS_TIMEOUT = 30    # 도구 1개당 subprocess 타임아웃 (초)
 # PIPELINE_ANALYSIS_TIMEOUT 단일 출처는 src/worker/pipeline.py (정합성 감사 — 미사용 중복 상수 제거)
 # Single source for PIPELINE_ANALYSIS_TIMEOUT is src/worker/pipeline.py (integrity-audit — removed unused duplicate)
+# 한 프로세스에서 동시에 도는 분석 파이프라인 수. 파이프라인은 이벤트 루프 위의 BackgroundTask 라 동기 DB 블록
+# (왕복 ≈0.21s, `_save_and_gate` ≈2.3s)이 도는 동안 새 웹훅의 202 가 못 나간다 — 활동 버스트에 ~15 개가 겹쳐
+# 202 가 10~48s 늦었고 GitHub 10s 타임아웃이 7일에 256건 났다. 2 면 웹훅은 많아야 파이프라인 2 개의 동기 블록
+# 뒤에 선다. 나머지는 메모리에서 도착 순서대로 기다린다 — 재배포 때 소실되고, 흔적(analysis_attempts)도 없다.
+# Max analysis pipelines running at once in this process. Pipelines are BackgroundTasks on the event
+# loop, so their sync DB blocks (~0.21 s per round trip, `_save_and_gate` ~2.3 s) hold back new
+# webhooks' 202: a burst of ~15 delayed it 10-48 s (256 GitHub 10 s timeouts in 7 days). With 2, a
+# webhook waits behind at most two pipelines' sync blocks; the rest wait in memory, FIFO — lost on
+# redeploy, and before their analysis_attempts breadcrumb is written.
+PIPELINE_MAX_CONCURRENCY = 2
 
 # ── Webhook 시크릿 캐시 설정 ─────────────────────────────────────────────────
 WEBHOOK_SECRET_CACHE_TTL = 300  # per-repo webhook secret 캐시 TTL (초, 5분)

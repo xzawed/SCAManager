@@ -1,6 +1,8 @@
 """Analysis pipeline — orchestrates static analysis, AI review, scoring, and notifications."""
 import asyncio
 import logging
+import time
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -8,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from src.database import WorkerSessionLocal as SessionLocal
 from src.config import settings
+from src.constants import PIPELINE_MAX_CONCURRENCY
 from src.shared.log_safety import sanitize_for_log
 from src.shared.stage_metrics import stage_timer
 from src.github_client.diff import get_pr_files, get_push_files, ChangedFile
@@ -953,7 +956,85 @@ async def _send_notifications(notify_tasks: list, task_names: list[str]) -> None
                              exc_info=(type(exc), exc, exc.__traceback__))
 
 
-async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disable=too-many-locals,too-many-statements
+@dataclass
+class _SlotGeneration:
+    """한 이벤트 루프·한 상한에 묶인 파이프라인 슬롯 — 세마포어와 지금 기다리는 수.
+    Pipeline slots bound to one event loop and one limit — the semaphore and the waiter count.
+    """
+
+    loop: asyncio.AbstractEventLoop
+    limit: int
+    semaphore: asyncio.Semaphore
+    waiting: int = 0
+
+
+_slot_state: dict[str, _SlotGeneration] = {}
+
+
+def _current_slots() -> _SlotGeneration:
+    """실행 중인 루프의 슬롯을 돌려준다 — 루프가 바뀌었으면 그 루프의 상한으로 새로 만든다.
+    Return the running loop's slots, rebuilt with the current limit when the loop changed.
+
+    🔴 `asyncio.Semaphore` 는 처음 기다리는 순간 그 루프에 묶여, 다른 루프에서 기다리면 RuntimeError 다.
+    운영은 루프가 하나지만 테스트는 매번 새 루프를 쓴다. 루프는 약참조하지 않는다 — uvloop 의 Loop 는
+    약참조를 못 받을 수 있다(붙잡는 것은 마지막 루프 하나뿐이다).
+    A Semaphore binds to a loop on its first wait; production has one loop, tests use a fresh one
+    each time. The loop is held strongly (only the latest) since uvloop's Loop may reject weakrefs.
+    """
+    loop = asyncio.get_running_loop()
+    slots = _slot_state.get("current")
+    if slots is None or slots.loop is not loop:
+        slots = _SlotGeneration(loop, PIPELINE_MAX_CONCURRENCY, asyncio.Semaphore(PIPELINE_MAX_CONCURRENCY))
+        _slot_state["current"] = slots
+    return slots
+
+
+@asynccontextmanager
+async def _pipeline_slot():
+    """분석 파이프라인 슬롯 하나를 쥔다 — 비었으면 바로, 아니면 도착 순서대로 기다린다.
+    Hold one analysis-pipeline slot — immediately if free, otherwise wait FIFO.
+
+    기다려야 할 때만 INFO 두 줄(대기 시작·대기 끝)을 남겨 운영 로그에서 버스트가 보이게 한다.
+    Logs two INFO lines (queued / dequeued) only when it has to wait, so bursts show in the logs.
+    """
+    slots = _current_slots()
+    if slots.semaphore.locked():
+        slots.waiting += 1
+        logger.info("pipeline queued: waiting=%d limit=%d", slots.waiting, slots.limit)
+        queued_at = time.monotonic()
+        try:
+            await slots.semaphore.acquire()
+        finally:
+            slots.waiting -= 1
+        logger.info(
+            "pipeline dequeued: waited_ms=%d waiting=%d",
+            int((time.monotonic() - queued_at) * 1000), slots.waiting,
+        )
+    else:
+        await slots.semaphore.acquire()
+    try:
+        yield
+    finally:
+        slots.semaphore.release()
+
+
+async def run_analysis_pipeline(event: str, data: dict) -> None:
+    """분석 파이프라인 진입점 — 슬롯을 쥔 뒤에만 본문을 돈다(동시 `PIPELINE_MAX_CONCURRENCY` 개).
+    Pipeline entry point — runs the body only while holding a slot (at most PIPELINE_MAX_CONCURRENCY).
+
+    본문은 이벤트 루프 위에서 동기 DB 블록을 돌린다. 상한이 없으면 버스트 때 새 웹훅의 202 가 그 블록들
+    뒤에 줄 서 GitHub 10초 타임아웃에 걸린다. 무엇을 하는지는 바꾸지 않고 언제 도는지만 정한다.
+    🔴 본문(`_run_pipeline_body`)과 그 아래에서 이 함수를 다시 부르지 않는다 — 슬롯을 쥔 채
+    슬롯을 기다리면 상한만큼 겹칠 때 멈춘다.
+    The body runs sync DB blocks on the event loop; uncapped bursts made new webhooks' 202 queue
+    behind them into GitHub's 10 s timeout. This decides only *when* a pipeline runs. Never call this
+    from inside the body — waiting for a slot while holding one deadlocks once N of them overlap.
+    """
+    async with _pipeline_slot():
+        await _run_pipeline_body(event, data)
+
+
+async def _run_pipeline_body(event: str, data: dict) -> None:  # pylint: disable=too-many-locals,too-many-statements
     """Webhook 이벤트를 받아 정적분석 + AI 리뷰 → 점수 → Gate → 알림 파이프라인을 실행한다.
 
     Args:
