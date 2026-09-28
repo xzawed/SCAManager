@@ -202,6 +202,9 @@ def test_reload_after_refresh_makes_no_second_client(owner, client_for, page, ou
     ("/dashboard?days=14&refresh=1&mode=insight&x=a%20b&y=",
      "/dashboard", [("days", "14"), ("mode", "insight"), ("x", "a b"), ("y", "")]),
     ("/dashboard?mode=insight&refresh=2", "/dashboard", [("mode", "insight")]),
+    # 남은 키가 알파벳순이 아니다 — 정렬해 버리는 구현을 잡는다(독립 리뷰 R4c 생존)
+    # Remaining keys out of alphabetical order, so a sorting implementation is caught
+    ("/dashboard?mode=insight&refresh=1&days=14", "/dashboard", [("mode", "insight"), ("days", "14")]),
     # 같은 키가 둘이어도 모두 뺀다 — 목적지에 refresh 가 남으면 되돌아온다
     # Drop every refresh key; one left behind would bounce back
     ("/dashboard?refresh=1&mode=insight&refresh=1", "/dashboard", [("mode", "insight")]),
