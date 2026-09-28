@@ -218,6 +218,10 @@ def route_client():
         engine.dispose()
 
 
+# witness-corpus: 서술 실패 부류 — 서비스 반환 status(api_error·internal_error), 형제 대시보드 실패 어휘(parse_error), 실페이지 재현에서 캐시에 실제 기록된 유형(TimeoutError·max_tokens)
+_FAILED_STATUSES = ["api_error", "internal_error", "parse_error", "TimeoutError", "max_tokens"]
+
+
 def _get_with_status(client, status):
     with patch("src.ui.routes.repo_insights.repo_insight_narrative",
                new=AsyncMock(return_value={"text": "", "status": status})), \
@@ -226,8 +230,12 @@ def _get_with_status(client, status):
         return client.get("/repos/owner/myrepo/insights?days=7", headers={"Accept-Language": "en"})
 
 
-@pytest.mark.parametrize("status", ["api_error", "internal_error"])
-def test_route_renders_failure_line_for_vendor_and_internal_errors(route_client, status):
+@pytest.mark.parametrize("status", _FAILED_STATUSES)
+def test_route_renders_failure_line_for_any_failure_status(route_client, status):
+    """정상 상태(success·no_data·disabled·no_api_key)가 아니면 전부 실패다 — 모르는 값도 조용히 사라지지 않는다.
+
+    대시보드 템플릿의 else 분기와 같은 방향이다. Anything but the non-failure states is a failure.
+    """
     resp = _get_with_status(route_client, status)
     assert resp.status_code == 200
     links = _refresh_links(resp.text, "/repos/owner/myrepo/insights")

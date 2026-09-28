@@ -32,9 +32,11 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# 새로 고침이 도울 수 있는 실패 status — no_data·disabled·no_api_key 는 다시 불러도 같다.
-# Failure statuses Refresh can help with; no_data / disabled / no_api_key would come back the same.
-_NARRATIVE_FAILED = frozenset({"api_error", "internal_error"})
+# 서술이 실패가 아닌 상태 — 이 밖의 status(모르는 값 포함)는 실패로 보고 새로 고침을 건다.
+#   실패를 목록으로 적으면 새 실패 status 가 조용히 빠진다. 대시보드 템플릿의 else 분기와 같은 방향.
+# Non-failure states; any other status (unknown included) is a failure with Refresh. Listing the
+#   failures instead would silently drop a new failure status (same direction as the dashboard's else).
+_NARRATIVE_NOT_FAILED = frozenset({"success", "no_data", "disabled", "no_api_key"})
 
 
 def _get_db() -> Generator[Session, None, None]:
@@ -124,7 +126,7 @@ async def repo_insights(  # pylint: disable=too-many-positional-arguments
         )
         # 실패(벤더·우리 코드)면 서술 자리에 실패 줄 + 새로 고침 — 부정 캐시를 사용자가 넘는 길.
         # On failure (vendor or ours) show a failure line with Refresh — the user's way past the negative cache.
-        narrative_failed = bool(narrative) and narrative.get("status") in _NARRATIVE_FAILED
+        narrative_failed = bool(narrative) and narrative.get("status") not in _NARRATIVE_NOT_FAILED
         if narrative and narrative.get("status") != "success":
             narrative = None
 
