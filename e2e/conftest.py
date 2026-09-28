@@ -147,12 +147,11 @@ def _start_uvicorn(db_path: str) -> tuple:
 
     from src.main import app  # noqa: PLC0415
     from src.auth.session import require_login, get_current_user, CurrentUser  # noqa: PLC0415
-    import src.main as _main_module  # noqa: PLC0415
-
     # 🔴 lifespan 의 GitHub warm-up(`/zen`)이 실행마다 실제 api.github.com 을 부르지 않게 돌린다 —
-    #    lifespan 이 호출 시점에 이 모듈 전역을 읽으므로 import 뒤 대입이 먹는다.
+    #    lifespan 이 호출 시점에 이 모듈 전역을 읽으므로 import 뒤 대입이 먹는다. 모듈은 `sys.modules`
+    #    에서 꺼낸다 — `import src.main as …` 를 더하면 CodeQL py/import-and-import-from(note)이다.
     # Keep the lifespan's GitHub warm-up ping on loopback; it reads this module global at call time.
-    _main_module.GITHUB_API = "http://127.0.0.1:1"
+    sys.modules["src.main"].GITHUB_API = "http://127.0.0.1:1"
 
     # E2E용 테스트 사용자 — require_login + get_current_user 의존성 우회
     # require_login: 인증 필수 라우트 / get_current_user: overview 등 공개 라우트의 optional 인증
