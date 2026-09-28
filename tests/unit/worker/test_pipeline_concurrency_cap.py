@@ -286,3 +286,27 @@ def test_cap_holds_across_event_loops(probe):
 
     assert probe.max_inside == 1
     assert len(probe.finished) == 6
+
+
+async def test_slot_is_returned_when_the_dequeued_log_raises(probe):
+    """대기 끝 로그가 예외를 내도 슬롯이 새지 않는다 — 새면 세 번째 파이프라인이 영영 못 들어온다.
+
+    A raising dequeued log must not leak the permit — otherwise the third pipeline never enters.
+    """
+    real_info = pipeline.logger.info
+
+    def _info(msg, *args, **kw):
+        if msg.startswith("pipeline dequeued"):
+            raise RuntimeError("simulated logging failure")
+        return real_info(msg, *args, **kw)
+
+    probe.release_all()
+    with patch(_LIMIT, 1, create=True), patch.object(pipeline.logger, "info", side_effect=_info):
+        tasks = _launch(3)
+        results = await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=3)
+
+    # 첫 번째는 기다리지 않아 끝까지 돌고, 기다린 둘은 로그 예외로 끝나되 슬롯을 돌려준다.
+    # The first never waited and completes; the two waiters end on the log error but free the slot.
+    assert results[0] is None
+    assert probe.finished == [_sha(0)]
+    assert [type(r) for r in results[1:]] == [RuntimeError, RuntimeError]

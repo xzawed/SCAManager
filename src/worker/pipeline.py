@@ -998,6 +998,7 @@ async def _pipeline_slot():
     Logs two INFO lines (queued / dequeued) only when it has to wait, so bursts show in the logs.
     """
     slots = _current_slots()
+    queued_at: float | None = None
     if slots.semaphore.locked():
         slots.waiting += 1
         logger.info("pipeline queued: waiting=%d limit=%d", slots.waiting, slots.limit)
@@ -1006,13 +1007,18 @@ async def _pipeline_slot():
             await slots.semaphore.acquire()
         finally:
             slots.waiting -= 1
-        logger.info(
-            "pipeline dequeued: waited_ms=%d waiting=%d",
-            int((time.monotonic() - queued_at) * 1000), slots.waiting,
-        )
     else:
         await slots.semaphore.acquire()
+    # 🔴 acquire 직후부터는 전부 이 try 안이다 — 대기 끝 로그도 여기서 남겨야 그것이 예외를 내도 슬롯이
+    #   새지 않는다(Grok claim-review 적발: try 밖이면 로그 예외 한 번에 슬롯 하나가 영구히 사라진다).
+    # Everything after acquire sits inside this try — even the dequeued log, or an exception
+    #   there would leak the permit for good (found by Grok claim-review).
     try:
+        if queued_at is not None:
+            logger.info(
+                "pipeline dequeued: waited_ms=%d waiting=%d",
+                int((time.monotonic() - queued_at) * 1000), slots.waiting,
+            )
         yield
     finally:
         slots.semaphore.release()
