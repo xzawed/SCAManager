@@ -699,8 +699,12 @@ jobs:
         #    (node-id 고정이라 신규 테스트는 자동 미수집 — 사이클 159 cross-verify 신규).
         # Order: concurrency → round-trip (self-isolating since Cycle 159). Add new PG-only tests in
         #   test_0020_round_trip.py to the ::node-id pin below, else they won't be collected.
+        # 🔴 드라이버를 적는다(`+psycopg2`) — 이 값은 Settings 정규화를 거치지 않고 create_engine 에
+        #    그대로 들어간다. 맨 `postgresql://` 은 SQLAlchemy 2.1 에서 미설치 psycopg(v3)로 해석된다.
+        # Name the driver: this URL reaches create_engine raw (no Settings pin), and a bare
+        # postgresql:// resolves to the uninstalled psycopg (v3) on SQLAlchemy 2.1.
         env:
-          DATABASE_URL_TEST_POSTGRES: "postgresql://scatest:scatest@localhost:5432/scatest"
+          DATABASE_URL_TEST_POSTGRES: "postgresql+psycopg2://scatest:scatest@localhost:5432/scatest"
         run: |
           python -m pytest \
             tests/integration/test_retry_concurrency_postgres.py \

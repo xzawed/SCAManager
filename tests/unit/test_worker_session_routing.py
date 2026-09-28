@@ -4,7 +4,7 @@ TDD Red Phase: RLS Phase 2 — background 전용 DB 세션 분리 (옵션 A) 테
 TDD Red Phase: RLS Phase 2 — dedicated background DB session split (Option A) tests.
 
 검증 대상 / Targets:
-  - src/config.py: database_url_worker 필드 + postgres:// → postgresql:// validator
+  - src/config.py: database_url_worker 필드 + postgres:// → postgresql+psycopg2:// validator
   - src/database.py: _build_worker_session_factory pure 함수 + WorkerSessionLocal 모듈 심볼
   - RLS listener (_set_rls_user_id_per_query) — 분리 worker engine 미등록 가드
   - background 모듈 18개 (scripts/backfill 포함) import alias 전환
@@ -190,14 +190,14 @@ def _make_settings(**overrides):
 # ---------------------------------------------------------------------------
 
 class TestDatabaseUrlWorkerConfig:
-    """database_url_worker 필드의 default + postgres:// → postgresql:// 변환 검증.
-    Validates the database_url_worker default and postgres:// → postgresql:// conversion."""
+    """database_url_worker 필드의 default + postgres:// → postgresql+psycopg2:// 변환 검증.
+    Validates the database_url_worker default and postgres:// → postgresql+psycopg2:// conversion."""
 
     def test_worker_url_postgres_scheme_converted(self):
-        # postgres:// 스킴이 postgresql:// 로 변환되어야 한다 (fix_optional_pg_url 멀티필드 validator)
-        # The postgres:// scheme must be converted to postgresql:// (fix_optional_pg_url multi-field validator)
+        # postgres:// 스킴이 postgresql+psycopg2:// 로 변환되어야 한다 (fix_optional_pg_url 멀티필드 validator)
+        # The postgres:// scheme must become postgresql+psycopg2:// (fix_optional_pg_url multi-field validator)
         s = _make_settings(database_url_worker="postgres://u:p@h:5432/db")
-        assert s.database_url_worker == "postgresql://u:p@h:5432/db"
+        assert s.database_url_worker == "postgresql+psycopg2://u:p@h:5432/db"
 
     def test_worker_url_unset_defaults_to_empty(self, monkeypatch):
         # 미설정 시 빈 문자열 default 이어야 한다 (현행 동작 보존 가드)
@@ -212,11 +212,11 @@ class TestDatabaseUrlWorkerConfig:
         s = _make_settings(database_url_worker="")
         assert s.database_url_worker == ""
 
-    def test_worker_url_postgresql_scheme_unchanged(self):
-        # 이미 postgresql:// 스킴이면 변경 없이 유지되어야 한다 (멱등성 경계)
-        # An existing postgresql:// scheme must remain unchanged (idempotency boundary)
-        s = _make_settings(database_url_worker="postgresql://u:p@h:5432/db")
-        assert s.database_url_worker == "postgresql://u:p@h:5432/db"
+    def test_worker_url_pinned_scheme_unchanged(self):
+        # 이미 postgresql+psycopg2:// 스킴이면 변경 없이 유지되어야 한다 (멱등성 경계)
+        # An already-pinned postgresql+psycopg2:// scheme must remain unchanged (idempotency boundary)
+        s = _make_settings(database_url_worker="postgresql+psycopg2://u:p@h:5432/db")
+        assert s.database_url_worker == "postgresql+psycopg2://u:p@h:5432/db"
 
     def test_worker_url_supabase_gets_sslmode_require(self):
         # Supabase URL 이면 sslmode=require 자동 추가 — _normalize_pg_url 미러 정합
@@ -224,7 +224,7 @@ class TestDatabaseUrlWorkerConfig:
         s = _make_settings(
             database_url_worker="postgres://u:p@db.abc.supabase.co:5432/postgres"
         )
-        assert s.database_url_worker.startswith("postgresql://")
+        assert s.database_url_worker.startswith("postgresql+psycopg2://")
         assert "sslmode=require" in s.database_url_worker
 
     def test_worker_url_reads_from_env(self, monkeypatch):
@@ -237,7 +237,7 @@ class TestDatabaseUrlWorkerConfig:
         monkeypatch.setenv("DATABASE_URL_WORKER", "postgres://u:p@h:5432/db")
         importlib.reload(cfg)
         try:
-            assert cfg.settings.database_url_worker == "postgresql://u:p@h:5432/db"
+            assert cfg.settings.database_url_worker == "postgresql+psycopg2://u:p@h:5432/db"
         finally:
             # 싱글톤 오염 방지 — env 원복 후 재로드 (다른 테스트 격리 보장)
             # Prevent singleton pollution — restore env and reload (isolates other tests)

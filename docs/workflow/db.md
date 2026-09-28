@@ -10,7 +10,7 @@
    SQLite 단위 테스트는 `create_all` 이라 `add_column` 을 안 돌리고 CI PG 는 빈 DB 라
    **이 실패는 운영에서만 난다**.
 5. PG 전용 DDL 은 `if not is_postgresql(op.get_bind()): return` 뒤에 둔다 (`from src.shared.alembic_dialect import is_postgresql`) — SQLite 단위 테스트가 같은 파일을 실행한다.
-6. 신규 테이블이면 아래 RLS 3종을 같은 마이그레이션에 넣고 `src/services/saas_service.py::_RLS_MATRIX:` `_RLS_MATRIX` 에 등재한다.
+6. 신규 테이블이면 아래 RLS 3종을 같은 마이그레이션에 넣고 `src/services/saas_service.py::_RLS_MATRIX:` 에 등재한다.
 7. `downgrade()` 를 역순으로 쓴다 — 정책 DROP → 제약 → 인덱스 → 테이블.
 8. 신규 모델이면 모델 목록 개수 상수 2곳을 함께 올린다 — `tests/unit/test_migration_completeness.py::_REGISTERED_MODELS =` · `tests/unit/migrations/test_orm_alembic_parity.py::_REGISTERED_MODEL_MODULES =`.
 
@@ -43,12 +43,12 @@ py -3 -m pytest tests/unit/migrations tests/unit/test_migration_completeness.py 
 손으로 돌린다 — pre-deploy 는 primary 만 올리는데 `FailoverSessionFactory` 가 장애 시
 그쪽으로 전환한다.
 
-실 PG upgrade→downgrade 왕복과 ORM↔스키마 대조는 CI `pg-concurrency` job 만 돈다. PG 전용 테스트를 추가하면 그 job 의 실행 목록에 등재해야 수집된다 — 빠뜨리면 `tests/unit/scripts/test_ci_wires_every_pg_gated_test.py` 가 red 로 잡는다. 로컬에서 돌리려면 `DATABASE_URL_TEST_POSTGRES` 를 설정한다(`DATABASE_URL` 은 conftest 가 sqlite 로 덮는다).
+실 PG upgrade→downgrade 왕복과 ORM↔스키마 대조는 CI `pg-concurrency` job 만 돈다. PG 전용 테스트를 추가하면 그 job 의 실행 목록에 등재해야 수집된다 — 빠뜨리면 `tests/unit/scripts/test_ci_wires_every_pg_gated_test.py` 가 red 로 잡는다. 로컬에서 돌리려면 `DATABASE_URL_TEST_POSTGRES=postgresql+psycopg2://…` 를 설정한다(`DATABASE_URL` 은 conftest 가 sqlite 로 덮는다).
 
 ## 적용
 
 - 수동 — `alembic upgrade head` (`make migrate`)
-- 배포 — `railway.toml::preDeployCommand =` `preDeployCommand`
+- 배포 — `railway.toml::preDeployCommand =`
 - 기동 — `src/main.py::def _run_migrations` lifespan 이 30초 타임아웃으로 실행. 실패해도 기본은 기동, `STRICT_MIGRATION=true` 면 기동 거부.
 - 대상 URL — `MIGRATION_DATABASE_URL` 우선, 없으면 `DATABASE_URL` (`src/config.py::def effective_migration_url`).
 
