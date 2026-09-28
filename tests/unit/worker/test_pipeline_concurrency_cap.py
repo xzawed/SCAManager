@@ -9,9 +9,13 @@ N pipelines' synchronous DB blocks on the event loop.
   `PIPELINE_MAX_CONCURRENCY` 개를 넘지 않는다. 나머지는 버려지지 않고 도착 순서대로 기다린다.
 - 상한은 `src/constants.py` 의 그 상수다 — 1 로 바꾸면 직렬로 돈다.
 - 본문이 예외로 끝나도 슬롯은 반환된다. 본문은 자기가 쥔 슬롯을 다시 기다리지 않는다.
+- 같은 태스크의 중첩 획득은 기다리지 않고 RuntimeError, 그 안에서 만든 태스크는 거절 없이 상한만 받는다.
+- 대기 중 취소·로그 실패에도 슬롯과 대기 수가 새지 않는다. 브랜치 삭제 push 는 줄 서지 않는다.
 - 기다려야 하는 파이프라인만 INFO 로 대기 수를 남긴다.
 At most N pipelines are inside the body at once; the rest wait FIFO and all complete. N is the
-named constant. A raising body frees its slot; the body never re-acquires its own slot. Only
+named constant. A raising body frees its slot; the body never re-acquires its own slot; a nested
+acquire in the same task raises at once while tasks it spawns are only capped. Cancellation or a
+failing log leaks neither a permit nor the waiter count. Branch-delete pushes never queue. Only
 pipelines that have to wait log at INFO.
 """
 # pylint: disable=redefined-outer-name
@@ -310,3 +314,182 @@ async def test_slot_is_returned_when_the_dequeued_log_raises(probe):
     assert results[0] is None
     assert probe.finished == [_sha(0)]
     assert [type(r) for r in results[1:]] == [RuntimeError, RuntimeError]
+
+
+# --- 재진입 · 자식 태스크 / re-entry and child tasks ------------------------------------------
+
+
+@pytest.mark.parametrize("limit", [1, 2])
+async def test_nested_acquire_in_the_same_task_raises_instead_of_waiting(limit):
+    """슬롯을 쥔 태스크가 또 잡으면 기다리지 않고 바로 RuntimeError — 자리가 남는 상한 2 에서도.
+
+    A task that already holds a slot gets RuntimeError at once on a nested acquire — even at a
+    limit of 2, where a spare permit would otherwise hide the deadlock until 2 pipelines overlap.
+    바깥 슬롯은 그대로 반환돼 같은 태스크가 다음에 다시 잡을 수 있다.
+    The outer slot is still returned, so the same task can take one again afterwards.
+    """
+
+    async def _nested() -> None:
+        async with pipeline._pipeline_slot():
+            with pytest.raises(RuntimeError, match="already holds"):
+                async with pipeline._pipeline_slot():
+                    pass
+
+    with patch(_LIMIT, limit, create=True):
+        await asyncio.wait_for(_nested(), timeout=1)
+        slots = pipeline._current_slots()
+        assert slots.waiting == 0
+        assert not slots.semaphore.locked()
+        async with pipeline._pipeline_slot():
+            pass
+    assert not slots.semaphore.locked()
+
+
+async def test_tasks_created_inside_a_slot_are_capped_not_rejected():
+    """슬롯 안에서 만든 태스크는 문맥을 물려받아도 다른 태스크다 — 거절되지 않고 상한만 적용된다.
+
+    Tasks created while holding a slot inherit its context but are different tasks: they are
+    never rejected as re-entry, only capped — one takes the spare permit, the other waits.
+    """
+    inside = 0
+    max_inside = 0
+    gate = asyncio.Event()
+
+    async def _child() -> None:
+        nonlocal inside, max_inside
+        async with pipeline._pipeline_slot():
+            inside += 1
+            max_inside = max(max_inside, inside)
+            await gate.wait()
+            inside -= 1
+
+    with patch(_LIMIT, 2, create=True):
+        async with pipeline._pipeline_slot():
+            children = [asyncio.create_task(_child()) for _ in range(2)]
+            await _until(lambda: inside == 1)
+            await asyncio.sleep(0.02)
+            assert inside == 1  # 바깥 + 자식 하나 = 상한 2 / outer + one child = the cap
+            assert pipeline._current_slots().waiting == 1
+            assert not any(c.done() for c in children)
+        await _until(lambda: inside == 2)  # 바깥이 나가면 기다리던 자식이 들어온다 / the waiter enters
+        gate.set()
+        await asyncio.wait_for(asyncio.gather(*children), timeout=1)
+    assert max_inside == 2
+
+
+# --- 대기 중 취소 · 대기 로그 실패 / cancel while queued, failing queued log ----------------------
+
+
+async def test_cancel_queued_waiter_does_not_leak(probe):
+    """기다리던 파이프라인이 취소되면 대기 수가 곧바로 줄고, 슬롯은 다음 차례에게 간다.
+
+    Cancelling a queued pipeline drops the waiter count at once and leaks no permit.
+    """
+    with patch(_LIMIT, 1, create=True):
+        tasks = _launch(3)
+        await _until(lambda: "p0" in probe.parked)
+        await asyncio.sleep(0.02)
+        slots = pipeline._current_slots()
+        assert slots.waiting == 2
+        tasks[1].cancel()
+        await asyncio.sleep(0.01)
+        assert slots.waiting == 1
+        probe.release_all()
+        res = await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=3)
+    assert isinstance(res[1], asyncio.CancelledError)
+    assert probe.finished == [_sha(0), _sha(2)]
+    assert slots.waiting == 0
+    assert not slots.semaphore.locked()
+
+
+async def test_cancel_woken_waiter_before_it_resumes(probe):
+    """깨워진 직후(재개 전) 취소돼도 슬롯이 새지 않는다 — 세 번째가 여전히 돈다.
+
+    p0 finishing wakes p1; cancelling p1 in that same tick must still let p2 run.
+    """
+    with patch(_LIMIT, 1, create=True):
+        tasks = _launch(3)
+        await _until(lambda: "p0" in probe.parked)
+        await asyncio.sleep(0.02)
+        slots = pipeline._current_slots()
+        orig_release = slots.semaphore.release
+
+        def _release_then_cancel():
+            orig_release()  # p1 을 깨운다 / wakes p1's future
+            tasks[1].cancel()  # 재개 전에 취소 / cancel p1 before it resumes
+
+        slots.semaphore.release = _release_then_cancel
+        probe.release(0)
+        await _until(lambda: _sha(0) in probe.finished)
+        slots.semaphore.release = orig_release
+        probe.release_all()
+        res = await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=3)
+    assert isinstance(res[1], asyncio.CancelledError)
+    assert probe.finished == [_sha(0), _sha(2)]
+    assert slots.waiting == 0
+    assert not slots.semaphore.locked()
+
+
+async def test_waiter_count_is_restored_when_the_queued_log_raises(probe):
+    """대기 시작 로그가 예외를 내도 대기 수가 제자리로 돌아오고 슬롯도 새지 않는다.
+
+    A raising queued log must not drift the waiter count nor leak a permit.
+    """
+    real_info = pipeline.logger.info
+
+    def _info(msg, *args, **kw):
+        if msg.startswith("pipeline queued"):
+            raise RuntimeError("simulated logging failure")
+        return real_info(msg, *args, **kw)
+
+    probe.release_all()
+    with patch(_LIMIT, 1, create=True), patch.object(pipeline.logger, "info", side_effect=_info):
+        tasks = _launch(3)
+        results = await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=3)
+        slots = pipeline._current_slots()
+
+    assert results[0] is None
+    assert [type(r) for r in results[1:]] == [RuntimeError, RuntimeError]
+    assert slots.waiting == 0
+    assert not slots.semaphore.locked()
+
+
+# --- 분석할 커밋이 없는 이벤트 / events with no commit to analyse ------------------------------
+
+
+@pytest.mark.parametrize("payload", [
+    {"repository": {"full_name": "owner/repo"}, "after": "0" * 40, "head_commit": None},
+    {"repository": {"full_name": "owner/repo"}},
+])
+async def test_branch_delete_push_does_not_queue_behind_a_full_cap(probe, caplog, payload):
+    """브랜치 삭제 push(zero·빈 SHA)는 슬롯이 다 차 있어도 기다리지 않고 바로 건너뛴다.
+
+    A branch-delete push (zero or missing SHA) skips at once even while every slot is taken.
+    """
+    caplog.set_level(logging.INFO, logger="src.worker.pipeline")
+    with patch(_LIMIT, 1, create=True):
+        tasks = _launch(1)
+        await _until(lambda: "p0" in probe.parked)
+        await asyncio.wait_for(pipeline.run_analysis_pipeline("push", payload), timeout=1)
+        messages = [r.getMessage() for r in caplog.records]
+        assert not [m for m in messages if m.startswith("pipeline queued")]
+        assert [m for m in messages if m.startswith("Skipping owner/repo")]
+        assert probe.started == [_sha(0)]
+        probe.release_all()
+        await asyncio.wait_for(asyncio.gather(*tasks), timeout=3)
+
+
+async def test_malformed_payload_still_ends_in_the_terminal_except(probe, caplog):
+    """메타 추출이 터지는 페이로드는 슬롯 경로로 가 본문의 터미널 except 가 삼킨다 — 밖으로 새지 않는다.
+
+    A payload whose metadata extraction raises goes the slot path; the body's terminal except
+    swallows it, so nothing escapes run_analysis_pipeline.
+    """
+    caplog.set_level(logging.INFO, logger="src.worker.pipeline")
+    with patch(_LIMIT, 1, create=True):
+        await asyncio.wait_for(
+            pipeline.run_analysis_pipeline("push", {"repository": "not-a-dict", "after": "0" * 40}),
+            timeout=1,
+        )
+    assert [r for r in caplog.records if r.getMessage().startswith("Analysis pipeline failed")]
+    assert probe.started == []
