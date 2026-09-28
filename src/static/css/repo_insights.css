@@ -474,6 +474,32 @@
   white-space: pre-wrap;
 }
 
+/* ── AI 내러티브 실패 줄 / AI narrative failure line ────── */
+.ri-narrative-failed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  background: var(--bg-card);
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-5);
+  margin-bottom: var(--space-6);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+/* WCAG 2.5.8 — 24×24 하한 / 24×24 minimum target */
+.ri-narrative-failed__refresh {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  color: var(--text-1);
+  font-weight: 600;
+  text-decoration: none;
+}
+
 /* ── 빈 상태 / Empty state ──────────────────────────────── */
 .ri-empty {
   text-align: center;

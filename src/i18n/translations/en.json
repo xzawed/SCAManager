@@ -897,6 +897,7 @@
     "recurring_count": "{count}× recurring",
     "kpi_security_high": "Security HIGH",
     "narrative_title": "AI Summary Diagnosis",
+    "narrative_failed": "The AI summary could not be generated.",
     "refresh": "Refresh",
     "recurring_ranking_title": "Recurring Issue Ranking",
     "th_message": "Issue message",

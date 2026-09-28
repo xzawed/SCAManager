@@ -5,7 +5,7 @@ Unit tests for record_error / record_error_repo repository helpers (0033 migrati
 검증 케이스:
   1. record_error — 신규 row 생성 (user_id=N, repo_id=None)
   2. record_error — 기존 row 카운터 증가
-  3. record_error — expires_at = now (즉시 만료, 재시도 차단 없음)
+  3. record_error — expires_at = now (즉시 만료, get_fresh 미서빙 — 재시도 억제는 recent_error)
   4. record_error — 다른 user_id row 에 영향 없음
   5. record_error — language 파라미터 분리 (en vs ko 별개 row)
   6. record_error_repo — 신규 row 생성 (user_id=N, repo_id=M)
@@ -116,7 +116,7 @@ def test_record_error_expires_at_now(db):
     """record_error — expires_at = now (즉시 만료) 확인.
 
     The error row must be immediately expired (expires_at <= now)
-    so it never blocks a fresh retry attempt.
+    so get_fresh never serves it; the brief retry block is recent_error's (last_error_at).
     """
     now = _now()
     insight_narrative_cache_repo.record_error(

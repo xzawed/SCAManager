@@ -5,11 +5,14 @@ Unit tests for insight_narrative cache layer + api_error interaction.
 검증 케이스 (2종):
     케이스 1 — api_error 발생 시 cache upsert 호출 안 됨
         : API → RuntimeError → api_error 반환, upsert 0회
-        : 두 번째 호출도 cache miss → API 다시 호출됨 (upsert 여전히 0회)
+        : 부정 캐시 창이 지난 두 번째 호출은 API 다시 호출됨 (upsert 여전히 0회)
 
     케이스 2 — api_error 후 재시도 시 success 복구
         : 첫 번째 API → RuntimeError → api_error
-        : 두 번째 API → valid JSON → success 반환 + upsert 1회
+        : 창이 지난 두 번째 API → valid JSON → success 반환 + upsert 1회
+
+창 안의 재호출이 API 에 닿지 않는 쪽은 `test_insight_negative_cache_service.py` 가 잰다.
+The window-internal reload (no API call) is covered by test_insight_negative_cache_service.py.
 
 두 케이스 모두:
     - in-memory SQLite + User / Repository / Analysis / InsightNarrativeCache ORM 테이블
@@ -40,7 +43,15 @@ from src.models.analysis import Analysis  # noqa: F401  (Base.metadata 등록 / 
 from src.models.insight_narrative_cache import InsightNarrativeCache  # noqa: F401
 from src.models.repository import Repository  # noqa: F401
 from src.models.user import User  # noqa: F401
+from src.repositories.insight_narrative_cache_repo import NEGATIVE_TTL_SECONDS
 from src.services import dashboard_service
+
+
+def _after_window(t0: datetime) -> datetime:
+    """부정 캐시 창(최근 실패면 재시도를 막는다)이 지난 시각 — 재시도 복구는 그 뒤에만 API 에 닿는다.
+    A time past the negative-cache window; a retry reaches the API only after it.
+    """
+    return t0 + timedelta(seconds=NEGATIVE_TTL_SECONDS + 1)
 
 
 # ─── Fixtures ──────────────────────────────────────────────────────────────
@@ -195,16 +206,17 @@ async def test_api_error_does_not_call_upsert(db, seeded_user_and_repo):
 
 @pytest.mark.asyncio
 async def test_api_error_second_call_retries_api_not_cached(db, seeded_user_and_repo):
-    """api_error 후 두 번째 호출 시 캐시 없으므로 API 다시 호출됨.
+    """api_error 후 부정 캐시 창이 지난 두 번째 호출은 API 다시 호출됨.
 
-    After an api_error, there is no cached entry, so the second call must
-    invoke the Claude API again (no stale cache served).
+    After an api_error and once the negative-cache window has passed, the second
+    call must invoke the Claude API again (no stale cache served).
 
-    케이스 1 연장: 1차 api_error → 캐시 row 0개 → 2차 호출 시 API 재호출 확인.
-    Case 1 extension: first api_error → 0 cache rows → second call hits API again.
+    케이스 1 연장: 1차 api_error → 성공 캐시 row 0개 → 창이 지난 2차 호출 시 API 재호출 확인.
+    Case 1 extension: first api_error → 0 success rows → second call after the window hits API again.
     """
     user, repo = seeded_user_and_repo
     _seed_two_analyses(db, repo.id)
+    t0 = datetime.now(timezone.utc)
 
     # 두 번 모두 None 반환 (api_error 지속)
     # Both calls return None (persistent api_error)
@@ -216,10 +228,10 @@ async def test_api_error_second_call_retries_api_not_cached(db, seeded_user_and_
              "src.repositories.insight_narrative_cache_repo.upsert",
          ) as mock_upsert:
         result1 = await dashboard_service.insight_narrative(
-            db, days=7, user_id=user.id, api_key="sk-test",
+            db, days=7, user_id=user.id, api_key="sk-test", now=t0,
         )
         result2 = await dashboard_service.insight_narrative(
-            db, days=7, user_id=user.id, api_key="sk-test",
+            db, days=7, user_id=user.id, api_key="sk-test", now=_after_window(t0),
         )
 
     # 두 결과 모두 api_error
@@ -231,8 +243,8 @@ async def test_api_error_second_call_retries_api_not_cached(db, seeded_user_and_
     # upsert never called across both invocations
     mock_upsert.assert_not_called()
 
-    # API 는 두 번 호출됨 — 캐시가 없어 매번 도달
-    # API called twice — no cache entry means each call reaches the API
+    # API 는 두 번 호출됨 — 성공 캐시가 없고 부정 캐시 창도 지나 매번 도달
+    # API called twice — no success entry, and the negative window has passed
     assert mock_api.await_count == 2, (
         f"Expected 2 API calls (no cache between retries), got {mock_api.await_count}"
     )
@@ -244,8 +256,8 @@ async def test_api_error_second_call_retries_api_not_cached(db, seeded_user_and_
     ).all()
     assert len(rows) == 1, f"Expected 1 error-tracking row after api_error, found {len(rows)}"
     row = rows[0]
-    # 에러 추적 row 는 즉시 만료 상태여야 함 (get_fresh 차단 없음)
-    # Error-tracking row must be immediately expired (never blocks fresh retry)
+    # 에러 추적 row 는 즉시 만료 상태여야 함 (get_fresh 로는 서빙되지 않음 — 재시도 억제는 부정 캐시 몫)
+    # Error-tracking row must be immediately expired (get_fresh never serves it; the retry block is the negative cache's)
     expires = row.expires_at
     if expires.tzinfo is None:
         expires = expires.replace(tzinfo=timezone.utc)
@@ -263,17 +275,18 @@ async def test_api_error_then_success_recovery(db, seeded_user_and_repo):
     """첫 번째 api_error 후 두 번째 호출이 success 로 복구됨.
 
     First call: _call_insight_claude_api returns None → api_error (no cache write).
-    Second call: _call_insight_claude_api returns valid JSON → success + cache upsert.
+    Second call (after the negative-cache window): valid JSON → success + cache upsert.
 
     side_effect=[None, valid_json] 패턴으로 순서 제어.
     Uses side_effect=[None, valid_json] to control the call sequence.
 
     Code-level trace:
         1st call: text=None → return api_error (upsert 건너뜀)
-        2nd call: get_fresh → None (캐시 없음) → text=valid_json → parse → upsert 호출
+        2nd call: get_fresh → None, recent_error → None (창 지남) → text=valid_json → parse → upsert 호출
     """
     user, repo = seeded_user_and_repo
     _seed_two_analyses(db, repo.id)
+    t0 = datetime.now(timezone.utc)
 
     valid_json = _make_valid_json()
 
@@ -286,13 +299,13 @@ async def test_api_error_then_success_recovery(db, seeded_user_and_repo):
         # 1차 호출 — api_error 예상
         # First call — expect api_error
         result1 = await dashboard_service.insight_narrative(
-            db, days=7, user_id=user.id, api_key="sk-test",
+            db, days=7, user_id=user.id, api_key="sk-test", now=t0,
         )
 
-        # 2차 호출 — success 예상
-        # Second call — expect success
+        # 2차 호출(부정 캐시 창 뒤) — success 예상
+        # Second call (after the negative-cache window) — expect success
         result2 = await dashboard_service.insight_narrative(
-            db, days=7, user_id=user.id, api_key="sk-test",
+            db, days=7, user_id=user.id, api_key="sk-test", now=_after_window(t0),
         )
 
     # 1차 결과: api_error + 4 카드 빈 list

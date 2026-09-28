@@ -30,7 +30,7 @@
 6. 실패는 `src/gate/merge_reasons.py` 태그로 분류 후 재시도 큐. 워커 60초(`src/scheduler.py::retry-pending-merges":`), `MERGE_RETRY_ENABLED=false` 면 즉시 머지 legacy
 
 ### 페이지 Claude 호출 (`src/services`)
-셋 다 넣는다 — `new_async_anthropic(..., retry_after_cap=ANTHROPIC_RETRY_AFTER_CAP_PAGE_SECONDS)` · await 전 `src/services/repo_insight_service.py::release_session_before_claude(db)` · `try` **안의** `src/services/dashboard_service.py::async with asyncio.timeout(ANTHROPIC_PAGE_DEADLINE_SECONDS)`(밖이면 기록·라벨이 빠진다). CI 는 팩토리 경유만 본다(`tests/unit/shared/test_anthropic_retry_after_cap.py::test_only_the_factory`) — 나머지는 틀려도 초록.
+넷 다 넣는다 — `new_async_anthropic(..., retry_after_cap=ANTHROPIC_RETRY_AFTER_CAP_PAGE_SECONDS)` · await 전 `src/services/repo_insight_service.py::release_session_before_claude(db)` · `try` **안의** `src/services/dashboard_service.py::async with asyncio.timeout(ANTHROPIC_PAGE_DEADLINE_SECONDS)`(밖이면 기록·라벨이 빠진다) · `recent_error*` 적중이면 호출 생략. CI 는 팩토리 경유만 본다(`tests/unit/shared/test_anthropic_retry_after_cap.py::test_only_the_factory`) — 나머지는 틀려도 초록.
 
 ### 검증
 `py -3 -m pytest tests/unit/gate tests/unit/notifier tests/unit/webhook` → `py -3 scripts/pre_push_gate.py`

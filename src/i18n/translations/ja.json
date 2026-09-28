@@ -897,6 +897,7 @@
     "recurring_count": "{count}回繰り返し",
     "kpi_security_high": "セキュリティ HIGH",
     "narrative_title": "AI 総合診断",
+    "narrative_failed": "AI 総合診断を生成できませんでした。",
     "refresh": "更新",
     "recurring_ranking_title": "繰り返しイシューランキング",
     "th_message": "イシューメッセージ",
