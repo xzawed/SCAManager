@@ -183,6 +183,63 @@ def test_supabase_url_preserves_existing_query(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# PG 드라이버 고정 — 맨 스킴(`postgres://`·`postgresql://`)은 `postgresql+psycopg2://` 가 된다.
+#   SQLAlchemy 2.1 은 맨 `postgresql://` 의 기본 DBAPI 를 psycopg(v3)로 바꿨고 requirements 는
+#   psycopg2 만 설치한다 — 고정이 없으면 버전 bump 하나로 앱·pre-deploy 마이그레이션이 연결 불능.
+# Driver pin: bare schemes become postgresql+psycopg2:// (SQLAlchemy 2.1 defaults to psycopg v3,
+#   which requirements do not install). Explicit drivers are the operator's choice and stay.
+# ---------------------------------------------------------------------------
+
+_PG_URL_ENVS = ("DATABASE_URL", "DATABASE_URL_FALLBACK", "DATABASE_URL_WORKER", "MIGRATION_DATABASE_URL")
+
+
+@pytest.mark.parametrize("env_name", _PG_URL_ENVS)
+@pytest.mark.parametrize("scheme", ["postgres://", "postgresql://"])
+def test_bare_pg_scheme_pins_psycopg2_driver(monkeypatch, env_name, scheme):
+    # 4 필드가 같은 정규화를 거친다 — 한 필드만 빠져도 그 연결은 2.1 에서 죽는다.
+    # All four URL fields share the pin; a single unpinned field still breaks on 2.1.
+    s = _reload_settings(monkeypatch, extra={env_name: f"{scheme}u:p@localhost:5432/db"})
+    assert getattr(s, env_name.lower()) == "postgresql+psycopg2://u:p@localhost:5432/db"
+
+
+@pytest.mark.parametrize("url", [
+    "postgresql+psycopg2://u:p@localhost/db",  # 이미 고정 — 멱등 / already pinned — idempotent
+    "postgresql+psycopg://u:p@localhost/db",   # 운영자의 명시 선택 / explicit operator choice
+    "postgresql+asyncpg://u:p@localhost/db",
+    "sqlite:///:memory:",                       # PG 가 아니면 그대로 / non-PG untouched
+    # 스킴은 접두만 본다 — 뒤쪽의 맨 스킴 문자열은 스킴이 아니다.
+    # Only the prefix is the scheme; a bare-scheme string later in the URL is not.
+    "postgresql+psycopg://u:p@localhost/db?application_name=postgresql://x",
+])
+def test_explicit_driver_or_non_pg_url_is_left_alone(monkeypatch, url):
+    s = _reload_settings(monkeypatch, extra={"DATABASE_URL": url})
+    assert s.database_url == url
+
+
+@pytest.mark.parametrize("raw, expected", [
+    ("postgres://u:p@db.abc.supabase.co:5432/postgres",
+     "postgresql+psycopg2://u:p@db.abc.supabase.co:5432/postgres?sslmode=require"),
+    ("postgresql://u:p@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres?connect_timeout=10",
+     "postgresql+psycopg2://u:p@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres"
+     "?connect_timeout=10&sslmode=require"),
+    # 드라이버를 명시한 스킴도 호스트 파싱이 된다 / host parsing still works with a +driver scheme
+    ("postgresql+psycopg://u:p@db.abc.supabase.co/postgres",
+     "postgresql+psycopg://u:p@db.abc.supabase.co/postgres?sslmode=require"),
+])
+def test_supabase_ssl_survives_driver_pin(monkeypatch, raw, expected):
+    s = _reload_settings(monkeypatch, extra={"DATABASE_URL": raw})
+    assert s.database_url == expected
+
+
+@pytest.mark.parametrize("env_name", ["DATABASE_URL_FALLBACK", "DATABASE_URL_WORKER", "MIGRATION_DATABASE_URL"])
+def test_empty_optional_pg_url_stays_empty(monkeypatch, env_name):
+    # 빈 값은 «미설정» 이다 — 드라이버를 붙이면 빈 URL 이 설정된 URL 로 둔갑한다.
+    # Empty means unset; pinning a driver onto it would turn "unset" into a bogus URL.
+    s = _reload_settings(monkeypatch, extra={env_name: ""})
+    assert getattr(s, env_name.lower()) == ""
+
+
+# ---------------------------------------------------------------------------
 # MIGRATION_DATABASE_URL — RLS Phase 4 마이그레이션 credential 분리 (owner role)
 # MIGRATION_DATABASE_URL — RLS Phase 4 migration credential separation (owner role)
 #   alembic/env.py 가 effective_migration_url 을 sqlalchemy.url 로 사용:
@@ -198,13 +255,13 @@ def test_migration_database_url_default_empty(monkeypatch):
 
 
 def test_migration_database_url_normalizes_postgres_scheme(monkeypatch):
-    # postgres:// → postgresql:// 정규화 (database_url 과 동일 validator).
-    # postgres:// → postgresql:// normalization (same validator as database_url).
+    # postgres:// → postgresql+psycopg2:// 정규화 (database_url 과 동일 validator).
+    # postgres:// → postgresql+psycopg2:// normalization (same validator as database_url).
     s = _reload_settings(
         monkeypatch,
         extra={"MIGRATION_DATABASE_URL": "postgres://owner:pw@localhost/db"},
     )
-    assert s.migration_database_url.startswith("postgresql://")
+    assert s.migration_database_url == "postgresql+psycopg2://owner:pw@localhost/db"
 
 
 def test_migration_database_url_supabase_ssl_added(monkeypatch):
@@ -218,14 +275,14 @@ def test_migration_database_url_supabase_ssl_added(monkeypatch):
 
 
 def test_effective_migration_url_normalizes_postgres_scheme(monkeypatch):
-    # 🔴 회귀 가드: MIGRATION_DATABASE_URL=postgres://... → effective_migration_url 도 postgresql:// 시작.
+    # 🔴 회귀 가드: MIGRATION_DATABASE_URL=postgres://... → effective_migration_url 도 postgresql+psycopg2:// 시작.
     # field validator(정규화) + property(precedence) 결합을 단일 케이스로 봉인 (기존엔 transitive 만 보장).
     # Combined field-normalize + property-precedence in one case (previously only transitive).
     s = _reload_settings(
         monkeypatch,
         extra={"MIGRATION_DATABASE_URL": "postgres://owner:pw@db.abc.supabase.co/postgres"},
     )
-    assert s.effective_migration_url.startswith("postgresql://")
+    assert s.effective_migration_url.startswith("postgresql+psycopg2://")
     assert "sslmode=require" in s.effective_migration_url  # supabase 호스트 SSL 도 property 통과 확인
 
 
@@ -249,7 +306,7 @@ def test_effective_migration_url_prefers_migration_url(monkeypatch):
             "MIGRATION_DATABASE_URL": "postgresql://owner:pw@localhost/db",
         },
     )
-    assert s.effective_migration_url == "postgresql://owner:pw@localhost/db"
+    assert s.effective_migration_url == "postgresql+psycopg2://owner:pw@localhost/db"
     assert s.effective_migration_url != s.database_url
 
 
@@ -262,11 +319,11 @@ def test_effective_migration_url_prefers_migration_url(monkeypatch):
 
 
 def test_database_url_fallback_normalizes_postgres_scheme(monkeypatch):
-    # DATABASE_URL_FALLBACK 의 postgres:// → postgresql:// 정규화.
-    # DATABASE_URL_FALLBACK normalizes postgres:// → postgresql://.
+    # DATABASE_URL_FALLBACK 의 postgres:// → postgresql+psycopg2:// 정규화.
+    # DATABASE_URL_FALLBACK normalizes postgres:// → postgresql+psycopg2://.
     s = _reload_settings(
         monkeypatch, extra={"DATABASE_URL_FALLBACK": "postgres://u:p@localhost/db"})
-    assert s.database_url_fallback.startswith("postgresql://")
+    assert s.database_url_fallback == "postgresql+psycopg2://u:p@localhost/db"
 
 
 def test_database_url_fallback_empty_passthrough(monkeypatch):
@@ -277,11 +334,11 @@ def test_database_url_fallback_empty_passthrough(monkeypatch):
 
 
 def test_database_url_worker_normalizes_postgres_scheme(monkeypatch):
-    # DATABASE_URL_WORKER 의 postgres:// → postgresql:// 정규화.
-    # DATABASE_URL_WORKER normalizes postgres:// → postgresql://.
+    # DATABASE_URL_WORKER 의 postgres:// → postgresql+psycopg2:// 정규화.
+    # DATABASE_URL_WORKER normalizes postgres:// → postgresql+psycopg2://.
     s = _reload_settings(
         monkeypatch, extra={"DATABASE_URL_WORKER": "postgres://w:p@localhost/db"})
-    assert s.database_url_worker.startswith("postgresql://")
+    assert s.database_url_worker == "postgresql+psycopg2://w:p@localhost/db"
 
 
 def test_database_url_worker_empty_passthrough(monkeypatch):

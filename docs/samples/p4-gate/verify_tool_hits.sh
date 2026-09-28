@@ -30,8 +30,8 @@ if [[ -z "${DATABASE_URL:-}" ]]; then
   exit 2
 fi
 
-# DATABASE_URL 호환성 — postgres:// → postgresql://
-DB_URL="${DATABASE_URL/postgres:\/\//postgresql:\/\/}"
+# 스킴을 psycopg2 로 고정 — SQLAlchemy 2.1 기본은 psycopg(v3)
+DB_URL="postgresql+psycopg2://${DATABASE_URL#*://}"
 
 python3 - "$ANALYSIS_ID" "$TOOL" "$DB_URL" <<'PY'
 import sys

@@ -235,10 +235,10 @@ class TestHealthEndpointActiveDb:
 # ---------------------------------------------------------------------------
 
 class TestFallbackUrlNormalization:
-    """database_url_fallback 필드의 postgres:// → postgresql:// 변환 및 Supabase sslmode 추가."""
+    """database_url_fallback 필드의 postgres:// → postgresql+psycopg2:// 변환 및 Supabase sslmode 추가."""
 
     def test_fallback_url_postgres_scheme_converted(self):
-        # "postgres://..." 스킴이 "postgresql://..."으로 변환되어야 한다
+        # "postgres://..." 스킴이 "postgresql+psycopg2://..."으로 변환되어야 한다
         from src.config import Settings
         s = Settings(
             database_url="sqlite:///:memory:",
@@ -248,7 +248,7 @@ class TestFallbackUrlNormalization:
             telegram_chat_id="-100",
             database_url_fallback="postgres://user:pass@db.supabase.co:5432/postgres",
         )
-        assert s.database_url_fallback.startswith("postgresql://")
+        assert s.database_url_fallback.startswith("postgresql+psycopg2://")
 
     def test_fallback_url_supabase_gets_sslmode_require(self):
         # Supabase URL 이면 sslmode=require 가 자동으로 추가되어야 한다
@@ -275,7 +275,7 @@ class TestFallbackUrlNormalization:
             database_url_fallback="postgres://user:pass@onprem-host:5432/mydb",
         )
         assert "sslmode" not in s.database_url_fallback
-        assert s.database_url_fallback.startswith("postgresql://")
+        assert s.database_url_fallback.startswith("postgresql+psycopg2://")
 
 
 # ---------------------------------------------------------------------------

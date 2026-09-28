@@ -196,9 +196,19 @@ class Settings(BaseSettings):
 
     @staticmethod
     def _normalize_pg_url(v: str) -> str:
-        """postgres:// → postgresql:// 변환 + Supabase SSL 자동 추가."""
-        if v.startswith("postgres://"):
-            v = v.replace("postgres://", "postgresql://", 1)
+        """맨 스킴(postgres:// · postgresql://) → postgresql+psycopg2:// 고정 + Supabase SSL 자동 추가."""
+        # 🔴 드라이버를 URL 에 박는다 — SQLAlchemy 2.1 은 맨 `postgresql://` 의 기본 DBAPI 를
+        # psycopg2 에서 psycopg(v3)로 바꿨고, requirements 가 설치하는 것은 psycopg2 뿐이다.
+        # 맨 스킴을 두면 SQLAlchemy bump 하나로 앱과 pre-deploy `alembic upgrade head` 가
+        # `ModuleNotFoundError: psycopg` 로 연결 불능이 된다. 드라이버를 이미 적은 URL
+        # (`+psycopg`·`+asyncpg` …)은 운영자의 명시 선택이라 건드리지 않는다 — 접두만 본다.
+        # Pin the driver: SQLAlchemy 2.1 made psycopg (v3) the default DBAPI for a bare
+        # postgresql:// URL, but requirements install psycopg2 only. A URL that already names
+        # a driver is an explicit choice and is left alone; only the scheme prefix is examined.
+        for bare in ("postgres://", "postgresql://"):
+            if v.startswith(bare):
+                v = "postgresql+psycopg2://" + v[len(bare):]
+                break
         # Supabase 호스트는 SSL 필수 — direct(db.<ref>.supabase.co) + pooler(aws-N.pooler.supabase.com).
         # 전체 URL substring 대신 hostname 을 파싱해 .supabase.co/.supabase.com 으로 endswith 판정 —
         # credential/path/query 에 'supabase.com' 이 섞인 비-Supabase URL 의 SSL 오강제(false-positive)와
@@ -289,15 +299,15 @@ class Settings(BaseSettings):
     @field_validator("database_url")
     @classmethod
     def fix_postgres_url(cls, v: str) -> str:
-        """DATABASE_URL의 postgres:// 스킴을 postgresql://로 변환한다."""
+        """DATABASE_URL 의 맨 PG 스킴을 postgresql+psycopg2:// 로 고정한다."""
         return cls._normalize_pg_url(v)
 
     @field_validator("database_url_fallback", "database_url_worker", "migration_database_url")
     @classmethod
     def fix_optional_pg_url(cls, v: str) -> str:
-        """선택적 postgres URL 3종(fallback/worker/migration)의 postgres:// → postgresql:// 정규화.
+        """선택적 postgres URL 3종(fallback/worker/migration)의 맨 스킴 → postgresql+psycopg2:// 정규화.
         빈 값은 그대로 통과(미설정 = inert) — required database_url 과 달리 빈-값 가드 절을 보존한다.
-        Normalize postgres:// → postgresql:// for the 3 optional URLs (fallback/worker/migration).
+        Pin bare PG schemes to postgresql+psycopg2:// for the 3 optional URLs (fallback/worker/migration).
         Empty values pass through (unset = inert), unlike the required database_url's validator.
         """
         if not v:
