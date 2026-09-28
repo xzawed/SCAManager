@@ -116,7 +116,7 @@ def test_blind_spots_are_always_printed(capsys):
     gate.print_blind_spots(full=False)
     out = capsys.readouterr().out
     assert "보지 못하는" in out
-    for needle in ("CodeQL", "TruffleHog", "lint-js", "PG-only"):
+    for needle in ("CodeQL", "TruffleHog", "lint-js", "PG-only", "E2E"):
         assert needle in out, f"미포함 축 고지에서 {needle} 가 빠졌다"
 
 

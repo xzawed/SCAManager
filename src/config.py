@@ -2,7 +2,7 @@
 import logging
 from collections.abc import Mapping
 from typing import get_args
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, unquote_plus
 from pydantic_settings import BaseSettings
 from pydantic import Field, ValidationError, field_validator, model_validator
 from src.constants import MERGE_VERIFIER_BAND_DEFAULT
@@ -11,6 +11,48 @@ from src.logging_config import _redact
 logger = logging.getLogger(__name__)
 
 _SESSION_SECRET_MIN_LEN = 32  # 보안 권고: 32자 이상
+
+
+def _drop_blank_sslmode(url: str) -> str:
+    """쿼리에서 값이 빈 sslmode 토큰(`sslmode=` · 맨 `sslmode`)만 잘라 낸다.
+
+    빈 값은 «없음» 이다 — parse_qs 도 SQLAlchemy 의 parse_qsl 도 그 토큰을 버린다. 남긴 채
+    `sslmode=require` 를 덧붙이면 키가 둘인 URL 이 되고, 두 파서가 빈 값을 버리는 덕에
+    우연히 require 가 이길 뿐이다. 판정은 parse_qsl 과 같다(키는 디코드, 값은 원문 길이).
+    구분자는 urlsplit 과 같은 순서로 찾는다 — 첫 `#` 다음 그 앞의 첫 `?`. 다른 토큰·순서·
+    userinfo 는 바이트 그대로 둔다. 덧붙임은 종전대로 문자열 끝이다 — SQLAlchemy 는 `#` 를
+    일반 문자로 읽어서, `#` 가 있어도 그쪽이 보는 sslmode 는 require 하나다.
+    A blank sslmode reads as absent to parse_qs and SQLAlchemy's parse_qsl alike; keeping it
+    beside the appended value works only by accident. Only those tokens are cut; the append
+    stays at the end because SQLAlchemy treats `#` as an ordinary character.
+    """
+    body, hmark, frag = url.partition('#')
+    head, _, query = body.partition('?')
+    tokens = query.split('&')
+    kept = []
+    for token in tokens:
+        key, _, value = token.partition('=')
+        if unquote_plus(key) == 'sslmode' and not value:
+            continue
+        kept.append(token)
+    if len(kept) == len(tokens):
+        return url
+    rest = '&'.join(kept)
+    return head + ('?' + rest if rest else '') + hmark + frag
+
+
+def _query_separator(url: str) -> str:
+    """`sslmode=require` 앞에 붙일 구분자 — `_drop_blank_sslmode` 와 같은 원문 분할로 정한다.
+
+    `?` 가 없으면 `?`, 맨 `?`(빈 쿼리)면 빈 문자열, 아니면 `&`. urlparse 로 정하면 안 된다 —
+    urlsplit 은 TAB/CR/LF 를 지워 `?\\r` 같은 원문 쿼리를 빈 쿼리로 읽고 `?` 를 한 번 더 붙인다.
+    The separator for the appended `sslmode=require`, from the same raw split the blank-token cut
+    uses; urlparse strips TAB/CR/LF and would read a raw `?\\r` query as empty.
+    """
+    _, mark, query = url.partition('#')[0].partition('?')
+    if not mark:
+        return '?'
+    return '&' if query else ''
 
 
 class Settings(BaseSettings):
@@ -216,12 +258,15 @@ class Settings(BaseSettings):
         # sslmode 존재 판정은 query param 기준(password 내 'sslmode' 문자열 false-negative 방지),
         # append 는 기존 query 유무로 separator 선택(? vs &)해 '?...?' query 손상 방지. urlunparse
         # 전체 재구성은 round-trip 재인코딩 위험이 있어 append-only 유지(정책 16 — URL 원형 보존).
+        # 유일한 예외 = 값이 빈 sslmode 토큰 절삭(`_drop_blank_sslmode`) — 나머지 바이트는 그대로.
         # Host-parse for SSL targeting; sslmode checked per query-param; append uses ?/& by existing query.
+        # The only non-append edit is cutting blank sslmode tokens; every other byte is kept.
         parsed = urlparse(v)
         host = parsed.hostname or ''
         is_supabase = host.endswith('.supabase.co') or host.endswith('.supabase.com')
         if is_supabase and 'sslmode' not in parse_qs(parsed.query):
-            v += ('&' if parsed.query else '?') + 'sslmode=require'
+            v = _drop_blank_sslmode(v)
+            v += _query_separator(v) + 'sslmode=require'
         return v
 
     @field_validator("claude_review_model", "claude_insight_model", mode="before")
