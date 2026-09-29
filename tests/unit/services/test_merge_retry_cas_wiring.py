@@ -35,7 +35,7 @@ def _row(**over):
         id=7, claim_token="TOK-A", attempts_count=1, max_attempts=30,
         analysis_id=11, repo_full_name="owner/repo", pr_number=3,
         score=90, threshold_at_enqueue=75, commit_sha="abc123",
-        notify_chat_id=None, status="pending",
+        notify_chat_id=None, status="pending", created_at=_NOW.replace(tzinfo=None),
     )
     base.update(over)
     return SimpleNamespace(**base)

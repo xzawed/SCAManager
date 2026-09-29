@@ -12,7 +12,7 @@
 
 - replica 는 `us-east4-eqdc4a` 1개 — 인앱 스케줄러(`src/scheduler.py::JOBS = (`)가 단일 인스턴스 전제라 2 이상이면 주간 리포트가 중복 발송된다. 올리려면 먼저 분산 잠금을 넣는다.
 - `railway.toml`·`railway.json` 을 다시 만들지 않는다 — 폐기된 Config as Code(2026-12-01 부터 안 읽힘)는 대시보드 값을 덮어 설정 주인이 둘이 된다. 가드 `tests/unit/scripts/test_no_railway_config_as_code.py`.
-- 주기 작업은 `src/scheduler.py` 에 등록한다 — Railway cron 은 서비스당 한 일정이고 끝나는 작업만 돌린다(웹서버 불가).
+- 주기 작업은 `src/scheduler.py` 에 등록하고 동기 DB 는 `src/shared/off_loop.py::run_blocking` 으로 루프 밖에서 돌린다(`tests/unit/test_scheduler_off_loop.py` 가 job 마다 잰다).
 
 ## 환경변수 추가
 
@@ -30,7 +30,7 @@
 
 ## 의존성
 
-`requirements.txt` 는 직접 의존성 전부 `==` 정확 핀(`requirements.txt::fastapi==0.141.1` · `requirements.txt::starlette==1.6.0`). analyzer 바이너리를 추가하면 `tests/unit/scripts/test_analyzer_provenance.py` `_PROVENANCE` 에 (바이너리, 조달모드, 사유) 를 등재해야 CI 가 통과한다.
+`requirements.txt` 는 직접 의존성 전부 `==` 정확 핀. analyzer 바이너리를 추가하면 `tests/unit/scripts/test_analyzer_provenance.py` `_PROVENANCE` 에 (바이너리, 조달모드, 사유) 를 등재해야 CI 가 통과한다.
 
 ## 배포 실패 시
 
