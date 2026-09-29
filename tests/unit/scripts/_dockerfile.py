@@ -16,7 +16,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 DOCKERFILE = ROOT / "Dockerfile"
 DOCKERIGNORE = ROOT / ".dockerignore"
-RAILWAY_TOML = ROOT / "railway.toml"
 
 _DEFAULT_SHELL = ["/bin/sh", "-c"]
 _SHELLS = {"sh", "bash", "dash"}
@@ -122,12 +121,6 @@ def serves_injected_port(argv: list[str] | None) -> bool:
         return False
     i = tokens.index("--port")
     return i + 1 < len(tokens) and bool(_PORT_REF.match(tokens[i + 1]))
-
-
-def without_port_value(tokens: list[str]) -> list[str]:
-    """`--port` 값만 뺀 uvicorn argv — 두 시작 명령의 나머지 플래그를 대조할 때 쓴다."""
-    i = tokens.index("--port")
-    return tokens[:i + 1] + tokens[i + 2:]
 
 
 def all_invocations(text: str) -> list[list[str]]:

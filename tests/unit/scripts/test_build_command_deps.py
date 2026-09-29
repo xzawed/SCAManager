@@ -8,7 +8,7 @@
 
 설치 단계가 `|| echo 'WARNING: ...'` 로 감싸여 있어 **빌드는 성공**했고, tflint 는 도입 이래
 무동작이었다. 설정은 존재하고, 실행은 0이고, 아무도 모른다 — cron P0
-(`test_railway_cron_guard.py`)와 같은 실패 모드다.
+(`src/scheduler.py` docstring)와 같은 실패 모드다.
 The install step swallowed the failure, so the build succeeded and the analyzer silently died.
 
 Dockerfile 은 실패를 삼키지 않는다(RUN 실패 = 빌드 실패). 이 가드는 그보다 먼저, 이미지를

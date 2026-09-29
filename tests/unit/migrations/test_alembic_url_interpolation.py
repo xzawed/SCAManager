@@ -107,7 +107,7 @@ def test_alembic_cli_does_not_leak_the_password(tmp_path):
     **excepthook** 으로 stderr 에 직행하므로, 로깅 축 가드가 전건 초록인 채로 CLI 경로가
     뚫려 있을 수 있다 — [[feedback-false-enforcer-is-worse-than-none]] 의 형태다.
 
-    `railway.toml` 의 `preDeployCommand = alembic upgrade head` 가 정확히 이 경로다.
+    Railway pre-deploy `alembic upgrade head`(대시보드 설정)가 정확히 이 경로다.
     접속 불가 주소(127.0.0.1:1)를 써서 DNS 없이 즉시 실패시키되, 유출은 그 **이전**
     단계(`set_main_option`)에서 나므로 관측에는 영향이 없다.
     """

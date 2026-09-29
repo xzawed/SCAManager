@@ -1,32 +1,28 @@
-"""배포 빌드 정본 = 루트 `Dockerfile` — 기동·빌더·빌드 컨텍스트 계약.
+"""배포 빌드 정본 = 루트 `Dockerfile` — 기동·빌드 컨텍스트 계약.
 
-The root Dockerfile is the build source: start command, builder and build-context contract.
+The root Dockerfile is the build source: start command and build-context contract.
 
-## 왜 (Railway 문서, 2026-09-28 확인)
+## 왜 (Railway 문서, 2026-09-29 확인)
 
-- Config as Code(`railway.toml`)는 폐기 예정이고 **2026-12-01** 부터 읽히지 않는다.
-  그 뒤에는 대시보드 값이 적용된다. Nixpacks 도 폐기 예정이다.
-- 루트 `Dockerfile` 은 매 배포 자동 감지된다 — 컷오프 뒤에도 남는 유일한 저장소 내 빌드 정의다.
+- 루트 `Dockerfile` 은 대시보드 빌더와 무관하게 매 배포 자동 감지된다 — 저장소에 있는 유일한
+  배포 정의다. 시작 명령·헬스체크·pre-deploy 는 Railway 대시보드에 있다(`docs/workflow/deploy.md`).
 - 🔴 Dockerfile 빌드의 시작 명령은 **exec 형**이라 `$PORT` 를 확장하지 않는다. 문서 처방:
-  `/bin/sh -c "exec python main.py --port $PORT"`. 대시보드 Start Command 는 지금 확장되지 않는
-  `uvicorn … --port $PORT` 를 들고 있으므로, `railway.toml` 이 `startCommand` 를 빼면 그 값이
-  적용돼 기동이 깨진다 — 그래서 `railway.toml` 은 셸 래핑 형태를 **유지**한다.
+  `/bin/sh -c "exec python main.py --port $PORT"`. 대시보드 Start Command 를 비우면 이미지 `CMD`
+  가 적용되므로 CMD 도 스스로 `$PORT` 를 확장해야 한다.
 
-Exec-form start commands do not expand `$PORT`; the dashboard still holds the raw command,
-so railway.toml keeps a shell-wrapped startCommand until the file is retired.
+Railway always builds a detected Dockerfile; deploy settings live in the dashboard. Exec-form start
+commands never expand `$PORT`, and a cleared dashboard start command falls back to the image CMD.
 """
 import ast
 import fnmatch
 import re
 import shlex
-import tomllib
 
 import pytest
 
 from tests.unit.scripts._dockerfile import (
     DOCKERFILE,
     DOCKERIGNORE,
-    RAILWAY_TOML,
     all_invocations,
     dockerignore_patterns,
     final_check_script,
@@ -36,18 +32,12 @@ from tests.unit.scripts._dockerfile import (
     runtime_home,
     serves_injected_port,
     start_argv,
-    uvicorn_argv,
-    without_port_value,
 )
 
 
 def _dockerfile() -> str:
     assert DOCKERFILE.is_file(), "루트 Dockerfile 이 없다 — Railway 가 Dockerfile 빌드를 할 수 없다"
     return DOCKERFILE.read_text(encoding="utf-8")
-
-
-def _railway() -> dict:
-    return tomllib.loads(RAILWAY_TOML.read_text(encoding="utf-8"))
 
 
 # ── 판정식 자기검증 — 심은 입력으로 뒤집어 본다 ───────────────────────────
@@ -208,49 +198,6 @@ def test_install_steps_never_swallow_a_failure():
     """🔴 설치 실패를 `|| echo WARNING` 으로 삼키지 않는다 — 삼킨 실패는 레이어 캐시에 박혀 이후 빌드로 배포된다."""
     swallowing = [step[:80] for step in run_steps(_dockerfile()) if or_operators(step)]
     assert not swallowing, f"RUN 에 `||` 가 있다 — 실패가 삼켜진다: {swallowing}"
-
-
-# ── railway.toml — 컷오프 전까지 여전히 읽힌다 ─────────────────────────────
-
-
-def test_railway_toml_builds_from_the_dockerfile():
-    """🔴 빌더는 DOCKERFILE, buildCommand 는 없다 — 빌드 정의가 두 곳이면 한쪽이 거짓이 된다."""
-    build = _railway().get("build", {})
-    assert build.get("builder") == "DOCKERFILE", f"builder={build.get('builder')!r}"
-    leftover = sorted(set(build) & {"buildCommand", "nixpacksConfigPath", "nixpacksPlan"})
-    assert not leftover, f"Dockerfile 빌드에서 쓰이지 않는 키가 남았다: {leftover}"
-
-
-def test_railway_start_command_is_shell_wrapped():
-    """🔴 startCommand 는 대시보드의 확장 안 되는 값을 덮는다 — 그러려면 스스로 셸 래핑이어야 한다."""
-    start = _railway().get("deploy", {}).get("startCommand")
-    if start is None:
-        pytest.skip("railway.toml 이 startCommand 를 두지 않는다 — 이미지 CMD 가 정본")
-    assert serves_injected_port(shlex.split(start)), (
-        f"startCommand 가 $PORT 를 확장하지 않는다: {start!r}\n"
-        "→ '/bin/sh -c \"exec uvicorn … --port $PORT …\"' 형태로 쓸 것(Railway 문서)."
-    )
-
-
-def test_both_start_commands_run_the_same_server():
-    """두 시작 명령은 포트 값 표기만 다르고 나머지 플래그가 같다(--proxy-headers 등)."""
-    start = _railway().get("deploy", {}).get("startCommand")
-    if start is None:
-        pytest.skip("railway.toml 이 startCommand 를 두지 않는다")
-    image = uvicorn_argv(start_argv(_dockerfile()) or [])
-    railway = uvicorn_argv(shlex.split(start))
-    assert image and railway, "uvicorn 호출을 읽지 못했다 — 이 대조가 공허하다"
-    assert without_port_value(image) == without_port_value(railway), (
-        f"이미지 CMD 와 railway.toml startCommand 가 갈렸다:\n  image={image}\n  toml ={railway}"
-    )
-
-
-def test_healthcheck_and_predeploy_still_gate_the_deploy():
-    """빌더를 바꿔도 배포 게이트(헬스체크·pre-deploy 마이그레이션)는 그대로다."""
-    deploy = _railway().get("deploy", {})
-    assert deploy.get("healthcheckPath") == "/health"
-    assert deploy.get("healthcheckTimeout") == 60
-    assert deploy.get("preDeployCommand") == "alembic upgrade head"
 
 
 # ── 빌드 컨텍스트 ─────────────────────────────────────────────────────────

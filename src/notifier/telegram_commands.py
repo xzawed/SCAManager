@@ -60,12 +60,12 @@ class _OtpAttemptLimiter:  # pylint: disable=too-few-public-methods
     수용된 한계 (단일 worker 전제): is_blocked → 조회 → record_failure 가 별도 lock
     구간이라 동시 요청이 차단 검사를 함께 통과해 한 버스트에서 한도를 소폭 초과할 수
     있다(TOCTOU). 실패는 여전히 기록되어 다음 요청부터 차단되므로 brute-force 차단
-    기능은 유지되며, 단일 worker(railway.toml) 환경에서 실용 위험은 낮다. 다중 worker
+    기능은 유지되며, 단일 worker(시작 명령에 `--workers` 없음) 환경에서 실용 위험은 낮다. 다중 worker
     전환 시 atomic check-and-record 로 재검토.
     Accepted limit (single-worker): is_blocked → lookup → record_failure span separate
     lock regions, so concurrent requests may overshoot the cap slightly in one burst
     (TOCTOU). Failures are still recorded and subsequent requests are blocked, so the
-    brute-force guard holds; practical risk is low on a single worker (railway.toml).
+    brute-force guard holds; practical risk is low on a single worker (no `--workers` flag).
     Revisit with an atomic check-and-record when moving to multiple workers.
     """
 

@@ -2,8 +2,6 @@
 API rate limiting tests.
 """
 import logging
-import tomllib
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -284,7 +282,7 @@ def test_critical_mutating_routes_are_registered_with_the_limiter():
 
 # ─── 🔴 키는 Railway 프록시가 아니라 실제 클라이언트다 (#1691) ──────────────────
 #
-# 운영은 `railway.toml` 의 `--proxy-headers` 로 uvicorn 의 실제 ProxyHeadersMiddleware 를 앞에 두고,
+# 운영은 시작 명령의 `--proxy-headers` 로 uvicorn 의 실제 ProxyHeadersMiddleware 를 앞에 두고,
 # FORWARDED_ALLOW_IPS 가 없어 엣지(100.64.0.0/10)의 X-Forwarded-For 를 믿지 않는다.
 # 아래 하네스는 그 래핑을 그대로 재현하고, 실제 slowapi 데코레이터가 붙은 라우트를 두드린다.
 # The harness reproduces production's wrapping (uvicorn's real ProxyHeadersMiddleware, no
@@ -303,7 +301,7 @@ def _session_with_no_repo():
 
 @pytest.fixture
 def deployed(monkeypatch):
-    """railway.toml 의 startCommand 와 같은 래핑으로 앱을 띄운다. 인자 = TCP 피어 주소.
+    """운영 시작 명령(`--proxy-headers`)과 같은 래핑으로 앱을 띄운다. 인자 = TCP 피어 주소.
     Serve the app wrapped as in production; the argument is the TCP peer address."""
     from src.main import app  # pylint: disable=import-outside-toplevel
 
@@ -499,20 +497,9 @@ def test_forwarded_trust_detector_catches_synthetic_violation(command):
     assert _widens_forwarded_trust(command)
 
 
-def test_railway_start_command_does_not_trust_forwarded_headers():
-    """railway.toml startCommand 는 forwarded-allow-ips 를 넓히지 않는다.
-    railway.toml's startCommand must not widen forwarded-allow-ips."""
-    root = Path(__file__).resolve().parents[3]
-    start = tomllib.loads((root / "railway.toml").read_text(encoding="utf-8"))["deploy"]["startCommand"]
-    assert "--proxy-headers" in start, "startCommand 형태가 바뀌었다 — 이 가드의 전제를 다시 볼 것"
-    assert not _widens_forwarded_trust(start), (
-        "railway.toml startCommand 가 forwarded-allow-ips 를 넓혔다 — 레이트리밋 키가 스푸핑 가능해진다 (#1691)"
-    )
-
-
 def test_image_does_not_trust_forwarded_headers():
-    """이미지 CMD·ENV 도 같은 규칙 — 대시보드 Start Command 를 비우면 CMD 가 운영 명령이 된다.
-    The image CMD and ENV follow the same rule; with the dashboard start command cleared, CMD runs."""
+    """이미지 CMD·ENV 는 forwarded-allow-ips 를 넓히지 않는다 — 대시보드 Start Command 는 저장소 밖이다.
+    The image CMD and ENV never widen forwarded-allow-ips; the dashboard start command lives outside the repo."""
     text = DOCKERFILE.read_text(encoding="utf-8")
     cmd = " ".join(start_argv(text) or [])
     assert "--proxy-headers" in cmd, "이미지 CMD 형태가 바뀌었다 — 이 가드의 전제를 다시 볼 것"
