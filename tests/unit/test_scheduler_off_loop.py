@@ -175,6 +175,8 @@ def _seed_retry_rows(db) -> dict[int, int]:
         7: {},                       # 종결 실패 → failed_terminal + 알림 + 이슈
         8: {},                       # 일시 실패 → released
         9: {},                       # 인프라 오류 → 복구·해제(released)
+        10: {},                      # 커밋 뒤 알림이 예상외 예외 → 격리(succeeded 유지)
+        11: {},                      # 머지 기록 커밋 뒤 마킹이 DB 오류 → 복구·해제(released)
     }
     ids = {}
     for pr, over in specs.items():
@@ -204,7 +206,7 @@ def _patch_retry_http(w, monkeypatch) -> None:
     def merge_result(_token, _repo, pr):
         if pr == 9:
             raise httpx.ConnectError("net down")
-        if pr == 6:
+        if pr in (6, 10, 11):
             return True, None, None
         if pr == 7:
             return False, "permission_denied: 403", None
@@ -218,7 +220,12 @@ def _patch_retry_http(w, monkeypatch) -> None:
     monkeypatch.setattr(merge_retry_service, "merge_pr", merge_pr)
     monkeypatch.setattr(merge_retry_service, "_get_ci_status_safe",
                         _http(w, "ci_status", lambda *_a: "running"))
-    monkeypatch.setattr(merge_retry_service, "telegram_post_message", _http(w, "telegram"))
+    async def telegram(_token, _chat_id, payload):
+        w.http.append((threading.current_thread(), "telegram"))
+        if "/pull/10" in payload["text"]:
+            raise ValueError("unexpected notifier failure")  # 커밋 뒤 예상외 예외 → 넓은 핸들러
+
+    monkeypatch.setattr(merge_retry_service, "telegram_post_message", telegram)
     monkeypatch.setattr(merge_retry_service, "create_merge_failure_issue", _http(w, "issue"))
     monkeypatch.setattr(merge_retry_service.settings, "telegram_bot_token", "123:ABC")
 
@@ -235,13 +242,22 @@ async def _run(name):
 async def test_retry_job_every_branch_runs_its_db_work_off_the_loop(world, monkeypatch):
     """🔴 수정 전 실측 — claim·쓰기·세션 반납이 전부 루프 스레드였다.
 
-    9개 분기(한도 소진·설정 변경·조회 실패·이미 머지·SHA drift·성공·종결·일시·인프라 오류)를
-    한 배치로 태운다. 행마다 write-back 이 커밋해 세션 전체가 만료되므로, 루프가 ORM 속성을
-    읽기만 해도 SELECT 가 루프에서 돈다 — 그것까지 잡는다.
+    11개 분기(한도 소진·설정 변경·조회 실패·이미 머지·SHA drift·성공·종결·일시·인프라 오류·
+    커밋 뒤 예상외 예외·커밋 뒤 DB 오류)를 한 배치로 태운다. 행마다 write-back 이 커밋해 세션 전체가
+    만료되므로, 루프가 ORM 속성을 읽기만 해도(예외 핸들러의 로그 포함) SELECT 가 루프에서 돈다 —
+    그것까지 잡는다.
     """
     with world.factory() as db:
-        _seed_retry_rows(db)
+        ids = _seed_retry_rows(db)
     _patch_retry_http(world, monkeypatch)
+    real_mark_succeeded = merge_retry_repo.mark_succeeded
+
+    def mark_succeeded(db, row_id, **kwargs):
+        if row_id == ids[11]:
+            raise SQLAlchemyError("commit failed")  # MergeAttempt 기록은 이미 커밋됐다
+        return real_mark_succeeded(db, row_id, **kwargs)
+
+    monkeypatch.setattr(merge_retry_repo, "mark_succeeded", mark_succeeded)
     world.reset_records()
 
     await _run("retry-pending-merges")
@@ -250,7 +266,8 @@ async def test_retry_job_every_branch_runs_its_db_work_off_the_loop(world, monke
     _assert_off_loop(world, expect_http=True, expect=_WRITES | {"rollback"})
     assert _statuses(world) == {
         1: "abandoned", 2: "abandoned", 3: "pending", 4: "succeeded", 5: "abandoned",
-        6: "succeeded", 7: "failed_terminal", 8: "pending", 9: "pending",
+        6: "succeeded", 7: "failed_terminal", 8: "pending", 9: "pending", 10: "succeeded",
+        11: "pending",
     }
     called = {name for _, name in world.http}
     assert {"pr_data", "merge_pr", "ci_status", "telegram", "issue"} <= called, called
