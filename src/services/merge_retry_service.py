@@ -169,10 +169,11 @@ class _RowView:  # pylint: disable=too-many-instance-attributes  # 큐 행 컬�
     notify_chat_id: str | None
     created_at: datetime | None
 
-    @classmethod
-    def of(cls, row) -> _RowView:
-        """ORM 행(또는 같은 속성의 대역)에서 값을 복사한다. / Copy values from a row."""
-        return cls(**{f.name: getattr(row, f.name) for f in fields(cls)})
+
+def _row_view(row) -> _RowView:
+    """ORM 행(또는 같은 속성의 대역)에서 `_RowView` 값을 복사한다 — 워커 스레드에서만 부른다.
+    Copy `_RowView` values from a row (or a stand-in with the same attributes); worker thread only."""
+    return _RowView(**{f.name: getattr(row, f.name) for f in fields(_RowView)})
 
 
 @dataclass(frozen=True)
@@ -326,7 +327,7 @@ def _preflight_retry(  # pylint: disable=too-many-arguments,too-many-positional-
     설정 변경 행은 기록·마킹까지 하고 `config_changed=True` 로 돌려준다 — 알림 await 는 루프 몫이다.
     A config-changed row is logged and marked here; the loop sends its notification.
     """
-    view = _RowView.of(row)
+    view = _row_view(row)
     tok = claim_token if claim_token is not None else row.claim_token
     # ── a-0. 최대 시도 횟수 초과 (🔴 토큰 조회 前 — no_token 무한루프 방지, 종합감사 P1-11) ──
     # claim 시 attempts_count 가 선증가하므로(merge_retry_repo.claim_batch) 이 검사는 merge_pr 호출 이전 단계다.
