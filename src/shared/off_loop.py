@@ -16,15 +16,13 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
-from typing import Any, TypeVar
+from typing import Any
 
 import anyio
 from starlette.concurrency import run_in_threadpool
 
-T = TypeVar("T")
 
-
-async def run_blocking(fn: Callable[..., T], /, *args: Any, **kwargs: Any) -> T:
+async def run_blocking[T](fn: Callable[..., T], /, *args: Any, **kwargs: Any) -> T:
     """`fn(*args, **kwargs)` 를 워커 스레드에서 돌려 결과를 돌려준다(contextvars 전달 — RLS 사용자 id 포함).
 
     Run `fn` in a worker thread and return its result; contextvars (the RLS user id) are carried.
@@ -48,7 +46,7 @@ async def run_blocking(fn: Callable[..., T], /, *args: Any, **kwargs: Any) -> T:
                 # anyio scopes re-cancel the waiter every loop pass; shield the re-wait so it idles.
                 with anyio.CancelScope(shield=True):
                     await asyncio.wait((work,))
-        except asyncio.CancelledError as exc:
+        except asyncio.CancelledError as exc:  # NOSONAR python:S7497 — 스레드가 끝난 뒤 아래에서 원래 예외를 다시 던진다
             interrupted = exc
     if interrupted is not None:
         if not work.cancelled():

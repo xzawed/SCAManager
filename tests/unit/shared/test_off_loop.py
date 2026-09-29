@@ -68,7 +68,7 @@ async def _cancel_mid_thread(runner, *, cancels: int = 1) -> dict:
         task.cancel()
         await asyncio.sleep(0.02)
     with pytest.raises(asyncio.CancelledError):
-        await task
+        _ = await task
     marks["cancelled"] = task.cancelled()
     # 대조군이 남긴 스레드가 다음 테스트로 새지 않게 끝날 때까지 기다린다.
     # Let a thread the control left running finish before the next test.

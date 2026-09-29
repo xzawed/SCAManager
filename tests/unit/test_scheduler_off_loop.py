@@ -74,7 +74,7 @@ class _RecordingSession(Session):
         super().close()
 
 
-@pytest.fixture()
+@pytest.fixture
 def world(monkeypatch):
     """스레드 사이에서 넘겨 쓸 수 있는 인메모리 SQLite + 스레드 기록기 + 스케줄러 세션 교체.
 
@@ -284,7 +284,8 @@ async def test_retry_job_without_a_token_releases_off_the_loop(world, monkeypatc
 
     _assert_off_loop(world, expect_http=False, expect=_WRITES)
     statuses = _statuses(world)
-    assert statuses[3] == "pending" and statuses[1] == "abandoned", statuses
+    assert statuses[3] == "pending", statuses
+    assert statuses[1] == "abandoned", statuses
 
 
 async def test_empty_queue_is_one_statement_off_the_loop(world):
@@ -296,7 +297,8 @@ async def test_empty_queue_is_one_statement_off_the_loop(world):
 
     statements = [stmt for _, stmt in world.sql]
     assert len(statements) == 1, statements
-    assert "merge_retry_queue" in statements[0] and statements[0].lstrip().startswith("SELECT")
+    assert "merge_retry_queue" in statements[0]
+    assert statements[0].lstrip().startswith("SELECT")
     _assert_off_loop(world, expect_http=False)
 
 
@@ -529,7 +531,7 @@ async def test_slow_claim_does_not_stall_a_concurrent_ticker(world, monkeypatch)
     await _run("retry-pending-merges")
     elapsed = time.perf_counter() - started
     done.set()
-    await tick
+    _ = await tick
 
     # 양성 대조 — 느린 claim 이 실제로 불렸고 job 은 실제로 그만큼 걸렸다.
     # Positive control: the slow claim ran and the job really took that long.
@@ -568,7 +570,7 @@ async def test_cancel_mid_claim_closes_the_session_only_after_the_claim_thread_e
     await asyncio.sleep(0.05)
     task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
-        await task
+        _ = await task
 
     # 양성 대조 — 취소가 claim 도중에 실제로 도착했다(끝난 태스크를 취소한 게 아니다).
     # Positive control: the cancellation really landed mid-claim.
