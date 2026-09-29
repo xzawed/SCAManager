@@ -48,7 +48,7 @@ py -3 -m pytest tests/unit/migrations tests/unit/test_migration_completeness.py 
 ## 적용
 
 - 수동 — `alembic upgrade head` (`make migrate`)
-- 배포 — `railway.toml::preDeployCommand =`
+- 배포 — Railway pre-deploy([deploy.md](deploy.md))
 - 기동 — `src/main.py::def _run_migrations` lifespan 이 30초 타임아웃으로 실행. 실패해도 기본은 기동, `STRICT_MIGRATION=true` 면 기동 거부.
 - 대상 URL — `MIGRATION_DATABASE_URL` 우선, 없으면 `DATABASE_URL` (`src/config.py::def effective_migration_url`).
 

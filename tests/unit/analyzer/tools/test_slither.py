@@ -302,8 +302,8 @@ class TestSlitherCrashIsNotACleanRun:
 # ── 조달 축: solc 컴파일러 (#1566 회고 P1) ──────────────────────────────────
 #
 # 🔴 slither 는 pip 패키지라 `which("slither")` 는 solc 유무와 무관하게 참이다.
-#    `railway.toml` 은 `solc-select install` 이 실패하면 「slither analyzer will be
-#    disabled」라고 적지만 그 비활성화가 구현된 적이 없다. 그래서 solc 가 없으면
+#    옛 빌드 명령은 `solc-select install` 이 실패하면 「slither analyzer will be
+#    disabled」라고 적었지만 그 비활성화가 구현된 적이 없다. 그래서 solc 가 없으면
 #    slither 가 **실행되어** 빈 stdout 을 내고, 그것을 미분석으로 올리는 순간
 #    모든 Solidity 파일이 `incomplete` 가 된다 — 조달 실패가 게이트가 아니라 벽이 된다.
 #

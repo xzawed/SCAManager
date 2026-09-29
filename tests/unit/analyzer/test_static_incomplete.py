@@ -161,7 +161,7 @@ def test_provisioned_tool_absence_blocks_even_when_another_analyzer_ran(monkeypa
 
     ## 실측된 운영 연쇄 (2026-08-16 재검증)
 
-    `railway.toml` 의 조달은 `|| echo WARNING` 으로 실패를 삼킨다. rubocop·golangci-lint·
+    옛 빌드 명령의 조달은 `|| echo WARNING` 으로 실패를 삼켰다. rubocop·golangci-lint·
     slither 가 빠져도 semgrep 은 `requirements.txt` 로 항상 설치되고
     `SUPPORTED_LANGUAGES` 에 ruby·go·solidity 가 **모두** 있다. 따라서 `ran >= 1` 이 되어
     승격 분기 자체가 돌지 않고, `incomplete` 가 서지 않아

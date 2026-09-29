@@ -43,7 +43,7 @@ _SCAN_ROOTS = ("src", "tests", "scripts", "alembic", "e2e", ".claude", ".github"
 _SCAN_SUFFIXES = {".py", ".md", ".yml", ".yaml", ".json", ".html", ".js", ".mjs", ".cjs",
                   ".css", ".toml", ".cfg", ".ini", ".sh", ".txt"}
 _ROOT_FILES = (".pre-commit-config.yaml", "Makefile", "pyproject.toml", "setup.cfg",
-               "railway.toml", "Dockerfile", ".dockerignore", "alembic.ini", ".flake8", ".gitignore")
+               "Dockerfile", ".dockerignore", "alembic.ini", ".flake8", ".gitignore")
 _SKIP_PARTS = ("__pycache__", "node_modules", ".git/", "worktrees", "/venv", "site-packages")
 
 

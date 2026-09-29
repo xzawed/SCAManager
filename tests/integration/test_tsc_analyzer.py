@@ -7,7 +7,7 @@ mock 하므로 **"argv 가 어떻게 조립됐는가" 만** 검증한다. 그래
 
 ## 이 파일이 잡는 결함
 
-`railway.toml:3` 은 `npm install -g typescript` 를 **버전 핀 없이** 설치한다. major 버전이 drift 해
+옛 빌드 명령은 `npm install -g typescript` 를 **버전 핀 없이** 설치했다(지금 핀 = `Dockerfile`). major 버전이 drift 해
 CLI 플래그가 바뀌면 tsc 는 진단 대신 `error TS5023: Unknown compiler option '--x'.` 를 뱉는데,
 그 출력에는 `file(line,col):` 접두가 없어 `_TSC_DIAG_RE` 에 **걸리지 않는다** → 이슈 0건 →
 "분석했더니 깨끗함" 과 구별 불가 → 정적 만점 → 점수 인플레가 auto-merge 까지 전파.

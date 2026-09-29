@@ -1,18 +1,18 @@
 ## 배포 (Railway)
 
-`.github/workflows/` 에 배포 워크플로는 없다. main 푸시 → Railway 가 루트 `Dockerfile` 로 빌드하고 `railway.toml` 배포 설정을 얹는다(2026-12-01 부터는 대시보드 값).
+`.github/workflows/` 에 배포 워크플로는 없다. main 푸시 → Railway 가 루트 `Dockerfile` 을 감지해 빌드한다(대시보드 빌더 값과 무관). 배포 설정의 정본은 **Railway 대시보드**이고 아래 값은 그 사본이다 — 대시보드를 바꾸면 같은 PR 에서 고친다. 읽기: `railway environment config --json` · MCP `describe-service`.
 
 한 배포의 순서:
 
-1. **빌드** — `Dockerfile`(`railway.toml::builder = "DOCKERFILE"`): apt·핀 분석기 + Node 20 → venv requirements → `npm ci` + `npm run build`(`package.json::"build":`). `PROVISIONED_ANALYZERS` 부재면 빌드 실패(이전 배포 유지). 핀은 `ci.yml` 조달 step 과 같은 커밋에서 바꾼다.
-2. **pre-deploy** — `alembic upgrade head`(`railway.toml::preDeployCommand =`). 실패하면 배포가 중단된다.
-3. **기동** — `/bin/sh -c "exec uvicorn … --port $PORT …"`(`railway.toml::startCommand =` = 이미지 `CMD`). 시작 명령은 exec 형이라 셸로 감싸야 `$PORT` 가 확장된다. import 시점에 `src/config.py::settings = build_settings()` 가 돌아 설정 검증 실패면 기동이 막힌다.
+1. **빌드** — `Dockerfile`: apt·핀 분석기 + Node 20 → venv requirements → `npm ci` + `npm run build`(`package.json::"build":`). `PROVISIONED_ANALYZERS` 부재면 빌드 실패(이전 배포 유지). 핀은 `ci.yml` 조달 step 과 같은 커밋에서 바꾼다.
+2. **pre-deploy** — `alembic upgrade head`. 실패하면 배포가 중단된다.
+3. **기동** — `/bin/sh -c "exec uvicorn src.main:app --host 0.0.0.0 --port $PORT --proxy-headers"`. 시작 명령은 exec 형이라 셸로 감싸야 `$PORT` 가 확장된다(비우면 같은 명령인 이미지 `CMD`). import 시점에 `src/config.py::settings = build_settings()` 가 돌아 설정 검증 실패면 기동이 막힌다.
 4. **lifespan** — `_validate_startup_config()` → `alembic upgrade head` 재실행([db.md](db.md) §적용) → 스케줄러·루프 지연 프로브 기동(`src/main.py::async def lifespan`). 루프가 막히면 30초 창마다 `event loop lag` WARNING 한 줄.
-5. **헬스체크** — `GET /health` 60초(`railway.toml::healthcheckPath`), 실패 시 최대 10회 재시작.
+5. **헬스체크** — `GET /health` 60초. 재시작 On Failure 최대 10회(플랫폼 기본값이라 읽기에 안 나온다).
 
-replica 는 `[deploy.multiRegionConfig.us-east4-eqdc4a] numReplicas`(`railway.toml::[deploy.multiRegionConfig.us-east4-eqdc4a]`) 로만 지정한다 — `[deploy] numReplicas` 는 조용히 무시된다. 인앱 스케줄러(`src/scheduler.py::JOBS = (`)가 단일 인스턴스 전제라 2 이상이면 주간 리포트가 중복 발송된다.
-
-`railway.toml` 에 새 키를 넣을 때는 Railway 공식 레퍼런스로 존재를 확인한다 — 모르는 키는 에러 없이 무시된다. 가드: `tests/unit/scripts/test_railway_cron_guard.py` · `test_railway_scaling_guard.py` · `test_dockerfile_contract.py`.
+- replica 는 `us-east4-eqdc4a` 1개 — 인앱 스케줄러(`src/scheduler.py::JOBS = (`)가 단일 인스턴스 전제라 2 이상이면 주간 리포트가 중복 발송된다. 올리려면 먼저 분산 잠금을 넣는다.
+- `railway.toml`·`railway.json` 을 다시 만들지 않는다 — 폐기된 Config as Code(2026-12-01 부터 안 읽힘)는 대시보드 값을 덮어 설정 주인이 둘이 된다. 가드 `tests/unit/scripts/test_no_railway_config_as_code.py`.
+- 주기 작업은 `src/scheduler.py` 에 등록한다 — Railway cron 은 서비스당 한 일정이고 끝나는 작업만 돌린다(웹서버 불가).
 
 ## 환경변수 추가
 
