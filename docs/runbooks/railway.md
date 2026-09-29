@@ -3,7 +3,7 @@
 ## 빌드·배포
 - push 성공 ≠ 빌드 성공 — `Dockerfile`·`requirements*` 변경은 빌드 로그 실측(`Using detected Dockerfile`).
 - 빌드 정본 = 루트 `Dockerfile`. 설치 실패를 삼키지 않는다(삼킨 실패는 레이어에 캐시된다). gem transitive 도 핀(`rubocop-ast`).
-- 배포 설정 정본 = 대시보드 — 값·함정은 [deploy.md](../workflow/deploy.md). Start Command 는 비우거나(이미지 `CMD`) `/bin/sh -c "exec …"` 로 감싼다.
+- 배포 설정 정본 = 대시보드 — 값·함정은 [deploy.md](../workflow/deploy.md). Start Command 는 비워 둔다(이미지 `CMD`).
 - `GET /health`=`{"status":"ok"}`, 내부 상태 미노출(`tests/unit/test_main.py`).
 
 ## DB
