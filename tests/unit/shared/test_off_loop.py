@@ -14,6 +14,7 @@ import asyncio
 import threading
 import time
 
+import anyio
 import pytest
 from starlette.concurrency import run_in_threadpool
 
@@ -84,6 +85,39 @@ async def test_cancellation_is_raised_only_after_the_thread_finished(cancels):
     assert marks["cancelled"], "태스크가 취소로 끝나지 않았다 — 취소를 삼켰다"
     assert marks["raised"] >= marks["end"], (
         f"스레드가 끝나기 {marks['end'] - marks['raised']:.3f}s 전에 취소가 올라왔다")
+
+
+async def test_anyio_scope_cancellation_waits_without_spinning_the_loop():
+    """🔴 anyio 취소 범위(요청·webhook 경로)는 대기 중인 태스크를 **매 루프마다** 다시 취소한다 —
+    재대기가 그 취소를 또 받으면 스레드가 끝날 때까지 루프 CPU 를 태운다(리뷰 실측: 0.5 s 남은
+    스레드에 루프 CPU ≈0.45 s, 취소 7만여 회). 재대기는 막혀야 하고, 취소는 여전히 스레드 뒤에 올라온다.
+    anyio cancel scopes re-cancel the waiter on every loop pass; the re-wait must be shielded so the
+    loop idles while the thread finishes, and the cancellation still surfaces after the thread."""
+    marks: dict = {}
+
+    def work():
+        time.sleep(0.4)
+        marks["end"] = time.perf_counter()
+
+    cpu0 = time.thread_time()
+    with anyio.CancelScope() as scope:
+        async def cancel_soon():
+            await anyio.sleep(0.05)
+            scope.cancel()
+
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(cancel_soon)
+            try:
+                await run_blocking(work)
+            finally:
+                marks["raised"] = time.perf_counter()
+    loop_cpu = time.thread_time() - cpu0
+
+    assert scope.cancelled_caught, "범위가 취소를 받지 않았다 — 취소를 삼켰다"
+    assert marks["raised"] >= marks["end"], "스레드가 끝나기 전에 취소가 올라왔다"
+    # 스레드는 0.35 s 더 잔다 — 헛돌면 루프 CPU 가 그만큼 탄다. 막힌 재대기는 거의 0.
+    # The thread sleeps ~0.35 s more; a spinning re-wait burns that on the loop thread.
+    assert loop_cpu < 0.15, f"취소 뒤 재대기가 루프 CPU {loop_cpu:.3f}s 를 태웠다 — 헛돈다"
 
 
 async def test_control_bare_run_in_threadpool_raises_before_the_thread_ends():

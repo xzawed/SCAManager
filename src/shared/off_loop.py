@@ -18,6 +18,7 @@ import asyncio
 from collections.abc import Callable
 from typing import Any, TypeVar
 
+import anyio
 from starlette.concurrency import run_in_threadpool
 
 T = TypeVar("T")
@@ -39,7 +40,14 @@ async def run_blocking(fn: Callable[..., T], /, *args: Any, **kwargs: Any) -> T:
         try:
             # `asyncio.wait` 는 취소돼도 기다리던 퓨처를 취소하지 않는다(`wait_for`·`gather` 와 다르다).
             # asyncio.wait never cancels the awaited future when the waiter is cancelled.
-            await asyncio.wait((work,))
+            if interrupted is None:
+                await asyncio.wait((work,))
+            else:
+                # 🔴 anyio 취소 범위는 대기자를 루프마다 다시 취소한다 — 막지 않으면 스레드가 끝날
+                # 때까지 루프가 헛돈다(리뷰 실측 ≈0.45 s CPU/0.5 s). 취소는 이미 받아 뒀다.
+                # anyio scopes re-cancel the waiter every loop pass; shield the re-wait so it idles.
+                with anyio.CancelScope(shield=True):
+                    await asyncio.wait((work,))
         except asyncio.CancelledError as exc:
             interrupted = exc
     if interrupted is not None:
