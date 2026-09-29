@@ -646,6 +646,9 @@ jobs:
     name: Dockerfile build + analyzer contract
     runs-on: ubuntu-latest
     needs: secret-scan
+    # required 다 — 멈추면 기본 360분 동안 머지가 막힌다. 실측 cold ~5분 · warm ~2분.
+    # Required check: a hang would block merges for the 360-min default. Measured cold ~5 min.
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -654,7 +657,10 @@ jobs:
         uses: docker/setup-buildx-action@v4
 
       # gha 캐시 — 분석기·pip 레이어가 캐시되면 코드만 바뀐 PR 은 수십 초로 끝난다.
+      # 🔴 `ignore-error=true` — 캐시 서비스 429·503 이 required check 를 red 로 만들지 않게.
+      #    export 오류만 삼킨다 — 빌드·아래 계약 스텝의 실패는 그대로 red 다.
       # The gha cache keeps analyzer and pip layers warm; code-only PRs rebuild in seconds.
+      # ignore-error swallows cache-export errors only; build and contract failures stay red.
       - name: Build image
         uses: docker/build-push-action@v7
         with:
@@ -662,7 +668,7 @@ jobs:
           load: true
           tags: scam-ci:local
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=max,ignore-error=true
 
       # 🔴 목록은 코드에서, 기대 버전은 이미지 안의 Dockerfile 에서 읽는다 — 여기에 사본을 두지 않는다.
       #    ktlint 는 JVM 이 없으면 실행하지 않는다 — 어댑터도 같은 이유로 게이트한다(#1578).

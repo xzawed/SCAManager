@@ -47,12 +47,34 @@ _REQUIRED_JOB_NAMES = (
     "TruffleHog secret scan",
     "Lint changed test files (F401/F841 — C1)",
     "PG-only tests (SKIP LOCKED + migration round-trip)",
+    "pip-audit (SCA — 의존성 취약점 게이트)",
+    "lint-js 공허화 차단 (검사 범위 비면 fail)",
+    "Dockerfile build + analyzer contract",
+)
+# `Analyze (python)` 은 `codeql.yml` 소속이라 이 파일이 보지 않는다.
+# `Analyze (python)` lives in `codeql.yml`, outside this file's view.
+
+# 승격하며 `if:` 부재를 실측한 job — 색이 코드 결함만 따라야 한다(아래 가드).
+# `Lint changed test files` 는 `if: pull_request` 라 뺐다 — PR 에선 항상 참이다.
+# Promoted jobs verified to have no `if:`; their colour must track code defects only.
+_PROMOTED_JOB_NAMES = (
+    "E2E (Playwright)",
+    "Dockerfile build + analyzer contract",
 )
 
 
-def _job_names() -> set[str]:
+def _jobs() -> dict[str, dict]:
     data = yaml.safe_load(_CI.read_text(encoding="utf-8"))
-    return {j.get("name") for j in data.get("jobs", {}).values() if isinstance(j, dict)}
+    return {k: j for k, j in data.get("jobs", {}).items() if isinstance(j, dict)}
+
+
+def _job_names() -> set[str]:
+    return {j.get("name") for j in _jobs().values()}
+
+
+def _needs(job: dict) -> list[str]:
+    needs = job.get("needs", [])
+    return [needs] if isinstance(needs, str) else list(needs)
 
 
 def test_ci_defines_every_required_job_name():
@@ -73,20 +95,43 @@ def test_ci_defines_every_required_job_name():
 
 def test_the_pinned_list_is_not_vacuous():
     """대조군 — 목록이 비면 위 단언은 항상 통과한다."""
-    assert len(_REQUIRED_JOB_NAMES) >= 7
+    assert len(_REQUIRED_JOB_NAMES) >= 10
+    assert len(_PROMOTED_JOB_NAMES) >= 2
 
 
-def test_e2e_job_has_no_conditional_skip():
-    """🔴 조건부 skip 되는 job 을 required 로 걸면 **skip 이 성공으로 세탁**된다.
+def test_promoted_jobs_colour_tracks_only_the_code():
+    """🔴 승격한 job 의 색은 코드 결함만 따라야 한다 — 세 경로를 닫는다.
 
-    `guards.md` 가 명시적으로 경고하는 fail-open 이다. 승격 시점에 e2e job 은 `if:` 가
-    없음을 확인했고(실측), 나중에 붙으면 여기서 red 가 된다.
+    1. 자기 `if:` — skip 은 성공으로 취급돼 빨간 required check 를 **세탁**한다.
+    2. `needs:` 선행의 skip — 선행이 skip 되면 이 job 도 skip 이다. 그래서 선행 사슬 전체가
+       `if:` 없는 required 여야 한다 — 그래야 선행의 빨강이 직접 머지를 막는다.
+    3. 캐시 export — gha 캐시 서비스 429·503 이 빌드와 무관하게 job 을 red 로 만든다.
+       `ignore-error=true` 는 그 export 만 삼킨다. **부분문자열이 아니라 속성으로** 읽는다
+       (`scope=ignore-error=true` 는 속성이 아니다).
     """
-    data = yaml.safe_load(_CI.read_text(encoding="utf-8"))
-    e2e = next((j for j in data["jobs"].values()
-                if isinstance(j, dict) and j.get("name") == "E2E (Playwright)"), None)
-    assert e2e is not None, "e2e job 을 못 찾았다 — 이름이 바뀌었으면 위 가드가 먼저 red 다"
-    assert "if" not in e2e, (
-        "required 인 e2e job 에 조건부 `if:` 가 생겼다 — skip 은 성공으로 취급돼 "
-        "빨간 required check 를 세탁할 수 있다(guards.md)"
+    jobs = _jobs()
+    by_name = {j.get("name"): k for k, j in jobs.items()}
+    caches = []
+    for name in _PROMOTED_JOB_NAMES:
+        assert name in by_name, f"{name!r} job 을 못 찾았다 — 이름이 바뀌었으면 위 가드가 먼저 red 다"
+        chain, todo = [], [by_name[name]]
+        while todo:
+            key = todo.pop()
+            if key not in chain:
+                chain.append(key)
+                todo.extend(_needs(jobs[key]))
+        for key in chain:
+            assert "if" not in jobs[key] and jobs[key].get("name") in _REQUIRED_JOB_NAMES, (
+                f"{name!r} 의 skip 경로: job {key!r} 에 `if:` 가 있거나 required 가 아니다 — "
+                "skip 은 성공으로 취급돼 빨간 required check 를 세탁할 수 있다"
+            )
+        for step in jobs[by_name[name]].get("steps", []):
+            for line in str((step.get("with") or {}).get("cache-to", "")).splitlines():
+                if line.strip():
+                    attrs = dict(kv.split("=", 1) for kv in line.strip().split(",") if "=" in kv)
+                    caches.append((name, line.strip(), attrs.get("ignore-error")))
+    assert caches, "승격 job 에서 `cache-to` 를 하나도 못 읽었다 — 3번 단언이 공허하다"
+    bad = [(n, line) for n, line, flag in caches if flag != "true"]
+    assert not bad, (
+        f"캐시 export 실패가 required job 을 red 로 만든다 — `ignore-error=true` 없음: {bad}"
     )
