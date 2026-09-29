@@ -32,6 +32,7 @@ The index is read (not the working tree); depth is ignored and case is folded.
 """
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path, PurePosixPath
 
@@ -42,6 +43,15 @@ _ROOT = Path(__file__).resolve().parents[3]
 # Railway 가 기본 탐색으로 읽는 Config as Code 파일 이름(문서: config-as-code).
 # Names Railway's default discovery reads (docs: config-as-code).
 _CAC_NAMES = frozenset({"railway.toml", "railway.json"})
+
+# git 위치 변수는 cwd 를 이긴다 — 훅이 물려준 값이면 다른 저장소의 인덱스를 읽는다(Grok 반증).
+# Git location variables beat cwd; inherited from a hook they point git at another index.
+_GIT_LOCATION_VARS = frozenset({"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"})
+
+
+def _git_env() -> dict[str, str]:
+    """git 위치 변수를 뺀 환경 — git 이 cwd 의 저장소를 읽게 한다."""
+    return {k: v for k, v in os.environ.items() if k not in _GIT_LOCATION_VARS}
 
 
 def config_as_code_files(paths: list[str]) -> list[str]:
@@ -59,7 +69,7 @@ def tracked_files(root: Path) -> list[str]:
     The index, not the working tree; `-z` keeps non-ASCII paths unquoted. No git = error (red).
     """
     out = subprocess.run(
-        ["git", "ls-files", "-z"], cwd=root, capture_output=True, check=True,
+        ["git", "ls-files", "-z"], cwd=root, capture_output=True, check=True, env=_git_env(),
     ).stdout
     return [p for p in out.decode("utf-8").split("\0") if p]
 
@@ -85,23 +95,45 @@ def test_judgement_on_planted_paths(path, caught):
     assert (config_as_code_files([path]) == [path]) is caught
 
 
+def _init_repo(repo: Path, files: dict[str, str]) -> None:
+    """임시 git 저장소를 만들고 `files` 를 추적시킨다(커밋 없이 인덱스만)."""
+    repo.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True, env=_git_env())
+    for name, body in files.items():
+        (repo / name).parent.mkdir(parents=True, exist_ok=True)
+        (repo / name).write_text(body, encoding="utf-8")
+    subprocess.run(["git", "add", *files], cwd=repo, check=True, env=_git_env())
+
+
 def test_collector_reads_the_index_not_the_working_tree(tmp_path):
     """🔴 두 번째 싼 과정(작업트리 rglob · 본문 grep)이 맞히는 쌍을 실제 git 저장소에 심는다.
 
     추적된 중첩 파일은 잡히고, 미추적 루트 파일과 본문에만 이름을 적은 문서는 무시돼야 한다.
     A tracked nested file is caught; an untracked root file and a doc naming it in prose are not.
     """
-    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
-    (tmp_path / "Dockerfile").write_text("FROM scratch\n", encoding="utf-8")
-    (tmp_path / "backend").mkdir()
-    (tmp_path / "backend" / "railway.toml").write_text("[deploy]\n", encoding="utf-8")
-    (tmp_path / "notes.md").write_text("`railway.toml` 은 폐기됐다\n", encoding="utf-8")
-    subprocess.run(["git", "add", "Dockerfile", "backend/railway.toml", "notes.md"], cwd=tmp_path, check=True)
+    _init_repo(tmp_path, {
+        "Dockerfile": "FROM scratch\n",
+        "backend/railway.toml": "[deploy]\n",
+        "notes.md": "`railway.toml` 은 폐기됐다\n",
+    })
     (tmp_path / "railway.toml").write_text("[deploy]\n", encoding="utf-8")  # 미추적 / untracked
 
     tracked = tracked_files(tmp_path)
     assert sorted(tracked) == ["Dockerfile", "backend/railway.toml", "notes.md"], tracked
     assert config_as_code_files(tracked) == ["backend/railway.toml"]
+
+
+def test_inherited_git_location_vars_do_not_redirect_the_listing(tmp_path, monkeypatch):
+    """🔴 훅이 물려준 GIT_DIR·GIT_INDEX_FILE 이 다른 인덱스(Dockerfile 만)를 가리켜도 거짓 초록이 아니다.
+
+    Inherited GIT_DIR/GIT_INDEX_FILE pointing at another index must not turn the verdict green.
+    """
+    repo, other = tmp_path / "repo", tmp_path / "other"
+    _init_repo(repo, {"Dockerfile": "FROM scratch\n", "railway.toml": "[deploy]\n"})
+    _init_repo(other, {"Dockerfile": "FROM scratch\n"})
+    monkeypatch.setenv("GIT_DIR", str(other / ".git"))
+    monkeypatch.setenv("GIT_INDEX_FILE", str(other / ".git" / "index"))
+    assert config_as_code_files(tracked_files(repo)) == ["railway.toml"]
 
 
 def test_planted_paths_in_the_real_index_flip_the_verdict():
