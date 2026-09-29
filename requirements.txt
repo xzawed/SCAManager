@@ -4,9 +4,9 @@
 #   Prior CVE-2024-47874 / CVE-2025-54121 (starlette) fixes are carried by starlette>=1.3.1 below.
 fastapi==0.141.1
 slowapi==0.1.10
-uvicorn[standard]==0.53.0
+uvicorn[standard]==0.54.0
 pydantic-settings==2.15.0
-sqlalchemy==2.1.0
+sqlalchemy==2.1.1
 alembic==1.20.0
 # 온프레미스 프로덕션: psycopg2-binary → psycopg2 + libpq-dev(Ubuntu) / postgresql-devel(RHEL) 설치 권장
 # On-premises production: replace psycopg2-binary with psycopg2 + libpq-dev (Ubuntu) / postgresql-devel (RHEL).
