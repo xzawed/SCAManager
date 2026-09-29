@@ -21,6 +21,7 @@ In-app periodic job scheduler — replaces the Railway cron config that never ra
 """
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Awaitable, Callable
@@ -42,6 +43,7 @@ from src.services.cron_service import (
 )
 from src.services.merge_retry_service import process_pending_retries
 from src.services.security_scan_service import scan_all_repos
+from src.shared.off_loop import run_blocking
 
 logger = logging.getLogger(__name__)
 
@@ -87,37 +89,58 @@ def scheduler_enabled(settings):
     return bool(settings.is_production) and not settings.scheduler_disabled
 
 
-# ── job 본문 (엔드포인트와 동일 세션 패턴) ───────────────────────────────
-# Job bodies — same session pattern as the internal cron endpoints
+# ── job 본문 — 동기 DB 는 전부 워커 스레드에서 ─────────────────────────────
+# Job bodies — every sync DB statement runs in a worker thread
+
+
+@asynccontextmanager
+async def _worker_session():
+    """job 세션 — 만들기·닫기(연결 반납 = 운영에서 ROLLBACK 왕복)까지 워커 스레드에서.
+
+    Job session; creating and closing it (returning the connection = a ROLLBACK round trip in
+    production) also run in a worker thread.
+
+    🔴 루프 위의 동기 DB 는 왕복마다 프로세스 전체를 세운다 — 운영(왕복 ≈ 0.2 s)에서 1분 주기
+    retry job 이 **빈 큐**에서도 루프를 ≈ 0.78 s 막았다. 세션 안의 DB 도 서비스가 `run_blocking` 으로
+    넘기고, 루프에는 GitHub·Telegram await 만 남는다. `run_blocking` 은 `stop()` 의 취소에도 스레드를
+    기다리므로 close 가 아직 쓰이는 세션을 다른 스레드에서 만지지 않는다.
+    Sync DB on the loop stalled the whole process per round trip. run_blocking waits for its thread
+    even on stop()'s cancellation, so close never overlaps a thread still using the session.
+    """
+    db = await run_blocking(SessionLocal)
+    try:
+        yield db
+    finally:
+        await run_blocking(db.close)
 
 
 async def _retry_pending_merges():
     settings = Settings()
-    with SessionLocal() as db:
+    async with _worker_session() as db:
         counts = await process_pending_retries(db, limit=settings.merge_retry_worker_batch_size)
     logger.info("scheduler retry_pending_merges: counts=%s", counts)
 
 
 async def _sweep_orphans():
-    with SessionLocal() as db:
+    async with _worker_session() as db:
         surfaced = await sweep_analysis_attempts(db)
     logger.info("scheduler sweep_orphans: surfaced=%d", surfaced)
 
 
 async def _retention_sweep():
-    with SessionLocal() as db:
-        counts = run_retention_sweep(db)
+    async with _worker_session() as db:
+        counts = await run_blocking(run_retention_sweep, db)
     logger.info("scheduler retention_sweep: counts=%s", counts)
 
 
 async def _trend_check():
-    with SessionLocal() as db:
+    async with _worker_session() as db:
         sent = await run_trend_check(db)
     logger.info("scheduler trend_check: sent=%s", sent)
 
 
 async def _weekly_reports():
-    with SessionLocal() as db:
+    async with _worker_session() as db:
         sent = await run_weekly_reports(db)
     logger.info("scheduler weekly_reports: sent=%s", sent)
 
@@ -130,7 +153,7 @@ async def _scan_security():
     (`tests/unit/test_cron_scheduler_parity.py`)가 그 갭을 표면화해 결정으로 이어졌다.
     긴급 차단은 `SECURITY_AUTO_PROCESS_DISABLED=1` kill-switch.
     """
-    with SessionLocal() as db:
+    async with _worker_session() as db:
         totals = await scan_all_repos(db)
     logger.info("scheduler scan_security: totals=%s", totals)
 

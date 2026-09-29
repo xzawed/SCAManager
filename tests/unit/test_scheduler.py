@@ -155,13 +155,16 @@ def test_every_job_is_callable():
 
 
 class _FakeSession:
-    """SessionLocal() 컨텍스트 매니저 대역."""
+    """SessionLocal() 세션 대역 — job 은 워커 스레드에서 만들고 `close()` 로 닫는다."""
 
     def __enter__(self):
         return MagicMock()
 
     def __exit__(self, *exc):
         return False
+
+    def close(self):
+        """세션 반납 대역 / stand-in for returning the connection."""
 
 
 def _patch_session(monkeypatch):

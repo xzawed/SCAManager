@@ -15,6 +15,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
+from sqlalchemy.pool import StaticPool
 
 from src.database import Base
 from src.models.analysis import Analysis
@@ -32,7 +33,10 @@ def db():
     """모든 ORM 테이블이 생성된 in-memory SQLite 세션을 제공한다.
     Provide an in-memory SQLite session with all ORM tables created.
     """
-    engine = create_engine("sqlite:///:memory:")
+    # 서비스가 동기 DB 를 워커 스레드로 넘긴다 — 스레드 사이에서 같은 인메모리 DB 를 보게 한다.
+    # The service hands sync DB work to worker threads; share one in-memory DB across threads.
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False},
+                           poolclass=StaticPool)
     Base.metadata.create_all(engine)
     with Session(engine) as session:
         yield session

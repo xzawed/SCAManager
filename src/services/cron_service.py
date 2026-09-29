@@ -6,12 +6,15 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta, timezone
 from html import escape
+from typing import NamedTuple
 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.config import settings
 from src.i18n.loader import get_text
+from src.models.repo_config import RepoConfig
+from src.models.repository import Repository
 from src.notifier._language import resolve_notification_language
 from src.notifier.telegram import telegram_post_message
 from src.repositories import (
@@ -22,6 +25,7 @@ from src.repositories import (
     repository_repo,
 )
 from src.services.analytics_service import moving_average, resolve_chat_id, weekly_summary
+from src.shared.off_loop import run_blocking
 from src.shared.time_utils import to_naive_utc
 from src.shared.http_client import HTTPX_SEND_ERRORS
 
@@ -51,9 +55,9 @@ async def sweep_analysis_attempts(db: Session) -> int:
     **삭제**한다 — 표면화가 durable 기록(Railway 로그)이므로 삭제해도 소실 사실은 남고, 재알림·
     무한 누적을 막는다. 반환 = 표면화한 orphan 수.
     """
-    orphans = analysis_attempt_repo.find_orphaned(
-        db, older_than_minutes=_ORPHAN_SWEEP_THRESHOLD_MINUTES
-    )
+    # 🔴 동기 DB(판독·삭제)는 워커 스레드에서 — 스케줄러가 10분마다 부른다. 루프에는 Telegram 만.
+    # Sync DB (read and purge) runs in a worker thread; only the Telegram await stays on the loop.
+    orphans = await run_blocking(_find_orphans, db)
     if not orphans:
         return 0
     # durable 표면화 — Railway 로그. Telegram 실패해도 이 로그로 소실은 조회된다.
@@ -73,8 +77,24 @@ async def sweep_analysis_attempts(db: Session) -> int:
             logger.warning("orphan sweep telegram alert failed: %s", type(exc).__name__)
     # 표면화 완료 → **표면화한 행 id 만** 삭제 (재알림·무한 누적 방지 + TOCTOU 봉인 — pipeline-reviewer P2).
     # Surfaced → delete exactly the surfaced ids (prevents re-alert/growth; closes the TOCTOU window).
-    analysis_attempt_repo.purge_by_ids(db, [o.id for o in orphans])
+    await run_blocking(analysis_attempt_repo.purge_by_ids, db, [o.id for o in orphans])
     return len(orphans)
+
+
+class _Orphan(NamedTuple):
+    """루프가 읽는 소실 흔적 값 — ORM 행을 루프에서 읽지 않는다. / Loop-safe breadcrumb values."""
+
+    id: int
+    repo_id: int
+    commit_sha: str | None
+
+
+def _find_orphans(db: Session) -> list[_Orphan]:
+    """소실 후보를 값으로 읽는다(워커 스레드에서). / Read loss candidates as values (worker thread)."""
+    rows = analysis_attempt_repo.find_orphaned(
+        db, older_than_minutes=_ORPHAN_SWEEP_THRESHOLD_MINUTES
+    )
+    return [_Orphan(r.id, r.repo_id, r.commit_sha) for r in rows]
 
 
 def _format_orphan_alert(orphans: list) -> str:
@@ -114,6 +134,8 @@ async def run_weekly_reports(db: Session, *, now: datetime | None = None) -> int
     Send weekly summary Telegram messages for all active repositories.
 
     Returns the number of successfully sent reports.
+    동기 DB(리포·설정·요약·언어)는 리포마다 워커 스레드에서, Telegram await 만 루프에서 — 순서는 종전과 같다.
+    Per repo, the sync DB work runs in a worker thread and only the Telegram await on the loop.
     """
     # now 기본값 설정 — 테스트에서 고정 시각 주입 가능
     # Default now — allows injecting a fixed time in tests
@@ -121,39 +143,18 @@ async def run_weekly_reports(db: Session, *, now: datetime | None = None) -> int
     week_start = _now - timedelta(days=7)
     sent = 0
 
-    # 전체 리포 목록 조회
-    # Fetch all repository records
-    repos = repository_repo.find_all(db)
+    # 전체 리포 + 설정 batch 조회 (N+1 방지) — 워커 스레드에서
+    # All repos + one batched config lookup (no N+1), in a worker thread
+    targets = await run_blocking(_load_report_targets, db)
 
-    # N+1 방지 — 전체 repo config 를 단일 IN 쿼리로 batch 조회
-    # Avoid N+1 — batch-fetch all repo configs in one IN query
-    configs = repo_config_repo.find_by_full_names(db, [r.full_name for r in repos])
-
-    for repo in repos:
+    for repo, full_name, config in targets:
         try:
-            # 리포별 설정 조회 (없으면 None)
-            # Fetch per-repo config (None if absent)
-            config = configs.get(repo.full_name)
-
-            # chat_id 우선순위 라우팅 — None 이면 skip
-            # Resolve chat_id with priority routing — skip if None
-            chat_id = resolve_chat_id(repo, config)
-            if not chat_id:
-                logger.warning(
-                    "weekly_report: no chat_id resolved for repo=%s", repo.full_name
-                )
+            prepared = await run_blocking(
+                _prepare_weekly_report, db, repo, config, week_start=week_start, now=_now,
+            )
+            if prepared is None:
                 continue
-
-            # 주간 요약 집계 — 분석 없으면 None 반환
-            # Aggregate weekly summary — returns None if no analyses exist
-            summary = weekly_summary(db, repo.id, week_start, now=_now)
-            if summary is None:
-                continue
-
-            # 발신 언어 결정 (config 기반 fallback) 후 메시지 포맷팅 및 Telegram 발송
-            # Resolve notification language (config-based fallback), then format & send
-            language = resolve_notification_language(db, config=config)
-            text = _format_weekly_message(repo.full_name, summary, language)
+            chat_id, text = prepared
             await telegram_post_message(
                 settings.telegram_bot_token,
                 chat_id,
@@ -168,14 +169,53 @@ async def run_weekly_reports(db: Session, *, now: datetime | None = None) -> int
             # 담으므로 raw exc 로깅 금지. type(exc).__name__ 만(형제 orphan sweep 과 동일).
             # Layer-1 root control: an httpx error can carry the bot-token URL — log the type only.
             logger.warning(
-                "weekly_report: failed for repo=%s: %s", repo.full_name, type(exc).__name__
+                "weekly_report: failed for repo=%s: %s", full_name, type(exc).__name__
             )
             # 세션 오염 방지 — DB 에러로 세션이 failed 상태면 다음 repo 가 연쇄 실패
             # (security_scan_service.scan_all_repos 와 동일 패턴, #745 / api.md 세션 격리)
             # Roll back so a poisoned session doesn't cascade into the next repo
-            db.rollback()
+            await run_blocking(db.rollback)
 
     return sent
+
+
+def _load_report_targets(db: Session) -> list[tuple[Repository, str, RepoConfig | None]]:
+    """전체 리포와 설정(단일 IN 쿼리)을 읽어 (리포, 이름, 설정) 으로 — 워커 스레드에서.
+
+    Load every repo and its config (one IN query) as (repo, name, config), in a worker thread.
+    이름은 값으로 둔다 — 실패 로그가 루프에서 그것을 읽는다(롤백이 만료시킨 ORM 속성은 읽는 순간 SELECT).
+    The name is kept as a value because the loop logs it; an expired ORM attribute read is a SELECT.
+    """
+    repos = repository_repo.find_all(db)
+    configs = repo_config_repo.find_by_full_names(db, [r.full_name for r in repos])
+    return [(r, r.full_name, configs.get(r.full_name)) for r in repos]
+
+
+def _prepare_weekly_report(
+    db: Session, repo: Repository, config: RepoConfig | None, *, week_start: datetime,
+    now: datetime,
+) -> tuple[str, str] | None:
+    """리포 하나의 (chat_id, 메시지) — 보낼 것이 없으면 None(워커 스레드에서).
+    One repo's (chat_id, message), or None when there is nothing to send (worker thread)."""
+    # chat_id 우선순위 라우팅 — None 이면 skip
+    # Resolve chat_id with priority routing — skip if None
+    chat_id = resolve_chat_id(repo, config)
+    if not chat_id:
+        logger.warning(
+            "weekly_report: no chat_id resolved for repo=%s", repo.full_name
+        )
+        return None
+
+    # 주간 요약 집계 — 분석 없으면 None 반환
+    # Aggregate weekly summary — returns None if no analyses exist
+    summary = weekly_summary(db, repo.id, week_start, now=now)
+    if summary is None:
+        return None
+
+    # 발신 언어 결정 (config 기반 fallback) 후 메시지 포맷팅
+    # Resolve notification language (config-based fallback), then format
+    language = resolve_notification_language(db, config=config)
+    return chat_id, _format_weekly_message(repo.full_name, summary, language)
 
 
 def _format_weekly_message(
@@ -204,74 +244,35 @@ def _format_weekly_message(
     )
 
 
-# N+1 방지용 configs batch 지역변수 추가로 16/15 — 함수 응집 보호 위해 inline disable (testing.md R0914)
-# configs batch local for N+1 fix pushes to 16/15 — inline disable to keep function cohesion
-async def run_trend_check(  # pylint: disable=too-many-locals
-    db: Session, *, now: datetime | None = None
-) -> int:
+async def run_trend_check(db: Session, *, now: datetime | None = None) -> int:
     """7일 이동 평균이 10점 이상 하락한 리포에 트렌드 경고를 발송한다.
     Send trend alerts for repos whose 7-day moving average drops by 10+ points.
 
     Returns the number of alerts sent.
+    동기 DB(리포·설정·이동 평균·언어)는 리포마다 워커 스레드에서, Telegram await 만 루프에서.
+    Per repo, the sync DB work runs in a worker thread and only the Telegram await on the loop.
     """
     # now 기본값 설정 — 테스트에서 고정 시각 주입 가능
     # Default now — allows injecting a fixed time in tests
     _now = to_naive_utc(now or datetime.now(timezone.utc))
     alerted = 0
 
-    # 전체 리포 목록 조회
-    # Fetch all repository records
-    repos = repository_repo.find_all(db)
+    # 전체 리포 + 설정 batch 조회 (N+1 방지) — 워커 스레드에서
+    # All repos + one batched config lookup (no N+1), in a worker thread
+    targets = await run_blocking(_load_report_targets, db)
 
-    # N+1 방지 — 전체 repo config 를 단일 IN 쿼리로 batch 조회
-    # Avoid N+1 — batch-fetch all repo configs in one IN query
-    configs = repo_config_repo.find_by_full_names(db, [r.full_name for r in repos])
-
-    for repo in repos:
+    for repo, full_name, config in targets:
         try:
-            # 리포별 설정 조회 (없으면 None)
-            # Fetch per-repo config (None if absent)
-            config = configs.get(repo.full_name)
-
-            # chat_id 우선순위 라우팅 — None 이면 skip
-            # Resolve chat_id with priority routing — skip if None
-            chat_id = resolve_chat_id(repo, config)
-            if not chat_id:
+            prepared = await run_blocking(_prepare_trend_alert, db, repo, config, now=_now)
+            if prepared is None:
                 continue
-
-            # 현재 7일 이동 평균
-            # Current 7-day moving average
-            current_avg = moving_average(db, repo.id, now=_now)
-            if current_avg is None:
-                # min_samples 미충족 — skip
-                # Below min_samples — skip
-                continue
-
-            # 이전 주(7일 전 기준) 이동 평균 — 비교 기준
-            # Previous week's moving average (baseline 7 days ago)
-            prev_now = _now - timedelta(days=7)
-            prev_avg = moving_average(db, repo.id, now=prev_now)
-            if prev_avg is None:
-                # 이전 기간 샘플 부족 — 비교 불가, skip
-                # Insufficient samples for previous window — cannot compare, skip
-                continue
-
-            # 하락폭 계산 — 10점 이상이면 경고 발송
-            # Calculate drop — send alert if >= threshold
-            drop = prev_avg - current_avg
-            if drop >= _TREND_DROP_THRESHOLD:
-                # 발신 언어 결정 (config 기반 fallback)
-                # Resolve notification language (config-based fallback)
-                language = resolve_notification_language(db, config=config)
-                text = _format_trend_alert(
-                    repo.full_name, current_avg, prev_avg, drop, language
-                )
-                await telegram_post_message(
-                    settings.telegram_bot_token,
-                    chat_id,
-                    {"text": text, "parse_mode": "HTML"},
-                )
-                alerted += 1
+            chat_id, text = prepared
+            await telegram_post_message(
+                settings.telegram_bot_token,
+                chat_id,
+                {"text": text, "parse_mode": "HTML"},
+            )
+            alerted += 1
 
         except (*HTTPX_SEND_ERRORS, SQLAlchemyError, KeyError, ValueError) as exc:
             # 리포별 예외 격리 — 한 리포 실패가 다른 리포 알림을 막지 않는다
@@ -280,14 +281,48 @@ async def run_trend_check(  # pylint: disable=too-many-locals
             # 담으므로 raw exc 로깅 금지. type(exc).__name__ 만(형제 weekly_report 와 동일).
             # Layer-1 root control: an httpx error can carry the bot-token URL — log the type only.
             logger.warning(
-                "trend_check: failed for repo=%s: %s", repo.full_name, type(exc).__name__
+                "trend_check: failed for repo=%s: %s", full_name, type(exc).__name__
             )
             # 세션 오염 방지 — DB 에러로 세션이 failed 상태면 다음 repo 가 연쇄 실패
             # (security_scan_service.scan_all_repos 와 동일 패턴, #745 / api.md 세션 격리)
             # Roll back so a poisoned session doesn't cascade into the next repo
-            db.rollback()
+            await run_blocking(db.rollback)
 
     return alerted
+
+
+def _prepare_trend_alert(
+    db: Session, repo: Repository, config: RepoConfig | None, *, now: datetime,
+) -> tuple[str, str] | None:
+    """리포 하나의 (chat_id, 경고) — 하락이 임계 미만이거나 보낼 곳이 없으면 None(워커 스레드에서).
+    One repo's (chat_id, alert), or None below the threshold / without a destination (worker thread)."""
+    # chat_id 우선순위 라우팅 — None 이면 skip
+    # Resolve chat_id with priority routing — skip if None
+    chat_id = resolve_chat_id(repo, config)
+    if not chat_id:
+        return None
+
+    # 현재 7일 이동 평균 — min_samples 미충족이면 skip
+    # Current 7-day moving average — skip below min_samples
+    current_avg = moving_average(db, repo.id, now=now)
+    if current_avg is None:
+        return None
+
+    # 이전 주(7일 전 기준) 이동 평균 — 비교 기준. 샘플 부족이면 비교 불가, skip
+    # Previous week's moving average (baseline 7 days ago); skip when samples are insufficient
+    prev_avg = moving_average(db, repo.id, now=now - timedelta(days=7))
+    if prev_avg is None:
+        return None
+
+    # 하락폭 계산 — 10점 이상이면 경고
+    # Calculate drop — alert if >= threshold
+    drop = prev_avg - current_avg
+    if drop < _TREND_DROP_THRESHOLD:
+        return None
+    # 발신 언어 결정 (config 기반 fallback)
+    # Resolve notification language (config-based fallback)
+    language = resolve_notification_language(db, config=config)
+    return chat_id, _format_trend_alert(repo.full_name, current_avg, prev_avg, drop, language)
 
 
 def _format_trend_alert(

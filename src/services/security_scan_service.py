@@ -28,6 +28,7 @@ from src.repositories import security_alert_log_repo, user_repo
 from src.shared.feature_kill_switch import is_disabled
 from src.shared.http_client import get_http_client
 from src.shared.log_safety import sanitize_for_log
+from src.shared.off_loop import run_blocking
 from src.shared.http_client import HTTPX_SEND_ERRORS
 
 logger = logging.getLogger(__name__)
@@ -167,14 +168,19 @@ async def scan_repo_alerts(
 
     Collect Code/Secret Scanning open alerts for one repo + upsert audit log.
     Returns code scanning, secret scanning, and skipped counts.
+    동기 DB(ORM 값 읽기·토큰 복호화·upsert)는 워커 스레드에서, alert fetch await 만 루프에서.
+    The sync DB work (ORM reads, token decryption, upserts) runs in a worker thread; only the alert
+    fetches are awaited on the loop.
     """
     counts = {_CODE_SCANNING_KEY: 0, _SECRET_SCANNING_KEY: 0, _SKIPPED_KEY: 0}
     if is_kill_switch_active():
         counts[_SKIPPED_KEY] = 1
         return counts
-    token = _resolve_token(user)
+    # 🔴 ORM 값은 워커 스레드에서 읽는다 — 앞 리포의 upsert commit 이 만료시킨 속성은 읽는 순간 SELECT 다.
+    # Read ORM values in a worker thread; an attribute expired by an earlier commit is a SELECT.
+    repo_id, repo_name, token = await run_blocking(_scan_inputs, repo, user)
     if token is None:
-        logger.info("security_scan: token 없음 repo=%s (skip)", sanitize_for_log(repo.full_name))
+        logger.info("security_scan: token 없음 repo=%s (skip)", sanitize_for_log(repo_name))
         counts[_SKIPPED_KEY] = 1
         return counts
 
@@ -184,9 +190,24 @@ async def scan_repo_alerts(
     # (_fetch_alerts returns None on error itself — no need for gather return_exceptions)
     kinds = (("code-scanning", _CODE_SCANNING_KEY), ("secret-scanning", _SECRET_SCANNING_KEY))
     fetched = await asyncio.gather(
-        *(_fetch_alerts(token, repo.full_name, kind) for kind, _ in kinds)
+        *(_fetch_alerts(token, repo_name, kind) for kind, _ in kinds)
     )
-    for (kind, key), alerts in zip(kinds, fetched):
+    await run_blocking(_record_alerts, db, repo_id, repo_name, list(zip(kinds, fetched)), counts)
+    return counts
+
+
+def _scan_inputs(repo: Repository, user) -> tuple[int, str, str | None]:
+    """(repo id, 이름, 토큰) 을 값으로 — 워커 스레드에서. / (repo id, name, token) as values (worker thread)."""
+    return repo.id, repo.full_name, _resolve_token(user)
+
+
+def _record_alerts(
+    db: Session, repo_id: int, repo_name: str,
+    fetched: list[tuple[tuple[str, str], list[dict[str, Any]] | None]], counts: dict[str, int],
+) -> None:
+    """가져온 alert 를 audit log 에 upsert 한다 — 워커 스레드에서. 한 건 실패는 롤백 후 계속.
+    Upsert the fetched alerts into the audit log (worker thread); one failure rolls back and continues."""
+    for (kind, key), alerts in fetched:
         if alerts is None:
             continue
         for alert in alerts:
@@ -194,7 +215,7 @@ async def scan_repo_alerts(
             try:
                 security_alert_log_repo.upsert_alert_log(
                     db,
-                    repo_id=repo.id,
+                    repo_id=repo_id,
                     alert_type=meta["alert_type"],
                     alert_number=meta["alert_number"],
                     severity=meta["severity"],
@@ -204,24 +225,27 @@ async def scan_repo_alerts(
             except SQLAlchemyError as exc:
                 logger.warning(
                     "security_scan: log upsert 실패 repo=%s err=%s",
-                    sanitize_for_log(repo.full_name), type(exc).__name__,
+                    sanitize_for_log(repo_name), type(exc).__name__,
                 )
                 db.rollback()
-    return counts
 
 
 async def scan_all_repos(db: Session) -> dict[str, int]:
     """모든 repo 일괄 scan (cron 트리거 진입점 — `cron_service` 패턴 차용).
 
     Scan all repos in batch (cron entry point — cron_service pattern).
+    동기 DB 는 워커 스레드에서(`run_blocking`) — 루프에는 GitHub await 만 남는다.
+    Sync DB runs in worker threads; only the GitHub awaits stay on the loop.
     """
     totals = {_CODE_SCANNING_KEY: 0, _SECRET_SCANNING_KEY: 0, _SKIPPED_KEY: 0, "repos": 0}
     if is_kill_switch_active():
         logger.info("security_scan: kill-switch 활성 — 전체 skip")
         totals[_SKIPPED_KEY] = -1  # sentinel = kill-switch
         return totals
-    repos = db.query(Repository).all()
-    for repo in repos:
+    # 이름은 값으로 — 실패 로그가 루프에서 읽는다(롤백이 만료시킨 ORM 속성은 읽는 순간 SELECT).
+    # Names as values: the loop logs them, and an expired ORM attribute read is a SELECT.
+    targets = await run_blocking(_load_scan_targets, db)
+    for repo, repo_name in targets:
         totals["repos"] += 1
         try:
             # 🔴 소유자 토큰 우선 — 전역 GITHUB_TOKEN 만 쓰면 소유자 private 리포는 403/404 →
@@ -230,7 +254,7 @@ async def scan_all_repos(db: Session) -> dict[str, int]:
             #   _resolve_token(user) 가 owner 토큰 우선 + 전역 fallback 이므로 owner 만 넘기면 된다.
             # Resolve the repo owner so scan_repo_alerts uses the owner's token first (global fallback).
             #   Without it, an owner's private repo 403/404-skips and its scanning alerts never surface.
-            owner = user_repo.find_by_id(db, repo.user_id) if repo.user_id is not None else None
+            owner = await run_blocking(_find_owner, db, repo)
             counts = await scan_repo_alerts(db, repo, user=owner)
             totals["code_scanning"] += counts["code_scanning"]
             totals["secret_scanning"] += counts["secret_scanning"]
@@ -238,11 +262,21 @@ async def scan_all_repos(db: Session) -> dict[str, int]:
         except (*HTTPX_SEND_ERRORS, SQLAlchemyError, KeyError, ValueError) as exc:
             logger.warning(
                 "security_scan: repo=%s 처리 실패 err=%s",
-                sanitize_for_log(repo.full_name), type(exc).__name__,
+                sanitize_for_log(repo_name), type(exc).__name__,
             )
             # 세션 오염 방지 — repo 처리 중 에러로 세션이 failed 상태면 다음 repo 가
             # InvalidRequestError 로 연쇄 실패 (사이클 159 — 158 회고 P2, api.md 세션 격리 원칙).
             # 단일 repo 함수 내부 롤백은 upsert 실패만 커버하므로 그 밖의 전파 에러를 여기서 격리한다.
             # Roll back to avoid a poisoned session cascading into the next repo.
-            db.rollback()
+            await run_blocking(db.rollback)
     return totals
+
+
+def _load_scan_targets(db: Session) -> list[tuple[Repository, str]]:
+    """전체 repo 와 그 이름(값) — 워커 스레드에서. / Every repo with its name as a value (worker thread)."""
+    return [(repo, repo.full_name) for repo in db.query(Repository).all()]
+
+
+def _find_owner(db: Session, repo: Repository):
+    """repo 소유자(없으면 None) — 워커 스레드에서. / The repo's owner, or None (worker thread)."""
+    return user_repo.find_by_id(db, repo.user_id) if repo.user_id is not None else None
