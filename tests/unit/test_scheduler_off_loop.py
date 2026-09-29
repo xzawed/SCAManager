@@ -9,12 +9,13 @@ claim(`FOR UPDATE SKIP LOCKED`)·세션 반납(ROLLBACK)이 루프 위에서 동
 In production the every-minute retry job blocked the loop ~0.78 s even on an empty queue.
 
 계기 — job 본문(`JOBS[*].run`)을 **이 테스트의 루프에서** 그대로 돌린다. 그래서 루프 스레드 =
-테스트 코루틴의 스레드다. 엔진의 `before_cursor_execute` 가 문장마다, 풀의 `checkout`·`reset` 이
-연결 대여·반납(운영에서는 pre-ping·ROLLBACK 왕복)마다 실행 스레드를 적는다. GitHub·Telegram 가짜는
-루프에서 await 되며 루프 스레드를 적는다 — 계기가 두 스레드를 구별한다는 양성 대조다.
+테스트 코루틴의 스레드다. 엔진의 `before_cursor_execute` 가 문장마다, `commit`·`rollback` 이
+트랜잭션 끝마다, 풀의 `checkout`·`reset` 이 연결 대여·반납(운영에서는 pre-ping·ROLLBACK 왕복)마다
+실행 스레드를 적는다 — 운영 PG 에서는 전부 왕복이다. GitHub·Telegram 가짜는 루프에서 await 되며
+루프 스레드를 적는다 — 계기가 두 스레드를 구별한다는 양성 대조다.
 Instrument: each job body runs on this test's loop. The engine records the thread of every
-statement and the pool the thread of every checkout/reset; the HTTP fakes, awaited on the loop,
-record the loop thread as the positive control.
+statement, COMMIT/ROLLBACK and pool checkout/reset (each a round trip on production PG); the HTTP
+fakes, awaited on the loop, record the loop thread as the positive control.
 """
 # pylint: disable=redefined-outer-name
 from __future__ import annotations
@@ -29,6 +30,7 @@ from types import SimpleNamespace
 import httpx
 import pytest
 from sqlalchemy import create_engine, event, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 from starlette.concurrency import run_in_threadpool
@@ -88,25 +90,27 @@ def world(monkeypatch):
     factory = sessionmaker(bind=engine, autocommit=False, autoflush=False,
                            class_=_RecordingSession)
     w = SimpleNamespace(factory=factory, loop_thread=threading.current_thread(),
-                        sql=[], pool=[], http=[])
+                        sql=[], conn=[], http=[])
 
     def _on_sql(_conn, _cursor, statement, *_a, **_k):
         w.sql.append((threading.current_thread(), statement))
 
-    def _on_pool(name):
+    def _on_conn(name):
         def _record(*_a, **_k):
-            w.pool.append((threading.current_thread(), name))
+            w.conn.append((threading.current_thread(), name))
         return _record
 
     event.listen(engine, "before_cursor_execute", _on_sql)
-    for name in ("checkout", "reset"):
-        event.listen(engine, name, _on_pool(name))
+    # 풀(checkout·reset)과 연결(commit·rollback) 이벤트 — 둘 다 엔진에 건다.
+    # Pool (checkout/reset) and connection (commit/rollback) events, both on the engine.
+    for name in ("checkout", "reset", "commit", "rollback"):
+        event.listen(engine, name, _on_conn(name))
     monkeypatch.setattr(scheduler, "SessionLocal", factory)
     monkeypatch.delenv("SECURITY_AUTO_PROCESS_DISABLED", raising=False)
 
     def reset_records():
         w.sql.clear()
-        w.pool.clear()
+        w.conn.clear()
         w.http.clear()
         _RecordingSession.closes = []
 
@@ -127,14 +131,17 @@ def _http(w, name, result=None, exc=None):
     return fake
 
 
-def _assert_off_loop(w, *, expect_http: bool) -> None:
+def _assert_off_loop(w, *, expect_http: bool, expect: frozenset = frozenset({"checkout", "reset"})) -> None:
+    """기록 전체를 판정한다 — `expect` 는 반드시 잡혔어야 하는 연결 이벤트(없으면 단언이 공허하다)."""
     assert w.sql, "SQL 이 한 문장도 안 잡혔다 — 엔진 기록기가 공허하다"
     on_loop = [stmt.split()[0] for t, stmt in w.sql if t is w.loop_thread]
     assert not on_loop, (
         f"이벤트 루프 스레드에서 실행된 SQL {len(on_loop)}/{len(w.sql)}: {on_loop[:8]}")
-    assert w.pool, "연결 대여·반납이 한 번도 안 잡혔다 — 풀 기록기가 공허하다"
-    pool_on_loop = [name for t, name in w.pool if t is w.loop_thread]
-    assert not pool_on_loop, f"연결 대여·반납(pre-ping·ROLLBACK)이 루프 스레드에서: {pool_on_loop}"
+    missing = expect - {name for _, name in w.conn}
+    assert not missing, f"기대한 연결 이벤트가 안 잡혔다 — 시나리오가 그 경로를 안 탔다: {sorted(missing)}"
+    conn_on_loop = [name for t, name in w.conn if t is w.loop_thread]
+    assert not conn_on_loop, (
+        f"연결 대여·반납·COMMIT·ROLLBACK 이 루프 스레드에서(운영에서는 왕복): {conn_on_loop}")
     assert _RecordingSession.closes, "세션이 닫히지 않았다"
     closes_on_loop = [t for _, t in _RecordingSession.closes if t is w.loop_thread]
     assert not closes_on_loop, "세션 close 가 루프 스레드에서 돌았다"
@@ -142,6 +149,10 @@ def _assert_off_loop(w, *, expect_http: bool) -> None:
         assert w.http, "HTTP 가짜가 한 번도 안 불렸다 — 시나리오가 공허하다"
         off = [name for t, name in w.http if t is not w.loop_thread]
         assert not off, f"비동기 HTTP 가 루프 밖에서 불렸다: {off}"
+
+
+_WRITES = frozenset({"checkout", "reset", "commit"})
+_ROLLS_BACK = frozenset({"checkout", "reset", "rollback"})
 
 
 # ─── 시나리오 — job 마다 DB 경로를 실제로 태운다 ─────────────────────────────────
@@ -236,7 +247,7 @@ async def test_retry_job_every_branch_runs_its_db_work_off_the_loop(world, monke
     await _run("retry-pending-merges")
 
     # 확인 조회는 루프에서 돈다 — 기록을 먼저 판정한다. / Judge the records before verifying on the loop.
-    _assert_off_loop(world, expect_http=True)
+    _assert_off_loop(world, expect_http=True, expect=_WRITES | {"rollback"})
     assert _statuses(world) == {
         1: "abandoned", 2: "abandoned", 3: "pending", 4: "succeeded", 5: "abandoned",
         6: "succeeded", 7: "failed_terminal", 8: "pending", 9: "pending",
@@ -254,7 +265,7 @@ async def test_retry_job_without_a_token_releases_off_the_loop(world, monkeypatc
 
     await _run("retry-pending-merges")
 
-    _assert_off_loop(world, expect_http=False)
+    _assert_off_loop(world, expect_http=False, expect=_WRITES)
     statuses = _statuses(world)
     assert statuses[3] == "pending" and statuses[1] == "abandoned", statuses
 
@@ -290,7 +301,7 @@ async def test_sweep_orphans_job_runs_its_db_work_off_the_loop(world, monkeypatc
 
     await _run("sweep-orphans")
 
-    _assert_off_loop(world, expect_http=True)
+    _assert_off_loop(world, expect_http=True, expect=_WRITES)
     with world.factory() as db:
         assert [a.commit_sha for a in db.query(AnalysisAttempt).all()] == ["inflight"]
 
@@ -350,7 +361,7 @@ async def test_retention_job_runs_its_db_work_off_the_loop(world):
 
     await _run("retention-sweep")
 
-    _assert_off_loop(world, expect_http=False)
+    _assert_off_loop(world, expect_http=False, expect=_WRITES)
     with world.factory() as db:
         assert db.query(InsightNarrativeCache).count() == 0
         assert db.query(MergeRetryQueue).count() == 0
@@ -376,9 +387,56 @@ async def test_scan_security_job_runs_its_db_work_off_the_loop(world, monkeypatc
 
     await _run("scan-security")
 
-    _assert_off_loop(world, expect_http=True)
+    _assert_off_loop(world, expect_http=True, expect=_WRITES)
     with world.factory() as db:
         assert db.query(SecurityAlertProcessLog).count() == 6
+
+
+# ─── 실패 경로 — 리포별 격리의 롤백도 루프 밖에서 ─────────────────────────────────
+
+
+@pytest.mark.parametrize("name", ["trend", "weekly-reports"])
+async def test_report_job_failure_rolls_back_off_the_loop(world, monkeypatch, name):
+    """Telegram 실패 → 리포별 격리가 세션을 롤백한다. 그 ROLLBACK 도 운영에서는 왕복이다."""
+    with world.factory() as db:
+        _seed_repo_with_history(db)
+    monkeypatch.setattr(cron_service.settings, "telegram_chat_id", "")
+    monkeypatch.setattr(cron_service, "telegram_post_message",
+                        _http(world, "telegram", exc=httpx.ConnectError("down")))
+    world.reset_records()
+
+    await _run(name)
+
+    _assert_off_loop(world, expect_http=True, expect=_ROLLS_BACK)
+
+
+@pytest.mark.parametrize("failure", ["fetch", "upsert"])
+async def test_scan_security_failure_rolls_back_off_the_loop(world, monkeypatch, failure):
+    """fetch 가 새면 리포 단위, upsert 가 실패하면 alert 단위로 롤백한다 — 둘 다 루프 밖에서."""
+    with world.factory() as db:
+        db.add(Repository(full_name=_REPO))
+        db.commit()
+    alerts = [{"number": 1, "rule": {"id": "py/a", "severity": "error"}}]
+    if failure == "fetch":
+        fetch = _http(world, "alerts", exc=httpx.ConnectError("down"))
+    else:
+        fetch = _http(world, "alerts", lambda *_a: alerts)
+        real = security_scan_service.security_alert_log_repo.upsert_alert_log
+
+        def flaky_upsert(db, **kwargs):
+            db.execute(text("SELECT 1"))  # 트랜잭션을 열어 둔다 — 롤백할 것이 있게
+            if kwargs["alert_type"] == "code_scanning":
+                raise SQLAlchemyError("boom")
+            return real(db, **kwargs)
+
+        monkeypatch.setattr(security_scan_service.security_alert_log_repo, "upsert_alert_log",
+                            flaky_upsert)
+    monkeypatch.setattr(security_scan_service, "_fetch_alerts", fetch)
+    world.reset_records()
+
+    await _run("scan-security")
+
+    _assert_off_loop(world, expect_http=True, expect=_ROLLS_BACK)
 
 
 # 🔴 새 job 은 여기에 시나리오를 더해야 한다 — 없으면 아래 테스트가 red 다(«루프 밖» 은 job 마다 증명한다).
