@@ -6,7 +6,7 @@
 
 1. **빌드** — `Dockerfile`: apt·핀 분석기 + Node 20 → venv requirements → `npm ci` + `npm run build`(`package.json::"build":`). `PROVISIONED_ANALYZERS` 부재면 빌드 실패(이전 배포 유지). 핀은 `ci.yml` 조달 step 과 같은 커밋에서 바꾼다.
 2. **pre-deploy** — `alembic upgrade head`. 실패하면 배포가 중단된다.
-3. **기동** — `/bin/sh -c "exec uvicorn src.main:app --host 0.0.0.0 --port $PORT --proxy-headers"`. 시작 명령은 exec 형이라 셸로 감싸야 `$PORT` 가 확장된다(비우면 같은 명령인 이미지 `CMD`). import 시점에 `src/config.py::settings = build_settings()` 가 돌아 설정 검증 실패면 기동이 막힌다.
+3. **기동** — Start Command 는 **비운다** → 이미지 `CMD`(`/bin/sh -c "exec uvicorn … --port ${PORT:-8000} --proxy-headers"`)가 돈다 = 테스트가 보는 명령. 값을 넣으면 exec 형이라 셸로 감싸야 `$PORT` 가 확장된다. import 시점에 `src/config.py::settings = build_settings()` 가 돌아 설정 검증 실패면 기동이 막힌다.
 4. **lifespan** — `_validate_startup_config()` → `alembic upgrade head` 재실행([db.md](db.md) §적용) → 스케줄러·루프 지연 프로브 기동(`src/main.py::async def lifespan`). 루프가 막히면 30초 창마다 `event loop lag` WARNING 한 줄.
 5. **헬스체크** — `GET /health` 60초. 재시작 On Failure 최대 10회(플랫폼 기본값이라 읽기에 안 나온다).
 
