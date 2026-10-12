@@ -100,7 +100,7 @@ async def _worker_session():
     Job session; creating and closing it (returning the connection = a ROLLBACK round trip in
     production) also run in a worker thread.
 
-    🔴 루프 위의 동기 DB 는 왕복마다 프로세스 전체를 세운다 — 운영(왕복 ≈ 0.2 s)에서 1분 주기
+    🔴 루프 위의 동기 DB 는 왕복마다 프로세스 전체를 세운다 — DB 이전 전(왕복 ≈ 0.2 s, 뒤 ≈ 2 ms) 1분 주기
     retry job 이 **빈 큐**에서도 루프를 ≈ 0.78 s 막았다. 세션 안의 DB 도 서비스가 `run_blocking` 으로
     넘기고, 루프에는 GitHub·Telegram await 만 남는다. `run_blocking` 은 `stop()` 의 취소에도 스레드를
     기다리므로 close 가 아직 쓰이는 세션을 다른 스레드에서 만지지 않는다.

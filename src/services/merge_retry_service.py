@@ -65,7 +65,7 @@ async def process_pending_retries(
     Cycle 93 PR-B: per-row processing extracted to `_process_single_retry` (S3776 26→<15).
 
     🔴 동기 DB 는 전부 워커 스레드에서(`run_blocking`) — 루프에는 GitHub·Telegram await 만 남는다.
-    운영(왕복 ≈ 0.2 s)에서 빈 큐 claim 만으로 1분마다 루프가 ≈ 0.78 s 섰다. 세션은 한 번에 한
+    DB 이전 전(왕복 ≈ 0.2 s, 뒤 ≈ 2 ms) 빈 큐 claim 만으로 1분마다 루프가 ≈ 0.78 s 섰다. 세션은 한 번에 한
     스레드만 쓴다(순차 인계 — 취소가 와도 스레드가 끝날 때까지 기다린다). ORM 행은 루프에서 읽지
     않는다 — 커밋이 만료시킨 속성을 읽는 순간 SELECT 가 루프에서 돈다(`_RowView`).
     All sync DB runs in worker threads; only the GitHub/Telegram awaits stay on the loop. The session
