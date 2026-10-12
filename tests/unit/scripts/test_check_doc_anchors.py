@@ -141,3 +141,38 @@ def test_the_repo_itself_passes():
     assert not dead, f"앵커가 실재하지 않는다: {dead[:5]}"
     assert not line_refs, f"줄번호 참조가 남아 있다 ({len(line_refs)}건): {line_refs[:5]}"
     assert checked > 0, "앵커를 0건 검사했다 — 이 테스트가 공허하다"
+
+
+def test_txt_targets_are_parsed_and_checked():
+    """🔴 `_EXTS` 에 `txt` 가 없던 동안 `requirements.txt::…` 앵커는 **파싱조차 되지 않아** 핀 주석이
+    사라져도 초록이었다(md 누락과 같은 부류). 잡히고, 실재하면 통과·없으면 dead 여야 한다.
+    `txt` anchors were not even parsed; they must be parsed, pass when present, and be dead when absent.
+    """
+    mod = _load()
+    m = mod._ANCHOR.search("핀 근거는 `requirements.txt::semgrep==` 주석이다")
+    assert m and m.group(1) == "requirements.txt", "txt 대상이 앵커로 안 잡힌다"
+    tracked = mod.tracked_files()
+    assert mod._check_anchor("x.md", 1, "requirements.txt", "semgrep==", tracked, "`x`") is None
+    dead = mod._check_anchor("x.md", 1, "requirements.txt", "semgrep==0.0.0-no-such-pin", tracked, "`x`")
+    assert dead, "실재하지 않는 txt 앵커를 통과시켰다"
+
+
+def test_txt_line_refs_are_caught_but_lookalike_extensions_are_not():
+    """🔴 잡혀야 — `requirements.txt:40` 줄번호 참조. 무시돼야 — `.txtx` 는 txt 가 아니다.
+    A txt line reference must be caught; a lookalike `.txtx` extension must not be parsed as txt.
+    """
+    mod = _load()
+    assert mod._LINE_REF.search("`requirements.txt:40`"), "txt 줄번호 참조를 못 잡았다"
+    assert not mod._ANCHOR.search("`notes.txtx::semgrep==`"), "`.txtx` 를 txt 로 읽었다"
+    assert not mod._LINE_REF.search("`notes.txtx:40`"), "`.txtx` 를 txt 줄번호로 읽었다"
+
+
+def test_shared_backtick_after_a_txt_anchor_reads_the_first_code_span():
+    """새로 도달 가능해진 입력 클래스 — 백틱 하나를 두 앵커가 나눠 쓰는 꼴(Grok `91700de8` 반례).
+    `txt` 를 몰랐을 때는 둘째 백틱부터 `c.ts::dddd` 를 잡았고, 이제는 마크다운대로 첫 코드 스팬
+    `a.txt::bb` 를 잡는다(둘째는 코드 스팬이 아니다). 리포 문서에는 이 꼴이 0건이다.
+    A shared backtick now yields the first code span, as Markdown reads it; the repo has none.
+    """
+    mod = _load()
+    found = [(m.group(1), m.group(2)) for m in mod._ANCHOR.finditer("`a.txt::bb`c.ts::dddd`")]
+    assert found == [("a.txt", "bb")], found
