@@ -844,6 +844,12 @@
               <select name="review_model" form="settingsForm" class="field-input" style="max-width:420px;"
                       aria-label="{{ 'settings.model_card_title' | i18n_args(locale | default('ko')) }}">
                 <option value="">{{ 'settings.use_global_default' | i18n_args(locale | default('ko')) }}</option>
+                {# 🔴 저장값이 카탈로그에 없으면(내린 모델) 그 값을 선택지로 보여 준다. 없으면 브라우저가 첫 선택지(전역
+                   기본값)를 골라, 다른 설정을 저장하기만 해도 고정이 조용히 지워졌다(회고 2026-09-16 K10). #}
+                {# A stored id missing from the catalogue is shown and kept selected, or any save silently clears it. #}
+                {% if config.review_model and config.review_model not in claude_models | map(attribute='id') | list %}
+                <option value="{{ config.review_model }}" selected>{{ config.review_model }} — {{ 'settings.model_retired' | i18n_args(locale | default('ko')) }}</option>
+                {% endif %}
                 {% for m in claude_models %}
                 <option value="{{ m.id }}" {% if config.review_model == m.id %}selected{% endif %}>{{ m.label }}</option>
                 {% endfor %}

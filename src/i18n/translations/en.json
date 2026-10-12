@@ -418,6 +418,7 @@
     },
     "model_card_title": "AI Code Review Model",
     "use_global_default": "Use global default",
+    "model_retired": "retired from the list · kept as saved",
     "preset_minimal": "Minimal",
     "preset_standard": "Standard",
     "preset_strict": "Strict",
