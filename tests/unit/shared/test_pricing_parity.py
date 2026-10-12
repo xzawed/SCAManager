@@ -91,53 +91,34 @@ def test_i18n_model_hint_input_price_matches_ssot(locale):
         )
 
 
-# ── 4번째·5번째 소스 (Grok 반증 01a07e4b — BROKEN 판정에서 드러난 사각) ───────────
+# ── 내린 모델 요율 (Grok 반증 01a07e4b — BROKEN 판정에서 드러난 사각) ─────────────
 #
-# 🔴 위 세 소스만 묶어 두면 두 지점이 조용히 갈린다.
+# `constants.CLAUDE_RETIRED_MODEL_PRICING` — 카탈로그에서 «내렸지만» 여전히 흐르는 id.
+# `RepoConfig.review_model` 은 `String(50)` 이고 저장 시 카탈로그 검증이 없다
+# (`src/api/repos.py::review_model: str | None`·`src/ui/routes/settings.py::review_model=form.get(`).
+# 그래서 예전에 저장된 `claude-sonnet-4-6` 은 운영자가 아무것도 안 해도 계속 흐른다 —
+# family 요율(sonnet=$2/$10)로 매기면 그 호출만 33% 과소 계상된다.
 #
-#   4. `constants.CLAUDE_PRICING_FALLBACK` — 카탈로그에 없는 id 를 «대시보드» 가 매길 때 쓴다
-#      (`src/ui/routes/detail.py::CLAUDE_MODEL_PRICING.get(`). 비용 «기록» 쪽 fallback 은
-#      `claude_metrics._DEFAULT_FAMILY` 라, 둘이 다르면 같은 호출이 화면과 DB 에서 다른 값이 된다.
-#   5. `constants.CLAUDE_RETIRED_MODEL_PRICING` — 카탈로그에서 «내렸지만» 여전히 흐르는 id.
-#      `RepoConfig.review_model` 은 `String(50)` 이고 저장 시 카탈로그 검증이 없다
-#      (`src/api/repos.py::review_model: str | None`·`src/ui/routes/settings.py::review_model=form.get(`).
-#      그래서 예전에 저장된 `claude-sonnet-4-6` 은 운영자가 아무것도 안 해도 계속 흐른다 —
-#      family 요율(sonnet=$2/$10)로 매기면 그 호출만 33% 과소 계상된다.
+# 🔴 화면(리포 상세 월 비용)은 이제 요율표를 따로 들지 않고 기록 함수를 그대로 쓴다 — 예전의
+#    화면 전용 표·fallback 이 `claude-opus-4-7` 을 2.5× 과소 계상했다(회고 2026-09-16 K09).
+#    화면 == 기록 은 `tests/unit/ui/test_monthly_cost_single_price_path.py` 가 id 무관하게 잠근다.
 
-def test_dashboard_fallback_equals_the_recording_fallback():
-    """🔴 화면 fallback 과 기록 fallback 이 같아야 한다 — 다르면 같은 호출이 두 값을 갖는다."""
-    from src.constants import CLAUDE_PRICING_FALLBACK  # noqa: PLC0415
-    from src.shared.claude_metrics import _DEFAULT_FAMILY  # noqa: PLC0415
-
-    in_rate, out_rate = _PRICING_USD_PER_MTOK[_DEFAULT_FAMILY]
-    assert CLAUDE_PRICING_FALLBACK["input"] == in_rate, (
-        f"대시보드 fallback input ${CLAUDE_PRICING_FALLBACK['input']} 가 "
-        f"기록 fallback({_DEFAULT_FAMILY}) ${in_rate} 와 불일치")
-    assert CLAUDE_PRICING_FALLBACK["output"] == out_rate, (
-        f"대시보드 fallback output ${CLAUDE_PRICING_FALLBACK['output']} 가 "
-        f"기록 fallback({_DEFAULT_FAMILY}) ${out_rate} 와 불일치")
-
-
-def test_retired_model_rates_are_reachable_from_both_pricing_paths():
-    """🔴 내린 모델의 요율은 «두 경로 모두» 에서 같은 값이어야 한다.
-
-    기록 경로 = `estimate_claude_cost_usd`, 화면 경로 = `CLAUDE_MODEL_PRICING` 조회.
-    한쪽만 알면 그 모델의 비용이 화면과 DB 에서 갈린다.
-    """
-    from src.constants import CLAUDE_MODEL_PRICING, CLAUDE_RETIRED_MODEL_PRICING  # noqa: PLC0415
+def test_retired_model_rates_are_honored_by_the_recording_path():
+    """🔴 내린 모델은 계열 요율이 아니라 표의 세대 요율로 매긴다 — 입력·출력 둘 다."""
+    from src.constants import CLAUDE_RETIRED_MODEL_PRICING  # noqa: PLC0415
     from src.shared.claude_metrics import estimate_claude_cost_usd  # noqa: PLC0415
 
     assert CLAUDE_RETIRED_MODEL_PRICING, (
-        "내린 모델 요율표가 비었다 — 카탈로그에서 모델을 내릴 때 여기 옮기지 않으면 "
+        "내린 모델 요율표가 비었다 — 계열 요율과 다른 모델을 내릴 때 여기 옮기지 않으면 "
         "저장된 값이 family 요율로 잘못 매겨진다")
     for model_id, rates in CLAUDE_RETIRED_MODEL_PRICING.items():
-        assert CLAUDE_MODEL_PRICING.get(model_id) == rates, (
-            f"{model_id} 가 화면 경로(CLAUDE_MODEL_PRICING)에서 조회되지 않거나 값이 다르다")
-        recorded = estimate_claude_cost_usd(
+        recorded_in = estimate_claude_cost_usd(
             model=model_id, input_tokens=1_000_000, output_tokens=0)
-        assert recorded == pytest.approx(rates["input"]), (
-            f"{model_id} 기록 경로 ${recorded}/1M 가 화면 경로 ${rates['input']}/1M 와 불일치 — "
-            "family 요율로 덮여 세대 차이를 잃었다")
+        recorded_out = estimate_claude_cost_usd(
+            model=model_id, input_tokens=0, output_tokens=1_000_000)
+        assert (recorded_in, recorded_out) == pytest.approx((rates["input"], rates["output"])), (
+            f"{model_id} 기록 경로 ${recorded_in}/${recorded_out} 가 표의 "
+            f"${rates['input']}/${rates['output']} 와 다르다 — family 요율로 덮여 세대 차이를 잃었다")
 
 
 def test_retired_models_are_not_offered_in_the_selector():

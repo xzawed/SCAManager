@@ -11,7 +11,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.auth.session import CurrentUser, require_login
-from src.constants import CLAUDE_MODEL_PRICING, CLAUDE_PRICING_FALLBACK
 from src.database import SessionLocal
 from src.models.analysis import Analysis
 from src.repositories import analysis_feedback_repo
@@ -19,6 +18,7 @@ from src.services.issue_registration_service import (
     make_ai_issue_key,
     make_static_issue_key,
 )
+from src.shared.claude_metrics import estimate_claude_cost_usd
 from src.ui._helpers import get_accessible_repo, get_locale, templates
 
 router = APIRouter()
@@ -73,13 +73,20 @@ def _calc_monthly_cost(rows: list) -> float:
     Calculate estimated Anthropic API cost (USD) from a list of analysis rows.
     입력: (review_model, input_tokens, output_tokens) 튜플 목록
     Input: list of (review_model, input_tokens, output_tokens) tuples.
+
+    🔴 요율은 비용 «기록» 경로와 같은 함수에서 얻는다. 화면이 요율표를 따로 들고 있을 때
+    카탈로그에서 내린 `claude-opus-4-7` 이 화면에선 기본 요율($2/$10), DB 에선 계열 요율
+    ($5/$25)로 매겨져 2.5× 갈렸다(회고 2026-09-16 P1-4).
+    Rates come from the recording path's own function — a separate table drifted 2.5×.
     """
-    total = 0.0
-    for row in rows:
-        pricing = CLAUDE_MODEL_PRICING.get(row.review_model or "", CLAUDE_PRICING_FALLBACK)
-        inp = (row.input_tokens or 0) / 1_000_000
-        out = (row.output_tokens or 0) / 1_000_000
-        total += inp * pricing["input"] + out * pricing["output"]
+    total = sum(
+        estimate_claude_cost_usd(
+            model=row.review_model or "",
+            input_tokens=row.input_tokens or 0,
+            output_tokens=row.output_tokens or 0,
+        )
+        for row in rows
+    )
     return round(total, 4)
 
 
