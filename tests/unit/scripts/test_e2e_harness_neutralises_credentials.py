@@ -112,30 +112,67 @@ def _harness_assigned() -> set[str]:
     fn = next((n for n in ast.walk(tree)
                if isinstance(n, ast.FunctionDef) and n.name == "_start_uvicorn"), None)
     assert fn is not None, "`_start_uvicorn` 을 찾지 못했다 — 하네스 구조가 바뀌었다"
-    return _assigned_in([fn])
+    return _assigned_in(fn.body)
 
 
-def _assigned_in(roots) -> set[str]:
-    """`roots` 안에서 `os.environ[...] = ` 로 «대입» 되는 이름 — 리터럴 대입과 튜플 루프 대입."""
+def _environ_slice(target: ast.expr) -> ast.expr | None:
+    """대입 대상이 `os.environ[...]` 이면 그 첨자, 아니면 None."""
+    if isinstance(target, ast.Subscript) and ast.unparse(target.value) == "os.environ":
+        return target.slice
+    return None
+
+
+def _assigned_in(stmts) -> set[str]:
+    """`stmts`(그 자리에서 실행되는 문장들)가 `os.environ[...] = ` 로 «대입» 하는 이름.
+
+    인정하는 두 형태: 리터럴 첨자 대입, 그리고 문자열 상수 열을 도는 루프의 «본문 대입문» 이
+    루프 변수를 첨자로 쓰는 것. 🔴 문자열로 판정하지 않는다 — 첫 판은 루프 본문을 텍스트로 보고
+    `"os.environ[v] =" in body` 를 썼는데, `os.environ[v] == ""` 같은 «비교» 도 그 부분문자열을
+    품어 못박은 것으로 셌다(Grok 반증). 중첩된 def·if 안의 대입도 세지 않는다 — 그 자리에서
+    실행된다는 보장이 없다.
+    Count only executed assignment statements: literal subscripts, or a loop over string constants
+    whose body assigns os.environ[<loop var>]. Never a substring test, never nested blocks.
+    """
     out: set[str] = set()
-    for root in roots:
-        for node in ast.walk(root):
-            if isinstance(node, ast.For) and isinstance(node.target, ast.Name):
-                names = [e.value for e in getattr(node.iter, "elts", [])
-                         if isinstance(e, ast.Constant) and isinstance(e.value, str)]
-                body = "\n".join(ast.unparse(b) for b in node.body)
-                # 루프 변수로 «대입» 할 때만 그 튜플의 이름들을 인정한다.
-                if names and f"os.environ[{node.target.id}] =" in body:
-                    out.update(names)
-            if not isinstance(node, ast.Assign):
-                continue
-            for target in node.targets:
-                if not (isinstance(target, ast.Subscript)
-                        and ast.unparse(target.value) == "os.environ"):
-                    continue
-                if isinstance(target.slice, ast.Constant) and isinstance(target.slice.value, str):
-                    out.add(target.slice.value)
+    for stmt in stmts:
+        if isinstance(stmt, ast.Assign):
+            for target in stmt.targets:
+                key = _environ_slice(target)
+                if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                    out.add(key.value)
+        elif isinstance(stmt, ast.For) and isinstance(stmt.target, ast.Name):
+            names = [e.value for e in getattr(stmt.iter, "elts", [])
+                     if isinstance(e, ast.Constant) and isinstance(e.value, str)]
+            loop_var = stmt.target.id
+            assigns = any(
+                isinstance(body, ast.Assign)
+                and any(isinstance(key := _environ_slice(t), ast.Name) and key.id == loop_var
+                        for t in body.targets)
+                for body in stmt.body)
+            if names and assigns:
+                out.update(names)
     return out
+
+
+def test_assignment_detection_ignores_comparisons_reads_and_unexecuted_blocks():
+    """🔴 판정식 자체의 거짓 초록 심기 — 비교·읽기·실행 안 되는 블록은 «못박기» 가 아니다.
+
+    red 로 만드는 뮤테이션: 루프 본문 판정을 부분문자열(`"os.environ[v] =" in body`)로 되돌리면
+    A·B 가 들어와 red. 중첩 블록까지 `ast.walk` 로 훑으면 D 가 들어와 red.
+    """
+    src = (
+        "import os\n"
+        "for v in ('A', 'B'):\n"
+        "    if os.environ[v] == '':\n"
+        "        pass\n"
+        "os.environ.get('C')\n"
+        "def later():\n"
+        "    os.environ['D'] = ''\n"
+        "for w in ('E',):\n"
+        "    os.environ[w] = ''\n"
+        "os.environ['F'] = ''\n"
+    )
+    assert _assigned_in(ast.parse(src).body) == {"E", "F"}
 
 
 def _unit_harness_assigned_before_app_import() -> set[str]:
