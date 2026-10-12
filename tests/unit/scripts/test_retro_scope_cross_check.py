@@ -46,34 +46,19 @@ def _load():
 rs = _load()
 
 
-# ── stacked PR 축 ────────────────────────────────────────────────────────────
+# ── GitHub 대조 축 ───────────────────────────────────────────────────────────
+# 창을 base 가 아니라 머지 시각으로 자르는 판정은 `test_retro_scope_upper_bound.py` 가 잠근다
+# (회고 2026-09-16 P0 — base 판정식이 base=main 탈출을 원리적으로 못 봤다).
 
 
-def test_stacked_prs_are_selected_by_base_not_by_date(monkeypatch):
-    """판정식은 `baseRefName != main` 이다 — 날짜는 후보를 줄이는 필터일 뿐이다.
-
-    날짜로 «판정» 하면 직전 창 말미가 겹쳐 들어와 과포함이 된다(실측: 리포트 날짜로
-    자르니 3~7건). base 로 판정하면 하루가 헐거워도 결과가 흔들리지 않는다.
-    """
-    rows = [
-        {"number": 900, "mergedAt": "2026-08-30T00:00:00Z", "baseRefName": "main"},
-        {"number": 901, "mergedAt": "2026-08-30T00:00:00Z", "baseRefName": "feat/parent"},
-        {"number": 902, "mergedAt": "2026-08-28T00:00:00Z", "baseRefName": "feat/parent"},
-        {"number": 903, "mergedAt": "2026-08-20T00:00:00Z", "baseRefName": "feat/old"},
-    ]
-    monkeypatch.setattr(rs, "_gh_json", lambda _a: rows)
-    got = rs.github_stacked_prs("2026-08-29")
-    assert got == [901, 902], f"base 로 판정하지 않는다 — {got}"
-
-
-def test_stacked_axis_reports_unmeasured_when_gh_is_absent(monkeypatch, tmp_path):
+def test_cross_check_axis_reports_unmeasured_when_gh_is_absent(monkeypatch, tmp_path):
     """🔴 `gh` 가 없으면 조용히 줄지 않는다 — `unmeasured` 에 담고 `ok` 는 유지한다.
 
     `ok:false` 로 뒤집으면 워크플로가 `prs` 를 통째로 버리고 호출자 범위로 되돌아간다
     (그 폴백이 3개월 무앵커 사고의 형태였다). 오프라인 산출은 살리고, 못 잰 축만 알린다.
     """
     monkeypatch.setattr(rs, "_gh_json", lambda _a: None)
-    monkeypatch.setattr(rs, "merged_prs", lambda _b: [11, 12])
+    monkeypatch.setattr(rs, "merged_prs", lambda _b, _upper=None: [11, 12])
     monkeypatch.setattr(rs, "boundary_commit", lambda _f: "a" * 40)
     monkeypatch.setattr(rs, "report_head", lambda _f: "b" * 40)
     monkeypatch.setattr(rs, "_REPORTS", tmp_path)
@@ -83,7 +68,7 @@ def test_stacked_axis_reports_unmeasured_when_gh_is_absent(monkeypatch, tmp_path
     assert out["ok"] is True, "오프라인 산출까지 버리면 안 된다"
     assert out["prs"] == [11, 12], "못 잰 축 때문에 잰 축을 버리면 안 된다"
     assert out["gh_checked"] is False
-    assert "stacked-pr-cross-check" in out["unmeasured"], out["unmeasured"]
+    assert "github-cross-check" in out["unmeasured"], out["unmeasured"]
 
 
 # ── 경계 갭 축 ───────────────────────────────────────────────────────────────
@@ -98,7 +83,7 @@ def test_gap_axis_uses_recorded_head_when_the_report_has_one(monkeypatch, tmp_pa
     monkeypatch.setattr(rs, "_gh_json", lambda _a: [])
     seen = {}
 
-    def _fake(scan_from):
+    def _fake(scan_from, _upper=None):
         seen["from"] = scan_from
         return [21]
 
@@ -119,7 +104,7 @@ def test_gap_axis_is_reported_unmeasured_when_the_report_records_no_head(monkeyp
     monkeypatch.setattr(rs, "boundary_commit", lambda _f: "c" * 40)
     monkeypatch.setattr(rs, "report_head", lambda _f: None)
     monkeypatch.setattr(rs, "_gh_json", lambda _a: [])
-    monkeypatch.setattr(rs, "merged_prs", lambda _b: [31])
+    monkeypatch.setattr(rs, "merged_prs", lambda _b, _upper=None: [31])
     out = rs.compute()
     assert "report-merge-gap" in out["unmeasured"], out["unmeasured"]
 
