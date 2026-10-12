@@ -2,6 +2,8 @@
 #   이전 CVE-2024-47874 / CVE-2025-54121(starlette) 패치는 아래 starlette>=1.3.1 로 승계.
 # fastapi>=0.138.1 — first release supporting starlette 1.0 (include_router → lazy _IncludedRouter).
 #   Prior CVE-2024-47874 / CVE-2025-54121 (starlette) fixes are carried by starlette>=1.3.1 below.
+# 🔴 0.142.0+ 는 semgrep 과 함께 설치되지 않는다 — 아래 semgrep 주석 · #1733.
+# 🔴 0.142.0+ cannot be installed alongside semgrep — see the semgrep comment below · #1733.
 fastapi==0.141.1
 slowapi==0.1.10
 uvicorn[standard]==0.54.0
@@ -29,15 +31,13 @@ aiosmtplib==5.1.3
 pylint==4.0.9
 flake8==7.4.1
 bandit==1.9.4
-# 🔴 semgrep 은 1.170.1 에 고정 — 1.171.0 은 sqlfluff 와 공존 불가 (2026-07-27 실측)
-#   semgrep 1.171.0 → click~=8.4.2 / sqlfluff 4.2.2(PyPI 최신) → click<8.4.0 = ResolutionImpossible.
-#   sqlfluff 를 올려 해소할 수 없다(4.2.2 가 최신이고 그 제약이 최신). 올리려면 sqlfluff 를 버려야 하므로
-#   SQL 정적분석 유지가 우선. 🔴 반복 제안 노이즈는 `.github/dependabot.yml` ignore 로 억제했으므로
-#   (#1227) **dependabot 이 더 이상 알려주지 않는다** — 해제 조건 추적은 `docs/backlog.md` H3.
-# 🔴 Pinned to semgrep 1.170.1 — 1.171.0 cannot coexist with sqlfluff (measured 2026-07-27):
-#   semgrep 1.171.0 requires click~=8.4.2 while sqlfluff 4.2.2 (latest on PyPI) requires click<8.4.0.
-#   Bumping sqlfluff cannot fix it (4.2.2 IS latest). Keeping SQL analysis wins; revisit when sqlfluff relaxes.
-semgrep==1.170.1
+# 🔴 semgrep 핀이 전이 의존 넷을 좁게 정한다 — pyjwt · mcp · click · opentelemetry-api.
+#   1.170.x 는 pyjwt~=2.13.0 을 강제해 pyjwt 권고가 pip-audit 를 막았고, 1.180.0 은 예외 없이 감사 0건이다.
+#   opentelemetry-api~=1.37 을 강제해 fastapi 0.142.0+(>=1.44)와 공존할 수 없다 → fastapi 보류(#1733).
+# 🔴 The semgrep pin narrowly fixes four transitives — pyjwt · mcp · click · opentelemetry-api.
+#   1.170.x forced pyjwt~=2.13.0 and failed pip-audit; 1.180.0 audits clean with no ignores.
+#   It forces opentelemetry-api~=1.37, which fastapi 0.142.0+ (>=1.44) cannot share → fastapi hold (#1733).
+semgrep==1.180.0
 slither-analyzer==0.11.6
 sqlfluff==4.3.0
 jinja2==3.1.6
