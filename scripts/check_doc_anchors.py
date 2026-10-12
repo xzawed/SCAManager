@@ -61,8 +61,10 @@ _make_stdout_safe()
 _SKIP_BASENAMES = ("README",)
 
 # 🔴 `md` 를 포함한다 — 빠져 있던 동안 `docs/architecture.md::tools/` 는 **앵커로 파싱조차
-#    되지 않아** 문자열이 사라져도 초록이었다(Grok 지적).
-_EXTS = "py|ya?ml|toml|json|html|js|ts|ini|cfg|sh|md"
+#    되지 않아** 문자열이 사라져도 초록이었다(Grok 지적). `txt` 도 같은 부류다 — `requirements.txt` 의
+#    핀 주석을 가리키는 앵커가 검사 밖이었다.
+# Includes md and txt: while missing, anchors into those files were not even parsed.
+_EXTS = "py|ya?ml|toml|json|html|js|ts|ini|cfg|sh|md|txt"
 
 # 앵커가 이보다 짧으면 아무 데나 맞는다 — `src/main.py::a` 같은 자기면제를 막는다.
 _MIN_ANCHOR = 4
