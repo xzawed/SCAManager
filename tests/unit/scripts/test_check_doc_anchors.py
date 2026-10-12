@@ -165,3 +165,14 @@ def test_txt_line_refs_are_caught_but_lookalike_extensions_are_not():
     assert mod._LINE_REF.search("`requirements.txt:40`"), "txt 줄번호 참조를 못 잡았다"
     assert not mod._ANCHOR.search("`notes.txtx::semgrep==`"), "`.txtx` 를 txt 로 읽었다"
     assert not mod._LINE_REF.search("`notes.txtx:40`"), "`.txtx` 를 txt 줄번호로 읽었다"
+
+
+def test_shared_backtick_after_a_txt_anchor_reads_the_first_code_span():
+    """새로 도달 가능해진 입력 클래스 — 백틱 하나를 두 앵커가 나눠 쓰는 꼴(Grok `91700de8` 반례).
+    `txt` 를 몰랐을 때는 둘째 백틱부터 `c.ts::dddd` 를 잡았고, 이제는 마크다운대로 첫 코드 스팬
+    `a.txt::bb` 를 잡는다(둘째는 코드 스팬이 아니다). 리포 문서에는 이 꼴이 0건이다.
+    A shared backtick now yields the first code span, as Markdown reads it; the repo has none.
+    """
+    mod = _load()
+    found = [(m.group(1), m.group(2)) for m in mod._ANCHOR.finditer("`a.txt::bb`c.ts::dddd`")]
+    assert found == [("a.txt", "bb")], found
