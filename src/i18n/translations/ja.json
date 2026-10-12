@@ -418,6 +418,7 @@
     },
     "model_card_title": "AIコードレビューモデル",
     "use_global_default": "グローバルデフォルトを使用",
+    "model_retired": "一覧から外したモデル · 保存値を維持",
     "preset_minimal": "最小",
     "preset_standard": "標準",
     "preset_strict": "厳格",

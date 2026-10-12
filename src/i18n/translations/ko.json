@@ -418,6 +418,7 @@
     },
     "model_card_title": "AI 코드리뷰 모델",
     "use_global_default": "전역 기본값 사용",
+    "model_retired": "목록에서 내린 모델 · 저장값 유지",
     "preset_minimal": "최소",
     "preset_standard": "표준",
     "preset_strict": "엄격",
