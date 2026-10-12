@@ -1,4 +1,4 @@
-"""e2e 하네스가 «모든 자격증명» 을 CI 와 같은 값으로 못박는가.
+"""e2e·단위 하네스가 «모든 자격증명» 을 CI 와 같은 값으로 못박는가.
 
 ## 무엇이 문제였나
 
@@ -24,14 +24,22 @@ GitHub·Telegram·세션 같은 자격증명을 더미로 덮어쓰지만 **목�
 `VERIFIER_BASE_URL`·`SMTP_HOST`. 그리고 `APP_BASE_URL` 이 https 거나 `ENVIRONMENT=production`
 이면 e2e 가 **운영 모드**(스케줄러 기동 · Secure 쿠키)로 뜬다. 운영 모드 스위치는 이름이 아니라
 `Settings.is_production` 이 읽는 필드로 파생한다.
+
+## 🔴 단위 하네스도 같다 (회고 2026-09-16 K12 — P2-17 · P2-35)
+
+`tests/conftest.py` 는 9개를 손으로 적어 덮고 있었다. 빠진 `OPENAI_API_KEY`·`TOKEN_ENCRYPTION_KEY`
+등은 개발 PC 의 `.env` 값으로 단위 테스트가 돌았다 — CI 는 `.env` 가 없어 기본값 `""` 로 돈다.
+같은 파생으로 «앱을 import 하기 전에» 전부 못박는지 본다.
 """
 import ast
+import os
 import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 _CONFIG = ROOT / "src" / "config.py"
 _CONFTEST = ROOT / "e2e" / "conftest.py"
+_UNIT_CONFTEST = ROOT / "tests" / "conftest.py"
 
 # 이름으로 고른다 — 값이 새면 돈·권한이 새는 부류(자격증명)와 앱이 어디로 붙는지 정하는 부류(연결 대상).
 # Credentials, plus fields whose value decides where the app connects or sends.
@@ -104,26 +112,49 @@ def _harness_assigned() -> set[str]:
     fn = next((n for n in ast.walk(tree)
                if isinstance(n, ast.FunctionDef) and n.name == "_start_uvicorn"), None)
     assert fn is not None, "`_start_uvicorn` 을 찾지 못했다 — 하네스 구조가 바뀌었다"
+    return _assigned_in([fn])
 
+
+def _assigned_in(roots) -> set[str]:
+    """`roots` 안에서 `os.environ[...] = ` 로 «대입» 되는 이름 — 리터럴 대입과 튜플 루프 대입."""
     out: set[str] = set()
-    for node in ast.walk(fn):
-        if isinstance(node, ast.For) and isinstance(node.target, ast.Name):
-            names = [e.value for e in getattr(node.iter, "elts", [])
-                     if isinstance(e, ast.Constant) and isinstance(e.value, str)]
-            body = "\n".join(ast.unparse(b) for b in node.body)
-            # 루프 변수로 «대입» 할 때만 그 튜플의 이름들을 인정한다.
-            if names and f"os.environ[{node.target.id}] =" in body:
-                out.update(names)
-    for node in ast.walk(fn):
-        if not isinstance(node, ast.Assign):
-            continue
-        for target in node.targets:
-            if not (isinstance(target, ast.Subscript)
-                    and ast.unparse(target.value) == "os.environ"):
+    for root in roots:
+        for node in ast.walk(root):
+            if isinstance(node, ast.For) and isinstance(node.target, ast.Name):
+                names = [e.value for e in getattr(node.iter, "elts", [])
+                         if isinstance(e, ast.Constant) and isinstance(e.value, str)]
+                body = "\n".join(ast.unparse(b) for b in node.body)
+                # 루프 변수로 «대입» 할 때만 그 튜플의 이름들을 인정한다.
+                if names and f"os.environ[{node.target.id}] =" in body:
+                    out.update(names)
+            if not isinstance(node, ast.Assign):
                 continue
-            if isinstance(target.slice, ast.Constant) and isinstance(target.slice.value, str):
-                out.add(target.slice.value)
+            for target in node.targets:
+                if not (isinstance(target, ast.Subscript)
+                        and ast.unparse(target.value) == "os.environ"):
+                    continue
+                if isinstance(target.slice, ast.Constant) and isinstance(target.slice.value, str):
+                    out.add(target.slice.value)
     return out
+
+
+def _unit_harness_assigned_before_app_import() -> set[str]:
+    """`tests/conftest.py` 가 **`src` 를 처음 import 하기 전에** 못박는 이름.
+
+    🔴 순서가 판정의 일부다 — `Settings` 는 `src.config` import 시점에 `.env` 를 읽어 굳는다.
+    import 뒤에 대입하면 이미 늦다. Pins must land before the first `src` import.
+    """
+    tree = ast.parse(_UNIT_CONFTEST.read_text(encoding="utf-8"))
+    before = []
+    for stmt in tree.body:
+        if isinstance(stmt, ast.ImportFrom) and (stmt.module or "").split(".")[0] == "src":
+            break
+        if isinstance(stmt, ast.Import) and any(a.name.split(".")[0] == "src" for a in stmt.names):
+            break
+        before.append(stmt)
+    else:
+        raise AssertionError("`tests/conftest.py` 가 `src` 를 import 하지 않는다 — 하네스 구조가 바뀌었다")
+    return _assigned_in(before)
 
 
 def test_every_credential_setting_is_pinned_by_the_e2e_harness():
@@ -138,6 +169,42 @@ def test_every_credential_setting_is_pinned_by_the_e2e_harness():
         "e2e 하네스가 못박지 않는 자격증명이 있다 — 개발 PC 의 `.env` 값이 그대로 쓰인다"
         "(로컬만 다르게 동작하고, 벤더 키면 «실제 호출·과금» 이다):\n  "
         + "\n  ".join(missing))
+
+
+def test_every_credential_setting_is_pinned_by_the_unit_harness_before_the_app_import():
+    """🔴 `.env` 값이 단위 테스트로 새면 안 된다 — 앱 import 전에 전부 못박는다(K12).
+
+    red 로 만드는 뮤테이션: `tests/conftest.py` 에서 `OPENAI_API_KEY` 를 빼거나, 못박는 줄을
+    `from src.main import app` 뒤로 옮기면 red.
+    """
+    creds = _credential_settings()
+    missing = sorted(creds - _unit_harness_assigned_before_app_import())
+    assert not missing, (
+        "단위 하네스가 앱 import 전에 못박지 않는 자격증명이 있다 — 개발 PC 의 `.env` 값으로 "
+        "테스트가 돈다(CI 와 다르게 동작하고, 벤더 키면 «실제 호출»):\n  " + "\n  ".join(missing))
+
+
+def test_unit_test_settings_use_the_pinned_values_not_the_dotenv():
+    """🔴 실행 증거 — 이 테스트 프로세스에서 새로 만든 `Settings` 가 하네스 값을 쓴다.
+
+    개발 PC 에 `.env` 가 있으면, 못박지 않은 이름은 여기서 `.env` 의 값이 보인다.
+    (CI 에는 `.env` 가 없어 이 시험은 위의 AST 가드를 «대신» 하지 못한다 — 둘 다 둔다.)
+    """
+    from src.config import build_settings  # noqa: PLC0415
+
+    fresh = build_settings()
+    leaked = sorted(name for name in _credential_settings()
+                    if name not in os.environ or getattr(fresh, name.lower()) != os.environ[name])
+    assert not leaked, f"하네스 값이 아닌 설정값으로 돈다(.env 누출): {leaked}"
+
+
+def test_the_anthropic_base_url_is_unroutable_in_unit_tests():
+    """🔴 단위 테스트도 키가 살아나면 호출이 기계 밖으로 나가지 않는다 — 루프백 고정."""
+    src = _UNIT_CONFTEST.read_text(encoding="utf-8")
+    m = re.search(r"os\.environ\[[\"']ANTHROPIC_BASE_URL[\"']\]\s*=\s*[\"']([^\"']+)[\"']", src)
+    assert m, "`tests/conftest.py` 가 `ANTHROPIC_BASE_URL` 을 고정하지 않는다"
+    assert m.group(1).startswith(("http://127.0.0.1:", "http://localhost:")), (
+        f"`ANTHROPIC_BASE_URL` 이 {m.group(1)!r} — 루프백이 아니다")
 
 
 def test_the_anthropic_base_url_is_unroutable_in_e2e():

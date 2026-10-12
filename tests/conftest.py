@@ -37,6 +37,21 @@ os.environ["CLAUDE_INSIGHT_MODEL"] = "claude-haiku-4-5"
 #   (test_api_key_empty_default_fail_closed_503 / ..._regardless_of_base_url / ..._ignores_provided_key_503).
 #   Removing those guards re-exposes the masking.
 os.environ["API_AUTH_DISABLED"] = "1"
+# 🔴 개발 PC 의 `.env` 가 단위 테스트로 새어 들어온다(회고 2026-09-16 K12). `build_settings()` 는 `.env` 를
+#    읽어, 위 목록에 없는 자격증명·연결 대상(`OPENAI_API_KEY`·`TOKEN_ENCRYPTION_KEY`·DB 보조 URL 등)은
+#    이 PC 의 값으로 돌았다 — CI 는 `.env` 가 없어 기본값 `""` 로 돈다. 그래서 로컬만 다르게 동작하고,
+#    벤더 키면 실제 호출이다. 운영 모드 스위치(`APP_BASE_URL`·`ENVIRONMENT`)까지 «전부» CI 와 같은 `""`
+#    로 못박는다. 목록은 `tests/unit/scripts/test_e2e_harness_neutralises_credentials.py` 가 `Settings`
+#    에서 파생해 강제한다(e2e 하네스와 같은 가드).
+# A developer .env leaks into unit tests: pin every credential, routing target and production switch.
+for _name in ("OPENAI_API_KEY", "TELEGRAM_WEBHOOK_SECRET", "API_KEY", "INTERNAL_CRON_API_KEY",
+              "TOKEN_ENCRYPTION_KEY", "N8N_WEBHOOK_SECRET", "SMTP_HOST", "SMTP_USER", "SMTP_PASS",
+              "VERIFIER_BASE_URL", "DATABASE_URL_FALLBACK", "DATABASE_URL_WORKER",
+              "MIGRATION_DATABASE_URL", "APP_BASE_URL", "ENVIRONMENT"):
+    os.environ[_name] = ""
+# 벨트+멜빵 — 키가 어떤 경로로든 살아나도 Anthropic 호출이 기계 밖으로 나가지 않는다.
+# Belt and braces: even if a key survives, Anthropic calls cannot leave the machine.
+os.environ["ANTHROPIC_BASE_URL"] = "http://127.0.0.1:1"
 
 from src.main import app
 from src.ui.routes import add_repo as _add_repo_module
