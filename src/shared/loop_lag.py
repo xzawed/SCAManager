@@ -20,10 +20,11 @@ from collections.abc import Callable
 logger = logging.getLogger(__name__)
 
 PROBE_TASK_NAME = "loop-lag-probe"
-# 기본값 — 0.5 s 마다 한 번 깨므로 비용은 초당 두 번의 타이머뿐이다. 문턱은 운영 왕복(≈0.21 s)
-#   한 번보다 크게 잡아 쿼리 한 개짜리 막힘은 넘긴다. 창 30 s 는 단위 테스트 기한(30 s)보다 길지 않다.
-# Defaults: two timer wake-ups per second. The threshold sits above one production DB round trip
-#   (~0.21 s), so a single-query stall is not reported.
+# 기본값 — 0.5 s 마다 한 번 깨므로 비용은 초당 두 번의 타이머뿐이다. 문턱은 DB 이전 전 운영 왕복(≈0.21 s)
+#   한 번보다 크게 잡은 값이다. 이전 뒤(≈2 ms)에는 왕복 백 번이 넘게 겹쳐야 넘는 «사람이 느끼는» 막힘 기준으로
+#   그대로 둔다. 창 30 s 는 단위 테스트 기한(30 s)보다 길지 않다.
+# Defaults: two timer wake-ups per second. The threshold was set above one pre-move DB round trip
+#   (~0.21 s); after the move (~2 ms) it stays as a user-noticeable stall, over a hundred round trips.
 LOOP_LAG_INTERVAL_SECONDS = 0.5
 LOOP_LAG_THRESHOLD_SECONDS = 0.25
 LOOP_LAG_WINDOW_SECONDS = 30.0

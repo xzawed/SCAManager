@@ -1131,7 +1131,7 @@ async def insight_narrative(  # pylint: disable=too-many-locals,too-many-return-
     # Keep aware — this _now feeds the aware-convention cache repo; downstream KPI fns re-normalize.
     _now = now or datetime.now(timezone.utc)
 
-    # 🔴 Claude await 앞뒤의 동기 DB 는 워커 스레드에서 — 루프에서 돌면 운영 왕복(≈0.21 s)마다
+    # 🔴 Claude await 앞뒤의 동기 DB 는 워커 스레드에서 — 루프에서 돌면 운영 왕복(DB 이전 전 ≈0.21 s · 뒤 ≈2 ms)마다
     #   프로세스의 모든 요청(웹훅 202 포함)이 선다 (#1701). 세션은 한 번에 한 스레드만 쓴다(순차 인계):
     #   anyio 취소는 스레드가 끝날 때까지 기다린다. Claude await 만 루프에 남는다.
     # Sync DB work around the Claude await runs in a worker thread; on the loop every production round

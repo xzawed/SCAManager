@@ -105,7 +105,7 @@ async def repo_insights(  # pylint: disable=too-many-positional-arguments
         sanitize_for_log(str(days), max_len=5),
     )
 
-    # 🔴 이 페이지의 동기 DB(조회·집계·무효화)는 전부 워커 스레드에서 — 루프에서 돌면 운영 왕복(≈0.21 s)마다
+    # 🔴 이 페이지의 동기 DB(조회·집계·무효화)는 전부 워커 스레드에서 — 루프에서 돌면 운영 왕복(DB 이전 전 ≈0.21 s · 뒤 ≈2 ms)마다
     #   프로세스의 모든 요청이 선다 (#1701). 세션은 한 번에 한 스레드만 쓴다(순차 인계).
     # All sync DB work on this page runs in worker threads; on the loop each production round trip
     #   stalled every request in the process. The session is handed over sequentially.

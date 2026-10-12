@@ -3,7 +3,8 @@
 Run blocking work in a worker thread to completion; a cancellation is re-raised only after the
 thread has finished.
 
-동기 DB 문장을 이벤트 루프에서 돌리면 왕복마다 프로세스의 모든 요청이 선다(운영 왕복 ≈ 0.2 s).
+동기 DB 문장을 이벤트 루프에서 돌리면 왕복마다 프로세스의 모든 요청이 선다(운영 왕복 — DB 이전 전 ≈ 0.2 s,
+뒤 ≈ 2 ms. 줄었어도 문장 수만큼 쌓인다).
 `starlette.concurrency.run_in_threadpool` 이 그 일을 하지만, 요청 밖(스케줄러)에서는 하나가 모자라다:
 anyio 취소 범위(요청 처리)는 스레드를 기다리지만 `Task.cancel()`(스케줄러 `stop()`)은 **스레드를
 둔 채 곧바로 올라온다**(실측 — `tests/unit/shared/test_off_loop.py` 대조군). 그러면 호출자의
