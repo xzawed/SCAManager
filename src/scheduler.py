@@ -217,16 +217,16 @@ async def _run_job_forever(job):
         await asyncio.sleep(delay)
         try:
             await job.run()
-        # pylint: disable=try-except-raise
+        # 🔴 disable 은 `except` 줄 끝에 둔다 — 그 앞의 독립 줄 disable 을 pylint 4.1 은 적용하지 않는다(4.0 은 적용).
+        # Keep each disable on its except line; pylint 4.1 ignores a standalone disable line before it.
         # W0706 의도적 — 아래 `except Exception` 이 취소까지 삼키는 것을 막는 **순서 장치**다.
         # 이 분기를 지우면 stop() 의 task.cancel() 이 job 격리 핸들러에 먹혀 종료가 멈춘다.
         # Intentional: this arm exists so the broad handler below cannot swallow cancellation.
-        except asyncio.CancelledError:
+        except asyncio.CancelledError:  # pylint: disable=try-except-raise
             raise
-        # pylint: disable=broad-exception-caught
         # W0718 의도적 — job 격리. 어떤 job 의 어떤 실패도 스케줄러 루프를 멈춰선 안 된다.
         # Intentional: job isolation — no job's failure may kill the scheduler loop.
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
             logger.exception("scheduler job failed: %s", job.name)
 
 
@@ -249,10 +249,9 @@ async def stop(tasks):
     for task in tasks:
         try:
             await task
-        # pylint: disable=broad-exception-caught
         # W0718 의도적 — 종료 경로에서 한 job 의 예외가 **나머지 job 의 정리를 막으면 안 된다**.
         # `CancelledError` 는 3.8+ 에서 BaseException 상속이라 `Exception` 과 함께 명시해야 둘 다 잡힌다.
         # Intentional: during teardown, one job's exception must not block cleanup of the others.
         # CancelledError derives from BaseException (3.8+), so both must be listed explicitly.
-        except (asyncio.CancelledError, Exception):  # noqa: BLE001
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001  # pylint: disable=broad-exception-caught
             pass  # 종료 중 예외는 무시 / ignore teardown errors
