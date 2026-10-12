@@ -72,13 +72,15 @@ def sdk(monkeypatch):
     """실제 SDK — 응답 본문을 정하고 나간 요청 본문을 기록한다.
     Real SDK; the test sets the response and the sent request bodies are recorded.
     """
-    h = SimpleNamespace(stop_reason="end_turn", text=_FULL_BODY, output_tokens=40, sent=[])
+    h = SimpleNamespace(stop_reason="end_turn", text=_FULL_BODY, content=None, output_tokens=40,
+                        sent=[])
 
     def handler(req):
         h.sent.append(json.loads(req.content))
+        content = h.content if h.content is not None else [{"type": "text", "text": h.text}]
         return httpx2.Response(200, json={
             "id": "msg_1", "type": "message", "role": "assistant", "model": "claude-haiku-4-5",
-            "content": [{"type": "text", "text": h.text}],
+            "content": content,
             "stop_reason": h.stop_reason, "stop_sequence": None,
             "usage": {"input_tokens": 693, "output_tokens": h.output_tokens},
         })
@@ -163,6 +165,33 @@ async def test_max_tokens_stop_with_closed_body_is_kept_with_warning(db, owned_r
     warned = _cap_warnings(caplog)
     assert len(warned) == 1, warned
     assert "max_tokens=1500" in warned[0] and "output_tokens=1500" in warned[0], warned
+
+
+_THINKING_ONLY = [{"type": "thinking", "thinking": "서술을 고르는 중", "signature": "sig"}]
+
+
+async def test_max_tokens_stop_without_text_block_is_truncation(db, owned_repo, sdk):
+    """🔴 상한에서 멈췄는데 text 블록이 아예 없으면 `ValueError` 가 아니라 `max_tokens` 다 (#1702).
+    At the cap with no text block at all, the error type is max_tokens, not ValueError.
+    """
+    sdk.stop_reason, sdk.content, sdk.output_tokens = "max_tokens", _THINKING_ONLY, 1500
+
+    out, logged = await _run(db, owned_repo)
+
+    assert out == {"text": "", "status": "internal_error"}
+    assert (logged["status"], logged["error_type"]) == ("error", "max_tokens")
+    assert _cached_error_type(db, owned_repo) == "max_tokens"
+
+
+async def test_no_text_block_without_max_tokens_stop_keeps_its_class(db, owned_repo, sdk):
+    """🔴 심은 것(무시돼야) — text 블록이 없어도 `end_turn` 이면 잘림이 아니다. ValueError 그대로.
+    No text block under end_turn is not truncation: it stays a ValueError.
+    """
+    sdk.stop_reason, sdk.content = "end_turn", _THINKING_ONLY
+
+    _, logged = await _run(db, owned_repo)
+
+    assert logged["error_type"] == "ValueError"
 
 
 async def test_max_tokens_stop_with_non_text_json_is_truncation(db, owned_repo, sdk):

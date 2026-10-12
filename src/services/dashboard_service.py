@@ -824,20 +824,40 @@ def _recorded_insight_status(recorded: str) -> str:
     return recorded if recorded in ("api_error", "parse_error") else "api_error"
 
 
-def _extract_insight_json(text: str) -> str:
-    """Claude 응답에서 JSON 페이로드 추출 — 코드 블록 우선, 첫 `{` ~ 마지막 `}` fallback.
+# 서술 출력 상한 — 리포 서술과 같은 1500. 상한 경고·기록이 이 값을 싣는다 (#1702).
+# Narrative output cap, same as the repo narrative; the cap warning and record carry this value.
+_INSIGHT_MAX_TOKENS = 1500
 
-    Extract a JSON payload from a Claude response — prefer fenced blocks,
-    fall back to the first `{` to the last `}`. Mirrors ai_review._extract_json_payload.
+
+def _is_card_payload(candidate: str) -> bool:
+    """후보가 4 카드 본문인가 — JSON 객체이고 스키마의 required 키가 «키로» 하나 이상 있다
+    (문자열 속 키 이름은 아니다). 키 목록은 손으로 적지 않고 응답 스키마에서 읽는다.
+    True when the candidate parses into an object holding at least one of the response schema's
+    required keys as a key; the keys come from the schema, not a hand-written list.
+    """
+    try:
+        data = json.loads(candidate)
+    except ValueError:
+        return False
+    return isinstance(data, dict) and any(key in data for key in _INSIGHT_RESPONSE_SCHEMA["required"])
+
+
+def _extract_insight_json(text: str) -> str:
+    """Claude 응답에서 JSON 페이로드 추출 — 카드 본문인 바깥 객체 우선, 그다음 코드 블록, 첫 `{` ~ 마지막 `}`.
+
+    🔴 펜스를 먼저 고르면 카드 문자열 속 ```` ```{}``` ```` 의 `{}` 를 읽어 빈 카드 success 가 된다 (#1702).
+    Extract a JSON payload — the outer object when it is a card body, then a fenced block, then
+    the first `{` to the last `}`. Fence-first read the `{}` of a fence inside a card string.
     """
     cleaned = text.strip()
+    first, last = cleaned.find("{"), cleaned.rfind("}")
+    outer = cleaned[first:last + 1] if first != -1 and last > first else None
+    if outer is not None and _is_card_payload(outer):
+        return outer
     block = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", cleaned, re.DOTALL | re.IGNORECASE)
     if block:
         return block.group(1)
-    first, last = cleaned.find("{"), cleaned.rfind("}")
-    if first != -1 and last > first:
-        return cleaned[first:last + 1]
-    return cleaned
+    return outer if outer is not None else cleaned
 
 
 def _build_insight_user_prompt(
@@ -899,7 +919,7 @@ async def _call_insight_claude_api(
         async with asyncio.timeout(ANTHROPIC_PAGE_DEADLINE_SECONDS):
             response = await client.messages.create(
                 model=model,
-                max_tokens=1500,
+                max_tokens=_INSIGHT_MAX_TOKENS,
                 system=build_cached_system_param(_INSIGHT_SYSTEM_PROMPT),
                 # 🔴 응답 형식을 스키마로 강제 (backlog R51) — 위 프롬프트가 선언하는 4 카드와
                 #    같은 계약이다. 닫히는 것은 스키마 축뿐이고, non-dict·null 배열 방어
@@ -925,7 +945,33 @@ async def _call_insight_claude_api(
         # 추출이 실패하면 그것은 성공이 아니므로 success 로그 자체가 남으면 안 된다.
         # Extract before logging: the old order logged success, then error on failure — two
         # rows for one call, skewing cost and success-rate aggregates.
-        text = first_text_block(response)
+        # 🔴 상한 판정은 `stop_reason` 으로만 한다 — 리포 서술(#1700)과 같은 관용 (#1702).
+        #   4 카드로 닫힌 본문은 success + 경고, 못 읽으면 비용 행이 `max_tokens` 다. 카드 status 는
+        #   새로 만들지 않는다 — 돌려준 원문을 `_finish_insight` 가 못 읽어 기존 `parse_error` 가 된다.
+        # Cap detection reads stop_reason only. A closed 4-card body is kept with a warning; an
+        # unreadable one logs max_tokens and the returned text still becomes the existing parse_error.
+        at_cap = getattr(response, "stop_reason", None) == "max_tokens"
+        text = _insight_text_at_cap(response) if at_cap else first_text_block(response)
+        if at_cap and _parse_insight_cards(text, quiet=True) is None:
+            logger.warning(
+                "insight_narrative truncated at max_tokens=%d (output_tokens=%d)",
+                _INSIGHT_MAX_TOKENS, output_tokens,
+            )
+            await run_in_threadpool(
+                log_claude_api_call,
+                model=model,
+                duration_ms=duration_ms,
+                status="error",
+                error_type="max_tokens",
+                user_id=user_id,
+                **_tokens,
+            )
+            return text
+        if at_cap:
+            logger.warning(
+                "insight_narrative reached max_tokens=%d (output_tokens=%d), body closed and kept",
+                _INSIGHT_MAX_TOKENS, output_tokens,
+            )
         # 비용 행 INSERT(WorkerSessionLocal)는 동기 DB 다 — 루프 밖에서 (#1701).
         # The cost-row INSERT is sync DB work; run it off the loop.
         await run_in_threadpool(
@@ -982,15 +1028,29 @@ _INSIGHT_RESPONSE_SCHEMA: dict = {
 }
 
 
-def _parse_insight_cards(text: str) -> dict[str, list] | None:
+def _insight_text_at_cap(response: object) -> str:
+    """상한에서 멈춘 응답의 text — text 블록이 없으면 `""`(못 읽는 본문 → 잘림)다 (#1702).
+    상한이 아니면 이 함수를 쓰지 않는다 — `first_text_block` 의 ValueError 가 기존 api_error 경로로 간다.
+    Text of a response stopped at the cap; no text block means an unreadable body (truncation).
+    """
+    try:
+        return first_text_block(response)
+    except ValueError:
+        return ""
+
+
+def _parse_insight_cards(text: str, *, quiet: bool = False) -> dict[str, list] | None:
     """Claude 응답 text 에서 4 카드 dict 추출. invalid JSON 시 None.
+    `quiet=True` 는 상한 판정용 — 같은 기준으로 읽되 경고는 `_finish_insight` 의 판정이 남긴다.
 
     Parses 4-card dict from Claude response text. Returns None on invalid JSON.
+    `quiet=True` is for the cap check: same criterion, the warning is left to `_finish_insight`.
     """
     try:
         data = json.loads(_extract_insight_json(text))
     except (json.JSONDecodeError, ValueError):
-        logger.warning("insight_narrative parse_error: %s", text[:200])
+        if not quiet:
+            logger.warning("insight_narrative parse_error: %s", text[:200])
         return None
     # 🔴 non-dict(스칼라/배열 JSON) + null 배열 방어 — sibling(repo_insight)·ai_review 와 대칭.
     #   `.get(k, [])` 는 present-null 을 coerce 안 하므로 `for s in None` TypeError → 이 함수는
@@ -998,14 +1058,25 @@ def _parse_insight_cards(text: str) -> dict[str, list] | None:
     # Non-dict/null guard (mirrors sibling repo_insight + ai_review) — a scalar-JSON or null array
     #   must yield the graceful parse_error card (None), not a 500.
     if not isinstance(data, dict):
-        logger.warning("insight_narrative non-dict payload: %s", str(data)[:200])
+        if not quiet:
+            logger.warning("insight_narrative non-dict payload: %s", str(data)[:200])
         return None
     return {
-        "positive_highlights": [str(s) for s in (data.get("positive_highlights") or [])],
-        "focus_areas": [str(s) for s in (data.get("focus_areas") or [])],
-        "key_metrics": [m for m in (data.get("key_metrics") or []) if isinstance(m, dict)],
-        "next_actions": [str(s) for s in (data.get("next_actions") or [])],
+        "positive_highlights": [str(s) for s in _card_list(data, "positive_highlights")],
+        "focus_areas": [str(s) for s in _card_list(data, "focus_areas")],
+        "key_metrics": [m for m in _card_list(data, "key_metrics") if isinstance(m, dict)],
+        "next_actions": [str(s) for s in _card_list(data, "next_actions")],
     }
+
+
+def _card_list(data: dict, key: str) -> list:
+    """카드 값 — 목록일 때만 그대로, 아니면(없음·null·`true`·숫자·문자열·객체) 빈 목록이다.
+    `or []` 만으로는 `true`·숫자가 TypeError(미포착 500)이고 문자열·객체는 글자·키가 카드가 됐다.
+    A card value only when it is a list; anything else is an empty list. `or []` alone raised
+    TypeError for true/numbers and turned a string or object into one card per character/key.
+    """
+    value = data.get(key)
+    return value if isinstance(value, list) else []
 
 
 async def insight_narrative(  # pylint: disable=too-many-locals,too-many-return-statements

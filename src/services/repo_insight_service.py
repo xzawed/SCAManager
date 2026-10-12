@@ -350,19 +350,44 @@ def repo_category_breakdown(
 # ─── AI 내러티브 ──────────────────────────────────────────────────────────
 
 
-def _extract_narrative_json(text: str) -> str:
-    """Claude 응답에서 JSON 추출 — 코드 블록 우선, {~} fallback.
+def _is_narrative_payload(candidate: str) -> bool:
+    """후보가 서술 본문인가 — `{"text": 문자열}` 로 읽힌다(값 속 "text" 라는 글자는 아니다).
+    True when the candidate parses into an object whose `text` key holds a string.
+    """
+    try:
+        data = json.loads(candidate)
+    except ValueError:
+        return False
+    return isinstance(data, dict) and isinstance(data.get("text"), str)
 
-    Extract JSON from Claude response — prefer fenced block, fallback to braces.
+
+def _extract_narrative_json(text: str) -> str:
+    """Claude 응답에서 JSON 추출 — 서술 본문인 바깥 객체 우선, 그다음 코드 블록, {~} fallback.
+
+    🔴 펜스를 먼저 고르면 서술 속 ```` ```{}``` ```` 의 `{}` 를 읽어 원문 JSON 전체가 text 로 나간다 (#1702).
+    Extract JSON — the outer object when it is a narrative body, then a fenced block, then braces.
+    Fence-first read the `{}` of a fence inside the narrative and leaked the raw JSON as text.
     """
     cleaned = text.strip()
+    first, last = cleaned.find("{"), cleaned.rfind("}")
+    outer = cleaned[first : last + 1] if first != -1 and last > first else None  # noqa: E203
+    if outer is not None and _is_narrative_payload(outer):
+        return outer
     block = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", cleaned, re.DOTALL | re.IGNORECASE)
     if block:
         return block.group(1)
-    first, last = cleaned.find("{"), cleaned.rfind("}")
-    if first != -1 and last > first:
-        return cleaned[first : last + 1]  # noqa: E203
-    return cleaned
+    return outer if outer is not None else cleaned
+
+
+def _text_at_cap(response: object) -> str:
+    """상한에서 멈춘 응답의 text — text 블록이 없으면 `ValueError` 가 아니라 잘림이다 (#1702).
+    상한이 아니면 이 함수를 쓰지 않는다 — `first_text_block` 의 ValueError 가 그대로 기록된다.
+    Text of a response stopped at the cap; no text block is truncation, not a ValueError.
+    """
+    try:
+        return first_text_block(response)
+    except ValueError as exc:
+        raise _NarrativeTruncated from exc
 
 
 def _narrative_text(raw: str, *, at_cap: bool) -> str:
@@ -555,7 +580,7 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
         #   `stop_sequence` · `refusal` 등 다른 값은 상한이 아니다 — 파싱 결과가 그대로 판정한다.
         # Cap detection reads stop_reason only; a closed body at the cap is kept with a warning.
         at_cap = getattr(response, "stop_reason", None) == "max_tokens"
-        raw = first_text_block(response)
+        raw = _text_at_cap(response) if at_cap else first_text_block(response)
         result: dict[str, Any] = {"text": _narrative_text(raw, at_cap=at_cap), "status": "success"}
         if at_cap:
             logger.warning(
