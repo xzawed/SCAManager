@@ -19,6 +19,7 @@ starting the run is silently excluded — exactly the case the policy exists to 
 
     python scripts/retro_scope.py            # 사람이 읽는 요약
     python scripts/retro_scope.py --json     # 워크플로 args 에 넣을 JSON
+    python scripts/retro_scope.py --no-fetch # origin/main 을 받지 않는다 — unmeasured 에 남는다
 
 최신 회고 판정(`newest_retro`)은 이 파일이 단일 출처다.
 """
@@ -66,6 +67,13 @@ def newest_retro(filenames):
 _ROOT = Path(__file__).resolve().parents[1]
 _REPORTS = _ROOT / "docs" / "reports"
 
+# 범위 상한 — main 의 원격 추적 ref. 리터럴 `HEAD` 를 쓰지 않는다(회고 2026-09-16 P0).
+# Upper bound of the range: the remote-tracking main, never the literal HEAD.
+_MAIN_REF = "origin/main"
+# GitHub 대조가 한 번에 받는 머지 PR 상한 — 여기에 닿으면 목록이 잘렸다고 본다.
+# Cap on merged PRs fetched for the cross-check; reaching it means the list may be truncated.
+_GH_LIMIT = 500
+
 
 def _make_stdout_safe():
     """Windows cp949 stdout 에서 이모지/한글 출력 크래시 방지 — UTF-8 재구성(errors=replace).
@@ -100,14 +108,17 @@ def boundary_commit(retro_filename: str) -> str | None:
     return sha or None
 
 
-def merged_prs(boundary: str) -> list[int]:
-    """경계 이후 HEAD 까지의 squash-merge PR 번호 — **오름차순**.
+def merged_prs(boundary: str, upper: str = _MAIN_REF) -> list[int]:
+    """경계 이후 `upper`(기본 `origin/main`)까지의 squash-merge PR 번호 — **오름차순**.
 
-    🔴 `HEAD` 를 그 자리에서 읽는 것이 핵심이다. 사람이 적은 목록은 작성 시점에 고정되지만
-    이 함수는 **호출 시점**의 HEAD 를 본다.
-    Reads HEAD at call time — a hand-written list freezes at authoring time.
+    🔴 **호출 시점**에 센다. 사람이 적은 목록은 작성 시점에 고정된다.
+    🔴 상한은 리터럴 `HEAD` 가 아니다(회고 2026-09-16 P0). 피처 브랜치에서 돌리면 HEAD 는 그
+    브랜치 끝이라, 막 main 에 머지된 PR(#1684)이 빠지고 브랜치 커밋 제목의 Issue 번호
+    `(#N)` 가 PR 로 세어진다. main 의 squash 제목 끝 `(#N)` 만 PR 번호다.
+    Counted at call time. The upper bound is origin/main: a feature-branch HEAD drops PRs just
+    merged to main and counts Issue numbers in branch commit subjects as PRs.
     """
-    out = _git(["log", "--format=%s", f"{boundary}..HEAD"])
+    out = _git(["log", "--format=%s", f"{boundary}..{upper}"])
     nums = []
     for line in out.splitlines():
         # squash 머지 제목 끝의 (#NNNN)
@@ -135,10 +146,35 @@ def _gh_json(args: list[str]) -> object | None:
         return None
 
 
-def commit_date(ref: str) -> str | None:
-    """커밋의 날짜(YYYY-MM-DD) — 해석 실패면 None."""
-    d = _git(["log", "-1", "--format=%cs", ref]).strip()
-    return d or None
+def commit_time(ref: str) -> str | None:
+    """커밋 시각(ISO 8601, 오프셋 포함) — 해석 실패면 None."""
+    t = _git(["log", "-1", "--format=%cI", ref]).strip()
+    return t or None
+
+
+def _parse_iso(text: str) -> dt.datetime | None:
+    """ISO 8601 시각을 UTC 기준 aware datetime 으로 — 해석 실패면 None.
+
+    git 의 `%cI` 는 `+09:00` 같은 오프셋을, GitHub 의 `mergedAt` 은 `Z` 를 쓴다.
+    오프셋이 없으면 UTC 로 본다.
+    """
+    try:
+        t = dt.datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return t if t.tzinfo else t.replace(tzinfo=dt.timezone.utc)
+
+
+def fetch_main() -> bool:
+    """`git fetch origin main` — 성공했는지만 돌려준다. 네트워크·원격이 없으면 False."""
+    try:
+        r = subprocess.run(
+            ["git", "fetch", "--quiet", "origin", "main"], cwd=_ROOT, capture_output=True,
+            text=True, encoding="utf-8", errors="replace", check=False, timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return r.returncode == 0
 
 
 _HEAD_SHA = re.compile(r"\bhead\b[^0-9a-f]{0,12}([0-9a-f]{7,40})\b", re.I)
@@ -170,39 +206,49 @@ def report_head(retro_filename: str) -> str | None:
     return None
 
 
-def github_stacked_prs(since_date: str) -> list[int] | None:
-    """base 가 `main` 이 아닌 머지 PR 번호 — gh 를 못 쓰면 None.
+def github_merged_prs(since_iso: str) -> list[int] | None:
+    """창 시작 시각(`since_iso`) **뒤에** 머지된 모든 PR 번호 — gh 를 못 쓰면 None.
 
-    🔴 stacked PR 은 부모의 squash 하나로 접혀 main 제목에 `(#N)` 을 남기지 않는다.
-    실측: 한 창에서 3건(#1600·#1602·#1603)이 사라졌고 그중 하나가 심의 훅 자신을 고친
-    PR 이었다. `git log` 로는 이 부류가 **원리적으로** 안 보인다.
+    🔴 base 로 거르지 않는다(회고 2026-09-16 P0). 예전 판정식 `baseRefName != "main"` 은
+    base=main 인 PR 이 git log 에서 빠지는 경우(상한이 main 이 아니었다 · 원격 ref 가 낡았다)를
+    원리적으로 못 봤다. git log 산출과의 **차집합**이 곧 «git log 가 못 본 것» 이다 —
+    stacked PR(부모의 squash 하나로 접혀 main 제목에 `(#N)` 을 남기지 않는다)도, base=main
+    탈출도 같은 식에 걸린다.
 
-    🔴 커밋 **본문** 파싱은 처방이 아니다. 재현율만 보면 3/3 이지만 정밀도가 3/10 이다 —
-    본문의 `(#N)` 대다수는 Issue 번호이고, GitHub 은 Issue 와 PR 이 번호 공간을 공유하므로
-    git 객체 안에서 둘을 가릴 방법이 없다(실측: 1557·1565·1568·1577·1578·1586·1587 은
-    전부 `Could not resolve to a PullRequest`).
+    🔴 창은 날짜가 아니라 **시각**으로 자른다. 날짜로 자르면 직전 창 말미가 겹쳐 들어오고
+    (실측 3~7건), 그 과포함을 PR 번호 하한으로 막던 우회는 Grok 이 반증한 설계였다
+    (회고 2026-09-16 P2-15). 검색어의 날짜는 후보를 줄이는 값싼 필터일 뿐 판정식이 아니다.
 
-    🔴 여기서 «날짜» 는 후보를 줄이는 값싼 필터일 뿐 판정식이 아니다. 판정은
-    `baseRefName != "main"` 이고, 그래서 날짜가 하루 헐거워도 과포함이 생기지 않는다.
+    🔴 커밋 **본문** 파싱은 처방이 아니다 — 본문의 `(#N)` 대다수가 Issue 번호라 정밀도가
+    3/10 이었다(GitHub 은 Issue 와 PR 이 번호 공간을 공유한다).
 
-    Stacked PRs never leave `(#N)` on a main squash title; the predicate is baseRefName,
-    with the date only narrowing the query.
+    Every PR merged after the window start, regardless of base; the window is a timestamp,
+    and the search date only narrows the query.
     """
-    rows = _gh_json([
-        "pr", "list", "--state", "merged", "--limit", "200",
-        "--json", "number,mergedAt,baseRefName",
-    ])
-    if not isinstance(rows, list):
+    start = _parse_iso(since_iso)
+    if start is None:
         return None
-    cut = (dt.date.fromisoformat(since_date) - dt.timedelta(days=1)).isoformat()
+    # 검색 날짜는 UTC 기준 하루 앞 — 오프셋 차이로 창 앞쪽을 잘라 먹지 않게 한다.
+    # Search one UTC day earlier so a timezone offset never trims the window's start.
+    day = (start.astimezone(dt.timezone.utc).date() - dt.timedelta(days=1)).isoformat()
+    rows = _gh_json([
+        "pr", "list", "--state", "merged", "--limit", str(_GH_LIMIT),
+        "--search", f"merged:>={day}", "--json", "number,mergedAt",
+    ])
+    # 🔴 상한에 닿은 목록은 잘렸을 수 있다 — 일부만 보고 「차집합 0」을 말하지 않는다(Grok 반증).
+    # A list that reached the limit may be truncated — report the axis unmeasured instead.
+    if not isinstance(rows, list) or len(rows) >= _GH_LIMIT:
+        return None
     out = []
     for row in rows:
-        if not isinstance(row, dict):
-            continue
-        merged_at, number, base = row.get("mergedAt"), row.get("number"), row.get("baseRefName")
-        if not (isinstance(merged_at, str) and isinstance(number, int) and isinstance(base, str)):
-            continue
-        if base != "main" and merged_at[:10] >= cut:
+        merged_at = row.get("mergedAt") if isinstance(row, dict) else None
+        number = row.get("number") if isinstance(row, dict) else None
+        t = _parse_iso(merged_at) if isinstance(merged_at, str) else None
+        if not isinstance(number, int) or t is None:
+            # 🔴 형식이 깨진 행을 조용히 버리면 이 축이 일부만 본다 — 축 전체를 «안 쟀다» 로.
+            # A malformed row means the gh contract broke — do not silently narrow the axis.
+            return None
+        if t > start:
             out.append(number)
     return sorted(set(out))
 
@@ -213,8 +259,11 @@ def resolve_ref(ref: str) -> str | None:
     return sha or None
 
 
-def compute(since: str | None = None) -> dict:
+def compute(since: str | None = None, fetched: bool = False) -> dict:
     """범위 산출 결과 dict — 실패도 사유와 함께 담는다.
+
+    `fetched` 는 호출자가 직전에 `origin/main` 을 받았는지다. 받지 않았으면 원격 ref 가
+    낡았을 수 있어 `unmeasured` 에 `origin-main-not-fetched` 를 싣는다.
 
     앵커는 두 가지이고 **리포트가 정본**이다:
 
@@ -262,6 +311,19 @@ def compute(since: str | None = None) -> dict:
 
     unmeasured: list[str] = []
 
+    # 🔴 상한 축 — 범위는 `origin/main` 까지 센다(회고 2026-09-16 P0). 원격 ref 가 없으면 HEAD 로
+    #    세되 그 사실을 넘기고, 받지 않은 ref 는 낡았을 수 있다고 넘긴다.
+    main_sha = resolve_ref(_MAIN_REF)
+    upper = _MAIN_REF if main_sha else "HEAD"
+    if not main_sha:
+        unmeasured.append("origin-main-absent")
+    elif not fetched:
+        unmeasured.append("origin-main-not-fetched")
+    # 🔴 HEAD 축 — 회고가 읽는 작업 트리가 main 끝과 다르면 미머지 커밋이나 아직 안 받은 머지가
+    #    PR 목록 밖에 있다. 이것을 「일치한다」로 인쇄한 것이 P0 의 두 번째 기전이었다.
+    if main_sha and resolve_ref("HEAD") != main_sha:
+        unmeasured.append("head-not-main")
+
     # 🔴 경계 갭 축 — 리포트가 «분석 종료 HEAD» 를 적어 뒀으면 거기서부터 센다.
     #    경계 커밋은 리포트가 머지된 시점이라 그 사이 머지분이 어느 창에도 없었다(P1).
     #    적혀 있지 않으면 근사하지 않고 「안 쟀다」로 넘긴다.
@@ -271,21 +333,20 @@ def compute(since: str | None = None) -> dict:
     elif anchor == "report":
         unmeasured.append("report-merge-gap")
 
-    prs_git = merged_prs(scan_from)
+    prs_git = merged_prs(scan_from, upper)
 
-    # 🔴 stacked PR 축 — base 가 main 이 아닌 머지는 git log 로 원리적으로 안 보인다(P0).
-    since_date = retro_date(newest) if newest else commit_date(boundary)
-    gh_nums = github_stacked_prs(since_date) if since_date else None
+    # 🔴 GitHub 대조 축 — 스캔 기점 커밋 시각 뒤에 머지된 PR 전체와 git log 산출의 차집합.
+    #    stacked PR 도 base=main 탈출도 이 식 하나에 걸린다.
+    since_iso = commit_time(scan_from)
+    gh_nums = github_merged_prs(since_iso) if since_iso else None
 
     if gh_nums is None:
         prs, gh_only = prs_git, []
         gh_checked = False
         # 🔴 「안 쟀음」은 「통과」가 아니다 — 이 축이 비었다는 사실을 소비자에게 넘긴다.
-        unmeasured.append("stacked-pr-cross-check")
+        unmeasured.append("github-cross-check")
     else:
-        # 창 밖(경계 이전)의 stacked PR 은 담지 않는다 — 판정은 base, 범위는 스캔 기점이다.
-        floor = min(prs_git) if prs_git else 0
-        gh_only = sorted(n for n in gh_nums if n not in prs_git and n >= floor)
+        gh_only = sorted(set(gh_nums) - set(prs_git))
         prs = sorted(set(prs_git) | set(gh_only))
         gh_checked = True
 
@@ -296,6 +357,7 @@ def compute(since: str | None = None) -> dict:
         "prev_retro": newest,
         "boundary": boundary[:7],
         "head": head,
+        "main_head": main_sha[:8] if main_sha else None,
         "pr_count": len(prs),
         "prs": prs,
         "range": f"#{prs[0]}~#{prs[-1]}" if prs else "(없음)",
@@ -316,9 +378,14 @@ def main() -> int:
         "--since", metavar="REF",
         help="리포트가 없을 때의 경계 커밋/태그. 리포트가 있으면 그쪽이 정본이다.",
     )
+    ap.add_argument(
+        "--no-fetch", action="store_true",
+        help="`git fetch origin main` 을 건너뛴다(오프라인·테스트). 결과에 그 사실이 남는다.",
+    )
     args = ap.parse_args()
 
-    r = compute(since=args.since)
+    # 🔴 범위 상한이 origin/main 이므로 먼저 받는다 — 낡은 ref 는 막 머지된 PR 을 놓친다.
+    r = compute(since=args.since, fetched=False if args.no_fetch else fetch_main())
     if args.json:
         print(json.dumps(r, ensure_ascii=False))
         return 0 if r["ok"] else 1
@@ -332,18 +399,21 @@ def main() -> int:
     else:
         # 🔴 어떤 앵커였는지 숨기지 않는다 — 명시 경계는 사람이 준 값이라 신뢰 등급이 다르다.
         print("  직전 정식 회고 : (없음) — `--since` 로 준 명시 경계를 썼다")
-    print(f"  경계 커밋      : {r['boundary']}  → HEAD {r['head']}")
+    print(f"  경계 커밋      : {r['boundary']}  → origin/main {r['main_head'] or '(없음)'}")
+    print(f"  작업 트리 HEAD : {r['head']}")
     print(f"  머지 PR        : {r['pr_count']}건  {r['range']}")
     print(f"  전체           : {', '.join('#' + str(n) for n in r['prs'])}")
     if r["gh_checked"]:
         if r["gh_only"]:
             print(f"  🔴 git log 가 못 본 것: {', '.join('#' + str(n) for n in r['gh_only'])}")
-            print("     (base 가 main 이 아닌 stacked PR · 리포트 머지 전 갭 — GitHub 대조로만 보인다)")
+            print("     (stacked PR · base=main 탈출 · 리포트 머지 전 갭 — GitHub 대조로만 보인다)")
         else:
             print("  GitHub 대조    : 차집합 0 — git log 산출과 일치")
     else:
         print("  🔴 GitHub 대조 **미실행** — `gh` 를 쓸 수 없다. 이 축은 아무것도 검증하지 않았다")
         print("     (stacked PR 과 리포트 머지 전 갭은 git log 로 원리적으로 안 보인다)")
+    if r["unmeasured"]:
+        print(f"  🔴 안 잰 축     : {', '.join(r['unmeasured'])} — 「없다」가 아니라 「안 쟀다」")
     print()
     print("🔴 회고 착수 **직전에** 다시 실행할 것 — 그 사이 머지분이 빠지는 것이 P0 의 기전이었다.")
     if r["anchor"] == "explicit":

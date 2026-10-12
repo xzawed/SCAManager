@@ -12,7 +12,7 @@
 
 ## 이 파일이 잠그는 것
 
-`merged_prs` 가 **호출 시점의 HEAD** 를 본다는 것, 그리고 `newest_retro` 가
+`merged_prs` 가 **호출 시점**에 센다는 것(상한 = `origin/main`), 그리고 `newest_retro` 가
 같은 날 회고를 순번으로 고른다는 것.
 """
 import subprocess
@@ -50,7 +50,7 @@ def test_merged_prs_reads_head_at_call_time(monkeypatch):
     second = retro_scope.merged_prs("abc123")
 
     assert first == [1130]
-    assert second == [1130, 1131], "호출 시점 HEAD 를 안 보고 결과가 굳었다 — P0 재현"
+    assert second == [1130, 1131], "호출 시점에 다시 세지 않고 결과가 굳었다 — P0 재현"
 
 
 def test_boundary_uses_add_commit_not_last_touch(monkeypatch):
@@ -154,7 +154,7 @@ def test_script_runs_and_includes_recent_prs():
     """
     root = Path(__file__).resolve().parents[3]
     r = subprocess.run(
-        [sys.executable, "scripts/retro_scope.py", "--json"],
+        [sys.executable, "scripts/retro_scope.py", "--json", "--no-fetch"],
         cwd=root, capture_output=True, text=True, encoding="utf-8", check=False,
     )
     # 🔴 exit 1 은 고장이 아니라 **fail-closed 응답**이다 — 경계 커밋(직전 회고)을 못 찾으면
@@ -222,7 +222,7 @@ class TestExplicitBoundary:
         (tmp_path / "2026-08-01-retrospective.md").write_text("x", encoding="utf-8")
         monkeypatch.setattr(retro_scope, "_REPORTS", tmp_path)
         monkeypatch.setattr(retro_scope, "boundary_commit", lambda _f: "deadbeefcafe")
-        monkeypatch.setattr(retro_scope, "merged_prs", lambda _b: [1, 2])
+        monkeypatch.setattr(retro_scope, "merged_prs", lambda _b, _upper=None: [1, 2])
         r = retro_scope.compute(since="HEAD")
         assert r["anchor"] == "report"
         assert r["prev_retro"] == "2026-08-01-retrospective.md"

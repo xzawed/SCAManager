@@ -92,7 +92,7 @@ def test_skill_no_longer_instructs_hand_assembly():
 def _oracle_payload() -> dict:
     """스킬이 가리키는 명령을 **정말 실행**해 JSON 을 얻는다 (mock 없음)."""
     proc = subprocess.run(  # nosec B603
-        [sys.executable, str(_ROOT / "scripts" / "retro_scope.py"), "--json"],
+        [sys.executable, str(_ROOT / "scripts" / "retro_scope.py"), "--json", "--no-fetch"],
         cwd=str(_ROOT), capture_output=True, text=True,
         encoding="utf-8", errors="replace", timeout=120, check=False,
     )

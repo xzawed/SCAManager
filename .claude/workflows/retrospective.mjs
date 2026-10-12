@@ -44,6 +44,22 @@ function parseArgs(a) {
   return a ?? {}
 }
 
+// 🔴 `context` 는 문자열로 만든다. 객체(예: `retro_scope.py --json` 을 파싱한 값)를 그대로 두면
+//    프롬프트에 «[object Object]» 가 들어가 전 에이전트가 세션 맥락을 잃고, 범위 대조는 전건
+//    오경보가 된다(회고 2026-09-16 P1-1).
+// Coerce context to text — an object renders as "[object Object]" in every prompt.
+function contextText(raw) {
+  if (raw == null) return null
+  return typeof raw === 'string' ? raw : JSON.stringify(raw, null, 2)
+}
+
+// 🔴 PR 소속은 정수 집합으로 본다. 부분문자열로 보면 `'#16842'.includes('1684')` 가 참이라
+//    빠진 PR 이 «언급됨» 으로 숨는다(회고 2026-09-16 P2-28).
+// PR membership by integer set — a substring test hides a missing PR inside a longer number.
+function prNumbersIn(text) {
+  return new Set(Array.from(String(text ?? '').matchAll(/\b\d+\b/g), (m) => Number(m[0])))
+}
+
 // finding 정규화 키 — 중복 제거용 (관점 + 위치 + 제목, 대소문자·공백 정규화).
 // 프로세스/의사결정 finding 은 file:line 이 없을 수 있어 위치는 선택적.
 // Normalized finding key for dedup (domain + location + title; location optional for process findings).
@@ -215,7 +231,7 @@ async function verifyAll(fresh, context) {
 // Orchestration
 const opts = parseArgs(args)
 const scope = opts.scope ?? 'session'
-const context = opts.context ?? opts.mergeCommits ?? null
+const context = contextText(opts.context ?? opts.mergeCommits ?? null)
 const dryRun = opts.dryRun === true
 const domains = Array.isArray(opts.domains) && opts.domains.length
   ? DEFAULT_DOMAINS.filter((d) => opts.domains.includes(d.id))
@@ -283,11 +299,13 @@ if (!machineScope || machineScope.ok !== true) {
     scopeNote +=
       `🔴 **범위 산출에서 재지 못한 축이 있다**: ${unmeasured.join(', ')}. ` +
       '그 축이 가리는 PR 은 이 목록에 없을 수 있다 — 「없다」가 아니라 「안 쟀다」로 다룰 것. ' +
-      '(stacked-pr-cross-check = base 가 main 이 아닌 PR, report-merge-gap = 직전 리포트가 ' +
-      '분석 종료 HEAD 를 기록하지 않아 리포트 머지 직전 구간을 못 가린다)\n'
+      '(github-cross-check = GitHub 머지 목록과 대조하지 못했다, report-merge-gap = 직전 리포트가 ' +
+      '분석 종료 HEAD 를 기록하지 않아 리포트 머지 직전 구간을 못 가린다, head-not-main = 작업 트리가 ' +
+      'main 끝이 아니다, origin-main-not-fetched = origin/main 을 새로 받지 못했다)\n'
     log(scopeNote)
   }
-  const missing = machineScope.prs.filter((n) => !String(context ?? '').includes(String(n)))
+  const mentioned = prNumbersIn(context)
+  const missing = machineScope.prs.filter((n) => !mentioned.has(n))
   if (missing.length) {
     // 🔴 덮어쓰지 않고 **주입**한다 — 호출자 맥락(무엇을 왜 의심할지)에는 사람의 판단이
     //    들어 있고 그것을 버리면 회고 품질이 떨어진다. 빠진 범위만 강제로 얹는다.
