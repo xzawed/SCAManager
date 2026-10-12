@@ -1,6 +1,6 @@
 ## 배포 (Railway)
 
-`.github/workflows/` 에 배포 워크플로는 없다. main 푸시 → Railway 가 루트 `Dockerfile` 을 감지해 빌드한다(대시보드 빌더 값과 무관). 배포 설정의 정본은 **Railway 대시보드**이고 아래 값은 그 사본이다 — 대시보드를 바꾸면 같은 PR 에서 고친다. 읽기: `railway environment config --json` · MCP `describe-service`.
+`.github/workflows/` 에 배포 워크플로는 없다. main 푸시 → 체크가 끝나면(Wait for CI) Railway 가 루트 `Dockerfile` 을 감지해 빌드한다(대시보드 빌더 값과 무관). 실패 체크 스위트가 하나라도 있으면(Dependabot 작업 포함) `SKIPPED` 다. 배포 설정의 정본은 **Railway 대시보드**이고 아래 값은 그 사본이다 — 대시보드를 바꾸면 같은 PR 에서 고친다. 읽기: `railway environment config --json` · MCP `describe-service`.
 
 한 배포의 순서:
 
@@ -11,7 +11,7 @@
 5. **헬스체크** — `GET /health` 60초. 재시작 On Failure 최대 10회(플랫폼 기본값이라 읽기에 안 나온다).
 
 - replica 는 `us-east4-eqdc4a` 1개 — 인앱 스케줄러(`src/scheduler.py::JOBS = (`)가 단일 인스턴스 전제라 2 이상이면 주간 리포트가 중복 발송된다. 올리려면 먼저 분산 잠금을 넣는다.
-- `railway.toml`·`railway.json` 을 다시 만들지 않는다 — 폐기된 Config as Code(2026-12-01 부터 안 읽힘)는 대시보드 값을 덮어 설정 주인이 둘이 된다. 가드 `tests/unit/scripts/test_no_railway_config_as_code.py`.
+- `railway.toml`·`railway.json` 을 다시 만들지 않는다 — 설정 주인이 둘이 된다. 가드 `tests/unit/scripts/test_no_railway_config_as_code.py`.
 - 주기 작업은 `src/scheduler.py` 에 등록하고 동기 DB 는 `src/shared/off_loop.py::run_blocking` 으로 루프 밖에서 돌린다(`tests/unit/test_scheduler_off_loop.py` 가 job 마다 잰다).
 
 ## 환경변수 추가
@@ -34,7 +34,6 @@
 
 ## 배포 실패 시
 
-1. Railway 빌드 로그를 직접 본다 — push 성공은 빌드 성공이 아니다. 로컬 재현은 `docker build -t scam-local .`.
-2. 실패 구간 앞뒤 30줄로 원인을 특정한다. 로그 없이 추측 수정하지 않는다.
-3. 서비스를 먼저 되돌린다 — Railway 에서 **이전 배포 재배포**. 그다음 원인을 고친다.
-4. 마이그레이션 단계 실패면 [db.md](db.md) §롤백.
+1. `railway deployment list --json` 으로 상태부터(`SKIPPED` 면 `meta.skippedReason`). 빌드 실패면 로그 앞뒤 30줄로 원인을 특정한다 — 추측 수정 금지. 로컬 재현 `docker build -t scam-local .`.
+2. 서비스를 먼저 되돌린다 — Railway 에서 **이전 배포 재배포**. 그다음 원인을 고친다.
+3. 마이그레이션 단계 실패면 [db.md](db.md) §롤백.
