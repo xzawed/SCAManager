@@ -14,7 +14,8 @@
 1. HEAD 가 피처 브랜치여도 main 에 머지된 PR 이 열거에 남는다.
 2. 브랜치 커밋 제목 끝의 Issue 번호 `(#N)` 을 PR 로 세지 않는다.
 3. HEAD 가 main 끝과 다르면 `head-not-main` 을 싣는다 — 같으면 싣지 않는다(항상-발화 방지).
-4. GitHub 대조는 base 가 아니라 **머지 시각**으로 창을 자른다.
+4. GitHub 대조는 base 가 아니라 **머지 시각**으로 창을 자른다. 잘렸을 수 있는 목록·형식이 깨진
+   응답은 일부만 보고 「일치」를 말하지 않고 «안 쟀다» 로 넘긴다.
 """
 from __future__ import annotations
 
@@ -132,7 +133,6 @@ def test_cross_check_selects_by_merge_time_not_by_base(monkeypatch):
             {"number": 9, "mergedAt": "2026-08-30T00:30:00Z"},   # 09:30+09:00 — 창 시작 전
             {"number": 12, "mergedAt": "2026-08-30T01:30:00Z"},  # 10:30+09:00 — 창 안
             {"number": 13, "mergedAt": "2026-08-31T05:00:00Z"},  # 창 안 (base 무관)
-            {"number": "x", "mergedAt": "2026-08-31T05:00:00Z"},  # 형식 불량 — 버린다
         ]
 
     monkeypatch.setattr(rs, "_gh_json", fake_gh)
@@ -140,6 +140,22 @@ def test_cross_check_selects_by_merge_time_not_by_base(monkeypatch):
     assert got == [12, 13], f"머지 시각으로 창을 자르지 않는다 — {got}"
     assert "merged:>=2026-08-29" in seen["args"], (
         f"검색 날짜가 UTC 하루 앞이 아니다 — 창 앞쪽이 잘린다: {seen['args']}")
+
+
+def test_cross_check_is_unmeasured_when_the_list_reaches_the_limit(monkeypatch):
+    """🔴 상한에 닿은 목록은 잘렸을 수 있다 — 일부만 보고 「차집합 0」을 말하면 안 된다(Grok 반증)."""
+    rows = [{"number": n, "mergedAt": "2026-08-31T05:00:00Z"} for n in range(rs._GH_LIMIT)]
+    monkeypatch.setattr(rs, "_gh_json", lambda _a: rows)
+    assert rs.github_merged_prs("2026-08-30T10:00:00+09:00") is None
+
+
+def test_cross_check_is_unmeasured_on_a_malformed_row(monkeypatch):
+    """🔴 형식이 깨진 행을 조용히 버리지 않는다 — 축 전체를 «안 쟀다» 로 넘긴다(Grok 반증)."""
+    monkeypatch.setattr(rs, "_gh_json", lambda _a: [
+        {"number": 12, "mergedAt": "2026-08-30T01:30:00Z"},
+        {"number": "x", "mergedAt": "2026-08-31T05:00:00Z"},
+    ])
+    assert rs.github_merged_prs("2026-08-30T10:00:00+09:00") is None
 
 
 def test_cross_check_reports_what_git_log_missed(feature_branch_repo, monkeypatch):

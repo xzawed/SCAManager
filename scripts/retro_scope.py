@@ -70,6 +70,9 @@ _REPORTS = _ROOT / "docs" / "reports"
 # 범위 상한 — main 의 원격 추적 ref. 리터럴 `HEAD` 를 쓰지 않는다(회고 2026-09-16 P0).
 # Upper bound of the range: the remote-tracking main, never the literal HEAD.
 _MAIN_REF = "origin/main"
+# GitHub 대조가 한 번에 받는 머지 PR 상한 — 여기에 닿으면 목록이 잘렸다고 본다.
+# Cap on merged PRs fetched for the cross-check; reaching it means the list may be truncated.
+_GH_LIMIT = 500
 
 
 def _make_stdout_safe():
@@ -229,20 +232,23 @@ def github_merged_prs(since_iso: str) -> list[int] | None:
     # Search one UTC day earlier so a timezone offset never trims the window's start.
     day = (start.astimezone(dt.timezone.utc).date() - dt.timedelta(days=1)).isoformat()
     rows = _gh_json([
-        "pr", "list", "--state", "merged", "--limit", "500",
+        "pr", "list", "--state", "merged", "--limit", str(_GH_LIMIT),
         "--search", f"merged:>={day}", "--json", "number,mergedAt",
     ])
-    if not isinstance(rows, list):
+    # 🔴 상한에 닿은 목록은 잘렸을 수 있다 — 일부만 보고 「차집합 0」을 말하지 않는다(Grok 반증).
+    # A list that reached the limit may be truncated — report the axis unmeasured instead.
+    if not isinstance(rows, list) or len(rows) >= _GH_LIMIT:
         return None
     out = []
     for row in rows:
-        if not isinstance(row, dict):
-            continue
-        merged_at, number = row.get("mergedAt"), row.get("number")
-        if not (isinstance(merged_at, str) and isinstance(number, int)):
-            continue
-        t = _parse_iso(merged_at)
-        if t is not None and t > start:
+        merged_at = row.get("mergedAt") if isinstance(row, dict) else None
+        number = row.get("number") if isinstance(row, dict) else None
+        t = _parse_iso(merged_at) if isinstance(merged_at, str) else None
+        if not isinstance(number, int) or t is None:
+            # 🔴 형식이 깨진 행을 조용히 버리면 이 축이 일부만 본다 — 축 전체를 «안 쟀다» 로.
+            # A malformed row means the gh contract broke — do not silently narrow the axis.
+            return None
+        if t > start:
             out.append(number)
     return sorted(set(out))
 
