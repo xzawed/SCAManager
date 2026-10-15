@@ -76,7 +76,7 @@ import subprocess  # nosec B404
 
 import pytest
 
-from ._contrast import ROOT
+from ._contrast import ROOT, strip_css_comments
 
 # `{` 앞의 셀렉터 머리 — 직전 `{` · `}` · `;` 뒤부터 `{` 까지.
 # A rule prelude: the text between the previous `{`/`}`/`;` and the next `{`.
@@ -116,11 +116,11 @@ _IDENT = re.compile(r"-?[_a-zA-Z][\w-]*")
 def _strip_comments(src: str) -> str:
     r"""주석을 지우되 줄바꿈 수는 남긴다 — 보고하는 줄이 파일의 줄과 맞도록.
 
-    `re.sub(r"/\*.*?\*/", "", src, flags=re.S)` 관용구 그대로, 지운 자리에 그 주석이 품었던
-    줄바꿈만 되돌려 둔다. 주석 안에서 규칙을 인용해도(`/* tbody tr::before */`) 걸리지 않는다.
-    Strip comments (repo idiom) but keep their newlines so reported lines match the file.
+    공용 `_contrast.strip_css_comments` 가 그렇게 한다(문자열·`url(...)` 안의 `/*` 는 남긴다).
+    주석 안에서 규칙을 인용해도(`/* tbody tr::before */`) 걸리지 않는다.
+    Strip comments via the shared helper, keeping their newlines so reported lines match.
     """
-    return re.sub(r"/\*.*?\*/", lambda m: "\n" * m.group(0).count("\n"), src, flags=re.S)
+    return strip_css_comments(src)
 
 
 def _mask(sel: str) -> str:

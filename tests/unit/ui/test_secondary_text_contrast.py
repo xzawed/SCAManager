@@ -16,7 +16,7 @@ guards that catch a revert where e2e is not run.
 import pathlib
 import re
 
-from ._contrast import THEMES
+from ._contrast import THEMES, strip_css_comments
 
 _ROOT = pathlib.Path(__file__).resolve().parents[3]
 
@@ -44,7 +44,7 @@ def _strip_css_comments(src: str) -> str:
     A comment quoting a CSS rule made the block scan terminate inside the comment, so the
     guard matched the prose instead of the declaration.
     """
-    return re.sub(r"/\*.*?\*/", "", src, flags=re.DOTALL)
+    return strip_css_comments(src)
 
 
 def _rule_block(src: str, selector: str) -> str:

@@ -29,6 +29,8 @@ import ast
 import re
 from pathlib import Path
 
+from ._contrast import strip_css_comments
+
 _ROOT = Path(__file__).resolve().parents[3]
 _E2E = _ROOT / "e2e" / "test_theme_mobile_guards.py"
 
@@ -89,7 +91,7 @@ def mobile_only_surfaces() -> dict[str, str]:
         for block in _blocks(text):
             for rule in re.finditer(r"([^{}]+)\{([^{}]*)\}", block):
                 sel = " ".join(rule.group(1).split())
-                sel = re.sub(r"/\*.*?\*/", "", sel).strip()
+                sel = strip_css_comments(sel).strip()
                 body = rule.group(2)
                 if not sel:
                     continue

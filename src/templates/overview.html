@@ -104,23 +104,10 @@
   }
   .repo-card__score { font-family: var(--claude-font-mono, monospace); color: var(--text-1, #fff); font-size: var(--fs-sm, 0.875rem); }
 
-  /* 점수 바 (인라인)
-     Score bar (inline) */
-  .score-bar {
-    height: 4px;
-    background: var(--table-row-hover, rgba(255,255,255,0.08));
-    border-radius: 999px; overflow: hidden;
-  }
-  .score-bar::after {
-    content: ''; display: block; height: 100%; width: var(--sb-pct, 0%);
-    background: var(--accent-grad, linear-gradient(90deg, #7c7aff, #b289ff));
-    border-radius: 999px;
-  }
-  .score-bar--a::after { background: var(--success, #34d399); }
-  .score-bar--b::after { background: #60a5fa; }
-  .score-bar--c::after { background: var(--warning, #fbbf24); }
-  .score-bar--d::after { background: #fb923c; }
-  .score-bar--f::after { background: var(--danger, #f87171); }
+  /* 점수 바 (인라인) — 크기만 정한다. 면(트랙·등급 채움)은 `components.css` 가 정본 —
+     여기서 칠하면 같은 등급이 화면마다 다른 색이 된다(회고 P1-10).
+     Score bar (inline): height only; components.css paints the track and the grade fill. */
+  .score-bar { height: 4px; }
 
   /* 등급 뱃지
      Grade badge */
@@ -277,9 +264,11 @@
       transition: transform 0.2s, box-shadow 0.2s;
     }
     .gst-step:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+    /* 면은 `--accent-grad` — light 의 `--accent-2`(#8b5cf6) 위에서는 흰 글자가 4.23 이다.
+       그라디언트 토큰의 두 번째 stop(#8452f5)은 4.66(#1643). The gradient token's stops clear AA. */
     .gst-step-num {
       flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%;
-      background: linear-gradient(135deg, var(--accent), var(--accent-2, var(--accent)));
+      background: var(--accent-grad);
       color: var(--btn-on-accent, white);
       display: flex; align-items: center; justify-content: center;
       font-weight: 700; font-size: 16px;

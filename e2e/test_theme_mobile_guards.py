@@ -545,6 +545,48 @@ _TOKEN_TEXT_PATHS = ["/", "/dashboard", "/repos/owner/testrepo", "/repos/owner/t
                      "/dashboard?mode=usage", "/dashboard?mode=repos"]
 
 
+def _derive_audit(js: str, *subs: tuple[str, str]) -> str:
+    """감사 JS 를 파생한다 — 기준 문자열이 정확히 1회가 아니면 **즉시 실패**한다.
+
+    🔴 `str.replace` 는 못 찾아도 조용히 원본을 돌려준다. 그러면 파생 감사가 원본
+    토큰을 재면서 「관측 0건」으로 초록이 될 수 있다 — 파생 시점에 red 로 만든다.
+    """
+    for old, new in subs:
+        if js.count(old) != 1:
+            raise RuntimeError(
+                f"감사 JS 파생 실패 — 기준 문자열이 {js.count(old)}회 (1회여야 한다): {old[:48]!r}")
+        js = js.replace(old, new)
+    return js
+
+
+# ── E-0. «모든» 글자 — 토큰 이름으로 고르지 않는다 (2026-09-16 회고 P1-6) ──────────
+#
+# 위 감사는 «해석된 토큰 값과 같은 색» 인 글자만 고른다. 그래서 `--text-2`·`--text-3`
+# (와 파생 감사의 `--accent-text` 등) 밖의 색으로 칠해진 글자는 **원리적으로** 관측 밖이었다.
+# 실측(2026-10-15, 12화면 × 4테마): 리터럴 `#fff` 를 `--danger` 면에 얹은 `.repos-rec-*`
+# 뱃지(dark 2.77 · catppuccin 2.32) · pastel `--warning` 글자(2.79) · light 아바타 이니셜(4.23)이
+# 이 스윕을 전부 통과했다. 토큰 필터만 걷어 «모든» 글자를 잰다.
+# 🔴 토큰별 `seen` 은 그대로 센다 — 기존 바닥(«--text-2/3 를 하나라도 봤는가»)이 같은 값을 쓴다.
+#    토큰이 아닌 글자는 `seen['*']` 다.
+# 🔴 비활성 컨트롤(`:disabled`·`aria-disabled="true"`)과 그 안의 글자는 1.4.3 의 예외다
+#    («inactive user interface component»). 첫 판은 `/repos/add` 의 «저장소를 고르기 전»
+#    제출 버튼을 네 테마 전부 2.29 로 셌다 — 그 값도 틀렸다(`opacity` 는 면과 글자를 함께
+#    흐리는데 이 계기는 글자만 흐린다).
+# Every painted glyph, not only the ones whose colour matches a watched token.
+_ALL_TEXT_AUDIT_JS = _derive_audit(
+    _TOKEN_TEXT_AUDIT_JS,
+    ("    const token = Object.keys(want).find(k => same(fg, want[k]));\n"
+     "    if (!token) continue;",
+     "    const token = Object.keys(want).find(k => same(fg, want[k])) || '*';"),
+    ("  for (const name of Object.keys(want)) seen[name] = 0;   // 목록은 위 한 곳에서만 온다",
+     "  for (const name of Object.keys(want)) seen[name] = 0;   // 목록은 위 한 곳에서만 온다\n"
+     "  seen['*'] = 0;"),
+    (r"    if (!/[\p{L}\p{N}]/u.test(own)) continue;",
+     r"    if (!/[\p{L}\p{N}]/u.test(own)) continue;"
+     "\n    if (el.closest(':disabled, [aria-disabled=\"true\"]')) continue;"),
+)
+
+
 def _settle_animations(page) -> None:
     """🔴 «끝난 화면» 을 잰다 — 등장 애니메이션이 도는 중에 재면 `opacity` 가 0.9x 라
     실제보다 흐리게 나온다(실측 `.reveal` 0.936 → 거짓 미달 1.97).
@@ -706,7 +748,9 @@ def _assert_body_contributed(page, *, axis, where, selector, min_box=1, colors=N
 
 
 def _assert_token_text_aa(page, base_url, theme, path, viewport=None, prepare=None):
-    """한 화면·한 테마에서 토큰 글자의 AA 를 잰다 — 세 시험이 공유한다.
+    """한 화면·한 테마에서 «모든» 글자의 AA 를 잰다(`_ALL_TEXT_AUDIT_JS`) — 세 시험이 공유한다.
+
+    이름은 토큰 감사 시절 그대로다 — 토큰별 수(`--text-2/3`)는 «하나라도 봤는가» 바닥으로 남았다.
 
     🔴 화면 목록이 parametrize 상수인 시험과, 화면 경로가 **픽스처에서 와야 하는** 시험
     (분석 상세는 `seeded_analysis` 의 id 가 필요하다)이 같은 측정을 써야 한다. 본문을
@@ -736,7 +780,7 @@ def _assert_token_text_aa(page, base_url, theme, path, viewport=None, prepare=No
         #    `#telegramOtpDisplay` 가 그 상태로 「브라우저가 안 칠한다」로 잡혔다
         #    (로컬은 카드가 이미 드러나 있어 재현되지 않았다). 연 «뒤» 다시 돌린다.
         _reveal_all(page)
-    res = page.evaluate(_TOKEN_TEXT_AUDIT_JS)
+    res = page.evaluate(_ALL_TEXT_AUDIT_JS)
 
     assert not res.get("error"), res.get("error")
     seen = res["seen"]
@@ -750,8 +794,8 @@ def _assert_token_text_aa(page, base_url, theme, path, viewport=None, prepare=No
     )
     bad = res["bad"]
     assert not bad, (
-        f"[{theme}] {path} — 토큰 글자 {len(bad)}건이 AA 미달 "
-        f"(관측 {seen['--text-2']}+{seen['--text-3']}건):\n  "
+        f"[{theme}] {path} — 글자 {len(bad)}건이 AA 미달 "
+        f"(관측 {sum(seen.values())}건 · 그중 --text-2/3 {seen['--text-2']}+{seen['--text-3']}):\n  "
         + "\n  ".join(
             f"{b['token']} {b['ratio']} < {b['need']} @{b['size']:.0f}px "
             f"bg={b['bg']} cls={b['cls']!r} {b['text']!r}"
@@ -916,7 +960,7 @@ def test_token_text_meets_aa_in_settings_advanced(seeded_page, base_url, theme):
     #    뮤테이션(`.field-tag` 를 --accent 로 되돌림)이 green 으로 통과해 드러났다.
     #    admin 시험이 같은 교훈을 이미 담고 있었는데 그 관용구를 안 쓴 것이 원인이다.
     total, bad = 0, []
-    for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+    for js, names in ((_ALL_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
                       (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
         res = seeded_page.evaluate(js)
         assert not res.get("error"), res.get("error")
@@ -1046,7 +1090,7 @@ def test_admin_screens_render_and_meet_aa(admin_page, base_url, theme,
         # 🔴 «두 감사를 다» 돌린다. 처음엔 토큰 글자(--text-2/3)만 봤는데, 이 화면에서
         #    고친 것은 «accent 를 글자로 쓰는 링크» 였다 — 그 축을 안 보고 있었다.
         #    뮤테이션(`.admin-link` 를 --accent 로 되돌림)이 green 으로 통과해 드러났다.
-        for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+        for js, names in ((_ALL_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
                           (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
             res = admin_page.evaluate(js)
             assert not res.get("error"), res.get("error")
@@ -1091,7 +1135,7 @@ def test_landing_text_meets_aa(anonymous_page, base_url, theme):
     anonymous_page.wait_for_timeout(300)
 
     total, bad = 0, []
-    for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+    for js, names in ((_ALL_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
                       (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
         res = anonymous_page.evaluate(js)
         assert not res.get("error"), res.get("error")
@@ -1965,7 +2009,7 @@ def test_token_text_meets_aa_in_settings_gate_blocks(
     _reveal_all(seeded_page)
 
     total, bad = 0, []
-    for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+    for js, names in ((_ALL_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
                       (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
         res = seeded_page.evaluate(js)
         assert not res.get("error"), res.get("error")
@@ -2035,7 +2079,7 @@ def test_token_text_meets_aa_when_data_is_absent(
     _reveal_all(seeded_page)
 
     total, bad = 0, []
-    for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+    for js, names in ((_ALL_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
                       (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
         res = seeded_page.evaluate(js)
         assert not res.get("error"), res.get("error")
@@ -2073,7 +2117,7 @@ def test_token_text_meets_aa_for_a_repo_with_no_analyses(
     _reveal_all(seeded_page)
 
     total, bad = 0, []
-    for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+    for js, names in ((_ALL_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
                       (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
         res = seeded_page.evaluate(js)
         assert not res.get("error"), res.get("error")
@@ -2133,7 +2177,7 @@ def test_token_text_meets_aa_in_security_mode_with_alerts(
     _reveal_all(seeded_page)
 
     total, bad = 0, []
-    for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+    for js, names in ((_ALL_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
                       (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
         res = seeded_page.evaluate(js)
         assert not res.get("error"), res.get("error")
@@ -2251,7 +2295,7 @@ def test_token_text_meets_aa_for_overview_with_merge_history(
     _reveal_all(seeded_page)
 
     total, bad = 0, []
-    for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+    for js, names in ((_ALL_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
                       (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
         res = seeded_page.evaluate(js)
         assert not res.get("error"), res.get("error")
@@ -2302,20 +2346,6 @@ _RESOLVED_TOKEN_VALUE = (
     "\n    const _p = document.createElement('span'); _p.style.color = 'var(' + name + ')';"
     " document.body.appendChild(_p); const _v = getComputedStyle(_p).color; _p.remove();"
     "\n    const c = parse(_v);")
-
-
-def _derive_audit(js: str, *subs: tuple[str, str]) -> str:
-    """감사 JS 를 파생한다 — 기준 문자열이 정확히 1회가 아니면 **즉시 실패**한다.
-
-    🔴 `str.replace` 는 못 찾아도 조용히 원본을 돌려준다. 그러면 파생 감사가 원본
-    토큰을 재면서 「관측 0건」으로 초록이 될 수 있다 — 파생 시점에 red 로 만든다.
-    """
-    for old, new in subs:
-        if js.count(old) != 1:
-            raise RuntimeError(
-                f"감사 JS 파생 실패 — 기준 문자열이 {js.count(old)}회 (1회여야 한다): {old[:48]!r}")
-        js = js.replace(old, new)
-    return js
 
 
 # `.field-hint`·`.preset-desc`·`.preset-hint`·`.t-desc` 가 쓰는 설정 화면 전용 토큰.
@@ -2414,7 +2444,7 @@ def test_token_text_meets_aa_for_an_unclaimed_repo_settings(
     _reveal_all(seeded_page)
 
     total, bad, desc_seen = 0, [], 0
-    for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+    for js, names in ((_ALL_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
                       (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",)),
                       (_DESC_TEXT_AUDIT_JS, ("--text-desc",))):
         res = seeded_page.evaluate(js)
@@ -2546,7 +2576,7 @@ def test_token_text_meets_aa_in_insight_success_grid(
     _reveal_all(seeded_page)
 
     total, bad = 0, []
-    for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+    for js, names in ((_ALL_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
                       (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
         res = seeded_page.evaluate(js)
         assert not res.get("error"), res.get("error")
@@ -2730,7 +2760,7 @@ def test_token_text_meets_aa_on_analysis_detail_variants(
         _reveal_all(seeded_page)
 
         total, bad = 0, []
-        for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+        for js, names in ((_ALL_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
                           (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
             res = seeded_page.evaluate(js)
             assert not res.get("error"), res.get("error")
@@ -2867,7 +2897,7 @@ def test_token_text_meets_aa_in_insight_status_states(
     def measure(where):
         _reveal_all(seeded_page)   # 감사를 돌리는 자리가 스스로 스크롤한다(첫 화면 아래도 잰다)
         total, bad = 0, []
-        for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+        for js, names in ((_ALL_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
                           (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
             res = seeded_page.evaluate(js)
             assert not res.get("error"), res.get("error")
@@ -3131,7 +3161,7 @@ def test_token_text_meets_aa_on_dashboard_delta_arms(
     def measure(where):
         _reveal_all(seeded_page)
         total, bad = 0, []
-        for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+        for js, names in ((_ALL_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
                           (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
             res = seeded_page.evaluate(js)
             assert not res.get("error"), res.get("error")
@@ -3252,7 +3282,7 @@ def test_token_text_meets_aa_in_calibration_table(
     assert not missing, f"[{theme}] 정합도 표:\n  " + "\n  ".join(missing)
 
     total, bad = 0, []
-    for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+    for js, names in ((_ALL_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
                       (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
         res = seeded_page.evaluate(js)
         assert not res.get("error"), res.get("error")
@@ -3336,7 +3366,7 @@ def test_token_text_meets_aa_on_landing_error_banner(anonymous_page, base_url, t
         assert not missing, f"[{theme}] {want}:\n  " + "\n  ".join(missing)
 
         total, bad = 0, []
-        for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+        for js, names in ((_ALL_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
                           (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
             res = anonymous_page.evaluate(js)
             assert not res.get("error"), res.get("error")
@@ -3458,7 +3488,7 @@ def test_token_text_meets_aa_on_repo_insights_deltas(
             assert not missing, f"[{theme}] {name}:\n  " + "\n  ".join(missing)
 
             total, bad = 0, []
-            for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+            for js, names in ((_ALL_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
                               (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
                 res = seeded_page.evaluate(js)
                 assert not res.get("error"), res.get("error")
@@ -3550,7 +3580,7 @@ def test_token_text_meets_aa_on_rls_bypass_warning(admin_page, base_url, theme):
         assert not missing, f"[{theme}] 우회 경고:\n  " + "\n  ".join(missing)
 
         total, bad = 0, []
-        for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+        for js, names in ((_ALL_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
                           (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
             res = admin_page.evaluate(js)
             assert not res.get("error"), res.get("error")
@@ -3705,7 +3735,7 @@ def test_token_text_meets_aa_on_settings_prg_banners(
     def measure(where):
         _reveal_all(seeded_page)
         total, bad = 0, []
-        for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+        for js, names in ((_ALL_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
                           (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
             res = seeded_page.evaluate(js)
             assert not res.get("error"), res.get("error")
@@ -3780,7 +3810,7 @@ def test_token_text_meets_aa_on_dashboard_range_tabs(seeded_page, base_url, them
             f"[{theme}] days={days} 인데 active 탭이 {active} — 정확히 그 하나여야 한다")
 
         total, bad = 0, []
-        for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+        for js, names in ((_ALL_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
                           (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
             res = seeded_page.evaluate(js)
             assert not res.get("error"), res.get("error")
@@ -3904,7 +3934,7 @@ def test_token_text_meets_aa_on_configured_settings(
     def measure(where):
         _reveal_all(seeded_page)
         total, bad = 0, []
-        for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+        for js, names in ((_ALL_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
                           (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
             res = seeded_page.evaluate(js)
             assert not res.get("error"), res.get("error")
@@ -4020,7 +4050,7 @@ def test_token_text_meets_aa_on_empty_usage_screens(
     def measure(where):
         _reveal_all(seeded_page)
         total, bad = 0, []
-        for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+        for js, names in ((_ALL_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
                           (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
             res = seeded_page.evaluate(js)
             assert not res.get("error"), res.get("error")
@@ -4186,7 +4216,7 @@ def test_token_text_meets_aa_on_detail_field_variants(
     def measure(where):
         _reveal_all(seeded_page)
         total, bad = 0, []
-        for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+        for js, names in ((_ALL_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
                           (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
             res = seeded_page.evaluate(js)
             assert not res.get("error"), res.get("error")
@@ -4327,7 +4357,7 @@ def test_token_text_meets_aa_on_kpi_down_deltas(
         assert not missing, f"[{theme}] 줄어든 KPI:\n  " + "\n  ".join(missing)
 
         total, bad = 0, []
-        for js, names in ((_TOKEN_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+        for js, names in ((_ALL_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
                           (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
             res = seeded_page.evaluate(js)
             assert not res.get("error"), res.get("error")
@@ -4351,3 +4381,107 @@ def test_token_text_meets_aa_on_kpi_down_deltas(
                                       {key: shrinking_user[key]}, want_down=True), (
                 f"[{theme}] 줄지 않은 사용자의 {key} 가 «줄었다» 고 판정됐다 — "
                 "계기가 「delta 줄이 있으면 초록」으로 무너져 있다")
+
+
+# ── Q. 전체 글자 감사의 자기검증 · 어떤 스윕도 «연 적 없는» 팔 (2026-09-16 회고 P1-6·P1-8) ──
+
+
+def test_the_all_text_audit_sees_untokened_text_and_skips_inactive_controls(
+        seeded_page, base_url):
+    r"""🔴 계기를 뒤집어 본다(`verify.md` 「판정식을 쓸 때」 4) — 두 목록을 먼저 적었다.
+
+    claimed(이름 = «모든 글자») — 토큰이 아닌 색의 글자 · 토큰 색 글자(바닥) ·
+      비활성 컨트롤(`:disabled`·`aria-disabled`) 안의 글자는 1.4.3 예외
+    cheap(첫 출력 `bad`·`seen` 을 낼 가장 싼 과정 = 원래의 «토큰 색만 고르는» 감사)
+      토큰 색 글자만 센다
+
+    claimed\cheap = 리터럴 회색 글자(#999 on #fff = 2.85) → **반드시 잡혀야** 한다
+    cheap\claimed = 싼 과정은 비활성 버튼도 «토큰이 아니라서» 안 본다 — 둘이 같은 답이라
+      뒤집기가 안 된다. 그래서 **두 번째 싼 과정**(«토큰 필터만 걷은» 감사)이 틀리는 것을 심는다:
+      비활성 컨트롤 안의 같은 회색 글자 → **반드시 무시돼야** 한다.
+    """
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.goto(f"{base_url}/dashboard")
+    apply_theme(seeded_page, "light")
+    seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
+    _reveal_all(seeded_page)
+    seeded_page.evaluate("""() => {
+        const host = document.createElement('div');
+        host.style.cssText = 'background:#ffffff;padding:8px';
+        host.innerHTML = '<p style="color:#999999">plant live text</p>'
+          + '<button disabled style="color:#999999;background:#ffffff">plant inactive</button>'
+          + '<span aria-disabled="true" style="color:#999999">plant aria inactive</span>';
+        document.body.prepend(host);
+    }""")
+    res = seeded_page.evaluate(_ALL_TEXT_AUDIT_JS)
+    assert not res.get("error"), res.get("error")
+    flagged = {b["text"] for b in res["bad"]}
+    assert "plant live text" in flagged, (
+        f"토큰이 아닌 색의 미달 글자를 못 잡았다 — «모든 글자» 가 아니다: {sorted(flagged)}")
+    assert not flagged & {"plant inactive", "plant aria inactive"}, (
+        f"비활성 컨트롤의 글자를 셌다 — 1.4.3 예외를 지키지 않는다: {sorted(flagged)}")
+    assert res["seen"]["*"] > 0 and res["seen"]["--text-2"] > 0, (
+        f"토큰별 바닥이 비었다({res['seen']}) — 기존 시험들의 «하나라도 봤는가» 가 무너진다")
+    # 대조 — 원래 감사는 같은 화면에서 그 글자를 못 본다(파생이 실제로 무언가를 바꿨다).
+    token_only = {b["text"] for b in seeded_page.evaluate(_TOKEN_TEXT_AUDIT_JS)["bad"]}
+    assert "plant live text" not in token_only, (
+        "원래 감사도 그 글자를 잡는다 — 이 시험은 파생의 효과를 재지 못한다")
+
+
+# 🔴 «팔» 을 여는 경로와, 그 팔이 «실제로 그려졌는지» 되짚는 식. 되짚기는 측정 «뒤» 에 한다
+#    (여는 단계를 지우는 뮤테이션이 초록으로 남지 않게 — 모바일 오버레이에서 실증한 형태).
+_UNSWEPT_ARMS = {
+    # `dashboard.html` 「개선 권장」 — `repo_report.recurring_issues` 가 있어야 그려진다.
+    # `/dashboard?mode=repos` 는 리포를 고르기 «전» 화면이라 이 절이 없다(회고 P1-8:
+    # 「이 팔은 어떤 테스트도 렌더한 적이 없다」). 시드(`seeded_analysis`)의 error·warning 두 건.
+    "repos-report-recommendations": (
+        "/dashboard?mode=repos&repo=owner%2Ftestrepo",
+        "() => document.querySelectorAll('.repos-rec-badge.repos-rec-error').length > 0"
+        " && document.querySelectorAll('.repos-rec-badge.repos-rec-warning').length > 0"),
+    # `repo_detail.html::renderSourceBadge` — JS 가 `color:` 를 조립해 정적 가드가 못 본다.
+    # 표는 점수 없는 분석을 거르므로, 점수 있는 pr·cli 행을 따로 심는다(`source_badge_rows`).
+    "source-badges": (
+        "/repos/owner%2Fgatedrepo",
+        """() => { const t = window._repoChartI18N || {};
+                   const spans = Array.from(document.querySelectorAll('#analysisTable span'));
+                   return [t.sourcePr, t.sourceCli].every(
+                       l => l && spans.some(s => s.textContent.trim() === l.trim())); }"""),
+    # `repo_detail.html` 의 `{% if hook_installed %}` 배너 — 리포 등록 직후에만 뜬다.
+    "hook-installed-banner": (
+        "/repos/owner%2Ftestrepo?hook_installed=1",
+        """() => Array.from(document.querySelectorAll('div')).some(
+                 d => d.textContent.includes('.scamanager/install-hook.sh')
+                      && d.checkVisibility({opacityProperty: true}))"""),
+}
+
+
+@pytest.mark.parametrize("arm", sorted(_UNSWEPT_ARMS))
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_all_text_meets_aa_in_arms_no_sweep_had_opened(
+        seeded_page, base_url, seeded_analysis, source_badge_rows, theme, arm):
+    """🔴 열어야 그려지는 팔의 글자도 AA 를 넘어야 한다 — 열지 않으면 아무도 못 본다.
+
+    실측(2026-10-15, 수정 전): repos 리포트 «개선 권장» 뱃지 dark 2.77 · catppuccin 2.32 ·
+    light 4.18(리터럴 `#fff`/`#000`) · 보안 경고 수 pastel 2.79(`--warning` 을 글자로).
+    훅 설치 배너 제목 dark 3.45 · pastel 3.37 · catppuccin 2.03(accent 면 위 리터럴 `#fff`),
+    설명 줄은 `opacity:.9` 까지 겹쳐 light 4.28 · catppuccin 1.90.
+    출처 배지는 수정 전엔 표에 «한 번도» 안 그려졌다(점수 없는 시드를 표가 거른다) — 되돌림
+    뮤테이션으로 잰 값은 pastel PR 3.24 · CLI 2.79(면 토큰을 글자로).
+    """
+    path, opened = _UNSWEPT_ARMS[arm]
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.goto(f"{base_url}{path}")
+    assert "localhost" in seeded_page.url, f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다"
+    apply_theme(seeded_page, theme)
+    seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
+    seeded_page.wait_for_timeout(350)
+    _reveal_all(seeded_page)
+    res = seeded_page.evaluate(_ALL_TEXT_AUDIT_JS)
+    assert not res.get("error"), res.get("error")
+    assert seeded_page.evaluate(opened), (
+        f"[{arm}] 그 팔이 그려지지 않았다 — 재지 못한 것이지 통과한 것이 아니다")
+    bad = res["bad"]
+    assert not bad, (
+        f"[{theme}] {arm} — 글자 {len(bad)}건이 AA 미달 (관측 {sum(res['seen'].values())}건):\n  "
+        + "\n  ".join(f"{b['ratio']} < {b['need']} bg={b['bg']} cls={b['cls']!r} {b['text']!r}"
+                      for b in bad[:10]))

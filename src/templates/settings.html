@@ -132,10 +132,13 @@
   .preset-table td:last-child { text-align:right; }
   /* 변경 없는 행 — `--text-3` 은 네 테마 전부 AA 를 넘긴다(4.73~7.37). */
   .preset-table tr.pt-row-same td { color: var(--text-3); }
+  /* 🔴 «잠긴 3종 세트»(면·테두리·글자)를 쓴다 — 리터럴 초록 틴트 위 `--success-text` 는 light 4.23 ·
+     pastel 4.20 이었다(W20 의 남은 하나: 토큰이 아니라 리터럴이라 그 스캔을 비켜 갔다).
+     The AA-locked grade triple, not a literal tint under a text token. */
   .pt-applied-label {
     margin-top:.75rem; padding:.4rem .65rem;
-    background:rgba(16,185,129,.1); border:1px solid rgba(16,185,129,.3);
-    border-radius:6px; font-size:11px; color: var(--success-text); font-weight:600; text-align:center;
+    background: var(--grade-a-bg); border:1px solid var(--grade-a-bd);
+    border-radius:6px; font-size:11px; color: var(--grade-a); font-weight:600; text-align:center;
   }
   @media(min-width:640px) {
     .preset-cards { display:grid; grid-template-columns:repeat(3,1fr); gap:.6rem; align-items:start; }
@@ -435,7 +438,7 @@
   .alert .ms-auto { margin-left: auto; }
   .alert.mb-4 { margin-bottom: 1rem; }
   .btn.btn-sm { padding: .35rem .85rem; font-size: 12px; font-weight: 600; border-radius: 6px; border: 1px solid transparent; cursor: pointer; transition: opacity .15s ease, transform .1s ease; }
-  .btn.btn-warning { background: var(--warning); color: var(--btn-on-accent); border-color: var(--warning); }
+  .btn.btn-warning { background: var(--warning); color: var(--warning-text-on); border-color: var(--warning); }
   .btn.btn-warning:hover { opacity: .9; }
   @media (max-width: 480px) { .alert .ms-auto { margin-left: 0; width: 100%; } .alert .btn { width: 100%; } }
 

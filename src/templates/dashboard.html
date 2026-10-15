@@ -319,7 +319,7 @@
   .repos-grade-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
   .repos-warnings { margin-bottom: 16px; }
   .repos-warning-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--warning-faint, rgba(var(--warning-rgb, 245 158 11) / 0.1)); border: 1px solid var(--warning); border-radius: 8px; margin-bottom: 6px; font-size: 13px; }
-  .repos-warning-icon { color: var(--warning); }
+  .repos-warning-icon { color: var(--warning-text); }
   /* 🔴 375px 에서 93x21 이라 SC 2.5.8(24x24 AA) 미달이었다 — 이 링크는 `warning=True`
      일 때만 렌더돼서(`src/api/repo_report.py::high_security_count`) e2e 시드가 그
      분기를 한 번도 열지 않는 동안 관측 밖에 있었다(#1639 W12).
@@ -339,7 +339,7 @@
   .repos-cat-value { font-size: 28px; font-weight: 700; }
   .repos-cat-label { font-size: 11px; color: var(--text-2); margin-top: 4px; }
   .repos-cat-security-error .repos-cat-value { color: var(--danger); }
-  .repos-cat-security-warn .repos-cat-value { color: var(--warning); }
+  .repos-cat-security-warn .repos-cat-value { color: var(--warning-text); }
   .repos-cat-quality-error .repos-cat-value { color: var(--danger); }
   .repos-cat-quality-warn .repos-cat-value { color: var(--text-2); }
   .repos-suggestions { list-style: none; padding: 0; }
@@ -349,9 +349,12 @@
   .repos-recommendations { list-style: none; padding: 0; }
   .repos-rec-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.05)); font-size: 13px; }
   .repos-rec-badge { flex-shrink: 0; border-radius: 4px; padding: 2px 6px; font-size: 10px; font-weight: 700; }
-  .repos-rec-high { background: var(--danger); color: #fff; }
-  .repos-rec-error { background: var(--danger); color: #fff; }
-  .repos-rec-warning { background: var(--warning); color: #000; }
+  /* 🔴 면은 테마마다 바뀌는데 글자를 리터럴(`#fff`/`#000`)로 박으면 dark 2.77 · catppuccin 2.32 ·
+     light 4.18 이었다(회고 P1-8) — 그 면에 맞춘 on-토큰을 쓴다.
+     Fills change per theme; the text must use the on-token made for that fill. */
+  .repos-rec-high { background: var(--danger); color: var(--danger-text-on); }
+  .repos-rec-error { background: var(--danger); color: var(--danger-text-on); }
+  .repos-rec-warning { background: var(--warning); color: var(--warning-text-on); }
   .repos-rec-msg { flex: 1; color: var(--text-1); }
   .repos-rec-count { flex-shrink: 0; color: var(--text-2); font-size: 11px; }
   .repos-empty { color: var(--text-2); font-size: 14px; padding: 20px 0; }
@@ -1051,7 +1054,7 @@
         <div class="kpi__delta kpi__delta--flat">— {{ 'dashboard.delta.no_comparison' | i18n_args(locale | default('ko')) }}</div>
       {% endif %}
       {% if kpi.avg_score.excluded_unreliable %}
-      <div class="kpi__foot" style="color:var(--warning, #d97706);">
+      <div class="kpi__foot" style="color:var(--warning-text);">
         {{ 'dashboard.kpi_avg_excludes_unreliable' | i18n_args(locale | default('ko'), count=kpi.avg_score.excluded_unreliable) }}
       </div>
       {% endif %}

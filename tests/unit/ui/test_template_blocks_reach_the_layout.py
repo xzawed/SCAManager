@@ -21,7 +21,7 @@ observer that would have caught it on day one.
 import pathlib
 import re
 
-from ._contrast import ROOT
+from ._contrast import ROOT, strip_css_comments
 
 TEMPLATE_DIR = ROOT / "src" / "templates"
 
@@ -126,7 +126,7 @@ def _section_body(marker: str) -> str:
     css = (ROOT / "src" / "static" / "css" / "components.css").read_text(encoding="utf-8")
     i = css.find(marker)
     assert i >= 0, f"`{marker}` 절을 못 찾았다 — 표지가 바뀌었다"
-    return re.sub(r"/\*.*?\*/", "", css[i:], flags=re.S)
+    return strip_css_comments(css[i:])
 
 
 def _classes_in_markup(template: str) -> set[str]:

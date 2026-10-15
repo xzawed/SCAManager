@@ -28,22 +28,10 @@
     display: flex; gap: var(--space-3, 0.75rem); flex-wrap: wrap; align-items: center;
   }
 
-  /* ── 점수 바 / Score bar ── */
-  .score-bar {
-    height: 5px;
-    background: var(--table-row-hover, rgba(255,255,255,0.08));
-    border-radius: 999px; overflow: hidden; display: inline-block; vertical-align: middle;
-  }
-  .score-bar::after {
-    content: ''; display: block; height: 100%; width: var(--sb-pct, 0%);
-    background: var(--accent-grad, linear-gradient(90deg, #7c7aff, #b289ff));
-    border-radius: 999px;
-  }
-  .score-bar--a::after { background: var(--success, #34d399); }
-  .score-bar--b::after { background: #60a5fa; }
-  .score-bar--c::after { background: var(--warning, #fbbf24); }
-  .score-bar--d::after { background: #fb923c; }
-  .score-bar--f::after { background: var(--danger, #f87171); }
+  /* ── 점수 바 / Score bar ── 크기·배치만 정한다. 면(트랙·등급 채움)은 `components.css` 가 정본 —
+     여기서 칠하면 같은 등급이 화면마다 다른 색이 된다(회고 P1-10).
+     Size and placement only; components.css paints the track and the grade fill. */
+  .score-bar { height: 5px; display: inline-block; vertical-align: middle; }
 
   /* ── 등급 배지 / Grade badge ── */
   /* 등급 칩 색은 `components.css` 의 `.grade--*` 가 테마 토큰으로 정한다.
@@ -343,9 +331,12 @@
   }
   .filter-btn:hover { border-color: var(--accent); color: var(--accent); }
   .filter-btn.active { background: var(--accent); color: var(--btn-on-accent, #fff); border-color: var(--accent); }
-  .filter-btn[data-source="pr"].active   { background: var(--grade-b); color: var(--btn-on-accent, #fff); border-color: var(--grade-b); }
+  /* 🔴 세 형제는 «각자의 면» 에 맞춘 on-토큰을 쓴다 — accent 용(`--btn-on-accent`)을 빌린 pr 은
+     pastel 3.57 이었고, cli 는 우연히 통과하고 있었다(회고 P1-26).
+     Each sibling uses the on-token of its own fill; borrowing the accent one failed pr on pastel. */
+  .filter-btn[data-source="pr"].active   { background: var(--grade-b); color: var(--grade-b-text-on); border-color: var(--grade-b); }
   .filter-btn[data-source="push"].active { background: var(--success); color: var(--success-text-on); border-color: var(--success); }
-  .filter-btn[data-source="cli"].active  { background: var(--warning); color: var(--btn-on-accent, #fff); border-color: var(--warning); }
+  .filter-btn[data-source="cli"].active  { background: var(--warning); color: var(--warning-text-on); border-color: var(--warning); }
   .filter-divider { width: 1px; height: 22px; background: var(--border-subtle); flex-shrink: 0; }
   /* ── 점수 범위 슬라이더 ────────────────── */
   .score-range-wrap { display: flex; align-items: center; gap: .5rem; font-size: 12px; color: var(--text-2); min-width: 220px; }
@@ -501,12 +492,16 @@
 </div>
 
 {% if hook_installed %}
-<div style="background:var(--accent-blue,#2563eb);color:#fff;border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.25rem;display:flex;align-items:flex-start;gap:.75rem;">
+{# 🔴 accent 면 위 리터럴 `#fff` 는 dark 3.45 · pastel 3.37 · catppuccin 2.03 이었다 — 그 면의
+   on-토큰을 쓴다. 그러면 어두운 글자가 되는 테마가 생기므로, 검게 덧칠하던 코드 칩·명령 블록은
+   카드 면으로 바꾼다(검은 덧칠 위 어두운 글자는 대비가 더 떨어진다). `opacity:.9` 흐림은 걷는다.
+   On-token text on the accent fill; the inner snippets sit on the card ground instead of a black wash. #}
+<div style="background:var(--accent-blue,#2563eb);color:var(--accent-text-on);border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.25rem;display:flex;align-items:flex-start;gap:.75rem;">
   <span style="font-size:1.3rem;flex-shrink:0;">✅</span>
   <div>
     <strong>{{ 'repo_detail.hook_installed_title' | i18n_args(locale | default('ko')) }}</strong><br>
-    <span style="font-size:13px;opacity:.9;">{{ 'repo_detail.hook_installed_desc_part1' | i18n_args(locale | default('ko')) }}<code style="background:rgba(0,0,0,.4);color:inherit;padding:1px 5px;border-radius:4px;">{{ 'repo_detail.hook_installed_desc_code' | i18n_args(locale | default('ko')) }}</code>{{ 'repo_detail.hook_installed_desc_part2' | i18n_args(locale | default('ko')) }}</span>
-    <div style="margin-top:.6rem;background:rgba(0,0,0,.25);border-radius:6px;padding:.5rem .75rem;font-family:monospace;font-size:13px;">
+    <span style="font-size:13px;">{{ 'repo_detail.hook_installed_desc_part1' | i18n_args(locale | default('ko')) }}<code style="background:var(--bg-card);color:var(--text-1);padding:1px 5px;border-radius:4px;">{{ 'repo_detail.hook_installed_desc_code' | i18n_args(locale | default('ko')) }}</code>{{ 'repo_detail.hook_installed_desc_part2' | i18n_args(locale | default('ko')) }}</span>
+    <div style="margin-top:.6rem;background:var(--bg-card);color:var(--text-1);border-radius:6px;padding:.5rem .75rem;font-family:monospace;font-size:13px;">
       git pull &amp;&amp; bash .scamanager/install-hook.sh
     </div>
   </div>
@@ -973,9 +968,11 @@ document.getElementById('scoreMax').addEventListener('input', function() {
 // Step D: source badge semantic tokens — auto across 4 themes
 function renderSourceBadge(src) {
   const m = {
-    pr:   [I18N.sourcePr,   'var(--accent)'],
+    /* 🔴 «글자» 로 넣으므로 글자용 토큰 — 면 토큰은 pastel 카드 위에서 PR 3.24 · CLI 2.79 다
+       (브라우저 실측 · 회고 P1-6). Text, so the text tokens: the surface ones fail on pastel. */
+    pr:   [I18N.sourcePr,   'var(--accent-text)'],
     push: [I18N.sourcePush, 'var(--success-text)'],
-    cli:  [I18N.sourceCli,  'var(--warning)']
+    cli:  [I18N.sourceCli,  'var(--warning-text)']
   };
   const [label, color] = m[src] || [src || '—', 'var(--text-2)'];
   return '<span style="font-size:11px;font-weight:600;color:' + color + '">' + label + '</span>';

@@ -350,7 +350,7 @@ button { font-family: inherit; }
 .badge--success { color: var(--grade-a);     background: var(--grade-a-bg); border-color: var(--grade-a-bd); }
 .badge--warn    { color: var(--grade-c);     background: var(--grade-c-bg); border-color: var(--grade-c-bd); }
 .badge--danger  { color: var(--grade-f);     background: var(--grade-f-bg); border-color: var(--grade-f-bd); }
-.badge--info    { color: var(--status-info); background: var(--grade-b-bg); border-color: var(--grade-b-bd); }
+.badge--info    { color: var(--grade-b); background: var(--grade-b-bg); border-color: var(--grade-b-bd); }
 
 /* ==========================================================================
    GRADE PILL — the marquee component
