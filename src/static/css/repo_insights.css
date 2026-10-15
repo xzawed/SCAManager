@@ -155,7 +155,9 @@
 }
 
 .ri-delta-up   { color: var(--success-text); }
-.ri-delta-down { color: var(--danger); }
+/* `--danger` 는 면 색이다 — pastel 의 틴트 KPI 카드 위 3.79. 글자는 등급 F 짝(`.nav-logout-btn:hover` 선례).
+   The danger surface colour fails as text on the tinted KPI card; use the grade-F text pair. */
+.ri-delta-down { color: var(--grade-f); }
 
 /* ── 2열 그리드 (반복 이슈 + 도넛) / 2-col grid ─────────── */
 .ri-two-col {

@@ -14,7 +14,7 @@ accent 면 위 흰 글자는 catppuccin 1.79 까지 내려갔다.
 import pathlib
 import re
 
-from ._contrast import THEMES
+from ._contrast import THEMES, strip_css_comments
 
 _ROOT = pathlib.Path(__file__).resolve().parents[3]
 
@@ -38,7 +38,7 @@ def _read(rel: str) -> str:
 
 def _strip_css_comments(src: str) -> str:
     """판정 전에 주석을 지운다 — 주석이 규칙을 인용하면 가드가 산문을 통과시킨다."""
-    return re.sub(r"/\*.*?\*/", "", src, flags=re.DOTALL)
+    return strip_css_comments(src)
 
 
 def _rule_blocks(src: str, selector: str) -> list[str]:
@@ -228,9 +228,9 @@ def test_no_hardcoded_white_on_accent_surfaces():
     실측: `.nav-avatar`·`.step-card__num` 은 accent 그라디언트 위 흰 글자로
     catppuccin 1.79 · pastel 2.32 · dark 2.65 였다.
 
-    🔴 light 는 이 수정으로도 4.23 에 머문다 — 그 테마의 `--accent-text-on` 이 흰색이고,
-    `--accent-2`(#8b5cf6) 위에서는 «어떤 글자색도» AA 에 도달하지 못한다(흰색 4.23 이 상한,
-    더 어둡게 하면 가까운 stop 에서 무너진다). 면을 옮겨야 풀리므로 이 PR 범위 밖이다.
+    🔴 light 는 글자만으로는 못 풀었다 — `--accent-2`(#8b5cf6) 위에서는 «어떤 글자색도» AA 에
+    닿지 않는다(흰색 4.23 이 상한). 면을 `--accent-grad`(두 번째 stop #8452f5, 4.66)로 옮겨
+    풀었다(회고 K13). 면·글자 쌍의 대비는 `test_filled_surface_text_contrast.py` 가 계산한다.
     """
     targets = [
         ("src/templates/base.html", ".nav-avatar"),

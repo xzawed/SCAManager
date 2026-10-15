@@ -139,6 +139,10 @@
   --grade-b:     #38bdf8;
   --grade-b-bg:  rgba(56, 189, 248, 0.12);
   --grade-b-bd:  rgba(56, 189, 248, 0.32);
+  /* 🔴 `--grade-b` 로 «채운» 면 위 글자(PR 필터 활성). accent 용 on-토큰을 빌리면 면이 달라
+     pastel 3.57 이었다(회고 P1-26) — 면마다 제 on-토큰을 둔다.
+     Text on a filled --grade-b surface; borrowing the accent on-token failed on pastel. */
+  --grade-b-text-on: #0d0d15;
   --grade-c:     #fbbf24;
   --grade-c-bg:  rgba(251, 191, 36, 0.13);
   --grade-c-bd:  rgba(251, 191, 36, 0.34);
@@ -233,6 +237,7 @@
   --grade-b:     #0369a1;
   --grade-b-bg:  #e0f2fe;
   --grade-b-bd:  #7dd3fc;
+  --grade-b-text-on: #ffffff;
   --grade-c:     #b45309;
   --grade-c-bg:  #fef3c7;
   --grade-c-bd:  #fcd34d;
@@ -325,6 +330,8 @@
   --grade-b:     #456f99;
   --grade-b-bg:  #e5eff7;
   --grade-b-bd:  #b6cee2;
+  /* 어두운 글자는 이 면에서 3.57 — 흰 글자 5.27. Dark text 3.57 here; white 5.27. */
+  --grade-b-text-on: #ffffff;
   --grade-c:     #846834;
   --grade-c-bg:  #f7eecf;
   --grade-c-bd:  #ddc079;
@@ -422,6 +429,7 @@
   --grade-b:     #89b4fa;  /* blue */
   --grade-b-bg:  rgba(137, 180, 250, 0.14);
   --grade-b-bd:  rgba(137, 180, 250, 0.36);
+  --grade-b-text-on: #1e1e2e;
   --grade-c:     #f9e2af;  /* yellow */
   --grade-c-bg:  rgba(249, 226, 175, 0.14);
   --grade-c-bd:  rgba(249, 226, 175, 0.36);
@@ -534,6 +542,12 @@
   --warning:       var(--status-warn);
   --warning-rgb:   251, 191, 36;
   --warning-faint: rgba(251, 191, 36, 0.10);
+  /* 🔴 `--warning` 은 «면» 색이다 — 글자로 쓰면 pastel 카드 위 2.79 였다(회고 P1-7).
+     글자는 `--warning-text`, warning 으로 «채운» 면 위 글자는 `--warning-text-on` —
+     `--success-text`·`--success-text-on` 과 같은 구조다. 이 테마는 면 색이 이미 AA 라 «역할» 로 잇는다.
+     The warning surface colour is not a text colour; text goes through the two pair tokens. */
+  --warning-text:    var(--status-warn);
+  --warning-text-on: #0d0d15;
   --danger:        var(--status-err);
   --shadow-sm:     var(--elev-1);
   --shadow-md:     var(--elev-2);
@@ -594,11 +608,17 @@
   --success:       var(--status-ok);
   /* 🔴 `--success` 하나가 «바탕 위 글자»·«틴트 칩»·«채운 면» 을 겸할 수 없다 —
      글자용은 카드에서 AA 를 넘게 진하게, 면 위 글자는 그 면에 맞춰 따로 둔다. */
-  --success-text: #04855d;
+  /* 카드 위 4.65 였지만 페이지 바탕(`.ri-header` 의 델타)·칩 면에서 4.28 · 4.03 — 명도만 낮춰 최악 4.64.
+     Cleared AA on the card only; on the page ground and chip surface it did not. */
+  --success-text: #047a55;
   --success-text-on: #0d0d15;
   --warning:       var(--status-warn);
   --warning-rgb:   180, 83, 9;
   --warning-faint: rgba(180, 83, 9, 0.10);
+  /* `--warning`(#b45309)은 칩 면(`--bg-mute`) 위에서 4.35 — 색조·채도 유지, 명도만 낮춰 4.61.
+     Hue/saturation kept; lightness lowered until it clears AA on the chip ground. */
+  --warning-text:    #ae5009;
+  --warning-text-on: #ffffff;
   --danger:        var(--status-err);
   --shadow-sm:     var(--elev-1);
   --shadow-md:     var(--elev-2);
@@ -647,11 +667,17 @@
   --success:       var(--status-ok);
   /* 🔴 `--success` 하나가 «바탕 위 글자»·«틴트 칩»·«채운 면» 을 겸할 수 없다 —
      글자용은 카드에서 AA 를 넘게 진하게, 면 위 글자는 그 면에 맞춰 따로 둔다. */
-  --success-text: #407e65;
+  /* 카드 위 4.60 이었지만 body 그라디언트의 어두운 stop 에서 3.84 · 칩 면 3.85 — 명도만 낮춰 최악 4.63.
+     Cleared AA on the card only; the body gradient's dark stop and the chip surface failed. */
+  --success-text: #39705a;
   --success-text-on: #12101c;
   --warning:       var(--status-warn);
   --warning-rgb:   184, 146, 74;
   --warning-faint: rgba(184, 146, 74, 0.12);
+  /* `--warning`(#b8924a)은 카드 위 2.79 · 칩 면 2.33 — 색조·채도 유지, 명도만 낮춰 최악 4.62.
+     Hue/saturation kept; lightness lowered until it clears AA on every ground. */
+  --warning-text:    #7d6231;
+  --warning-text-on: #12101c;
   --danger:        var(--status-err);
   --shadow-sm:     var(--elev-1);
   --shadow-md:     var(--elev-2);
@@ -707,6 +733,10 @@
   --warning:       var(--status-warn);
   --warning-rgb:   249, 226, 175;
   --warning-faint: rgba(249, 226, 175, 0.14);
+  /* 이 테마는 면 색이 이미 AA 다 — 값을 복사하지 않고 «역할» 로 잇는다.
+     Already clears AA here; link the role instead of copying the value. */
+  --warning-text:    var(--status-warn);
+  --warning-text-on: #1e1e2e;
   --danger:        var(--status-err);
   --shadow-sm:     var(--elev-1);
   --shadow-md:     var(--elev-2);

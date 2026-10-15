@@ -1920,6 +1920,70 @@ def detail_field_variants(live_server, gated_settings_repo):
     return _seed_detail_field_variants(db_path)
 
 
+# ── 분석 «표» 의 출처 배지 (`repo_detail.html::renderSourceBadge`) — 2026-09-16 회고 P1-6 ──
+#
+# 🔴 표는 점수 없는 분석을 **언제나** 거른다 — `applyFilters` 가 NULL 점수를 `-1` 로 놓고
+#    `scoreMin`(0) 아래라 버린다. 그래서 위 `detail_field_variants` 의 pr·cli 행(점수 NULL)은
+#    표에 한 번도 안 나온다(실측: gatedrepo 표 1행, Push 뿐). 배지를 그리려면 «점수가 있는»
+#    pr·cli 행이 필요하다.
+# 🔴 `score_unreliable=True` 로 심는다 — 집계(평균·등급·repos 리포트)는 그 행을 빼므로,
+#    같은 리포의 `variant-legacy-scored`(77점·unreliable)처럼 «분석 없음» 팔이 그대로다.
+#    분석 «건수» 는 움직인다 — 그래서 이 픽스처는 마지막 파일의 마지막 시험만 쓴다.
+SOURCE_BADGE_SCORES = {"pr": 72, "cli": 74}
+
+
+def _seed_source_badge_rows(db_path: str) -> dict[str, int]:
+    """표에 출처 pr·cli 배지를 그리는 «점수 있는» 분석 2건 → {출처: analysis_id}."""
+    from datetime import datetime, timedelta, timezone  # noqa: PLC0415
+
+    from sqlalchemy import create_engine  # noqa: PLC0415
+    from sqlalchemy.orm import sessionmaker  # noqa: PLC0415
+
+    from src.models.analysis import Analysis  # noqa: PLC0415
+    from src.models.repository import Repository  # noqa: PLC0415
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    rows = {
+        # pr 은 `pr_number` 로, cli 는 `result["source"]` 로 정해진다(`detail.py::_load_repo_analyses`).
+        "pr": {"commit_sha": "source-badge-pr", "pr_number": DETAIL_PR_NUMBER + 1,
+               "result": {"summary": "e2e: 출처 배지 / source badge"}},
+        "cli": {"commit_sha": "source-badge-cli", "pr_number": None,
+                "result": {"summary": "e2e: 출처 배지 / source badge", "source": "cli"}},
+    }
+    ids: dict[str, int] = {}
+    engine = create_engine(f"sqlite:///{db_path}")
+    session = sessionmaker(bind=engine)()
+    try:
+        repo = session.query(Repository).filter_by(full_name=GATED_REPO).first()
+        if repo is None:
+            raise RuntimeError("_seed_source_badge_rows: gated repo must exist first")
+        for i, (name, spec) in enumerate(rows.items()):
+            if session.query(Analysis).filter_by(commit_sha=spec["commit_sha"]).first() is None:
+                session.add(Analysis(
+                    repo_id=repo.id, commit_sha=spec["commit_sha"],
+                    commit_message=f"e2e: source badge {name}",
+                    pr_number=spec["pr_number"], score=SOURCE_BADGE_SCORES[name], grade="C",
+                    result=spec["result"], author_login="e2e-tester",
+                    score_unreliable=True, created_at=now - timedelta(minutes=30 + i)))
+        session.commit()
+        for name, spec in rows.items():
+            row = session.query(Analysis).filter_by(commit_sha=spec["commit_sha"]).first()
+            assert row is not None and row.score == SOURCE_BADGE_SCORES[name], (
+                f"시드한 {spec['commit_sha']} 를 점수와 함께 되읽지 못했다 — 표가 거른다")
+            ids[name] = row.id
+    finally:
+        session.close()
+        engine.dispose()
+    return ids
+
+
+@pytest.fixture(scope="session")
+def source_badge_rows(live_server, gated_settings_repo):
+    """gatedrepo 분석 표에 출처 pr·cli 배지를 그리는 점수 있는 분석 2건."""
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    return _seed_source_badge_rows(db_path)
+
+
 # ── «줄어든» 사용자 — KPI 세 개가 동시에 음수 (#1639 · dashboard 1061·1076·1092) ──
 #
 # 🔴 세 delta 는 전부 **현재 창 − 이전 창** 개수다(점수/신뢰도 필터 없음 —

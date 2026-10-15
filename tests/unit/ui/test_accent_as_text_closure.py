@@ -29,10 +29,16 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from ._contrast import strip_css_comments
+
 _ROOT = Path(__file__).resolve().parents[3]
 
 # `color: var(--accent)` — 정확히 `--accent` 만. `--accent-text`·`--accent-1` 등은 별개다.
 _ACCENT_AS_TEXT = re.compile(r"(?<![-\w])color\s*:\s*var\(\s*--accent\s*[,)]")
+# 🔴 따옴표 친 `'var(--accent)'` — JS 가 문자열로 넘겨 `color:` 를 «조립» 한다
+#    (`repo_detail.html::renderSourceBadge`). 위 정규식은 `color:` 와 값이 떨어져 있어 못 본다.
+#    이 리포에서 그 리터럴은 글자색으로만 쓰였다 — 면으로 쓰는 자리가 생기면 면제에 적는다.
+_ACCENT_LITERAL = re.compile(r"""(['"])var\(\s*--accent\s*\)\1""")
 
 # 면제 — «사유와 함께». 사라지면 red 다.
 _EXEMPT = {
@@ -65,12 +71,15 @@ def accent_as_text_sites() -> dict[str, str]:
     found: dict[str, str] = {}
     for path in _sources():
         raw = path.read_text(encoding="utf-8")
-        src = re.sub(r"/\*.*?\*/", "", raw, flags=re.S)
+        src = strip_css_comments(raw)
         for m in _ACCENT_AS_TEXT.finditer(src):
             line = src[:m.start()].count("\n") + 1
             head = src[:m.start()].rsplit("{", 1)[0]
             sel = " ".join(head.rsplit("}", 1)[-1].split())[-60:].strip()
             found[sel] = f"{path.relative_to(_ROOT).as_posix()}:{line}"
+        for m in _ACCENT_LITERAL.finditer(src):
+            where = f"{path.relative_to(_ROOT).as_posix()}:{src[:m.start()].count(chr(10)) + 1}"
+            found[f"'var(--accent)' @ {where}"] = where
     return found
 
 

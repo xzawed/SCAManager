@@ -642,12 +642,14 @@
        User avatar — accent gradient circle with initial letter */
     .nav-avatar {
       width: 28px; height: 28px;
-      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      /* 면은 `--accent-grad` — `linear-gradient(var(--accent), var(--accent-2))` 였을 때 light 는
+         `--accent-2`(#8b5cf6) 위 흰 글자 4.23 으로 어떤 글자색도 AA 에 못 닿았다. 그라디언트
+         토큰의 두 번째 stop(#8452f5)은 4.66 이다(#1643). 다른 세 테마는 stop 이 같다.
+         The gradient token's second stop clears AA on light; the other themes share its stops. */
+      background: var(--accent-grad);
       border-radius: 50%;
       display: flex; align-items: center; justify-content: center;
-      /* accent 그라디언트 위 흰 글자였다 — catppuccin 1.79 · pastel 2.32 · dark 2.65.
-         🔴 light 는 이 수정으로도 4.23 이다(그 테마의 --accent-text-on 이 흰색이고,
-         --accent-2 위에서는 어떤 글자색도 AA 에 도달하지 못한다). 면을 옮겨야 풀린다. */
+      /* accent 그라디언트 위 흰 글자였다 — catppuccin 1.79 · pastel 2.32 · dark 2.65. */
       font-size: 12px; font-weight: 700; color: var(--accent-text-on);
       border: 2px solid var(--border-subtle);
       flex-shrink: 0;

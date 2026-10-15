@@ -20,9 +20,29 @@ def read(rel: str) -> str:
     return (ROOT / rel).read_text(encoding="utf-8")
 
 
+# 주석 · 문자열 · 따옴표 없는 `url(...)` — 왼쪽부터 «먼저 시작하는 것» 이 이긴다.
+# 문자열·url 안의 `/*` 는 주석이 아니고, 주석 안의 따옴표는 문자열이 아니다.
+# 문자열은 줄바꿈에서 끝난다(CSS 의 bad-string). 닫히지 않은 주석은 끝까지 간다.
+# Comment, string or unquoted url token — whichever starts first wins.
+_CSS_OPAQUE = re.compile(
+    r"/\*.*?(?:\*/|\Z)"
+    r'|"(?:\\.|[^"\\\n])*"?'
+    r"|'(?:\\.|[^'\\\n])*'?"
+    r"|(?<![\w-])url\(\s*(?=[^\"'\s)])[^)]*\)",
+    re.S | re.I)
+
+
 def strip_css_comments(src: str) -> str:
-    """판정 전에 주석을 지운다 — 주석이 규칙을 인용하면 가드가 산문을 통과시킨다."""
-    return re.sub(r"/\*.*?\*/", "", src, flags=re.DOTALL)
+    r"""판정 전에 주석을 지운다 — 주석이 규칙을 인용하면 가드가 산문을 통과시킨다.
+
+    🔴 `re.sub(r"/\*.*?\*/", "", src)` 를 쓰지 않는다 — 문자열·`url(...)` 안의 `/*` 부터
+       다음 `*/` 까지, 그 사이의 규칙까지 지운다(`test_css_comment_strip.py`).
+    지운 자리엔 그 주석이 품었던 줄바꿈만 남긴다 — 보고하는 줄이 파일의 줄과 맞도록.
+    Strings and url tokens are copied through; comments keep only their newlines.
+    """
+    return _CSS_OPAQUE.sub(
+        lambda m: "\n" * m.group(0).count("\n") if m.group(0).startswith("/*") else m.group(0),
+        src)
 
 
 def theme_block(src: str, theme: str) -> str:
@@ -96,3 +116,110 @@ def ratio(a: tuple, b: tuple) -> float:
 def card_surface(block: str) -> tuple:
     """그 테마의 카드 면 — 칩이 얹히는 바탕."""
     return parse_color(resolve(block, decl(block, "--bg-card")))
+
+
+def body_gradient_stops(theme: str) -> dict[str, tuple]:
+    """토큰 밖의 바탕 — pastel 은 `body` 가 그라디언트라 stop 전부가 «페이지» 글자의 바탕이다.
+
+    면이 없는 머리 영역(`.ri-header` 등)의 글자는 카드가 아니라 이 위에 앉는다. 다른 테마는 빈 dict.
+    The pastel body is a gradient: every stop is a ground for text placed directly on the page.
+    """
+    if theme != "pastel":
+        return {}
+    src = strip_css_comments(read("src/templates/base.html"))
+    i = src.find('body[data-theme="pastel"]')
+    assert i >= 0, "pastel body 규칙 부재 — 테스트가 늙었다"
+    stops = re.findall(r"#[0-9a-fA-F]{6}", src[i:src.find("}", i)])
+    assert stops, "pastel body 그라디언트 stop 을 못 읽었다 — 못 재면 red"
+    return {f"body-gradient-stop-{n}": parse_color(s) for n, s in enumerate(stops)}
+
+
+# 글자가 앉는 «면» 토큰 — 페이지 바탕 둘 · 카드 · 떠 있는 면 · 칩 면(탭 띠·행 hover).
+PAGE_TEXT_GROUNDS = ("--bg-base", "--bg-canvas", "--bg-card", "--bg-elevated", "--bg-mute")
+
+
+def text_grounds(theme: str) -> dict[str, tuple]:
+    """그 테마에서 글자가 앉을 수 있는 바탕 전부 — 불투명색으로(반투명 면은 카드 위에 합성)."""
+    scope = token_scope(read("src/static/css/tokens.css"), theme)
+    card = paint_colours(scope, "var(--bg-card)")[0]
+    out = {}
+    for name in PAGE_TEXT_GROUNDS:
+        c = paint_colours(scope, f"var({name})")[0]
+        out[name] = c if c[3] >= 1 else over(c, card)
+    return {**out, **body_gradient_stops(theme)}
+
+
+class Unmeasurable(AssertionError):
+    """이 계기가 색으로 풀지 못하는 값 — `color-mix()`·`url()`·`currentColor` 등."""
+
+
+def token_scope(src: str, theme: str) -> str:
+    """그 테마의 html 에 «실제로 적용되는» 토큰 블록 전부 — 소스 순서 그대로 이어 붙인다.
+
+    `:root` · `[data-theme]` · `[data-theme="<theme>"]` 만 모은다. 명시도가 같아 «뒤에 오는
+    선언이 이긴다» — `decl` 이 마지막 정의를 돌려주는 것과 맞물린다. `[data-variant]` 블록은
+    `base.html` 이 `data-variant="refined"` 로 고정해 적용되지 않는다.
+    `theme_block` 과 달리 `:root` 의 공용 별칭(`--bg-hover` 등)까지 풀린다.
+    """
+    want = {":root", "[data-theme]", f'[data-theme="{theme}"]'}
+    blocks = [(" ".join(m.group(1).split()), m.group(2))
+              for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", strip_css_comments(src))]
+    assert any(sel == f'[data-theme="{theme}"]' for sel, _ in blocks), (
+        f"{theme} 블록 부재 — 테스트가 늙었다")
+    return "\n".join(body for sel, body in blocks if sel in want)
+
+
+def resolve_value(scope: str, value: str, depth: int = 0) -> str:
+    """`var(--x)`·`var(--x, 대체값)` 을 끝까지 푼다 — 대체값은 그 이름이 «없을 때만» 쓴다."""
+    assert depth < 12, f"토큰 참조가 순환한다: {value}"
+    v = value.replace("!important", "").strip()
+    m = re.fullmatch(r"var\(\s*(--[\w-]+)\s*(?:,\s*(.*))?\)", v, re.S)
+    if not m:
+        return v
+    ms = re.findall(rf"(?<![\w-]){re.escape(m.group(1))}\s*:\s*([^;]+);", scope)
+    if ms:
+        return resolve_value(scope, ms[-1], depth + 1)
+    if m.group(2) is not None:
+        return resolve_value(scope, m.group(2), depth + 1)
+    raise Unmeasurable(f"{m.group(1)} 미정의 · 대체값 없음")
+
+
+_NAMED = {"white": "#ffffff", "black": "#000000", "transparent": "rgba(0,0,0,0)",
+          "none": "rgba(0,0,0,0)"}
+_COLOUR_TOKEN = re.compile(r"var\((?:[^()]|\([^()]*\))*\)|#[0-9a-fA-F]{3,6}\b|rgba?\([^)]*\)"
+                           r"|\b(?:white|black|transparent)\b")
+
+
+def _split_top(args: str) -> list[str]:
+    parts, depth, cur = [], 0, ""
+    for ch in args:
+        depth += (ch == "(") - (ch == ")")
+        if ch == "," and depth == 0:
+            parts.append(cur)
+            cur = ""
+        else:
+            cur += ch
+    return parts + [cur]
+
+
+def paint_colours(scope: str, value: str) -> list[tuple]:
+    """칠하는 값 → 색 목록. 단색이면 하나, 그라디언트면 stop 전부. 못 풀면 `Unmeasurable`."""
+    v = resolve_value(scope, value)
+    v = _NAMED.get(v.lower(), v)
+    g = re.fullmatch(r"(?:repeating-)?(?:linear|radial|conic)-gradient\((.*)\)", v, re.S)
+    if g:
+        out = []
+        for arg in _split_top(g.group(1)):
+            hit = _COLOUR_TOKEN.search(arg)
+            if not hit:
+                continue                                  # 방향·위치·색 힌트
+            if "color-mix" in arg:
+                raise Unmeasurable(f"그라디언트 stop 이 color-mix 다: {arg.strip()}")
+            out += paint_colours(scope, hit.group(0))
+        if not out:
+            raise Unmeasurable(f"그라디언트에서 stop 을 하나도 못 읽었다: {v[:60]}")
+        return out
+    try:
+        return [parse_color(v)]
+    except AssertionError as e:
+        raise Unmeasurable(str(e)) from e

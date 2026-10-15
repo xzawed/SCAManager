@@ -517,3 +517,68 @@ def test_every_grade_score_bar_is_perceivable(page, base_url, graded_analyses, t
     assert not bad, (
         f"점수 바 채움이 트랙에서 보이지 않는다 ({_NON_TEXT}:1 미만):\n  " + "\n  ".join(bad)
     )
+
+
+# 칠해진 «채움» 을 등급과 함께 읽는다 — 그라디언트면 문자열 그대로, 단색이면 색으로.
+# 🔴 `firstStop` 은 «파생되지 않은 바닥» 용이다: 채움의 첫 stop 이 그 테마의 `--grade-x` 를
+#    브라우저가 계산한 값과 같아야 한다(프로브 요소). 모든 화면이 «같이» 틀리면 화면 간
+#    일치만으로는 못 잡는다.
+_GRADE_FILL_ID_JS = r"""
+(sel) => [...document.querySelectorAll(sel)].map(bar => {
+  const after = getComputedStyle(bar, '::after');
+  const cls = [...bar.classList].find(c => /^score-bar--[a-f]$/.test(c)) || '';
+  const grade = cls.slice(-1);
+  const probe = document.createElement('span');
+  probe.style.color = 'var(--grade-' + grade + ')';
+  document.body.appendChild(probe);
+  const token = getComputedStyle(probe).color; probe.remove();
+  const img = after.backgroundImage || 'none';
+  const first = (img.match(/rgba?\([^)]+\)/) || [after.backgroundColor])[0];
+  return {grade, image: img, color: after.backgroundColor, firstStop: first, token};
+})
+"""
+
+
+@pytest.mark.e2e
+@pytest.mark.parametrize("theme", _THEMES)
+def test_a_grade_paints_the_same_score_bar_on_every_screen(page, base_url, graded_analyses,
+                                                           theme):
+    """🔴 같은 등급의 점수 바는 화면마다 같은 색이다 (2026-09-16 회고 P1-10).
+
+    #1651 이 `analysis_detail.html` 의 `.score-bar--a~f::after { background: … }` 5줄을 걷었는데
+    `overview.html`·`repo_detail.html` 에는 그대로 남아, 같은 B 등급이 분석 상세에서는
+    `--grade-b`, 리포 카드·분석 표에서는 리터럴 `#60a5fa` 로 칠해졌다.
+
+    기준 = 분석 상세의 칠(그 화면의 3:1 은 위 시험이 잰다). 바닥 = 기준의 첫 stop 이 그 테마의
+    `--grade-x` 다. red 로 만드는 뮤테이션: 어느 템플릿에든 `.score-bar--b::after
+    { background: #60a5fa; }` 한 줄을 되돌리면 그 화면이 기준과 갈린다.
+    """
+    ref: dict[str, tuple[str, str]] = {}
+    for grade, analysis_id in sorted(graded_analyses.items()):
+        _theme(page, base_url, f"/repos/owner%2Ftestrepo/analyses/{analysis_id}", theme)
+        bars = page.evaluate(_GRADE_FILL_ID_JS, ".score-bar")
+        assert bars and bars[0]["grade"] == grade.lower(), (
+            f"[{theme}] {grade} 분석의 점수 바를 못 찾았다: {bars[:1]}")
+        b = bars[0]
+        assert b["firstStop"] == b["token"], (
+            f"[{theme}] 분석 상세의 {grade} 채움({b['firstStop']})이 `--grade-{grade.lower()}`"
+            f"({b['token']}) 가 아니다 — 기준 자체가 토큰을 벗어났다")
+        ref[b["grade"]] = (b["image"], b["color"])
+
+    seen: dict[str, set[str]] = {}
+    bad = []
+    for path in ("/", "/repos/owner%2Ftestrepo"):
+        _theme(page, base_url, path, theme)
+        page.wait_for_selector(".score-bar[class*='score-bar--']", state="attached",
+                               timeout=5000)
+        for b in page.evaluate(_GRADE_FILL_ID_JS, ".score-bar[class*='score-bar--']"):
+            seen.setdefault(path, set()).add(b["grade"])
+            if (b["image"], b["color"]) != ref.get(b["grade"]):
+                bad.append(f"{path} {b['grade']}: {b['image'][:70] if b['image'] != 'none' else b['color']}"
+                           f" ≠ 분석 상세 {ref.get(b['grade'], ('?',))[0][:70]}")
+    assert seen.get("/"), f"[{theme}] overview 에서 등급 점수 바를 하나도 못 쟀다"
+    assert len(seen.get("/repos/owner%2Ftestrepo", ())) >= 2, (
+        f"[{theme}] 분석 표에서 등급 {sorted(seen.get('/repos/owner%2Ftestrepo', ()))} 만 쟀다 — "
+        "둘 이상의 등급을 봐야 «등급마다» 를 말할 수 있다")
+    assert not bad, (f"[{theme}] 같은 등급이 화면마다 다른 색으로 칠해진다:\n  "
+                     + "\n  ".join(sorted(set(bad))[:12]))

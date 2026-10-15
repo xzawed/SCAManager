@@ -230,11 +230,14 @@
   <!-- AI 기본값 적용 경고 배너 / AI fallback warning banner -->
   {% set ai_status = r.get('ai_review_status', 'success') if r else 'success' %}
   {% if ai_status != 'success' %}
-  <div class="ad-ai-card reveal" style="border-left:4px solid var(--warning);background:rgba(245,158,11,0.08)">
+  {# 🔴 틴트는 카드 면 «위» 에 섞는다 — 반투명 `rgba(…, .08)` 만 두면 카드가 투명해져 뒤의 orb 가
+     비치고, 제목의 바탕이 정해지지 않는다(light 4.35 · pastel 2.22, 회고 P1-7). 제목은 글자 토큰.
+     The tint is mixed onto the card so the ground is opaque; the title uses the text token. #}
+  <div class="ad-ai-card reveal" style="border-left:4px solid var(--warning);background:color-mix(in srgb, var(--warning) 8%, var(--bg-card))">
     <div style="display:flex;align-items:center;gap:.6rem">
       <span style="font-size:1.1rem">⚠️</span>
       <div>
-        <div style="font-size:13px;font-weight:700;color:var(--warning);margin-bottom:2px">{{ 'analysis_detail.ai_defaults.title' | i18n_args(locale | default('ko')) }}</div>
+        <div style="font-size:13px;font-weight:700;color:var(--warning-text);margin-bottom:2px">{{ 'analysis_detail.ai_defaults.title' | i18n_args(locale | default('ko')) }}</div>
         <div style="font-size:13px;color:var(--text-1)">
           {% if ai_status == 'no_api_key' %}{{ 'analysis_detail.ai_defaults.no_api_key' | i18n_args(locale | default('ko')) }}
           {% elif ai_status == 'api_error' %}{{ 'analysis_detail.ai_defaults.api_error' | i18n_args(locale | default('ko')) }}
