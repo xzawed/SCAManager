@@ -26,7 +26,7 @@ from __future__ import annotations
 import re
 
 from ._contrast import (AA, ROOT, THEMES, over, paint_colours, ratio, read,
-                        strip_css_comments, token_scope)
+                        strip_css_comments, text_grounds, token_scope)
 
 _TOKENS = read("src/static/css/tokens.css")
 _SCOPES = {t: token_scope(_TOKENS, t) for t in THEMES}
@@ -36,8 +36,6 @@ _WARNING_AS_TEXT = re.compile(
     r"(?<![-\w])color\s*:\s*var\(\s*--(?:warning|status-warn)\s*[,)]")
 _WARNING_LITERAL = re.compile(r"""(['"])var\(\s*--(?:warning|status-warn)\s*\)\1""")
 
-# 글자가 앉는 바탕 — `test_accent_text_contrast.py::_ACCENT_TEXT_GROUNDS` 와 같은 목록.
-_GROUNDS = ("--bg-base", "--bg-canvas", "--bg-card", "--bg-elevated", "--bg-mute")
 
 
 def _sources() -> list:
@@ -83,12 +81,9 @@ def test_warning_text_meets_aa_on_every_ground():
     """🔴 `--warning-text` 는 네 테마 «전부» 에 있고, 글자가 앉는 바탕마다 AA 를 넘는다."""
     bad = []
     for theme in THEMES:
-        scope = _SCOPES[theme]
-        [fg] = paint_colours(scope, "var(--warning-text)")
-        card = paint_colours(scope, "var(--bg-card)")[0]
-        for name in _GROUNDS:
-            [bg] = paint_colours(scope, f"var({name})")
-            bg = bg if bg[3] >= 1 else over(bg, card)
+        [fg] = paint_colours(_SCOPES[theme], "var(--warning-text)")
+        # 페이지 바탕 둘 · 카드 · 떠 있는 면 · 칩 면 + pastel body 그라디언트 stop.
+        for name, bg in text_grounds(theme).items():
             got = ratio(over(fg, bg), bg)
             if got < AA:
                 bad.append(f"[{theme}] --warning-text on {name}: {got:.2f} < {AA}")

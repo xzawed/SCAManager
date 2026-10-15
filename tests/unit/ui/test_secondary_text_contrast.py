@@ -16,7 +16,7 @@ guards that catch a revert where e2e is not run.
 import pathlib
 import re
 
-from ._contrast import THEMES, strip_css_comments
+from ._contrast import THEMES, body_gradient_stops, strip_css_comments
 
 _ROOT = pathlib.Path(__file__).resolve().parents[3]
 
@@ -134,16 +134,9 @@ def _extra_grounds(theme: str) -> dict[str, tuple]:
     """토큰 밖의 바탕 — pastel 은 body 가 그라디언트라 stop 전부가 글자 바탕이다.
 
     실측에서 이 테마의 최악 표면(2.40)이 바로 이 그라디언트의 어두운 stop 이었다.
+    읽는 법은 공용 `_contrast.body_gradient_stops` 한 곳에 둔다.
     """
-    if theme != "pastel":
-        return {}
-    src = _strip_css_comments(_read("src/templates/base.html"))
-    i = src.find('body[data-theme="pastel"]')
-    assert i >= 0, "pastel body 규칙 부재 — 테스트가 늙었다"
-    block = src[i:src.find("}", i)]
-    stops = re.findall(r"#[0-9a-fA-F]{6}", block)
-    assert stops, "pastel body 그라디언트 stop 을 못 읽었다 — 못 재면 red"
-    return {f"body-gradient-stop-{n}": _parse_color(s) for n, s in enumerate(stops)}
+    return body_gradient_stops(theme)
 
 
 def test_faint_text_token_meets_aa_on_every_ground():

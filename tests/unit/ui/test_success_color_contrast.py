@@ -36,7 +36,7 @@ import re
 from pathlib import Path
 
 from ._contrast import (AA, ROOT, THEMES, decl, over, parse_color, ratio, resolve,
-                        strip_css_comments, theme_block)
+                        strip_css_comments, text_grounds, theme_block)
 
 _TOKENS = (ROOT / "src" / "static" / "css" / "tokens.css").read_text(encoding="utf-8")
 
@@ -128,18 +128,25 @@ def test_no_success_tint_chip_remains():
         "`--grade-a`/`-bg`/`-bd` 3종 세트로 옮긴다:\n  " + "\n  ".join(chips))
 
 
-def test_success_text_token_meets_aa_on_every_card():
-    """글자용 토큰이 네 테마 카드 바탕에서 AA 를 넘어야 한다."""
+def test_success_text_token_meets_aa_on_every_ground():
+    """글자용 토큰이 네 테마의 «모든» 글자 바탕에서 AA 를 넘어야 한다.
+
+    🔴 카드 면 하나만 재던 판이었다(회고 P2-19 와 같은 부류 — 계산이 한 면만 모델링한다).
+    `repo_insights.html::.ri-delta-up` 은 면이 없는 머리 영역에 있어 «페이지» 바탕 위에 앉고,
+    거기서 light 4.28 · pastel 3.84(body 그라디언트의 어두운 stop) 였다(e2e 전체 글자 감사 실측).
+    The card was the only ground modelled; text in the page header sits on the page ground.
+    """
     bad = []
     for theme in THEMES:
         block = theme_block(_TOKENS, theme)
-        card = parse_color(resolve(block, decl(block, "--bg-card")))
         assert decl(block, "--success-text"), (
             f"{theme} 에 `--success-text` 가 없다 — 글자용과 면용을 한 값으로 겸할 수 없다")
-        got = ratio(over(_tok(theme, "--success-text"), card), card)
-        if got < AA:
-            bad.append(f"{theme}: {got:.2f} < {AA}")
-    assert not bad, "`--success-text` 가 카드 바탕에서 AA 미달이다:\n  " + "\n  ".join(bad)
+        fg = _tok(theme, "--success-text")
+        for name, bg in text_grounds(theme).items():
+            got = ratio(over(fg, bg), bg)
+            if got < AA:
+                bad.append(f"{theme} on {name}: {got:.2f} < {AA}")
+    assert not bad, "`--success-text` 가 글자 바탕에서 AA 미달이다:\n  " + "\n  ".join(bad)
 
 
 def test_text_on_a_filled_success_surface_meets_aa():

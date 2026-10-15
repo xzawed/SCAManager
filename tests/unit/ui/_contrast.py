@@ -118,6 +118,37 @@ def card_surface(block: str) -> tuple:
     return parse_color(resolve(block, decl(block, "--bg-card")))
 
 
+def body_gradient_stops(theme: str) -> dict[str, tuple]:
+    """토큰 밖의 바탕 — pastel 은 `body` 가 그라디언트라 stop 전부가 «페이지» 글자의 바탕이다.
+
+    면이 없는 머리 영역(`.ri-header` 등)의 글자는 카드가 아니라 이 위에 앉는다. 다른 테마는 빈 dict.
+    The pastel body is a gradient: every stop is a ground for text placed directly on the page.
+    """
+    if theme != "pastel":
+        return {}
+    src = strip_css_comments(read("src/templates/base.html"))
+    i = src.find('body[data-theme="pastel"]')
+    assert i >= 0, "pastel body 규칙 부재 — 테스트가 늙었다"
+    stops = re.findall(r"#[0-9a-fA-F]{6}", src[i:src.find("}", i)])
+    assert stops, "pastel body 그라디언트 stop 을 못 읽었다 — 못 재면 red"
+    return {f"body-gradient-stop-{n}": parse_color(s) for n, s in enumerate(stops)}
+
+
+# 글자가 앉는 «면» 토큰 — 페이지 바탕 둘 · 카드 · 떠 있는 면 · 칩 면(탭 띠·행 hover).
+PAGE_TEXT_GROUNDS = ("--bg-base", "--bg-canvas", "--bg-card", "--bg-elevated", "--bg-mute")
+
+
+def text_grounds(theme: str) -> dict[str, tuple]:
+    """그 테마에서 글자가 앉을 수 있는 바탕 전부 — 불투명색으로(반투명 면은 카드 위에 합성)."""
+    scope = token_scope(read("src/static/css/tokens.css"), theme)
+    card = paint_colours(scope, "var(--bg-card)")[0]
+    out = {}
+    for name in PAGE_TEXT_GROUNDS:
+        c = paint_colours(scope, f"var({name})")[0]
+        out[name] = c if c[3] >= 1 else over(c, card)
+    return {**out, **body_gradient_stops(theme)}
+
+
 class Unmeasurable(AssertionError):
     """이 계기가 색으로 풀지 못하는 값 — `color-mix()`·`url()`·`currentColor` 등."""
 
