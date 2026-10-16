@@ -15,9 +15,11 @@ from sqlalchemy import func
 from src.auth.session import CurrentUser, get_current_user
 from src.database import SessionLocal
 from src.models.analysis import Analysis
+from src.models.repo_config import RepoConfig
 from src.models.repository import Repository
 from src.repositories import analysis_feedback_repo
 from src.scorer.calculator import calculate_grade
+from src.shared.feature_kill_switch import is_disabled
 from src.ui._helpers import get_locale, templates
 
 router = APIRouter()
@@ -96,6 +98,25 @@ def overview(
                 .all()
             )
 
+            # 🔴 분석은 있는데 검증된 평균이 없는 리포 — 카드가 «왜 비었는지» 말하도록 AI 리뷰가
+            #    꺼져 있는지 본다. 기준은 파이프라인이 AI 를 끄는 두 스위치(리포 토글
+            #    `ai_review_enabled=False` · 전역 `AI_REVIEW_DISABLED`)와 같다. 운영(2026-10-17)에서
+            #    AI 리뷰를 끈 뒤 추가한 리포 3개가 등급·막대 없이 «N회» 만 그렸다.
+            #    그런 리포가 있을 때만 조회한다 — 평소 렌더의 쿼리 수는 그대로다.
+            # Repos with analyses but no verified average: check whether AI review is off, using
+            # the pipeline's two switches. Queried only when such a repo exists.
+            unverified = [r.full_name for r in repos
+                          if count_map.get(r.id, 0) and avg_map.get(r.id) is None]
+            ai_off: set[str] = set()
+            if unverified and is_disabled("AI_REVIEW"):
+                ai_off = set(unverified)
+            elif unverified:
+                ai_off = {name for (name,) in
+                          db.query(RepoConfig.repo_full_name)
+                          .filter(RepoConfig.repo_full_name.in_(unverified),
+                                  RepoConfig.ai_review_enabled.is_(False))
+                          .all()}
+
             for r in repos:
                 count = count_map.get(r.id, 0)
                 # 🔴 #25: avg_map 은 func.avg(Analysis.score) — SQL AVG 가 NULL(parse_error) 을 자동
@@ -105,12 +126,16 @@ def overview(
                 # avg_map is func.avg (auto-excludes NULL); a parse_error-only repo yields None while count
                 # still includes it. Gate the grade on an actual average, not the count, to avoid an F.
                 avg_raw = avg_map.get(r.id)
-                avg = round(avg_raw) if avg_raw is not None else 0
+                # 🔴 평균이 없으면 0 이 아니라 None 이다 — 템플릿이 0 을 «없음» 으로 읽어 검증된 평균
+                #    0 의 막대를 지웠고, 반대로 «없음» 은 0점과 구별되지 않았다.
+                # No average is None, not 0: the template read 0 as «missing».
+                avg = round(avg_raw) if avg_raw is not None else None
                 repo_data.append({
                     "full_name": r.full_name,
                     "analysis_count": count,
                     "avg_score": avg,
-                    "avg_grade": calculate_grade(avg) if avg_raw is not None else None,
+                    "avg_grade": calculate_grade(avg) if avg is not None else None,
+                    "ai_review_off": r.full_name in ai_off,
                 })
 
         # Phase E.3-d — AI 점수 정합도 지표 (전역)

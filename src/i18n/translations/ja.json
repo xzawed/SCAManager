@@ -195,6 +195,9 @@
     "add_repo": "+ リポ追加",
     "settings_link": "設定",
     "analysis_count_unit": "{count}回",
+    "no_verified_score": "検証済みスコアなし",
+    "no_verified_score_hint": "未検証の分析（AIレビューオフ・未対応言語など）は平均とグレードから除外されます",
+    "ai_review_off": "AIレビューオフ",
     "unclaimed_banner": "所有者が登録されていないリポジトリが {count} 件あります — Webhook から自動作成されたもので、設定変更・削除ができません。",
     "unclaimed_cta": "登録して所有権を取得",
     "table": {

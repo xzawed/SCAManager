@@ -5,6 +5,7 @@
 3. 랜딩 로그인 실패 배너가 모바일에서 화면 절반 폭(~180px)으로 접혀 히어로 제목을 덮었다.
 4. 언어 전환(body 만 교체) 뒤 `<html lang>` 이 새로고침 전까지 이전 언어였다.
 5. 카운트업 끝값이 서버 표기와 달랐고(«50.0%» → «50%»), 첫 프레임이 음수일 때가 있었다.
+6. (2026-10-17 신고) 검증된 점수가 없는 리포(AI 리뷰 꺼짐)의 개요 카드가 등급·막대 없이 비었다.
 
 Rendering defects found by the 2026-10-16 page-by-page review, measured on painted pages.
 """
@@ -188,3 +189,61 @@ def test_a_missing_page_opened_in_the_browser_is_an_error_page(seeded_page, base
     assert seeded_page.locator("nav").count() == 1, "base 를 상속한 화면이 아니다(nav 없음)"
     assert seeded_page.locator(".error-page h1").is_visible(), "오류 제목이 보이지 않는다"
     assert seeded_page.locator(".error-page a[href='/']").count() == 1, "개요로 돌아가는 길이 없다"
+
+
+# 개요 카드 한 장에서 등급 자리·막대 자리·사유 문구를 잰다.
+# Measures the grade slot, the bar slot and the reason labels of one overview card.
+_UNVERIFIED_CARD_JS = r"""c => {
+  const q = s => c.querySelector(s), cr = c.getBoundingClientRect();
+  const chip = q('.grade'), bar = q('.score-bar'), lab = q('.repo-card__unverified'), off = q('.repo-card__ai-off');
+  const row = lab ? lab.closest('.repo-card__score-row') : null;
+  const inside = el => { if (!el) return null; const r = el.getBoundingClientRect();
+    return r.width > 0 && r.left >= cr.left - 1 && r.right <= cr.right + 1 && r.top >= cr.top - 1 && r.bottom <= cr.bottom + 1; };
+  return {lang: document.documentElement.lang,
+          chip: chip ? chip.textContent.trim() : null, chipCls: chip ? chip.className : null,
+          barCls: bar ? bar.className : null, fill: bar ? getComputedStyle(bar, '::after').width : null,
+          label: lab ? lab.innerText.trim() : null, labelInside: inside(lab),
+          off: off ? off.innerText.trim() : null, offInside: inside(off),
+          score: !!q('.repo-card__score'),
+          overflow: Math.max(c.scrollWidth - c.clientWidth, row ? row.scrollWidth - row.clientWidth : 0)};
+}"""
+
+
+def test_an_unverified_repo_card_says_why_it_has_no_grade(browser_instance, live_server, unverified_repo):
+    """🔴 분석은 있는데 검증된 점수가 없는 리포(AI 리뷰 꺼짐) — 등급·막대 자리가 비지 않고 이유를 말한다.
+
+    운영(2026-10-17): AI 리뷰 토글을 끈 뒤 추가한 리포 3개(분석 196·590·5회)의 카드가 등급 칩도
+    점수 막대도 없이 «N회» 한 줄이었다. 데스크톱·모바일에서 중립 칩 «—»(등급 색 없음) · 빈 막대 ·
+    «검증된 점수 없음 · AI 리뷰 꺼짐» 이 카드 안에 보이는지 잰다.
+    """
+    from src.i18n.loader import get_text  # noqa: PLC0415
+
+    problems = []
+    for vw, vh in ((1440, 900), (375, 812)):
+        ctx = browser_instance.new_context(base_url=live_server, viewport={"width": vw, "height": vh},
+                                           locale="ko-KR")
+        page = ctx.new_page()
+        page.goto("/", wait_until="load")
+        card = page.locator(f'a.repo-card[href="/repos/{unverified_repo}"]')
+        card.scroll_into_view_if_needed()
+        page.wait_for_timeout(900)
+        got = card.evaluate(_UNVERIFIED_CARD_JS)
+        ctx.close()
+        lang = got["lang"] or "ko"
+        keys = ("overview.no_verified_score", "overview.ai_review_off")
+        want = tuple(get_text(k, lang) for k in keys)
+        if not all(w and w != k for w, k in zip(want, keys)):
+            problems.append(f"{vw}px 번역 문구가 없다({lang}): {want!r}")
+        if got["chip"] != "—" or (got["chipCls"] or "").split() != ["grade"]:
+            problems.append(f"{vw}px 등급 자리: {got['chip']!r} class={got['chipCls']!r} (중립 «—» 여야 한다)")
+        if (got["barCls"] or "").split() != ["score-bar"] or got["fill"] != "0px":
+            problems.append(f"{vw}px 막대 자리: class={got['barCls']!r} 채움={got['fill']!r} (빈 막대여야 한다)")
+        if (got["label"], got["off"]) != want:
+            problems.append(f"{vw}px 사유: {(got['label'], got['off'])!r} ≠ {want!r}")
+        if not (got["labelInside"] and got["offInside"]):
+            problems.append(f"{vw}px 사유 문구가 카드 밖이거나 안 보인다: {got}")
+        if got["score"]:
+            problems.append(f"{vw}px 검증 점수가 없는데 점수 숫자가 그려졌다")
+        if got["overflow"] > 1:
+            problems.append(f"{vw}px 카드 글자가 넘친다({got['overflow']}px)")
+    assert not problems, "검증 점수 없는 리포 카드:\n  " + "\n  ".join(problems)

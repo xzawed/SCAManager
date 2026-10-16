@@ -195,6 +195,9 @@
     "add_repo": "+ 리포 추가",
     "settings_link": "설정",
     "analysis_count_unit": "{count}회",
+    "no_verified_score": "검증된 점수 없음",
+    "no_verified_score_hint": "검증되지 않은 분석(AI 리뷰 꺼짐·미지원 언어 등)은 평균과 등급에서 빠집니다",
+    "ai_review_off": "AI 리뷰 꺼짐",
     "unclaimed_banner": "소유자가 등록되지 않은 저장소 {count}개가 있습니다 — Webhook 으로 자동 생성된 저장소로, 설정 변경·삭제가 차단됩니다.",
     "unclaimed_cta": "등록해서 소유권 확보",
     "table": {

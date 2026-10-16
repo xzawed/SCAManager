@@ -888,6 +888,70 @@ def unclaimed_repo(live_server):
     return _seed_unclaimed_repo(db_path)
 
 
+UNVERIFIED_REPO = "owner/unverifiedrepo"
+
+
+def _seed_unverified_repo(db_path: str) -> str:
+    """분석은 있는데 검증된 점수가 없는 리포 — AI 리뷰 토글 꺼짐 + `disabled` 분석 2회 → full_name.
+
+    🔴 운영(2026-10-17)의 그 모양이다 — AI 리뷰를 끈 뒤 추가한 리포는 분석이 전부
+       `ai_review_status="disabled"` 라 `score_unreliable` 이고, 개요 평균(검증 점수만)이 없다.
+    🔴 ORM 으로 넣는다 — `RepoConfig` 기본값은 파이썬 측이고, `score_unreliable` 은 프로덕션
+       쓰기 경로와 같은 판정 함수로 채운다.
+    🔴 **전역 시드로 만들지 않는다** — `/` 에 카드가 늘면 `e2e/test_overview_score.py` 의
+       `click(".repo-card")` 가 strict 위반이 된다(`_seed_unclaimed_repo` 와 같은 이유).
+    Seeds the production shape: AI review off, every analysis unverified, so no overview average.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from src.models.analysis import Analysis  # noqa: PLC0415
+    from src.models.repo_config import RepoConfig  # noqa: PLC0415
+    from src.models.repository import Repository  # noqa: PLC0415
+    from src.scorer.reliability import score_is_unreliable  # noqa: PLC0415
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    session = sessionmaker(bind=engine)()
+    try:
+        repo = session.query(Repository).filter_by(full_name=UNVERIFIED_REPO).first()
+        if repo is None:
+            repo = Repository(full_name=UNVERIFIED_REPO, user_id=_E2E_USER_ID)
+            session.add(repo)
+            session.flush()
+        if session.query(RepoConfig).filter_by(repo_full_name=UNVERIFIED_REPO).first() is None:
+            session.add(RepoConfig(repo_full_name=UNVERIFIED_REPO, ai_review_enabled=False))
+        result = {"ai_review_status": "disabled", "summary": "e2e: AI 리뷰 꺼짐 / AI review off",
+                  "issues": []}
+        for i in range(2):
+            sha = f"unverified-{i:02d}"
+            if session.query(Analysis).filter_by(commit_sha=sha).first() is None:
+                session.add(Analysis(repo_id=repo.id, commit_sha=sha, score=70, grade="C",
+                                     commit_message=f"e2e: AI 리뷰 꺼짐 분석 {i}", result=result,
+                                     author_login="e2e-tester",
+                                     score_unreliable=score_is_unreliable(result)))
+        session.commit()
+        rows = session.query(Analysis).filter_by(repo_id=repo.id).all()
+        cfg = session.query(RepoConfig).filter_by(repo_full_name=UNVERIFIED_REPO).first()
+        unverified = [r.score_unreliable for r in rows]
+        ai_on = cfg.ai_review_enabled if cfg else None
+    finally:
+        session.close()
+        engine.dispose()
+
+    assert len(unverified) == 2 and all(unverified), (
+        f"검증 안 된 분석 2회여야 한다 — score_unreliable={unverified!r}. 하나라도 검증되면 "
+        "개요 평균이 생겨 «검증 점수 없음» 카드를 재지 못한다")
+    assert ai_on is False, f"AI 리뷰 토글이 꺼져 있지 않다({ai_on!r}) — «AI 리뷰 꺼짐» 팔이 열리지 않는다"
+    return UNVERIFIED_REPO
+
+
+@pytest.fixture(scope="session")
+def unverified_repo(live_server):
+    """분석은 있는데 검증된 점수가 없는 리포(AI 리뷰 꺼짐) — 개요 카드의 «검증 점수 없음» 팔."""
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    return _seed_unverified_repo(db_path)
+
+
 # ── analysis_detail 변종 시드의 «값» — 시험이 기대값으로 되읽는다 ────────────
 #
 # 🔴 DOM 만 보는 판정은 위조된다(Grok `01a0998d`): 더미 `.ad-feedback-item` 두 개나

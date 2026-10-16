@@ -195,6 +195,9 @@
     "add_repo": "+ Add Repository",
     "settings_link": "Settings",
     "analysis_count_unit": "{count} runs",
+    "no_verified_score": "No verified score",
+    "no_verified_score_hint": "Unverified analyses (AI review off, unsupported languages, …) are left out of the average and grade",
+    "ai_review_off": "AI review off",
     "unclaimed_banner": "{count} repositories have no registered owner — they were created automatically from webhooks, and their settings cannot be changed or deleted.",
     "unclaimed_cta": "Register to claim",
     "table": {
