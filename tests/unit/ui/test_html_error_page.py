@@ -87,6 +87,36 @@ def test_an_unknown_page_is_an_error_page_in_the_viewer_language(client):
     assert 'lang="ja"' in r.text
 
 
+_CHROME_NAV = ("text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,"
+               "image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+_FIREFOX_NAV = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+
+# witness-corpus: 운영 HTTP 로그(2026-10-09~16)에 실제로 찍힌 4xx 요청과 실제 클라이언트 기본 Accept 머리
+_REAL_REQUESTS = [
+    # (메서드, 경로, Accept, 오류 화면이어야 하는가) — 경로·메서드는 운영 로그, Accept 는 각 클라이언트 기본값.
+    ("GET", "/.env", "*/*", False),                 # curl/8.5.0 스캐너
+    ("GET", "/config.json", "*/*", False),          # curl/8.5.0 스캐너
+    ("GET", "/v1/models", "*/*", False),            # curl/8.5.0
+    ("GET", "/api/config", "*/*", False),           # curl/8.5.0 — /api 는 브라우저형이어도 JSON
+    ("GET", "/api/config", _CHROME_NAV, False),
+    ("HEAD", "/", _CHROME_NAV, False),              # 업타임 봇 HEAD / → 405 는 화면 대상이 아니다
+    ("GET", "/robots.txt", _FIREFOX_NAV, True),     # 크롤러가 브라우저형 Accept 로 열면 화면 404
+    ("GET", "/repos/gone%2Frepo", _CHROME_NAV, True),
+    ("GET", "/repos/gone%2Frepo", "application/json", False),
+]
+
+
+@pytest.mark.parametrize(("method", "path", "accept", "page"), _REAL_REQUESTS)
+def test_real_requests_get_the_right_kind_of_error(client, method, path, accept, page):
+    """🔴 실제로 들어온 요청 모양 그대로 — 화면 404 는 브라우저 탐색에만, 나머지는 종전 응답이다."""
+    with patch("src.ui.routes.detail.SessionLocal", return_value=_no_repo_db()):
+        r = client.request(method, path, headers={"Accept": accept})
+    is_page = r.headers.get("content-type", "").startswith("text/html") and 'class="error-page' in r.text
+    assert is_page is page, f"{method} {path} Accept={accept[:30]!r} → {r.status_code} {r.headers.get('content-type')}"
+    if page:
+        assert r.status_code == 404
+
+
 def test_non_get_requests_keep_the_default_response(client):
     """대조군 — 화면이 아닌 메서드(POST 등)의 오류는 오류 화면으로 바꾸지 않는다."""
     r = client.post("/no-such-page", headers=_BROWSER)
