@@ -131,18 +131,26 @@
     }
 
     /* ── 오류 배너 ──────────────────────────────────────── */
+    /* 🔴 left:50% + translateX(-50%) + auto 폭이면 «줄어든 폭» 이 화면 절반으로 묶인다 — 375px 에서
+       ~180px 로 한 단어씩 줄바꿈되며 히어로 제목을 덮었다. 좌우 16px 안에서 내용 폭만큼, 가운데.
+       Centre within 16px gutters at content width; left:50% capped the shrink-to-fit width at half the viewport. */
     .auth-error-banner {
       position: fixed;
       top: calc(72px + env(safe-area-inset-top, 0px));
-      left: 50%;
-      transform: translateX(-50%);
+      left: 16px;
+      right: 16px;
+      width: fit-content;
+      margin: 0 auto;
       z-index: 200;
       display: flex;
       align-items: center;
       gap: 10px;
       padding: 12px 20px;
       border-radius: 10px;
-      background: rgba(var(--warning-rgb, 245 158 11), 0.12);
+      /* 불투명 카드 면 위 12% 경고 틴트 — 반투명이면 아래 히어로 글자가 배너 글자와 겹쳐 비쳤다.
+         12% warning tint over the opaque card surface; a see-through banner showed the hero text through it. */
+      background: linear-gradient(rgba(var(--warning-rgb, 245, 158, 11), 0.12), rgba(var(--warning-rgb, 245, 158, 11), 0.12)),
+                  var(--bg-card);
       border: 1px solid rgba(var(--warning-rgb, 245 158 11), 0.35);
       color: var(--text-1);
       font-size: 0.875rem;
@@ -168,7 +176,11 @@
       justify-content: center;
     }
     .auth-error-banner .banner-close:hover { color: var(--text-1); }
-    @keyframes banner-in { from { opacity: 0; transform: translateX(-50%) translateY(-8px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+    /* 기능 카드 4장 — auto-fit(240px)은 본문 860px 에서 3+1 로 한 장이 혼자 줄바꿈됐다. 2×2 · 좁은 화면 1열.
+       Four feature cards: auto-fit left a lone card on its own row; use 2×2, one column on narrow screens. */
+    .features-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+    @media (max-width: 560px) { .features-grid { grid-template-columns: 1fr; } }
+    @keyframes banner-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
 
     /* ── 히어로 섹션 ────────────────────────────────────── */
     .hero {
@@ -543,7 +555,7 @@
   <h2 class="reveal" style="--delay: 0.1s; font-size: var(--fs-2xl, 1.5rem); font-weight: 700; text-align: center; margin-bottom: 36px;">
     {{ 'landing.features_heading' | i18n_args(locale | default('ko')) }}
   </h2>
-  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px;">
+  <div class="features-grid">
     <div class="card card--hover reveal" style="--idx: 0; --delay: 0.15s; padding: 24px;">
       <div style="font-size: 28px; margin-bottom: 12px;">⚡</div>
       <div class="card__title" style="margin-bottom: 8px;">{{ 'landing.feature_auto_title' | i18n_args(locale | default('ko')) }}</div>

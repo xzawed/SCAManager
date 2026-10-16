@@ -86,8 +86,14 @@ def parse_color(value: str) -> tuple[float, float, float, float]:
         return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16), 1.0)
     m = re.fullmatch(r"rgba?\(([^)]+)\)", value)
     if m:
-        nums = [float(p.strip().rstrip("%"))
-                for p in m.group(1).replace("/", ",").split(",") if p.strip()]
+        try:
+            nums = [float(p.strip().rstrip("%"))
+                    for p in m.group(1).replace("/", ",").split(",") if p.strip()]
+        except ValueError as exc:
+            # `rgba(var(--x-rgb), .12)` — 채널이 토큰이면 이 계기는 못 푼다. 터지지 말고 «못 잰다».
+            # Channels given by a token cannot be resolved here: unmeasurable, not a crash.
+            raise AssertionError(
+                f"이 계기가 읽지 못하는 색 형식이다: {value!r} — 초록으로 넘기지 않는다") from exc
         return (nums[0], nums[1], nums[2], nums[3] if len(nums) > 3 else 1.0)
     raise AssertionError(f"이 계기가 읽지 못하는 색 형식이다: {value!r} — 초록으로 넘기지 않는다")
 

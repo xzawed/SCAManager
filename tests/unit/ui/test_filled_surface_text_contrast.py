@@ -148,6 +148,14 @@ def test_a_translucent_fill_is_not_judged_here():
     assert judge(pair, "dark") == "translucent"
 
 
+def test_a_token_channel_colour_is_unmeasured_not_a_crash():
+    r"""cheap\claimed — 채널이 토큰인 `rgba(var(--x-rgb), a)` 는 이 계기가 못 푼다. 스캔 전체를
+    `ValueError` 로 죽이지 말고 «못 잰다» 로 센다(랜딩 로그인 배너의 불투명 면, 2026-10-16)."""
+    [pair] = pairs_in(".p { background: linear-gradient(rgba(var(--warning-rgb), .12),"
+                      " rgba(var(--warning-rgb), .12)), var(--bg-card); color: var(--text-1); }", "plant")
+    assert judge(pair, "dark") == "unmeasured"
+
+
 def test_a_border_colour_is_not_a_text_colour():
     r"""cheap\claimed — `border-color` 를 글자색으로 읽으면 없는 쌍을 만든다."""
     assert pairs_in(".p { background: var(--danger); border-color: #fff; }", "plant") == []

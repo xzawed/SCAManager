@@ -1964,10 +1964,9 @@ def detail_field_variants(live_server, gated_settings_repo):
 
 # ── 분석 «표» 의 출처 배지 (`repo_detail.html::renderSourceBadge`) — 2026-09-16 회고 P1-6 ──
 #
-# 🔴 표는 점수 없는 분석을 **언제나** 거른다 — `applyFilters` 가 NULL 점수를 `-1` 로 놓고
-#    `scoreMin`(0) 아래라 버린다. 그래서 위 `detail_field_variants` 의 pr·cli 행(점수 NULL)은
-#    표에 한 번도 안 나온다(실측: gatedrepo 표 1행, Push 뿐). 배지를 그리려면 «점수가 있는»
-#    pr·cli 행이 필요하다.
+# 🔴 표는 점수 없는 분석을 «점수 범위가 기본값일 때만» 보인다(2026-10-16 이전엔 언제나 걸렀다 —
+#    `applyFilters` 가 NULL 을 `-1` 로 놓았다). 범위를 좁히면 빠지므로, 출처 배지를 «점수 있는»
+#    pr·cli 행으로 따로 심어 둔다 — 점수 축 필터와 무관하게 배지가 그려진다.
 # 🔴 `score_unreliable=True` 로 심는다 — 집계(평균·등급·repos 리포트)는 그 행을 빼므로,
 #    같은 리포의 `variant-legacy-scored`(77점·unreliable)처럼 «분석 없음» 팔이 그대로다.
 #    분석 «건수» 는 움직인다 — 그래서 이 픽스처는 마지막 파일의 마지막 시험만 쓴다.
