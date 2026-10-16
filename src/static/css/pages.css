@@ -267,7 +267,7 @@
   cursor: pointer;
 }
 .repo-card:hover {
-  background: var(--bg-card-hi);
+  background: var(--bg-card-hover);
   border-color: var(--border-strong);
   transform: translateY(-1px);
   box-shadow: var(--elev-2);

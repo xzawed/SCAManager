@@ -120,7 +120,8 @@
   .freq-row__label { font-size: var(--fs-sm, 0.875rem); color: var(--text-1, #fff); }
   .freq-row__bar {
     width: 100px; height: 4px;
-    background: var(--table-row-hover, rgba(255,255,255,0.08));
+    /* 트랙은 hover 면이 아니다 — 중립 칩 면을 쓴다(hover 토큰은 catppuccin·dark 에서 따로 간다). */
+    background: var(--bg-mute, rgba(255,255,255,0.08));
     border-radius: var(--radius-pill, 999px); overflow: hidden;
   }
   .freq-row__bar-fill {
@@ -229,6 +230,10 @@
     transition: transform .15s ease, box-shadow .15s ease;
   }
   .dash-cta-btn:hover {
+    /* 🔴 링크다 — 전역 `a:hover`(0,1,1)가 위 `.dash-cta-btn`(0,1,0)의 글자색을 이겨 accent 면 위에
+       accent 글자(1.00~2.43)가 됐다. hover 에서도 면 위 글자 토큰을 다시 건다.
+       The global a:hover out-specifies the base rule; restate the on-accent text colour. */
+    color: var(--btn-on-accent, #fff);
     transform: translateY(-1px);
     box-shadow: 0 6px 20px rgba(var(--accent-rgb, 99,102,241), 0.3);
     text-decoration: none;

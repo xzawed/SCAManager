@@ -63,11 +63,13 @@
   color: var(--accent-text);
   text-decoration: none;
   font-weight: 500;
-  transition: opacity 0.15s ease;
+  transition: color 0.15s ease;
 }
 
+/* 🔴 hover 를 `opacity` 로 흐리면 글자 대비가 같이 깎인다(light 4.15). 링크 hover 와 같은 글자 토큰.
+   Dimming with opacity cuts the text contrast; switch to the hover text token. */
 .admin-link:hover {
-  opacity: 0.8;
+  color: var(--accent-text-hover);
 }
 
 /* ── 상태 배지 (공통) / Status badges (shared) ───────────── */

@@ -221,8 +221,9 @@ button { font-family: inherit; }
 .card--solid {
   background: var(--bg-elevated);
 }
+/* hover 면은 전용 토큰 — `--bg-card-hi` 는 catppuccin 에서 카드보다 밝은 칩 면이다(회고 P1-28). */
 .card--hover:hover {
-  background: var(--bg-card-hi);
+  background: var(--bg-card-hover);
   border-color: var(--border-strong);
   transform: translateY(-1px);
   box-shadow: var(--elev-2);
@@ -480,7 +481,7 @@ button { font-family: inherit; }
   overflow: hidden;
   transition: all var(--dur-fast) var(--ease-out);
 }
-.kpi:hover { background: var(--bg-card-hi); border-color: var(--border-strong); }
+.kpi:hover { background: var(--bg-card-hover); border-color: var(--border-strong); }
 
 .kpi__label {
   font-size: var(--fs-xs);
@@ -521,10 +522,10 @@ button { font-family: inherit; }
    The chip's ground is a grade tint, so its text is the grade colour. */
 .kpi__delta--up   { color: var(--grade-a); background: var(--grade-a-bg); }
 .kpi__delta--down { color: var(--grade-f); background: var(--grade-f-bg); }
-/* 🔴 워시 위의 3차 글자 — `--bg-mute` 위에서 `--text-3` 은 어느 테마도 AA 를 못 넘는다
-   (dark 3.14 · light 2.93 · pastel 2.41 · catppuccin 2.47). 지금은 `dashboard.html` 의
-   같은 이름 규칙이 뒤에 와서 이기지만, 그 규칙이 사라지면 이쪽이 칠해진다.
-   This combination cannot reach AA in any theme; it must not come back if the page rule goes. */
+/* 🔴 워시 위의 3차 글자 — `--bg-mute` 위에서 `--text-3` 은 catppuccin 이 AA 를 못 넘는다(4.10 —
+   그 면이 카드보다 밝다. dark·light·pastel 은 행 hover 가 같은 면이라 4.6 을 넘게 맞췄다).
+   지금은 `dashboard.html` 의 같은 이름 규칙이 뒤에 와서 이기지만, 그 규칙이 사라지면 이쪽이 칠해진다.
+   Catppuccin cannot reach AA here; it must not come back if the page rule goes. */
 .kpi__delta--flat { color: var(--text-2);     background: var(--bg-mute); }
 .kpi__foot { font-size: var(--fs-xs); color: var(--text-3); }
 
@@ -555,7 +556,7 @@ button { font-family: inherit; }
   align-items: start;
   transition: background var(--dur-fast) var(--ease-out);
 }
-.issue:hover { background: var(--bg-mute); }
+.issue:hover { background: var(--table-row-hover); }
 .issue:last-child { border-bottom: 0; }
 .issue__sev {
   width: 8px; height: 8px;
@@ -605,7 +606,8 @@ button { font-family: inherit; }
   color: var(--text-1);
   vertical-align: middle;
 }
-.tbl tr:hover td { background: var(--bg-mute); }
+/* 행 hover 는 칩 면(`--bg-mute`)이 아니라 전용 토큰 — catppuccin 에서 그 위 F 칩 3.41 이었다. */
+.tbl tr:hover td { background: var(--table-row-hover); }
 .tbl tr:last-child td { border-bottom: 0; }
 
 /* ==========================================================================
@@ -1119,7 +1121,12 @@ body.fx-ready .fx-enter.is-in-view {
   color: var(--accent-text); cursor: pointer; transition: background 0.15s;
   flex-shrink: 0; white-space: nowrap;
 }
-.btn-register:hover { background: color-mix(in srgb, var(--accent) 20%, transparent); }
+/* hover 는 accent 틴트가 두 배라 기본 글자(`--accent-text`)가 light 4.37 · catppuccin 4.32 —
+   링크 hover 와 같은 글자 토큰으로 옮긴다. Hover doubles the tint; use the hover text token. */
+.btn-register:hover {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--accent-text-hover);
+}
 
 /* ── Issue 등록 모달 / Issue registration modal ──────────────── */
 .issue-modal-overlay {

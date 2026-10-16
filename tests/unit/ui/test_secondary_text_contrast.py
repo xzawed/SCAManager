@@ -16,7 +16,7 @@ guards that catch a revert where e2e is not run.
 import pathlib
 import re
 
-from ._contrast import THEMES, body_gradient_stops, strip_css_comments
+from ._contrast import THEMES, body_gradient_stops, hover_grounds, strip_css_comments
 
 _ROOT = pathlib.Path(__file__).resolve().parents[3]
 
@@ -26,6 +26,8 @@ _AA = 4.5
 # 「글자가 실제로 앉는 바탕」. 칩·인셋 표면(`--bg-mute`·`--bg-input`·`--bg-card-hi`)은
 # 제외한다 — 그 위에 3차 글자를 얹지 않는 것이 이 PR 이 세운 규칙이고,
 # `test_faint_text_is_not_painted_on_chip_surfaces` 가 그것을 따로 지킨다.
+# 🔴 행·카드 hover 면(`_contrast.HOVER_GROUNDS`)은 «안» 이다 — 그 안의 글자는 전부 그 위에 앉는다.
+#    빠져 있어 `.issue__path` 가 행 hover 에서 light 4.24 · catppuccin 4.10 인 것을 못 봤다(회고 P1-28).
 _GROUNDS = ("--bg-base", "--bg-canvas", "--bg-card", "--bg-nav", "--bg-elevated")
 
 
@@ -131,12 +133,12 @@ def _grounds(block: str) -> dict[str, tuple]:
 
 
 def _extra_grounds(theme: str) -> dict[str, tuple]:
-    """토큰 밖의 바탕 — pastel 은 body 가 그라디언트라 stop 전부가 글자 바탕이다.
+    """토큰 블록 밖에서 읽는 바탕 — pastel body 그라디언트 stop 과 행·카드 hover 면.
 
-    실측에서 이 테마의 최악 표면(2.40)이 바로 이 그라디언트의 어두운 stop 이었다.
-    읽는 법은 공용 `_contrast.body_gradient_stops` 한 곳에 둔다.
+    pastel 의 최악 표면(2.40)이 이 그라디언트의 어두운 stop 이었다. hover 면은 별칭 토큰이라
+    팔레트 블록 하나로는 못 푼다. 읽는 법은 공용 `_contrast` 한 곳에 둔다.
     """
-    return body_gradient_stops(theme)
+    return {**body_gradient_stops(theme), **hover_grounds(theme)}
 
 
 def test_faint_text_token_meets_aa_on_every_ground():
@@ -206,11 +208,11 @@ def test_text_hierarchy_stays_visibly_separated():
 
 
 def test_faint_text_is_not_painted_on_chip_surfaces():
-    """🔴 3차 글자를 칩 표면(`--bg-mute`)에 얹지 않는다 — 그 조합은 어느 테마도 AA 를 못 넘는다.
+    """🔴 3차 글자를 칩 표면(`--bg-mute`)에 얹지 않는다 — catppuccin 은 그 조합이 AA 를 못 넘는다.
 
-    실측: `--bg-mute` 위에서 `--text-3` 은 dark 3.14 · light 2.93 · pastel 2.41 ·
-    catppuccin 2.47. 여기를 통과시키려면 `--text-3` 이 `--text-2` 를 지나쳐야 한다
-    (catppuccin 은 팔레트에 그런 색이 없다). 그래서 색이 아니라 «조합» 을 막는다.
+    계산: `--bg-mute` 위에서 `--text-3` 은 dark 4.62 · light 4.64 · pastel 4.66(세 테마는 행
+    hover 가 같은 면이라 맞췄다) · catppuccin 4.10. catppuccin 을 통과시키면 3차가 2차(5.15)와
+    1.15배 안으로 붙는다. 그래서 색이 아니라 «조합» 을 막는다.
 
     대상: `.kpi__delta--flat` — 회색 워시를 깔고 그 위에 3차 글자를 얹어
     네 테마 전부에서 최악 표면(2.63~3.20)을 만들고 있었다.
@@ -290,8 +292,8 @@ def test_no_rule_pairs_the_faintest_tier_with_a_chip_surface():
     하나도 없어야 그 검사가 거짓 집행자가 아니게 된다. 개별 사례를 하나씩 막는 대신
     부류를 막는다.
 
-    실측: `--bg-mute` 위에서 `--text-3` 은 dark 3.14 · light 2.93 · pastel 2.41 ·
-    catppuccin 2.47. 통과시키려면 `--text-3` 이 `--text-2` 를 지나쳐야 한다.
+    계산: `--bg-mute` 위에서 `--text-3` 은 catppuccin 4.10(나머지 셋은 4.6 대) — 통과시키면
+    2차와 붙는다. `--bg-input`·`--bg-card-hi` 는 어느 테마에서도 보장하지 않는다.
 
     This is what makes the 5-ground check above honest: the excluded surfaces are excluded
     only because no rule may pair them with the faintest tier.

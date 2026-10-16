@@ -95,37 +95,9 @@ def test_repo_detail_score_chart_renders(seeded_page: Page, base_url: str):
     )
 
 
-def _seed_two_pages(db_path: str, count: int = 25) -> None:
-    """`PAGE_SIZE`(20)를 넘기는 분석 이력을 넣어 페이지네이션이 나타나게 한다."""
-    from sqlalchemy import create_engine, text
-    engine = create_engine(f"sqlite:///{db_path}")
-    with engine.connect() as conn:
-        row = conn.execute(text(
-            "SELECT id FROM repositories WHERE full_name='owner/testrepo'"
-        )).fetchone()
-        if row is None:
-            raise RuntimeError("_seed_repo must run before _seed_two_pages")
-        repo_id = row[0]
-        from src.scorer.reliability import score_is_unreliable  # noqa: PLC0415
-        result = {"summary": "page"}
-        for i in range(count):
-            conn.execute(text("""
-                INSERT OR IGNORE INTO analyses
-                    (repo_id, commit_sha, commit_message, score, grade, result, author_login,
-                     score_unreliable, created_at)
-                VALUES
-                    (:rid, :sha, :msg, :score, 'B', :res, 'e2e-tester',
-                     :unrel, datetime('now', :delta))
-            """), {"rid": repo_id, "sha": f"page-sha-{i:03d}", "msg": f"feat: page seed {i}",
-                   "score": 60 + (i * 7) % 35, "res": json.dumps(result),
-                   "delta": f"-{count - i} hours",
-                   "unrel": score_is_unreliable(result)})
-        conn.commit()
-    engine.dispose()
-
-
 @pytest.mark.e2e
-def test_repo_detail_rows_stay_visible_after_rerender(seeded_page: Page, base_url: str):
+def test_repo_detail_rows_stay_visible_after_rerender(seeded_page: Page, base_url: str,
+                                                       paginated_history: int):
     """🔴 표를 **다시 그린 뒤에도** 행이 보여야 한다 — 사용자에게 「내용 유실」로 보이던 사고.
 
     `.reveal { opacity: 0 }` 이고 `.visible` 은 IntersectionObserver 가 붙인다. 그 관찰 등록은
@@ -137,8 +109,6 @@ def test_repo_detail_rows_stay_visible_after_rerender(seeded_page: Page, base_ur
     본다. 애니메이션이 실패할 때 「안 움직임」이 아니라 「안 보임」이 되던 것이 결함의 본체다.
     Assert computed opacity, not row presence: the rows existed throughout the incident.
     """
-    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
-    _seed_two_pages(db_path)
     seeded_page.goto(f"{base_url}/repos/owner/testrepo")
 
     def visible_rows() -> int:

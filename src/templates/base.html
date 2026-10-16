@@ -413,7 +413,8 @@
     }
     .btn-ghost:hover, .btn--ghost:hover {
       border-color: var(--accent);
-      color: var(--accent);
+      /* hover 도 «글자» 다 — 면 색 `--accent` 는 pastel 3.07(회고 P1-27). `a:hover` 와 같은 토큰. */
+      color: var(--accent-text-hover);
       background: rgba(94,106,210,.06);
       text-decoration: none;
     }
