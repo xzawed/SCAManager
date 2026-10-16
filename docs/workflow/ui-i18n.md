@@ -32,6 +32,7 @@ CSS 순서 = `src/templates/base.html::css/tokens.css">` — tokens → themes �
 1. 색·간격·반경 = `var(--...)`. 새 토큰은 `src/static/css/tokens.css` `[data-theme]` 4블록 전부.
 2. 스타일: `components.css`(공용) · `pages.css` · `admin.css`(관리자) · `repo_insights.css`.
 3. 인라인 `<script>` top-level 은 `var`, 리스너는 named handler + `removeEventListener`/`AbortController`(hx-boost swap 이 재실행).
+   첫 그림에 보일 상태(테마·등장 전)는 body 끝이 아니라 `base.html` `<head>` 부트스트랩이 정한다 — 등장 대상을 늘리면 `html.fx-pending` 목록도(`tests/unit/ui/test_first_paint_bootstrap.py`).
 4. `new Chart` 앞 `if (typeof Chart === 'undefined') return;`.
 5. `input`/`select` = i18n `aria-label`, `.field-label` = `for`.
 6. 외부 CDN 금지(CSP `src/main.py::Content-Security-Policy` = `'self'`) — `src/static/vendor/` 참조.

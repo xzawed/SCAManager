@@ -1,10 +1,29 @@
 <!DOCTYPE html>
-<html lang="{{ locale | default('ko') }}" data-variant="refined" data-density="comfortable" data-radius="balanced" data-motion="live">
+<html lang="{{ locale | default('ko') }}" data-theme="dark" data-variant="refined" data-density="comfortable" data-radius="balanced" data-motion="live">
 <head>
   <meta charset="UTF-8">
   <!-- viewport-fit=cover: iOS notch 디바이스의 safe-area-inset env() 활성화
        viewport-fit=cover: enables safe-area-inset env() on iOS notch devices -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <script>
+    // 첫 그림 부트스트랩 — 저장된 테마와 «등장 전» 표식을 어떤 본문보다 먼저 건다.
+    //   body 끝 스크립트에 두면 그 앞 외부 스크립트(no-cache 재검증)를 기다리는 동안 브라우저가
+    //   먼저 그려, 라이트 사용자에게 dark 가 보였고 카드가 보였다가 숨었다(e2e/test_first_paint.py).
+    //   🔴 var — 이 두 이름은 body 끝 스크립트가 쓴다(hx-boost 재실행에도 전역으로 남는다).
+    // First-paint bootstrap: apply the stored theme and the pre-entrance flag before any body markup.
+    var THEME_MIGRATE = { 'glass': 'pastel', 'claude-dark': 'catppuccin' };
+    var SCA_THEME_ICONS = { dark: '🌌', light: '☀️', pastel: '🌸', catppuccin: '🐾' };
+    (function () {
+      var t = 'dark';
+      try {
+        var s = localStorage.getItem('sca-theme');
+        s = THEME_MIGRATE[s] || s;
+        if (Object.prototype.hasOwnProperty.call(SCA_THEME_ICONS, s)) t = s;
+      } catch (e) { /* 저장소 차단 — 기본 테마 / storage blocked: default theme */ }
+      document.documentElement.setAttribute('data-theme', t);
+      document.documentElement.classList.add('fx-pending');
+    })();
+  </script>
   <!-- Cycle 81 PR-A — PWA manifest + theme-color + apple-touch-icon (홈 화면 추가 + iOS PWA standalone 호환) -->
   <!-- Cycle 81 PR-A — PWA manifest + theme-color + apple-touch-icon (Add to Home Screen + iOS PWA standalone) -->
   <link rel="manifest" href="/static/manifest.json">
@@ -623,6 +642,20 @@
        reveal: animation triggered when IntersectionObserver adds .visible */
     .reveal { opacity: 0; }
     .reveal.visible { animation: var(--anim-reveal-up); animation-delay: calc(var(--i,0) * 60ms); }
+    /* 첫 그림 — head 부트스트랩이 html.fx-pending 을 건다. reveal(_initReveal)과 effects.js
+       (setupEntryAnimations)는 외부 스크립트 재검증 뒤에야 돌아, 그 사이 브라우저가 카드·KPI 를
+       «보이게» 그렸다가 숨기고 숫자를 0 부터 다시 셌다. 그 대상을 처음부터 등장 전 상태로 둔다.
+       목록은 두 스크립트의 대상과 같아야 한다(tests/unit/ui/test_first_paint_bootstrap.py).
+       5s 안전망: 스크립트가 끝내 안 돌면 그대로 보이게 한다. effects.js init 이 표식을 뗀다.
+       First paint: keep entrance targets in their pre-entrance state until the scripts take over. */
+    html.fx-pending :is(.card, .s-card, .kpi-card):not(.visible),
+    html.fx-pending :is(.fx, .kpi, .principle, .full-card, .repo-card, .demo-grid, .detail-hero, .swatch,
+                        .tk-card, .freq-row, .reason-row, .breakdown__row, .issue, .pager, .alert,
+                        .section__head, .frame):not(.is-in-view) {
+      opacity: 0;
+      animation: fx-pending-failsafe 0s linear 5s forwards;
+    }
+    @keyframes fx-pending-failsafe { to { opacity: 1; } }
     /* 탭 패널: .active 클래스로 show/hide + tab-in 애니메이션
        Tab panel: show/hide via .active class with tab-in animation */
 
@@ -669,7 +702,14 @@
     }
   </style>
 </head>
-<body data-theme="dark" hx-boost="true">
+<body hx-boost="true">
+  {# 🔴 서버는 body 에 테마를 쓰지 않는다 — 토큰은 html 에서 상속되므로 body 는 첫 프레임부터 head
+     부트스트랩이 고른 테마다(쓰면 이 줄이 돌기 전 «빈 배경» 프레임이 그 값으로 그려질 틈이 생긴다).
+     JS 가 꺼진 화면의 기본값은 html 요소의 data-theme="dark". 이 줄은 body[data-theme] 를 읽는 규칙·코드에
+     같은 값을 붙인다 — hx-boost 교체 때도 다시 돌지만 같은 값을 다시 쓸 뿐이다.
+     The server writes no theme on body: tokens inherit from html, so body has the stored theme from the
+     first frame. The no-JS default lives on html; this line mirrors the value for body[data-theme] users. #}
+  <script>document.body.setAttribute('data-theme', document.documentElement.getAttribute('data-theme') || 'dark');</script>
   <!-- Atmosphere background — animated aurora orbs + noise grain (pointer-events:none, z-index:0) -->
   <div class="atmosphere" aria-hidden="true">
     <span class="atmosphere__orb atmosphere__orb--1"></span>
@@ -710,10 +750,21 @@
          data-i18n-theme-pastel-short="{{ 'common.theme.pastel_short' | i18n_args(locale | default('ko')) }}"
          data-i18n-theme-catppuccin-short="{{ 'common.theme.catppuccin_short' | i18n_args(locale | default('ko')) }}">
       <button class="theme-btn" id="themeToggle" aria-label="{{ 'common.theme_aria' | i18n_args(locale | default('ko')) }}" aria-haspopup="true" aria-expanded="false">
-        <span id="themeIcon">🌙</span>
+        <span id="themeIcon">🌌</span>
         <span id="themeName">{{ 'common.theme.dark_short' | i18n_args(locale | default('ko')) }}</span>
         <span class="chevron">▾</span>
       </button>
+      {# 버튼 아이콘·이름도 첫 그림부터 저장 테마로 — 안 하면 다른 테마 사용자에게 dark 표시가 한 번 보인다.
+         Theme button icon/label in the stored theme from the first paint. #}
+      <script>
+        (function () {
+          var t = document.documentElement.getAttribute('data-theme') || 'dark';
+          var ds = document.getElementById('themeSwitcher').dataset;
+          var nm = ds['i18nTheme' + t.charAt(0).toUpperCase() + t.slice(1) + 'Short'];
+          document.getElementById('themeIcon').textContent = SCA_THEME_ICONS[t] || SCA_THEME_ICONS.dark;
+          if (nm) document.getElementById('themeName').textContent = nm;
+        })();
+      </script>
       <div class="theme-dropdown" id="themeDropdown" role="menu">
         <div class="theme-option" data-theme-target="dark"       role="menuitemradio" aria-checked="false" tabindex="0">🌌 {{ 'common.theme.dark_label' | i18n_args(locale | default('ko')) }}</div>
         <div class="theme-option" data-theme-target="light"      role="menuitemradio" aria-checked="false" tabindex="0">☀️ {{ 'common.theme.light_label' | i18n_args(locale | default('ko')) }}</div>
@@ -752,11 +803,8 @@
        Child template scripts block — placed after htmx load to prevent race conditions -->
   {% block scripts %}{% endblock %}
   <script>
-    // 테마 마이그레이션: glass→pastel, claude-dark→catppuccin (2026-05-11 UI 리디자인)
-    // Theme migration: glass→pastel, claude-dark→catppuccin (2026-05-11 UI redesign)
-    // 🔴 var 사용 필수 — const는 hx-boost body swap 후 스크립트 재실행 시 재선언 SyntaxError 유발
-    // 🔴 Must use var — const causes SyntaxError on re-execution after hx-boost body swap
-    var THEME_MIGRATE = { 'glass': 'pastel', 'claude-dark': 'catppuccin' };
+    // 테마 마이그레이션 표(THEME_MIGRATE)·아이콘(SCA_THEME_ICONS)은 head 부트스트랩에 있다 — 한 곳.
+    // The theme migration map and icons live in the head bootstrap (single source).
     // 테마 짧은 이름은 themeSwitcher 컨테이너의 data-i18n 속성에서 읽음 (locale별 i18n)
     // Theme short names are read from themeSwitcher container's data-i18n attributes (locale-aware i18n)
     // 🔴 var 사용 필수 — hx-boost body swap 후 재실행 시 매번 dataset 재읽기 (stale 방지)
@@ -764,10 +812,10 @@
     var _themeSw = document.getElementById('themeSwitcher');
     var _themeDs = (_themeSw && _themeSw.dataset) || {};
     var THEMES = {
-      dark:        { icon: '🌌', name: _themeDs.i18nThemeDarkShort || '다크' },
-      light:       { icon: '☀️', name: _themeDs.i18nThemeLightShort || '라이트' },
-      pastel:      { icon: '🌸', name: _themeDs.i18nThemePastelShort || '파스텔' },
-      catppuccin:  { icon: '🐾', name: _themeDs.i18nThemeCatppuccinShort || '개발자' }
+      dark:        { icon: SCA_THEME_ICONS.dark,       name: _themeDs.i18nThemeDarkShort || '다크' },
+      light:       { icon: SCA_THEME_ICONS.light,      name: _themeDs.i18nThemeLightShort || '라이트' },
+      pastel:      { icon: SCA_THEME_ICONS.pastel,     name: _themeDs.i18nThemePastelShort || '파스텔' },
+      catppuccin:  { icon: SCA_THEME_ICONS.catppuccin, name: _themeDs.i18nThemeCatppuccinShort || '개발자' }
     };
 
     function applyTheme(theme) {
@@ -1046,6 +1094,18 @@
     document._initRevealHandler = _initReveal;
     document.addEventListener('htmx:afterSettle', document._initRevealHandler);
     document.addEventListener('htmx:historyRestore', document._initRevealHandler);
+
+    // 🔴 몸통 교체(hx-boost 이동 · 언어 전환) 직전에도 «등장 전» 표식을 건다. 안 걸면 새 본문이 정착
+    //    (settle 20ms) 전 한 프레임 그대로 그려진 뒤 effects.js 가 KPI 를 0 으로 되돌려 다시 셌다
+    //    (실측: `/` → 대시보드 6회 중 5회 «85 → 14»). 표식은 effects.js init 이 뗀다(5s 안전망 동일).
+    //    실제로 교체할 때만 — 오류 응답(shouldSwap=false)에 걸면 옛 화면이 안전망까지 비어 보인다.
+    // Raise the first-paint flag before a whole-body swap too; effects.js init clears it.
+    if (document._fxPendingOnSwap) document.removeEventListener('htmx:beforeSwap', document._fxPendingOnSwap);
+    document._fxPendingOnSwap = function (e) {
+      var d = e.detail || {};
+      if (d.shouldSwap && d.target === document.body) document.documentElement.classList.add('fx-pending');
+    };
+    document.addEventListener('htmx:beforeSwap', document._fxPendingOnSwap);
 
     // 🔴 평범한 JS 가 넣은 .reveal 도 관찰한다 — 안 하면 **내용이 사라진다**.
     //    htmx 이벤트만 듣던 이전 판에서, 리포 상세의 표를 다시 그리는 모든 경로
