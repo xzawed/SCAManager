@@ -176,3 +176,15 @@ def test_countup_lands_on_the_server_text_and_never_goes_negative(
     ctx.close()
     assert measured, "카운트업 대상을 0개 쟀다 — 선택자가 화면과 어긋났다(공허한 초록)"
     assert not problems, "카운트업:\n  " + "\n  ".join(problems)
+
+
+def test_a_missing_page_opened_in_the_browser_is_an_error_page(seeded_page, base_url):
+    """🔴 브라우저로 없는 리포 주소를 열면 JSON 원문이 아니라 nav 가 있는 오류 화면이다(상태 404 유지)."""
+    resp = seeded_page.goto(f"{base_url}/repos/{quote('owner/no-such-repo', safe='')}")
+    assert resp.status == 404, f"상태가 {resp.status} — 404 를 유지해야 한다"
+    assert resp.headers.get("content-type", "").startswith("text/html"), resp.headers.get("content-type")
+    body = seeded_page.locator("body").inner_text()
+    assert '"detail"' not in body, f"브라우저에 JSON 원문이 보인다: {body[:120]!r}"
+    assert seeded_page.locator("nav").count() == 1, "base 를 상속한 화면이 아니다(nav 없음)"
+    assert seeded_page.locator(".error-page h1").is_visible(), "오류 제목이 보이지 않는다"
+    assert seeded_page.locator(".error-page a[href='/']").count() == 1, "개요로 돌아가는 길이 없다"

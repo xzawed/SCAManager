@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{# 브라우저 화면 요청의 404·403 화면 — src/ui/error_page.py 가 그린다(API 는 JSON 그대로).
+   Error page for browser page requests on 404/403; rendered by src/ui/error_page.py. #}
+{% block title %}{% if status_code == 403 %}{{ 'errors.page.title_403' | i18n_args(locale | default('ko')) }}{% else %}{{ 'errors.page.title_404' | i18n_args(locale | default('ko')) }}{% endif %} — SCAManager{% endblock %}
+{% block content %}
+<style>
+  .error-page { max-width: 560px; margin: var(--space-12, 4rem) auto; padding: 0 var(--space-4, 1rem); text-align: center; }
+  .error-page__code { font-family: var(--font-mono, monospace); font-size: 56px; font-weight: 700; line-height: 1; color: var(--text-3); }
+  .error-page__title { margin: var(--space-4, 1rem) 0 var(--space-2, 0.5rem); font-size: var(--fs-2xl, 1.5rem); color: var(--text-1); }
+  .error-page__desc { margin: 0 0 var(--space-6, 1.5rem); color: var(--text-2); }
+  .error-page__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-3, 0.75rem); }
+</style>
+<div class="error-page">
+  <div class="error-page__code" aria-hidden="true">{{ status_code }}</div>
+  {% if status_code == 403 %}
+  <h1 class="error-page__title">{{ 'errors.page.title_403' | i18n_args(locale | default('ko')) }}</h1>
+  <p class="error-page__desc">{{ 'errors.page.desc_403' | i18n_args(locale | default('ko')) }}</p>
+  {% else %}
+  <h1 class="error-page__title">{{ 'errors.page.title_404' | i18n_args(locale | default('ko')) }}</h1>
+  <p class="error-page__desc">{{ 'errors.page.desc_404' | i18n_args(locale | default('ko')) }}</p>
+  {% endif %}
+  <div class="error-page__actions">
+    <a class="btn btn--primary" href="/">{{ 'errors.page.go_overview' | i18n_args(locale | default('ko')) }}</a>
+    {% if current_user %}
+    <a class="btn btn--ghost" href="/dashboard">{{ 'errors.page.go_dashboard' | i18n_args(locale | default('ko')) }}</a>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
