@@ -34,9 +34,11 @@ bandit==1.9.4
 # 🔴 semgrep 핀이 전이 의존 넷을 좁게 정한다 — pyjwt · mcp · click · opentelemetry-api.
 #   1.170.x 는 pyjwt~=2.13.0 을 강제해 pyjwt 권고가 pip-audit 를 막았고, 1.180.0 은 예외 없이 감사 0건이다.
 #   opentelemetry-api~=1.37 을 강제해 fastapi 0.142.0+(>=1.44)와 공존할 수 없다 → fastapi 보류(#1733).
+#   `mcp==1.29.0` 정확 핀이 CVE-2026-59951 을 막는다 — 감사 예외와 제거 조건은 ci.yml pip-audit 스텝.
 # 🔴 The semgrep pin narrowly fixes four transitives — pyjwt · mcp · click · opentelemetry-api.
 #   1.170.x forced pyjwt~=2.13.0 and failed pip-audit; 1.180.0 audits clean with no ignores.
 #   It forces opentelemetry-api~=1.37, which fastapi 0.142.0+ (>=1.44) cannot share → fastapi hold (#1733).
+#   Its exact `mcp==1.29.0` pin trips CVE-2026-59951 — exception and removal terms live in ci.yml (pip-audit).
 semgrep==1.180.0
 slither-analyzer==0.11.6
 sqlfluff==4.4.0
