@@ -462,13 +462,20 @@
   function init() {
     // 일괄 dispose 없음 — 사유는 상단 `seen`/안전망 주석 참조.
     // No blanket dispose here — see the safety-net comment above.
-    setupEntryAnimations();
-    setupCountUp();
-    setupScoreBars();
-    setupFreqBars();
-    setupChartLines();
-    setupChartDonuts();
-    setupSmoothScroll();
-    setupMagnetic();
+    try {
+      setupEntryAnimations();
+      setupCountUp();
+      setupScoreBars();
+      setupFreqBars();
+      setupChartLines();
+      setupChartDonuts();
+      setupSmoothScroll();
+      setupMagnetic();
+    } finally {
+      // 첫 그림 표식(base.html <head>) 해제 — 이제부터 등장 전 상태는 .fx-enter·.reveal 이 맡는다.
+      //   중간 setup 이 던져도 떼야 한다: 안 떼면 5s 안전망까지 화면이 비어 보인다.
+      // Drop the first-paint flag; .fx-enter/.reveal own the pre-entrance state from here on.
+      document.documentElement.classList.remove("fx-pending");
+    }
   }
 })();
