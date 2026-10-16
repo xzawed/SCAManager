@@ -45,6 +45,13 @@ _AUDIT_SUFFIXES = ("_AUDIT_JS", "_BASE_JS")
 #    역방향 검사가 곧바로 「죽은 면제」로 잡았다 — 필요 없는 면제는 두지 않는다.
 _EXEMPT: dict[str, str] = {}
 
+# 스크롤은 «호출자» 가 하는 헬퍼 — 이미 드러낸 같은 화면을 다른 상태로 다시 잰다.
+# 🔴 헬퍼만 면제하면 새 호출자가 스크롤 없이 부를 수 있다 — 이 헬퍼를 «부르는» 함수를 스윕으로
+#    세어 그쪽에 스크롤을 요구한다.
+_CALLER_SCROLLS: dict[str, str] = {
+    "_audit_text_under_hover": "쉬는 상태를 잰 같은 화면을 hover 두 상태로 다시 잰다(E-1).",
+}
+
 
 def _audit_constants() -> set[str]:
     """`*_AUDIT_JS`·`*_BASE_JS` 로 끝나는 모듈 상수 이름."""
@@ -61,10 +68,12 @@ def sweep_functions() -> dict[str, bool]:
     """{픽셀 감사를 돌리는 함수 이름: 스크롤을 태우는가}."""
     src = _SWEEP.read_text(encoding="utf-8")
     tree = ast.parse(src)
-    audits = _audit_constants()
+    audits = _audit_constants() | set(_CALLER_SCROLLS)
     out: dict[str, bool] = {}
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if node.name in _CALLER_SCROLLS:
             continue
         # 🔴 `evaluate(_TOKEN_TEXT_AUDIT_JS)` 문자열로 찾으면 안 된다. admin·랜딩 스윕은
         #    상수를 **루프 변수**에 담아 `evaluate(js)` 로 부른다(`for js in (…):`).
@@ -122,6 +131,22 @@ def test_exemptions_still_point_at_a_real_sweep():
     assert not stale, (
         "면제 목록이 실재하지 않는 함수를 가리킨다 — 지우거나 갱신한다:\n  "
         + "\n  ".join(stale))
+    defined = {n.name for n in ast.walk(ast.parse(_SWEEP.read_text(encoding="utf-8")))
+               if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    gone = sorted(n for n in _CALLER_SCROLLS if n not in defined)
+    assert not gone, f"호출자 스크롤 헬퍼가 사라졌다 — 지우거나 갱신한다: {gone}"
+
+
+def test_callers_of_a_caller_scrolls_helper_are_held_to_the_rule():
+    """🔴 헬퍼를 «부르기만» 하는 함수도 스윕으로 센다 — 그래야 헬퍼 면제가 구멍이 되지 않는다."""
+    sweeps = sweep_functions()
+    for helper in _CALLER_SCROLLS:
+        assert helper not in sweeps, f"{helper} 자신이 스윕으로 세어졌다 — 호출자 규칙이 꺼졌다"
+    callers = {n.name for n in ast.walk(ast.parse(_SWEEP.read_text(encoding="utf-8")))
+               if isinstance(n, ast.FunctionDef) and n.name not in _CALLER_SCROLLS
+               and any(isinstance(c, ast.Name) and c.id in _CALLER_SCROLLS for c in ast.walk(n))}
+    assert callers, "헬퍼를 부르는 함수를 0개 찾았다 — 헬퍼가 죽었거나 스캔이 죽었다"
+    assert callers <= set(sweeps), f"호출자가 스윕으로 세어지지 않는다: {sorted(callers - set(sweeps))}"
 
 
 def test_the_mobile_target_threshold_is_the_wcag_value():

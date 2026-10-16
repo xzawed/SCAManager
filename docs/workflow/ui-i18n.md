@@ -37,6 +37,7 @@ CSS 순서 = `src/templates/base.html::css/tokens.css">` — tokens → themes �
 6. 외부 CDN 금지(CSP `src/main.py::Content-Security-Policy` = `'self'`) — `src/static/vendor/` 참조.
 7. Tailwind 유틸 신규 시 `npm run build`. `dist/tailwind.css` = gitignore(커밋 금지).
 8. 표 행(`tr`·행에 단 클래스)엔 ::before·::after 금지 — Chromium 이 열로 센다. 강조선은 `td:first-child::before`(`tests/unit/ui/test_table_row_pseudo_element.py::def test_no_table_row`).
+9. hover 로 면을 바꾸면 행 = `--table-row-hover` · 카드 = `--bg-card-hover`. `--bg-mute`·`--bg-card-hi` 는 칩 면이라 catppuccin 에서 그 위 등급 글자가 AA 미달이다(`tests/unit/ui/test_hover_surface_contrast.py::def test_rows_and_cards_repaint_hover_with_the_hover_tokens`).
 
 ## 검증
 

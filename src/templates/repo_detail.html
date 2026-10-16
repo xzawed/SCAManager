@@ -329,7 +329,9 @@
     background: var(--bg-elevated, transparent); color: var(--text-2); cursor: pointer;
     transition: all 0.18s;
   }
-  .filter-btn:hover { border-color: var(--accent); color: var(--accent); }
+  /* hover 도 «글자» 다 — 면 색 `--accent` 는 pastel 3.24(회고 P1-27). `.settings-btn:hover` 와 같은 토큰.
+     Hover text is text: the accent surface colour fails on pastel. */
+  .filter-btn:hover { border-color: var(--accent); color: var(--accent-text-hover); }
   .filter-btn.active { background: var(--accent); color: var(--btn-on-accent, #fff); border-color: var(--accent); }
   /* 🔴 세 형제는 «각자의 면» 에 맞춘 on-토큰을 쓴다 — accent 용(`--btn-on-accent`)을 빌린 pr 은
      pastel 3.57 이었고, cli 는 우연히 통과하고 있었다(회고 P1-26).
@@ -376,7 +378,7 @@
   .score-val-label { font-size: 12px; font-weight: 700; color: var(--text-1); min-width: 28px; text-align: center; }
   /* ── 정렬 헤더 ─────────────────────────── */
   .sortable-th { cursor: pointer; user-select: none; white-space: nowrap; }
-  .sortable-th:hover { color: var(--accent); }
+  .sortable-th:hover { color: var(--accent-text-hover); }
   /* 🔴 `opacity` 는 «곱해진다». 부모에 `.5` 를 걸고 `::after` 에서 `1` 로 되돌리려 했지만
      그 되돌림은 작동하지 않아, 정렬된 열의 화살표까지 0.5 로 그려졌다 —
      실측 1.71~2.97 로 네 테마 전부 3:1 미만이었다(정렬 방향은 «상태» 다).
@@ -396,7 +398,10 @@
     transition: all var(--transition);
     display: inline-flex; align-items: center; justify-content: center;
   }
-  .page-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  /* 🔴 활성 쪽은 hover 에서 뺀다 — `:not(:disabled)` 가 명시도를 올려 아래 `.page-btn.active` 의 글자색까지
+     덮어, 활성 페이지에 마우스를 올리면 accent 면 위 accent 글자(1.0)였다(hover 축이 처음 잼).
+     Keep hover off the active page: the extra :not() out-specified the active text colour. */
+  .page-btn:hover:not(:disabled):not(.active) { border-color: var(--accent); color: var(--accent-text-hover); }
   .page-btn.active { background: var(--accent); border-color: var(--accent); color: var(--btn-on-accent, #fff); font-weight: 700; }
   .page-btn:disabled { opacity: .35; cursor: not-allowed; }
   .page-info { font-size: 12px; color: var(--text-2); margin-top: .35rem; text-align: center; }

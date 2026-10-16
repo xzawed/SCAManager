@@ -9,10 +9,18 @@
 """
 import re
 
-from ._contrast import (AA, ROOT, THEMES, card_surface, decl, over, parse_color, ratio,
-                        read, resolve, strip_css_comments, theme_block)
+from ._contrast import (AA, HOVER_GROUNDS, ROOT, THEMES, over, paint_colours, ratio, read,
+                        strip_css_comments, text_grounds, token_scope)
 
 _GRADES = ("a", "b", "c", "d", "f")
+
+# 등급색이 앉는 바탕 = `_contrast.text_grounds` 에서 «중립 칩 면» 하나를 뺀 것.
+# 등급색은 자기 틴트 칩의 글자이거나 행·카드·페이지 위 맨 글자다 — 중립 칩(`--bg-mute`) 위에
+# 얹지 않는다. catppuccin 은 그 면이 surface1 이라 F 칩 3.41 · 맨 글자 3.94 다(팔레트 그대로).
+# 그 제외가 정당한 근거는 `test_no_rule_paints_grade_text_on_a_neutral_chip_surface` 다.
+# 행·카드 hover 가 이 면을 빌려 칠하던 것이 회고 P1-28 이었다 — hover 면은 `HOVER_GROUNDS` 로 따로 잰다.
+# Grade colours sit on their own tint or on rows/cards/page — never on the neutral chip surface.
+_NEUTRAL_CHIP_SURFACES = ("--bg-mute",)
 
 # 등급 칩을 그리는 템플릿들. 여기에 리터럴이 있으면 테마 토큰이 무력화된다.
 _TEMPLATES = ("src/templates/analysis_detail.html", "src/templates/dashboard.html",
@@ -136,32 +144,112 @@ def test_no_template_hardcodes_grade_chip_colours():
     )
 
 
-def test_grade_chip_text_meets_aa_on_the_card_ground():
-    """🔴 다섯 등급 칩의 글자가 «카드 면 위에서» 네 테마 전부 AA 를 넘어야 한다.
+def _grade_grounds(theme: str) -> dict[str, tuple]:
+    return {k: v for k, v in text_grounds(theme).items() if k not in _NEUTRAL_CHIP_SURFACES}
 
-    칩은 `--grade-X-bg`(틴트)를 카드 면 위에 얹고 그 위에 `--grade-X` 를 쓴다.
-    실측(하드코딩 상태): light 1.57~2.46 · pastel 1.51~2.38.
 
-    🔴 **이 검사가 덮는 바탕은 `--bg-card` 하나다.** 같은 칩이 hero 배너처럼 accent 로
-    물든 «다른» 면 위에도 놓이는데, 그 면은 토큰이 아니라 그라디언트라 여기서 계산할 수
-    없다(실측: catppuccin 등급칩이 repo 상세 hero 위에서 3.40). 그 축은 픽셀 측정이
-    맡는다 — 이 테스트를 「전부 통과」로 읽지 말 것.
+def test_grade_text_meets_aa_on_every_ground_it_sits_on():
+    """🔴 다섯 등급색이 «칩 글자» 로도 «맨 글자» 로도, 앉는 모든 바탕에서 AA 를 넘어야 한다.
 
-    This only covers the card ground; the same chip also sits on accent-tinted hero banners,
-    which are gradients this calculation cannot model.
+    칩은 `--grade-X-bg`(틴트)를 바탕 위에 얹고 그 위에 `--grade-X` 를 쓴다. 맨 글자는
+    점수 숫자(`.score-val`)·증감(`.ri-delta-*`)처럼 바탕에 바로 앉는다.
+
+    🔴 종전 판은 카드 «한 면» 만 쟀고, 여유가 0.00~0.04 였다(회고 P2-19). 그래서 행에
+    마우스를 올려 바탕이 `--bg-mute` 로 바뀌면 light 점수 숫자 4.13 · catppuccin F 칩 3.41 로
+    떨어지는 것을 못 봤다(P1-28). 페이지 바탕·body 그라디언트 stop·hover 면을 다 잰다.
+
+    🔴 hero 배너처럼 accent 그라디언트로 물든 면은 토큰이 아니라 여기서 계산할 수 없다 —
+    그 축은 e2e 픽셀 측정이 맡는다.
+
+    The previous version measured the card alone with 0.00-0.04 headroom; a hovered row
+    dropped grade text below AA. Every page ground, gradient stop and hover surface is measured.
     """
     src = read("src/static/css/tokens.css")
     failures = []
     for theme in THEMES:
-        block = theme_block(src, theme)
-        card = card_surface(block)
+        scope = token_scope(src, theme)
+        grounds = _grade_grounds(theme)
+        # 🔴 hover 면이 목록에서 빠지면 이 시험은 P1-28 을 다시 못 본다 — 못 재면 red.
+        assert set(HOVER_GROUNDS) <= set(grounds), f"[{theme}] hover 면이 바탕 목록에 없다"
         for g in _GRADES:
-            chip = over(parse_color(resolve(block, decl(block, f"--grade-{g}-bg"))), card)
-            fg = parse_color(resolve(block, decl(block, f"--grade-{g}")))
-            r = ratio(over(fg, chip), chip)
+            fg = paint_colours(scope, f"var(--grade-{g})")[0]
+            tint = paint_colours(scope, f"var(--grade-{g}-bg)")[0]
+            for name, ground in grounds.items():
+                for kind, bg in (("chip", over(tint, ground)), ("plain", ground)):
+                    r = ratio(over(fg, bg), bg)
+                    if r < AA:
+                        failures.append(f"[{theme}] --grade-{g} {kind} on {name}: {r:.2f} < {AA}")
+    assert not failures, "등급색 글자가 AA 미달인 조합:\n  " + "\n  ".join(failures)
+
+
+def test_danger_text_meets_aa_on_every_ground_it_sits_on():
+    """🔴 `--danger` 도 «글자» 다 — 위험 구역 제목·오류 문구·`.btn--danger`. 등급 F 와 같은 바탕에 앉는다.
+
+    실측(수정 전): pastel 은 카드 위 4.55 였지만 행 hover 면 3.81 · body 그라디언트 stop 3.79 —
+    가드가 없어 아무도 재지 않았다. dark·catppuccin 은 값이 `--grade-f` 와 같다.
+    `--danger` is used as text on the same grounds as grade F; nothing measured it.
+    """
+    src = read("src/static/css/tokens.css")
+    failures = []
+    for theme in THEMES:
+        scope = token_scope(src, theme)
+        fg = paint_colours(scope, "var(--danger)")[0]
+        for name, ground in _grade_grounds(theme).items():
+            r = ratio(over(fg, ground), ground)
             if r < AA:
-                failures.append(f"[{theme}] --grade-{g} on its chip: {r:.2f} < {AA}")
-    assert not failures, "등급 칩 글자가 AA 미달인 조합:\n  " + "\n  ".join(failures)
+                failures.append(f"[{theme}] --danger on {name}: {r:.2f} < {AA}")
+    assert not failures, "`--danger` 글자가 AA 미달인 조합:\n  " + "\n  ".join(failures)
+
+
+# 등급색(과 `--danger`)을 «글자» 로 칠하는 선언 — `color`·`--g-color`(칩이 그것을 글자색으로 쓴다).
+# `--grade-a-bg`·`--danger-text-on` 같은 형제 토큰은 아니다.
+_GRADE_TEXT_RE = re.compile(
+    r"(?<![\w-])(?:color|-webkit-text-fill-color|--g-color)\s*:[^;{}]*"
+    r"var\(\s*(?:--grade-[a-z]|--danger)(?![\w-])")
+_NEUTRAL_SURFACE_RE = re.compile(
+    r"(?<![\w-])(?:background(?:-color)?|--g-bg)\s*:[^;{}]*var\(\s*("
+    + "|".join(re.escape(n) for n in _NEUTRAL_CHIP_SURFACES) + r")(?![\w-])")
+
+
+def _pairs_grade_text_with_neutral_chip(body: str) -> bool:
+    return bool(_GRADE_TEXT_RE.search(body) and _NEUTRAL_SURFACE_RE.search(body))
+
+
+def test_the_grade_pairing_probe_judges_by_role_not_by_mention():
+    """🔴 아래 가드가 «잴 수 있는지» — 진짜 짝은 잡고, 형제 토큰·별칭은 놓아준다."""
+    assert _pairs_grade_text_with_neutral_chip("color: var(--grade-f); background: var(--bg-mute);")
+    assert _pairs_grade_text_with_neutral_chip("--g-color: var(--grade-b); --g-bg: var(--bg-mute);")
+    assert not _pairs_grade_text_with_neutral_chip(
+        "color: var(--text-2); background: var(--bg-mute);"), "중립 글자를 등급 글자로 오판한다"
+    assert not _pairs_grade_text_with_neutral_chip(
+        "color: var(--grade-a); background: var(--grade-a-bg);"), "제 틴트 칩을 중립 칩으로 오판한다"
+    assert not _pairs_grade_text_with_neutral_chip(
+        "border-color: var(--grade-a-bd); background: var(--bg-mute);"), "테두리를 글자로 오판한다"
+    assert _pairs_grade_text_with_neutral_chip("color: var(--danger); background: var(--bg-mute);")
+    assert not _pairs_grade_text_with_neutral_chip(
+        "color: var(--danger-text-on); background: var(--bg-mute);"), "on-토큰을 위험 글자로 오판한다"
+
+
+def test_no_rule_paints_grade_text_on_a_neutral_chip_surface():
+    """🔴 어떤 규칙도 «중립 칩 면 위에 등급색·`--danger` 글자» 를 만들지 않는다 — 위 두 시험의 바탕
+    목록이 그 면을 빼는 근거.
+
+    `test_secondary_text_contrast.py::test_no_rule_pairs_the_faintest_tier_with_a_chip_surface`
+    와 같은 구조다. 같은 블록 안의 짝만 본다 — 조상 hover 가 면을 바꾸는 경우는
+    e2e hover 스윕(`e2e/test_theme_mobile_guards.py::_audit_text_under_hover`)과
+    `test_hover_surface_contrast.py` 가 맡는다.
+    """
+    offenders = []
+    for path in sorted((ROOT / "src").rglob("*.css")) + sorted(
+            (ROOT / "src" / "templates").glob("*.html")):
+        text = strip_css_comments(path.read_text(encoding="utf-8"))
+        for m in re.finditer(r"\{([^{}]*)\}", text):
+            if _pairs_grade_text_with_neutral_chip(m.group(1)):
+                offenders.append(f"{path.relative_to(ROOT).as_posix()}: "
+                                 f"{text[max(0, m.start() - 60):m.start()].split(chr(10))[-1]}")
+    assert not offenders, (
+        "중립 칩 면 위에 등급색 글자를 얹는 규칙이 있다 — catppuccin 에서 3.41~3.94 다:\n  "
+        + "\n  ".join(offenders))
 
 
 def test_grade_base_rule_does_not_reset_the_per_grade_border():

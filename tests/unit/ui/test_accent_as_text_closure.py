@@ -14,8 +14,11 @@ dark 5.08 · light 4.93 · pastel 5.20 · catppuccin 5.52 로 전부 통과한�
 ## 🔴 이 가드가 «글자» 로 보는 것
 
 `color:` 로 accent 를 지정하는 자리만이다. 면(`background`)·테두리는 다른 축이고,
-`:hover` 처럼 «순간 상태» 이거나 글리프(`svg`)인 자리는 사유를 달아 면제한다.
-면제가 소스에서 사라지면 그 줄도 red 다(역방향).
+글리프(`svg`)인 자리는 사유를 달아 면제한다. 면제가 소스에서 사라지면 그 줄도 red 다(역방향).
+
+🔴 `:hover` 는 면제하지 않는다. 첫 판은 «순간 상태» 라며 네 자리를 면제했는데, WCAG 1.4.3 에
+그런 예외가 없고 그 넷은 실제로 pastel 3.24 였다(회고 P1-27). hover 글자는 `--accent-text-hover`
+— `a:hover`·`.settings-btn:hover` 와 같은 토큰이다. Hover is not exempt: 1.4.3 has no such exception.
 
 ## 🔴 이 가드가 «하지 못하는» 것
 
@@ -42,12 +45,6 @@ _ACCENT_LITERAL = re.compile(r"""(['"])var\(\s*--accent\s*\)\1""")
 
 # 면제 — «사유와 함께». 사라지면 red 다.
 _EXEMPT = {
-    ".btn-ghost:hover, .btn--ghost:hover":
-        ":hover 는 순간 상태다. 기본 상태의 글자색이 AA 를 넘으면 1.4.3 은 충족되고, "
-        "hover 대비는 #1617 이 따로 쟀다.",
-    ".filter-btn:hover": ":hover — 위와 같다.",
-    ".sortable-th:hover": ":hover — 위와 같다.",
-    ".page-btn:hover:not(:disabled)": ":hover — 위와 같다.",
     ".chart-empty-state svg":
         "글리프다. 1.4.3(글자 대비)이 아니라 1.4.11(비-텍스트) 대상이라 기준이 3:1 이다.",
 }
@@ -95,7 +92,8 @@ def test_accent_is_not_used_as_text_without_the_text_token():
     offenders = sorted(f"{sel}  ({where})" for sel, where in sites.items()
                        if sel not in _EXEMPT)
     assert not offenders, (
-        "`color: var(--accent)` 로 글자를 칠하는 자리가 있다 — `var(--accent-text)` 를 쓴다:\n  "
+        "`color: var(--accent)` 로 글자를 칠하는 자리가 있다 — `var(--accent-text)` 를 쓴다"
+        "(`:hover` 면 `var(--accent-text-hover)`):\n  "
         + "\n  ".join(offenders))
 
 

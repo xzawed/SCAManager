@@ -747,6 +747,113 @@ def _assert_body_contributed(page, *, axis, where, selector, min_box=1, colors=N
         "이 화면 고유의 것은 하나도 재지 못했다. 「안 쟀음」과 「통과」는 다르다")
 
 
+# ── E-1. hover 축 — 마우스를 올린 상태의 글자 (2026-09-16 회고 P1-27·P1-28) ─────────
+#
+# 🔴 hover 는 «순간 상태» 라 면제되지 않는다 — WCAG 1.4.3 에 그런 예외가 없다. 이 스윕에
+#    hover 축이 없어서, 행에 마우스를 올리면 catppuccin 등급 F 칩이 3.41 · light 점수 숫자가
+#    4.13 으로 떨어지는 것을 아무도 못 봤다(실측 2026-10-16, 13화면 × 4테마 = 84건 · 12부류).
+#
+# 두 상태를 잰다. hover 는 «조상으로 닫혀» 있다(어떤 요소가 hover 면 그 조상도 전부 hover) —
+# 두 상태 모두 글자마다 «자기 조상 사슬» 은 실제로 있을 수 있는 상태다.
+#   1. `hover` — 포인터가 그 글자 위에 있다(글자와 조상 전부 hover).
+#   2. `hover·컨트롤 쉼` — 포인터가 행·카드 안이지만 링크·버튼 «밖» 이다. 컨트롤은 쉬는 색 그대로
+#      hover 된 행 위에 앉는다 — 1 만 재면 이 짝(쉬는 링크 × hover 된 행)을 못 본다.
+# 🔴 못 보는 것: 컨트롤 «밖» 의 비-컨트롤 요소가 제 `:hover` 규칙을 갖고, hover 된 조상 안에서
+#    «쉬는» 상태(두 상태 모두 그것을 hover 로 잰다). 컨트롤 «안» 의 요소는 2번 상태가 쉼으로 잰다.
+# 🔴 «기하» 는 모른다 — 포인터가 닿을 수 없게 완전히 가려진 요소(예: 버튼·덮개가 덮은 형제)도
+#    hover 로 세므로, «두 상태 모두» 실제로는 없는 조합을 잴 수 있다(Grok `e16815a1` 2·3차 반례).
+#    그 방향은 거짓 red(과잉 보고)다. 가려진 요소가 «쉬는» 짝을 못 재는 것은 위 한계와 같은 부류다.
+# Hover is not exempt from 1.4.3. Two hover states are measured; without full occlusion every
+# glyph's own ancestor chain is a reachable hover state. Occlusion can add impossible patterns to
+# either state (spurious failures); what it hides falls in the resting non-control gap above.
+_HOVER_MARK_JS = r"""
+(controlSel) => {
+  for (const el of document.querySelectorAll('[data-hv-all], [data-hv-rest]')) {
+    el.removeAttribute('data-hv-all'); el.removeAttribute('data-hv-rest'); }
+  // 포인터가 «닿을 수 있는» 요소(pointer-events 가 none 이 아닌 것)를 씨앗으로, 그 조상까지 닫는다.
+  // 🔴 조상은 pointer-events 와 무관하게 hover 된다 — 자손이 포인터 아래면 조상도 `:hover` 다.
+  //    닿는 요소만 표시하면 none 인 조상 아래 auto 자손이 «조상 없이» hover 돼, 실제로는 없는
+  //    상태를 잰다.
+  // 🔴 2번 상태(컨트롤 쉼)는 «컨트롤 밖» 씨앗만으로 따로 닫는다. 전체 집합에서 컨트롤만 빼면,
+  //    닿는 자손이 컨트롤 안에만 있는 none 부모가 «켜진 채 컨트롤은 꺼진» 불가능한 조합이 된다
+  //    — 그 부모는 컨트롤이 포인터 아래일 때만 hover 다(Grok `e16815a1` 반례).
+  const all = new Set(), rest = new Set();
+  const closeUp = (seed, set) => {
+    for (let x = seed; x && x !== document.body && !set.has(x); x = x.parentElement) set.add(x);
+  };
+  for (const el of document.querySelectorAll('body *')) {
+    if (getComputedStyle(el).pointerEvents === 'none') continue;
+    closeUp(el, all);
+    if (!el.closest(controlSel)) closeUp(el, rest);
+  }
+  for (const el of all) el.setAttribute('data-hv-all', '');
+  for (const el of rest) el.setAttribute('data-hv-rest', '');
+  return {all: all.size, rest: rest.size};
+}
+"""
+
+# (상태 이름, hover 를 걸 요소) — 나머지 표시 요소는 그 상태에서 «쉰다».
+_HOVER_STATES = (("hover", "[data-hv-all]"), ("hover·컨트롤 쉼", "[data-hv-rest]"))
+
+_HOVER_APPLIED_JS = r"""
+(sel) => {
+  const marked = Array.from(document.querySelectorAll('[data-hv-all]'));
+  const want = new Set(document.querySelectorAll(sel));
+  let on = 0, stray = 0;
+  for (const el of marked) {
+    const h = el.matches(':hover');
+    if (want.has(el)) { if (h) on++; } else if (h) stray++;
+  }
+  return {want: want.size, on, stray};
+}
+"""
+
+
+def _audit_text_under_hover(page) -> list[tuple[str, dict]]:
+    """두 hover 상태에서 `_ALL_TEXT_AUDIT_JS` 를 돌린다 → [(상태, 결과)]. 끝나면 강제를 푼다.
+
+    🔴 `:hover` 가 «실제로» 걸렸는지 상태마다 되짚는다 — CDP 호출이 조용히 실패하면(노드 소실·
+    도메인 미활성) 아무것도 hover 되지 않은 화면을 «hover 통과» 로 세게 된다. 쉬어야 할 컨트롤이
+    hover 돼 있어도 red 다(그러면 2번 상태는 1번의 사본이다).
+    """
+    # 🔴 «진짜» 포인터를 화면 밖으로 치운다 — 앞 단계가 마우스로 눌렀다면 그 컨트롤이 실제로
+    #    hover 라 2번 상태가 거짓이 된다. 실측: (-1,-1) 이면 hover 사슬이 빈다((0,0) 은 nav 위다).
+    page.mouse.move(-1, -1)
+    marks = page.evaluate(_HOVER_MARK_JS, _FOCUSABLE_SEL)
+    assert marks["all"] > 0 and marks["rest"] > 0, f"hover 할 요소를 표시하지 못했다: {marks}"
+    cdp = page.context.new_cdp_session(page)
+    out = []
+    try:
+        cdp.send("DOM.enable")
+        cdp.send("CSS.enable")
+        root = cdp.send("DOM.getDocument", {"depth": -1, "pierce": True})["root"]["nodeId"]
+
+        def node_ids(sel):
+            return cdp.send("DOM.querySelectorAll", {"nodeId": root, "selector": sel})["nodeIds"]
+
+        def force(ids, on):
+            for nid in ids:
+                try:
+                    cdp.send("CSS.forcePseudoState", {
+                        "nodeId": nid, "forcedPseudoClasses": ["hover"] if nid in on else []})
+                except Exception:  # noqa: BLE001 — 사라진 노드는 건너뛴다(아래 되짚기가 센다)
+                    pass
+
+        every = node_ids("[data-hv-all]")
+        for state, sel in _HOVER_STATES:
+            force(every, set(node_ids(sel)))
+            page.wait_for_timeout(60)
+            got = page.evaluate(_HOVER_APPLIED_JS, sel)
+            assert got["want"] and got["on"] == got["want"] and not got["stray"], (
+                f"{state}: :hover 를 {got['want']}개에 걸었는데 {got['on']}개만 걸렸고 "
+                f"쉬어야 할 {got['stray']}개가 hover 다 — 이 상태는 재지 못한 것이다")
+            out.append((state, page.evaluate(_ALL_TEXT_AUDIT_JS)))
+        force(every, set())
+    finally:
+        cdp.detach()
+    return out
+
+
 def _assert_token_text_aa(page, base_url, theme, path, viewport=None, prepare=None):
     """한 화면·한 테마에서 «모든» 글자의 AA 를 잰다(`_ALL_TEXT_AUDIT_JS`) — 세 시험이 공유한다.
 
@@ -762,6 +869,9 @@ def _assert_token_text_aa(page, base_url, theme, path, viewport=None, prepare=No
     기본값은 그대로 데스크탑이라 기존 두 시험의 판정은 바뀌지 않는다.
 
     `prepare` 는 테마 적용 «후» · 측정 «전» 에 부르는 훅이다(예: 햄버거 열기).
+
+    🔴 쉬는 상태 뒤에 hover 두 상태도 잰다(E-1 `_audit_text_under_hover`) — 이 헬퍼를 쓰는
+    시험(경로 스윕·분석 상세·모바일 오버레이·클릭해야 열리는 면)은 전부 hover 축을 갖는다.
 
     The viewport was hardcoded to desktop, so mobile-only surfaces were never observed.
     """
@@ -792,12 +902,17 @@ def _assert_token_text_aa(page, base_url, theme, path, viewport=None, prepare=No
         f"[{theme}] {path} 에서 --text-2/--text-3 로 칠해진 글자를 하나도 찾지 못했다 — "
         "재지 못한 것이지 통과한 것이 아니다"
     )
-    bad = res["bad"]
+    bad = [dict(b, state="쉼") for b in res["bad"]]
+    # 🔴 같은 화면을 hover 두 상태로 다시 잰다(E-1). 쉬는 상태가 미달이어도 멈추지 않고 함께
+    #    모은다 — 먼저 단언하면 첫 미달이 hover 쪽 형제를 가린다(K13-a 에서 실제로 그랬다).
+    for state, hres in _audit_text_under_hover(page):
+        assert not hres.get("error"), hres.get("error")
+        bad += [dict(b, state=state) for b in hres["bad"]]
     assert not bad, (
         f"[{theme}] {path} — 글자 {len(bad)}건이 AA 미달 "
         f"(관측 {sum(seen.values())}건 · 그중 --text-2/3 {seen['--text-2']}+{seen['--text-3']}):\n  "
         + "\n  ".join(
-            f"{b['token']} {b['ratio']} < {b['need']} @{b['size']:.0f}px "
+            f"[{b['state']}] {b['token']} {b['ratio']} < {b['need']} @{b['size']:.0f}px "
             f"bg={b['bg']} cls={b['cls']!r} {b['text']!r}"
             for b in bad[:12]
         )
@@ -1096,6 +1211,10 @@ def test_admin_screens_render_and_meet_aa(admin_page, base_url, theme,
             assert not res.get("error"), res.get("error")
             total += sum(res["seen"][n] for n in names)
             bad += [dict(b, path=path) for b in res["bad"]]
+        # hover 축(E-1) — 표 행 hover 가 반투명 면을 겹쳐 칠하는 곳이다.
+        for state, hres in _audit_text_under_hover(admin_page):
+            assert not hres.get("error"), hres.get("error")
+            bad += [dict(b, path=f"{path} [{state}]") for b in hres["bad"]]
     assert total > 0, (
         f"[{theme}] admin 화면에서 토큰 글자를 하나도 찾지 못했다 — "
         "재지 못한 것이지 통과한 것이 아니다"
@@ -1141,6 +1260,10 @@ def test_landing_text_meets_aa(anonymous_page, base_url, theme):
         assert not res.get("error"), res.get("error")
         total += sum(res["seen"][n] for n in names)
         bad += res["bad"]
+    # hover 축(E-1) — 랜딩의 `.btn--ghost`(GitHub 링크)는 로그인 화면에 없다.
+    for state, hres in _audit_text_under_hover(anonymous_page):
+        assert not hres.get("error"), hres.get("error")
+        bad += [dict(b, text=f"[{state}] {b['text']}") for b in hres["bad"]]
     # 🔴 관측 하한 — `.reveal` 이 숨은 채로 재면 «통과» 로 보인다.
     assert total >= 6, (
         f"[{theme}] 랜딩에서 토큰 글자를 {total}건만 찾았다 — "
@@ -4428,6 +4551,65 @@ def test_the_all_text_audit_sees_untokened_text_and_skips_inactive_controls(
         "원래 감사도 그 글자를 잡는다 — 이 시험은 파생의 효과를 재지 못한다")
 
 
+def test_the_hover_audit_tells_its_two_states_apart(seeded_page, base_url):
+    """🔴 계기 자기검증 — hover 두 상태(E-1)가 «각자 다른» 미달을 잡고, 끝나면 강제를 푼다.
+
+    흰 행 하나를 심는다. 행 hover 면 #3a3a3a · 링크 쉼 #5a5a5a(흰 바탕 6.9 · hover 된 행 위 1.65) ·
+    링크 hover #fff(11.4) · span 쉼 #111 · span hover #555(hover 된 행 위 1.53).
+
+      - 쉬는 상태: 둘 다 통과해야 한다.
+      - `hover`: span 만 걸려야 한다 — 링크도 hover 라 흰 글자다.
+      - `hover·컨트롤 쉼`: span 과 «링크» 가 걸려야 한다 — 이 짝(쉬는 링크 × hover 된 행)이
+        1번 상태만으로는 원리적으로 안 보이는 것이고, 이 상태를 둔 이유다.
+      - `pointer-events:none` 부모 안의 버튼(같은 색 짝)은 «어느 상태에서도» 걸리면 안 된다 —
+        그 부모는 버튼이 포인터 아래일 때만 hover 라 «부모 hover × 버튼 쉼» 은 없는 상태다
+        (Grok `e16815a1` 반례. 컨트롤만 빼던 첫 표시가 그것을 쟀다).
+
+    Both hover states must catch what only they can see, never measure an impossible
+    combination, and forcing must be undone afterwards.
+    """
+    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.goto(f"{base_url}/dashboard")
+    apply_theme(seeded_page, "light")
+    seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
+    seeded_page.add_style_tag(content=(
+        ".zz-row{background:#ffffff;padding:8px} .zz-row:hover{background:#3a3a3a}"
+        " .zz-ctl{color:#5a5a5a} .zz-ctl:hover{color:#ffffff}"
+        " .zz-chip{color:#111111} .zz-chip:hover{color:#555555}"
+        " .zz-pe{pointer-events:none;background:#ffffff;padding:8px} .zz-pe:hover{background:#3a3a3a}"
+        " .zz-pe-btn{pointer-events:auto;color:#5a5a5a;background:transparent;border:0}"
+        " .zz-pe-btn:hover{color:#ffffff}"))
+    _reveal_all(seeded_page)
+    seeded_page.evaluate("""() => {
+        const row = document.createElement('div');
+        row.className = 'zz-row';
+        row.innerHTML = '<a href="#" class="zz-ctl">plant rest link</a> '
+                      + '<span class="zz-chip">plant hover chip</span>';
+        const pe = document.createElement('div');
+        pe.className = 'zz-pe';
+        pe.innerHTML = '<button type="button" class="zz-pe-btn">plant pe button</button>';
+        document.body.prepend(pe);
+        document.body.prepend(row);
+    }""")
+    plants = {"plant rest link", "plant hover chip", "plant pe button"}
+
+    def flagged(res):
+        assert not res.get("error"), res.get("error")
+        return {b["text"] for b in res["bad"]} & plants
+
+    assert flagged(seeded_page.evaluate(_ALL_TEXT_AUDIT_JS)) == set(), "쉬는 상태에서 심은 글자가 걸렸다"
+    states = dict(_audit_text_under_hover(seeded_page))
+    assert flagged(states["hover"]) == {"plant hover chip"}, (
+        f"`hover` 상태가 hover 된 span 만 잡지 못했다: {flagged(states['hover'])}")
+    assert flagged(states["hover·컨트롤 쉼"]) == {"plant rest link", "plant hover chip"}, (
+        "`hover·컨트롤 쉼` 이 쉬는 링크 × hover 된 행을 못 잡았거나(2번 상태가 1번의 사본), "
+        "pointer-events:none 부모를 «버튼 없이» hover 했다(없는 상태): "
+        f"{flagged(states['hover·컨트롤 쉼'])}")
+    # 끝나면 강제를 푼다 — 남으면 뒤에 오는 측정이 hover 화면을 «쉼» 으로 잰다.
+    assert flagged(seeded_page.evaluate(_ALL_TEXT_AUDIT_JS)) == set(), (
+        "측정 뒤에도 hover 가 남아 있다 — 강제를 풀지 않았다")
+
+
 # 🔴 «팔» 을 여는 경로와, 그 팔이 «실제로 그려졌는지» 되짚는 식. 되짚기는 측정 «뒤» 에 한다
 #    (여는 단계를 지우는 뮤테이션이 초록으로 남지 않게 — 모바일 오버레이에서 실증한 형태).
 _UNSWEPT_ARMS = {
@@ -4446,6 +4628,12 @@ _UNSWEPT_ARMS = {
                    const spans = Array.from(document.querySelectorAll('#analysisTable span'));
                    return [t.sourcePr, t.sourceCli].every(
                        l => l && spans.some(s => s.textContent.trim() === l.trim())); }"""),
+    # `repo_detail.html::renderPagination` — 점수 있는 분석이 `PAGE_SIZE`(20)를 넘어야 그려진다.
+    # 🔴 전체 실행에선 `test_repos_mode.py` 의 시드가 «먼저» 돌아 우연히 그려졌을 뿐, 이 파일만 돌리면
+    #    없었다(실행 순서에 기댄 관측). 활성 페이지에 마우스를 올리면 accent 면 위 accent 글자(1.0)였다.
+    "pagination": (
+        "/repos/owner%2Ftestrepo",
+        "() => document.querySelectorAll('#pagination .page-btn.active').length === 1"),
     # `repo_detail.html` 의 `{% if hook_installed %}` 배너 — 리포 등록 직후에만 뜬다.
     "hook-installed-banner": (
         "/repos/owner%2Ftestrepo?hook_installed=1",
@@ -4458,7 +4646,7 @@ _UNSWEPT_ARMS = {
 @pytest.mark.parametrize("arm", sorted(_UNSWEPT_ARMS))
 @pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
 def test_all_text_meets_aa_in_arms_no_sweep_had_opened(
-        seeded_page, base_url, seeded_analysis, source_badge_rows, theme, arm):
+        seeded_page, base_url, seeded_analysis, source_badge_rows, paginated_history, theme, arm):
     """🔴 열어야 그려지는 팔의 글자도 AA 를 넘어야 한다 — 열지 않으면 아무도 못 본다.
 
     실측(2026-10-15, 수정 전): repos 리포트 «개선 권장» 뱃지 dark 2.77 · catppuccin 2.32 ·
@@ -4467,6 +4655,8 @@ def test_all_text_meets_aa_in_arms_no_sweep_had_opened(
     설명 줄은 `opacity:.9` 까지 겹쳐 light 4.28 · catppuccin 1.90.
     출처 배지는 수정 전엔 표에 «한 번도» 안 그려졌다(점수 없는 시드를 표가 거른다) — 되돌림
     뮤테이션으로 잰 값은 pastel PR 3.24 · CLI 2.79(면 토큰을 글자로).
+    페이지네이션(2026-10-16, hover 축): 활성 페이지에 마우스를 올리면 hover 규칙이 활성 글자색을
+    덮었다 — 글자만 hover 토큰으로 바꾼 첫 수정도 dark 1.30 · light 1.27 · pastel 2.43 · catppuccin 1.14.
     """
     path, opened = _UNSWEPT_ARMS[arm]
     seeded_page.set_viewport_size({"width": 1440, "height": 900})
@@ -4478,10 +4668,14 @@ def test_all_text_meets_aa_in_arms_no_sweep_had_opened(
     _reveal_all(seeded_page)
     res = seeded_page.evaluate(_ALL_TEXT_AUDIT_JS)
     assert not res.get("error"), res.get("error")
+    bad = [dict(b, state="쉼") for b in res["bad"]]
+    # hover 축(E-1) — 출처 배지는 «행» 안에 있다. 행 hover 가 그 바탕을 바꾼다.
+    for state, hres in _audit_text_under_hover(seeded_page):
+        assert not hres.get("error"), hres.get("error")
+        bad += [dict(b, state=state) for b in hres["bad"]]
     assert seeded_page.evaluate(opened), (
         f"[{arm}] 그 팔이 그려지지 않았다 — 재지 못한 것이지 통과한 것이 아니다")
-    bad = res["bad"]
     assert not bad, (
         f"[{theme}] {arm} — 글자 {len(bad)}건이 AA 미달 (관측 {sum(res['seen'].values())}건):\n  "
-        + "\n  ".join(f"{b['ratio']} < {b['need']} bg={b['bg']} cls={b['cls']!r} {b['text']!r}"
-                      for b in bad[:10]))
+        + "\n  ".join(f"[{b['state']}] {b['ratio']} < {b['need']} bg={b['bg']} "
+                      f"cls={b['cls']!r} {b['text']!r}" for b in bad[:10]))

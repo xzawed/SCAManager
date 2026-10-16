@@ -1444,6 +1444,48 @@ def seeded_analysis(live_server):
     return _seed_analysis(db_path)
 
 
+def _seed_paginated_history(db_path: str, count: int = 25) -> int:
+    """`PAGE_SIZE`(20)를 넘기는 점수 있는 분석 이력 — owner/testrepo 표에 페이지 버튼이 그려진다.
+
+    고정 SHA 에 `INSERT OR IGNORE` 라 몇 번 불러도 한 벌이다.
+    """
+    from sqlalchemy import create_engine, text  # noqa: PLC0415
+
+    from src.scorer.reliability import score_is_unreliable  # noqa: PLC0415
+    engine = create_engine(f"sqlite:///{db_path}")
+    with engine.connect() as conn:
+        row = conn.execute(text(
+            "SELECT id FROM repositories WHERE full_name='owner/testrepo'"
+        )).fetchone()
+        if row is None:
+            raise RuntimeError("_seed_repo must run before _seed_paginated_history")
+        repo_id = row[0]
+        result = {"summary": "page"}
+        for i in range(count):
+            conn.execute(text("""
+                INSERT OR IGNORE INTO analyses
+                    (repo_id, commit_sha, commit_message, score, grade, result, author_login,
+                     score_unreliable, created_at)
+                VALUES
+                    (:rid, :sha, :msg, :score, 'B', :res, 'e2e-tester',
+                     :unrel, datetime('now', :delta))
+            """), {"rid": repo_id, "sha": f"page-sha-{i:03d}", "msg": f"feat: page seed {i}",
+                   "score": 60 + (i * 7) % 35, "res": json.dumps(result),
+                   "delta": f"-{count - i} hours",
+                   "unrel": score_is_unreliable(result)})
+        conn.commit()
+    engine.dispose()
+    return count
+
+
+@pytest.fixture(scope="session")
+def paginated_history(live_server):
+    """owner/testrepo 에 페이지 버튼이 그려지는 분석 이력(25건) — 재렌더·hover 시험이 공유한다."""
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    _seed_repo(live_server, db_path)
+    return _seed_paginated_history(db_path)
+
+
 # ── skip 집합 게이트 (backlog R58 → 회고 2026-09-07 D) ──────────────────────
 #
 # 🔴 **수집 건수 baseline 만으로는 전건 skip 을 못 막는다.** `scripts/check_e2e_scope.py`

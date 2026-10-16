@@ -65,11 +65,12 @@
     color: var(--accent-text);
     text-decoration: none;
     font-weight: 500;
-    transition: opacity 0.15s ease;
+    transition: color 0.15s ease;
   }
 
+  /* hover 를 `opacity` 로 흐리면 글자 대비가 같이 깎인다 — `.admin-link:hover` 와 같은 처방. */
   .admin-ops-link:hover {
-    opacity: 0.8;
+    color: var(--accent-text-hover);
   }
 
   /* ── KPI 카드 그리드 / KPI card grid ───────────────────────── */

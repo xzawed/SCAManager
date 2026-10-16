@@ -134,19 +134,32 @@ def body_gradient_stops(theme: str) -> dict[str, tuple]:
     return {f"body-gradient-stop-{n}": parse_color(s) for n, s in enumerate(stops)}
 
 
-# 글자가 앉는 «면» 토큰 — 페이지 바탕 둘 · 카드 · 떠 있는 면 · 칩 면(탭 띠·행 hover).
+# 글자가 앉는 «면» 토큰 — 페이지 바탕 둘 · 카드 · 떠 있는 면 · 칩 면(탭 띠).
 PAGE_TEXT_GROUNDS = ("--bg-base", "--bg-canvas", "--bg-card", "--bg-elevated", "--bg-mute")
+# 마우스를 올리면 행·카드가 바꿔 칠하는 면. 그 안의 글자는 전부 이 위에 앉는다(회고 P1-28).
+# Surfaces a row or card repaints on hover; every glyph inside sits on them.
+HOVER_GROUNDS = ("--table-row-hover", "--bg-card-hover")
+
+
+def _opaque_grounds(theme: str, names: tuple[str, ...]) -> dict[str, tuple]:
+    scope = token_scope(read("src/static/css/tokens.css"), theme)
+    card = paint_colours(scope, "var(--bg-card)")[0]
+    out = {}
+    for name in names:
+        c = paint_colours(scope, f"var({name})")[0]
+        out[name] = c if c[3] >= 1 else over(c, card)
+    return out
+
+
+def hover_grounds(theme: str) -> dict[str, tuple]:
+    """hover 면 — 반투명이면 카드 위에 합성한다(행·카드는 카드 안에 있다)."""
+    return _opaque_grounds(theme, HOVER_GROUNDS)
 
 
 def text_grounds(theme: str) -> dict[str, tuple]:
     """그 테마에서 글자가 앉을 수 있는 바탕 전부 — 불투명색으로(반투명 면은 카드 위에 합성)."""
-    scope = token_scope(read("src/static/css/tokens.css"), theme)
-    card = paint_colours(scope, "var(--bg-card)")[0]
-    out = {}
-    for name in PAGE_TEXT_GROUNDS:
-        c = paint_colours(scope, f"var({name})")[0]
-        out[name] = c if c[3] >= 1 else over(c, card)
-    return {**out, **body_gradient_stops(theme)}
+    return {**_opaque_grounds(theme, PAGE_TEXT_GROUNDS + HOVER_GROUNDS),
+            **body_gradient_stops(theme)}
 
 
 class Unmeasurable(AssertionError):
