@@ -364,12 +364,28 @@ jobs:
 
       - name: Audit requirements for known vulnerabilities
         # -r 로 requirements 파일 직접 스캔(설치 불필요). vuln 발견 시 exit 1 → CI fail(게이트).
-        # 🔴 `--ignore-vuln` 예외 0건이다. 전이 의존 권고가 막으면 예외를 넣기 전에 그 의존을
-        #    고정하는 상위 패키지(대개 semgrep — requirements.txt 주석)를 올려 풀리는지 먼저 본다.
+        # 🔴 전이 의존 권고가 막으면 예외를 넣기 전에 그 의존을 고정하는 상위 패키지(대개 semgrep —
+        #    requirements.txt 주석)를 올려 풀리는지 먼저 본다. 예외는 아래 1건뿐이다.
+        #
+        # 🔴 --ignore-vuln CVE-2026-59951 (mcp 1.29.0, 2026-10-16) — semgrep 이 강제하는 전이 핀.
+        #    semgrep==1.180.0 이 `mcp==1.29.0`(정확 핀)을 요구하고, 최신 1.181.0(10-14)도 같은 핀이라
+        #    **버전 업으로 해결 불가**. 권고 전제 = mcp 의 Streamable HTTP «서버» 를 상태 유지 모드로 띄움.
+        #    우리 사용 방식에선 **도달 불가**:
+        #      · semgrep 은 `["semgrep","scan","--config=p/default","--json",…]` 비대화형 CLI subprocess 로만
+        #        호출된다(src/analyzer/io/tools/semgrep.py) — `semgrep mcp` 서버를 띄우는 곳이 0건.
+        #      · src/·scripts/ 가 `mcp` 패키지를 import 하는 곳 0건, FastMCP·StreamableHTTP 기동 0건.
+        #        (src/mcp/ 는 스키마 선언만 있는 별개 모듈로 이 패키지와 무관하다.)
+        #    재검토 조건 — 충족되면 이 ID 를 즉시 지운다:
+        #      (1) semgrep 이 mcp 핀을 >=1.30.0 으로 올리면(그 판으로 semgrep 을 올리고 예외 삭제)
+        #      (2) 우리가 MCP 서버를 Streamable HTTP 로 실제 띄우게 되면(도달 불가 근거가 무효)
+        #    습관적으로 ID 를 더하지 말 것 — 다른 CVE 는 계속 게이트로 막힌다.
         # Scan requirements files directly (no install). Non-zero exit on any vuln → gate.
-        # No --ignore-vuln exceptions. When a transitive advisory blocks, first try bumping the
-        # package that pins it (usually semgrep — see requirements.txt) before adding an ignore.
-        run: python -m pip_audit -r requirements.txt -r requirements-dev.txt --desc on
+        # When a transitive advisory blocks, first try bumping the package that pins it (usually
+        # semgrep). One exception: CVE-2026-59951 — semgrep 1.180.0/1.181.0 pin `mcp==1.29.0`
+        # exactly, and the advisory needs a stateful Streamable HTTP MCP server, which we never
+        # start (semgrep runs only as a CLI subprocess). Remove it when semgrep allows mcp>=1.30.0
+        # or if we ever serve MCP over Streamable HTTP.
+        run: python -m pip_audit -r requirements.txt -r requirements-dev.txt --desc on --ignore-vuln CVE-2026-59951
 
   test-and-analyze:
     name: pytest + Codecov + SonarCloud
