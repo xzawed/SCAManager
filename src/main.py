@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from starlette.datastructures import Headers
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -38,6 +39,7 @@ from src.api.admin import router as api_admin_router
 from src.api.issue_registration import router as issue_registration_router
 from src.ui.routes.admin import router as ui_admin_router
 from src.ui.router import router as ui_router
+from src.ui.error_page import html_aware_http_exception_handler
 from src.auth.github import router as auth_router
 
 # 🔴 import 시점 설정 — 이후 모든 모듈 logger 의 INFO 가 실제로 출력된다.
@@ -362,6 +364,9 @@ app = FastAPI(
 # Register slowapi rate limiting — IP-based 60 req/min (DoS defense for API endpoints)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+# 브라우저 화면 요청의 404·403 은 오류 화면, 그 밖은 FastAPI 기본 JSON 그대로(src/ui/error_page.py).
+# Browser page requests get an error page for 404/403; everything else keeps FastAPI's default JSON.
+app.add_exception_handler(StarletteHTTPException, html_aware_http_exception_handler)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(LimitBodySizeMiddleware)
 # Phase 3 postlude — RLS 운영 활성화 미들웨어. Starlette LIFO 미들웨어 스택:

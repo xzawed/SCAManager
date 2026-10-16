@@ -8,9 +8,11 @@
   <div class="analysis-hero">
     <div class="analysis-hero__grade">
       <!-- 등급 배지 — badge-pop 애니메이션 (above-fold 0.35s 딜레이) / Grade badge — badge-pop animation -->
-      <span class="grade grade--hero grade--{{ (analysis.grade or 'f') | lower }}"
+      {# 🔴 등급이 없으면(AI 실패 — 점수·등급 NULL 저장) F 가 아니라 중립 «—» 다. 수식어 없는 .grade 가 중립 배지.
+         No grade (AI failure persists score and grade as NULL) is a neutral «—», not F. #}
+      <span class="grade grade--hero{% if analysis.grade %} grade--{{ analysis.grade | lower }}{% endif %}"
             style="animation: var(--anim-badge-pop); animation-delay: 0.35s; animation-fill-mode: both; display: inline-flex;">
-        {{ analysis.grade or 'F' }}
+        {{ analysis.grade or '—' }}
       </span>
     </div>
     <div class="analysis-hero__body">
@@ -28,7 +30,7 @@
         <span class="analysis-hero__score-unit">/100</span>
         <!-- 등급 레이블 (i18n) — "등급 B" / Grade label (i18n) — "Grade B" -->
         <span style="font-size: 15px; font-weight: 700; color: var(--text-1);">
-          {{ 'analysis_detail.grade_label' | i18n_args(locale | default('ko'), grade=analysis.grade) }}
+          {{ 'analysis_detail.grade_label' | i18n_args(locale | default('ko'), grade=analysis.grade or '—') }}
         </span>
         {% if analysis.score is not none %}
         <span class="ad-score-label" style="font-size: 13px; color: var(--text-2);">
@@ -41,7 +43,7 @@
         {% endif %}
       </div>
       <!-- 점수 바 / Score bar -->
-      <div class="score-bar score-bar--{{ (analysis.grade or 'f') | lower }}"
+      <div class="score-bar{% if analysis.grade %} score-bar--{{ analysis.grade | lower }}{% endif %}"
            style="--sb-pct: {{ (analysis.score | round | int) if analysis.score is not none else 0 }}%;">
       </div>
       <!-- 메타 정보 인라인 / Inline meta info -->

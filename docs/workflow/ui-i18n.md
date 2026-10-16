@@ -1,6 +1,6 @@
 ## 지형
 
-페이지 = `src/ui/routes/<도메인>.py` → `TemplateResponse(request, "<x>.html", {..., "locale": get_locale(request)})`. `src/ui/router.py` 에서 `/repos/{name}`(catch-all)은 마지막. `landing.html` 만 독립 head, 나머지는 `base.html` 상속.
+페이지 = `src/ui/routes/<도메인>.py` → `TemplateResponse(request, "<x>.html", {..., "locale": get_locale(request)})`. `src/ui/router.py` 에서 `/repos/{name}`(catch-all)은 마지막. `landing.html` 만 독립 head, 나머지는 `base.html` 상속. 브라우저 화면 요청의 404·403 은 `src/ui/error_page.py` 가 `error.html` 로 그린다(`/api/…`·`Accept: */*` 는 JSON).
 CSS 순서 = `src/templates/base.html::css/tokens.css">` — tokens → themes → illustrations → dist/tailwind → components → pages.
 
 ## 설정 토글을 추가한다

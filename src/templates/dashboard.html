@@ -607,7 +607,12 @@
     {% if repo_report.score_trend | length > 1 %}
     <section class="repos-section">
       <h3>{{ 'dashboard.score_trend' | i18n_args(locale | default('ko')) }}</h3>
-      <canvas id="repoTrendChart" height="80"></canvas>
+      {# 🔴 높이를 고정한 틀 — `maintainAspectRatio: false` 는 «부모» 높이를 쓴다. 틀이 없으면 부모 높이가
+         캔버스에 달려 서로를 키워 끝없이 자랐다(12초에 4,738px). 개요 차트(`dashTrendChart`)와 같은 틀.
+         Fixed-height box: with maintainAspectRatio false the chart sizes from its parent. #}
+      <div style="position: relative; height: 220px;">
+        <canvas id="repoTrendChart"></canvas>
+      </div>
     </section>
     <script>
     (function() {

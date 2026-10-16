@@ -685,7 +685,15 @@
     "hook_invalid_token": "Invalid token",
     "hook_repo_not_found": "Repository not found",
     "repo_unclaimed": "This repository has no owner registered in SCAManager (it was created automatically from a webhook). To change its settings, register it via 'Add Repository' to claim ownership.",
-    "stale_unclaimed_form": "That page was opened while the repository had no owner, so its notification fields were blank. Saving would have erased the stored values, so nothing was saved - the fields below show the current values; review them and save again."
+    "stale_unclaimed_form": "That page was opened while the repository had no owner, so its notification fields were blank. Saving would have erased the stored values, so nothing was saved - the fields below show the current values; review them and save again.",
+    "page": {
+      "title_404": "Page not found",
+      "desc_404": "The address may have changed, it may have been deleted, or this account cannot view it.",
+      "title_403": "You don't have access to this page",
+      "desc_403": "You may be signed in with another account, or access to this page is restricted.",
+      "go_overview": "Go to overview",
+      "go_dashboard": "Go to dashboard"
+    }
   },
   "notifier": {
     "cron": {

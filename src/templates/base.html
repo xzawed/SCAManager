@@ -946,6 +946,10 @@
 
         function applyLang(lang) {
           if (!LANGS[lang]) lang = 'ko';
+          // 🔴 <html lang> 도 바꾼다 — 언어 전환은 body 만 갈아 끼워(htmx.ajax outerHTML) 새로고침 전까지
+          //    이전 언어로 남았다(일본어 한자를 한국어 글꼴로 · 스크린리더가 이전 언어로 읽는다).
+          // Keep <html lang> in step: the language switch swaps only <body>.
+          document.documentElement.setAttribute('lang', lang);
           langIcon.textContent = LANGS[lang].icon;
           langName.textContent = LANGS[lang].name;
           document.querySelectorAll('.lang-option').forEach(function(el) {
@@ -1141,12 +1145,16 @@
       var target = parseFloat(raw);
       if (isNaN(target)) return;
       var suffix = el.dataset.suffix || '';
-      var isFloat = String(target).indexOf('.') !== -1;
+      // 서버가 쓴 소수 자릿수 그대로 — `String(50.0)` 은 "50" 이라 «50.0%» 가 «50%» 로 끝났다.
+      // Keep the server's decimal places: String(50.0) is "50", so "50.0%" used to end as "50%".
+      var dec = (String(raw).split('.')[1] || '').length;
       var start = performance.now();
       function tick(now) {
-        var p = Math.min((now - start) / (duration || 1200), 1);
+        // 하한 0 — rAF 시각(프레임 시작)이 start 보다 이를 수 있다. 음수면 음수가 한 프레임 그려진다.
+        // Clamp at 0: the rAF timestamp can precede `start`.
+        var p = Math.min(Math.max((now - start) / (duration || 1200), 0), 1);
         var ease = 1 - Math.pow(1 - p, 3);
-        var val = isFloat ? (ease * target).toFixed(1) : Math.round(ease * target).toLocaleString();
+        var val = dec > 0 ? (ease * target).toFixed(dec) : Math.round(ease * target).toLocaleString();
         el.textContent = val + suffix;
         if (p < 1) requestAnimationFrame(tick);
       }

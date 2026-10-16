@@ -194,26 +194,34 @@
   /* ----- 2. Count-up animation ------------------------------------------- */
   function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 
-  function animateNumber(textNode, target, duration = 1100, suffix = "") {
+  function animateNumber(textNode, target, duration = 1100, suffix = "", prefix = "", decimals = null) {
     if (reduced()) {
-      textNode.nodeValue = formatNumber(target) + suffix;
+      textNode.nodeValue = prefix + formatNumber(target, decimals) + suffix;
       return;
     }
     const start = performance.now();
     const initial = 0;
 
     function step(now) {
-      const t = Math.min((now - start) / duration, 1);
+      // 🔴 하한 0 — rAF 시각(프레임 시작)이 start(호출 시각)보다 이를 수 있다. 음수면 easeOutCubic 이
+      //    음수를 내 «-2.3» 같은 값이 한 프레임 그려졌다(개요 20회 중 6회 실측).
+      // Clamp at 0: the rAF timestamp can precede `start`, which painted a negative first frame.
+      const t = Math.min(Math.max((now - start) / duration, 0), 1);
       const eased = easeOutCubic(t);
       const v = initial + (target - initial) * eased;
-      textNode.nodeValue = formatNumber(v) + suffix;
+      textNode.nodeValue = prefix + formatNumber(v, decimals) + suffix;
       if (t < 1) requestAnimationFrame(step);
-      else textNode.nodeValue = formatNumber(target) + suffix;
+      else textNode.nodeValue = prefix + formatNumber(target, decimals) + suffix;
     }
     requestAnimationFrame(step);
   }
 
-  function formatNumber(v) {
+  // decimals = 서버가 쓴 소수 자릿수 — 끝값이 서버 표기와 같게(«50.0%» 가 «50%» 로 바뀌었다).
+  // decimals = the server's decimal places, so the final text matches the server's ("50.0%" became "50%").
+  function formatNumber(v, decimals = null) {
+    if (decimals !== null) {
+      return decimals > 0 ? v.toFixed(decimals) : Math.round(v).toLocaleString();
+    }
     const isFloat = Math.abs(v - Math.round(v)) > 0.01;
     if (isFloat) return v.toFixed(1);
     return Math.round(v).toLocaleString();
@@ -248,12 +256,16 @@
           if (m) {
             const target = parseFloat(m[0]);
             const suffix = txt.slice(m.index + m[0].length); // anything after number (e.g., %)
+            // 숫자 앞 글자(예: «+»·«$»)와 소수 자릿수도 서버 표기 그대로 — 끝값이 서버 글자와 같아야 한다.
+            // Keep the prefix and the server's decimal places so the final text equals the server's.
+            const prefix = txt.slice(0, m.index);
+            const decimals = (m[0].split(".")[1] || "").length;
             // 최초 캡처한 클로저가 이 노드를 소유 — 이후 클로저는 위 가드로 skip (재캡처 차단).
             // The first closure to capture owns this node; later closures skip it via the guard above.
             el.dataset.cuBound = "1";
-            targets.push({ node, target, suffix, host: el });
+            targets.push({ node, target, suffix, prefix, decimals, host: el });
             // pre-fill 0 so the initial paint isn't the final number
-            node.nodeValue = "0" + suffix;
+            node.nodeValue = prefix + formatNumber(0, decimals) + suffix;
             break;
           }
         }
@@ -261,7 +273,7 @@
     });
     onceInView(targets.map((t) => t.host), (host) => {
       const t = targets.find((x) => x.host === host);
-      if (t) animateNumber(t.node, t.target, 1100, t.suffix);
+      if (t) animateNumber(t.node, t.target, 1100, t.suffix, t.prefix, t.decimals);
     });
   }
 

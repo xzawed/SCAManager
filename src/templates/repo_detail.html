@@ -488,7 +488,11 @@
       {%- set _sorted = analyses | sort(attribute='created_at', reverse=true) %}
       {%- if _sorted %}
       {%- set _latest = _sorted[0] %}
-      <span class="grade grade--{{ (_latest.grade or 'f') | lower }}">{{ _latest.grade or 'F' }}</span>
+      {# 최신 분석이 점수·등급 NULL(AI 실패)이면 배지를 그리지 않는다 — 개요 카드와 같은 규칙(F 가 아니다).
+         An unscored latest analysis gets no badge, matching the overview card (it is not an F). #}
+      {%- if _latest.grade %}
+      <span class="grade grade--{{ _latest.grade | lower }}">{{ _latest.grade }}</span>
+      {%- endif %}
       <span style="font-size: var(--fs-sm, 0.875rem); color: var(--text-2, rgba(255,255,255,0.6));">{{ 'repo_detail.recent_score' | i18n_args(locale | default('ko')) }} {{ (_latest.score | round(1)) if _latest.score is not none else '—' }}/100</span>
       {%- endif %}
       <span style="font-size: var(--fs-xs, 0.75rem); color: var(--text-2, rgba(255,255,255,0.6));">{{ analyses | length }}{{ 'repo_detail.analysis_unit' | i18n_args(locale | default('ko')) }}</span>
@@ -1000,7 +1004,11 @@ function renderTable(data) {
     const msgPreview = a.commit_message
       ? '<div class="commit-msg-preview">' + escHtml(a.commit_message.split('\n')[0].slice(0,50)) + (a.commit_message.length > 50 ? '…' : '') + '</div>'
       : '';
-    const sc = a.score >= 75 ? 'high' : a.score >= 50 ? 'mid' : 'low';
+    // 점수 없는 분석(AI 실패)은 «낮음» 이 아니다 — 색 없이 «—».
+    // An unscored analysis is not "low": no colour, just «—».
+    const sc = a.score == null ? '' : a.score >= 75 ? 'high' : a.score >= 50 ? 'mid' : 'low';
+    const gradeMod = a.grade ? ' grade--' + a.grade.toLowerCase() : '';
+    const barMod = a.grade ? ' score-bar--' + a.grade.toLowerCase() : '';
     const pr = a.pr_number
       ? '<span class="pr-badge">#' + a.pr_number + '</span>'
       : '<span style="color:var(--text-2)">—</span>';
@@ -1011,9 +1019,9 @@ function renderTable(data) {
       + '<td><span class="commit-sha">' + escHtml((a.commit_sha || '').slice(0,7)) + '</span></td>'
       + '<td>' + pr + '</td>'
       + '<td><div style="display:inline-flex;align-items:center;gap:6px;">'
-      + '<div class="score-bar score-bar--' + (a.grade || 'f').toLowerCase() + '" style="--sb-pct:' + (a.score != null ? Math.round(a.score) : 0) + '%;width:70px;vertical-align:middle;"></div>'
+      + '<div class="score-bar' + barMod + '" style="--sb-pct:' + (a.score != null ? Math.round(a.score) : 0) + '%;width:70px;vertical-align:middle;"></div>'
       + '<span class="score-val ' + sc + '">' + (a.score != null ? a.score : '—') + '</span></div></td>'
-      + '<td><span class="grade grade--' + (a.grade || 'f').toLowerCase() + '">' + (a.grade || '—') + '</span></td>'
+      + '<td><span class="grade' + gradeMod + '">' + (a.grade || '—') + '</span></td>'
       + '<td>' + renderSourceBadge(a.source) + '</td>'
       + '</tr>';
   }).join('');
@@ -1068,8 +1076,14 @@ function applyFilters() {
     if (q && !(a.commit_message || '').toLowerCase().includes(q) && !(a.commit_sha || '').toLowerCase().includes(q)) return false;
     if (state.gradeFilter !== 'all' && a.grade !== state.gradeFilter) return false;
     if (state.sourceFilter !== 'all' && a.source !== state.sourceFilter) return false;
-    var sc = a.score != null ? a.score : -1;
-    if (sc < state.scoreMin || sc > state.scoreMax) return false;
+    // 🔴 점수 없는 분석(AI 실패 — 점수 NULL)은 점수 범위가 기본값(0~100)일 때 보인다. 예전엔 -1 로
+    //    놓아 기본 필터에서도 항상 빠졌다(«1건 / 전체 9건»). 사용자가 범위를 좁혔을 때만 뺀다.
+    // Unscored analyses show while the score range is untouched; only a narrowed range drops them.
+    if (a.score == null) {
+      if (state.scoreMin > 0 || state.scoreMax < 100) return false;
+    } else if (a.score < state.scoreMin || a.score > state.scoreMax) {
+      return false;
+    }
     if (state.dateFrom || state.dateTo) {
       var d = (a.created_at || '').slice(0, 10);
       if (state.dateFrom && d < state.dateFrom) return false;
@@ -1096,7 +1110,9 @@ function applyFilters() {
     ? I18N.historyRecent.replace('__N__', total)
     : I18N.historyFiltered.replace('__F__', total).replace('__T__', ALL_ANALYSES.length);
   // 필터 결과를 시간 오름차순으로 차트에 동기화
-  var chartData = filtered.slice().sort(function(a, b) {
+  // 차트는 점수 있는 분석만 — 점수 없는 행이 선을 끊지 않게(표에는 보인다).
+  // The chart takes scored analyses only, so unscored rows do not break the line.
+  var chartData = filtered.filter(function(a) { return a.score != null; }).sort(function(a, b) {
     return (a.created_at || '') < (b.created_at || '') ? -1 : 1;
   });
   buildChart(chartData, false);
