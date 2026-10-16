@@ -642,7 +642,7 @@
        reveal: animation triggered when IntersectionObserver adds .visible */
     .reveal { opacity: 0; }
     .reveal.visible { animation: var(--anim-reveal-up); animation-delay: calc(var(--i,0) * 60ms); }
-    /* 첫 그림 — <head> 부트스트랩이 html.fx-pending 을 건다. reveal(_initReveal)과 effects.js
+    /* 첫 그림 — head 부트스트랩이 html.fx-pending 을 건다. reveal(_initReveal)과 effects.js
        (setupEntryAnimations)는 외부 스크립트 재검증 뒤에야 돌아, 그 사이 브라우저가 카드·KPI 를
        «보이게» 그렸다가 숨기고 숫자를 0 부터 다시 셌다. 그 대상을 처음부터 등장 전 상태로 둔다.
        목록은 두 스크립트의 대상과 같아야 한다(tests/unit/ui/test_first_paint_bootstrap.py).
@@ -705,7 +705,7 @@
 <body hx-boost="true">
   {# 🔴 서버는 body 에 테마를 쓰지 않는다 — 토큰은 html 에서 상속되므로 body 는 첫 프레임부터 head
      부트스트랩이 고른 테마다(쓰면 이 줄이 돌기 전 «빈 배경» 프레임이 그 값으로 그려질 틈이 생긴다).
-     JS 가 꺼진 화면의 기본값은 `<html data-theme="dark">`. 이 줄은 body[data-theme] 를 읽는 규칙·코드에
+     JS 가 꺼진 화면의 기본값은 html 요소의 data-theme="dark". 이 줄은 body[data-theme] 를 읽는 규칙·코드에
      같은 값을 붙인다 — hx-boost 교체 때도 다시 돌지만 같은 값을 다시 쓸 뿐이다.
      The server writes no theme on body: tokens inherit from html, so body has the stored theme from the
      first frame. The no-JS default lives on html; this line mirrors the value for body[data-theme] users. #}
@@ -803,8 +803,8 @@
        Child template scripts block — placed after htmx load to prevent race conditions -->
   {% block scripts %}{% endblock %}
   <script>
-    // 테마 마이그레이션 표(THEME_MIGRATE)·아이콘(SCA_THEME_ICONS)은 <head> 부트스트랩에 있다 — 한 곳.
-    // The theme migration map and icons live in the <head> bootstrap (single source).
+    // 테마 마이그레이션 표(THEME_MIGRATE)·아이콘(SCA_THEME_ICONS)은 head 부트스트랩에 있다 — 한 곳.
+    // The theme migration map and icons live in the head bootstrap (single source).
     // 테마 짧은 이름은 themeSwitcher 컨테이너의 data-i18n 속성에서 읽음 (locale별 i18n)
     // Theme short names are read from themeSwitcher container's data-i18n attributes (locale-aware i18n)
     // 🔴 var 사용 필수 — hx-boost body swap 후 재실행 시 매번 dataset 재읽기 (stale 방지)

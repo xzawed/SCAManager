@@ -111,9 +111,10 @@ def test_stored_theme_is_applied_before_the_stylesheets_and_the_body():
         "저장 테마를 거는 인라인 스크립트가 첫 스타일시트보다 앞에 없다 — body 끝 스크립트만 테마를 "
         "걸면 외부 스크립트를 기다리는 동안 dark 가 먼저 그려진다(e2e/test_first_paint.py)")
     tag, attrs = order.body_first_child or ("(없음)", {})
-    assert tag == "script" and not attrs.get("src"), (
-        f"<body> 의 첫 자식이 인라인 테마 동기화 스크립트가 아니다({tag}) — body[data-theme] 를 읽는 "
+    assert tag == "script", (
+        f"<body> 의 첫 자식이 테마 동기화 스크립트가 아니다({tag}) — body[data-theme] 를 읽는 "
         "규칙·코드가 본문 첫 그림에서 값을 못 본다")
+    assert not attrs.get("src"), "<body> 첫 스크립트가 외부 파일이다 — 인라인이어야 본문보다 먼저 돈다"
     # 🔴 서버는 body 에 테마를 쓰지 않는다 — 쓰면 동기화 스크립트가 돌기 전 «빈 배경» 프레임이 그
     #    값(dark)으로 그려질 틈이 생긴다(Grok `99aa48c8`). 토큰은 html 에서 상속된다.
     assert "data-theme" not in order.body_attrs, (
@@ -135,10 +136,10 @@ def test_pending_flag_covers_every_entrance_target():
     assert groups, "html.fx-pending 규칙을 0개 찾았다 — 표식 CSS 가 사라졌다"
     missing_fx = sorted(effects - groups.get(".is-in-view", set()))
     missing_rv = sorted(reveal - groups.get(".visible", set()))
-    assert not missing_fx and not missing_rv, (
-        "첫 그림 표식이 가리지 않는 등장 대상이 있다 — 그 요소는 «보였다가 숨는다»:\n"
-        f"  effects.js(.is-in-view 해제) 누락: {missing_fx}\n"
-        f"  reveal(.visible 해제) 누락: {missing_rv}")
+    assert not missing_fx, (
+        f"첫 그림 표식이 가리지 않는 effects.js 등장 대상(.is-in-view 해제) — «보였다가 숨는다»: {missing_fx}")
+    assert not missing_rv, (
+        f"첫 그림 표식이 가리지 않는 reveal 대상(.visible 해제) — «보였다가 숨는다»: {missing_rv}")
 
 
 def test_the_scanner_reads_rules_not_mentions():
