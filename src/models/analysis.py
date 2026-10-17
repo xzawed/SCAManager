@@ -31,14 +31,12 @@ class Analysis(Base):
             postgresql_where=text("input_tokens IS NOT NULL"),
             sqlite_where=text("input_tokens IS NOT NULL"),
         ),
-        # 0046: 집계는 «점수가 있고 신뢰 가능한» 행만 본다 — 부분 인덱스가 Index Only Scan 을
-        # 만든다(실측 0.45 ms · 버퍼 6; 없으면 2.17 ms · 버퍼 1,145). 운영 기준 29% 만 덮는다.
-        Index(
-            "ix_analyses_reliable_scores",
-            "repo_id", "score",
-            postgresql_where=text("score IS NOT NULL AND score_unreliable IS NOT TRUE"),
-            sqlite_where=text("score IS NOT NULL AND score_unreliable IS NOT TRUE"),
-        ),
+        # 0048: 개요 카드 집계(분석 수 · 기록된 점수 평균 · 미검증 수)를 이 인덱스만으로 답한다 —
+        # Index Only Scan(운영 동형 실측 버퍼 884 → 12). 집계가 이 세 열 밖을 읽으면(예: count(id))
+        # 힙을 통째로 읽는다 — 가드 `tests/unit/ui/test_overview_payload_bounded.py`.
+        # 술어가 없어 옛 «검증 점수만» 모양(`score_unreliable IS NOT TRUE`)의 집계도 이것으로 답한다.
+        # 0048: the overview card aggregates are answered from this index alone (Index Only Scan).
+        Index("ix_analyses_repo_scores", "repo_id", "score", "score_unreliable"),
     )
 
     id = Column(Integer, primary_key=True, index=True)

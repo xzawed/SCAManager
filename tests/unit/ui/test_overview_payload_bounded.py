@@ -27,6 +27,10 @@ JSON 경로 접근이 `JSON_EXTRACT` / `#>` 로 달라 오탐·미탐이 둘 다
 첫 화면 평균은 검증 여부와 상관없이 **점수가 저장된 분석 전부**다(사용자 결정 2026-10-17).
 신뢰 불가 사유 6종을 심어 두고 평균 자체를 단언한다 — 어느 사유든 평균에서 다시 빠지면
 (예: `score_unreliable` 필터가 되살아나면) 값이 달라진다.
+
+## 같이 고정하는 것: 카드 집계가 읽는 열
+
+카드 집계는 `ix_analyses_repo_scores` 의 열만 읽어야 PostgreSQL 이 힙을 건너뛴다(0048).
 """
 from __future__ import annotations
 
@@ -36,9 +40,11 @@ from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
+from sqlalchemy import create_engine, event, func, literal, select
+from sqlalchemy.orm import Session, aliased
 from sqlalchemy.pool import StaticPool
+from sqlalchemy.sql import visitors
+from sqlalchemy.sql.schema import Column
 
 from src.auth.session import CurrentUser, get_current_user
 from src.database import Base
@@ -47,6 +53,7 @@ from src.models.analysis import Analysis
 from src.models.repository import Repository
 from src.models.user import User
 from src.scorer.reliability import score_is_unreliable
+from src.ui.routes.overview import _repo_cards
 
 # 행당 블롭 크기 — 운영 평균 6 kB 의 약 8배로 잡아 신호를 크게 만든다.
 _FILLER = "x" * 50_000
@@ -230,3 +237,85 @@ def test_overview_average_counts_every_recorded_score(json_bytes):
         f"카드에 그려진 평균이 {rendered!r} 다 — 기록된 점수 {len(recorded)}개의 평균 {want} 이어야 "
         "한다. 신뢰 불가 행이 평균에서 빠졌다(검증된 것만이면 90)."
     )
+
+
+# 카드 집계가 기대는 인덱스 — 모델(`src/models/analysis.py`)과 0048 이 같은 이름을 쓴다.
+_SCORE_INDEX = "ix_analyses_repo_scores"
+
+
+def _analyses_columns(stmt) -> set[str] | None:
+    """`stmt` 가 참조하는 analyses 열 이름 — SQL 문자열이 아니라 **식 트리**에서 모은다.
+
+    select 목록 · 집계 인자 · FILTER · WHERE · GROUP BY 어디서든, 별칭을 거쳐도 원래 열로 센다.
+    analyses 를 아예 읽지 않는 문이면 None.
+    Columns of `analyses` referenced anywhere in `stmt`, read from the expression tree.
+    """
+    table = Analysis.__table__
+    touches = False
+    found: set[str] = set()
+    for node in visitors.iterate(stmt):
+        if node is table or getattr(node, "element", None) is table:
+            touches = True
+        if isinstance(node, Column):
+            base = table.c.get(node.name)
+            if base is not None and node.shares_lineage(base):
+                touches = True
+                found.add(node.name)
+    return found if touches else None
+
+
+def _card_statements(session) -> list:
+    """`_repo_cards` 가 실제로 실행하는 문 — ORM 실행 훅으로 모은다(쿼리를 여기 다시 쓰지 않는다)."""
+    repos = session.query(Repository).all()
+    seen: list = []
+
+    def _collect(state):
+        seen.append(state.statement)
+
+    event.listen(session, "do_orm_execute", _collect)
+    try:
+        _repo_cards(session, repos)
+    finally:
+        event.remove(session, "do_orm_execute", _collect)
+    return seen
+
+
+def test_overview_card_aggregates_read_only_the_score_index_columns(json_bytes):
+    """🔴 카드 집계는 `ix_analyses_repo_scores` 의 열만 읽는다 — 그래야 인덱스만으로 답한다.
+
+    `count(analyses.id)` 하나만 섞여도 id 가 인덱스에 없어 Index Only Scan 이 막힌다 —
+    PostgreSQL 17 은 NOT NULL 열의 count 를 count(*) 로 바꾸지 않는다. 운영(2026-10-17)에서
+    이 집계는 그래서 힙 1,185페이지를 통째로 읽었다(`result` JSON 이 대부분 인라인이라 무겁다).
+    SQLite 는 rowid 가 모든 인덱스에 들어 있어 이 차이를 계획으로 못 본다 — 그래서 식 트리에서 잰다.
+    실제 계획은 `tests/integration/test_overview_reliable_avg_postgres.py` 가 PostgreSQL 에서 본다.
+    """
+    _, session = json_bytes
+    index = next((ix for ix in Analysis.__table__.indexes if ix.name == _SCORE_INDEX), None)
+    assert index is not None, f"모델에 {_SCORE_INDEX} 가 없다 — 카드 집계가 기댈 인덱스가 사라졌다"
+    allowed = {c.name for c in index.columns}
+    read = [cols for cols in map(_analyses_columns, _card_statements(session)) if cols is not None]
+    # 분석 수 · 기록된 점수 평균 — 둘 다 analyses 를 읽는다. 못 잡으면 아래 단언이 공허하다.
+    assert len(read) >= 2, f"analyses 를 읽는 카드 집계를 {len(read)}개만 잡았다 — 계기가 공허하다"
+    outside = [sorted(cols - allowed) for cols in read if cols - allowed]
+    assert not outside, (
+        f"카드 집계가 {_SCORE_INDEX} 밖의 열을 읽는다: {outside} — 그 문은 힙을 읽는다. "
+        "행 수는 count(Analysis.id) 가 아니라 func.count() 로 센다."
+    )
+
+
+def test_the_column_reader_catches_aliased_where_columns_and_ignores_literals():
+    """🔴 계기 뒤집기 — `_analyses_columns` 가 «약속한 것» 과 «가장 싼 흉내» 를 가르는가.
+
+    claimed(이름이 약속하는 것): 어느 절에 있든 · 별칭을 거쳐도 analyses 의 열이면 센다.
+    cheap(첫 출력만 보고 떠올린 가장 싼 과정): 컴파일된 SQL 에서 `analyses.<열>` 을 정규식으로
+    줍기, 또는 select 목록의 이름만 읽기.
+    claimed 에만 있는 것 — 별칭(`analyses_1.`)으로 WHERE 에만 나오는 열 → 반드시 잡혀야 한다.
+    cheap 에만 있는 것 — `'analyses.created_at'` 문자열을 `created_at` 라벨로 고른 것 → 반드시 무시돼야 한다.
+    """
+    other = aliased(Analysis)
+    where_only = select(func.count()).select_from(other).where(other.created_at.isnot(None))
+    literal_only = (select(Analysis.repo_id, literal("analyses.created_at").label("created_at"))
+                    .group_by(Analysis.repo_id))
+    assert _analyses_columns(where_only) == {"created_at"}
+    assert _analyses_columns(literal_only) == {"repo_id"}
+    assert _analyses_columns(select(Repository.id)) is None
