@@ -39,17 +39,20 @@ def recorded_score_summary(db, repo_ids: list[int]) -> dict[int, tuple[float, in
     (`src/scorer/reliability.py::def should_null_persist_score`).
 
     `result` 블롭은 읽지 않는다 — 미검증 판정은 쓰기 시점에 채운 캐시 컬럼이다(0046).
-    운영(2026-10-17) 8,024행 Seq Scan 6 ms. 검증 점수만 보던 때의 부분 인덱스
-    `ix_analyses_reliable_scores` 는 이 쿼리가 쓰지 않는다.
+    🔴 행은 `count(*)` 로 센다 — 이 집계가 읽는 열이 전부 `ix_analyses_repo_scores`(0048) 안에
+    있어야 PostgreSQL 이 인덱스만으로 답한다. `count(Analysis.id)` 는 id 가 인덱스 밖이라 힙을
+    통째로 읽는다(운영 2026-10-17: 버퍼 1,185 · 5.8 ms). 가드 =
+    `tests/unit/ui/test_overview_payload_bounded.py` · PG 계획은 `tests/integration/`.
 
     Per repo: (average of every stored score, how many of those rows are unverified).
-    Unverified rows stay in the average; the card only marks them.
+    Unverified rows stay in the average; the card only marks them. Rows are counted with count(*)
+    so the aggregate is answered from the index alone.
     """
     rows = (
         db.query(
             Analysis.repo_id,
             func.avg(Analysis.score),
-            func.count(Analysis.id).filter(  # pylint: disable=not-callable
+            func.count().filter(  # pylint: disable=not-callable
                 Analysis.score_unreliable.is_(True)),
         )
         .filter(Analysis.repo_id.in_(repo_ids), Analysis.score.isnot(None))
@@ -83,8 +86,10 @@ def _repo_cards(db, repos) -> list[dict]:
     Card data per repo: analysis count, recorded average and grade, and the two markers.
     """
     repo_ids = [r.id for r in repos]
+    # 분석 수도 `count(*)` — repo_id 를 앞에 둔 인덱스만으로 센다(`recorded_score_summary` 참조).
+    # Count with count(*) so a repo_id-leading index answers it without touching the heap.
     count_map = dict(
-        db.query(Analysis.repo_id, func.count(Analysis.id))  # pylint: disable=not-callable
+        db.query(Analysis.repo_id, func.count())  # pylint: disable=not-callable
         .filter(Analysis.repo_id.in_(repo_ids))
         .group_by(Analysis.repo_id)
         .all()
