@@ -103,10 +103,15 @@
     font-size: var(--fs-xs, 0.75rem);
   }
   .repo-card__score { font-family: var(--claude-font-mono, monospace); color: var(--text-1, #fff); font-size: var(--fs-sm, 0.875rem); }
-  /* 검증된 점수가 없는 이유 — 좁으면 접히고 개수는 오른쪽에 남는다. 구분점은 글자가 아니라 ::before.
-     Reason for a missing verified score; wraps when narrow. The separator dot is generated content. */
-  .repo-card__reason { display: inline-flex; flex-wrap: wrap; align-items: baseline; column-gap: 0.35em; min-width: 0; }
-  .repo-card__unverified { color: var(--text-2, rgba(255,255,255,0.6)); }
+  /* 평균에 미검증 점수가 들었다는 표식(점수 줄 바로 아래) · 점수가 하나도 없는 이유 — 좁으면 접힌다.
+     구분점은 글자가 아니라 ::before.
+     Marker under the score row for an average with unverified scores, and the no-score reason.
+     The separator dot is generated content. */
+  .repo-card__reason {
+    display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 0.35em; min-width: 0;
+    margin-top: calc(var(--space-2, 0.5rem) * -1);
+  }
+  .repo-card__unverified, .repo-card__no-score { color: var(--text-2, rgba(255,255,255,0.6)); }
   .repo-card__ai-off::before { content: "·"; margin-right: 0.35em; }
 
   /* 점수 바 (인라인) — 크기만 정한다. 면(트랙·등급 채움)은 `components.css` 가 정본 —
@@ -218,8 +223,8 @@
            (value or 'f') | lower — guard against None (ui.md rule) #}
         <span class="grade grade--{{ (item.avg_grade or 'f') | lower }}">{{ item.avg_grade or 'F' }}</span>
         {% elif item.analysis_count %}
-        {# 🔴 분석은 있는데 검증된 점수가 없다(AI 리뷰 꺼짐·미검증) — 빈칸이 아니라 수식어 없는 중립 칩.
-           Analyses exist but none is verified: a neutral chip, not a blank slot. #}
+        {# 🔴 분석은 있는데 저장된 점수가 하나도 없다(점수 NULL = 진짜 AI 실패) — 빈칸이 아니라 수식어 없는 중립 칩.
+           Analyses exist but none has a stored score: a neutral chip, not a blank slot. #}
         <span class="grade">—</span>
         {% endif %}
       </div>
@@ -231,15 +236,20 @@
         <span class="repo-card__score">{{ item.avg_score }}<span style="color: var(--text-3, rgba(255,255,255,0.4)); font-size:11px;">/100</span></span>
         <span class="repo-card__meta">{{ 'overview.analysis_count_unit' | i18n_args(locale | default('ko'), count=item.analysis_count) }}</span>
       </div>
+      {% if item.includes_unverified %}
+      {# 미검증 점수(AI 리뷰 꺼짐·실패, 미지원 언어 등)도 평균에 들었다 — 등급·막대는 막지 않고 알리기만 한다.
+         The average includes unverified scores: say so without withholding the grade or the bar. #}
+      <div class="repo-card__reason">
+        <span class="repo-card__meta repo-card__unverified" title="{{ 'overview.includes_unverified_hint' | i18n_args(locale | default('ko')) }}">{{ 'overview.includes_unverified' | i18n_args(locale | default('ko')) }}</span>
+        {% if item.ai_review_off %}<span class="repo-card__meta repo-card__ai-off">{{ 'overview.ai_review_off' | i18n_args(locale | default('ko')) }}</span>{% endif %}
+      </div>
+      {% endif %}
       {% elif item.analysis_count %}
-      {# 빈 막대 + 사유 — 미검증 점수로 막대를 채우지 않는다(평균·등급은 검증된 점수만).
-         An empty bar plus the reason; unverified scores never fill the bar. #}
+      {# 빈 막대 + 사유 — 그릴 점수가 하나도 없다.
+         An empty bar plus the reason: there is no stored score to draw. #}
       <div class="score-bar" style="--sb-pct: 0%;"></div>
       <div class="repo-card__score-row">
-        <span class="repo-card__reason">
-          <span class="repo-card__meta repo-card__unverified" title="{{ 'overview.no_verified_score_hint' | i18n_args(locale | default('ko')) }}">{{ 'overview.no_verified_score' | i18n_args(locale | default('ko')) }}</span>
-          {% if item.ai_review_off %}<span class="repo-card__meta repo-card__ai-off">{{ 'overview.ai_review_off' | i18n_args(locale | default('ko')) }}</span>{% endif %}
-        </span>
+        <span class="repo-card__meta repo-card__no-score" title="{{ 'overview.no_recorded_score_hint' | i18n_args(locale | default('ko')) }}">{{ 'overview.no_recorded_score' | i18n_args(locale | default('ko')) }}</span>
         <span class="repo-card__meta">{{ 'overview.analysis_count_unit' | i18n_args(locale | default('ko'), count=item.analysis_count) }}</span>
       </div>
       {% else %}

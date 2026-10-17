@@ -87,7 +87,9 @@ class Analysis(Base):
     #     이 컬럼 + 부분인덱스           0.45 ms · **4행**
     #
     # 🔴 이것은 **캐시**지 정의가 아니다. 정의는 `scorer/reliability.score_is_unreliable`
-    #    하나뿐이고, 이 컬럼이 그것과 어긋나면 평균이 조용히 틀린다(예외도 red 도 없이).
+    #    하나뿐이고, 이 컬럼이 그것과 어긋나면 읽는 쪽이 조용히 틀린다(예외도 red 도 없이).
+    #    지금 읽는 곳 = 개요 카드의 «미검증 포함» 표식(`src/ui/routes/overview.py::def recorded_score_summary`)
+    #    — 첫 화면 평균은 검증 여부와 상관없이 기록된 점수 전부다(사용자 결정 2026-10-17).
     #    판정 함수 본문이 바뀌면 백필 리비전을 강제하는 가드가 CI 에 있다
     #    (`tests/unit/scorer/test_reliability_cache_contract.py`).
     #
@@ -98,10 +100,10 @@ class Analysis(Base):
     #    이 기본값이 적용되는 경우는 「쓰기가 이 컬럼을 빠뜨렸을 때」뿐이다:
     #      · 새 쓰기 경로가 대입을 잊음  · 배포 교체 중 옛 바이너리의 insert
     #      · 미래의 bulk/raw SQL 경로
-    #    false 로 두면 그 행이 **검증된 점수로 평균에 들어간다** — R46 Axis B 의 재현이다.
+    #    false 로 두면 그 행이 **검증된 점수로 표시된다**.
     #    운영 실측 신뢰불가 비율 70.8% 를 감안하면 「모르면 신뢰 가능」은 나쁜 사전확률이다.
-    #    true 면 모르는 행은 평균에서 빠진다 — 판정 자체가 fail-closed 인 것과 방향이 같다.
-    #    Unknown rows must not enter verified averages; the default is the backstop for
+    #    true 면 모르는 행은 «미검증» 으로 표시된다 — 판정 자체가 fail-closed 인 것과 방향이 같다.
+    #    Unknown rows must not pass as verified; the default is the backstop for
     #    forgotten writes, so it points the same way the predicate does.
     score_unreliable = Column(
         Boolean, nullable=False, server_default=text("true"),

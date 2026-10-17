@@ -1,20 +1,19 @@
-"""🔴 `GET /` 의 SQL 평균이 **파이썬 판정과 같은 값**을 내는가 — PostgreSQL 실측.
+"""🔴 `GET /` 의 SQL 집계가 **파이썬 계산과 같은 값**을 내는가 — PostgreSQL 실측.
 
-🔴 Whether the SQL average equals the Python-predicate average, measured on real PostgreSQL.
+🔴 Whether the overview's SQL aggregate equals the Python computation, on real PostgreSQL.
 
 ## 왜 이 파일이 PostgreSQL 전용인가
 
-0046 이후 `GET /` 는 `result` 블롭을 읽지 않고 `AVG(score)` 를 SQL 에서 낸다.
-신뢰 불가 행은 `Analysis.score_unreliable`(= `score_is_unreliable(result)` 의 캐시)로
-SQL 에서 제외한다. 이 구조에서 틀릴 수 있는 것은 **성능이 아니라 값**이다:
+`GET /` 는 `result` 블롭을 읽지 않고 리포별 `AVG(score)` 와 «그중 미검증 행 수» 를 SQL 한 번에
+낸다(`src/ui/routes/overview.py::def recorded_score_summary`). 평균은 점수가 저장된 분석 전부다
+(검증 여부와 무관 — 사용자 결정 2026-10-17). 미검증 수는 `Analysis.score_unreliable`
+(= `score_is_unreliable(result)` 의 캐시)로 센다. 이 구조에서 틀릴 수 있는 것은 **값**이다:
 
-  · 캐시가 판정과 어긋나면 평균이 조용히 달라진다
-  · `AVG` 의 NULL 처리·반올림·Decimal 반환이 파이썬 평균과 갈릴 수 있다
-  · 부분 인덱스 술어(`score IS NOT NULL AND score_unreliable IS NOT TRUE`)와
-    쿼리 술어가 어긋나면 **결과는 같아도** Index Only Scan 을 놓친다
+  · `AVG` 의 NULL 처리·Decimal 반환이 파이썬 평균과 갈릴 수 있다
+  · `COUNT … FILTER (WHERE score_unreliable IS TRUE)` 가 방언마다 다르게 읽힐 수 있다
+  · 캐시가 판정과 어긋나면 미검증 수가 조용히 달라진다
 
-SQLite 는 `AVG` 의 수치 타입도 부분 인덱스 사용 여부도 PostgreSQL 과 다르다 —
-그 축은 여기서만 관측된다.
+SQLite 는 `AVG` 의 수치 타입도 불린 비교도 PostgreSQL 과 다르다 — 그 축은 여기서만 관측된다.
 
 실행 조건 / Execution guard: `DATABASE_URL_TEST_POSTGRES` 설정 시에만 (pg-concurrency CI job).
 """
@@ -23,7 +22,7 @@ from __future__ import annotations
 import os
 
 import pytest
-from sqlalchemy import create_engine, func
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from src.scorer.reliability import score_is_unreliable
@@ -90,67 +89,36 @@ def _seed(session):
     session.commit()
 
 
-def _python_average() -> float:
-    scores = [s for s, r in _ROWS if s is not None and not score_is_unreliable(r)]
-    assert scores, "표본에 신뢰 가능한 점수가 없다 — 이 테스트가 공허하다"
-    return sum(scores) / len(scores)
+def _python_expected() -> tuple[float, int]:
+    """기록된 점수(NULL 제외) 전부의 평균, 그중 신뢰 불가 판정 수."""
+    recorded = [(s, r) for s, r in _ROWS if s is not None]
+    assert recorded, "표본에 기록된 점수가 없다 — 이 테스트가 공허하다"
+    return (sum(s for s, _ in recorded) / len(recorded),
+            sum(1 for _, r in recorded if score_is_unreliable(r)))
 
 
 @_requires_postgres
-def test_sql_average_equals_the_python_predicate_average(pg):
-    """🔴 값 동치 — SQL 이 판정을 SQL 로 다시 쓴 것이 아니라 캐시를 쓰는지 확인한다."""
-    from src.models.analysis import Analysis  # pylint: disable=import-outside-toplevel
+def test_sql_aggregate_equals_the_python_computation(pg):
+    """🔴 값 동치 — 라우트가 쓰는 집계 함수를 그대로 부른다(쿼리를 여기 다시 쓰지 않는다)."""
+    from src.ui.routes.overview import recorded_score_summary  # pylint: disable=import-outside-toplevel
 
     session, _ = pg
     _seed(session)
 
-    got = (
-        session.query(Analysis.repo_id, func.avg(Analysis.score))
-        .filter(
-            Analysis.repo_id.in_([1]),
-            Analysis.score.isnot(None),
-            Analysis.score_unreliable.isnot(True),
-        )
-        .group_by(Analysis.repo_id)
-        .all()
-    )
-    assert len(got) == 1, f"그룹이 1개가 아니다: {got}"
-    assert float(got[0][1]) == pytest.approx(_python_average()), (
-        f"SQL 평균 {got[0][1]} != 파이썬 평균 {_python_average()} — "
-        "캐시가 판정과 어긋났거나 필터가 다르다"
-    )
+    got = recorded_score_summary(session, [1])
+    assert set(got) == {1}, f"그룹이 1개가 아니다: {got}"
+    avg, unverified = got[1]
+    want_avg, want_unverified = _python_expected()
+    assert float(avg) == pytest.approx(want_avg), (
+        f"SQL 평균 {avg} != 파이썬 평균 {want_avg} — 점수 NULL 이 아닌 행 전부를 세야 한다")
+    assert unverified == want_unverified, (
+        f"SQL 미검증 수 {unverified} != 판정 함수 {want_unverified} — 캐시가 판정과 어긋났거나 "
+        "FILTER 가 다르게 읽혔다")
 
 
 @_requires_postgres
 def test_the_sample_exercises_both_sides_of_the_filter(pg):
-    """공허화 차단 — 신뢰 O/X 와 score NULL 이 모두 있어야 필터가 검증된다."""
-    verdicts = {score_is_unreliable(r) for _, r in _ROWS}
+    """공허화 차단 — 신뢰 O/X 와 score NULL 이 모두 있어야 평균·미검증 수가 둘 다 검증된다."""
+    verdicts = {score_is_unreliable(r) for s, r in _ROWS if s is not None}
     assert verdicts == {True, False}, f"신뢰도 축이 한쪽뿐: {verdicts}"
     assert any(s is None for s, _ in _ROWS), "score NULL 표본이 없다"
-
-
-@_requires_postgres
-def test_the_partial_index_is_actually_used(pg):
-    """🔴 부분 인덱스가 실제로 쓰이는가 — 술어가 어긋나면 값은 맞고 성능만 조용히 죽는다.
-
-    실측(로컬 PG17, 5,164행): 인덱스 사용 0.45 ms · 버퍼 6 / 미사용 2.17 ms · 버퍼 1,145.
-    표본이 작아 계획이 Seq 로 갈 수 있으므로 **강제 후** 인덱스가 존재하고 쓰일 수 있는지 본다.
-    """
-    session, engine = pg
-    _seed(session)
-    with engine.connect() as conn:
-        from sqlalchemy import text  # pylint: disable=import-outside-toplevel
-
-        names = [r[0] for r in conn.execute(text(
-            "SELECT indexname FROM pg_indexes WHERE tablename='analyses'"))]
-        assert "ix_analyses_reliable_scores" in names, (
-            f"부분 인덱스가 생성되지 않았다: {names}"
-        )
-        conn.execute(text("SET LOCAL enable_seqscan = off"))
-        plan = "\n".join(r[0] for r in conn.execute(text(
-            "EXPLAIN SELECT repo_id, avg(score) FROM analyses"
-            " WHERE score IS NOT NULL AND score_unreliable IS NOT TRUE"
-            " GROUP BY repo_id")))
-    assert "ix_analyses_reliable_scores" in plan, (
-        "부분 인덱스를 쓸 수 없다 — 쿼리 술어가 인덱스 술어를 함의하지 않는다:\n" + plan
-    )
