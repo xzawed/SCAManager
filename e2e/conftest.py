@@ -892,10 +892,11 @@ UNVERIFIED_REPO = "owner/unverifiedrepo"
 
 
 def _seed_unverified_repo(db_path: str) -> str:
-    """분석은 있는데 검증된 점수가 없는 리포 — AI 리뷰 토글 꺼짐 + `disabled` 분석 2회 → full_name.
+    """분석은 있는데 검증된 점수가 없는 리포 — AI 리뷰 토글 꺼짐 + `disabled` 70점 분석 2회 → full_name.
 
     🔴 운영(2026-10-17)의 그 모양이다 — AI 리뷰를 끈 뒤 추가한 리포는 분석이 전부
-       `ai_review_status="disabled"` 라 `score_unreliable` 이고, 개요 평균(검증 점수만)이 없다.
+       `ai_review_status="disabled"` 라 `score_unreliable` 이다. 개요 카드는 그래도 기록된
+       점수(70)로 등급·막대를 그리고 «미검증 포함 · AI 리뷰 꺼짐» 을 단다.
     🔴 ORM 으로 넣는다 — `RepoConfig` 기본값은 파이썬 측이고, `score_unreliable` 은 프로덕션
        쓰기 경로와 같은 판정 함수로 채운다.
     🔴 **전역 시드로 만들지 않는다** — `/` 에 카드가 늘면 `e2e/test_overview_score.py` 의
@@ -940,14 +941,14 @@ def _seed_unverified_repo(db_path: str) -> str:
 
     assert len(unverified) == 2 and all(unverified), (
         f"검증 안 된 분석 2회여야 한다 — score_unreliable={unverified!r}. 하나라도 검증되면 "
-        "개요 평균이 생겨 «검증 점수 없음» 카드를 재지 못한다")
+        "«검증된 분석이 하나도 없는» 운영 모양이 아니다")
     assert ai_on is False, f"AI 리뷰 토글이 꺼져 있지 않다({ai_on!r}) — «AI 리뷰 꺼짐» 팔이 열리지 않는다"
     return UNVERIFIED_REPO
 
 
 @pytest.fixture(scope="session")
 def unverified_repo(live_server):
-    """분석은 있는데 검증된 점수가 없는 리포(AI 리뷰 꺼짐) — 개요 카드의 «검증 점수 없음» 팔."""
+    """분석은 있는데 검증된 점수가 없는 리포(AI 리뷰 꺼짐) — 개요 카드의 «미검증 포함» 팔."""
     db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
     return _seed_unverified_repo(db_path)
 
@@ -1033,8 +1034,8 @@ def _seed_analysis_variants(db_path: str) -> dict[str, int]:
                                  created_at=now - timedelta(minutes=9)))
         # 🔴 `:409` 의 **거짓 팔**(`:418`) — result 는 없는데 점수는 있는 행. 두 팔을 한
         #    시험에서 **비교** 해야 「조건 없이 늘 레거시 문구를 찍는」 구현과 갈라진다
-        #    (Grok `01a0998d` 가 앞선 판을 이 대목에서 깨다). `score_unreliable=True` 라
-        #    집계에선 빠진다 — `src/ui/routes/overview.py` 의 `score_unreliable.isnot(True)`.
+        #    (Grok `01a0998d` 가 앞선 판을 이 대목에서 깨다). `score_unreliable=True` 지만
+        #    개요 카드는 기록된 점수를 전부 세므로(검증 여부 무관) 이 77 은 그 카드 평균에 든다.
         scored_sha = "variant-legacy-scored"
         if session.query(Analysis).filter_by(commit_sha=scored_sha).first() is None:
             session.add(Analysis(repo_id=repo.id, commit_sha=scored_sha,

@@ -191,33 +191,44 @@ def test_a_missing_page_opened_in_the_browser_is_an_error_page(seeded_page, base
     assert seeded_page.locator(".error-page a[href='/']").count() == 1, "개요로 돌아가는 길이 없다"
 
 
-# 개요 카드 한 장에서 등급 자리·막대 자리·사유 문구를 잰다.
-# Measures the grade slot, the bar slot and the reason labels of one overview card.
-_UNVERIFIED_CARD_JS = r"""c => {
+# 개요 카드 한 장에서 등급 칩·막대·점수·표식을 잰다.
+# Measures the grade chip, the bar, the score and the markers of one overview card.
+_RECORDED_CARD_JS = r"""c => {
   const q = s => c.querySelector(s), cr = c.getBoundingClientRect();
-  const chip = q('.grade'), bar = q('.score-bar'), lab = q('.repo-card__unverified'), off = q('.repo-card__ai-off');
-  const row = lab ? lab.closest('.repo-card__score-row') : null;
+  const chip = q('.grade'), bar = q('.score-bar'), score = q('.repo-card__score');
+  const mark = q('.repo-card__unverified'), off = q('.repo-card__ai-off');
+  const reason = mark ? mark.closest('.repo-card__reason') : null;
   const inside = el => { if (!el) return null; const r = el.getBoundingClientRect();
     return r.width > 0 && r.left >= cr.left - 1 && r.right <= cr.right + 1 && r.top >= cr.top - 1 && r.bottom <= cr.bottom + 1; };
+  const track = bar ? bar.getBoundingClientRect().width : 0;
+  const fill = bar ? parseFloat(getComputedStyle(bar, '::after').width) || 0 : 0;
   return {lang: document.documentElement.lang,
           chip: chip ? chip.textContent.trim() : null, chipCls: chip ? chip.className : null,
-          barCls: bar ? bar.className : null, fill: bar ? getComputedStyle(bar, '::after').width : null,
-          label: lab ? lab.innerText.trim() : null, labelInside: inside(lab),
+          barCls: bar ? bar.className : null, fillRatio: track ? fill / track : null,
+          score: score ? score.textContent.trim() : null,
+          mark: mark ? mark.innerText.trim() : null, markInside: inside(mark),
           off: off ? off.innerText.trim() : null, offInside: inside(off),
-          score: !!q('.repo-card__score'),
-          overflow: Math.max(c.scrollWidth - c.clientWidth, row ? row.scrollWidth - row.clientWidth : 0)};
+          noScore: !!q('.repo-card__no-score'),
+          overflow: Math.max(c.scrollWidth - c.clientWidth, reason ? reason.scrollWidth - reason.clientWidth : 0)};
 }"""
 
 
-def test_an_unverified_repo_card_says_why_it_has_no_grade(browser_instance, live_server, unverified_repo):
-    """🔴 분석은 있는데 검증된 점수가 없는 리포(AI 리뷰 꺼짐) — 등급·막대 자리가 비지 않고 이유를 말한다.
+def test_an_unverified_repo_card_shows_its_recorded_grade(browser_instance, live_server, unverified_repo):
+    """🔴 검증된 분석이 없는 리포(AI 리뷰 꺼짐)도 기록된 점수로 등급·막대를 그리고 «미검증 포함» 을 단다.
 
-    운영(2026-10-17): AI 리뷰 토글을 끈 뒤 추가한 리포 3개(분석 196·590·5회)의 카드가 등급 칩도
-    점수 막대도 없이 «N회» 한 줄이었다. 데스크톱·모바일에서 중립 칩 «—»(등급 색 없음) · 빈 막대 ·
-    «검증된 점수 없음 · AI 리뷰 꺼짐» 이 카드 안에 보이는지 잰다.
+    운영(2026-10-17): AI 리뷰를 끈 뒤 추가한 리포 3개(분석 196·590·5회)의 카드에 등급·막대가 없었다.
+    사용자 결정 = 자동 채점 여부와 상관없이 기록된 점수로 등급과 그래프를 같이 보인다.
+    데스크톱·모바일에서 등급 칩(색 있음) · 평균만큼 찬 막대 · 점수 · «미검증 포함 · AI 리뷰 꺼짐» 이
+    카드 안에 보이는지 잰다. 시드 = 70점 분석 2회.
     """
-    from src.i18n.loader import get_text  # noqa: PLC0415
+    import re  # noqa: PLC0415
 
+    from playwright.sync_api import expect  # noqa: PLC0415
+
+    from src.i18n.loader import get_text  # noqa: PLC0415
+    from src.scorer.calculator import calculate_grade  # noqa: PLC0415
+
+    grade = calculate_grade(70)
     problems = []
     for vw, vh in ((1440, 900), (375, 812)):
         ctx = browser_instance.new_context(base_url=live_server, viewport={"width": vw, "height": vh},
@@ -226,24 +237,28 @@ def test_an_unverified_repo_card_says_why_it_has_no_grade(browser_instance, live
         page.goto("/", wait_until="load")
         card = page.locator(f'a.repo-card[href="/repos/{unverified_repo}"]')
         card.scroll_into_view_if_needed()
-        page.wait_for_timeout(900)
-        got = card.evaluate(_UNVERIFIED_CARD_JS)
+        # 카운트업(0 → 70)이 끝날 때까지 — 끝나기 전 값을 재면 막대·점수가 덜 찬 채 읽힌다.
+        expect(card.locator(".repo-card__score")).to_have_text(re.compile(r"^70\b"), timeout=5000)
+        page.wait_for_timeout(600)
+        got = card.evaluate(_RECORDED_CARD_JS)
         ctx.close()
         lang = got["lang"] or "ko"
-        keys = ("overview.no_verified_score", "overview.ai_review_off")
+        keys = ("overview.includes_unverified", "overview.ai_review_off")
         want = tuple(get_text(k, lang) for k in keys)
         if not all(w and w != k for w, k in zip(want, keys)):
             problems.append(f"{vw}px 번역 문구가 없다({lang}): {want!r}")
-        if got["chip"] != "—" or (got["chipCls"] or "").split() != ["grade"]:
-            problems.append(f"{vw}px 등급 자리: {got['chip']!r} class={got['chipCls']!r} (중립 «—» 여야 한다)")
-        if (got["barCls"] or "").split() != ["score-bar"] or got["fill"] != "0px":
-            problems.append(f"{vw}px 막대 자리: class={got['barCls']!r} 채움={got['fill']!r} (빈 막대여야 한다)")
-        if (got["label"], got["off"]) != want:
-            problems.append(f"{vw}px 사유: {(got['label'], got['off'])!r} ≠ {want!r}")
-        if not (got["labelInside"] and got["offInside"]):
-            problems.append(f"{vw}px 사유 문구가 카드 밖이거나 안 보인다: {got}")
-        if got["score"]:
-            problems.append(f"{vw}px 검증 점수가 없는데 점수 숫자가 그려졌다")
+        if got["chip"] != grade or (got["chipCls"] or "").split() != ["grade", f"grade--{grade.lower()}"]:
+            problems.append(f"{vw}px 등급 칩: {got['chip']!r} class={got['chipCls']!r} (기록된 평균 70 의 {grade})")
+        if (got["barCls"] or "").split() != ["score-bar", f"score-bar--{grade.lower()}"]:
+            problems.append(f"{vw}px 막대 등급: class={got['barCls']!r}")
+        if got["fillRatio"] is None or abs(got["fillRatio"] - 0.70) > 0.03:
+            problems.append(f"{vw}px 막대가 평균만큼 차지 않았다: 채움 비율 {got['fillRatio']!r} (0.70)")
+        if (got["mark"], got["off"]) != want:
+            problems.append(f"{vw}px 표식: {(got['mark'], got['off'])!r} ≠ {want!r}")
+        if not (got["markInside"] and got["offInside"]):
+            problems.append(f"{vw}px 표식이 카드 밖이거나 안 보인다: {got}")
+        if got["noScore"]:
+            problems.append(f"{vw}px 점수가 있는데 «기록된 점수 없음» 이 그려졌다")
         if got["overflow"] > 1:
             problems.append(f"{vw}px 카드 글자가 넘친다({got['overflow']}px)")
-    assert not problems, "검증 점수 없는 리포 카드:\n  " + "\n  ".join(problems)
+    assert not problems, "검증된 분석이 없는 리포 카드:\n  " + "\n  ".join(problems)

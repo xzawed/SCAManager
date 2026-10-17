@@ -22,12 +22,11 @@ JSON 경로 접근이 `JSON_EXTRACT` / `#>` 로 달라 오탐·미탐이 둘 다
 `json_deserializer` 를 감싸 **파이썬으로 넘어온 JSON 바이트를 직접 센다** — 그것이
 비용 그 자체이고 방언에 무관하다.
 
-## 같이 고정하는 것: 의미가 안 바뀌었는가
+## 같이 고정하는 것: 평균이 무엇을 세는가
 
-투영으로 바꾸면 신뢰도 판정 입력이 달라진다. SQLite 는 JSON 불린을 **0/1 정수**로 주는데
-`score_is_unreliable` 은 `ai_defaults_applied` 를 **truthy** 로 본다
-(`src/scorer/reliability.py`) — 정규화를 빠뜨리면 그 행이 집계에서 안 빠지고 평균이
-조용히 틀어진다. 그래서 평균 자체를 함께 단언한다.
+첫 화면 평균은 검증 여부와 상관없이 **점수가 저장된 분석 전부**다(사용자 결정 2026-10-17).
+신뢰 불가 사유 6종을 심어 두고 평균 자체를 단언한다 — 어느 사유든 평균에서 다시 빠지면
+(예: `score_unreliable` 필터가 되살아나면) 값이 달라진다.
 """
 from __future__ import annotations
 
@@ -87,15 +86,14 @@ def _engine_with_counter():
     session.add_all([user, repo])
     session.flush()
 
-    # 신뢰 가능한 행 — 점수 100 · 80 (평균 90). 나머지는 전부 제외돼야 한다.
+    # 신뢰 가능한 행 — 점수 100 · 80. 아래 신뢰 불가 행(점수 1)도 첫 화면 평균에 전부 들어간다.
     reliable_scores = [100, 80]
     for i, score in enumerate(reliable_scores):
         result = {"ai_review_status": "success", "filler": _FILLER}
         session.add(Analysis(
             repo_id=1, commit_sha=f"ok{i:038d}", score=score, result=result,
-            # 🔴 프로덕션 쓰기 경로와 **같은 방식**으로 캐시를 채운다. 여기서 빠뜨리면
-            #    server_default(false) 가 들어가 신뢰 불가 행이 평균에 섞인다 —
-            #    즉 이 한 줄이 곧 프로덕션의 실패 모드다.
+            # 프로덕션 쓰기 경로와 **같은 방식**으로 캐시를 채운다 — 평균은 이 값과 무관하지만
+            # 카드의 «미검증 포함» 표식이 이 캐시를 읽는다.
             score_unreliable=score_is_unreliable(result),
         ))
     for i in range(_ROWS):
@@ -179,7 +177,7 @@ def _rendered_average() -> str | None:
 def test_the_score_element_is_actually_present(json_bytes):
     """🔴 계기 자기검증 — 점수 자리를 못 찾으면 아래 단언이 공허하다.
 
-    템플릿 구조가 바뀌면 정규식이 못 맞추고, 그때 `None == "90"` 이 아니라
+    템플릿 구조가 바뀌면 정규식이 못 맞추고, 그때 `None == 기대 평균` 이 아니라
     **여기가 먼저** red 가 되어 원인을 가리킨다.
     """
     assert _rendered_average() is not None, (
@@ -215,18 +213,20 @@ def test_a_bare_substring_scan_would_be_vacuous(json_bytes):
     )
 
 
-def test_overview_average_excludes_every_unreliable_reason(json_bytes):
-    """🔴 의미 비회귀 — 투영이 신뢰도 판정을 바꾸면 평균이 조용히 틀어진다.
+def test_overview_average_counts_every_recorded_score(json_bytes):
+    """🔴 첫 화면 평균 = 점수가 저장된 분석 전부 — 신뢰 불가 사유 6종도 전부 들어간다.
 
-    특히 캐시(`score_unreliable`)가 판정과 어긋나면 그 행이 집계에서 안 빠지고
-    정규화하지 않으면 이 행이 집계에 남아 평균이 90 이 아니게 된다.
+    신뢰 가능 100·80 과 신뢰 불가 점수 1 × 20 행 → (180 + 20) / 22 = 9.09 → 9.
+    검증된 것만 모으던 옛 집계라면 90 이다.
 
     🔴 옛 판은 `assert "90" in body` 였고 **발화할 수 없었다** — CSS 의
     `linear-gradient(90deg, …)` 에 맞았다. 이제 카드의 점수 자리만 본다.
     """
     _, _sess = json_bytes
+    recorded = [100, 80] + [1] * _ROWS
+    want = str(round(sum(recorded) / len(recorded)))
     rendered = _rendered_average()
-    assert rendered == "90", (
-        f"카드에 그려진 평균이 {rendered!r} 다 — 신뢰 불가 행이 집계에 섞였다. "
-        f"신뢰 가능 행은 100·80 둘뿐이고 나머지 {_ROWS} 행은 전부 제외돼야 한다."
+    assert rendered == want, (
+        f"카드에 그려진 평균이 {rendered!r} 다 — 기록된 점수 {len(recorded)}개의 평균 {want} 이어야 "
+        "한다. 신뢰 불가 행이 평균에서 빠졌다(검증된 것만이면 90)."
     )

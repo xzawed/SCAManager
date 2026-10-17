@@ -79,11 +79,11 @@ def test_overview_with_repos_shows_avg_score():
     mock_db = MagicMock()
     mock_repo = MagicMock(id=1, full_name="owner/repo", user_id=1, created_at="2026-01-01")
     mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [mock_repo]
-    # count_map → [(1, 1)], avg_map → [(1, 75.0)]
+    # count_map → [(1, 1)], 기록된 점수 → [(1, 75.0, 0)] (평균 · 그중 미검증 행 수)
     # v3 card redesign — avg_score rendered in repo-card, not table column
     mock_db.query.return_value.filter.return_value.group_by.return_value.all.side_effect = [
-        [(1, 1)],     # count_map
-        [(1, 75.0)],  # avg_map
+        [(1, 1)],        # count_map
+        [(1, 75.0, 0)],  # recorded scores: (repo_id, avg, unverified rows)
     ]
     mock_db.query.return_value.filter.return_value.all.return_value = []
     with patch("src.ui.routes.overview.SessionLocal", return_value=_ctx(mock_db)):
@@ -1788,13 +1788,13 @@ def test_overview_grade_derived_from_avg_score():
     mock_repo = MagicMock(id=1, full_name="owner/repo", user_id=1, created_at="2026-01-01")
     mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [mock_repo]
 
-    # 🔴 0046 이후 **두 쿼리가 같은 체인 모양**이다 — count 도 avg 도
+    # 🔴 **두 쿼리가 같은 체인 모양**이다 — count 도 기록된 점수 집계도
     #    `.filter().group_by().all()` 이라 `return_value` 하나로는 구분되지 않는다.
-    #    호출 순서(count → avg)로 `side_effect` 를 준다. 순서가 바뀌면 이 테스트가 먼저 깨진다.
-    #    Both aggregates now share the same chain shape; distinguish them by call order.
+    #    호출 순서(count → 점수 집계)로 `side_effect` 를 준다. 순서가 바뀌면 이 테스트가 먼저 깨진다.
+    #    Both aggregates share the same chain shape; distinguish them by call order.
     mock_db.query.return_value.filter.return_value.group_by.return_value.all.side_effect = [
-        [(1, 1)],       # ① count_map: [(repo_id, count)]
-        [(1, 92.0)],    # ② avg_map:   [(repo_id, avg)]  — 신뢰 불가 행은 SQL 이 이미 뺐다
+        [(1, 1)],          # ① count_map: [(repo_id, count)]
+        [(1, 92.0, 0)],    # ② 기록된 점수: [(repo_id, avg, 그중 미검증 행 수)]
     ]
 
     with patch("src.ui.routes.overview.SessionLocal", return_value=_ctx(mock_db)):
@@ -1808,17 +1808,17 @@ def test_overview_grade_derived_from_avg_score():
 def test_overview_parse_error_only_repo_shows_no_grade_not_f():
     """#25 회귀 가드: 점수가 전부 NULL(parse_error)인 리포는 등급 F 로 오분류되지 않고 등급 없음.
 
-    count_map 은 parse_error 분석을 포함(count=1)하지만 avg_map 은 func.avg(NULL 제외)로 avg=None.
-    grade 를 count 가 아닌 avg_raw(실제 평균 존재) 기준으로 판정 → calculate_grade(0)=F 미발생.
+    count_map 은 parse_error 분석을 포함(count=1)하지만 점수 집계는 `score IS NOT NULL` 만 보므로
+    그 리포의 행이 없다. grade 를 count 가 아닌 «실제 평균 존재» 기준으로 판정 → calculate_grade(0)=F 미발생.
     #25 NULL 저장 회귀(overview avg_grade=F 오분류) 봉인.
     """
     mock_db = MagicMock()
     mock_repo = MagicMock(id=1, full_name="owner/repo", user_id=1, created_at="2026-01-01")
     mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [mock_repo]
-    # count_map 은 parse_error 분석 1건 포함, avg_map 은 func.avg(NULL 제외) → avg=None
+    # count_map 은 parse_error 분석 1건 포함, 점수 집계는 행 없음(모든 score NULL)
     mock_db.query.return_value.filter.return_value.group_by.return_value.all.side_effect = [
         [(1, 1)],       # count_map: [(repo_id, count)] — parse_error 분석 카운트됨
-        [(1, None)],    # avg_map: [(repo_id, avg)] — 모든 score NULL → func.avg=None
+        [],             # 기록된 점수: 모든 score NULL → 그 리포의 행이 없다
     ]
     mock_db.query.return_value.filter.return_value.all.return_value = []
 
