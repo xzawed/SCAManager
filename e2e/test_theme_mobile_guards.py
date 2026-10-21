@@ -1782,10 +1782,13 @@ def test_the_sweep_waits_for_the_observer_not_the_clock(seeded_page, base_url):
         document.body.appendChild(d);
         const off = d.getBoundingClientRect().top + window.scrollY;
         d.style.top = (document.documentElement.scrollHeight - 16 - off) + 'px'; }""")
-    gap_js = ("() => document.documentElement.scrollHeight - (document.getElementById("
-              "'unrevealablePlant').getBoundingClientRect().top + window.scrollY)")
-    # 🔴 계기 자기검증 — 심은 요소가 문서 끝 40px 안에 있어야 반대쪽 단언이 뜻을 갖는다.
-    #    helper 가 도는 사이 문서가 자라면 그 전제가 깨지므로 뒤에서 한 번 더 본다.
+    gap_js = ("() => { const h = document.documentElement.scrollHeight;"
+              " if (h <= window.innerHeight) return -1;"
+              " return h - (document.getElementById('unrevealablePlant')"
+              ".getBoundingClientRect().top + window.scrollY); }")
+    # 🔴 계기 자기검증 — 문서가 화면보다 길고 심은 요소가 문서 끝 40px 안에 있어야, 어떤
+    #    스크롤에서도 관찰 영역 밖이라 반대쪽 단언이 뜻을 갖는다. helper 가 도는 사이 문서가
+    #    자라면 그 전제가 깨지므로 뒤에서 한 번 더 본다.
     assert 0 < page.evaluate(gap_js) < 40, "심은 요소가 문서 끝 40px 안에 놓이지 않았다"
 
     _reveal_all(page)
