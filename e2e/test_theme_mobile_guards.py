@@ -615,31 +615,41 @@ def _reveal_all(page) -> None:
     `.mono` 2.52 는 정착값 7.05 로 사라졌고(거짓), 첫 화면 아래 있던 `.field-tag`
     pastel 2.79 같은 진짜 미달이 새로 드러났다.
 
+    🔴 훑은 뒤 남은 것은 하나씩 화면 가운데로 끌어와 **`.visible` 이 붙을 때까지** 프레임마다
+    본다. 고정 시간을 기다리면 안 된다 — 관찰자 판정은 렌더링 갱신에서만 나오고, headless 의
+    갱신 간격(실측 중앙 80ms · 최대 234ms, 배경 blur 원 때문)이 그 시간보다 길면 요소가 화면에
+    있던 순간이 한 번도 판정되지 않는다(실측: 90ms 고정 대기 100회 중 1회 투명 고착).
+    3초·2프레임이 지나도 안 붙으면 스크롤로는 못 드러나는 요소(문서 끝 40px 안 등)다 —
+    억지로 드러내지 않고 남겨 둬야 시험이 그것을 잡는다.
+
     Scroll first: reveal-on-intersect content is invisible (and unmeasurable) until it enters
-    the viewport, and `_settle_animations` cannot help because no Animation exists yet.
+    the viewport, and `_settle_animations` cannot help because no Animation exists yet. Then
+    wait for the observer itself, frame by frame: a fixed sleep can pass with no rendering
+    update at all on a slow headless runner.
     """
     page.evaluate("""async () => {
+        const frame = () => new Promise(r => requestAnimationFrame(() => r()));
+        const pending = e => {
+            const r = e.getBoundingClientRect();
+            return r.width > 0 && r.height > 0 && !e.classList.contains('visible')
+                   && parseFloat(getComputedStyle(e).opacity) < 0.99; };
         const step = Math.max(200, Math.floor(window.innerHeight * 0.8));
         for (let y = 0; y < document.body.scrollHeight; y += step) {
             window.scrollTo(0, y);
             await new Promise(r => setTimeout(r, 110));
         }
-        window.scrollTo(0, 0);
-        await new Promise(r => setTimeout(r, 110));
-        // 🔴 훑기만으로는 «문서 끝 40px 안» 에 있는 요소가 영영 안 드러난다 —
-        //    관찰자의 `rootMargin: 0 0 -40px 0` 때문에 최대 스크롤에서도 교차하지 않는다.
-        //    실측: 같은 코드가 로컬은 초록, CI 는 `.reveal 1/7` red 였다(폰트 높이 차이로
-        //    경계에 걸린다). 남은 것은 «하나씩» 화면 가운데로 끌어와 확실히 드러낸다.
-        const stuck = Array.from(document.querySelectorAll('.reveal')).filter(e => {
-            const r = e.getBoundingClientRect();
-            return r.width > 0 && r.height > 0
-                   && parseFloat(getComputedStyle(e).opacity) < 0.99; });
-        for (const el of stuck) {
+        for (const el of Array.from(document.querySelectorAll('.reveal')).filter(pending)) {
             el.scrollIntoView({block: 'center'});
-            await new Promise(r => setTimeout(r, 90));
+            const t0 = performance.now();
+            let frames = 0;
+            while (pending(el) && (frames < 2 || performance.now() - t0 < 3000)) {
+                await frame();
+                frames++;
+            }
         }
         window.scrollTo(0, 0);
-        await new Promise(r => setTimeout(r, 110));
+        await frame();
+        await frame();
     }""")
     _settle_animations(page)
 
@@ -1731,6 +1741,72 @@ def test_the_aa_sweep_measures_below_the_fold_too(seeded_page, base_url, path):
     assert after["stuck"] == 0, (
         f"{path}: 스윕이 끝난 뒤에도 자리를 차지한 `.reveal` {after['stuck']}/{total} 개가 "
         "opacity<0.99 다 — 그 글자들의 대비는 어떤 조합에서도 관측되지 않는다(안 쟀음 ≠ 통과)")
+
+
+# 관찰자 콜백을 1.2초 늦춘다 — 렌더링 갱신이 늦는 러너를 결정적으로 만든다. 지연은 고정 대기
+# helper 의 전체 실행(약 1초)보다 길고 `_reveal_all` 의 상한(3초)보다는 충분히 짧다.
+# Delay observer callbacks by 1.2 s: longer than a fixed-wait sweep, well under the 3 s cap.
+_DELAYED_OBSERVER_JS = """(() => {
+  const Native = window.IntersectionObserver;
+  window.__delayedObserverCallbacks = 0;
+  function Delayed(cb, opts) {
+    return new Native(function (entries, obs) {
+      window.__delayedObserverCallbacks++;
+      setTimeout(() => cb.call(obs, entries, obs), 1200);
+    }, opts);
+  }
+  Delayed.prototype = Native.prototype;
+  window.IntersectionObserver = Delayed;
+})()"""
+
+
+def test_the_sweep_waits_for_the_observer_not_the_clock(seeded_page, base_url):
+    """🔴 `_reveal_all` 은 시간이 아니라 «관찰자가 드러냈는가» 를 기다린다.
+
+    관찰자 판정은 렌더링 갱신에서만 나오고, headless 의 갱신 간격(실측 중앙 80ms · 최대
+    234ms)은 고정 대기(90·110ms)와 같은 크기다. 고정 대기 helper 는 그래서 위 시험을 CI 에서
+    가끔 떨어뜨렸다(`.reveal 1/7`). 콜백을 늦춰 그 상황을 결정적으로 만든다.
+    반대쪽도 잰다 — 문서 끝 40px 안의 요소는 스크롤로 «못» 드러난다(관찰자 `rootMargin`
+    아래 -40px). helper 가 그것까지 드러내면 진짜 갇힌 내용을 숨긴다.
+
+    Delayed callbacks must still be revealed; an element no scroll can reveal must stay hidden.
+    """
+    page = seeded_page
+    page.add_init_script(_DELAYED_OBSERVER_JS)
+    page.set_viewport_size({"width": 1440, "height": 900})
+    page.goto(f"{base_url}/repos/owner%2Ftestrepo/settings")
+    page.evaluate("""() => {
+        const d = document.createElement('div');
+        d.className = 'reveal'; d.id = 'unrevealablePlant';
+        d.style.cssText = 'position:absolute;left:0;top:0;width:240px;height:16px;';
+        document.body.appendChild(d);
+        const off = d.getBoundingClientRect().top + window.scrollY;
+        d.style.top = (document.documentElement.scrollHeight - 16 - off) + 'px'; }""")
+    gap_js = ("() => document.documentElement.scrollHeight - (document.getElementById("
+              "'unrevealablePlant').getBoundingClientRect().top + window.scrollY)")
+    # 🔴 계기 자기검증 — 심은 요소가 문서 끝 40px 안에 있어야 반대쪽 단언이 뜻을 갖는다.
+    #    helper 가 도는 사이 문서가 자라면 그 전제가 깨지므로 뒤에서 한 번 더 본다.
+    assert 0 < page.evaluate(gap_js) < 40, "심은 요소가 문서 끝 40px 안에 놓이지 않았다"
+
+    _reveal_all(page)
+
+    assert 0 < page.evaluate(gap_js) < 40, (
+        "helper 가 도는 사이 문서가 자라 심은 요소가 끝 40px 밖으로 밀렸다 — 재지 못한 것이다")
+    assert page.evaluate("() => window.__delayedObserverCallbacks") > 0, (
+        "관찰자 콜백 지연이 걸리지 않았다 — 재지 못한 것이지 통과가 아니다")
+    left = page.evaluate("""() => Array.from(document.querySelectorAll('.reveal')).filter(e => {
+        const r = e.getBoundingClientRect();
+        return e.id !== 'unrevealablePlant' && r.width > 0 && r.height > 0
+               && parseFloat(getComputedStyle(e).opacity) < 0.99; })
+        .map(e => e.id || e.className)""")
+    assert left == [], (
+        f"관찰자 콜백이 늦자 {left} 가 투명한 채 남았다 — `_reveal_all` 이 관찰자가 아니라 "
+        "시간을 기다린다(렌더링이 느린 러너에서 그 글자들은 안 재진다)")
+    plant = page.evaluate("() => parseFloat(getComputedStyle("
+                          "document.getElementById('unrevealablePlant')).opacity)")
+    assert plant < 0.99, (
+        "스크롤로 못 드러나는 요소(문서 끝 40px)까지 드러났다 — 관찰자를 건너뛰는 helper 는 "
+        "진짜 갇힌 내용을 숨긴다")
 
 
 # ── J. WCAG 2.5.8 타깃 크기 (24×24) — 모바일 ─────────────────────────────────
