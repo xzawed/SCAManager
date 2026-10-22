@@ -1509,10 +1509,12 @@ def seeded_analysis(live_server):
     return _seed_analysis(db_path)
 
 
-def _seed_paginated_history(db_path: str, count: int = 25) -> int:
+def _seed_paginated_history(db_path: str, count: int = 25, base: str = "now") -> int:
     """`PAGE_SIZE`(20)를 넘기는 점수 있는 분석 이력 — owner/testrepo 표에 페이지 버튼이 그려진다.
 
-    고정 SHA 에 `INSERT OR IGNORE` 라 몇 번 불러도 한 벌이다.
+    고정 SHA 에 `INSERT OR IGNORE` 라 몇 번 불러도 한 벌이다. `base` 는 SQLite 시각 값
+    (기본 `'now'`)이다 — 시각을 고정해 재는 시험이 넘긴다.
+    `base` is an SQLite time value (default `'now'`); tests pin it to measure a fixed hour.
     """
     from sqlalchemy import create_engine, text  # noqa: PLC0415
 
@@ -1526,6 +1528,11 @@ def _seed_paginated_history(db_path: str, count: int = 25) -> int:
             raise RuntimeError("_seed_repo must run before _seed_paginated_history")
         repo_id = row[0]
         result = {"summary": "page"}
+        # 🔴 «오늘»(UTC)과 겹치지 않게 25~49시간 전에 둔다. repos 추세는 최신 30건을 UTC 날짜로
+        #    묶어 2개 이상일 때만 차트를 그리는데, 이 25건이 오늘에 들면 UTC 늦은 시각에 «지금»
+        #    시드 몇 건과 함께 최신 30건을 하루로 채운다(#1764, 시각 스윕 = test_repos_mode).
+        # Keep these 25-49h back, off the current UTC day: on it they crowd the newest-30 trend
+        # window onto one date late in the UTC day and the repos chart disappears.
         for i in range(count):
             conn.execute(text("""
                 INSERT OR IGNORE INTO analyses
@@ -1533,10 +1540,10 @@ def _seed_paginated_history(db_path: str, count: int = 25) -> int:
                      score_unreliable, created_at)
                 VALUES
                     (:rid, :sha, :msg, :score, 'B', :res, 'e2e-tester',
-                     :unrel, datetime('now', :delta))
+                     :unrel, datetime(:base, :delta))
             """), {"rid": repo_id, "sha": f"page-sha-{i:03d}", "msg": f"feat: page seed {i}",
                    "score": 60 + (i * 7) % 35, "res": json.dumps(result),
-                   "delta": f"-{count - i} hours",
+                   "base": base, "delta": f"-{count - i + 24} hours",
                    "unrel": score_is_unreliable(result)})
         conn.commit()
     engine.dispose()

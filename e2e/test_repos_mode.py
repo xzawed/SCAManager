@@ -7,6 +7,15 @@ import os
 import pytest
 from playwright.sync_api import Page, expect
 
+from e2e.conftest import _seed_paginated_history, _setup_e2e_db
+
+# 페이지 시드를 넣어 보는 UTC 시각 — 매시 30분, 그리고 날짜 경계 직전.
+# UTC hours at which the page seed is placed: every hour at :30, plus just before midnight.
+_SWEEP_HOURS = tuple(f"{h:02d}:30:00" for h in range(24)) + ("23:54:00",)
+# 시드 곁 «지금» 시각에 쌓일 수 있는 행 수 — 없음 · 하나 · 이 스위트의 실제 최대(8) · 상한 직전(29).
+# Rows that can sit at "now" beside the seed: none, one, this suite's real maximum (8), cap - 1 (29).
+_NOW_ROW_COUNTS = (0, 1, 8, 29)
+
 
 def _seed_trend_analyses(db_path: str) -> None:
     """owner/testrepo 에 서로 다른 날짜 2건의 Analysis 를 삽입해 score_trend(length>1)를 만든다.
@@ -69,6 +78,95 @@ def test_repos_mode_score_trend_chart_renders(seeded_page: Page, base_url: str):
         "() => !!(window.Chart && Chart.getChart && Chart.getChart('repoTrendChart'))",
         timeout=6000,
     )
+
+
+@pytest.mark.e2e
+def test_paginated_seed_keeps_the_repo_trend_on_two_days_at_any_hour(live_server, tmp_path):
+    """🔴 페이지 시드가 하루 중 언제 들어가도 repos 추세는 UTC 날짜 2개 이상이다.
+
+    `repo_score_trend` 는 기간 안 **최신 30건**만 UTC 날짜로 묶고, 템플릿은 묶음이 2개 이상일
+    때만 `#repoTrendChart` 를 그린다. 시드 25건이 «오늘» 에 들어가면 UTC 늦은 시각에 «지금» 시드
+    몇 건과 함께 최신 30건을 하루로 채워 차트가 사라졌다(CI 23:54 실측, #1764). 그래서 시드
+    시각을 고정해 옮겨 가며 **실제** `repo_score_trend` 로 날짜 수를 잰다.
+
+    대조군 둘(옛 모양 = T-25h ~ T-1h 매시, 23:30): «지금» 7건이면 **잡혀야** 하고(날짜 1개),
+    0건이면 **통과해야** 한다(날짜 2개) — 계기가 몰림을 보되, 몰림 없는 옛 모양은 탓하지 않는다.
+    The repo trend must span two UTC days whatever hour the seed lands, measured with the real
+    repo_score_trend; a crowded control must be caught and a benign one must pass.
+    """
+    from datetime import datetime, timedelta  # noqa: PLC0415
+
+    from sqlalchemy import create_engine, delete, func, select  # noqa: PLC0415
+    from sqlalchemy.orm import Session  # noqa: PLC0415
+
+    from src.models.analysis import Analysis  # noqa: PLC0415
+    from src.models.repository import Repository  # noqa: PLC0415
+    from src.services.repo_insight_service import repo_score_trend  # noqa: PLC0415
+
+    db_path = str(tmp_path / "trend_sweep.db")
+    _setup_e2e_db(db_path)
+    engine = create_engine(f"sqlite:///{db_path}")
+    try:
+        with Session(engine) as db:
+            repo = Repository(full_name="owner/testrepo")
+            db.add(repo)
+            db.commit()
+            repo_id = repo.id
+
+            def reset() -> None:
+                db.execute(delete(Analysis).where(Analysis.repo_id == repo_id))
+                db.commit()
+
+            def add_rows(times: list, prefix: str, start: int = 0) -> None:
+                for n, at in enumerate(times, start=start):
+                    db.add(Analysis(repo_id=repo_id, commit_sha=f"{prefix}-{n:03d}", score=70,
+                                    grade="C", result={"summary": prefix},
+                                    score_unreliable=False, created_at=at))
+                db.commit()
+
+            def now_rows(base: datetime, have: int, want: int) -> list:
+                # «지금» 시드 — 페이지 시드보다 새것이고 base 와 같은 UTC 날짜다.
+                # "Now" rows: newer than the page seed and on base's UTC date.
+                return [base - timedelta(seconds=j) for j in range(have, want)]
+
+            def dates_at(base: datetime) -> list[str]:
+                trend = repo_score_trend(db, repo_id, 7, now=base + timedelta(minutes=5))
+                return [p["date"] for p in trend]
+
+            day = datetime(2026, 10, 21)
+
+            late = day.replace(hour=23, minute=30)
+            reset()
+            add_rows([late - timedelta(hours=25 - i) for i in range(25)], "old")
+            benign = dates_at(late)
+            add_rows(now_rows(late, 0, 7), "now")
+            crowded = dates_at(late)
+            assert len(benign) == 2, f"몰림 없는 옛 모양을 탓했다 — 계기가 날짜를 잘못 센다: {benign}"
+            assert len(crowded) == 1, (
+                f"«지금» 7건으로 몰린 옛 모양을 못 잡았다 — 계기가 최신 30건 상한을 안 본다: {crowded}")
+
+            failures = []
+            for hhmmss in _SWEEP_HOURS:
+                h, m, s = map(int, hhmmss.split(":"))
+                base = day.replace(hour=h, minute=m, second=s)
+                reset()
+                seeded = _seed_paginated_history(db_path, base=base.strftime("%Y-%m-%d %H:%M:%S"))
+                stored = db.scalar(select(func.count()).select_from(Analysis)
+                                   .where(Analysis.repo_id == repo_id))
+                assert seeded == stored == 25, (
+                    f"{hhmmss}: 시드가 25건이 아니다(반환 {seeded} · 저장 {stored}) — 재지 못했다")
+                have = 0
+                for want in _NOW_ROW_COUNTS:
+                    add_rows(now_rows(base, have, want), "now", start=have)
+                    have = want
+                    got = dates_at(base)
+                    if len(got) < 2:
+                        failures.append(f"{hhmmss} «지금» {want}건 → {got}")
+            assert not failures, (
+                "페이지 시드가 «오늘» 을 채워 추세가 하루로 몰린다 — 차트가 사라지는 경우: "
+                + "; ".join(failures))
+    finally:
+        engine.dispose()
 
 
 @pytest.mark.e2e
