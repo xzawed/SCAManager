@@ -365,7 +365,7 @@ jobs:
       - name: Audit requirements for known vulnerabilities
         # -r 로 requirements 파일 직접 스캔(설치 불필요). vuln 발견 시 exit 1 → CI fail(게이트).
         # 🔴 전이 의존 권고가 막으면 예외를 넣기 전에 그 의존을 고정하는 상위 패키지(대개 semgrep —
-        #    requirements.txt 주석)를 올려 풀리는지 먼저 본다. 예외는 아래 1건뿐이다.
+        #    requirements.txt 주석)를 올려 풀리는지 먼저 본다. 예외는 아래에 적은 것뿐이다.
         #
         # 🔴 --ignore-vuln CVE-2026-59951 (mcp 1.29.0, 2026-10-16) — semgrep 이 강제하는 전이 핀.
         #    semgrep==1.180.0 이 `mcp==1.29.0`(정확 핀)을 요구하고, 최신 1.181.0(10-14)도 같은 핀이라
@@ -379,13 +379,29 @@ jobs:
         #      (1) semgrep 이 mcp 핀을 >=1.30.0 으로 올리면(그 판으로 semgrep 을 올리고 예외 삭제)
         #      (2) 우리가 MCP 서버를 Streamable HTTP 로 실제 띄우게 되면(도달 불가 근거가 무효)
         #    습관적으로 ID 를 더하지 말 것 — 다른 CVE 는 계속 게이트로 막힌다.
+        #
+        # 🔴 --ignore-vuln CVE-2026-114603 (opentelemetry-api 1.37.0, 2026-10-22) — semgrep 이 강제하는 전이 핀.
+        #    semgrep==1.181.0 이 `opentelemetry-api~=1.37.0` 을 요구하고, 최신 1.182.1(10-22)도 같아
+        #    **버전 업으로 해결 불가**(수정판 1.45.1). 권고 전제 = 들어오는 요청의 `tracestate` 헤더를
+        #    `TraceState.from_header` 로 파싱하는 서버(W3C 전파 extract). 우리 사용 방식에선 **도달 불가**:
+        #      · 앱 코드는 OpenTelemetry 를 쓰지 않는다 — src/·scripts/ 에 opentelemetry·tracestate·OTEL_ 0건.
+        #        Starlette 의 `OpenTelemetryMiddleware` 는 직접 붙여야 켜지는 실험 기능이고 붙이는 곳 0건.
+        #      · 운영 의존성 설치본에서 extract 를 부르는 곳은 그 미들웨어와 semgrep 자체 텔레메트리뿐이다.
+        #        semgrep 은 내부 값으로 만든 `traceparent` 만 넘겨 tracestate 가 없다. anthropic SDK 의
+        #        추적은 나가는 호출에 span 을 만들 뿐 extract 하지 않는다.
+        #    재검토 조건 — 충족되면 이 ID 를 즉시 지운다:
+        #      (1) semgrep 이 opentelemetry-api >=1.45.1 을 허용하면(그 판으로 semgrep 을 올리고 예외 삭제)
+        #      (2) 앱에 OpenTelemetry 서버 계측(Starlette `OpenTelemetryMiddleware` · asgi/fastapi 계측)을 켜면
         # Scan requirements files directly (no install). Non-zero exit on any vuln → gate.
         # When a transitive advisory blocks, first try bumping the package that pins it (usually
-        # semgrep). One exception: CVE-2026-59951 — semgrep 1.180.0/1.181.0 pin `mcp==1.29.0`
+        # semgrep). Exceptions: CVE-2026-59951 — semgrep 1.180.0/1.181.0 pin `mcp==1.29.0`
         # exactly, and the advisory needs a stateful Streamable HTTP MCP server, which we never
         # start (semgrep runs only as a CLI subprocess). Remove it when semgrep allows mcp>=1.30.0
-        # or if we ever serve MCP over Streamable HTTP.
-        run: python -m pip_audit -r requirements.txt -r requirements-dev.txt --desc on --ignore-vuln CVE-2026-59951
+        # or if we ever serve MCP over Streamable HTTP. CVE-2026-114603 — semgrep pins
+        # opentelemetry-api~=1.37.0 (fix 1.45.1); the advisory needs a server that parses inbound
+        # `tracestate` headers, and the app never enables OpenTelemetry server instrumentation.
+        # Remove it when semgrep allows >=1.45.1 or if we turn that instrumentation on.
+        run: python -m pip_audit -r requirements.txt -r requirements-dev.txt --desc on --ignore-vuln CVE-2026-59951 --ignore-vuln CVE-2026-114603
 
   test-and-analyze:
     name: pytest + Codecov + SonarCloud
