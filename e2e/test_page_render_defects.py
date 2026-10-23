@@ -129,20 +129,28 @@ def test_language_switch_updates_the_html_lang(seeded_page, base_url):
 
 # 카운트업 대상 = effects.js `setupCountUp` 의 선택자 + base.html `_initKpiCountup` 의 `[data-count]`.
 # Count-up targets: effects.js setupCountUp selectors plus base.html's [data-count] elements.
+_COUNTUP_TARGETS = ('.kpi__value, .repo-card__score, .detail-hero__num, .reason-row__count, '
+                    '.freq-row__count, .breakdown__val, [data-count]')
+
+# 도중에 그려진 값만 본다(음수 프레임). 서버 글자는 응답 HTML 에서 읽는다 — 아래 시험 주석.
+# Watches the frames in between (negative values); the server text comes from the response HTML.
 _COUNTUP_WATCH_JS = r"""
 (() => {
-  const W = window.__cu = {server: null, negative: []};
-  document.addEventListener('DOMContentLoaded', () => {
-    W.server = Array.from(document.querySelectorAll(
-      '.kpi__value, .repo-card__score, .detail-hero__num, .reason-row__count, .freq-row__count, .breakdown__val, [data-count]'
-    )).map(e => e.textContent.replace(/\s+/g, ' ').trim());
-  });
+  const W = window.__cu = {negative: []};
   new MutationObserver(ms => { for (const m of ms) {
     const v = m.type === 'characterData' ? m.target.nodeValue : null;
     if (v && /^\s*-\d/.test(v)) W.negative.push(v.trim().slice(0, 12));
   } }).observe(document, {subtree: true, characterData: true});
 })();
 """
+
+# 같은 선택자로 «응답 HTML»(스크립트가 손대기 전)과 «지금 화면» 의 글자를 읽는다.
+# Reads the same targets from the response HTML (before any script ran) and from the live page.
+_COUNTUP_READ_JS = """([html, sel]) => {
+    const read = root => Array.from(root.querySelectorAll(sel)).map(e => e.textContent.replace(/\\s+/g, ' ').trim());
+    return {server: read(new DOMParser().parseFromString(html, 'text/html')), final: read(document),
+            negative: window.__cu.negative};
+}"""
 
 
 def test_countup_lands_on_the_server_text_and_never_goes_negative(
@@ -153,7 +161,13 @@ def test_countup_lands_on_the_server_text_and_never_goes_negative(
     ctx.add_init_script(script=_COUNTUP_WATCH_JS)
     for path in ("/", "/dashboard", "/dashboard?days=30", "/dashboard?days=30", "/", "/"):
         page = ctx.new_page()
-        page.goto(path, wait_until="load")
+        # 🔴 서버 글자는 응답 HTML 에서 읽는다. DOMContentLoaded 에서 읽으면 늦을 때가 있다 — 대시보드의
+        #    `[data-count]` 카운트업은 파싱 중 인라인 스크립트에서 시작해, 그 사이 그림 갱신이 끼면 첫 틱
+        #    («0.0»)이 DOMContentLoaded 보다 먼저 쓰인다(#1763 실측: 첫 틱 87.0ms · DOMContentLoaded 88.8ms).
+        #    그러면 끝값이 맞아도 비교 기준이 «0.0» 이 돼 실패했다.
+        # Read the server text from the response: the dashboard count-up starts from an inline script
+        # during parsing, so its first frame can land before DOMContentLoaded.
+        resp = page.goto(path, wait_until="load")
         page.wait_for_timeout(600)
         # 카운트업은 «화면에 들어올 때» 시작한다 — 아래쪽 대상까지 지나가게 한 뒤 끝나길 기다린다.
         # Count-up starts on entering the viewport: scroll past every target, then let it finish.
@@ -163,17 +177,18 @@ def test_countup_lands_on_the_server_text_and_never_goes_negative(
                 scrollTo(0, y); await new Promise(r => setTimeout(r, 250)); }
             scrollTo(0, 0); }""")
         page.wait_for_timeout(1800)
-        res = page.evaluate("""() => ({server: window.__cu.server, negative: window.__cu.negative,
-            final: Array.from(document.querySelectorAll(
-              '.kpi__value, .repo-card__score, .detail-hero__num, .reason-row__count, .freq-row__count, .breakdown__val, [data-count]'
-            )).map(e => e.textContent.replace(/\\s+/g, ' ').trim())})""")
+        res = page.evaluate(_COUNTUP_READ_JS, [resp.text(), _COUNTUP_TARGETS])
         page.close()
-        measured += len(res["server"] or [])
+        measured += len(res["server"])
         if res["negative"]:
             problems.append(f"{path}: 음수 프레임 {res['negative'][:3]}")
-        diff = [(a, b) for a, b in zip(res["server"] or [], res["final"]) if a != b]
+        # 개수가 다르면 짝이 어긋나 엉뚱한 쌍을 비교한다 — 먼저 그것부터 알린다.
+        # A count mismatch would pair the wrong elements; report it first.
+        if len(res["server"]) != len(res["final"]):
+            problems.append(f"{path}: 대상 수가 다르다 — 응답 {len(res['server'])} · 화면 {len(res['final'])}")
+        diff = [(a, b) for a, b in zip(res["server"], res["final"]) if a != b]
         if diff:
-            problems.append(f"{path}: 끝값이 서버 표기와 다르다 {diff[:4]}")
+            problems.append(f"{path}: 끝값이 서버 표기와 다르다 (서버, 끝) {diff[:4]}")
     ctx.close()
     assert measured, "카운트업 대상을 0개 쟀다 — 선택자가 화면과 어긋났다(공허한 초록)"
     assert not problems, "카운트업:\n  " + "\n  ".join(problems)
