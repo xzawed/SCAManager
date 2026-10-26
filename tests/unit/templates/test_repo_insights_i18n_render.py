@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import re
 
+import pytest
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from src.i18n.filters import register_i18n_filters
@@ -109,6 +110,27 @@ def test_repo_insights_renders_korean_kpi_labels():
     assert "보안 HIGH" in out  # kpi_security_high
     assert "최근 30일" in out  # recent_days (days=30 placeholder)
     assert "분석 5건 기준" in out  # period_basis (count placeholder)
+
+
+@pytest.mark.parametrize(("locale", "note"), [
+    ("ko", "이슈 집계는 최근 분석 30건 기준"),
+    ("en", "Issue figures use the latest 30 analyses"),
+    ("ja", "課題の集計は直近 30 件の分析基準"),
+])
+def test_repo_insights_marks_issue_basis_when_capped(locale, note):
+    """분석 45건 중 이슈 수치(최다 반복 · 보안 HIGH · 아래 목록)는 최근 30건에서 온다 — 머리줄에 적는다.
+    Of 45 analyses the issue figures come from the latest 30; the header says so.
+    """
+    out = _render("repo_insights.html", locale=locale, **_ri_ctx(kpi=_kpi(analysis_count=45), issue_basis=30))
+    assert note in out
+
+
+def test_repo_insights_hides_issue_basis_when_every_row_counts():
+    """분석이 30건 이하면 이슈도 전부에서 세므로 따로 적지 않는다.
+    With 30 analyses or fewer the issue figures use them all, so no note.
+    """
+    out = _render("repo_insights.html", locale="ko", **_ri_ctx(issue_basis=5))
+    assert "이슈 집계는" not in out
 
 
 def test_repo_insights_renders_korean_card_titles():

@@ -87,7 +87,8 @@ class Analysis(Base):
     # 🔴 이것은 **캐시**지 정의가 아니다. 정의는 `scorer/reliability.score_is_unreliable`
     #    하나뿐이고, 이 컬럼이 그것과 어긋나면 읽는 쪽이 조용히 틀린다(예외도 red 도 없이).
     #    지금 읽는 곳 = 개요 카드의 «미검증 포함» 표식(`src/ui/routes/overview.py::def recorded_score_summary`)
-    #    — 첫 화면 평균은 검증 여부와 상관없이 기록된 점수 전부다(사용자 결정 2026-10-17).
+    #    — 첫 화면 평균은 검증 여부와 상관없이 기록된 점수 전부다(사용자 결정 2026-10-17) — 과
+    #    리포 인사이트 점수 지표의 검증 평균(`src/services/repo_insight_service.py::def window_scores`).
     #    판정 함수 본문이 바뀌면 백필 리비전을 강제하는 가드가 CI 에 있다
     #    (`tests/unit/scorer/test_reliability_cache_contract.py`).
     #

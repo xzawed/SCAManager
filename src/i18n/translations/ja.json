@@ -902,6 +902,7 @@
     "donut_aria": "イシューカテゴリ比率チャート",
     "back_dashboard": "ダッシュボード",
     "period_basis": "直近 {days} 日 · 分析 {count} 件基準",
+    "issue_basis": "課題の集計は直近 {count} 件の分析基準",
     "day_label": "{days}日",
     "kpi_avg_score": "平均スコア",
     "grade_label": "{grade}グレード",

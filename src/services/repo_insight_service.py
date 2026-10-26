@@ -1,9 +1,12 @@
-"""리포별 코드 인사이트 서비스 — 5 집계 함수 + AI narrative.
+"""리포별 코드 인사이트 서비스 — 집계 함수 + AI narrative.
 
-Repository-level code insight service — 5 aggregation functions + AI narrative.
+Repository-level code insight service — aggregation functions + AI narrative.
 
-모든 집계 함수는 Analysis.result JSON을 Python-side 루프로 처리 (최근 30건 상한).
-All aggregation functions process Analysis.result JSON Python-side (max 30 rows).
+점수 지표(분석 수 · 평균 · 등급 · 변화)는 고른 기간 전체를 저장된 열(`score` · `score_unreliable`)로 SQL 집계하고,
+추세는 기간 안 점수 열을 전부 읽어 날짜로 묶는다. 이슈 계열은 Analysis.result JSON 을 Python 루프로 읽어서
+기간 안 최근 30건으로 자른다.
+Score metrics (count, average, grade, delta) aggregate the whole window in SQL from stored columns and the
+trend bins every score column in it; issue figures read the result JSON in Python and keep the latest 30.
 """
 from __future__ import annotations
 
@@ -13,10 +16,10 @@ import logging
 import re
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, NamedTuple
 
 import anthropic
-from sqlalchemy import select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
@@ -24,7 +27,6 @@ from src.shared.anthropic_caching import first_text_block
 from src.config import settings
 from src.models.analysis import Analysis
 from src.scorer.calculator import calculate_grade
-from src.scorer.reliability import score_is_unreliable
 from src.shared.claude_metrics import (
     ANTHROPIC_PAGE_DEADLINE_SECONDS, ANTHROPIC_RETRY_AFTER_CAP_PAGE_SECONDS, aclose_anthropic_client,
     extract_anthropic_usage, log_claude_api_call, new_async_anthropic, release_session_before_claude,
@@ -35,8 +37,8 @@ from src.shared.time_utils import to_naive_utc
 
 logger = logging.getLogger(__name__)
 
-# 집계 최대 분석 건수 — Python 루프 O(N×이슈수) 상한
-# Max analyses per aggregation — caps Python loop O(N×issues)
+# 이슈 집계가 읽는 최대 분석 건수 — 결과 JSON 을 읽는 Python 루프 O(N×이슈수) 상한. 점수 지표에는 걸지 않는다.
+# Max analyses the issue aggregates read (caps the JSON loop); score metrics are not capped.
 _MAX_ANALYSES = 30
 
 # 서술 출력 상한 — 600 은 운영 6건 중 5건이 정확히 닿았다(#1700). 대시보드 서술과 같은 1500:
@@ -55,9 +57,9 @@ class _NarrativeTruncated(Exception):
 def _fetch_analyses(
     db: Session, repo_id: int, days: int, now: datetime
 ) -> list[Analysis]:
-    """최근 days 내 분석 최대 _MAX_ANALYSES 건 조회 (created_at 내림차순).
+    """최근 days 내 분석 최대 _MAX_ANALYSES 건 조회 (created_at 내림차순) — 이슈 집계용.
 
-    Fetch up to _MAX_ANALYSES analyses within `days` window, newest first.
+    Fetch up to _MAX_ANALYSES analyses within `days` window, newest first, for the issue aggregates.
     """
     since = now - timedelta(days=days)
     return list(
@@ -73,32 +75,69 @@ def _fetch_analyses(
     )
 
 
-def _reliable_score_list(rows: list) -> list[float]:
-    """score 가 있고 신뢰 가능한 행의 점수 목록 (R46).
-    Scores from rows that have a score and are not score_is_unreliable (R46).
+class WindowScores(NamedTuple):
+    """한 리포 · 한 기간의 점수 집계 — 분석 수, 검증된 점수의 합과 개수.
+
+    Score aggregate for one repo and one window: analyses, plus the sum and count of verified scores.
     """
-    out: list[float] = []
-    for row in rows:
-        if row.score is None:
-            continue
-        result = getattr(row, "result", None)
-        if score_is_unreliable(result if isinstance(result, dict) else None):
-            continue
-        out.append(float(row.score))
-    return out
+
+    analyses: int
+    verified_sum: int
+    verified_count: int
+
+
+def window_scores(
+    db: Session, repo_ids: list[int], start: datetime, end: datetime, *, end_inclusive: bool = False,
+) -> dict[int, WindowScores]:
+    """리포마다 기간 «전체» 의 점수 집계 — 쿼리 한 번(`GROUP BY repo_id`), 결과 JSON 은 읽지 않는다.
+
+    검증 여부는 쓰기 시점에 채운 캐시 열 `score_unreliable`(0046)로 가른다(R46). 분석 수는 `result` 가
+    SQL NULL 이 아닌 행 전부 — 이슈 집계(`_fetch_analyses`)와 같은 모집단이다. 합과 개수를 정수로 받아
+    파이썬에서 나눈다 — 행을 읽어 평균 내던 값과 끝자리까지 같다.
+    Whole-window score aggregate per repo in one query, without reading the result JSON. Verified means
+    the write-time cache column says so (0046); the count covers every row with a non-NULL result, the
+    same population as the issue aggregates. Integer sum and count are divided in Python, matching the
+    old row-based average to the last digit.
+    """
+    verified = and_(Analysis.score.isnot(None), Analysis.score_unreliable.isnot(True))
+    end_filter = (Analysis.created_at <= end) if end_inclusive else (Analysis.created_at < end)
+    rows = db.execute(
+        select(
+            Analysis.repo_id,
+            func.count(),  # pylint: disable=not-callable
+            func.sum(Analysis.score).filter(verified),
+            func.count().filter(verified),  # pylint: disable=not-callable
+        )
+        .where(Analysis.repo_id.in_(repo_ids))
+        .where(Analysis.created_at >= start)
+        .where(end_filter)
+        .where(Analysis.result.isnot(None))
+        .group_by(Analysis.repo_id)
+    )
+    return {
+        repo_id: WindowScores(analyses, int(total or 0), verified_count)
+        for repo_id, analyses, total, verified_count in rows
+    }
+
+
+def _verified_average(scores: WindowScores | None) -> float | None:
+    """검증된 점수의 평균(소수 1자리) — 하나도 없으면 None.
+    Average of the verified scores to one decimal; None when there are none.
+    """
+    if scores is None or not scores.verified_count:
+        return None
+    return round(scores.verified_sum / scores.verified_count, 1)
 
 
 def compute_score_kpi(
-    cur: list,
-    prev: list,
+    cur: WindowScores | None,
+    prev: WindowScores | None,
 ) -> tuple[float | None, float | None, str]:
-    """평균점수/score_delta/등급 계산 공유 헬퍼 (R46: 신뢰 불가 점수 제외).
-    Shared helper: compute avg_score, score_delta, grade — excludes unreliable scores (R46).
+    """평균점수/score_delta/등급 계산 공유 헬퍼 — 입력은 `window_scores` 의 기간 전체 집계(R46: 신뢰 불가 점수 제외).
+    Shared helper: avg_score, score_delta, grade from `window_scores` aggregates (R46: unreliable excluded).
     """
-    cur_scores = _reliable_score_list(cur)
-    prev_scores = _reliable_score_list(prev)
-    avg_score = round(sum(cur_scores) / len(cur_scores), 1) if cur_scores else None
-    prev_avg = round(sum(prev_scores) / len(prev_scores), 1) if prev_scores else None
+    avg_score = _verified_average(cur)
+    prev_avg = _verified_average(prev)
     score_delta = (
         round(avg_score - prev_avg, 1)
         if (avg_score is not None and prev_avg is not None)
@@ -130,38 +169,35 @@ def _count_issues_and_high_security(analyses: list) -> tuple[dict[str, int], int
     return issue_counter, high_security
 
 
+def issue_basis(analysis_count: int) -> int:
+    """이슈 수치(반복 이슈 · 보안 HIGH · 카테고리 · 문제 파일 · AI 제안)가 읽는 분석 수 — 기간 안 최근 `_MAX_ANALYSES` 건까지.
+    화면은 이 값이 `analysis_count` 보다 작을 때만 «최근 N건 기준» 을 적는다.
+    How many analyses the issue figures read; screens say so only when it is below analysis_count.
+    """
+    return min(analysis_count, _MAX_ANALYSES)
+
+
 def repo_kpi(  # pylint: disable=too-many-locals
     db: Session, repo_id: int, days: int = 30, now: datetime | None = None
 ) -> dict[str, Any]:
     """KPI 4종 — 평균 점수/등급/분석수/최다 반복 이슈/보안 HIGH/점수 delta.
 
+    분석 수 · 평균 · 등급 · delta 는 기간 전체, 최다 반복 이슈 · 보안 HIGH 는 기간 안 최근 `_MAX_ANALYSES` 건이다.
     Returns KPI dict with avg_score, grade, analysis_count, top_recurring_issue,
-    top_recurring_count, high_security_count, score_delta.
+    top_recurring_count, high_security_count, score_delta. Count, average, grade and delta cover the
+    whole window; the recurring issue and HIGH security count come from its latest analyses.
     """
     _now = to_naive_utc(now or datetime.now(timezone.utc))
-    cur = _fetch_analyses(db, repo_id, days, _now)
+    since = _now - timedelta(days=days)
+    cur = window_scores(db, [repo_id], since, _now, end_inclusive=True).get(repo_id)
 
-    # 직전 동일 기간 (delta 비교용)
-    # Previous identical window for delta comparison
-    prev_since = _now - timedelta(days=days * 2)
-    prev_until = _now - timedelta(days=days)
-    prev = list(
-        db.scalars(
-            select(Analysis)
-            .where(Analysis.repo_id == repo_id)
-            .where(Analysis.created_at >= prev_since)
-            .where(Analysis.created_at < prev_until)
-            .where(Analysis.result.isnot(None))
-            # cur(_fetch_analyses)와 동일하게 정렬 — limit(_MAX_ANALYSES) 결정성 확보(감사 services-002)
-            # Order like cur so the limited window is deterministic (avoids flaky score_delta).
-            .order_by(Analysis.created_at.desc())
-            .limit(_MAX_ANALYSES)
-        ).all()
-    )
+    # 직전 동일 기간 (delta 비교용) — 끝은 열린 구간이다(`since` 는 이번 기간 몫)
+    # Previous identical window for delta comparison; open at its end (`since` belongs to this window)
+    prev = window_scores(db, [repo_id], _now - timedelta(days=days * 2), since).get(repo_id)
 
     avg_score, score_delta, grade = compute_score_kpi(cur, prev)
 
-    issue_counter, high_security = _count_issues_and_high_security(cur)
+    issue_counter, high_security = _count_issues_and_high_security(_fetch_analyses(db, repo_id, days, _now))
 
     top_issue, top_count = None, 0
     if issue_counter:
@@ -170,7 +206,7 @@ def repo_kpi(  # pylint: disable=too-many-locals
     return {
         "avg_score": avg_score,
         "grade": grade,
-        "analysis_count": len(cur),
+        "analysis_count": cur.analyses if cur else 0,
         "top_recurring_issue": top_issue,
         "top_recurring_count": top_count,
         "high_security_count": high_security,
@@ -181,22 +217,27 @@ def repo_kpi(  # pylint: disable=too-many-locals
 def repo_score_trend(
     db: Session, repo_id: int, days: int = 30, now: datetime | None = None
 ) -> list[dict[str, Any]]:
-    """날짜별 평균 점수 시계열 — 트렌드 차트용.
+    """날짜별 평균 점수 시계열 — 트렌드 차트용, 고른 기간 전체.
 
-    Returns daily avg score series for trend chart.
-    Bins analyses by date (UTC), oldest first.
+    점수가 기록된 분석 전부(미검증 포함 · 점수 NULL 만 뺀다)를 묶는다. 결과 JSON 은 읽지 않는다.
+    Returns daily avg score series for trend chart over the whole window.
+    Bins every recorded score (unverified included, NULL skipped) by date (UTC), oldest first.
     """
     _now = to_naive_utc(now or datetime.now(timezone.utc))
-    analyses = _fetch_analyses(db, repo_id, days, _now)
+    rows = db.execute(
+        select(Analysis.created_at, Analysis.score)
+        .where(Analysis.repo_id == repo_id)
+        .where(Analysis.created_at >= _now - timedelta(days=days))
+        .where(Analysis.created_at <= _now)
+        .where(Analysis.result.isnot(None))
+        .where(Analysis.score.isnot(None))
+    )
 
     # 날짜별 점수 집계 (KST 아닌 UTC 기준)
     # Group scores by date (UTC)
     buckets: dict[str, list[float]] = {}
-    for a in analyses:
-        if a.score is None:
-            continue
-        date_key = a.created_at.strftime("%Y-%m-%d") if a.created_at else "unknown"
-        buckets.setdefault(date_key, []).append(float(a.score))
+    for created_at, score in rows:
+        buckets.setdefault(created_at.strftime("%Y-%m-%d"), []).append(float(score))
 
     return [
         {
@@ -658,6 +699,16 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
     return result
 
 
+def _issue_scope_line(analysis_count: int) -> str:
+    """서술 프롬프트 한 줄 — 이슈 수치가 최근 N건에서 왔다고 밝힌다. 잘리지 않았으면 빈 문자열(화면 표기와 같은 조건).
+    Prompt line saying the issue figures come from the latest N analyses; empty when nothing was cut.
+    """
+    basis = issue_basis(analysis_count)
+    if basis < analysis_count:
+        return f"Security HIGH and the issues below come from the latest {basis} of these analyses\n"
+    return ""
+
+
 def _prepare_repo_narrative(  # pylint: disable=too-many-arguments
     db: Session, repo_id: int, days: int, *, repo_full_name: str, kpi: dict[str, Any],
     recurring: list[dict[str, Any]], now: datetime, refresh: bool, user_id: int | None,
@@ -705,6 +756,7 @@ def _prepare_repo_narrative(  # pylint: disable=too-many-arguments
         f"Avg score: {kpi.get('avg_score')} ({kpi.get('grade')}), "
         f"delta: {kpi.get('score_delta')}\n"
         f"Analyses: {kpi.get('analysis_count')}\n"
+        f"{_issue_scope_line(kpi['analysis_count'])}"
         f"Security HIGH: {kpi.get('high_security_count')}\n"
         f"Top recurring issue: {kpi.get('top_recurring_issue')} "
         f"({kpi.get('top_recurring_count')} times)\n"

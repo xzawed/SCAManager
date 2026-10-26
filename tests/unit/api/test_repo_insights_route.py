@@ -122,3 +122,25 @@ def test_days_parameter_accepted(client, repo):
     for days in (7, 90):
         response = client.get(f"/repos/owner/myrepo/insights?days={days}")
         assert response.status_code == 200
+
+
+def test_insights_page_marks_issue_basis_when_window_exceeds_30(client, repo, db_session, monkeypatch):
+    """기간 안 분석 45건 — 점수·분석 수는 45건 전체, 이슈 수치는 최근 30건이라고 페이지가 밝힌다.
+    라우트가 `issue_basis` 를 넘기지 않으면 템플릿은 조용히 숨기므로 렌더된 페이지로 잰다.
+    With 45 analyses the page shows the whole-window count and says issues use the latest 30;
+    measured on the rendered page because a missing context value would hide the note silently.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from src.models.analysis import Analysis
+
+    monkeypatch.setattr("src.ui.routes.repo_insights.settings.anthropic_api_key", "")
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    for i in range(45):
+        db_session.add(Analysis(repo_id=repo.id, commit_sha=f"sha-basis-{i:03d}", score=80, grade="B",
+                                result={}, score_unreliable=False, created_at=now - timedelta(hours=i + 1)))
+    db_session.commit()
+
+    text = client.get("/repos/owner/myrepo/insights?days=30", headers={"Accept-Language": "ko"}).text
+    assert "분석 45건 기준" in text
+    assert "이슈 집계는 최근 분석 30건 기준" in text

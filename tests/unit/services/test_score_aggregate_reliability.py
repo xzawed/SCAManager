@@ -64,21 +64,53 @@ def test_kpi_avg_null_scores_do_not_count_as_excluded():
     assert card["scored_total"] == 1
 
 
-def test_compute_score_kpi_excludes_unreliable():
-    cur = [
-        SimpleNamespace(score=100, result={"ai_review_status": "success", "source": "pr"}),
-        SimpleNamespace(score=40, result={
-            "ai_review_status": "success",
-            "breakdown": {"ai_defaults_applied": True},
-        }),
+def test_repo_kpi_excludes_unreliable():
+    """리포 KPI 는 기간 전체를 열로 집계한다 — 쓰기 경로처럼 판정 함수로 채운 `score_unreliable` 이 거른다.
+    The repo KPI aggregates the window from columns; score_unreliable, filled as the write paths do, filters.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    from src.database import Base
+    from src.models.analysis import Analysis
+    from src.models.repository import Repository
+    from src.services.repo_insight_service import repo_kpi
+
+    now = datetime(2026, 10, 20, 12, 0, tzinfo=timezone.utc)
+    rows = [
+        (100, {"ai_review_status": "success", "source": "pr"}, timedelta(hours=1)),
+        (40, {"ai_review_status": "success", "breakdown": {"ai_defaults_applied": True}}, timedelta(hours=2)),
+        (50, {"ai_review_status": "success", "source": "pr"}, timedelta(days=31)),
     ]
-    prev = [
-        SimpleNamespace(score=50, result={"ai_review_status": "success", "source": "pr"}),
-    ]
-    avg, delta, grade = compute_score_kpi(cur, prev)
-    assert avg == 100.0
-    assert delta == 50.0
-    assert grade == "A"
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        repo = Repository(full_name="owner/r46")
+        db.add(repo)
+        db.commit()
+        for score, result, ago in rows:
+            db.add(Analysis(repo_id=repo.id, commit_sha=f"sha-{score}", score=score, grade="B", result=result,
+                            score_unreliable=score_is_unreliable(result),
+                            created_at=now.replace(tzinfo=None) - ago))
+        db.commit()
+        kpi = repo_kpi(db, repo.id, 30, now=now)
+    engine.dispose()
+    assert (kpi["avg_score"], kpi["score_delta"], kpi["grade"]) == (100.0, 50.0, "A")
+
+
+def test_compute_score_kpi_from_window_scores():
+    """카드와 인사이트 페이지가 같이 쓰는 산식 — 검증 점수 합/개수, 직전 기간과의 차, 등급.
+    The formula cards and the insights page share: verified sum/count, delta, grade.
+    """
+    # 함수 안에서 — 모듈 맨 위에 두면 이 이름이 없는 코드에서 파일 전체가 수집부터 멈춘다
+    # Imported here: at module top, code without this name stops the whole file at collection
+    from src.services.repo_insight_service import WindowScores
+
+    avg, delta, grade = compute_score_kpi(WindowScores(5, 179, 2), WindowScores(1, 50, 1))
+    assert (avg, delta, grade) == (89.5, 39.5, "B")
+    assert compute_score_kpi(WindowScores(3, 0, 0), None) == (None, None, "?")
 
 
 def test_score_is_unreliable_literals_match_aggregate_fixture():
@@ -170,5 +202,3 @@ def test_every_sql_avg_of_score_excludes_unreliable_rows():
         + "\n  ".join(bare)
         + "\n→ 같은 쿼리에 `Analysis.score_unreliable.isnot(True)` 를 넣을 것."
     )
-
-

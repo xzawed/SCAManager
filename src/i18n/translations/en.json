@@ -902,6 +902,7 @@
     "donut_aria": "Issue category ratio chart",
     "back_dashboard": "Dashboard",
     "period_basis": "Last {days} days · based on {count} analyses",
+    "issue_basis": "Issue figures use the latest {count} analyses",
     "day_label": "{days}d",
     "kpi_avg_score": "Avg score",
     "grade_label": "Grade {grade}",
