@@ -557,40 +557,44 @@ def feedback_status(db: Session, *, threshold: int = 10, user_id: int | None = N
 # ─── 0031: Per-repo insight cards (dashboard section) ────────────────────────
 
 
-def _fetch_analyses_for_window(
+def _latest_per_repo(
     db: Session,
     repo_ids: list[int],
     start: datetime,
     end: datetime,
-    limit: int,
+    per_repo: int,
     *,
     end_inclusive: bool = False,
-) -> list[Analysis]:
-    """기간 내 배치 분석 조회 헬퍼. / Batch-fetch analyses for a time window."""
-    end_filter = (Analysis.created_at <= end) if end_inclusive else (Analysis.created_at < end)
-    return list(
-        db.scalars(
-            select(Analysis)
-            .where(Analysis.repo_id.in_(repo_ids))
-            .where(Analysis.created_at >= start)
-            .where(end_filter)
-            .where(Analysis.result.isnot(None))
-            .order_by(Analysis.created_at.desc())
-            .limit(limit)
-        ).all()
-    )
-
-
-def _group_analyses_by_repo(
-    analyses: list[Analysis],
-    cap: int,
 ) -> dict[int, list[Analysis]]:
-    """repo_id 별 분리 + per-repo 상한 적용. / Group analyses by repo_id with per-repo cap."""
+    """리포마다 기간 안 최신 `per_repo` 건(최신순) — 쿼리 한 번, 순위는 리포 안에서만 매긴다.
+
+    🔴 모든 리포를 한꺼번에 최신순으로 «리포 수 × 상한» 건 자르면 바쁜 리포가 한도를 채워
+    조용한 리포의 카드가 사라지거나 값이 바뀐다. 리포 안 순위라야 인사이트 페이지
+    (`src/services/repo_insight_service.py::def _fetch_analyses`)와 같은 행이다 — 시각이 겹칠 때만 다를 수 있다.
+    Each repo's newest `per_repo` analyses in the window, newest first, in one query. Ranking within
+    each repo keeps a busy repo from filling a shared LIMIT and hiding or changing a quiet repo's card.
+    """
+    end_filter = (Analysis.created_at <= end) if end_inclusive else (Analysis.created_at < end)
+    rank = func.row_number().over(  # pylint: disable=not-callable
+        partition_by=Analysis.repo_id,
+        order_by=(Analysis.created_at.desc(), Analysis.id.desc()),
+    ).label("rank")
+    ranked = (
+        select(Analysis.id, rank)
+        .where(Analysis.repo_id.in_(repo_ids))
+        .where(Analysis.created_at >= start)
+        .where(end_filter)
+        .where(Analysis.result.isnot(None))
+        .subquery()
+    )
     by_repo: dict[int, list[Analysis]] = {}
-    for a in analyses:
-        bucket = by_repo.setdefault(a.repo_id, [])
-        if len(bucket) < cap:
-            bucket.append(a)
+    for a in db.scalars(
+        select(Analysis)
+        .join(ranked, Analysis.id == ranked.c.id)
+        .where(ranked.c.rank <= per_repo)
+        .order_by(Analysis.created_at.desc(), Analysis.id.desc())
+    ):
+        by_repo.setdefault(a.repo_id, []).append(a)
     return by_repo
 
 
@@ -637,7 +641,9 @@ def repo_insight_cards(  # pylint: disable=too-many-locals
     Per-repo insight card summary for the dashboard section (max 10 repos).
 
     N+1 개선 (Issue #408): 리포별 개별 쿼리 대신 배치 조회 (2 쿼리 — current/previous window).
+    리포당 최신 30건은 쿼리 안에서 리포마다 고른다 — 카드 = 그 리포 인사이트 페이지의 KPI.
     N+1 fix (Issue #408): batch query for all repos instead of per-repo individual queries.
+    The newest 30 rows are picked per repo inside the query, so a card equals that repo's insights KPI.
 
     Returns list of dicts with: repo_id, full_name, avg_score, grade,
     recurring_issue_count, score_trend, insights_url.
@@ -661,21 +667,14 @@ def repo_insight_cards(  # pylint: disable=too-many-locals
     prev_since = _now - timedelta(days=days * 2)
     prev_until = since
 
-    # 리포당 최대 분석 건수 상한 (Python-side 적용)
-    # Per-repo analysis cap applied in Python after batch fetch
+    # 리포당 최대 분석 건수 — 인사이트 페이지와 같은 상한
+    # Per-repo analysis cap, the same as the insights page
     max_per_repo = 30
 
-    # 현재/이전 기간 분석 배치 조회 후 repo_id 별 그룹화
-    # Batch-fetch current and previous window analyses, then group by repo_id
-    batch_limit = len(repo_ids) * max_per_repo
-    cur_by_repo = _group_analyses_by_repo(
-        _fetch_analyses_for_window(db, repo_ids, since, _now, batch_limit, end_inclusive=True),
-        max_per_repo,
-    )
-    prev_by_repo = _group_analyses_by_repo(
-        _fetch_analyses_for_window(db, repo_ids, prev_since, prev_until, batch_limit),
-        max_per_repo,
-    )
+    # 현재/이전 기간 — 리포마다 자기 최신 max_per_repo 건
+    # Current and previous windows: each repo's own newest max_per_repo rows
+    cur_by_repo = _latest_per_repo(db, repo_ids, since, _now, max_per_repo, end_inclusive=True)
+    prev_by_repo = _latest_per_repo(db, repo_ids, prev_since, prev_until, max_per_repo)
 
     # 각 리포별 요약 집계 (DB 쿼리 없이 Python-side 처리)
     # Aggregate per-repo summary using pre-loaded analyses (no DB calls in loop)
