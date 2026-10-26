@@ -20,6 +20,7 @@ from src.i18n.loader import get_text
 from src.models.repository import Repository
 from src.services.repo_insight_service import (
     invalidate_repo_insight_narrative,
+    issue_basis,
     repo_ai_suggestions,
     repo_category_breakdown,
     repo_insight_narrative,
@@ -174,6 +175,9 @@ async def repo_insights(  # pylint: disable=too-many-positional-arguments
             "repo": repo,
             "days": days,
             "kpi": kpi,
+            # 점수는 기간 전체, 이슈 수치는 최근 N건 — 템플릿은 N < 분석 수일 때만 적는다
+            # Scores cover the window, issue figures its latest N; the template notes it when N < count
+            "issue_basis": issue_basis(kpi["analysis_count"]),
             "recurring_issues": recurring,
             "problem_files": problem_files,
             "ai_suggestions": ai_suggestions,

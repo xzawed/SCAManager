@@ -1528,11 +1528,11 @@ def _seed_paginated_history(db_path: str, count: int = 25, base: str = "now") ->
             raise RuntimeError("_seed_repo must run before _seed_paginated_history")
         repo_id = row[0]
         result = {"summary": "page"}
-        # 🔴 «오늘»(UTC)과 겹치지 않게 25~49시간 전에 둔다. repos 추세는 최신 30건을 UTC 날짜로
-        #    묶어 2개 이상일 때만 차트를 그리는데, 이 25건이 오늘에 들면 UTC 늦은 시각에 «지금»
-        #    시드 몇 건과 함께 최신 30건을 하루로 채운다(#1764, 시각 스윕 = test_repos_mode).
-        # Keep these 25-49h back, off the current UTC day: on it they crowd the newest-30 trend
-        # window onto one date late in the UTC day and the repos chart disappears.
+        # 🔴 «오늘»(UTC)과 겹치지 않게 25~49시간 전에 둔다. repos 추세는 UTC 날짜가 2개 이상일 때만
+        #    차트를 그린다 — 이 25건이 «지금» 시드와 다른 날짜에 있어 언제 돌아도 2개 이상이다
+        #    (시각 스윕 = test_repos_mode).
+        # Keep these 25-49h back, off the current UTC day, so the repos trend always has a second
+        # date beside the "now" seeds and its chart renders at any hour.
         for i in range(count):
             conn.execute(text("""
                 INSERT OR IGNORE INTO analyses

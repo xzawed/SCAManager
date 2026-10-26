@@ -109,3 +109,44 @@ def test_repos_mode_in_valid_modes_endpoint():
     assert "repos" in _VALID_MODES
     invalid = "nonexistent"
     assert invalid not in _VALID_MODES
+
+
+def test_repos_report_marks_issue_basis_when_window_exceeds_30():
+    """repos 레포트 — 분석 45건이면 라우트가 `issue_basis`=30 을 넘겨 «최근 30건» 표기가 렌더된다.
+    The repos report route passes issue_basis=30 for 45 analyses and the note renders.
+    """
+    from src.auth.session import require_login, CurrentUser
+    from src.main import app
+
+    fake_user = CurrentUser(id=1, github_login="testuser", email="test@example.com",
+                            display_name="Test User", plaintext_token="")
+    fake_summary = {
+        "repos": [], "summary": {"total_repos": 0, "avg_score": None,
+                                 "grade_distribution": {"A": 0, "B": 0, "C": 0, "D": 0, "F": 0},
+                                 "warning_count": 0},
+        "warning_repos": [],
+    }
+    kpi = {"avg_score": 80.0, "grade": "B", "score_delta": None, "analysis_count": 45,
+           "high_security_count": 0, "top_recurring_issue": None, "top_recurring_count": 0}
+    breakdown = {"security_error": 0, "security_warning": 0, "code_quality_error": 0,
+                 "code_quality_warning": 0, "total": 0}
+    _saved = dict(app.dependency_overrides)
+    app.dependency_overrides[require_login] = lambda: fake_user
+    try:
+        with (
+            patch("src.ui.routes.dashboard.SessionLocal", return_value=_ctx(MagicMock())),
+            patch("src.ui.routes.dashboard._build_repo_summary", return_value=fake_summary),
+            patch("src.ui.routes.dashboard.repository_repo.find_by_full_name",
+                  return_value=MagicMock(id=7, full_name="o/r", user_id=1)),
+            patch("src.ui.routes.dashboard.repo_kpi", return_value=kpi),
+            patch("src.ui.routes.dashboard.repo_recurring_issues", return_value=[]),
+            patch("src.ui.routes.dashboard.repo_category_breakdown", return_value=breakdown),
+            patch("src.ui.routes.dashboard.repo_ai_suggestions", return_value=[]),
+            patch("src.ui.routes.dashboard.repo_score_trend", return_value=[]),
+        ):
+            resp = TestClient(app).get("/dashboard?mode=repos&repo=o/r", headers={"Accept-Language": "ko"})
+        assert resp.status_code == 200
+        assert "이슈 집계는 최근 분석 30건 기준" in resp.text
+    finally:
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(_saved)

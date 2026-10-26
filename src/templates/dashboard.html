@@ -337,6 +337,7 @@
   .repos-selector { width: 100%; padding: 10px 14px; background: var(--bg-2, var(--bg-input)); border: 1px solid var(--border-subtle); border-radius: 8px; color: var(--text-1); font-size: 14px; cursor: pointer; }
   @media (max-width: 768px) { .repos-selector { min-height: 44px; font-size: 16px; } }
   .repos-report-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; color: var(--text-1); }
+  .repos-report-basis { font-size: 12px; color: var(--text-2); margin: -14px 0 20px; }
   .repos-section { margin-bottom: 28px; }
   .repos-section h3 { font-size: 14px; font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
   .repos-category-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
@@ -601,6 +602,11 @@
   {% if repo_report %}
   <div class="repos-report">
     <h2 class="repos-report-title">{{ repo_report.repo_full_name }}</h2>
+    {# 추세는 기간 전체, ②③⑤ 는 최근 N건 — N 이 분석 수보다 작을 때만 적는다 #}
+    {# The trend covers the window, sections 2·3·5 its latest N; noted only when N < count #}
+    {% if repo_report.issue_basis is defined and repo_report.issue_basis < repo_report.kpi.analysis_count %}
+    <p class="repos-report-basis">{{ 'repo_insights.issue_basis' | i18n_args(locale | default('ko'), count=repo_report.issue_basis) }}</p>
+    {% endif %}
 
     {# ① 점수 트렌드 차트 #}
     {# ① Score trend chart #}

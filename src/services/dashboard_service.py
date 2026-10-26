@@ -598,13 +598,14 @@ def _latest_per_repo(
     return by_repo
 
 
-def _build_repo_card(repo, cur: list, prev: list) -> dict[str, Any]:
-    """단일 리포의 인사이트 카드 dict 생성 — current/previous 분석 윈도우 기반.
+def _build_repo_card(repo, cur: list, cur_scores, prev_scores) -> dict[str, Any]:
+    """단일 리포의 인사이트 카드 dict 생성 — 점수·등급·추세는 기간 전체 집계, 반복 이슈는 기간 안 최신 행.
 
-    Build one repo's insight card dict from its current/previous analysis windows.
+    Build one repo's insight card: score, grade and trend from the whole-window aggregates
+    (`window_scores`), the recurring issue count from the newest rows in the window.
     """
     from src.services.repo_insight_service import compute_score_kpi  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
-    avg_score, score_delta, grade = compute_score_kpi(cur, prev)
+    avg_score, score_delta, grade = compute_score_kpi(cur_scores, prev_scores)
 
     # 이슈 빈도 카운트 → count >= 2 만 recurring 집계 (1회성 이슈 제외)
     # Count issue frequency → only issues appearing >= 2 times are "recurring"
@@ -640,10 +641,11 @@ def repo_insight_cards(  # pylint: disable=too-many-locals
 
     Per-repo insight card summary for the dashboard section (max 10 repos).
 
-    N+1 개선 (Issue #408): 리포별 개별 쿼리 대신 배치 조회 (2 쿼리 — current/previous window).
-    리포당 최신 30건은 쿼리 안에서 리포마다 고른다 — 카드 = 그 리포 인사이트 페이지의 KPI.
-    N+1 fix (Issue #408): batch query for all repos instead of per-repo individual queries.
-    The newest 30 rows are picked per repo inside the query, so a card equals that repo's insights KPI.
+    N+1 개선 (Issue #408): 리포별 개별 쿼리 대신 배치 조회 (3 쿼리 — 현재·직전 기간 점수 집계 + 현재 기간 최신 행).
+    점수는 그 리포 인사이트 페이지 KPI 와 같은 기간 전체 집계라 카드 = KPI 다. 반복 이슈는 리포마다 최신 30건.
+    N+1 fix (Issue #408): batch queries for all repos instead of per-repo individual queries.
+    Scores use the same whole-window aggregate as that repo's insights KPI, so a card equals it;
+    recurring issues are counted over each repo's newest 30 rows.
 
     Returns list of dicts with: repo_id, full_name, avg_score, grade,
     recurring_issue_count, score_trend, insights_url.
@@ -667,14 +669,18 @@ def repo_insight_cards(  # pylint: disable=too-many-locals
     prev_since = _now - timedelta(days=days * 2)
     prev_until = since
 
-    # 리포당 최대 분석 건수 — 인사이트 페이지와 같은 상한
-    # Per-repo analysis cap, the same as the insights page
+    # 리포당 이슈 집계 행 수 — 인사이트 페이지와 같은 상한
+    # Per-repo cap on the rows the issue count reads, the same as the insights page
     max_per_repo = 30
 
-    # 현재/이전 기간 — 리포마다 자기 최신 max_per_repo 건
-    # Current and previous windows: each repo's own newest max_per_repo rows
+    # 점수 = 현재·직전 기간 전체 집계, 반복 이슈 = 리포마다 자기 최신 max_per_repo 건
+    # Scores from whole-window aggregates (current and previous); issues from each repo's newest rows
+    from src.services.repo_insight_service import (  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+        window_scores,
+    )
+    cur_scores = window_scores(db, repo_ids, since, _now, end_inclusive=True)
+    prev_scores = window_scores(db, repo_ids, prev_since, prev_until)
     cur_by_repo = _latest_per_repo(db, repo_ids, since, _now, max_per_repo, end_inclusive=True)
-    prev_by_repo = _latest_per_repo(db, repo_ids, prev_since, prev_until, max_per_repo)
 
     # 각 리포별 요약 집계 (DB 쿼리 없이 Python-side 처리)
     # Aggregate per-repo summary using pre-loaded analyses (no DB calls in loop)
@@ -683,8 +689,7 @@ def repo_insight_cards(  # pylint: disable=too-many-locals
         cur = cur_by_repo.get(repo_id, [])
         if not cur:
             continue  # 해당 기간 내 분석 없는 리포 제외 / Skip repos with no analyses in window
-        prev = prev_by_repo.get(repo_id, [])
-        cards.append(_build_repo_card(repo, cur, prev))
+        cards.append(_build_repo_card(repo, cur, cur_scores.get(repo_id), prev_scores.get(repo_id)))
 
     # avg_score 내림차순 정렬 후 최대 10개 반환
     # Sort by avg_score descending, return max 10

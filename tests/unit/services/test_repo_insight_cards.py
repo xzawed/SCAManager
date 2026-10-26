@@ -49,12 +49,16 @@ def _make_repo(db, name, user_id):
 
 
 def _make_analysis(db, repo_id, score, offset_hours=0, result=None):
+    result = result or {}
     a = Analysis(
         repo_id=repo_id,
         commit_sha=f"sha-{uuid.uuid4().hex}",
         score=score,
         grade="B",
-        result=result or {},
+        result=result,
+        # 쓰기 경로처럼 판정 함수로 채운다 — 빠뜨리면 server_default true(미검증)라 점수 집계에서 빠진다
+        # Filled from the predicate as the write paths do; omitted, it defaults to true and drops out
+        score_unreliable=score_is_unreliable(result),
         created_at=datetime.now(timezone.utc) - timedelta(hours=offset_hours),
     )
     db.add(a)
@@ -131,10 +135,10 @@ class TestCardsDoNotStarveEachOther:
         assert _cards_by_repo(db, user.id, 7)[quiet.id]["score_trend"] == "up"
 
     def test_every_card_matches_its_repo_kpi(self, db, user):
-        """카드 = 그 리포 인사이트 페이지의 KPI(같은 기간 · 같은 행). r1 은 최신 30건만 95점이라
-        리포당 30건 상한을 없애면 평균이 63.5 로 바뀌어 여기서 걸린다.
-        Each card equals that repo's insights-page KPI; dropping the per-repo cap would turn r1's
-        95.0 into 63.5 and fail here.
+        """카드 = 그 리포 인사이트 페이지의 KPI(같은 기간 전체 · 같은 값). r1 은 최신 30건만 95점이라
+        카드가 최신 30건만 보면 63.5 가 아니라 95.0 이 되어 여기서 걸린다.
+        Each card equals that repo's insights-page KPI over the whole window; a card reading only the
+        latest 30 rows would show r1 as 95.0 instead of 63.5 and fail here.
         """
         from src.services.dashboard_service import _score_trend
         from src.services.repo_insight_service import repo_kpi
@@ -167,7 +171,24 @@ class TestCardsDoNotStarveEachOther:
         # 기대값을 손으로도 고정한다 — 두 쪽이 함께 틀리면 위 비교는 초록이다
         # Pin the values by hand too: the comparison above stays green if both sides go wrong together
         assert [(cards[r]["avg_score"], cards[r]["score_trend"]) for r in (r1.id, r2.id, r3.id)] == [
-            (95.0, "up"), (75.5, "up"), (65.0, "down")]
+            (63.5, "up"), (75.5, "up"), (65.0, "down")]
+
+    def test_recurring_issue_count_uses_latest_30(self, db, user):
+        """반복 이슈 수는 기간 안 최근 30건으로 센다 — 인사이트 페이지 이슈 목록과 같은 바탕.
+        앞쪽 10건의 "older"(10회)는 들어오지 않는다.
+        Recurring issues are counted over the latest 30 rows, like the insights-page issue lists.
+        """
+        r = _make_repo(db, "owner/issues", user.id)
+        recent = {"message": "recent", "category": "code_quality"}
+        older = {"message": "older", "category": "code_quality"}
+        for i in range(30):
+            _add(db, r.id, 80, _NOW_NAIVE - timedelta(hours=i + 1),
+                 result={"issues": [recent]} if i < 2 else None)
+        for i in range(10):
+            _add(db, r.id, 80, _NOW_NAIVE - timedelta(days=5, hours=i), result={"issues": [older]})
+        db.commit()
+
+        assert _cards_by_repo(db, user.id, 30)[r.id]["recurring_issue_count"] == 1
 
     def test_query_count_does_not_grow_with_repos(self, db, user):
         """쿼리 수가 리포 수와 상관없다 — #408 의 N+1 개선을 지킨다(리포마다 따로 묻지 않는다).
