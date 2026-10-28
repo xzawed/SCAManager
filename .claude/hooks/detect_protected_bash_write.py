@@ -26,6 +26,7 @@ Bash for writes has an unbounded evasion surface, so it must not be named a bloc
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -73,18 +74,45 @@ def dirty_protected_paths() -> list[tuple[str, str]]:
     return sorted(set(found))
 
 
-def already_reported() -> set[str]:
-    """이미 알린 경로 — 같은 파일로 매 Bash 호출마다 떠들지 않게 한다."""
+def _fingerprint(path: str) -> str:
+    """작업 트리 파일 «내용» 의 지문 — 같은 경로가 Bash 로 «다시» 바뀌면 다시 알리기 위해.
+    지워진 파일은 `absent` 라는 하나의 상태다.
+    Content fingerprint of the working-tree file, so a second change to the same path re-reports.
+    """
     try:
-        return {ln.strip() for ln in _STATE.read_text(encoding="utf-8").splitlines() if ln.strip()}
+        return hashlib.sha256((_ROOT / path).read_bytes()).hexdigest()[:16]
     except OSError:
-        return set()
+        return "absent"
 
 
-def remember(paths: set[str]) -> None:
+def already_reported(session: str) -> dict[str, str]:
+    """이 세션이 이미 알린 {경로: 지문} — 같은 내용으로 매 Bash 호출마다 떠들지 않게 한다.
+
+    🔴 억제는 «이 세션 · 이 내용» 까지만이다. 종전 판은 알린 경로를 클론 수명 내내 쌓기만 해서,
+    그 경로가 커밋·되돌림 뒤 다시 바뀌어도, 다른 세션에서 바뀌어도 다시는 알리지 않았다.
+    다른 세션의 기록·옛 형식(줄 목록)은 버린다 — 한 번 더 알리는 쪽이 조용해지는 쪽보다 낫다.
+    Suppression is scoped to this session and this content; other sessions' records are dropped.
+    """
+    try:
+        data = json.loads(_STATE.read_text(encoding="utf-8"))
+    except (OSError, ValueError, RecursionError):  # 깊은 중첩은 ValueError 가 아니다 / not a ValueError
+        return {}
+    if not isinstance(data, dict) or data.get("session") != session:
+        return {}
+    reported = data.get("reported")
+    if not isinstance(reported, dict):
+        return {}
+    return {str(p): str(fp) for p, fp in reported.items()}
+
+
+def remember(session: str, reported: dict[str, str]) -> None:
+    """지금 더러운 경로만 남긴다 — 깨끗해진(커밋·되돌림) 경로는 빠져, 다시 바뀌면 다시 알린다.
+    Keep only currently dirty paths; a path that became clean re-reports when it changes again.
+    """
     try:
         _STATE.parent.mkdir(parents=True, exist_ok=True)
-        _STATE.write_text("\n".join(sorted(paths)) + "\n", encoding="utf-8")
+        _STATE.write_text(json.dumps({"session": session, "reported": reported}, sort_keys=True),
+                          encoding="utf-8")
     except OSError:
         pass  # 상태를 못 남기면 다음에 다시 알린다 — 조용해지는 것보다 낫다
 
@@ -105,21 +133,25 @@ def build_message(fresh: list[tuple[str, str]]) -> str:
 def main() -> int:
     _make_stdout_safe()
     try:
-        json.load(sys.stdin)          # 입력 형태만 소비 — 판정은 작업 트리로 한다
-    except (json.JSONDecodeError, ValueError):
-        pass  # 입력이 없거나 깨져도 판정은 작업 트리로 한다 / verdict comes from the tree
+        payload = json.load(sys.stdin)  # 세션 id 만 읽는다 — 판정은 작업 트리로 한다
+    except (ValueError, RecursionError):
+        payload = {}  # 입력이 없거나 깨져도 판정은 작업 트리로 한다 / verdict comes from the tree
+    # 비어 있지 않은 문자열 id 만 세션으로 친다. 세션을 모르면 억제를 쓰지 않는다 — 모르는 두 실행을
+    # 한 세션으로 합치면 앞 실행의 침묵을 물려받는다(숫자 1 · null 이 «id 없음» 과 합쳐지던 반례).
+    # Only a non-empty string id names a session; without one, nothing is suppressed or recorded.
+    raw = payload.get("session_id") if isinstance(payload, dict) else None
+    session = raw if isinstance(raw, str) and raw else ""
     # 🔴 검증 가능한 환경에서는 차단 훅도 통과시킨다 — 같은 조건을 그대로 쓴다.
     if can_run_tests():
         return 0
     dirty = dirty_protected_paths()
-    if not dirty:
-        return 0
-    seen = already_reported()
-    fresh = [(p, r) for p, r in dirty if p not in seen]
-    if not fresh:
-        return 0
-    remember(seen | {p for p, _ in fresh})
-    print(json.dumps({"systemMessage": build_message(fresh)}, ensure_ascii=True))
+    seen = already_reported(session) if session else {}
+    now = {p: _fingerprint(p) for p, _ in dirty}
+    fresh = [(p, r) for p, r in dirty if seen.get(p) != now[p]]
+    if session and now != seen:
+        remember(session, now)
+    if fresh:
+        print(json.dumps({"systemMessage": build_message(fresh)}, ensure_ascii=True))
     return 0
 
 
