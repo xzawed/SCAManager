@@ -234,6 +234,11 @@
     font-size: 13px;
     color: var(--text-2);
   }
+  /* 행을 여는 링크 — 칸의 글자 모양을 그대로 두고(전역 `a` 의 accent 색을 끊는다) 칸 너비로 펼친다.
+     좁은 화면에서는 메시지 미리보기가 숨어 날짜 한 줄만 남으므로 24px 을 바닥으로 둔다(2.5.8).
+     The row link keeps the cell's look and spans it; 24px floor for the narrow layout. */
+  .analysis-link, .analysis-link:hover { color: inherit; }
+  .analysis-link { display: block; min-height: 24px; }
 
   /* ── settings 버튼 — pill 스타일 / Pill-style settings button ── */
   .settings-btn {
@@ -379,6 +384,14 @@
   /* ── 정렬 헤더 ─────────────────────────── */
   .sortable-th { cursor: pointer; user-select: none; white-space: nowrap; }
   .sortable-th:hover { color: var(--accent-text-hover); }
+  /* 머리글 글자 모양은 th 의 것을 그대로 물려받는다(버튼은 UA 가 글꼴·대소문자·색을 끊는다).
+     24px 은 좁은 화면 손가락 타깃(2.5.8). 포커스 링은 전역 `*:focus-visible` 이 그린다.
+     The button inherits the header's look; 24px is the 2.5.8 target; the global ring shows focus. */
+  .sort-btn {
+    background: none; border: 0; padding: 0; margin: 0; cursor: pointer;
+    font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit;
+    display: inline-flex; align-items: center; min-height: 24px;
+  }
   /* 🔴 `opacity` 는 «곱해진다». 부모에 `.5` 를 걸고 `::after` 에서 `1` 로 되돌리려 했지만
      그 되돌림은 작동하지 않아, 정렬된 열의 화살표까지 0.5 로 그려졌다 —
      실측 1.71~2.97 로 네 테마 전부 3:1 미만이었다(정렬 방향은 «상태» 다).
@@ -648,10 +661,13 @@
   <table class="tbl">
     <thead>
       <tr>
-        <th class="sortable-th" aria-sort="none" data-sort="created_at">{{ 'repo_detail.table.date' | i18n_args(locale | default('ko')) }} <span class="sort-icon"></span></th>
+        {# 정렬은 머리글 안의 «버튼» 이 받는다 — click 은 th 로 올라가 아래 처리기가 그대로 받고, 상태는
+           th 의 aria-sort 가 나른다. 글리프는 상태 표시라 이름에서 뺀다(aria-hidden).
+           Sorting is a real button inside the th; its click bubbles to the th handler. #}
+        <th class="sortable-th" aria-sort="none" data-sort="created_at"><button type="button" class="sort-btn">{{ 'repo_detail.table.date' | i18n_args(locale | default('ko')) }} <span class="sort-icon" aria-hidden="true"></span></button></th>
         <th>{{ 'repo_detail.table.commit' | i18n_args(locale | default('ko')) }}</th>
         <th>{{ 'repo_detail.table.pr' | i18n_args(locale | default('ko')) }}</th>
-        <th class="sortable-th" aria-sort="none" data-sort="score">{{ 'repo_detail.table.score' | i18n_args(locale | default('ko')) }} <span class="sort-icon"></span></th>
+        <th class="sortable-th" aria-sort="none" data-sort="score"><button type="button" class="sort-btn">{{ 'repo_detail.table.score' | i18n_args(locale | default('ko')) }} <span class="sort-icon" aria-hidden="true"></span></button></th>
         <th>{{ 'repo_detail.table.grade' | i18n_args(locale | default('ko')) }}</th>
         <th>{{ 'repo_detail.table.source' | i18n_args(locale | default('ko')) }}</th>
       </tr>
@@ -1013,9 +1029,13 @@ function renderTable(data) {
       ? '<span class="pr-badge">#' + a.pr_number + '</span>'
       : '<span style="color:var(--text-2)">—</span>';
     /* analysis-row 클래스 추가 — hover accent bar 및 reveal 애니메이션 적용
-       Add analysis-row class for hover accent bar and reveal animation */
-    return '<tr class="analysis-row reveal" style="cursor:pointer" onclick="location.href=\'/repos/' + encodeRepo(REPO_NAME_JS) + '/analyses/' + a.id + '\'">'
-      + '<td class="date-cell">' + date + msgPreview + '</td>'
+       Add analysis-row class for hover accent bar and reveal animation
+       🔴 행을 여는 «진짜» 링크는 첫 칸에 있다 — 행의 click 은 마우스 편의일 뿐이고(아래 위임 처리기),
+          `<tr onclick>` 만 있던 때는 Tab 으로 닿지 않았다. 첫 칸은 좁은 화면에서도 남는 열이다.
+          The real link lives in the first cell (it survives narrow screens); the row click is a mouse nicety. */
+    const href = '/repos/' + encodeRepo(REPO_NAME_JS) + '/analyses/' + a.id;
+    return '<tr class="analysis-row reveal" style="cursor:pointer" data-href="' + href + '">'
+      + '<td class="date-cell"><a class="analysis-link" href="' + href + '">' + date + msgPreview + '</a></td>'
       + '<td><span class="commit-sha">' + escHtml((a.commit_sha || '').slice(0,7)) + '</span></td>'
       + '<td>' + pr + '</td>'
       + '<td><div style="display:inline-flex;align-items:center;gap:6px;">'
@@ -1132,6 +1152,13 @@ function updateSortHeaders() {
       : 'none');
   });
 }
+// 행 어디를 눌러도 그 분석으로 — 링크·컨트롤 위의 클릭은 제 동작에 맡긴다(링크는 스스로 이동한다).
+// A click anywhere on a row opens it; clicks on the link or a control keep their own behaviour.
+document.getElementById('analysisTable').addEventListener('click', function(e) {
+  if (e.target.closest('a, button, input, select, textarea')) return;
+  var row = e.target.closest('tr.analysis-row');
+  if (row && row.dataset.href) location.href = row.dataset.href;
+});
 document.querySelectorAll('.sortable-th').forEach(function(th) {
   th.addEventListener('click', function() {
     if (state.sortField === this.dataset.sort) {
