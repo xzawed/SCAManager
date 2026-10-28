@@ -515,18 +515,6 @@
     /* ── 테이블 스크롤 래퍼 ────────────────────── */
     .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
-    /* ── 스켈레톤 로더 ─────────────────────────── */
-    @keyframes shimmer {
-      0%   { background-position: -200% 0; }
-      100% { background-position:  200% 0; }
-    }
-    .skeleton {
-      background: linear-gradient(90deg, var(--bg-input) 25%, var(--border-subtle) 50%, var(--bg-input) 75%);
-      background-size: 200% 100%;
-      animation: shimmer 1.4s infinite;
-      border-radius: var(--radius-sm);
-    }
-
     /* ── 반응형 (태블릿) ───────────────────────── */
     @media (max-width: 768px) {
       /* Step A (S4): 모바일 nav 좌우 padding safe-area-inset
@@ -590,13 +578,8 @@
       .container { padding: var(--space-4) max(var(--space-2), env(safe-area-inset-right)) var(--space-4) max(var(--space-2), env(safe-area-inset-left)); }
     }
 
-    /* ── 모션 감소 ─────────────────────────────── */
-    @media (prefers-reduced-motion: reduce) {
-      *, *::before, *::after {
-        animation-duration: 0.01ms !important;
-        transition-duration: 0.01ms !important;
-      }
-    }
+    /* 모션 감소 리셋은 `components.css` 에 있다 — 랜딩(독립 head)도 같은 규칙을 받게.
+       The reduced-motion reset lives in components.css so the standalone landing gets it too. */
     /* a11y: 시각적으로 숨기지만 스크린 리더에는 노출 */
     .sr-only {
       position: absolute !important;
