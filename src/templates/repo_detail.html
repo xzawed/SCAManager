@@ -1085,7 +1085,10 @@ function renderPagination(totalPages, total, start, count) {
     if (!btn || btn.disabled) return;
     state.currentPage = parseInt(btn.dataset.page);
     applyFilters();
-    document.querySelector('.history-header').scrollIntoView({behavior:'smooth', block:'nearest'});
+    // 스크립트가 고른 'smooth' 는 CSS 모션 감소 리셋이 닿지 않는다 — 직접 묻는다.
+    // A script-chosen smooth scroll bypasses the CSS reduced-motion reset; ask directly.
+    var calm = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    document.querySelector('.history-header').scrollIntoView({behavior: calm ? 'auto' : 'smooth', block:'nearest'});
   };
 }
 
