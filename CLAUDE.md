@@ -10,8 +10,8 @@ GitHub Push/PR → 정적 분석 + AI 리뷰 → 점수·등급 → 알림(Teleg
    접두사: `feat/` `fix/` `chore/` `docs/`. **`main` 에 직접 커밋·push 하지 않는다.**
 2. **영역 문서를 연다** — 아래 표에서 건드릴 영역 하나. 세부 절차가 거기 있다.
 3. **테스트 먼저** — 행동 변경은 구현 전에 실패하는 테스트를 쓴다(측정-only 는 기록 테스트 초록 허용).
-   `in`·`==`·집합 소속으로 **부류를 판정하는 식**을 쓰면 그 자리에서
-   **부분문자열≠상태 · 거짓초록 1건 심기 · 못 재면 red**.
+   `in`·`==`·집합 소속으로 **부류를 판정하는 식**을 쓰면 바로
+   **부분문자열≠상태 · 계기 뒤집기(두 심음) · 못 재면 red**.
    정본은 [verify.md](docs/workflow/verify.md) 「판정식을 쓸 때」 3~5.
 4. **구현**
 5. **검증** — [verify.md](docs/workflow/verify.md) 의 절차를 그대로 따른다.
@@ -41,7 +41,7 @@ py -3 scripts/pre_push_gate.py      # CI 가드를 로컬에서 (--full: pylint�
 py -3 -m pytest e2e/ -p no:asyncio  # E2E (tests/ 와 같이 돌리지 않는다)
 ```
 
-`make` 이 없는 머신이 있다(이 개발 PC 포함) — `make X` 실패는 환경 문제다. 타깃 정본 = `Makefile`.
+이 개발 PC 엔 `make` 이 없다 — `make X` 실패는 환경 문제다(정본 = `Makefile`).
 
 최초 설정: `cp .env.example .env` → `py -3 -m pip install -r requirements.txt -r requirements-dev.txt`
 → `npm install && npm run build` → `py -3 -m pre_commit install` → `py -3 -m uvicorn src.main:app --reload`
@@ -53,15 +53,15 @@ py -3 -m pytest e2e/ -p no:asyncio  # E2E (tests/ 와 같이 돌리지 않는다
 - 위임 작업 중 스스로 판단한 것은 PR 본문이나 응답 끝에 명시한다.
 - 스키마·API·권한·데이터모델 변경은 착수 전 확인받는다. 나머지는 진행하고 보고한다.
 - 시각 변경(`templates/`·`static/`)은 사람이 봐야 한다 — 정적 테스트 통과는 근거가 아니다.
-- MCP: SELECT 자율, INSERT·UPDATE·DELETE·DDL 과 PII·credential 조회는 사전 승인.
+- 운영 DB(MCP · `railway ssh`): SELECT 자율, 쓰기·DDL·PII·credential 조회는 사전 승인. 읽기는 `BEGIN READ ONLY`
+  로만 — `SET SESSION …` 은 풀러(6543)가 앱 연결에 남겨 앱 쓰기를 막는다.
 - 문서 수치는 실행 결과를 옮긴다. 코드 좌표는 **줄번호가 아니라 앵커**다 — `path::파일에 실재하는 문자열`(`scripts/check_doc_anchors.py` 가 강제).
 
 ## 파일 수정 제한
 
 `alembic/versions/` · `src/templates/*.html` · `Dockerfile` · `.dockerignore` · `alembic.ini` 은 테스트 불가
 환경에서 훅이 차단한다(로컬 PC·Codespaces 는 허용).
-🔴 차단은 `Write|Edit|MultiEdit` 에만 걸린다. **Bash 로 고치면 막히지 않는다** — 같은 조건에서
-PostToolUse 가 «탐지해 알릴» 뿐이고 되돌리지도 않는다.
+🔴 차단은 `Write|Edit|MultiEdit` 에만 걸린다. **Bash 로 고치면 막히지 않는다** — PostToolUse 는 알리기만 한다.
 
 ## 코드 주석
 

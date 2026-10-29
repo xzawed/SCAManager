@@ -547,3 +547,24 @@ def test_dashboard_repos_mode_no_chartjs_when_single_trend_point():
     assert "/static/vendor/chart.umd.min.js" not in out, (
         "차트가 없는데 Chart.js 로드 → 로드 조건이 너무 느슨함(off-by-one 회귀)"
     )
+
+
+def test_dashboard_repos_report_marks_issue_basis_when_capped():
+    """repos 레포트 — 추세는 기간 전체, 카테고리·AI 요약·권장 사항은 최근 30건이다. 30건을 넘으면 그 사실을 적는다.
+    The repos report trend uses the whole window and the issue sections the latest 30; say so when capped.
+    """
+    ctx = _repos_context([{"date": "2026-06-14", "avg_score": 70}, {"date": "2026-06-17", "avg_score": 90}])
+    ctx["repo_report"]["kpi"]["analysis_count"] = 45
+    ctx["repo_report"]["issue_basis"] = 30
+    out = _render("dashboard.html", **ctx)
+    assert "이슈 집계는 최근 분석 30건 기준" in out
+
+
+def test_dashboard_repos_report_hides_issue_basis_when_every_row_counts():
+    """분석이 30건 이하면(여기 2건) 이슈도 전부에서 세므로 적지 않는다.
+    With 30 analyses or fewer (2 here) the issue sections use them all, so no note.
+    """
+    ctx = _repos_context([{"date": "2026-06-14", "avg_score": 70}, {"date": "2026-06-17", "avg_score": 90}])
+    ctx["repo_report"]["issue_basis"] = 2
+    out = _render("dashboard.html", **ctx)
+    assert "이슈 집계는" not in out

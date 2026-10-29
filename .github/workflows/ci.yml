@@ -392,6 +392,19 @@ jobs:
         #    재검토 조건 — 충족되면 이 ID 를 즉시 지운다:
         #      (1) semgrep 이 opentelemetry-api >=1.45.1 을 허용하면(그 판으로 semgrep 을 올리고 예외 삭제)
         #      (2) 앱에 OpenTelemetry 서버 계측(Starlette `OpenTelemetryMiddleware` · asgi/fastapi 계측)을 켜면
+        #
+        # 🔴 --ignore-vuln CVE-2026-116684 · CVE-2026-116685 · CVE-2026-116686 (mcp 1.29.0, 2026-10-28) —
+        #    CVE-2026-59951 과 같은 semgrep 정확 핀(`mcp==1.29.0`, 최신 1.182.1 도 같다)이라 **버전 업으로 해결 불가**
+        #    (수정판 1.30.0). 권고 전제와 우리 쪽:
+        #      · 116685(리다이렉트를 따라 헤더 전송) · 116686(도구 출력 스키마의 `$ref` 를 가져옴)은 MCP «클라이언트»
+        #        (`ClientSession`·`streamablehttp_client`·`sse_client`·`ClientSessionGroup`) 를 쓸 때만이다. semgrep
+        #        1.181.0 소스에 그 API 가 0건이고, 앱은 `mcp` 패키지를 import 하지 않는다.
+        #      · 116684(bearer 토큰 audience 미검사)는 SDK 의 HTTP «서버» bearer 인증(`AuthSettings`+`token_verifier`)을
+        #        켤 때만이다. semgrep 에서 그 코드는 `semgrep mcp` 하위 명령뿐이고, 우리는 `semgrep scan` 만 부른다
+        #        (src/analyzer/io/tools/semgrep.py).
+        #    재검토 조건 — 충족되면 세 ID 를 즉시 지운다:
+        #      (1) semgrep 이 mcp 핀을 >=1.30.0 으로 올리면(CVE-2026-59951 과 함께 삭제)
+        #      (2) 우리가 MCP 클라이언트를 쓰거나 `semgrep mcp`(또는 SDK 의 HTTP 서버 인증)를 띄우게 되면
         # Scan requirements files directly (no install). Non-zero exit on any vuln → gate.
         # When a transitive advisory blocks, first try bumping the package that pins it (usually
         # semgrep). Exceptions: CVE-2026-59951 — semgrep 1.180.0/1.181.0 pin `mcp==1.29.0`
@@ -401,7 +414,10 @@ jobs:
         # opentelemetry-api~=1.37.0 (fix 1.45.1); the advisory needs a server that parses inbound
         # `tracestate` headers, and the app never enables OpenTelemetry server instrumentation.
         # Remove it when semgrep allows >=1.45.1 or if we turn that instrumentation on.
-        run: python -m pip_audit -r requirements.txt -r requirements-dev.txt --desc on --ignore-vuln CVE-2026-59951 --ignore-vuln CVE-2026-114603
+        # CVE-2026-116684/116685/116686 — the same exact mcp pin; 116685/116686 need an MCP client
+        # (absent from semgrep and from the app) and 116684 needs the SDK's HTTP server bearer auth,
+        # which only `semgrep mcp` uses. Remove them with CVE-2026-59951 when semgrep allows mcp>=1.30.0.
+        run: python -m pip_audit -r requirements.txt -r requirements-dev.txt --desc on --ignore-vuln CVE-2026-59951 --ignore-vuln CVE-2026-114603 --ignore-vuln CVE-2026-116684 --ignore-vuln CVE-2026-116685 --ignore-vuln CVE-2026-116686
 
   test-and-analyze:
     name: pytest + Codecov + SonarCloud
