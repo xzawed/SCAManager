@@ -68,6 +68,11 @@
         <div class="ri-header-meta">
           <span class="ri-grade-badge">{{ kpi.grade }}</span>
           <span>{{ 'repo_insights.period_basis' | i18n_args(locale | default('ko'), days=days, count=kpi.analysis_count) }}</span>
+          {# 점수는 기간 전체, 아래 이슈 수치는 최근 N건 — N 이 분석 수보다 작을 때만 적는다 #}
+          {# Scores cover the window, the issue figures below its latest N; noted only when N < count #}
+          {% if issue_basis is defined and issue_basis < kpi.analysis_count %}
+          <span>{{ 'repo_insights.issue_basis' | i18n_args(locale | default('ko'), count=issue_basis) }}</span>
+          {% endif %}
           {% if kpi.score_delta is not none %}
             {% if kpi.score_delta > 0 %}
               <span class="ri-delta-up">↑ +{{ kpi.score_delta }}</span>

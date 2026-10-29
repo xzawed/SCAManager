@@ -902,6 +902,7 @@
     "donut_aria": "이슈 카테고리 비율 차트",
     "back_dashboard": "대시보드",
     "period_basis": "최근 {days}일 · 분석 {count}건 기준",
+    "issue_basis": "이슈 집계는 최근 분석 {count}건 기준",
     "day_label": "{days}일",
     "kpi_avg_score": "평균 점수",
     "grade_label": "{grade}등급",

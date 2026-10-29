@@ -25,6 +25,7 @@ from src.models.repository import Repository
 from src.repositories import repository_repo
 from src.services import dashboard_service
 from src.services.repo_insight_service import (
+    issue_basis,
     repo_ai_suggestions,
     repo_category_breakdown,
     repo_kpi,
@@ -198,9 +199,13 @@ async def dashboard(  # pylint: disable=too-many-locals
                     repo.user_id is None or repo.user_id == current_user.id
                 ):
                     now = datetime.now(_tz.utc)
+                    report_kpi = repo_kpi(db, repo.id, days, now=now)
                     repo_report_data = {
                         "repo_full_name": repo.full_name,
-                        "kpi": repo_kpi(db, repo.id, days, now=now),
+                        "kpi": report_kpi,
+                        # 추세는 기간 전체, 카테고리·AI 요약·권장 사항은 최근 N건 — N < 분석 수면 템플릿이 적는다
+                        # Trend covers the window, the issue sections its latest N; noted when N < count
+                        "issue_basis": issue_basis(report_kpi["analysis_count"]),
                         "recurring_issues": repo_recurring_issues(
                             db, repo.id, days, now=now
                         ),

@@ -515,18 +515,6 @@
     /* ── 테이블 스크롤 래퍼 ────────────────────── */
     .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
-    /* ── 스켈레톤 로더 ─────────────────────────── */
-    @keyframes shimmer {
-      0%   { background-position: -200% 0; }
-      100% { background-position:  200% 0; }
-    }
-    .skeleton {
-      background: linear-gradient(90deg, var(--bg-input) 25%, var(--border-subtle) 50%, var(--bg-input) 75%);
-      background-size: 200% 100%;
-      animation: shimmer 1.4s infinite;
-      border-radius: var(--radius-sm);
-    }
-
     /* ── 반응형 (태블릿) ───────────────────────── */
     @media (max-width: 768px) {
       /* Step A (S4): 모바일 nav 좌우 padding safe-area-inset
@@ -590,13 +578,8 @@
       .container { padding: var(--space-4) max(var(--space-2), env(safe-area-inset-right)) var(--space-4) max(var(--space-2), env(safe-area-inset-left)); }
     }
 
-    /* ── 모션 감소 ─────────────────────────────── */
-    @media (prefers-reduced-motion: reduce) {
-      *, *::before, *::after {
-        animation-duration: 0.01ms !important;
-        transition-duration: 0.01ms !important;
-      }
-    }
+    /* 모션 감소 리셋은 `components.css` 에 있다 — 랜딩(독립 head)도 같은 규칙을 받게.
+       The reduced-motion reset lives in components.css so the standalone landing gets it too. */
     /* a11y: 시각적으로 숨기지만 스크린 리더에는 노출 */
     .sr-only {
       position: absolute !important;
@@ -749,7 +732,7 @@
          data-i18n-theme-light-short="{{ 'common.theme.light_short' | i18n_args(locale | default('ko')) }}"
          data-i18n-theme-pastel-short="{{ 'common.theme.pastel_short' | i18n_args(locale | default('ko')) }}"
          data-i18n-theme-catppuccin-short="{{ 'common.theme.catppuccin_short' | i18n_args(locale | default('ko')) }}">
-      <button class="theme-btn" id="themeToggle" aria-label="{{ 'common.theme_aria' | i18n_args(locale | default('ko')) }}" aria-haspopup="true" aria-expanded="false">
+      <button class="theme-btn" id="themeToggle" aria-label="{{ 'common.theme_aria' | i18n_args(locale | default('ko')) }}" aria-haspopup="true" aria-expanded="false" aria-controls="themeDropdown">
         <span id="themeIcon">🌌</span>
         <span id="themeName">{{ 'common.theme.dark_short' | i18n_args(locale | default('ko')) }}</span>
         <span class="chevron">▾</span>
@@ -765,18 +748,20 @@
           if (nm) document.getElementById('themeName').textContent = nm;
         })();
       </script>
-      <div class="theme-dropdown" id="themeDropdown" role="menu">
-        <div class="theme-option" data-theme-target="dark"       role="menuitemradio" aria-checked="false" tabindex="0">🌌 {{ 'common.theme.dark_label' | i18n_args(locale | default('ko')) }}</div>
-        <div class="theme-option" data-theme-target="light"      role="menuitemradio" aria-checked="false" tabindex="0">☀️ {{ 'common.theme.light_label' | i18n_args(locale | default('ko')) }}</div>
-        <div class="theme-option" data-theme-target="pastel"     role="menuitemradio" aria-checked="false" tabindex="0">🌸 {{ 'common.theme.pastel_label' | i18n_args(locale | default('ko')) }}</div>
-        <div class="theme-option" data-theme-target="catppuccin" role="menuitemradio" aria-checked="false" tabindex="0">🐾 {{ 'common.theme.catppuccin_label' | i18n_args(locale | default('ko')) }}</div>
+      {# 항목은 tabindex -1 — 메뉴 안의 이동은 화살표가 맡고, Tab 은 메뉴를 떠난다(APG 메뉴 버튼).
+         Items are tabindex -1: arrows move within the menu, Tab leaves it. #}
+      <div class="theme-dropdown" id="themeDropdown" role="menu" aria-labelledby="themeToggle">
+        <div class="theme-option" data-theme-target="dark"       role="menuitemradio" aria-checked="false" tabindex="-1">🌌 {{ 'common.theme.dark_label' | i18n_args(locale | default('ko')) }}</div>
+        <div class="theme-option" data-theme-target="light"      role="menuitemradio" aria-checked="false" tabindex="-1">☀️ {{ 'common.theme.light_label' | i18n_args(locale | default('ko')) }}</div>
+        <div class="theme-option" data-theme-target="pastel"     role="menuitemradio" aria-checked="false" tabindex="-1">🌸 {{ 'common.theme.pastel_label' | i18n_args(locale | default('ko')) }}</div>
+        <div class="theme-option" data-theme-target="catppuccin" role="menuitemradio" aria-checked="false" tabindex="-1">🐾 {{ 'common.theme.catppuccin_label' | i18n_args(locale | default('ko')) }}</div>
       </div>
     </div>
     {# Phase 2 PR-4 (사이클 84) — 다국어 i18n 헤더 dropdown (테마 토글 패턴 차용) #}
     {# Phase 2 PR-4 (Cycle 84) — i18n header dropdown (uses theme-switcher pattern) #}
     {% if current_user %}
     <div class="theme-switcher" id="langSwitcher">
-      <button class="theme-btn" id="langToggle" aria-label="{{ 'common.lang_aria' | i18n_args(locale | default('ko')) }}" aria-haspopup="true" aria-expanded="false">
+      <button class="theme-btn" id="langToggle" aria-label="{{ 'common.lang_aria' | i18n_args(locale | default('ko')) }}" aria-haspopup="true" aria-expanded="false" aria-controls="langDropdown">
         {# 초기 렌더는 locale endonym/flag 직접 출력 — JS 실행 전 FOUC 방지 (사이클 148, 회고 P2-1).
            endonym 은 i18n 비번역 (각 언어 자기 표기). JS(applyLang)가 전환 시 갱신.
            Initial render outputs locale endonym/flag directly to avoid pre-JS FOUC. #}
@@ -784,10 +769,10 @@
         <span id="langName">{% if locale == 'en' %}English{% elif locale == 'ja' %}日本語{% else %}한국어{% endif %}</span>
         <span class="chevron">▾</span>
       </button>
-      <div class="theme-dropdown" id="langDropdown" role="menu">
-        <div class="lang-option" data-lang="en" role="menuitemradio" aria-checked="false" tabindex="0">🇺🇸 English</div>
-        <div class="lang-option" data-lang="ko" role="menuitemradio" aria-checked="false" tabindex="0">🇰🇷 한국어</div>
-        <div class="lang-option" data-lang="ja" role="menuitemradio" aria-checked="false" tabindex="0">🇯🇵 日本語</div>
+      <div class="theme-dropdown" id="langDropdown" role="menu" aria-labelledby="langToggle">
+        <div class="lang-option" data-lang="en" role="menuitemradio" aria-checked="false" tabindex="-1">🇺🇸 English</div>
+        <div class="lang-option" data-lang="ko" role="menuitemradio" aria-checked="false" tabindex="-1">🇰🇷 한국어</div>
+        <div class="lang-option" data-lang="ja" role="menuitemradio" aria-checked="false" tabindex="-1">🇯🇵 日本語</div>
       </div>
     </div>
     {% endif %}
@@ -897,36 +882,77 @@
         document.documentElement.setAttribute('data-theme', theme);
       })();
 
+      // 🔴 `role="menu"` 는 키보드 계약을 약속한다(WAI-ARIA APG «메뉴 버튼») — 두 머리글 메뉴가 같이 쓴다.
+      //    버튼: ↓ 는 열고 첫 항목 · ↑ 는 열고 마지막 항목 · Enter/Space 는 클릭으로 연다(아래 detail 0).
+      //    항목: ↑↓ 순환 · Home/End 양끝 · Enter/Space 고르기 · Escape 닫고 버튼으로 · Tab 닫고 지나가기.
+      //    처리기를 지우면 `e2e/test_keyboard_operability.py` 가 red 다(단위 스위트는 이 축을 못 본다).
+      // role="menu" promises the APG menu-button keyboard contract; both header menus share it.
+      //    Deleting these handlers turns e2e/test_keyboard_operability.py red.
+      function _wireMenuKeys(btn, box, close, pick) {
+        function items() { return Array.prototype.slice.call(box.querySelectorAll('[role="menuitemradio"]')); }
+        function openAt(i) {
+          box.classList.add('open');
+          btn.setAttribute('aria-expanded', 'true');
+          var list = items();
+          if (list.length) list[(i + list.length) % list.length].focus();
+        }
+        btn.addEventListener('keydown', function(e) {
+          if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            openAt(e.key === 'ArrowDown' ? 0 : -1);
+          } else if (e.key === 'Escape' && box.classList.contains('open')) {
+            e.preventDefault();
+            close();
+          }
+        }, { signal: sig });
+        items().forEach(function(el) {
+          el.addEventListener('keydown', function(e) {
+            var list = items(), at = list.indexOf(el), to;
+            if (e.key === 'ArrowDown') to = at + 1;
+            else if (e.key === 'ArrowUp') to = at - 1;
+            else if (e.key === 'Home') to = 0;
+            else if (e.key === 'End') to = list.length - 1;
+            else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(el); return; }
+            else if (e.key === 'Escape') { e.preventDefault(); close(); btn.focus(); return; }
+            else if (e.key === 'Tab') { close(); return; }
+            else return;
+            e.preventDefault();
+            list[(to + list.length) % list.length].focus();
+          }, { signal: sig });
+        });
+        return openAt;
+      }
+
       // 테마 드롭다운 이벤트 등록
       // Register theme dropdown events
       var switcher = document.getElementById('themeSwitcher');
       var toggleBtn = document.getElementById('themeToggle');
       if (toggleBtn && switcher) {
+        var closeTheme = function() { switcher.classList.remove('open'); toggleBtn.setAttribute('aria-expanded', 'false'); };
+        var openTheme = _wireMenuKeys(toggleBtn, switcher, closeTheme, function(el) {
+          applyTheme(el.dataset.themeTarget);
+          closeTheme();
+          toggleBtn.focus();
+        });
         toggleBtn.addEventListener('click', function(e) {
           e.stopPropagation();
           var open = switcher.classList.toggle('open');
           toggleBtn.setAttribute('aria-expanded', open);
+          // 키보드(Enter·Space)·보조기술의 클릭은 detail 이 0 이다 — 그때만 첫 항목으로 들어간다.
+          // 마우스로 열면 포커스를 옮기지 않는다.
+          // Keyboard/AT activation (detail 0) enters the menu; a mouse open leaves focus on the button.
+          if (open && e.detail === 0) openTheme(0);
         }, { signal: sig });
         document.querySelectorAll('.theme-option').forEach(function(el) {
           el.addEventListener('click', function() {
             applyTheme(el.dataset.themeTarget);
-            switcher.classList.remove('open');
-            toggleBtn.setAttribute('aria-expanded', 'false');
-          }, { signal: sig });
-          el.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              applyTheme(el.dataset.themeTarget);
-              switcher.classList.remove('open');
-              toggleBtn.setAttribute('aria-expanded', 'false');
-              toggleBtn.focus();
-            }
+            closeTheme();
           }, { signal: sig });
         });
         if (document._themeCloseHandler) {
           document.removeEventListener('click', document._themeCloseHandler);
         }
-        document._themeCloseHandler = function() { switcher.classList.remove('open'); toggleBtn.setAttribute('aria-expanded', 'false'); };
+        document._themeCloseHandler = closeTheme;
         document.addEventListener('click', document._themeCloseHandler);
       }
 
@@ -965,10 +991,21 @@
         // Avoids document.cookie read (httponly=True compatible — XSS 0 + race 0)
         applyLang('{{ locale | default("ko") }}');
 
+        var closeLang = function() { langSwitcher.classList.remove('open'); langToggle.setAttribute('aria-expanded', 'false'); };
+        var openLang = _wireMenuKeys(langToggle, langSwitcher, closeLang, function(el) {
+          // 🔴 포커스를 먼저 언어 버튼으로 — 전환은 body 를 통째로 바꾸는데, 그때 포커스된 요소에 id 가
+          //    있으면 htmx 가 새 body 의 같은 id 로 포커스를 옮겨 준다. id 없는 항목에 남겨 두면
+          //    포커스가 문서 처음으로 떨어진다(테마 팔의 `toggleBtn.focus()` 와 짝).
+          // Focus the button first: htmx restores focus by id across the body swap; items have no id.
+          closeLang();
+          langToggle.focus();
+          changeLang(el.dataset.lang);
+        });
         langToggle.addEventListener('click', function(e) {
           e.stopPropagation();
           var open = langSwitcher.classList.toggle('open');
           langToggle.setAttribute('aria-expanded', open);
+          if (open && e.detail === 0) openLang(0);
         }, { signal: sig });
 
         async function changeLang(lang) {
@@ -993,24 +1030,17 @@
           } catch (err) {
             console.error('preferred_language API error:', err);
           }
-          langSwitcher.classList.remove('open');
-          langToggle.setAttribute('aria-expanded', 'false');
+          closeLang();
         }
 
         document.querySelectorAll('.lang-option').forEach(function(el) {
           el.addEventListener('click', function() { changeLang(el.dataset.lang); }, { signal: sig });
-          el.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); changeLang(el.dataset.lang); }
-          }, { signal: sig });
         });
 
         if (document._langCloseHandler) {
           document.removeEventListener('click', document._langCloseHandler);
         }
-        document._langCloseHandler = function() {
-          langSwitcher.classList.remove('open');
-          langToggle.setAttribute('aria-expanded', 'false');
-        };
+        document._langCloseHandler = closeLang;
         document.addEventListener('click', document._langCloseHandler);
       })();
 

@@ -12,8 +12,8 @@ from e2e.conftest import _seed_paginated_history, _setup_e2e_db
 # 페이지 시드를 넣어 보는 UTC 시각 — 매시 30분, 그리고 날짜 경계 직전.
 # UTC hours at which the page seed is placed: every hour at :30, plus just before midnight.
 _SWEEP_HOURS = tuple(f"{h:02d}:30:00" for h in range(24)) + ("23:54:00",)
-# 시드 곁 «지금» 시각에 쌓일 수 있는 행 수 — 없음 · 하나 · 이 스위트의 실제 최대(8) · 상한 직전(29).
-# Rows that can sit at "now" beside the seed: none, one, this suite's real maximum (8), cap - 1 (29).
+# 시드 곁 «지금» 시각에 쌓일 수 있는 행 수 — 없음 · 하나 · 이 스위트의 실제 최대(8) · 그보다 많을 때(29).
+# Rows that can sit at "now" beside the seed: none, one, this suite's real maximum (8), many (29).
 _NOW_ROW_COUNTS = (0, 1, 8, 29)
 
 
@@ -84,15 +84,15 @@ def test_repos_mode_score_trend_chart_renders(seeded_page: Page, base_url: str):
 def test_paginated_seed_keeps_the_repo_trend_on_two_days_at_any_hour(live_server, tmp_path):
     """🔴 페이지 시드가 하루 중 언제 들어가도 repos 추세는 UTC 날짜 2개 이상이다.
 
-    `repo_score_trend` 는 기간 안 **최신 30건**만 UTC 날짜로 묶고, 템플릿은 묶음이 2개 이상일
-    때만 `#repoTrendChart` 를 그린다. 시드 25건이 «오늘» 에 들어가면 UTC 늦은 시각에 «지금» 시드
-    몇 건과 함께 최신 30건을 하루로 채워 차트가 사라졌다(CI 23:54 실측, #1764). 그래서 시드
-    시각을 고정해 옮겨 가며 **실제** `repo_score_trend` 로 날짜 수를 잰다.
+    `repo_score_trend` 는 기간 전체를 UTC 날짜로 묶고, 템플릿은 묶음이 2개 이상일 때만
+    `#repoTrendChart` 를 그린다. 시드 시각을 고정해 옮겨 가며 **실제** `repo_score_trend` 로
+    날짜 수를 잰다.
 
-    대조군 둘(옛 모양 = T-25h ~ T-1h 매시, 23:30): «지금» 7건이면 **잡혀야** 하고(날짜 1개),
-    0건이면 **통과해야** 한다(날짜 2개) — 계기가 몰림을 보되, 몰림 없는 옛 모양은 탓하지 않는다.
+    대조군 둘(23:30): 하루에만 있는 «지금» 7건은 날짜 1개로 **잡혀야** 하고, 옛 몰림 모양
+    (T-25h ~ T-1h 매시 + «지금» 7건)은 날짜 2개여야 한다 — 추세가 최신 몇 건만 묶으면 이 모양이
+    하루로 몰려(#1764) 여기서 걸린다.
     The repo trend must span two UTC days whatever hour the seed lands, measured with the real
-    repo_score_trend; a crowded control must be caught and a benign one must pass.
+    repo_score_trend; a one-day control must read as one date, and the old crowded shape as two.
     """
     from datetime import datetime, timedelta  # noqa: PLC0415
 
@@ -137,13 +137,13 @@ def test_paginated_seed_keeps_the_repo_trend_on_two_days_at_any_hour(live_server
 
             late = day.replace(hour=23, minute=30)
             reset()
-            add_rows([late - timedelta(hours=25 - i) for i in range(25)], "old")
-            benign = dates_at(late)
             add_rows(now_rows(late, 0, 7), "now")
+            one_day = dates_at(late)
+            add_rows([late - timedelta(hours=25 - i) for i in range(25)], "old")
             crowded = dates_at(late)
-            assert len(benign) == 2, f"몰림 없는 옛 모양을 탓했다 — 계기가 날짜를 잘못 센다: {benign}"
-            assert len(crowded) == 1, (
-                f"«지금» 7건으로 몰린 옛 모양을 못 잡았다 — 계기가 최신 30건 상한을 안 본다: {crowded}")
+            assert len(one_day) == 1, f"하루에만 있는 행을 날짜 여러 개로 셌다 — 계기가 날짜를 잘못 센다: {one_day}"
+            assert len(crowded) == 2, (
+                f"옛 몰림 모양이 날짜 하나로 몰렸다 — 추세가 기간 전체가 아니라 최신 몇 건만 묶는다: {crowded}")
 
             failures = []
             for hhmmss in _SWEEP_HOURS:

@@ -1824,8 +1824,10 @@ _TARGET_MIN = 24
 #   - range 입력: 타깃은 thumb 이고 입력 상자가 아니다(#1627 이 thumb 을 24 로 만들었다).
 # 🔴 컨트롤 목록은 «한 곳» 에만 둔다 — 감사 JS 와 «크롬 밖» 판정이 같은 집합을
 #    봐야 한다. 둘로 적으면 한쪽만 바뀌는 순간 두 판정이 갈린다(이 파일의 반복 교훈).
+# 🔴 `[role=menuitem]` 은 `role="menuitemradio"` 에 맞지 않는다 — 머리글의 테마·언어 항목 7개가
+#    이 스윕 밖이었다(#1746 P2-69). 접두사로 menuitem·menuitemradio·menuitemcheckbox 를 함께 본다.
 _TARGET_CTRL_SEL = ("button, a[href], input:not([type=hidden]), select, textarea,"
-                    " [role=button], [role=menuitem]")
+                    " [role=button], [role^=menuitem]")
 
 _TARGET_AUDIT_JS = r"""
 (MIN) => {
@@ -1952,9 +1954,21 @@ def test_every_control_meets_the_24px_target_on_mobile(
     #    실제로는 공존하지 않는 배치를 재게 된다(Grok `01a09457`).
     admin_page.evaluate("() => { document.body.setAttribute('data-settings-mode', 'advanced');"
                         " document.querySelectorAll('details').forEach(d => d.open = true); }")
+    # 🔴 머리글 메뉴 항목은 닫힌 드롭다운 안이라 0×0 «면제» 로 빠진다 — 셀렉터를 고쳐도 열지
+    #    않으면 여전히 안 잰다. 진짜 토글로 연다(두 토글은 클릭 전파를 막아 서로를 닫지 않는다).
+    admin_page.evaluate("() => ['themeToggle', 'langToggle'].forEach(id => {"
+                        " const b = document.getElementById(id); if (b) b.click(); })")
     _reveal_all(admin_page)
 
     res = admin_page.evaluate(_TARGET_AUDIT_JS, _TARGET_MIN)
+    menu_seen = admin_page.evaluate(
+        "() => [...document.querySelectorAll('[role^=menuitem]')].filter(e => {"
+        " const r = e.getBoundingClientRect(); return r.width >= 1 && r.height >= 1"
+        " && (!e.checkVisibility || e.checkVisibility({opacityProperty: true, visibilityProperty: true})); })"
+        ".length")
+    assert menu_seen >= 7, (
+        f"{path}: 머리글 메뉴 항목을 {menu_seen}개만 쟀다(테마 4 + 언어 3) — 메뉴가 안 열렸으면 "
+        "그 항목은 0×0 면제로 빠진 것이지 통과한 것이 아니다")
     small, seen, adv_seen = list(res["small"]), res["seen"], res["advSeen"]
 
     # 🔴 «전부 열기» 로는 부족하다 — `.preset-details` 3개는 `ontoggle` 로 서로를 닫는

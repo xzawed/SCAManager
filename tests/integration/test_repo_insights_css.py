@@ -50,11 +50,6 @@ def test_mobile_44px_applied_to_day_btn(css_content):
     assert "44px" in mobile_section
 
 
-def test_prefers_reduced_motion_present(css_content):
-    """prefers-reduced-motion 미디어 쿼리가 포함되어 있다."""
-    assert "prefers-reduced-motion" in css_content
-
-
 def test_no_hardcoded_hex_colors(css_content):
     """CSS 파일에 직접 hex 색상 코드가 없다 (CSS variable 사용 의무)."""
     import re
