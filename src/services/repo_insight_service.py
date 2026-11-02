@@ -214,6 +214,41 @@ def repo_kpi(  # pylint: disable=too-many-locals
     }
 
 
+def _trend_rows(repo_id: int, days: int, now: datetime) -> tuple:
+    """추세가 평균하는 행의 조건 — 기간 안 · 결과가 SQL NULL 아님 · 점수 NULL 아님. `now` 는 naive UTC.
+
+    추세와 그 «미검증 포함» 표기가 같은 모집단을 세도록 둘이 이 조건 하나를 쓴다.
+    WHERE clauses for the rows the trend averages; the trend and its unverified note share them.
+    """
+    return (
+        Analysis.repo_id == repo_id,
+        Analysis.created_at >= now - timedelta(days=days),
+        Analysis.created_at <= now,
+        Analysis.result.isnot(None),
+        Analysis.score.isnot(None),
+    )
+
+
+def repo_trend_unverified_count(
+    db: Session, repo_id: int, days: int = 30, now: datetime | None = None
+) -> int:
+    """추세가 평균하는 행 중 미검증(`score_unreliable`) 수 — repos 레포트의 «미검증 포함» 표기용.
+
+    추세 값은 바꾸지 않는다(API·MCP 그대로). KPI 평균·등급은 검증된 점수만 쓰므로 화면이 그 차이를 적는다.
+    How many of the rows the trend averages are unverified, for the repos report note; trend values
+    stay as they are, while the KPI average and grade use verified scores only.
+    """
+    _now = to_naive_utc(now or datetime.now(timezone.utc))
+    # 미검증 = `score_unreliable IS TRUE` — KPI 의 검증(`IS NOT TRUE`)과 겹치지도 비지도 않게 가른다.
+    # Unverified is IS TRUE, the exact complement of the KPI's verified (IS NOT TRUE).
+    count = db.execute(
+        select(func.count()).select_from(Analysis)  # pylint: disable=not-callable
+        .where(*_trend_rows(repo_id, days, _now))
+        .where(Analysis.score_unreliable.is_(True))
+    ).scalar_one()
+    return int(count)
+
+
 def repo_score_trend(
     db: Session, repo_id: int, days: int = 30, now: datetime | None = None
 ) -> list[dict[str, Any]]:
@@ -225,12 +260,7 @@ def repo_score_trend(
     """
     _now = to_naive_utc(now or datetime.now(timezone.utc))
     rows = db.execute(
-        select(Analysis.created_at, Analysis.score)
-        .where(Analysis.repo_id == repo_id)
-        .where(Analysis.created_at >= _now - timedelta(days=days))
-        .where(Analysis.created_at <= _now)
-        .where(Analysis.result.isnot(None))
-        .where(Analysis.score.isnot(None))
+        select(Analysis.created_at, Analysis.score).where(*_trend_rows(repo_id, days, _now))
     )
 
     # 날짜별 점수 집계 (KST 아닌 UTC 기준)

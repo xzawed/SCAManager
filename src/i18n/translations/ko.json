@@ -182,6 +182,7 @@
     },
     "kpi_foot_avg": "최근 {days}일 평균",
     "kpi_avg_excludes_unreliable": "검증된 점수만 — 미완료/미검증 {count}건 제외",
+    "trend_includes_unverified": "추세에는 미검증 분석 {count}건의 점수도 들어 있습니다 — 위 평균 점수·등급은 검증된 점수만 씁니다",
     "kpi_unit_count": "건",
     "score_trend_subtitle": "점수 추세",
     "repo_insights_title": "🗂 리포별 인사이트",

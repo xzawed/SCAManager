@@ -182,6 +182,7 @@
     },
     "kpi_foot_avg": "直近{days}日平均",
     "kpi_avg_excludes_unreliable": "検証済みのみ — 未完了/未検証 {count}件を除外",
+    "trend_includes_unverified": "このトレンドには未検証の分析{count}件のスコアも含まれます — 上の平均スコア・等級は検証済みスコアのみを使います",
     "kpi_unit_count": "件",
     "score_trend_subtitle": "スコアトレンド",
     "repo_insights_title": "🗂 リポ別インサイト",

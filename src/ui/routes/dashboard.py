@@ -31,6 +31,7 @@ from src.services.repo_insight_service import (
     repo_kpi,
     repo_recurring_issues,
     repo_score_trend,
+    repo_trend_unverified_count,
 )
 from src.shared.log_safety import sanitize_for_log
 from src.ui._helpers import (  # noqa: F401  # get_locale = Phase 2 PR-6 페어
@@ -216,6 +217,11 @@ async def dashboard(  # pylint: disable=too-many-locals
                             db, repo.id, days, now=now
                         ),
                         "score_trend": repo_score_trend(
+                            db, repo.id, days, now=now
+                        ),
+                        # 추세는 미검증 점수까지 평균한다(값은 API 와 같다) — 그 수를 차트 아래 적는다.
+                        # The trend averages unverified scores too (same values as the API); say how many.
+                        "trend_unverified": repo_trend_unverified_count(
                             db, repo.id, days, now=now
                         ),
                     }

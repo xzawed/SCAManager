@@ -182,6 +182,7 @@
     },
     "kpi_foot_avg": "Recent {days}-day avg",
     "kpi_avg_excludes_unreliable": "Verified only — excludes {count} incomplete/unverified score(s)",
+    "trend_includes_unverified": "This trend also averages {count} unverified analyses — the average score and grades above use verified scores only",
     "kpi_unit_count": "analyses",
     "score_trend_subtitle": "Score Trend",
     "repo_insights_title": "🗂 Per-Repo Insights",
