@@ -35,6 +35,26 @@ def test_each_arm_is_recorded_only_when_it_renders():
     assert jinja2.Environment().from_string(src).render(x=True) == "A"
 
 
+def test_truthiness_is_evaluated_once_as_in_the_unpatched_if():
+    """호출마다 진리값이 바뀌는 값도 계측 전과 같은 팔로 간다(Grok `e4e26763` 반례)."""
+    class Flip:
+        calls = 0
+
+        def __bool__(self):
+            Flip.calls += 1
+            return Flip.calls % 2 == 1      # 첫 판정만 참
+
+    src = "{% if q %}Y{% else %}N{% endif %}"
+    unpatched = jinja2.Environment().from_string(src).render(q=Flip())
+    Flip.calls = 0
+    env = jinja2.Environment()
+    tree = env.parse(src)
+    branchprobe.instrument(tree, "t.html", env)
+    env.globals[branchprobe._PROBE] = lambda key, value: branchprobe.record(key, value, {})
+    assert env.from_string(tree).render(q=Flip()) == unpatched == "Y"
+    assert Flip.calls == 1
+
+
 def test_two_ifs_on_one_line_and_elif_get_distinct_ids():
     """한 줄의 두 `if` · `elif` 는 서로 다른 노드다 — 줄만 열쇠로 쓰면 합쳐진다."""
     src = "{% if a %}1{% endif %}{% if b %}2{% elif c %}3{% endif %}"
@@ -66,9 +86,12 @@ def test_a_run_whose_parse_differs_from_the_static_parse_is_invalid():
     assert branchprobe.summarize(declared, {}, static=static, parses={"t.html": [2]})["valid"]
     assert not branchprobe.summarize(declared, {}, static=static,
                                      parses={"t.html": [1, 1]})["valid"]
-    # 정적 전수 밖의 출처(`from_string` = 이름 None)가 파싱되면 이 실행은 쓰지 않는다.
+    # 정적 전수 밖의 출처(`from_string` = 이름 None)가 `If` 를 만들면 이 실행은 쓰지 않는다.
     assert not branchprobe.summarize(declared, {}, static=static,
-                                     parses={"t.html": [2], None: [0]})["valid"]
+                                     parses={"t.html": [2], None: [1]})["valid"]
+    # `If` 0개 출처는 id 를 못 만들어 수치에 닿지 않는다(Grok `19e5d0a7` 재판정 반례).
+    assert branchprobe.summarize(declared, {}, static=static,
+                                 parses={"t.html": [2], None: [0]})["valid"]
 
 
 def test_static_counts_match_a_direct_parse_of_every_template():

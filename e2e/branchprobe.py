@@ -35,10 +35,17 @@ _SEEN: dict[str, set[bool]] = {}
 _PARSES: dict[str | None, list[int]] = {}
 
 
-def record(key: str, value, seen: dict[str, set[bool]] | None = None):
-    """`{% if %}` 의 판정값을 지나가며 기록하고, 값은 그대로 돌려준다."""
-    (_SEEN if seen is None else seen).setdefault(key, set()).add(bool(value))
-    return value
+def record(key: str, value, seen: dict[str, set[bool]] | None = None) -> bool:
+    """`{% if %}` 의 판정값을 지나가며 기록한다.
+
+    🔴 진리값을 «한 번만» 계산해 그 bool 을 돌려준다 — 값을 그대로 돌려주면 `if` 가 한 번 더
+       판정해, 호출마다 결과가 바뀌는 `__bool__`·`__len__` 이면 계측 전과 다른 팔로 간다
+       (Grok `e4e26763` BROKEN). `if` 는 진리값만 쓰므로 bool 을 돌려줘도 출력은 같다.
+    Truthiness is evaluated exactly once, as in the unpatched `if`.
+    """
+    truth = bool(value)
+    (_SEEN if seen is None else seen).setdefault(key, set()).add(truth)
+    return truth
 
 
 def instrument(tree: nodes.Template, name: str | None, env: jinja2.Environment) -> list[str]:
@@ -99,7 +106,9 @@ def _valid(declared: set[str], parses: dict[str | None, list[int]], static: dict
     """
     if _declared_counts(declared) != {k: v for k, v in static.items() if v}:
         return False
-    return all(name in static and all(n == static[name] for n in counts)
+    # 정적 전수 밖의 출처(`from_string` 등)는 `If` 를 하나라도 만들었을 때만 이 실행을 버린다 —
+    # `If` 0개면 id 를 못 만들어 수치에 닿지 않는다(Grok `19e5d0a7` 재판정).
+    return all(all(n == static[name] for n in counts) if name in static else not any(counts)
                for name, counts in parses.items())
 
 
