@@ -23,9 +23,10 @@ from e2e.conftest import (CONFIG_MODEL_ID, CONFIG_USER_ID, DELTA_DAYS,
                           SHRINK_USER_ID,
                           DELTA_REPO_SCORES, DELTA_SUGGESTION_COUNTS,
                           DELTA_USERS,
-                          INSIGHT_LANGUAGE, VARIANT_BREAKDOWN, VARIANT_FEEDBACKS,
-                          acting_as, apply_theme, delta_repo_name,
-                          rls_catalog_double,
+                          INSIGHT_LANGUAGE, REPO_NARRATIVE_TEXT,
+                          VARIANT_BREAKDOWN, VARIANT_FEEDBACKS,
+                          acting_as, apply_theme, claude_api_call_count, delta_repo_name,
+                          rls_catalog_double, repo_narrative_state,
                           expected_avg_delta, expected_cost_delta,
                           expected_score_delta, insight_key_window)
 
@@ -4880,3 +4881,146 @@ def test_all_text_meets_aa_in_arms_no_sweep_had_opened(
         f"[{theme}] {arm} — 글자 {len(bad)}건이 AA 미달 (관측 {sum(res['seen'].values())}건):\n  "
         + "\n  ".join(f"[{b['state']}] {b['ratio']} < {b['need']} bg={b['bg']} "
                       f"cls={b['cls']!r} {b['text']!r}" for b in bad[:10]))
+
+
+# ── E-20. 리포 인사이트 서술 — 카드·실패 줄과 «새로 고침» 링크 (#1639 W12 · repo_insights.html) ──
+#
+# 분기 프로브(`e2e/branchprobe.py`, 2026-11-02 전체 e2e)에서 양쪽 팔이 다 미관측인 노드는 둘뿐이었다 —
+# 서술 카드 안과 실패 줄 안의 `{% if repo.user_id is not none %}`(새로 고침 링크). 서술은 키가 있어야
+# 깨어나는데 e2e 에는 키가 없어서, 바깥 갈래(서술 카드 · 실패 줄)부터 한 번도 그려진 적이 없다.
+# 연다: 키 창(`insight_key_window`) + 쓰기 경로가 만드는 캐시 행(`repo_narrative_state`).
+# 🔴 링크가 지키는 계약은 라우트에 있다 — 소유자 없는 리포의 `refresh=1` 은 403 이다. 그래서 링크의
+#    유무를 «그 주소를 라우트가 받는가» 와 맞댄다. 템플릿 조건과 라우트 가드가 갈라지면 red 다.
+# 🔴 호출은 0 이어야 한다 — 캐시가 빗나가면 루프백 호출이 실패해 실패 줄이 «다른 길로» 열린다.
+#    `claude_api_calls` 행 수가 그대로인지 본다.
+# Opens the narrative card and failure line (never drawn in e2e: no key) for an owned and an
+# unclaimed repo; the Refresh link must exist exactly where the route accepts refresh=1.
+
+_NARRATIVE_PROBE_JS = r"""() => {
+    const shown = el => !!el && el.checkVisibility(
+        {opacityProperty: true, visibilityProperty: true});
+    const card = document.querySelector('.ri-narrative-card');
+    const failed = document.querySelector('.ri-narrative-failed');
+    const text = card && card.querySelector('.ri-narrative-text');
+    const line = failed && failed.querySelector('span');
+    // 🔴 보이는 것만 모으지 않는다 — 숨긴 채 DOM 에 남긴 링크(`hidden` · `opacity:0`)도 세야
+    //    «소유자 없는 리포엔 조작 요소 0» 이 성립한다(Grok `fda02d50` 1차 반례).
+    // 🔴 선택자 목록으로 «조작 요소» 를 열거하지 않는다 — 바깥 form 을 가리키는
+    //    `<input type=submit form=…>` 가 목록을 빠져나갔다(같은 세션 2차 반례). 포커스 순서에
+    //    들 수 있는 것(`tabIndex >= 0`)과 클릭으로 무언가를 하는 마크업을 «전부» 센다.
+    //    못 보는 것: 스크립트가 `addEventListener` 로 평범한 요소에 붙인 클릭(DOM 에 흔적이 없다) ·
+    //    자리 «밖» 요소를 CSS 로 그 위에 덮어 그린 것.
+    // Count every focusable or clickable element in the area, hidden or not; script-attached
+    // listeners on plain elements and overlays positioned from outside are out of reach.
+    const clickable = 'a[href], area[href], button, input, select, textarea, form, label, '
+        + 'summary, iframe, object, embed, [usemap], [onclick], [role="button"], '
+        + '[role="link"], [contenteditable]';
+    const area = [card, failed].filter(Boolean)
+        .flatMap(root => [root, ...root.querySelectorAll('*')]);
+    return {
+        card: shown(card),
+        text: text ? text.textContent.trim() : null,
+        failed: shown(failed),
+        line: line ? line.textContent.trim() : null,
+        controls: area.filter(el => el.tabIndex >= 0 || el.matches(clickable))
+            .map(el => ({tag: el.tagName.toLowerCase(), href: el.getAttribute('href'),
+                         shown: shown(el)})),
+    };
+}"""
+
+
+def _narrative_failures(probe, *, state, owned, link) -> list[str]:
+    r"""서술 자리가 시드한 상태를 그렸고, 새로 고침 링크가 소유 리포에만 있는가.
+
+    🔴 계기를 믿기 전에 뒤집는다(verify.md 4). 소스를 열기 전에 적은 두 목록:
+      claimed = {성공이면 카드 + 시드한 서술 «그대로» · 실패면 실패 줄 + 정본 문구 «그대로» ·
+                 소유 리포에만 그 주소의 보이는 링크 하나 · 소유자 없는 리포엔 조작 요소 0}
+      cheap   = {페이지가 200 으로 떴다 · 서술 자리에 무엇이든 있다 · 링크가 어딘가 보인다}
+    - claimed\cheap(반드시 잡혀야) = 상태별 «카드 / 실패 줄» 의 배타 + 글자 완전 일치 +
+      서술 자리의 조작 요소 «집합»(숨긴 것까지).
+    - cheap\claimed(반드시 무시돼야) = 자리의 존재 · 보이는 링크의 존재.
+    두 리포(소유 · 소유자 없음)와 두 상태가 서로의 대조군이다.
+    """
+    from src.i18n.loader import get_text  # noqa: PLC0415
+
+    bad: list[str] = []
+    if state == "success":
+        if not probe["card"] or probe["failed"]:
+            bad.append(f"서술 카드가 아니다 card={probe['card']} failed={probe['failed']} "
+                       f"line={probe['line']!r} — 캐시가 빗나갔거나 키가 안 켜졌다")
+        elif probe["text"] != REPO_NARRATIVE_TEXT:
+            bad.append(f"서술이 시드와 다르다 {probe['text']!r}")
+    else:
+        want = get_text("repo_insights.narrative_failed", INSIGHT_LANGUAGE)
+        if not probe["failed"] or probe["card"]:
+            bad.append(f"실패 줄이 아니다 card={probe['card']} failed={probe['failed']}")
+        elif probe["line"] != f"🤖 {want}":
+            bad.append(f"실패 문구가 정본과 다르다 {probe['line']!r} — 정본 {want!r}")
+    want_controls = [{"tag": "a", "href": link, "shown": True}] if owned else []
+    if probe["controls"] != want_controls:
+        bad.append(f"서술 자리의 조작 요소가 {probe['controls']!r} — 기대 {want_controls!r}"
+                   f"({'소유' if owned else '소유자 없는'} 리포 · 숨긴 요소도 센다)")
+    return bad
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_repo_narrative_offers_refresh_only_where_the_route_accepts_it(
+        seeded_page, base_url, unclaimed_repo, theme):
+    """🔴 서술 카드·실패 줄이 시드한 그대로 그려지고, 새로 고침 링크는 라우트가 받는 리포에만 있다.
+
+    그 화면의 토큰 글자가 AA 를 넘는지도 잰다 — 이 두 자리는 대비 스윕에 한 번도 안 들어왔다.
+    The narrative card and failure line render as seeded, Refresh appears only where the route
+    accepts it, and their token text meets AA.
+    """
+    from urllib.parse import quote  # noqa: PLC0415
+
+    seeded_page.context.add_cookies([
+        {"name": "preferred_language", "value": INSIGHT_LANGUAGE, "url": base_url},
+    ])
+    seeded_page.set_viewport_size(_WIDE_VIEWPORT)
+    calls_before = claude_api_call_count()
+    for full_name, owned in (("owner/testrepo", True), (unclaimed_repo, False)):
+        for state in ("success", "failed"):
+            with insight_key_window(), repo_narrative_state(full_name, state) as days:
+                seeded_page.goto(
+                    f"{base_url}/repos/{quote(full_name, safe='')}/insights?days={days}")
+                assert "localhost" in seeded_page.url, (
+                    f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
+                apply_theme(seeded_page, theme)
+                seeded_page.add_style_tag(
+                    content="*,*::before,*::after{transition:none !important}")
+                seeded_page.wait_for_timeout(200)
+                _reveal_all(seeded_page)
+
+                where = f"{full_name}:{state}"
+                link = f"/repos/{full_name}/insights?days={days}&refresh=1"
+                missing = _narrative_failures(seeded_page.evaluate(_NARRATIVE_PROBE_JS),
+                                              state=state, owned=owned, link=link)
+                assert not missing, f"[{theme}] {where}:\n  " + "\n  ".join(missing)
+
+                total, bad = 0, []
+                for js, names in ((_ALL_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+                                  (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
+                    res = seeded_page.evaluate(js)
+                    assert not res.get("error"), res.get("error")
+                    total += sum(res["seen"][n] for n in names)
+                    bad += res["bad"]
+                _assert_body_contributed(seeded_page, axis=theme, where=where,
+                                         selector=".ri-narrative-card *, .ri-narrative-failed *",
+                                         colors=["--text-2"])
+                assert not bad, (
+                    f"[{theme}] {where} 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
+                    + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
+                                  for b in bad[:10]))
+
+                # 🔴 링크의 유무 = 라우트가 그 주소를 받는가. 리다이렉트를 따라가지 않는다 — 따라가면
+                #    캐시를 지운 뒤 재생성 호출이 나간다. 받으면 PRG 303, 소유자 없는 리포는 403.
+                #    «403 이 아니면 받음» 으로 두지 않는다 — 로그인 리다이렉트도 그렇게 읽힌다.
+                # Link presence must equal the route accepting refresh=1: PRG 303 vs 403, exactly.
+                status = seeded_page.request.get(f"{base_url}{link}", max_redirects=0).status
+                assert status == (303 if owned else 403), (
+                    f"[{theme}] {where}: refresh=1 이 {status} 인데 링크는 "
+                    f"{'있다' if owned else '없다'} — 템플릿 조건과 라우트 가드가 갈라졌다")
+    assert claude_api_call_count() == calls_before, (
+        f"[{theme}] 서술 시험이 Claude 를 불렀다({calls_before} → {claude_api_call_count()}행) — "
+        "캐시가 빗나가 실패 줄이 «다른 길로» 열렸을 수 있다")

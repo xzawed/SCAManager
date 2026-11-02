@@ -1166,6 +1166,82 @@ def insight_key_window():
             os.environ["ANTHROPIC_BASE_URL"] = prev_base
 
 
+# ── 리포 인사이트 서술의 «성공 카드» · «실패 줄» (#1639 W12 · repo_insights.html) ──────
+#
+# 🔴 서술은 키가 있어야 깨어나고(`settings.anthropic_api_key`) e2e 에는 키가 없다 — 그래서
+#    서술 카드와 실패 줄은 e2e 에서 한 번도 그려진 적이 없다. `insight_key_window` 안에서
+#    캐시 행으로 연다. 두 상태 모두 «쓰기 경로가 만드는 그 행» 이다:
+#      성공 = `upsert_repo` — 호출이 성공한 뒤 서비스가 쓰는 행.
+#      실패 = `record_error_repo` — 호출이 실패하면 서비스가 쓰는 행. 루프백 주소로 나간 호출은
+#             `APIConnectionError` 로 끝난다. 부정 캐시 창(120 초) 안이면 다시 부르지 않고 같은
+#             실패를 돌려준다.
+# 🔴 성공 행 위에 `record_error_repo` 를 덮으면 오류 칸만 채워지고 성공 응답은 신선한 채 남는다 —
+#    한 키로 두 상태를 차례로 열 수 없다. 상태마다 `days` 를 따로 쓰고, 들어갈 때 그 키를 비운다.
+# 🔴 되읽기는 서비스가 읽는 그 함수로 한다(`get_fresh_repo` · `recent_error_repo`). 행이 있어도
+#    언어·창이 어긋나면 캐시가 빗나가 호출로 흘러간다.
+# Opens the narrative card and the failure line with the rows the write path itself produces, one
+# `days` key per state (an error recorded over a fresh success row leaves the success served).
+REPO_NARRATIVE_DAYS = {"success": 13, "failed": 17}
+REPO_NARRATIVE_TEXT = "e2e repo narrative: scores held steady while two recurring issues stay open."
+REPO_NARRATIVE_ERROR = "APIConnectionError"
+
+
+@contextlib.contextmanager
+def repo_narrative_state(full_name: str, state: str, *, language: str = INSIGHT_LANGUAGE):
+    """`full_name` 리포의 서술을 `state`(«success» · «failed») 로 여는 캐시 행 — 창이 끝나면 지운다.
+
+    Seeds the narrative cache row that opens `state` for the repo and deletes it on exit.
+    """
+    from sqlalchemy import create_engine  # noqa: PLC0415
+    from sqlalchemy.orm import sessionmaker  # noqa: PLC0415
+
+    from src.models.repository import Repository  # noqa: PLC0415
+    from src.repositories import insight_narrative_cache_repo as cache  # noqa: PLC0415
+
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    days = REPO_NARRATIVE_DAYS[state]
+    engine = create_engine(f"sqlite:///{db_path}")
+    make_session = sessionmaker(bind=engine)
+    key = None
+    try:
+        with make_session() as session:
+            repo_id = session.query(Repository).filter_by(full_name=full_name).one().id
+            key = {"user_id": _E2E_USER_ID, "repo_id": repo_id, "days": days}
+            cache.invalidate_repo(session, **key)
+            if state == "success":
+                cache.upsert_repo(session, **key, language=language,
+                                  response={"text": REPO_NARRATIVE_TEXT, "status": "success"})
+                got = cache.get_fresh_repo(session, **key, language=language)
+                assert got == {"text": REPO_NARRATIVE_TEXT, "status": "success"}, (
+                    f"{full_name} 의 성공 캐시가 신선하지 않다: {got!r} — 서술 카드가 안 열린다")
+            else:
+                cache.record_error_repo(session, **key, language=language,
+                                        error_type=REPO_NARRATIVE_ERROR)
+                fresh = cache.get_fresh_repo(session, **key, language=language)
+                recorded = cache.recent_error_repo(session, **key, language=language)
+                assert fresh is None and recorded == REPO_NARRATIVE_ERROR, (
+                    f"{full_name} 의 실패 행이 부정 캐시로 안 읽힌다: fresh={fresh!r} "
+                    f"recorded={recorded!r} — 실패 줄이 안 열린다")
+        yield days
+    finally:
+        if key is not None:
+            with make_session() as session:
+                cache.invalidate_repo(session, **key)
+        engine.dispose()
+
+
+def claude_api_call_count() -> int:
+    """`claude_api_calls` 행 수 — 서술 시험이 «부르지 않았다» 를 되짚는 바닥.
+
+    Row count of claude_api_calls: the floor that proves a narrative test made no call.
+    """
+    import sqlite3  # noqa: PLC0415
+
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    with contextlib.closing(sqlite3.connect(db_path)) as conn:
+        return conn.execute("SELECT count(*) FROM claude_api_calls").fetchone()[0]
+
+
 @contextlib.contextmanager
 def rls_catalog_double(*, force: bool = True, bypasses: bool = True,
                        matrix_missing: bool = False):
