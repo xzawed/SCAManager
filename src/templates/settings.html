@@ -460,6 +460,12 @@
               box-shadow: 0 0 0 1.5px var(--bg-card); }
   .conn-dot.is-on  { background: var(--success, #10b981); border: 0; }
   .conn-dot.is-off { background: transparent; border: 1.5px solid var(--text-3, #9ca3af); }
+  /* 🔴 forced-colors(고대비)는 배경을 Canvas 로 덮어 «켜짐» 점이 통째로 사라진다(꺼짐은 테두리라
+     남는다) — 시스템 색으로 직접 채운다. Forced colors paint the filled dot as Canvas; fill it
+     with a system colour instead. */
+  @media (forced-colors: active) {
+    .conn-dot.is-on { forced-color-adjust: none; background: CanvasText; }
+  }
   .conn-status-text { font-size: 11px; color: var(--text-2); font-weight: 500; }
   .s-section-label .conn-dot { vertical-align: -1px; }
 
