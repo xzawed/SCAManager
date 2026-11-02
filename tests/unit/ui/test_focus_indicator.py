@@ -14,8 +14,8 @@ import re
 import pytest
 
 from ._contrast import (
-    ROOT, THEMES, css_sources, decl, declarations, over, parse_color, ratio, read, resolve,
-    strip_css_comments, style_text, theme_block,
+    ROOT, THEMES, css_sources, decl, declarations, neutralize_strings, over, parse_color, ratio,
+    read, resolve, split_selectors, strip_css_comments, style_text, theme_block,
 )
 
 NON_TEXT = 3.0
@@ -205,9 +205,15 @@ def _contexts(src: str):
     문맥을 나누는 이유: `@media` 안의 규칙은 밖의 규칙과 «다른 조건» 에서만 산다.
     문맥을 섞어 세면 「밖에 moz 가 있으니 됐다」로 통과해 버린다 — 그것이 이 결함이
     살아남은 방식이다(기본 규칙은 두 벌, 모바일 확대만 한 벌이었다).
+
+    🔴 `@media` 는 «문장 경계»(처음 · `{` · `}` · `;` 뒤)에서만 블록 시작으로 읽는다 — 값 안의
+       같은 글자(`url(@media)`)를 블록으로 읽으면 문맥이 통째로 어긋난다(Grok `d8a8d669`).
+       문자열·따옴표 없는 url 은 `neutralize_strings` 가 먼저 표지로 바꿔 둔다.
     """
     out, cut = [], []
     for m in re.finditer(r"@media([^{]*)\{", src):
+        if src[:m.start()].rstrip()[-1:] not in ("", "{", "}", ";"):
+            continue
         i = m.end() - 1
         depth, j = 0, i
         while j < len(src):
@@ -237,7 +243,20 @@ _WEBKIT_ONLY_PROPS = frozenset({"-webkit-appearance", "appearance"})
 def _thumb_files() -> list[str]:
     """range 손잡이를 꾸미는 파일 전부 — 손 목록이 아니라 파생이다."""
     return [rel for rel in css_sources()
-            if _WEBKIT_THUMB in style_text(rel) or _MOZ_THUMB in style_text(rel)]
+            if _WEBKIT_THUMB in style_text(rel).lower() or _MOZ_THUMB in style_text(rel).lower()]
+
+
+def _thumb_key(selector: str, pseudo: str) -> str | None:
+    """의사요소를 뺀 선택자 — 의사요소가 선택자 «끝» 에 있을 때만(뒤엔 의사클래스만 올 수 있다).
+
+    🔴 부분문자열로 고르면 속성값 문자열(`[a="::-webkit-slider-thumb"]`) 안의 같은 글자도
+       의사요소로 읽어 짝 열쇠가 어긋난다(Grok `47642d15` BROKEN).
+    Only a trailing pseudo-element counts; the same text inside an attribute value does not.
+    """
+    m = re.search(re.escape(pseudo) + r"((?::[\w-]+(?:\([^()]*\))?)*)$", selector, re.I)
+    # 의사요소 «자리» 를 열쇠에 남긴다 — `a::thumb:hover`(손잡이에 올림)와 `a:hover::thumb`
+    # (입력에 올림)은 다른 선택자다(Grok `47642d15` 재판정 BROKEN).
+    return None if m is None else (selector[:m.start()] + "::thumb" + m.group(1)).strip()
 
 
 def _thumb_decls(body: str, pseudo: str) -> dict[str, dict[str, str]]:
@@ -249,10 +268,10 @@ def _thumb_decls(body: str, pseudo: str) -> dict[str, dict[str, str]]:
     out: dict[str, dict[str, str]] = {}
     for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", body):
         decls = declarations(m.group(2))
-        for one in m.group(1).split(","):
-            one = " ".join(one.split())
-            if pseudo in one:
-                out.setdefault(one.replace(pseudo, "").strip(), {}).update(decls)
+        for one in split_selectors(m.group(1)):
+            key = _thumb_key(one, pseudo)
+            if key is not None:
+                out.setdefault(key, {}).update(decls)
     return out
 
 
@@ -329,6 +348,31 @@ _PAIR_PLANT_IGNORED = (
 )
 
 
+@pytest.mark.parametrize("css,props", [
+    # Grok `47642d15`: 속성값 문자열 안의 의사요소 글자 — 부분문자열로 고르던 판은 짝 열쇠가
+    # 어긋나 결손 2건을 냈다.
+    ('[a="::-webkit-slider-thumb"]::-webkit-slider-thumb{width:9px}'
+     '[a="::-webkit-slider-thumb"]::-moz-range-thumb{width:9px}', []),
+    # Grok `d8a8d669`: 문자열 속 `}` 가 `@media` 블록을 잘라 선언을 잃었다.
+    ("@media all{a::-webkit-slider-thumb{content:'}';width:9px}"
+     "a::-moz-range-thumb{content:'}';width:9px}}", []),
+    ("@media all{a::-webkit-slider-thumb{content:'}';width:9px}"
+     "a::-moz-range-thumb{content:'}'}}", ["width"]),
+    # Grok `d8a8d669` 재판정: 값 안의 `@media` 글자를 블록 시작으로 읽어 최상위 규칙을 잘랐다.
+    ("a::-webkit-slider-thumb{background:url(@media);width:9px}"
+     "a::-moz-range-thumb{background:url(@media)}", ["width"]),
+    ("a::-webkit-slider-thumb{--k:@media;width:9px}a::-moz-range-thumb{--k:@media}", ["width"]),
+])
+def test_thumb_pair_survives_the_claim_review_counterexamples(css, props):
+    """claim-review 반례를 그대로 심는다 — 판정은 `style_text` 와 같은 전처리 뒤에 돈다.
+
+    결손의 «개수» 가 아니라 «어느 속성» 인지를 본다 — 셋째 사례는 고치기 전에도 1건이
+    나왔는데, 그것은 잘린 `content` 였다.
+    """
+    _, bad = _unpaired_thumb_decls(neutralize_strings(css))
+    assert sorted(re.search(r"의 `([\w-]+)", b).group(1) for b in bad) == props, bad
+
+
 @pytest.mark.parametrize("host", ["", "src/templates/repo_detail.html"])
 def test_thumb_pair_instrument_flips_on_both_plants(host):
     """심은 짝 결손 셋은 잡히고, 엔진 전용 정상화 둘은 무시돼야 한다.
@@ -340,7 +384,7 @@ def test_thumb_pair_instrument_flips_on_both_plants(host):
     _, before = _unpaired_thumb_decls(base)
     assert not before, f"심기 전부터 결손이 있다 — 뒤집기를 잴 수 없다: {before}"
     _, caught = _unpaired_thumb_decls(base + _PAIR_PLANT_CAUGHT)
-    assert len(caught) == 2 and all("`.pa`" in c or "`.pc`" in c for c in caught), caught
+    assert len(caught) == 2 and all("`.pa::thumb`" in c or "`.pc::thumb`" in c for c in caught), caught
     assert any("@media" in c for c in caught), f"문맥별 결손을 못 잡았다: {caught}"
     _, ignored = _unpaired_thumb_decls(base + _PAIR_PLANT_IGNORED)
     assert not ignored, f"엔진 전용 정상화를 결손으로 잡았다: {ignored}"

@@ -7,6 +7,7 @@
 그래서 카드 표면이 반드시 불투명이어야 하고(`test_card_surfaces_are_opaque…`), 그 불변식이
 성립할 때만 이 계산이 화면과 일치한다.
 """
+import hashlib
 import pathlib
 import re
 
@@ -58,16 +59,72 @@ def css_sources() -> list[str]:
     return out
 
 
+_CSS_STRING_OR_URL = re.compile(
+    r'"(?:\\.|[^"\\\n])*"?'
+    r"|'(?:\\.|[^'\\\n])*'?"
+    r"|(?<![\w-])url\(\s*(?=[^\"'\s)])[^)]*\)",
+    re.I)
+
+
+def _digest(text: str) -> str:
+    return hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
+
+
+def neutralize_strings(css: str) -> str:
+    """문자열·따옴표 없는 `url(...)` 을 내용 해시 표지로 바꾼다 — 그 안의 `{`·`}`·`;`·`,`·`@media`
+    가 규칙 경계로 읽히지 않게.
+
+    🔴 중괄호를 세는 판정은 `content:'}'` 하나로, `@media` 를 찾는 판정은 `url(@media)` 하나로
+       블록 경계를 잘못 잡았다(Grok `d8a8d669` BROKEN 2회). 빈 문자열은 그대로 둔다(장식
+       `content:''` 판정). 같은 글은 같은 표지가 되므로 값·선택자 비교는 그대로 성립한다.
+       주석을 지운 «뒤» 에 부른다.
+    Replace strings and unquoted url() with content-hash tokens; empty strings stay empty.
+    """
+    def token(m: re.Match) -> str:
+        s = m.group(0)
+        if s[:4].lower() == "url(":
+            return f"url(u{_digest(s)})"
+        quote = s[0]
+        inner = s[1:-1] if len(s) > 1 and s.endswith(quote) else s[1:]
+        return quote * 2 if not inner else f"{quote}s{_digest(inner)}{quote}"
+    return _CSS_STRING_OR_URL.sub(token, css)
+
+
 def style_text(rel: str) -> str:
-    """판정할 CSS — `.css` 는 파일 전체, 템플릿은 `<style>` 블록만. 주석은 지운다.
+    """판정할 CSS — `.css` 는 파일 전체, 템플릿은 `<style>` 블록만. 주석은 지우고 문자열은
+    `neutralize_strings` 로 바꾼다.
 
     템플릿 전체를 넘기면 블록 «첫 규칙» 의 선택자 앞에 HTML 이 붙어 선택자 열쇠가 어긋난다.
-    Templates contribute only their <style> blocks; comments are stripped.
+    Templates contribute only their <style> blocks; comments are stripped, strings tokenised.
     """
     text = read(rel)
     if rel.endswith(".html"):
         text = "\n".join(re.findall(r"<style[^>]*>(.*?)</style>", text, re.S | re.I))
-    return strip_css_comments(text)
+    return neutralize_strings(strip_css_comments(text))
+
+
+def split_selectors(group: str) -> list[str]:
+    """선택자 목록을 «최상위» 쉼표에서만 자른다 — 괄호·대괄호·따옴표 안의 쉼표는 그대로.
+
+    공백은 하나로 접는다. Split a selector list on top-level commas only.
+    """
+    out, cur, depth, quote = [], [], 0, ""
+    for ch in group:
+        if quote:
+            quote = "" if ch == quote else quote
+        elif ch in "\"'":
+            quote = ch
+        elif ch in "([":
+            depth += 1
+        elif ch in ")]":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            out.append("".join(cur))
+            cur = []
+            continue
+        cur.append(ch)
+    out.append("".join(cur))
+    return [" ".join(s.split()) for s in out if s.strip()]
 
 
 def declarations(body: str) -> dict[str, str]:

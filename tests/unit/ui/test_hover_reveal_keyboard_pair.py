@@ -30,39 +30,53 @@ import re
 
 import pytest
 
-from ._contrast import css_sources, declarations, style_text
+from ._contrast import css_sources, declarations, split_selectors, style_text
 
 _REVEAL = frozenset({"display", "visibility", "opacity", "max-height", "height",
                      "clip-path", "pointer-events"})
 _KEYBOARD = (":focus-within", ":focus-visible", ":focus")
 _HOVER = ":hover"
 _DECORATIVE_CONTENT = frozenset({"''", '""', "none", "normal"})
-_PSEUDO_ELEMENT = re.compile(r"::?(?:before|after)\b")
-# `:hover` 와 같은 복합 선택자에 붙은 단순 선택자 — 의사클래스(괄호 포함) · 속성 · 클래스 · id.
-# 옛 한 콜론 의사요소(`:before`·`:after`)는 의사클래스로 걷지 않는다.
-# Simple selectors glued to the same compound; legacy single-colon pseudo-elements excluded.
-_SAME_COMPOUND = re.compile(
-    r"(?::(?!:)(?!(?:before|after)\b)[\w-]+(?:\((?:[^()]|\([^()]*\))*\))?"
-    r"|\[[^\]]*\]|\.[\w-]+|#[\w-]+)*")
+# 의사클래스·의사요소 이름은 ASCII 대소문자를 가리지 않는다(`:HOVER` · `:BEFORE`).
+# Pseudo-class and pseudo-element names are ASCII case-insensitive.
+_PSEUDO_ELEMENT = re.compile(r"::?(?:before|after)\b", re.I)
+_SIMPLE_NAME = re.compile(r"[\w-]+")
 
 Rule = tuple[str, dict[str, str]]
 
 
-def _split_selectors(group: str) -> list[str]:
-    """선택자 목록을 «최상위» 쉼표에서만 자른다 — `:not(a, b)` 안의 쉼표는 자르지 않는다."""
-    out, depth, cur = [], 0, []
-    for ch in group:
-        if ch == "(":
-            depth += 1
-        elif ch == ")":
-            depth -= 1
-        if ch == "," and depth == 0:
-            out.append("".join(cur))
-            cur = []
+def _compound_end(rest: str) -> int:
+    """`:hover` 바로 뒤에 «같은 복합 선택자» 로 붙은 단순 선택자들의 끝 위치.
+
+    의사클래스(괄호는 깊이를 세어 끝까지 — `:not(:has(:is(.a)))`) · 속성 · 클래스 · id 를 건넌다.
+    옛 한 콜론 의사요소(`:before`·`:after`)는 의사클래스가 아니므로 멈춘다.
+    🔴 정규식으로 괄호 한 겹만 받던 판은 세 겹 중첩에서 «다른 요소» 로 잘못 갈랐다
+       (Grok `eb82a090` BROKEN).
+    End of the simple selectors glued to the hovered compound (balanced parentheses).
+    """
+    i = 0
+    while i < len(rest):
+        ch = rest[i]
+        if ch == ":" and rest[i + 1:i + 2] != ":":
+            name = _SIMPLE_NAME.match(rest, i + 1)
+            if name is None or name.group(0).lower() in ("before", "after"):
+                return i
+            i = name.end()
+            if rest[i:i + 1] == "(":
+                depth = 0
+                while i < len(rest):
+                    depth += {"(": 1, ")": -1}.get(rest[i], 0)
+                    i += 1
+                    if depth == 0:
+                        break
+        elif ch == "[":
+            close = rest.find("]", i)
+            i = len(rest) if close < 0 else close + 1
+        elif ch in ".#" and _SIMPLE_NAME.match(rest, i + 1):
+            i = _SIMPLE_NAME.match(rest, i + 1).end()
         else:
-            cur.append(ch)
-    out.append("".join(cur))
-    return [" ".join(s.split()) for s in out if s.strip()]
+            return i
+    return i
 
 
 def _rules(css: str) -> list[Rule]:
@@ -70,20 +84,28 @@ def _rules(css: str) -> list[Rule]:
     out = []
     for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", css):
         decls = declarations(m.group(2))
-        out += [(sel, decls) for sel in _split_selectors(m.group(1))]
+        out += [(sel, decls) for sel in split_selectors(m.group(1))]
     return out
 
 
 def _hover_at(sel: str) -> int | None:
-    """괄호 밖 첫 `:hover` 의 위치. 없으면 -1, 괄호 안에만 있으면 None(가를 수 없음)."""
-    depth, nested = 0, False
+    """괄호 밖 첫 `:hover` 의 위치. 없으면 -1, 괄호 안에만 있으면 None(가를 수 없음).
+
+    대괄호·따옴표 안(`[title=":hover"]`)은 선택자가 아니라 값이라 건너뛴다.
+    """
+    parens, brackets, quote, nested = 0, 0, "", False
     for i, ch in enumerate(sel):
-        if ch == "(":
-            depth += 1
-        elif ch == ")":
-            depth -= 1
-        elif ch == ":" and sel.startswith(_HOVER, i) and sel[i - 1:i] != ":":
-            if depth == 0:
+        if quote:
+            quote = "" if ch == quote else quote
+        elif ch in "\"'":
+            quote = ch
+        elif ch in "[]":
+            brackets += 1 if ch == "[" else -1
+        elif ch in "()":
+            parens += 1 if ch == "(" else -1
+        elif (ch == ":" and not brackets and sel[i:i + len(_HOVER)].lower() == _HOVER
+              and sel[i - 1:i] != ":" and not re.match(r"[\w-]", sel[i + len(_HOVER):][:1])):
+            if not parens:
                 return i
             nested = True
     return None if nested else -1
@@ -92,20 +114,47 @@ def _hover_at(sel: str) -> int | None:
 def _target(sel: str, at: int) -> str:
     """`:hover` 가 바꾸는 대상 — "self"(그 요소) · "other"(다른 요소) · "pseudo"(의사요소)."""
     rest = sel[at + len(_HOVER):]
-    rest = rest[_SAME_COMPOUND.match(rest).end():]
+    rest = rest[_compound_end(rest):]
     if _PSEUDO_ELEMENT.search(rest):
         return "pseudo"
     return "other" if rest.strip() else "self"
 
 
-def _content_of(selector: str, index: list[Rule]) -> str | None:
-    """의사요소 선택자의 `content` — 정확한 선택자로, 없으면 마지막 복합 선택자로 찾는다."""
-    last = re.split(r"\s*[>+~]\s*|\s+", selector)[-1]
-    for key in (selector, last):
-        found = [d["content"] for s, d in index if s == key and "content" in d]
-        if found:
-            return found[-1]
-    return None
+def _canon_pseudo(sel: str) -> str:
+    """`:before`·`::BEFORE` 를 `::before` 로 — 같은 의사요소의 철자 차이를 지운다."""
+    return _PSEUDO_ELEMENT.sub(lambda m: "::" + m.group(0).lstrip(":").lower(), sel)
+
+
+_COMPOUND_PART = re.compile(r"\.[\w-]+|#[\w-]+|\[[^\]]*\]")
+
+
+def _last_compound(sel: str) -> tuple[str, str, frozenset]:
+    """마지막 복합 선택자 → (의사요소, 타입 이름, 클래스·id·속성 집합). 의사클래스는 뺀다."""
+    last = re.split(r"\s*[>+~]\s*|\s+", _canon_pseudo(sel))[-1]
+    pseudo = m.group(0) if (m := _PSEUDO_ELEMENT.search(last)) else ""
+    head = _PSEUDO_ELEMENT.sub("", last)
+    tag = m.group(0).lower() if (m := re.match(r"[a-zA-Z][\w-]*", head)) else ""
+    return pseudo, tag, frozenset(_COMPOUND_PART.findall(head))
+
+
+def _contents_of(selector: str, index: list[Rule]) -> list[str]:
+    """그 의사요소에 «적용될 수 있는» 규칙들의 `content` 전부.
+
+    🔴 캐스케이드는 정적으로 못 푼다. 그래서 «가장 그럴듯한 하나» 를 고르지 않고, 마지막 복합
+       선택자의 타입·클래스·id·속성이 대상의 부분집합인 규칙(조상 조건은 무시 — 어느 조상이든
+       맞을 수 있다)을 모두 후보로 삼는다. 덜 구체적인 `a::before{content:none}` 하나를 골라
+       `#n a::before{content:"Menu"}` 를 놓쳤다(Grok `5f893727` 재판정 BROKEN).
+    Every rule whose last compound could match the target; ancestors are ignored on purpose.
+    """
+    pseudo, tag, parts = _last_compound(selector)
+    out = []
+    for s, d in index:
+        if "content" not in d:
+            continue
+        p2, tag2, parts2 = _last_compound(s)
+        if p2 == pseudo and tag2 in ("", tag) and parts2 <= parts:
+            out.append(d["content"])
+    return out
 
 
 def _without_hover(sel: str, at: int, swap: str = "") -> str:
@@ -133,15 +182,26 @@ def _hover_only_reveals(css: str, index: list[Rule]) -> tuple[int, list[str], li
         if not reveal or kind == "self":
             continue
         if kind == "pseudo":
-            content = decls.get("content") or _content_of(_without_hover(sel, at), index)
-            if content is None:
+            # 올렸을 때 자기 `content` 를 주면 그것이 이긴다(같은 대상 · 더 구체적).
+            contents = ([decls["content"]] if "content" in decls
+                        else _contents_of(_without_hover(sel, at), index))
+            if not contents:
                 unmeasured.append(f"`{sel}` — 의사요소의 `content` 를 못 찾았다")
                 continue
-            if content in _DECORATIVE_CONTENT:
+            if all(c in _DECORATIVE_CONTENT for c in contents):
                 continue
-        twins = {_without_hover(sel, at, kb) for kb in _KEYBOARD}
-        missing = sorted(p for p, v in reveal.items()
-                         if not any(s in twins and d.get(p) == v for s, d in rules))
+        # 🔴 키보드 선택자 «하나» 가 드러냄 속성을 전부 줘야 한다. 여러 선택자에서 나눠 받으면
+        #    `:focus-within` 과 `:focus` 가 섞여 실제로는 함께 성립하지 않는다(Grok `5f893727`).
+        #    One keyboard selector must carry every reveal property.
+        missing = sorted(reveal)
+        for kb in _KEYBOARD:
+            twin = _without_hover(sel, at, kb)
+            merged: dict[str, str] = {}
+            for s, d in rules:
+                if s == twin:
+                    merged.update(d)
+            gaps = sorted(p for p, v in reveal.items() if merged.get(p) != v)
+            missing = gaps if len(gaps) < len(missing) else missing
         if missing:
             bad.append(f"`{sel}` 가 {missing} 를 마우스로만 바꾼다")
     return seen, bad, unmeasured
@@ -189,6 +249,29 @@ _PLANT_IGNORED = (
     ".pb:hover{opacity:.9}"
     ".pq:hover .pw, .pq:focus-within .pw{display:block}"
 )
+
+
+@pytest.mark.parametrize("css,flagged", [
+    # Grok `eb82a090`: 세 겹 중첩 의사클래스 — 요소 «자신» 이다(정규식 판은 «다른 요소» 로 갈랐다).
+    (".x:hover:not(:has(:is(.a))){display:block}", []),
+    (".x:hover:not(:has(:is(.a))) .y{display:block}", [".x:hover:not(:has(:is(.a))) .y"]),
+    # Grok `5f893727`: 드러냄 속성을 두 키보드 선택자에서 나눠 받는다 — 함께 성립하지 않는다.
+    (".m:hover .p{opacity:1;visibility:visible}"
+     ".m:focus .p{opacity:1}.m:focus-visible .p{visibility:visible}", [".m:hover .p"]),
+    (".m:hover .p{opacity:1;visibility:visible}"
+     ".m:focus-visible .p{opacity:1}.m:focus-visible .p{visibility:visible}", []),
+    # Grok `eb82a090` 재판정: 이름은 대소문자를 가리지 않는다 — `:BEFORE` 는 의사요소다.
+    (".t::before{content:attr(title)}.t:hover:BEFORE{opacity:1}", [".t:hover:BEFORE"]),
+    (".t:HOVER .u{display:block}", [".t:HOVER .u"]),
+    # Grok `5f893727` 재판정: 덜 구체적인 장식 규칙만 보고 실제 글자 `content` 를 놓쳤다.
+    ('a::before{content:none}#n a::before{content:"Menu"}#n>a:hover::before{opacity:1}',
+     ["#n>a:hover::before"]),
+])
+def test_hover_guard_survives_the_claim_review_counterexamples(css, flagged):
+    """claim-review 반례를 그대로 심는다 — 고치기 전 판은 일곱 중 다섯을 틀렸다."""
+    _, bad, unmeasured = _hover_only_reveals(css, _rules(css))
+    assert not unmeasured, unmeasured
+    assert [re.search(r"`([^`]+)`", b).group(1) for b in bad] == flagged, bad
 
 
 @pytest.mark.parametrize("host", ["", "src/static/css/components.css"])
