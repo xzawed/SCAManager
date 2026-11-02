@@ -27,6 +27,7 @@ from e2e.conftest import (CONFIG_MODEL_ID, CONFIG_USER_ID, DELTA_DAYS,
                           VARIANT_BREAKDOWN, VARIANT_FEEDBACKS,
                           acting_as, apply_theme, claude_api_call_count, delta_repo_name,
                           rls_catalog_double, repo_narrative_state,
+                          unverified_trend_day,
                           expected_avg_delta, expected_cost_delta,
                           expected_score_delta, insight_key_window)
 
@@ -5024,3 +5025,69 @@ def test_repo_narrative_offers_refresh_only_where_the_route_accepts_it(
     assert claude_api_call_count() == calls_before, (
         f"[{theme}] 서술 시험이 Claude 를 불렀다({calls_before} → {claude_api_call_count()}행) — "
         "캐시가 빗나가 실패 줄이 «다른 길로» 열렸을 수 있다")
+
+
+# ── E-21. repos 리포트 추세의 «미검증 포함» 표기 (#1764 B) ─────────────────────────────
+#
+# 추세는 기록된 점수 전부(미검증 포함)를 평균하고, 위 평균 점수·등급은 검증된 점수만 쓴다 — 검증이 0 인
+# 리포는 등급이 «?» 인데 추세는 그려진다. 그 차이를 차트 아래 한 줄로 적는다(값은 API 와 같다).
+# e2e 시드에는 «점이 2개 이상이면서 미검증이 섞인» 리포가 없어 이 줄이 한 번도 안 그려진다 →
+# `unverified_trend_day` 가 이 시험 동안만 그 모양을 만든다.
+# The repos report notes how many unverified scores its trend averages; seeded only for this test.
+
+_TREND_NOTE_JS = r"""() => {
+    const shown = el => !!el && el.checkVisibility(
+        {opacityProperty: true, visibilityProperty: true});
+    return {
+        canvas: shown(document.getElementById('repoTrendChart')),
+        notes: [...document.querySelectorAll('.repos-trend-note')]
+            .map(n => ({text: n.textContent.trim(), shown: shown(n)})),
+    };
+}"""
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_repos_report_states_how_many_unverified_scores_the_trend_averages(
+        seeded_page, base_url, unverified_repo, theme):
+    """🔴 검증 0 리포의 repos 리포트 — 추세 아래 표기가 시드한 미검증 수 그대로이고, 그 글자가 AA 를 넘는다.
+
+    The repos report of a repo with no verified score states the seeded unverified count under the
+    trend, and that text meets AA.
+    """
+    from urllib.parse import quote  # noqa: PLC0415
+
+    from src.i18n.loader import get_text  # noqa: PLC0415
+
+    seeded_page.context.add_cookies([
+        {"name": "preferred_language", "value": INSIGHT_LANGUAGE, "url": base_url},
+    ])
+    seeded_page.set_viewport_size(_WIDE_VIEWPORT)
+    with unverified_trend_day(unverified_repo, window_days=7) as unverified:
+        seeded_page.goto(
+            f"{base_url}/dashboard?mode=repos&days=7&repo={quote(unverified_repo, safe='')}")
+        assert "localhost" in seeded_page.url, (
+            f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
+        apply_theme(seeded_page, theme)
+        seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
+        seeded_page.wait_for_timeout(200)
+        _reveal_all(seeded_page)
+
+        probe = seeded_page.evaluate(_TREND_NOTE_JS)
+        want = get_text("dashboard.trend_includes_unverified", INSIGHT_LANGUAGE, count=unverified)
+        assert probe["canvas"], "추세 캔버스가 안 그려졌다 — 표기를 잴 자리가 없다"
+        assert probe["notes"] == [{"text": want, "shown": True}], (
+            f"[{theme}] 추세 표기가 {probe['notes']!r} — 기대 {want!r}(시드한 미검증 {unverified}건)")
+
+        total, bad = 0, []
+        for js, names in ((_ALL_TEXT_AUDIT_JS, ("--text-2", "--text-3")),
+                          (_ACCENT_TEXT_AUDIT_JS, ("--accent-text",))):
+            res = seeded_page.evaluate(js)
+            assert not res.get("error"), res.get("error")
+            total += sum(res["seen"][n] for n in names)
+            bad += res["bad"]
+        _assert_body_contributed(seeded_page, axis=theme, where="repos:trend-note",
+                                 selector=".repos-trend-note", colors=["--text-2"])
+        assert not bad, (
+            f"[{theme}] repos 리포트 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
+            + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
+                          for b in bad[:10]))

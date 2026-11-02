@@ -953,6 +953,61 @@ def unverified_repo(live_server):
     return _seed_unverified_repo(db_path)
 
 
+@contextlib.contextmanager
+def unverified_trend_day(full_name: str = UNVERIFIED_REPO, *, days_ago: int = 2, score: int = 60,
+                         window_days: int = 7):
+    """미검증 리포에 «다른 날» 미검증 분석 1건을 잠시 더한다 — repos 리포트 추세가 점 2개가 돼 그려진다.
+
+    🔴 `unverified_repo` 의 두 분석은 같은 날이라 추세가 점 1개고, 리포트는 점이 2개 이상일 때만 추세
+       구역을 그린다. 픽스처를 바꾸면 개요 카드 시험(«2회 · 70점»)이 움직이므로 창 동안만 더하고 지운다.
+    🔴 ORM 으로 넣고 `score_unreliable` 은 쓰기 경로와 같은 판정 함수로 채운다.
+    Temporarily adds one unverified analysis on another day so the repos report draws the trend;
+    yields the number of unverified scored rows the trend then averages.
+    """
+    from datetime import datetime, timedelta, timezone  # noqa: PLC0415
+
+    from sqlalchemy import create_engine  # noqa: PLC0415
+    from sqlalchemy.orm import sessionmaker  # noqa: PLC0415
+
+    from src.models.analysis import Analysis  # noqa: PLC0415
+    from src.models.repository import Repository  # noqa: PLC0415
+    from src.scorer.reliability import score_is_unreliable  # noqa: PLC0415
+
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    engine = create_engine(f"sqlite:///{db_path}")
+    make_session = sessionmaker(bind=engine)
+    sha = f"unverified-trend-{days_ago:02d}"
+    result = {"ai_review_status": "disabled", "summary": "e2e: 다른 날 미검증 / unverified, another day",
+              "issues": []}
+    try:
+        with make_session() as session:
+            repo = session.query(Repository).filter_by(full_name=full_name).one()
+            assert session.query(Analysis).filter_by(commit_sha=sha).first() is None, (
+                f"{sha} 가 이미 있다 — 앞선 창이 지우지 못했다")
+            when = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days_ago)
+            session.add(Analysis(repo_id=repo.id, commit_sha=sha, score=score, grade="D",
+                                 commit_message="e2e: 다른 날 미검증 분석", result=result,
+                                 author_login="e2e-tester", created_at=when,
+                                 score_unreliable=score_is_unreliable(result)))
+            session.commit()
+            # 되읽기 = 리포트 추세와 같은 창(`?days=window_days`) 안의 점수 있는 행.
+            # Read back the scored rows inside the same window the report uses.
+            since = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=window_days)
+            rows = session.query(Analysis).filter(Analysis.repo_id == repo.id,
+                                                  Analysis.created_at >= since,
+                                                  Analysis.score.isnot(None)).all()
+            unverified = sum(1 for r in rows if r.score_unreliable)
+            days = {r.created_at.date() for r in rows}
+        assert unverified == len(rows) and len(days) >= 2, (
+            f"미검증 {unverified}/{len(rows)} · 날짜 {len(days)}개 — «검증 0 · 점 2개 이상» 모양이 아니다")
+        yield unverified
+    finally:
+        with make_session() as session:
+            session.query(Analysis).filter_by(commit_sha=sha).delete()
+            session.commit()
+        engine.dispose()
+
+
 # ── analysis_detail 변종 시드의 «값» — 시험이 기대값으로 되읽는다 ────────────
 #
 # 🔴 DOM 만 보는 판정은 위조된다(Grok `01a0998d`): 더미 `.ad-feedback-item` 두 개나

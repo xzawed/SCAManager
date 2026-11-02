@@ -140,6 +140,42 @@ class TestTrendUsesWholeWindow:
         assert repo_score_trend(db, repo_id, 30, now=NOW) == [
             {"date": "2026-10-20", "avg_score": 60.0, "count": 2}]
 
+    def test_unverified_count_is_the_unverified_part_of_the_trend_rows(self, db, repo_id):
+        """«미검증 포함» 표기의 수 = 추세가 평균하는 바로 그 행 중 미검증 — 같은 모집단에서 센다.
+
+        The note's count is the unverified part of exactly the rows the trend averages.
+        """
+        # 함수 안 import — 되돌린 코드에서 파일 전체가 수집부터 멈추지 않게(역-뮤테이션 신호를 단언 등급으로).
+        # Imported here so reverted code fails this assertion, not the whole file's collection.
+        from src.services.repo_insight_service import repo_trend_unverified_count  # noqa: PLC0415
+
+        _add(db, repo_id, 80, _N - timedelta(hours=1))                                     # 검증 · 들어감
+        _add(db, repo_id, 40, _N - timedelta(hours=2), result={"source": "cli"})          # 미검증 · 들어감
+        _add(db, repo_id, 70, _N - timedelta(days=2), result={"ai_review_status": "disabled"})  # 미검증 · 들어감
+        _add(db, repo_id, None, _N - timedelta(hours=3), result={"ai_review_status": "api_error"})  # 점수 NULL
+        _add(db, repo_id, 50, _N - timedelta(days=31), result={"source": "cli"})          # 창 밖
+        db.add(Analysis(repo_id=repo_id, commit_sha="sha-null-result-unverified", score=30, grade="F",
+                        score_unreliable=True, created_at=_N - timedelta(hours=4)))         # 결과 SQL NULL
+        db.commit()
+
+        trend = repo_score_trend(db, repo_id, 30, now=NOW)
+        assert sum(p["count"] for p in trend) == 3  # 바닥: 추세가 실제로 센 행 / floor: rows the trend used
+        assert repo_trend_unverified_count(db, repo_id, 30, now=NOW) == 2
+
+    def test_unverified_count_is_zero_when_every_trend_row_is_verified(self, db, repo_id):
+        """검증된 점수만 있으면 0 — 표기가 붙지 않는다.
+        Zero when every averaged row is verified, so no note.
+        """
+        from src.services.repo_insight_service import repo_trend_unverified_count  # noqa: PLC0415
+
+        _add(db, repo_id, 80, _N - timedelta(hours=1))
+        _add(db, repo_id, 60, _N - timedelta(days=1))
+        _add(db, repo_id, None, _N - timedelta(hours=2), result={"ai_review_status": "api_error"})
+        db.commit()
+
+        assert sum(p["count"] for p in repo_score_trend(db, repo_id, 30, now=NOW)) == 2
+        assert repo_trend_unverified_count(db, repo_id, 30, now=NOW) == 0
+
 
 def test_kpi_keys_unchanged(db, repo_id):
     """API 상세(`/api/repos/{name}/report` 의 `kpi`)가 이 사전을 그대로 내보낸다 — 값만 바뀌고 키는 그대로다.

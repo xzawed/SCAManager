@@ -150,3 +150,83 @@ def test_repos_report_marks_issue_basis_when_window_exceeds_30():
     finally:
         app.dependency_overrides.clear()
         app.dependency_overrides.update(_saved)
+
+
+def _render_repos_report(trend_unverified: int, locale: str = "ko") -> str:
+    """repos 레포트를 렌더한다 — 추세 점 2개(차트 구역이 그려지는 최소)와 주어진 미검증 수로.
+    Render the repos report with a two-point trend (the chart section's minimum) and the given count.
+    """
+    from src.auth.session import require_login, CurrentUser
+    from src.main import app
+
+    fake_user = CurrentUser(id=1, github_login="testuser", email="test@example.com",
+                            display_name="Test User", plaintext_token="")
+    fake_summary = {
+        "repos": [], "summary": {"total_repos": 0, "avg_score": None,
+                                 "grade_distribution": {"A": 0, "B": 0, "C": 0, "D": 0, "F": 0},
+                                 "warning_count": 0},
+        "warning_repos": [],
+    }
+    kpi = {"avg_score": None, "grade": "?", "score_delta": None, "analysis_count": 4,
+           "high_security_count": 0, "top_recurring_issue": None, "top_recurring_count": 0}
+    breakdown = {"security_error": 0, "security_warning": 0, "code_quality_error": 0,
+                 "code_quality_warning": 0, "total": 0}
+    trend = [{"date": "2026-10-19", "avg_score": 70.0, "count": 2},
+             {"date": "2026-10-20", "avg_score": 72.0, "count": 2}]
+    _saved = dict(app.dependency_overrides)
+    app.dependency_overrides[require_login] = lambda: fake_user
+    try:
+        with (
+            patch("src.ui.routes.dashboard.SessionLocal", return_value=_ctx(MagicMock())),
+            patch("src.ui.routes.dashboard._build_repo_summary", return_value=fake_summary),
+            patch("src.ui.routes.dashboard.repository_repo.find_by_full_name",
+                  return_value=MagicMock(id=7, full_name="o/r", user_id=1)),
+            patch("src.ui.routes.dashboard.repo_kpi", return_value=kpi),
+            patch("src.ui.routes.dashboard.repo_recurring_issues", return_value=[]),
+            patch("src.ui.routes.dashboard.repo_category_breakdown", return_value=breakdown),
+            patch("src.ui.routes.dashboard.repo_ai_suggestions", return_value=[]),
+            patch("src.ui.routes.dashboard.repo_score_trend", return_value=trend),
+            # create=True — 되돌린 코드에 이름이 없어도 패치가 «오류» 가 아니라 단언에서 빨갛게 한다.
+            # create=True so reverted code fails the assertion instead of erroring in patch().
+            patch("src.ui.routes.dashboard.repo_trend_unverified_count",
+                  return_value=trend_unverified, create=True),
+        ):
+            resp = TestClient(app).get("/dashboard?mode=repos&repo=o/r",
+                                       headers={"Accept-Language": locale})
+        assert resp.status_code == 200
+        return resp.text
+    finally:
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(_saved)
+
+
+def _trend_notes(html: str) -> list[str]:
+    """`repos-trend-note` 문단의 글자 — 요소 단위로 읽는다(부분문자열 판정 금지).
+    Text of each repos-trend-note paragraph, read per element.
+    """
+    import re  # noqa: PLC0415
+
+    return [re.sub(r"\s+", " ", m).strip()
+            for m in re.findall(r'<p class="repos-trend-note">(.*?)</p>', html, re.S)]
+
+
+def test_repos_report_notes_unverified_scores_inside_the_trend():
+    """추세가 미검증 점수까지 평균하면 차트 아래에 그 수를 적는다 — 리포 표의 평균·등급은 검증만 쓴다.
+    When the trend averages unverified scores, the report states how many under the chart.
+    """
+    from src.i18n.loader import get_text
+
+    for locale in ("ko", "en", "ja"):
+        html = _render_repos_report(3, locale)
+        assert 'id="repoTrendChart"' in html, "추세 구역이 안 그려졌다 — 표기를 잴 자리가 없다"
+        assert _trend_notes(html) == [
+            get_text("dashboard.trend_includes_unverified", locale, count=3)], locale
+
+
+def test_repos_report_has_no_unverified_note_when_the_trend_is_all_verified():
+    """미검증이 0 이면 표기가 없다 — 같은 화면(추세 구역은 그려짐)이 대조군이다.
+    No note at zero; the same page with the trend section drawn is the control.
+    """
+    html = _render_repos_report(0)
+    assert 'id="repoTrendChart"' in html, "추세 구역이 안 그려졌다 — 「없음」을 잴 수 없다"
+    assert _trend_notes(html) == []
