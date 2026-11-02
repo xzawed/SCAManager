@@ -15,7 +15,7 @@ from e2e import branchprobe
 
 def _render(source: str, **ctx) -> tuple[list[str], dict[str, set[bool]]]:
     """`source` 를 계측해 한 번 렌더한다 — (감싼 id, 관측) 을 돌려준다."""
-    env = jinja2.Environment()
+    env = jinja2.Environment(autoescape=True)
     seen: dict[str, set[bool]] = {}
     tree = env.parse(source, name="t.html")
     ids = branchprobe.instrument(tree, "t.html", env)
@@ -31,7 +31,7 @@ def test_each_arm_is_recorded_only_when_it_renders():
     assert seen == {ids[0]: {True}}
     _, seen = _render(src, x=False)
     assert seen == {ids[0]: {False}}
-    assert jinja2.Environment().from_string(src).render(x=True) == "A"
+    assert jinja2.Environment(autoescape=True).from_string(src).render(x=True) == "A"
 
 
 def test_truthiness_is_evaluated_once_as_in_the_unpatched_if():
@@ -44,9 +44,9 @@ def test_truthiness_is_evaluated_once_as_in_the_unpatched_if():
             return Flip.calls % 2 == 1      # 첫 판정만 참
 
     src = "{% if q %}Y{% else %}N{% endif %}"
-    unpatched = jinja2.Environment().from_string(src).render(q=Flip())
+    unpatched = jinja2.Environment(autoescape=True).from_string(src).render(q=Flip())
     Flip.calls = 0
-    env = jinja2.Environment()
+    env = jinja2.Environment(autoescape=True)
     tree = env.parse(src)
     branchprobe.instrument(tree, "t.html", env)
     env.globals[branchprobe._PROBE] = lambda key, value: branchprobe.record(key, value, {})
@@ -95,7 +95,7 @@ def test_a_run_whose_parse_differs_from_the_static_parse_is_invalid():
 
 def test_static_counts_match_a_direct_parse_of_every_template():
     """정적 전수가 템플릿을 하나라도 빼먹으면 `valid` 판정이 거짓 초록을 낸다."""
-    env = jinja2.Environment()
+    env = jinja2.Environment(autoescape=True)
     paths = sorted(branchprobe._TEMPLATES.rglob("*.html"))
     assert paths, "템플릿을 0개 찾았다 — 정적 전수가 공허하다"
     direct = {p.relative_to(branchprobe._TEMPLATES).as_posix():
@@ -107,7 +107,7 @@ def test_static_counts_match_a_direct_parse_of_every_template():
 
 def test_a_template_using_the_probe_name_is_refused():
     """기록기 이름을 쓰는 템플릿은 계측하면 출력이 바뀐다 — 조용히 감싸지 않고 거부한다."""
-    env = jinja2.Environment()
+    env = jinja2.Environment(autoescape=True)
     tree = env.parse(f"{{% if {branchprobe._PROBE} %}}y{{% else %}}n{{% endif %}}")
     try:
         branchprobe.instrument(tree, "t.html", env)

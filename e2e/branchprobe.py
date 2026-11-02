@@ -78,7 +78,7 @@ def _patched_parse(self, source, name, filename):
 
 def static_counts(templates_dir: Path = _TEMPLATES) -> dict[str, int]:
     """{템플릿 이름: `If` 수} — 템플릿 전부를 «감싸지 않고» 따로 파싱한 대조군."""
-    env = jinja2.Environment(loader=jinja2.FileSystemLoader(str(templates_dir)))
+    env = jinja2.Environment(loader=jinja2.FileSystemLoader(str(templates_dir)), autoescape=True)
     out = {}
     for path in sorted(templates_dir.rglob("*.html")):
         name = path.relative_to(templates_dir).as_posix()
