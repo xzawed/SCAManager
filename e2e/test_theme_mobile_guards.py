@@ -125,6 +125,8 @@ def test_catppuccin_grade_aliases_defined(page, base_url):
 
 _MOBILE_VIEWPORT = {"width": 375, "height": 812}  # iPhone X/11/12/13 sm
 _DESKTOP_VIEWPORT = {"width": 1024, "height": 768}
+# 대비·포커스 감사의 기본 뷰포트 — 리터럴로 흩어 두면 축을 바꿀 수 없다(회고 P2-60).
+_WIDE_VIEWPORT = {"width": 1440, "height": 900}
 
 
 def _min_height_px(page, selector: str) -> float:
@@ -885,7 +887,7 @@ def _assert_token_text_aa(page, base_url, theme, path, viewport=None, prepare=No
 
     The viewport was hardcoded to desktop, so mobile-only surfaces were never observed.
     """
-    page.set_viewport_size(viewport or {"width": 1440, "height": 900})
+    page.set_viewport_size(viewport or _WIDE_VIEWPORT)
     page.goto(f"{base_url}{path}")
     apply_theme(page, theme)
     # 🔴 테마 전환에 transition 이 걸려 있다 — 끄지 않으면 «중간색» 을 잰다(전 테마의
@@ -1072,7 +1074,7 @@ def test_token_text_meets_aa_in_settings_advanced(seeded_page, base_url, theme):
     The advanced settings pane is display:none by default, so it was never swept. Note the
     audits are token-scoped, so a color that matches none of the three tokens is not observed.
     """
-    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.set_viewport_size(_WIDE_VIEWPORT)
     seeded_page.goto(f"{base_url}/repos/owner%2Ftestrepo/settings")
     apply_theme(seeded_page, theme)
     seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
@@ -1124,7 +1126,7 @@ def test_accent_used_as_text_meets_aa(seeded_page, base_url, theme):
 
     🔴 accent «면» 색은 이 수정에서 바뀌지 않는다(단위 가드가 그것을 따로 지킨다).
     """
-    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.set_viewport_size(_WIDE_VIEWPORT)
     total = 0
     bad = []
     for path in _ACCENT_TEXT_PATHS:
@@ -1201,7 +1203,7 @@ def test_admin_screens_render_and_meet_aa(admin_page, base_url, theme,
     `.admin-ops-card-hint` 가 `opacity:0.8` 로 흐려져 light 4.31.
     셋 다 이미 다른 화면에서 고친 부류인데 `admin.css` 에만 남아 있었다.
     """
-    admin_page.set_viewport_size({"width": 1440, "height": 900})
+    admin_page.set_viewport_size(_WIDE_VIEWPORT)
     total, bad = 0, []
     for path in _ADMIN_PATHS:
         resp = admin_page.goto(f"{base_url}{path}")
@@ -1250,7 +1252,7 @@ def test_landing_text_meets_aa(anonymous_page, base_url, theme):
     🔴 `.reveal { opacity: 0 }` 이라 스크롤로 드러내지 않으면 4테마 전부 2행만 수집된다
     — 그때는 «통과» 가 아니라 재지 못한 것이다(아래 관측 하한이 그것을 red 로 만든다).
     """
-    anonymous_page.set_viewport_size({"width": 1440, "height": 900})
+    anonymous_page.set_viewport_size(_WIDE_VIEWPORT)
     anonymous_page.goto(base_url)
     anonymous_page.evaluate("(t) => document.body.setAttribute('data-theme', t)", theme)
     anonymous_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
@@ -1286,8 +1288,21 @@ def test_landing_text_meets_aa(anonymous_page, base_url, theme):
     )
 
 
-# ── J. 포커스 표시 — 「보이는가」와 「3:1 인가」 (WCAG 2.4.7 · 1.4.11) ──────────
-# Focus indicator: does it exist at all, and does it meet non-text contrast.
+# ── J. 포커스 — Tab 으로 «실제로» 옮겨 다니며 잰다 (WCAG 2.1.1 · 2.4.7 · 1.4.11) ──────────
+# Focus: walk every screen with real Tab presses and measure each stop.
+#
+# 🔴 옛 스윕은 포커스를 «옮기지 않았다»(회고 2026-09-16 P1-61). CDP `CSS.forcePseudoState` 로
+#    `:focus` 를 «포커스 가능한 마크업»(셀렉터 목록)에 한꺼번에 걸었다. 그래서
+#      · 집합이 항진명제였다 — 포커스를 못 받는 컨트롤(onclick 만 있는 행)은 애초에 집합 밖이라
+#        «표시가 없다» 도 «닿지 못한다» 도 볼 수 없었다(#1776 이 고친 P1-59 가 바로 그 자리).
+#      · 크롬 전용 API 라 Firefox·WebKit 에서는 원리적으로 못 돌았다(P2-57).
+#      · 0×0·투명 입력(토글 스위치)은 상자 필터에 걸려 조용히 빠졌다 — 그 표시는 형제에 그려진다.
+#    이제 Tab 을 눌러 «탭 정지점» 을 브라우저에게서 받고 그 자리마다 표시를 잰다. 그리고 포커스
+#    가능성과 «무관한» 신호(제 손가락 커서 · onclick · hx-* · 상호작용 role)로 고른 요소가
+#    정지점에 닿는지 따로 잰다 — 집합이 자기 자신을 증명하지 않게.
+# 🔴 테마는 정지점마다 페이지 안에서 속성(`html[data-theme]`·`body[data-theme]`)만 바꿔 잰다 —
+#    `applyTheme` 을 네 번 부르면 차트가 매번 다시 그려진다. 대신 «네 테마가 같은 화면» 이 되지
+#    않았는지를 팔레트 지문으로 단언한다(`apply_theme` 이 지키는 것과 같은 축).
 
 _FOCUSABLE_SEL = ("a[href], button, input:not([type=hidden]), select, textarea,"
                   ' [tabindex]:not([tabindex="-1"]), [role="button"], [role="tab"]')
@@ -1296,9 +1311,16 @@ _FOCUSABLE_SEL = ("a[href], button, input:not([type=hidden]), select, textarea,"
 #    이 목록이 없으면 손잡이에 링을 준 슬라이더가 「표시 없음」으로 잘못 잡힌다.
 _INDICATOR_PSEUDOS = ("::-webkit-slider-thumb", "::before", "::after")
 
-_FOCUS_AUDIT_JS = r"""
-(sel) => {
-""" + _PARSE_COLOR_JS + r"""
+_FOCUS_THEMES = ("dark", "light", "pastel", "catppuccin")
+# 뷰포트도 «축» 이다 — 리터럴 하나로 고정하면 모바일 전용 표면은 원리적으로 안 보인다(P2-60).
+_FOCUS_VIEWPORTS = {"wide": _WIDE_VIEWPORT, "mobile": _MOBILE_VIEWPORT}
+# 한 화면의 Tab 상한 — 넘으면 «한 바퀴를 못 돌았다»(포커스 함정) 로 red 다.
+_MAX_TAB_STOPS = 400
+# 포커스 가능성과 무관하게 «누를 수 있어 보이는» role
+_INTERACTIVE_ROLES = ("button", "link", "tab", "menuitem", "menuitemradio", "menuitemcheckbox",
+                      "switch", "checkbox", "radio", "option", "treeitem")
+
+_FOCUS_LIB_JS = _PARSE_COLOR_JS + r"""
   const over = (f,b) => { const a=f.a+b.a*(1-f.a); if(!a) return {r:0,g:0,b:0,a:0};
     return {r:(f.r*f.a+b.r*b.a*(1-f.a))/a, g:(f.g*f.a+b.g*b.a*(1-f.a))/a,
             b:(f.b*f.a+b.b*b.a*(1-f.a))/a, a}; };
@@ -1321,119 +1343,177 @@ _FOCUS_AUDIT_JS = r"""
     if(cur.trim()) out.push(cur); return out; };
   const firstColor = s => { const m=s.match(/rgba?\([^)]*\)|#[0-9a-fA-F]{3,8}|color\([^)]*\)/);
     return m ? parse(m[0]) : null; };
-
-  const PSEUDOS = %PSEUDOS%;
-  const out = {seen: 0, skippedRange: 0, noIndicator: [], low: []};
-  document.querySelectorAll(sel).forEach(el => {
-    if (!el.hasAttribute('data-focus-base')) return;
-    // 🔴 range 는 여기서 재지 않는다 — 링이 UA 섀도 의사요소(::-webkit-slider-thumb)에
-    //    있고 getComputedStyle 은 그것을 돌려주지 않아 «요소» 값(outline none)을 준다.
-    //    그 축은 test_range_slider_focus_actually_paints 가 픽셀로 맡는다.
-    if (el.tagName === 'INPUT' && el.type === 'range') { out.skippedRange++; return; }
+  const setTheme = t => { document.documentElement.setAttribute('data-theme', t);
+    document.body.dataset.theme = t; };
+  const outlineOf = s => s.outlineStyle + ' ' + s.outlineWidth + ' ' + s.outlineColor;
+  // 포커스 «전» 상태 — 대리 요소는 이것과 «달라진 것» 만 표시로 친다.
+  const snap = (el, pseudos) => { const cs = getComputedStyle(el);
+    const rec = {boxShadow: cs.boxShadow, borderTopColor: cs.borderTopColor, outline: outlineOf(cs)};
+    pseudos.forEach(ps => { const p = getComputedStyle(el, ps);
+      rec['shadow' + ps] = p ? p.boxShadow : 'none';
+      rec['outline' + ps] = p ? outlineOf(p) : 'none'; });
+    return rec; };
+  const opacityOf = el => { let op = 1; for (let x = el; x; x = x.parentElement) {
+      const o = parseFloat(getComputedStyle(x).opacity); if (!isNaN(o)) op *= o; }
+    return op; };
+  // «칠해지는가» — 상자 · display/visibility · 브라우저의 checkVisibility · 누적 불투명도.
+  // 🔴 닫힌 `<details>` 안은 상자도 계산값도 정상인데 칠해지지 않는다(설정 화면 실측 3/16).
+  // 🔴 흐린 컨트롤(`opacity:.55`)도 «보인다» — 옛 스윕은 0.99 미만을 건너뛰어 그 링을 한 번도
+  //    재지 않았다. 문턱은 «실제로 안 보임» 이고, 흐림은 아래 대비 계산에 곱해 넣는다.
+  const painted = el => {
     const r = el.getBoundingClientRect();
-    if (r.width < 6 || r.height < 6) return;
+    if (r.width < 6 || r.height < 6) return false;
     const cs = getComputedStyle(el);
-    if (cs.visibility === 'hidden' || cs.display === 'none') return;
-    // 🔴 닫힌 `<details>` 안의 컨트롤은 상자도 계산값도 정상인데 «칠해지지» 않는다.
-    //    포커스 표시를 그 자리에서 재면 아무도 못 보는 링을 재는 것이다(실측 설정 3/16).
-    if (el.checkVisibility && !el.checkVisibility({opacityProperty: true, visibilityProperty: true})) return;
-    let op = 1; for(let x=el;x;x=x.parentElement){
-      const o=parseFloat(getComputedStyle(x).opacity); if(!isNaN(o)) op*=o; }
-    if (op < 0.99) return;
-
-    out.seen++;
-    const base = JSON.parse(el.getAttribute('data-focus-base'));
-    // 🔴 링은 요소 «바깥» 에 그려진다(outline-offset). 요소 «자신» 의 면만 바탕으로
-    //    삼으면, accent 로 채워진 버튼 위에서 링과 면이 같은 색이라 1.00 이 나온다 —
-    //    실제로는 그 링이 페이지 바탕과 4.4:1 로 잘 보인다. 두 인접색 중 «좋은 쪽» 을
-    //    취한다(1.4.11 은 인접색에 대해 3:1 을 요구하지, 모든 인접색을 요구하지 않는다).
-    // 🔴 표시의 «기하» 에 따라 무엇과 재는지가 다르다
-    //    (Understanding 1.4.11 — Relationship with Focus Visible):
-    //      · 요소 «바깥» 에 그려지는 표시(outline-offset, 비-inset box-shadow)
-    //        → 요소가 «앉은» 바탕, 곧 부모의 색과 3:1. 채워진 버튼의 «면» 과는 무관하다
-    //          (Figure 10: 면과 같은 색이어도 페이지와 대비되면 통과).
-    //      · 요소의 «테두리» 로 그려지는 표시 → 안팎 «둘 다» 3:1.
-    //    처음엔 둘 중 좋은 쪽(max)을 취했는데, 그러면 Figure 9(면과는 대비되지만 페이지와는
-    //    1:1 인 바깥 링)가 통과한다 — 명세보다 무른 판정이다(Grok claim-review).
-    const gnd = ground(el);
-    const gndOut = el.parentElement ? ground(el.parentElement) : gnd;
-    const outsideR = (c) => ratio(over(c, gndOut), gndOut);
-    const insideR = (c) => ratio(over(c, gnd), gnd);
-    const borderR = (c) => Math.min(insideR(c), outsideR(c));
-    const cands = [];
-    const consider = (colorStr, kind, how) => {
-      const c = parse(colorStr); if (!c || c.a <= 0) return;
-      cands.push({kind, ratio: how(c), color: colorStr});
-    };
-    if (parseFloat(cs.outlineWidth) > 0 && !['none','hidden'].includes(cs.outlineStyle))
+    if (cs.visibility === 'hidden' || cs.display === 'none') return false;
+    if (el.checkVisibility && !el.checkVisibility({opacityProperty: true, visibilityProperty: true}))
+      return false;
+    return opacityOf(el) >= 0.05; };
+  // 🔴 표시의 «기하» 에 따라 무엇과 재는지가 다르다(Understanding 1.4.11):
+  //    바깥에 그려지는 표시(outline · 비-inset 그림자)는 요소가 «앉은» 바탕(부모)과,
+  //    테두리로 그려지는 표시는 안팎 «둘 다» 와 3:1. 좋은 쪽(max)을 취하면 Figure 9
+  //    (면과는 대비되지만 페이지와 1:1 인 바깥 링)가 통과한다(Grok claim-review).
+  // own=true 면 요소 자신의 outline 은 «있기만 하면» 표시, 대리(own=false)는 포커스 «전» 과
+  // 달라진 것만 표시다 — 원래 있던 테두리는 표시가 아니다.
+  const candidates = (el, base, pseudos, own) => {
+    const cs = getComputedStyle(el); const out = [];
+    const gnd = ground(el); const gndOut = el.parentElement ? ground(el.parentElement) : gnd;
+    const outsideR = c => ratio(over(c, gndOut), gndOut);
+    const insideR = c => ratio(over(c, gnd), gnd);
+    const borderR = c => Math.min(insideR(c), outsideR(c));
+    // 요소의 누적 opacity 는 그 요소가 그리는 링·그림자·테두리에도 곱해진다.
+    const op = opacityOf(el);
+    const dim = c => c ? Object.assign({}, c, {a: c.a * op}) : c;
+    const consider = (colorStr, kind, how) => { const c = dim(parse(colorStr));
+      if (!c || c.a <= 0) return; out.push({kind, ratio: how(c), color: colorStr}); };
+    const ringOn = s => parseFloat(s.outlineWidth) > 0 && !['none','hidden'].includes(s.outlineStyle);
+    if (ringOn(cs) && (own || outlineOf(cs) !== base.outline))
       consider(cs.outlineColor, 'outline', outsideR);
     if (cs.boxShadow !== base.boxShadow && cs.boxShadow !== 'none')
-      shadowLayers(cs.boxShadow).forEach(l => { const c=firstColor(l);
-        if (c && c.a>0) cands.push({kind:'box-shadow',
-          ratio: /\binset\b/.test(l) ? insideR(c) : outsideR(c),
-          color: l.trim().slice(0,40)}); });
-    if (cs.borderTopColor !== base.borderTopColor)
-      consider(cs.borderTopColor, 'border', borderR);
-    PSEUDOS.forEach(ps => {
-      const p = getComputedStyle(el, ps);
-      if (!p) return;
-      if (parseFloat(p.outlineWidth) > 0 && !['none','hidden'].includes(p.outlineStyle))
+      shadowLayers(cs.boxShadow).forEach(l => { const c = dim(firstColor(l));
+        if (c && c.a > 0) out.push({kind: 'box-shadow',
+          ratio: /\binset\b/.test(l) ? insideR(c) : outsideR(c), color: l.trim().slice(0,40)}); });
+    if (cs.borderTopColor !== base.borderTopColor) consider(cs.borderTopColor, 'border', borderR);
+    pseudos.forEach(ps => { const p = getComputedStyle(el, ps); if (!p) return;
+      if (ringOn(p) && (own || outlineOf(p) !== base['outline' + ps]))
         consider(p.outlineColor, 'outline' + ps, outsideR);
-      if (p.boxShadow && p.boxShadow !== 'none' && p.boxShadow !== base['shadow' + ps])
-        { const c = firstColor(p.boxShadow);
-          if (c && c.a>0) cands.push({kind:'box-shadow'+ps,
-            ratio: /\binset\b/.test(p.boxShadow) ? insideR(c) : outsideR(c),
-            color: p.boxShadow.slice(0,40)}); }
+      if (p.boxShadow && p.boxShadow !== 'none' && p.boxShadow !== base['shadow' + ps]) {
+        const c = dim(firstColor(p.boxShadow));
+        if (c && c.a > 0) out.push({kind: 'box-shadow' + ps,
+          ratio: /\binset\b/.test(p.boxShadow) ? insideR(c) : outsideR(c),
+          color: p.boxShadow.slice(0,40)}); }
     });
+    return out; };
+  const describe = el => {
+    const cls = (typeof el.className === 'string' && el.className.trim())
+      ? '.' + el.className.trim().split(/\s+/).slice(0, 2).join('.') : '';
+    return (el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + cls).slice(0, 60); };
+"""
 
-    const id = (el.className && String(el.className).slice(0,34)) || el.tagName.toLowerCase();
-    if (!cands.length) { out.noIndicator.push(id); return; }
-    const best = cands.reduce((a,b) => b.ratio > a.ratio ? b : a);
-    if (best.ratio < 3.0)
-      out.low.push({cls: id, ratio: +best.ratio.toFixed(2),
-                    kind: best.kind, color: best.color});
-  });
-  return out;
-}
-""".replace("%PSEUDOS%", str(list(_INDICATOR_PSEUDOS)).replace("'", '"'))
-
+# 포커스 «전» 의 계산값을 요소마다 · 테마마다 떠 둔다(WeakMap). 팔레트 지문 수를 돌려준다.
 _FOCUS_BASE_JS = r"""
 (payload) => {
-  const [sel, pseudos] = payload;
-  let n = 0;
-  document.querySelectorAll(sel).forEach(el => {
-    const cs = getComputedStyle(el);
-    const rec = {boxShadow: cs.boxShadow, borderTopColor: cs.borderTopColor};
-    pseudos.forEach(ps => { const p = getComputedStyle(el, ps);
-      rec['shadow' + ps] = p ? p.boxShadow : 'none'; });
-    el.setAttribute('data-focus-base', JSON.stringify(rec));
-    n++;
-  });
-  return n;
+""" + _FOCUS_LIB_JS + r"""
+  const [themes, pseudos] = payload;
+  if (document.activeElement && document.activeElement !== document.body)
+    document.activeElement.blur();
+  document.querySelectorAll('[data-tab-stop]').forEach(e => e.removeAttribute('data-tab-stop'));
+  const html = document.documentElement, body = document.body;
+  const orig = [html.getAttribute('data-theme'), body.dataset.theme];
+  const els = Array.from(document.querySelectorAll('body *'));
+  const map = new WeakMap(); const prints = new Set();
+  for (const t of themes) {
+    setTheme(t);
+    const rs = getComputedStyle(html);
+    prints.add(['--focus-ring', '--bg-base', '--bg-card', '--accent']
+      .map(n => rs.getPropertyValue(n).trim()).join('|'));
+    for (const el of els) { if (!map.has(el)) map.set(el, {}); map.get(el)[t] = snap(el, pseudos); }
+  }
+  html.setAttribute('data-theme', orig[0]); body.dataset.theme = orig[1];
+  window.__focusBase = map;
+  // 🔴 순차 탐색의 시작점을 문서 맨 앞에 둔다 — 크롬은 `blur()` 한 요소 자리를 시작점으로
+  //    기억해서, 자동 포커스가 있는 화면은 중간부터 돌기 시작해 앞쪽 정지점을 놓친다.
+  const start = document.createElement('span'); start.tabIndex = -1;
+  body.prepend(start); start.focus(); start.remove();
+  return {elements: els.length, palettes: prints.size};
 }
 """
 
+# 지금 포커스를 가진 요소 하나를 잰다 — 처음 보면 번호를 붙이고, 이미 본 것이면 한 바퀴다.
+_FOCUS_STOP_JS = r"""
+(payload) => {
+""" + _FOCUS_LIB_JS + r"""
+  const [themes, pseudos, chromeSel, n] = payload;
+  const el = document.activeElement;
+  // body·html 은 tabindex 가 있을 때만 정지점이다 — 없으면 «문서 밖» 이다
+  // (tabindex 가 붙은 html 을 문서 밖으로 읽어 일찍 멈췄다 — Grok `2f798ea9`).
+  if (!el || ((el === document.body || el === document.documentElement)
+              && !el.hasAttribute('tabindex'))) return {key: null};
+  if (el.hasAttribute('data-tab-stop')) return {key: el.getAttribute('data-tab-stop'), repeat: true};
+  el.setAttribute('data-tab-stop', String(n));
+  const out = {key: String(n), id: describe(el), chrome: !!el.closest(chromeSel),
+               range: el.tagName === 'INPUT' && el.type === 'range', themes: {}};
+  // range 는 링이 UA 섀도 의사요소에 있어 계산값으로 못 잰다 — 픽셀 시험이 맡는다.
+  if (out.range) return out;
+  const map = window.__focusBase;
+  // 보이는 정지점은 자기 자신을, 안 보이는(0×0·투명) 정지점은 «대리» 를 잰다 —
+  // 라벨 · 다음 형제 · 부모 중 칠해지는 것(토글 스위치의 링은 형제 트랙에 그려진다).
+  const own = painted(el);
+  const hosts = own ? [el]
+    : [...(el.labels || []), el.nextElementSibling, el.parentElement].filter(h => h && painted(h));
+  out.proxy = own ? '' : hosts.map(describe).join(' | ');
+  if (!hosts.length) { out.invisible = true; return out; }
+  const missing = hosts.filter(h => !map || !map.get(h)).map(describe);
+  if (missing.length) { out.noBase = missing; return out; }
+  const html = document.documentElement, body = document.body;
+  const orig = [html.getAttribute('data-theme'), body.dataset.theme];
+  for (const t of themes) {
+    setTheme(t);
+    const cands = hosts.flatMap(h => candidates(h, map.get(h)[t], pseudos, h === el));
+    out.themes[t] = cands.length ? cands.reduce((a, b) => b.ratio > a.ratio ? b : a) : null;
+  }
+  html.setAttribute('data-theme', orig[0]); body.dataset.theme = orig[1];
+  return out;
+}
+"""
 
-def _force_focus(page, on: bool) -> int:
-    """CDP 로 `:focus`·`:focus-visible` 을 한꺼번에 건다.
-
-    🔴 `focus-visible` 만 걸면 안 된다 — 이 앱은 `input:focus` 로도 스타일해서
-    (`settings.html`), 한쪽만 걸면 「표시가 없다」는 거짓 결론이 난다(#1617 에서 실제로).
-    """
-    cdp = page.context.new_cdp_session(page)
-    cdp.send("DOM.enable")
-    cdp.send("CSS.enable")
-    doc = cdp.send("DOM.getDocument", {"depth": -1, "pierce": True})
-    nodes = cdp.send("DOM.querySelectorAll",
-                     {"nodeId": doc["root"]["nodeId"], "selector": "[data-focus-base]"})
-    classes = ["focus", "focus-visible"] if on else []
-    for nid in nodes["nodeIds"]:
-        try:
-            cdp.send("CSS.forcePseudoState",
-                     {"nodeId": nid, "forcedPseudoClasses": classes})
-        except Exception:  # noqa: BLE001 — 사라진 노드는 건너뛴다
-            pass
-    return len(nodes["nodeIds"])
+# «누를 수 있어 보이는데» 탭 정지점에 닿지 않는 요소 — 포커스 가능성과 무관한 신호로 고른다.
+# 🔴 커서는 상속된다 — 버튼 안의 span 도 손가락이다. «부모와 다른» 손가락만 제 것으로 센다.
+_FOCUS_REACH_AUDIT_JS = r"""
+(payload) => {
+""" + _FOCUS_LIB_JS + r"""
+  const [roles] = payload;
+  const hx = ['hx-get', 'hx-post', 'hx-put', 'hx-patch', 'hx-delete'];
+  const out = {candidates: 0, unreachable: []};
+  document.querySelectorAll('body *').forEach(el => {
+    if (!painted(el)) return;
+    const cs = getComputedStyle(el);
+    const parentCursor = el.parentElement ? getComputedStyle(el.parentElement).cursor : '';
+    const ownPointer = cs.cursor === 'pointer' && parentCursor !== 'pointer';
+    const why = [ownPointer && 'cursor', el.hasAttribute('onclick') && 'onclick',
+                 hx.some(a => el.hasAttribute(a)) && 'hx',
+                 roles.includes(el.getAttribute('role') || '') && 'role'].filter(Boolean);
+    if (!why.length) return;
+    if (el.matches(':disabled, [aria-disabled="true"]') || el.closest('[inert]')) return;
+    out.candidates++;
+    if (el.closest('[data-tab-stop]') || el.querySelector('[data-tab-stop]')) return;
+    // 라벨(또는 라벨 안의 장식 — 토글 트랙)은 그 라벨의 컨트롤이 정지점이면 닿는다.
+    const label = el.closest('label');
+    if (label && label.control && label.control.hasAttribute('data-tab-stop')) return;
+    // 복합 위젯(roving tabindex)은 정지점 하나 + 화살표다 — 묶음 안에 정지점이 있으면 닿는다.
+    const group = el.closest('[role=tablist],[role=menu],[role=menubar],[role=listbox],'
+                             + '[role=radiogroup],[role=tree],[role=grid]');
+    if (group && group.querySelector('[data-tab-stop]')) return;
+    // 같은 묶음(같은 이름 · 같은 form 소유자)의 라디오도 정지점 하나 + 화살표다
+    // (다른 form 의 같은 이름은 다른 묶음이다 — Grok `9bcfddb9`).
+    const radio = el.tagName === 'LABEL' ? el.control : el;
+    if (radio && radio.type === 'radio' && radio.name && Array.from(
+          document.getElementsByName(radio.name)).some(r => r.form === radio.form
+                                                       && r.hasAttribute('data-tab-stop'))) return;
+    out.unreachable.push(describe(el) + ' (' + why.join('+') + ')');
+  });
+  return out;
+}
+"""
 
 
 #    🔴 목록은 «화면» 이 아니라 «상태» 다. 설정 화면은 게이트가 닫힌 리포만 있어서,
@@ -1448,87 +1528,105 @@ _FOCUS_PATHS = ["/dashboard", "/repos/owner/testrepo",
                 "/repos/owner%2Funclaimedrepo/settings"]
 
 
-@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
-def test_every_focusable_shows_an_indicator_that_meets_3to1(
-        seeded_page, base_url, seeded_analysis, gated_settings_repo, unclaimed_repo, theme):
-    """🔴 포커스를 받은 요소는 «표시가 있어야» 하고 그 표시는 3:1 이상이어야 한다.
+def _walk_tab_stops(page, path: str, failures: list[str]) -> list[dict]:
+    """Tab 을 눌러 한 바퀴 — 정지점마다 `_FOCUS_STOP_JS` 결과. 한 바퀴를 못 돌면 실패에 적는다."""
+    page.evaluate("() => window.scrollTo(0, 0)")
+    stops: list[dict] = []
+    idle = 0
+    for i in range(_MAX_TAB_STOPS):
+        page.keyboard.press("Tab")
+        res = page.evaluate(_FOCUS_STOP_JS, [list(_FOCUS_THEMES), list(_INDICATOR_PSEUDOS),
+                                             _CHROME_SEL, i])
+        if res["key"] is None:
+            # 시작점이 문서 맨 앞이므로, 정지점을 받은 뒤 문서 밖으로 나가면 한 바퀴다.
+            idle += 1
+            if stops or idle >= 3:
+                return stops
+            continue
+        if res.get("repeat"):
+            return stops
+        stops.append(res)
+    failures.append(f"{path}: Tab {_MAX_TAB_STOPS}번 안에 한 바퀴를 못 돌았다 — 포커스 함정인지 볼 것")
+    return stops
 
-    실측(수정 전):
-      - `#scoreMin`·`#scoreMax`(점수 범위 슬라이더)는 Tab 으로 도달해도 표시가 «전혀»
-        없었다 — 픽셀로 5092px 중 0px. `.dual-slider-track input[type=range]` 의
-        `outline:none` 이 전역 링을 특이도로 이기고 대체가 없었다. WCAG 2.4.7(Level AA).
-      - pastel 의 링(`--accent` #8c82d2)이 페이지 바탕에서 2.77~2.88 (9건).
 
-    🔴 표시를 «의사요소» 에서도 찾는다. 슬라이더 링은 `::-webkit-slider-thumb` 에 있어
-    요소만 보면 고친 뒤에도 「표시 없음」으로 잡힌다.
+@pytest.mark.parametrize("viewport", sorted(_FOCUS_VIEWPORTS))
+def test_every_tab_stop_shows_an_indicator_that_meets_3to1(
+        seeded_page, base_url, seeded_analysis, gated_settings_repo, unclaimed_repo, viewport):
+    """🔴 Tab 으로 닿는 곳마다 «표시가 있어야» 하고 그 표시는 3:1 이상이어야 한다 — 그리고
+    누를 수 있어 보이는 것은 전부 Tab 으로 닿아야 한다.
 
-    🔴 이 스윕이 **유일한 실효 관측자**다. 단위 가드
-    (`tests/unit/ui/test_focus_indicator.py::test_outline_none_is_always_paired_with_a_replacement_indicator`)
-    는 «파일에 대체 표시가 있는가» 를 보므로, 같은 파일 안에서 특정 규칙만 표시를 잃는
-    경우를 못 본다 — `#rejectVal` 이 정확히 그랬다(1.19:1). `input:focus{outline:none}` 은
-    남아 있으니, 새 상태 클래스(예: `.field-input.invalid{border-color:…}`)가 생기면 같은
-    부류가 재발한다. **그 상태를 이 목록이 열지 않으면 아무도 못 본다.**
+    실측(옛 스윕이 잡은 것): `#scoreMin`·`#scoreMax` 는 Tab 으로 도달해도 표시가 «전혀» 없었다
+    (픽셀 5092 중 0) · pastel 링이 페이지 바탕에서 2.77~2.88 · `#rejectVal` 1.19:1.
+    새 스윕이 «더» 보는 것: 탭 순서 자체(포커스가 실제로 가는 곳) · 0×0 입력의 형제 표시 ·
+    포커스를 못 받는 «누를 수 있어 보이는» 요소 · 모바일 뷰포트.
 
-    🔴 두 픽스처(`gated_settings_repo`·`unclaimed_repo`)를 여기서 요청하므로 시드가
-    이 파일 앞쪽으로 당겨진다 — 뒤의 below-the-fold 스윕이 `/dashboard` 에서
-    `active_repos.total` 을 더 큰 값으로 본다(건수를 단언하지 않아 통과는 유지된다.
-    Grok `01a09491` 이 내 「부작용 없음」 주장을 WEAKENED 로 깎았다).
+    🔴 이 스윕이 포커스 표시의 **유일한 실효 관측자**다. 단위 가드
+    (`tests/unit/ui/test_focus_indicator.py`)는 «파일에 대체 표시가 있는가» 를 본다.
+
+    🔴 두 픽스처(`gated_settings_repo`·`unclaimed_repo`)를 여기서 요청하므로 시드가 이 파일
+    앞쪽으로 당겨진다 — 뒤의 below-the-fold 스윕이 `/dashboard` 에서 `active_repos.total` 을 더
+    큰 값으로 본다(건수를 단언하지 않아 통과는 유지된다. Grok `01a09491`).
+
+    Walk each screen with real Tab presses: every stop needs a 3:1 indicator, and everything that
+    looks pressable must be a stop. Runs per viewport; themes are swapped in-page per stop.
     """
-    seeded_page.set_viewport_size({"width": 1440, "height": 900})
-    total, skipped_range, missing, low = 0, 0, [], []
-    # 🔴 분석 상세는 경로에 id 가 들어가 상수 목록에 못 적는다 — 그래서 이 스윕 밖이었다.
-    #    「목록에 못 적는 화면」이 조용히 빠지는 것이 이 가드의 구조적 구멍이었다.
-    for path in [*_FOCUS_PATHS,
-                 f"/repos/owner%2Ftestrepo/analyses/{seeded_analysis}"]:
-        seeded_page.goto(f"{base_url}{path}")
-        apply_theme(seeded_page, theme)
-        # 🔴 설정 화면의 임계값 입력은 «고급 모드» 안이라, 열지 않으면 0×0 이고 포커스
-        #    감사는 그것을 건너뛴다 — 열지 않은 채로는 `#rejectVal` 의 1.19:1 을 못 본다.
-        seeded_page.evaluate(
+    page = seeded_page
+    page.set_viewport_size(_FOCUS_VIEWPORTS[viewport])
+    total, ranges, failures = 0, 0, []
+    # 🔴 분석 상세는 경로에 id 가 들어가 상수 목록에 못 적는다 — 그래서 옛 스윕 밖이었다.
+    for path in [*_FOCUS_PATHS, f"/repos/owner%2Ftestrepo/analyses/{seeded_analysis}"]:
+        page.goto(f"{base_url}{path}")
+        # 🔴 설정 화면의 임계값 입력은 «고급 모드» 안이라, 열지 않으면 칠해지지 않는다.
+        page.evaluate(
             "() => { document.body.setAttribute('data-settings-mode', 'advanced');"
             " document.querySelectorAll('details').forEach(d => d.open = true); }")
-        seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
-        seeded_page.wait_for_timeout(300)
-        _reveal_all(seeded_page)
-        n = seeded_page.evaluate(_FOCUS_BASE_JS,
-                                 [_FOCUSABLE_SEL, list(_INDICATOR_PSEUDOS)])
-        # 🔴 0이면 «건너뛰기» 가 아니라 red 다. 종전 `continue` 는 그 경로의 되짚기까지
-        #    통째로 건너뛰어, 화면이 비어도 조용했다(Grok `01a09737` 이 지목한 구멍).
-        #    어느 경로든 nav 만으로도 6~15개가 잡힌다 — 0은 화면이 안 떴다는 뜻이다.
-        assert n, f"[{theme}] {path}: 포커스 대상을 하나도 찾지 못했다 — 화면이 비었다"
-        _force_focus(seeded_page, True)
-        seeded_page.wait_for_timeout(150)
-        res = seeded_page.evaluate(_FOCUS_AUDIT_JS, _FOCUSABLE_SEL)
-        _force_focus(seeded_page, False)
-        # 🔴 합계 바닥(`total >= 40`)은 **경로 하나가 통째로 비어도** 넘는다 — 크롬의
-        #    포커스 대상만으로 경로당 6~15건이 잡히기 때문이다. 경로마다 요구한다.
-        _assert_body_contributed(seeded_page, axis=f"focus/{theme}", where=path,
-                                 selector=_FOCUSABLE_SEL, min_box=6)
-        total += res["seen"]
-        skipped_range += res["skippedRange"]
-        missing += [f"{path}: {c}" for c in res["noIndicator"]]
-        low += [dict(b, path=path) for b in res["low"]]
+        page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
+        page.wait_for_timeout(300)
+        _reveal_all(page)
+        base = page.evaluate(_FOCUS_BASE_JS, [list(_FOCUS_THEMES), list(_INDICATOR_PSEUDOS)])
+        assert base["elements"], f"[{viewport}] {path}: 요소를 하나도 못 찾았다 — 화면이 비었다"
+        assert base["palettes"] == len(_FOCUS_THEMES), (
+            f"[{viewport}] {path}: 테마 {len(_FOCUS_THEMES)}개가 팔레트 {base['palettes']}개로만 "
+            "칠해진다 — 같은 화면을 여러 번 잰다(테마 이름·속성 이름이 바뀌었는지 볼 것)")
+        stops = _walk_tab_stops(page, path, failures)
+        # 🔴 0 이면 «건너뛰기» 가 아니라 red 다 — 어느 화면이든 nav 만으로 정지점이 생긴다.
+        if not stops:
+            failures.append(f"{path}: 탭 정지점을 하나도 못 받았다 — 화면이 안 떴다")
+            continue
+        # 🔴 nav·헤더만 재고 통과하지 않게 — 이 화면 «고유» 의 정지점이 하나는 있어야 한다.
+        if all(s["chrome"] for s in stops):
+            failures.append(f"{path}: 정지점 {len(stops)}개가 전부 최상위 nav·헤더다 — "
+                            "이 화면 고유의 것은 하나도 재지 못했다")
+        total += len(stops)
+        for s in stops:
+            where = f"{path} · {s['id']}" + (f" (대리 {s['proxy']})" if s.get("proxy") else "")
+            if s["range"]:
+                ranges += 1
+            elif s.get("invisible"):
+                failures.append(f"{where}: 포커스가 «보이지 않는» 요소로 간다 — 표시가 그려질 자리가 없다")
+            elif s.get("noBase"):
+                failures.append(f"{where}: 포커스 전 상태를 못 떴다({s['noBase']}) — 안 잰 것은 통과가 아니다")
+            else:
+                for theme, best in s["themes"].items():
+                    if best is None:
+                        failures.append(f"[{theme}] {where}: 포커스 표시가 «전혀» 없다 (2.4.7)")
+                    elif best["ratio"] < 3.0:
+                        failures.append(f"[{theme}] {where}: {best['ratio']:.2f} < 3 "
+                                        f"{best['kind']} {best['color']} (1.4.11)")
+        reach = page.evaluate(_FOCUS_REACH_AUDIT_JS, [list(_INTERACTIVE_ROLES)])
+        failures += [f"{path}: «누를 수 있어 보이는데» Tab 으로 안 닿는다 — {u} (2.1.1)"
+                     for u in reach["unreachable"]]
 
     # 🔴 관측 하한 — 하나도 못 걸면 «통과» 가 아니라 재지 못한 것이다.
-    assert total >= 40, (
-        f"[{theme}] 포커스 가능한 요소를 {total}건만 관측했다 — "
-        "강제가 걸리지 않았거나 화면이 비었다(재지 못한 것이지 통과가 아니다)"
-    )
-    # 🔴 range 를 «실제로» 만났는지 — 0 이면 전용 픽셀 가드가 겨냥할 대상이 사라졌다는
-    #    뜻이므로, 조용한 초록 대신 red 로 알린다.
-    assert skipped_range >= 2, (
-        f"[{theme}] range 입력을 {skipped_range}건만 만났다 — "
-        "test_range_slider_focus_actually_paints 가 겨냥하는 대상이 바뀌었는지 볼 것"
-    )
-    assert not missing, (
-        f"[{theme}] 포커스 표시가 «전혀» 없는 요소 {len(missing)}건 (WCAG 2.4.7 Level AA):\n  "
-        + "\n  ".join(missing[:10])
-    )
-    assert not low, (
-        f"[{theme}] 포커스 표시 {len(low)}건이 3:1 미만 (관측 {total}건):\n  "
-        + "\n  ".join(f"{b['ratio']} cls={b['cls']!r} {b['kind']} {b['color']} ({b['path']})"
-                      for b in low[:10])
-    )
+    assert total >= 40, f"[{viewport}] 탭 정지점을 {total}건만 관측했다 — 재지 못한 것이지 통과가 아니다"
+    # 🔴 range 를 «실제로» 만났는지 — 0 이면 전용 픽셀 시험이 겨냥할 대상이 사라졌다는 뜻이다.
+    assert ranges >= 2, (
+        f"[{viewport}] range 입력을 {ranges}건만 만났다 — "
+        "test_range_slider_focus_actually_paints 가 겨냥하는 대상이 바뀌었는지 볼 것")
+    assert not failures, (
+        f"[{viewport}] 포커스 결함 {len(failures)}건 (정지점 {total}건):\n  "
+        + "\n  ".join(failures[:15]))
 
 
 # ── K. 차트 격자선 — canvas 는 무효 색을 «조용히» 버린다 ──────────────────────
@@ -1578,7 +1676,7 @@ def test_chart_colors_are_valid_canvas_colors(seeded_page, base_url, theme):
 
     여기서는 브라우저의 canvas 파서에 직접 세워 보고 되읽는다 — 계산이 아니라 관측이다.
     """
-    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.set_viewport_size(_WIDE_VIEWPORT)
     seeded_page.goto(f"{base_url}/repos/owner/testrepo")
     apply_theme(seeded_page, theme)
     seeded_page.wait_for_timeout(400)
@@ -1675,9 +1773,11 @@ def test_range_slider_focus_actually_paints(seeded_page, base_url, path, sel):
     # A. 자기검사 — 계기가 링을 «볼 수 있는가»
     # 🔴 자기검사도 «손잡이» 에 얹는다. 입력 요소에 얹으면 손잡이 링이 잘려 안 보여도
     #    자기검사만 초록이 되어, 정작 재려는 자리를 못 본 채 통과할 수 있다(Grok 지적).
+    # 🔴 두 엔진의 손잡이에 «따로» 건다 — 한 선택자 목록에 합치면 규칙 전체가 버려지고,
+    #    webkit 만 걸면 Firefox 에서 자기검사가 늘 실패한다(이 계기는 엔진 무관이어야 한다).
+    ring = "{outline:3px solid #ff0000 !important;outline-offset:2px !important}"
     handle = page.add_style_tag(
-        content=f"{sel}::-webkit-slider-thumb{{outline:3px solid #ff0000 !important;"
-                "outline-offset:2px !important}")
+        content=f"{sel}::-webkit-slider-thumb{ring}{sel}::-moz-range-thumb{ring}")
     page.wait_for_timeout(250)
     sanity = _clip_bytes(page, sel)
     page.evaluate("(el) => el.remove()", handle)
@@ -1690,13 +1790,18 @@ def test_range_slider_focus_actually_paints(seeded_page, base_url, path, sel):
     #    달라져 바이트 비교가 무의미해진다(실측: 이 자리에서 한 번 그랬다).
     before = _clip_bytes(page, sel)
 
-    # B. 실제 포커스
-    page.evaluate("(s) => document.querySelector(s).setAttribute('data-focus-base', '{}')", sel)
-    forced = _force_focus(page, True)
-    assert forced >= 1, "CDP 가 포커스를 강제하지 못했다"
+    # B. 실제 포커스 — 키보드로 들어온다. `:focus-visible` 은 키보드 상호작용이어야 서고,
+    #    CDP 강제(`CSS.forcePseudoState`)는 크롬 전용이라 쓰지 않는다(회고 P2-57).
+    page.focus(sel)
+    page.keyboard.press("Shift+Tab")
+    page.keyboard.press("Tab")
+    state = page.evaluate(
+        "(s) => { const e = document.querySelector(s);"
+        " return {here: document.activeElement === e, visible: e.matches(':focus-visible')}; }", sel)
+    assert state["here"], f"Shift+Tab → Tab 으로 {sel} 에 돌아오지 못했다 — 탭 순서가 바뀌었는지 볼 것"
+    assert state["visible"], f"{sel} 이 키보드 포커스인데 `:focus-visible` 이 아니다"
     page.wait_for_timeout(300)
     after = _clip_bytes(page, sel)
-    _force_focus(page, False)
 
     assert after != before, (
         f"{sel} 에 포커스가 가도 «픽셀이 하나도» 바뀌지 않는다 — 표시가 없다 "
@@ -1719,7 +1824,7 @@ def test_the_aa_sweep_measures_below_the_fold_too(seeded_page, base_url, path):
 
     Without scrolling, reveal-on-intersect content stays at opacity 0 and is skipped.
     """
-    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.set_viewport_size(_WIDE_VIEWPORT)
     seeded_page.goto(f"{base_url}{path}")
     seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
     _settle_animations(seeded_page)
@@ -1773,7 +1878,7 @@ def test_the_sweep_waits_for_the_observer_not_the_clock(seeded_page, base_url):
     """
     page = seeded_page
     page.add_init_script(_DELAYED_OBSERVER_JS)
-    page.set_viewport_size({"width": 1440, "height": 900})
+    page.set_viewport_size(_WIDE_VIEWPORT)
     page.goto(f"{base_url}/repos/owner%2Ftestrepo/settings")
     page.evaluate("""() => {
         const d = document.createElement('div');
@@ -2215,7 +2320,7 @@ def test_token_text_meets_aa_in_settings_gate_blocks(
     """
     from urllib.parse import quote
 
-    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.set_viewport_size(_WIDE_VIEWPORT)
     seeded_page.goto(f"{base_url}/repos/{quote(gated_settings_repo, safe='')}/settings")
     assert "localhost" in seeded_page.url, (
         f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
@@ -2286,7 +2391,7 @@ def test_token_text_meets_aa_when_data_is_absent(
     red 로 만드는 뮤테이션: 시드의 `score` 에 값을 넣으면 `—` 가 사라져
     `_assert_absence_was_rendered` 가 red.
     """
-    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.set_viewport_size(_WIDE_VIEWPORT)
     seeded_page.goto(f"{base_url}/repos/owner%2Fgatedrepo/analyses/{absence_analysis}")
     assert "localhost" in seeded_page.url, (
         f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
@@ -2323,7 +2428,7 @@ def test_token_text_meets_aa_for_a_repo_with_no_analyses(
     """
     from urllib.parse import quote
 
-    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.set_viewport_size(_WIDE_VIEWPORT)
     seeded_page.goto(
         f"{base_url}/dashboard?mode=repos&repo={quote(gated_settings_repo, safe='')}")
     assert "localhost" in seeded_page.url, (
@@ -2384,7 +2489,7 @@ def _assert_security_grid_was_rendered(page) -> None:
 def test_token_text_meets_aa_in_security_mode_with_alerts(
         seeded_page, base_url, security_alerts, theme):
     """🔴 보안 모드가 «알림이 있을 때» 그리는 4카드 그리드에서 글자가 AA 를 넘는가."""
-    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.set_viewport_size(_WIDE_VIEWPORT)
     seeded_page.goto(f"{base_url}/dashboard?mode=security")
     assert "localhost" in seeded_page.url, (
         f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
@@ -2502,7 +2607,7 @@ def _assert_merge_history_was_rendered(page) -> None:
 def test_token_text_meets_aa_for_overview_with_merge_history(
         seeded_page, base_url, merge_history, theme):
     """🔴 overview 가 «머지 이력이 있을 때» 그리는 글자가 AA 를 넘는가."""
-    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.set_viewport_size(_WIDE_VIEWPORT)
     seeded_page.goto(f"{base_url}/dashboard")
     assert "localhost" in seeded_page.url, (
         f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
@@ -2648,7 +2753,7 @@ def test_token_text_meets_aa_for_an_unclaimed_repo_settings(
 
     from src.i18n.loader import get_text  # noqa: PLC0415
 
-    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.set_viewport_size(_WIDE_VIEWPORT)
     seeded_page.goto(f"{base_url}/repos/{quote(unclaimed_repo, safe='')}/settings")
     assert "localhost" in seeded_page.url, (
         f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
@@ -2705,7 +2810,7 @@ def test_the_unclaimed_banner_text_meets_aa_on_its_warning_wash(
     red 로 만드는 뮤테이션: 배너 바탕을 `var(--warning)` 100% 로 바꾸면
     (진한 주황 위 밝은 글자) 네 테마 중 여럿이 미달로 잡힌다.
     """
-    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.set_viewport_size(_WIDE_VIEWPORT)
     seeded_page.goto(f"{base_url}/")
     assert "localhost" in seeded_page.url, (
         f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
@@ -2783,7 +2888,7 @@ def test_token_text_meets_aa_in_insight_success_grid(
         {"name": "preferred_language", "value": INSIGHT_LANGUAGE,
          "url": base_url},
     ])
-    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.set_viewport_size(_WIDE_VIEWPORT)
     seeded_page.goto(f"{base_url}/dashboard?mode=insight")
     assert "localhost" in seeded_page.url, (
         f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
@@ -2966,7 +3071,7 @@ def test_token_text_meets_aa_on_analysis_detail_variants(
         f"픽스처가 낸 변종 {sorted(analysis_variants)} != 기대 "
         f"{sorted(_EXPECTED_VARIANT_KINDS)} — 한 종류가 빠지면 그 팔은 «재지 않은» 것이지 "
         "통과한 것이 아니다")
-    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.set_viewport_size(_WIDE_VIEWPORT)
     for kind, analysis_id in sorted(analysis_variants.items()):
         seeded_page.goto(f"{base_url}/repos/owner%2Fgatedrepo/analyses/{analysis_id}")
         assert "localhost" in seeded_page.url, (
@@ -3108,7 +3213,7 @@ def _open_insight(page, base_url, theme):
 def test_token_text_meets_aa_in_insight_status_states(
         seeded_page, base_url, seeded_analysis, empty_user, theme):
     """🔴 insight 의 «비활성 · 데이터 없음 · 불러오기 실패» 안내 글자가 AA 를 넘는가."""
-    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.set_viewport_size(_WIDE_VIEWPORT)
     texts = None
 
     def measure(where):
@@ -3360,7 +3465,7 @@ def _kpi_cards(page, texts):
 def test_token_text_meets_aa_on_dashboard_delta_arms(
         seeded_page, base_url, delta_users, theme):
     """🔴 «올랐다 · 내렸다 · 그대로» 세 표시의 글자가 4테마에서 AA 를 넘는가."""
-    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.set_viewport_size(_WIDE_VIEWPORT)
 
     def visit(kind, mode):
         # 🔴 모드를 **언제나** 적는다 — 대시보드는 앞 방문의 모드를 localStorage 에
@@ -3486,7 +3591,7 @@ def _calibration_failures(rows, expected) -> list[str]:
 def test_token_text_meets_aa_in_calibration_table(
         seeded_page, base_url, calibration_feedback, theme):
     """🔴 점수 정합도 표의 글자가 AA 를 넘는가 — 값이 **있을 때**의 화면이다."""
-    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.set_viewport_size(_WIDE_VIEWPORT)
     seeded_page.goto(f"{base_url}/")
     assert "localhost" in seeded_page.url, (
         f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다")
@@ -3567,7 +3672,7 @@ def _landing_banner_failures(probe, want, texts) -> list[str]:
 @pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
 def test_token_text_meets_aa_on_landing_error_banner(anonymous_page, base_url, theme):
     """🔴 비로그인 랜딩의 OAuth 오류 배너 두 갈래 글자가 AA 를 넘는가."""
-    anonymous_page.set_viewport_size({"width": 1440, "height": 900})
+    anonymous_page.set_viewport_size(_WIDE_VIEWPORT)
     texts = None
     for want in _LANDING_ERROR_KEY:
         anonymous_page.goto(f"{base_url}/?error={want}")
@@ -3690,7 +3795,7 @@ def test_token_text_meets_aa_on_repo_insights_deltas(
     """🔴 리포 인사이트의 ↑ / ↓ / 없음 배지와 제안 건수 뱃지 글자가 AA 를 넘는가."""
     from urllib.parse import quote  # noqa: PLC0415
 
-    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.set_viewport_size(_WIDE_VIEWPORT)
     with acting_as(delta_users["mixed"], login="e2e-delta-mixed"):
         for suffix in sorted(DELTA_REPO_SCORES["mixed"]):
             name = delta_repo_name("mixed", suffix)
@@ -3775,7 +3880,7 @@ def test_token_text_meets_aa_on_rls_bypass_warning(admin_page, base_url, theme):
     """🔴 «FORCE 는 걸렸는데 접속이 RLS 를 우회» 경고 카드 글자가 AA 를 넘는가."""
     from src.services import saas_service  # noqa: PLC0415
 
-    admin_page.set_viewport_size({"width": 1440, "height": 900})
+    admin_page.set_viewport_size(_WIDE_VIEWPORT)
     # 🔴 창이 끝난 뒤 **둘 다** 제자리인지 신원으로 확인한다. 화면만 보면 `force` 복원만
     #    증명된다 — `force` 가 거짓이면 앞 갈래가 잡아 `bypasses` 누수는 안 보인다
     #    (Grok `01a09d62`).
@@ -3933,7 +4038,7 @@ def test_token_text_meets_aa_on_settings_prg_banners(
     """🔴 설정 화면의 PRG 배너 다섯 + 낡은 폼 경고의 글자가 AA 를 넘는가."""
     from urllib.parse import quote  # noqa: PLC0415
 
-    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.set_viewport_size(_WIDE_VIEWPORT)
     repo = quote(gated_settings_repo, safe="")
 
     def visit(query):
@@ -4007,7 +4112,7 @@ def test_token_text_meets_aa_on_settings_prg_banners(
 @pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
 def test_token_text_meets_aa_on_dashboard_range_tabs(seeded_page, base_url, theme):
     """🔴 기간 탭(1d·90d)이 «선택됨» 일 때의 글자가 AA 를 넘는가."""
-    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.set_viewport_size(_WIDE_VIEWPORT)
     for days in (1, 90):
         seeded_page.goto(f"{base_url}/dashboard?mode=overview&days={days}")
         assert "localhost" in seeded_page.url, (
@@ -4135,7 +4240,7 @@ def test_token_text_meets_aa_on_configured_settings(
     """🔴 설정이 «다 켜진» 화면과 «AI 리뷰를 끈» 화면의 글자가 AA 를 넘는가."""
     from urllib.parse import quote  # noqa: PLC0415
 
-    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.set_viewport_size(_WIDE_VIEWPORT)
 
     def visit(full_name):
         seeded_page.goto(f"{base_url}/repos/{quote(full_name, safe='')}/settings")
@@ -4254,7 +4359,7 @@ def _usage_texts(page):
 def test_token_text_meets_aa_on_empty_usage_screens(
         seeded_page, base_url, empty_user, analysis_free_repo, seeded_analysis, theme):
     """🔴 «리포가 없다»·«분석이 없다» 화면의 글자가 AA 를 넘는가."""
-    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.set_viewport_size(_WIDE_VIEWPORT)
 
     def visit(mode):
         seeded_page.goto(f"{base_url}/dashboard?mode={mode}")
@@ -4423,7 +4528,7 @@ def test_token_text_meets_aa_on_detail_field_variants(
     """🔴 PR 링크·소스 레이블·AI 요약·파일 피드백·줄번호 없는 이슈 · 빈 인사이트의 대비."""
     from urllib.parse import quote  # noqa: PLC0415
 
-    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.set_viewport_size(_WIDE_VIEWPORT)
 
     def prepare():
         apply_theme(seeded_page, theme)
@@ -4550,7 +4655,7 @@ def test_token_text_meets_aa_on_kpi_down_deltas(
     """🔴 «분석 수·보안 이슈·활성 리포가 줄었다» 표시의 글자가 AA 를 넘는가."""
     from src.i18n.loader import get_text  # noqa: PLC0415
 
-    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.set_viewport_size(_WIDE_VIEWPORT)
 
     def visit():
         seeded_page.goto(f"{base_url}/dashboard?mode=overview&days={DELTA_DAYS}")
@@ -4619,7 +4724,7 @@ def test_the_all_text_audit_sees_untokened_text_and_skips_inactive_controls(
       뒤집기가 안 된다. 그래서 **두 번째 싼 과정**(«토큰 필터만 걷은» 감사)이 틀리는 것을 심는다:
       비활성 컨트롤 안의 같은 회색 글자 → **반드시 무시돼야** 한다.
     """
-    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.set_viewport_size(_WIDE_VIEWPORT)
     seeded_page.goto(f"{base_url}/dashboard")
     apply_theme(seeded_page, "light")
     seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
@@ -4664,7 +4769,7 @@ def test_the_hover_audit_tells_its_two_states_apart(seeded_page, base_url):
     Both hover states must catch what only they can see, never measure an impossible
     combination, and forcing must be undone afterwards.
     """
-    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.set_viewport_size(_WIDE_VIEWPORT)
     seeded_page.goto(f"{base_url}/dashboard")
     apply_theme(seeded_page, "light")
     seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
@@ -4755,7 +4860,7 @@ def test_all_text_meets_aa_in_arms_no_sweep_had_opened(
     덮었다 — 글자만 hover 토큰으로 바꾼 첫 수정도 dark 1.30 · light 1.27 · pastel 2.43 · catppuccin 1.14.
     """
     path, opened = _UNSWEPT_ARMS[arm]
-    seeded_page.set_viewport_size({"width": 1440, "height": 900})
+    seeded_page.set_viewport_size(_WIDE_VIEWPORT)
     seeded_page.goto(f"{base_url}{path}")
     assert "localhost" in seeded_page.url, f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다"
     apply_theme(seeded_page, theme)

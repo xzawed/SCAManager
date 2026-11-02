@@ -356,7 +356,9 @@
     line-height:1; transition:opacity var(--transition), background var(--transition);
   }
   .mask-toggle:hover { opacity:1; background:var(--bg-hover,rgba(99,102,241,.1)); }
-  .mask-toggle:focus-visible { outline:2px solid var(--focus-ring); outline-offset:2px; }
+  /* 🔴 링도 `opacity:.55` 에 같이 흐려져 2.23~2.97:1 이었다(Tab 스윕 실측, 네 테마) — hover 처럼
+     포커스에서도 불투명하게. The ring was dimmed by the button's opacity too. */
+  .mask-toggle:focus-visible { opacity:1; outline:2px solid var(--focus-ring); outline-offset:2px; }
 
   /* Save toast */
   .save-toast {
