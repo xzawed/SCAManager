@@ -970,7 +970,7 @@ VARIANT_FEEDBACKS = {
 def _seed_analysis_variants(db_path: str) -> dict[str, int]:
     """analysis_detail 의 «한 번도 안 그려진» 팔들을 여는 분석 8건 → {이름: id}.
 
-    🔴 분기 프로브(전체 e2e 실측, 2026-09-13)가 지목한 좌표다 — `analysis_detail.html`
+    🔴 분기 프로브(`e2e/branchprobe.py`, 전체 e2e 실측 2026-09-13)가 지목한 좌표다 — `analysis_detail.html`
        237~241(AI 상태 사슬 전부) · 276(점수 막대 high/mid/low) · 333(카테고리 피드백) ·
        409(result 없는 레거시 행 — 점수 없는 쪽·있는 쪽 **양쪽**). 전부 **result JSON 만으로** 열린다
        (`{% set ai_status = r.get('ai_review_status', 'success') %}` 처럼 템플릿이 직접 읽는다).
