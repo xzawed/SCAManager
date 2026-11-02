@@ -143,6 +143,47 @@ def test_conn_dot_off_meets_non_text_contrast():
     assert "conn-dot" in settings
 
 
+# forced-colors 가 덮어쓰지 않는 «시스템 색» 키워드(CSS Color 4)
+_SYSTEM_COLORS = {"canvastext", "highlight", "highlighttext", "buttontext", "linktext",
+                  "visitedtext", "activetext", "graytext", "fieldtext", "mark", "marktext",
+                  "selecteditem", "selecteditemtext", "accentcolor", "accentcolortext"}
+
+
+def _forced_colors_bodies(src: str) -> list[str]:
+    """`@media (forced-colors: active)` 블록의 본문들 — 중괄호 균형으로 뜬다."""
+    out = []
+    for m in re.finditer(r"@media[^{]*forced-colors\s*:\s*active[^{]*\{", src):
+        depth, j = 1, m.end()
+        while j < len(src) and depth:
+            depth += {"{": 1, "}": -1}.get(src[j], 0)
+            j += 1
+        out.append(src[m.end():j - 1])
+    return out
+
+
+def test_conn_dot_on_stays_visible_in_forced_colors():
+    """🔴 forced-colors(고대비)는 배경을 Canvas 로 덮는다 — 채운 «켜짐» 점은 통째로 사라진다
+    (꺼짐은 테두리라 남는다. 회고 2026-09-16 P2-64). 그 모드에서 «켜짐» 은 덮어쓰기를 끄고
+    시스템 색으로 채워야 한다. 칠해진 결과는 e2e `test_declared_states_stay_distinct_in_forced_colors`
+    가 본다 — 여기서는 규칙이 «그 모드 안에» 있는지를 선언 단위로 읽는다.
+    """
+    bodies = _forced_colors_bodies(strip_css_comments(read(_SETTINGS)))
+    assert bodies, "settings.html 에 `@media (forced-colors: active)` 블록이 없다"
+    decls = {}
+    for body in bodies:
+        rule = _rule(body, r"\.conn-dot\.is-on")
+        if rule:
+            for part in rule.split(";"):
+                prop, sep, value = part.partition(":")
+                if sep:
+                    decls[prop.strip().lower()] = value.strip().lower()
+    assert decls.get("forced-color-adjust") == "none", (
+        f"forced-colors 블록의 `.conn-dot.is-on` 이 덮어쓰기를 끄지 않는다 — {decls}")
+    fill = decls.get("background-color") or decls.get("background", "")
+    assert fill in _SYSTEM_COLORS, (
+        f"forced-colors 에서 «켜짐» 점을 시스템 색으로 채우지 않는다 — background={fill!r}")
+
+
 # ── B. 메뉴 선택 상태 — 언어 메뉴는 «아무 표시도» 없었다 ────────────────────
 
 def test_language_menu_marks_the_selected_item_visually():
