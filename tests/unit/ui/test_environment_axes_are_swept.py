@@ -38,7 +38,9 @@ _E2E = Path(__file__).resolve().parents[3] / "e2e"
 _AXES: dict[str, tuple[tuple[str, ...], str | None, str | None]] = {
     "forced-colors": (("forced-colors",), r"emulate_media\([^)]*forced_colors\s*=", None),
     "reduced-motion": (("prefers-reduced-motion",), r"emulate_media\([^)]*reduced_motion\s*=", None),
-    "viewport-width": (("max-width", "min-width", "width"), r"set_viewport_size\(", None),
+    "viewport": (("width", "min-width", "max-width", "height", "min-height", "max-height",
+                  "aspect-ratio", "min-aspect-ratio", "max-aspect-ratio", "orientation"),
+                 r"set_viewport_size\(", None),
     "reflow-320": ((), r"\(\s*320\s*,\s*\d+\s*\)|[\"']width[\"']\s*:\s*320\b", None),
     "color-scheme": (("prefers-color-scheme",), None,
                      "앱은 자체 테마 4종(사용자 선택)만 쓰고 OS 색 구성표를 읽지 않는다"),
@@ -62,21 +64,50 @@ def _css_files() -> list[str]:
             if p.suffix in (".html", ".css") and "dist" not in p.parts]
 
 
+_MEDIA_TYPES = ("all", "print", "screen", "speech", "tv", "projection", "handheld", "braille",
+                "embossed", "aural", "tty")
+
+
 def _features_in(css: str) -> set[str]:
-    """CSS 한 덩어리가 쓰는 미디어 기능·타입 이름."""
+    """CSS 한 덩어리가 쓰는 미디어 기능·타입 이름.
+
+    괄호 묶음마다 이름을 꺼낸다 — `(name: v)` · 범위 구문 `(width >= 600px)` ·
+    `(600px <= width <= 900px)` · 불리언 `(hover)`. 🔴 `(name: v)` 만 읽던 첫 판은 범위 구문을
+    통째로 놓쳤다(Grok `043a9e15` BROKEN: `(height >= 500px)` → 빈 집합).
+    """
     out: set[str] = set()
     for m in re.finditer(r"@media([^{]*)\{", css):
-        query = m.group(1)
-        out.update(re.findall(r"\(\s*([a-z-]+)\s*(?::[^)]*)?\)", query))
-        out.update(re.findall(r"\b(print|screen|speech)\b", query))
+        query = m.group(1).lower()
+        for group in re.findall(r"\(([^()]*)\)", query):
+            g = group.strip()
+            if ":" in g:
+                out.add(g.split(":", 1)[0].strip())
+            elif re.search(r"[<>=]", g):
+                out.update(t.strip() for t in re.split(r"<=|>=|<|>|=", g)
+                           if re.fullmatch(r"\s*[a-z][a-z-]*\s*", t))
+            elif re.fullmatch(r"[a-z][a-z-]*", g):
+                out.add(g)
+        out.update(t for t in re.findall(r"[a-z][a-z-]*", re.sub(r"\([^()]*\)", " ", query))
+                   if t in _MEDIA_TYPES)
     return out
+
+
+def _css_text(rel: str) -> str:
+    """판정할 CSS — 템플릿은 `<style>` 블록만, 주석은 지운다.
+
+    🔴 템플릿 전체를 읽으면 `<script>` 주석의 «@media 768px)…(실측 320px: …» 를 미디어 질의로 읽는다.
+    """
+    text = read(rel)
+    if rel.endswith(".html"):
+        text = "\n".join(re.findall(r"<style[^>]*>(.*?)</style>", text, re.S | re.I))
+    return strip_css_comments(text)
 
 
 def _media_features() -> dict[str, set[str]]:
     """{앱 CSS 가 쓰는 미디어 기능·타입: 그것을 쓰는 파일}."""
     out: dict[str, set[str]] = {}
     for rel in _css_files():
-        for name in _features_in(strip_css_comments(read(rel))):
+        for name in _features_in(_css_text(rel)):
             out.setdefault(name, set()).add(rel)
     return out
 
@@ -89,7 +120,7 @@ def _stale_reasons(used: set[str]) -> list[str]:
 
 def _unknown_features(used: set[str]) -> set[str]:
     """원장의 어느 축에도 속하지 않는 미디어 기능."""
-    known = {feat for feats, _o, _r in _AXES.values() for feat in feats} | {"screen"}
+    known = {feat for feats, _o, _r in _AXES.values() for feat in feats} | {"screen", "all"}
     return used - known
 
 
@@ -141,6 +172,12 @@ def test_every_media_feature_the_app_uses_belongs_to_an_axis():
     ("@media (max-width: 1px) and (prefers-reduced-motion: reduce){a{b:c}}", [], set()),
     ("@media (scripting: none){a{b:c}}", [], {"scripting"}),           # 원장에 없는 기능
     ("@media print{a{b:c}}", ["print"], set()),
+    # Grok `043a9e15`: 범위 구문 · 그 밖의 미디어 타입 · not/only · 쉼표 목록
+    ("@media (height >= 500px){a{b:c}}", [], set()),
+    ("@media (600px <= width <= 900px){a{b:c}}", [], set()),
+    ("@media only screen and (prefers-contrast: more), print{a{b:c}}", ["contrast", "print"], set()),
+    ("@media not all and (monochrome){a{b:c}}", [], {"monochrome"}),
+    ("@media tv{a{b:c}}", [], {"tv"}),
 ])
 def test_the_ledger_flips_on_planted_css(css, stale, unknown):
     used = _features_in(css)
