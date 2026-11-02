@@ -14,8 +14,8 @@ import re
 import pytest
 
 from ._contrast import (
-    ROOT, THEMES, decl, over, parse_color, ratio, read, resolve,
-    strip_css_comments, theme_block,
+    ROOT, THEMES, css_sources, decl, declarations, neutralize_strings, over, parse_color, ratio,
+    read, resolve, split_selectors, strip_css_comments, style_text, theme_block,
 )
 
 NON_TEXT = 3.0
@@ -205,9 +205,15 @@ def _contexts(src: str):
     문맥을 나누는 이유: `@media` 안의 규칙은 밖의 규칙과 «다른 조건» 에서만 산다.
     문맥을 섞어 세면 「밖에 moz 가 있으니 됐다」로 통과해 버린다 — 그것이 이 결함이
     살아남은 방식이다(기본 규칙은 두 벌, 모바일 확대만 한 벌이었다).
+
+    🔴 `@media` 는 «문장 경계»(처음 · `{` · `}` · `;` 뒤)에서만 블록 시작으로 읽는다 — 값 안의
+       같은 글자(`url(@media)`)를 블록으로 읽으면 문맥이 통째로 어긋난다(Grok `d8a8d669`).
+       문자열·따옴표 없는 url 은 `neutralize_strings` 가 먼저 표지로 바꿔 둔다.
     """
     out, cut = [], []
     for m in re.finditer(r"@media([^{]*)\{", src):
+        if src[:m.start()].rstrip()[-1:] not in ("", "{", "}", ";"):
+            continue
         i = m.end() - 1
         depth, j = 0, i
         while j < len(src):
@@ -226,61 +232,162 @@ def _contexts(src: str):
     return [("(최상위)", top)] + out
 
 
-_THUMB_SIZE = re.compile(r"(width|height)\s*:\s*([0-9.]+px)", re.I)
+_WEBKIT_THUMB = "::-webkit-slider-thumb"
+_MOZ_THUMB = "::-moz-range-thumb"
+
+# webkit 손잡이를 «그리게 하는» 스위치 — Gecko 손잡이는 이것 없이 그려지므로 짝이 없다.
+# Switches that make the webkit thumb paintable; Gecko paints its thumb without them.
+_WEBKIT_ONLY_PROPS = frozenset({"-webkit-appearance", "appearance"})
 
 
-def _thumb_sizes(body: str, pseudo: str) -> dict[str, dict[str, str]]:
-    """{선택자(의사요소 제외): {width/height: 값}} — 크기를 «정하는» 규칙만."""
+def _thumb_files() -> list[str]:
+    """range 손잡이를 꾸미는 파일 전부 — 손 목록이 아니라 파생이다."""
+    return [rel for rel in css_sources()
+            if _WEBKIT_THUMB in style_text(rel).lower() or _MOZ_THUMB in style_text(rel).lower()]
+
+
+def _thumb_key(selector: str, pseudo: str) -> str | None:
+    """의사요소를 뺀 선택자 — 의사요소가 선택자 «끝» 에 있을 때만(뒤엔 의사클래스만 올 수 있다).
+
+    🔴 부분문자열로 고르면 속성값 문자열(`[a="::-webkit-slider-thumb"]`) 안의 같은 글자도
+       의사요소로 읽어 짝 열쇠가 어긋난다(Grok `47642d15` BROKEN).
+    Only a trailing pseudo-element counts; the same text inside an attribute value does not.
+    """
+    m = re.search(re.escape(pseudo) + r"((?::[\w-]+(?:\([^()]*\))?)*)$", selector, re.I)
+    # 의사요소 «자리» 를 열쇠에 남긴다 — `a::thumb:hover`(손잡이에 올림)와 `a:hover::thumb`
+    # (입력에 올림)은 다른 선택자다(Grok `47642d15` 재판정 BROKEN).
+    return None if m is None else (selector[:m.start()] + "::thumb" + m.group(1)).strip()
+
+
+def _thumb_decls(body: str, pseudo: str) -> dict[str, dict[str, str]]:
+    """{의사요소를 뺀 선택자: {속성: 값}} — 같은 선택자는 «뒤 규칙이 이기게» 합친다.
+
+    선택자 목록(`.a::x, .b::x`)은 하나씩 푼다 — 목록을 통째로 열쇠로 쓰면 짝이 다른
+    목록에 적혀 있을 때 못 찾는다.
+    """
     out: dict[str, dict[str, str]] = {}
-    for m in re.finditer(r"([^{}]*" + re.escape(pseudo) + r"[^{}]*)\{([^{}]*)\}", body):
-        sel, decls = m.group(1).strip(), m.group(2)
-        if ":focus" in sel:            # 링 규칙은 크기 축이 아니다 — 위 시험이 맡는다
-            continue
-        sizes = {k.lower(): v for k, v in _THUMB_SIZE.findall(decls)}
-        if sizes:
-            out[sel.replace(pseudo, "").strip()] = sizes
+    for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", body):
+        decls = declarations(m.group(2))
+        for one in split_selectors(m.group(1)):
+            key = _thumb_key(one, pseudo)
+            if key is not None:
+                out.setdefault(key, {}).update(decls)
     return out
 
 
-@pytest.mark.parametrize("rel", _RANGE_SLIDER_TEMPLATES)
-def test_thumb_size_is_declared_for_both_engines_in_every_context(rel):
-    """🔴 손잡이 «크기» 도 두 엔진에 다 적는다 — 링만이 아니다.
+def _unpaired_thumb_decls(css: str) -> tuple[int, list[str]]:
+    """(본 선언 수, 짝 없는 선언) — webkit 손잡이 선언마다 같은 문맥·같은 선택자의 moz
+    손잡이에 «같은 값» 이 있는가.
 
-    Gecko 는 `::-webkit-slider-thumb` 를 통째로 무시한다. 기본 규칙은 두 벌로 적혀
-    있었는데 **모바일 확대만 webkit 한 벌**이었다:
+    방향은 webkit → moz 하나다. Gecko 는 `::-webkit-slider-thumb` 를 통째로 무시하므로
+    webkit 에만 적힌 선언은 Firefox 에서 사라진다. 반대로 moz 에만 있는 정상화
+    (`border:none` 등)는 Chromium 이 webkit 규칙으로 따로 그리므로 결함이 아니다.
+    The direction is webkit -> moz only: Gecko drops every webkit-pseudo declaration.
+    """
+    checked, out = 0, []
+    for name, body in _contexts(css):
+        webkit = _thumb_decls(body, _WEBKIT_THUMB)
+        moz = _thumb_decls(body, _MOZ_THUMB)
+        for sel, decls in webkit.items():
+            for prop, value in decls.items():
+                if prop in _WEBKIT_ONLY_PROPS:
+                    continue
+                checked += 1
+                got = moz.get(sel, {}).get(prop)
+                if got is None:
+                    out.append(f"{name}: `{sel}` 의 `{prop}: {value}` 이 webkit 에만 있다")
+                elif got != value:
+                    out.append(f"{name}: `{sel}` 의 `{prop}` 이 엔진마다 다르다 "
+                               f"webkit={value!r} moz={got!r}")
+    return checked, out
 
-        repo_detail @768   webkit 16 -> 24 · moz 는 16 그대로
-        settings    @480   webkit 18 -> 24 · moz 는 18 그대로
 
-    즉 Firefox 모바일에서만 손잡이가 작았다. 데스크톱(1440px)에서도, Chromium 에서도
-    보이지 않는다 — 두 조건이 겹쳐야 드러나는 자리라 여태 아무도 재지 않았다.
+def test_every_thumb_declaration_is_paired_for_both_engines_in_every_context():
+    """🔴 손잡이에 준 선언은 «전부» 두 엔진에 적는다 — 크기만이 아니다.
 
-    🔴 문맥별로 판정하는 이유를 «실측대로» 적는다 — 처음 쓴 사유는 틀렸다.
-    위 두 사례는 문맥을 합쳐 세도 잡힌다(선택자가 같아 mobile 값이 base 를 덮고, moz 와
-    값이 어긋나 red 가 된다 — 심어서 확인). 문맥 분리가 실제로 필요한 것은 **모바일 값이
-    base 의 moz 값과 겹치는** 경우다: base 를 24/24 로 두고 모바일 moz 만 없애면
-    분리판은 red, 합침판은 **green** 이었다. 그 자리가 이 가드의 존재 이유다.
+    Gecko 는 `::-webkit-slider-thumb` 를 통째로 무시한다. 종전 판은 width·height 만
+    비교해서, 설정 화면의 `.approve-range`·`.reject-range` 손잡이 그림자(`box-shadow`)가
+    webkit 에만 있는 채로 통과했다 — 회고 2026-09-07 #70 이 지목한 바로 그 모양이다.
 
+    크기 축에서 실제로 났던 결함(모바일 확대만 webkit 한 벌 — repo_detail @768 ·
+    settings @480 에서 Firefox 모바일 손잡이만 작았다)도 이 판정이 그대로 잡는다.
+
+    🔴 문맥(최상위 · `@media` 블록 각각)별로 판정한다. 합쳐 세면 base 를 24/24 로 두고
+    모바일 moz 만 없앤 경우가 초록이었다(심어서 확인).
     🔴 한 선택자 목록에 두 의사요소를 합쳐 적으면 «두 엔진 다» 규칙을 버린다 — 그래서
     합침을 처방으로 제안하지 않는다.
 
-    Size parity, per media context: Gecko ignores the webkit pseudo entirely.
+    Every webkit-thumb declaration needs an equal moz one, per media context.
     """
-    src = strip_css_comments(read(rel))
+    files = _thumb_files()
+    assert files, "range 손잡이를 꾸미는 파일을 0개 찾았다 — 스캔이 죽었다(공허한 초록)"
     checked, offenders = 0, []
-    for name, body in _contexts(src):
-        webkit = _thumb_sizes(body, "::-webkit-slider-thumb")
-        moz = _thumb_sizes(body, "::-moz-range-thumb")
-        for sel, sizes in webkit.items():
-            checked += 1
-            if sel not in moz:
-                offenders.append(f"{rel} {name}: `{sel}` 이 webkit 만 크기를 정한다 "
-                                 f"({sizes}) — Gecko 에는 안 닿는다")
-            elif moz[sel] != sizes:
-                offenders.append(f"{rel} {name}: `{sel}` 크기가 엔진마다 다르다 "
-                                 f"webkit={sizes} moz={moz[sel]}")
-    assert checked, f"{rel}: 크기를 정하는 webkit 손잡이 규칙을 0개 찾았다 — 판정이 공허하다"
-    assert not offenders, "손잡이 크기가 한 엔진에만 적용된다:\n  " + "\n  ".join(offenders)
+    for rel in files:
+        n, bad = _unpaired_thumb_decls(style_text(rel))
+        checked += n
+        offenders += [f"{rel} {b}" for b in bad]
+    assert checked, "webkit 손잡이 선언을 0개 봤다 — 판정이 공허하다"
+    assert not offenders, "손잡이 선언이 한 엔진에만 적용된다:\n  " + "\n  ".join(offenders)
+
+
+# 계기 뒤집기(verify.md 「판정식을 쓸 때」 4) — 두 목록에서 하나씩 심는다.
+#   claimed(이 판정이 잡는다고 적은 것): 선택자별 · 문맥별 · 값까지 비교
+#   cheap(「파일마다 webkit·moz 속성 이름 집합을 비교」 하는 가장 싼 과정)이 대신 잡을 것:
+#     moz 전용 정상화 · webkit 전용 스위치
+_PAIR_PLANT_CAUGHT = (
+    # 같은 속성이 «다른 선택자» 의 moz 에만 있다 — 파일 단위 비교는 통과한다.
+    ".pa::-webkit-slider-thumb{box-shadow:0 0 2px red}"
+    ".pb::-moz-range-thumb{box-shadow:0 0 2px red}"
+    # 최상위엔 짝이 있지만 `@media` 안에서는 webkit 만 있다.
+    ".pc::-webkit-slider-thumb{width:16px}.pc::-moz-range-thumb{width:16px}"
+    "@media (max-width: 480px){.pc::-webkit-slider-thumb{width:24px}}"
+)
+_PAIR_PLANT_IGNORED = (
+    ".pd::-webkit-slider-thumb{-webkit-appearance:none;width:8px}"
+    ".pd::-moz-range-thumb{width:8px;border:none}"
+)
+
+
+@pytest.mark.parametrize("css,props", [
+    # Grok `47642d15`: 속성값 문자열 안의 의사요소 글자 — 부분문자열로 고르던 판은 짝 열쇠가
+    # 어긋나 결손 2건을 냈다.
+    ('[a="::-webkit-slider-thumb"]::-webkit-slider-thumb{width:9px}'
+     '[a="::-webkit-slider-thumb"]::-moz-range-thumb{width:9px}', []),
+    # Grok `d8a8d669`: 문자열 속 `}` 가 `@media` 블록을 잘라 선언을 잃었다.
+    ("@media all{a::-webkit-slider-thumb{content:'}';width:9px}"
+     "a::-moz-range-thumb{content:'}';width:9px}}", []),
+    ("@media all{a::-webkit-slider-thumb{content:'}';width:9px}"
+     "a::-moz-range-thumb{content:'}'}}", ["width"]),
+    # Grok `d8a8d669` 재판정: 값 안의 `@media` 글자를 블록 시작으로 읽어 최상위 규칙을 잘랐다.
+    ("a::-webkit-slider-thumb{background:url(@media);width:9px}"
+     "a::-moz-range-thumb{background:url(@media)}", ["width"]),
+    ("a::-webkit-slider-thumb{--k:@media;width:9px}a::-moz-range-thumb{--k:@media}", ["width"]),
+])
+def test_thumb_pair_survives_the_claim_review_counterexamples(css, props):
+    """claim-review 반례를 그대로 심는다 — 판정은 `style_text` 와 같은 전처리 뒤에 돈다.
+
+    결손의 «개수» 가 아니라 «어느 속성» 인지를 본다 — 셋째 사례는 고치기 전에도 1건이
+    나왔는데, 그것은 잘린 `content` 였다.
+    """
+    _, bad = _unpaired_thumb_decls(neutralize_strings(css))
+    assert sorted(re.search(r"의 `([\w-]+)", b).group(1) for b in bad) == props, bad
+
+
+@pytest.mark.parametrize("host", ["", "src/templates/repo_detail.html"])
+def test_thumb_pair_instrument_flips_on_both_plants(host):
+    """심은 짝 결손 셋은 잡히고, 엔진 전용 정상화 둘은 무시돼야 한다.
+
+    `host` 가 있으면 손대지 않은 운영 템플릿의 CSS 에 끼워 넣어 같은 뒤집힘을 요구한다 —
+    빈 문자열에서만 맞는 판정은 실제 파일에서 다른 이유로 맞을 수 있다.
+    """
+    base = style_text(host) if host else ""
+    _, before = _unpaired_thumb_decls(base)
+    assert not before, f"심기 전부터 결손이 있다 — 뒤집기를 잴 수 없다: {before}"
+    _, caught = _unpaired_thumb_decls(base + _PAIR_PLANT_CAUGHT)
+    assert len(caught) == 2 and all("`.pa::thumb`" in c or "`.pc::thumb`" in c for c in caught), caught
+    assert any("@media" in c for c in caught), f"문맥별 결손을 못 잡았다: {caught}"
+    _, ignored = _unpaired_thumb_decls(base + _PAIR_PLANT_IGNORED)
+    assert not ignored, f"엔진 전용 정상화를 결손으로 잡았다: {ignored}"
 
 
 def test_focus_ring_token_is_defined_in_every_theme():
