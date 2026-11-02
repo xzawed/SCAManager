@@ -9,7 +9,6 @@ The probe that several e2e tests name as the judge must count arms correctly.
 from __future__ import annotations
 
 import jinja2
-from jinja2 import nodes
 
 from e2e import branchprobe
 
@@ -100,7 +99,7 @@ def test_static_counts_match_a_direct_parse_of_every_template():
     paths = sorted(branchprobe._TEMPLATES.rglob("*.html"))
     assert paths, "템플릿을 0개 찾았다 — 정적 전수가 공허하다"
     direct = {p.relative_to(branchprobe._TEMPLATES).as_posix():
-              len(list(env.parse(p.read_text(encoding="utf-8")).find_all(nodes.If)))
+              len(list(env.parse(p.read_text(encoding="utf-8")).find_all(jinja2.nodes.If)))
               for p in paths}
     assert sum(direct.values()) > 0
     assert branchprobe.static_counts() == direct

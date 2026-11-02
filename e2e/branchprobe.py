@@ -11,7 +11,7 @@
    방식이 어긋난 것이다. 요약 줄과 `valid` 가 그렇게 말한다.
 🔴 `find_all` 을 먼저 `list()` 로 굳힌 뒤 교체한다 — 순회 중 교체하면 과소계수한다.
 🔴 id 는 `템플릿:줄:순번` — 줄만 쓰면 한 줄에 둘일 때 합쳐진다.
-🔴 `nodes.If`(`elif` 포함)만 본다 — 인라인 `a if b else c`(`CondExpr`)는 세지 않는다.
+🔴 `jinja2.nodes.If`(`elif` 포함)만 본다 — 인라인 `a if b else c`(`CondExpr`)는 세지 않는다.
 🔴 전역 패치(`jinja2.Environment._parse`)는 플러그인으로 켰을 때만(`pytest_configure`) 건다 —
    모듈을 import 만 하면 아무것도 바뀌지 않는다.
 
@@ -24,7 +24,6 @@ import os
 from pathlib import Path
 
 import jinja2
-from jinja2 import nodes
 
 _PROBE = "__branch_probe__"
 _TEMPLATES = Path(__file__).resolve().parents[1] / "src" / "templates"
@@ -48,19 +47,19 @@ def record(key: str, value, seen: dict[str, set[bool]] | None = None) -> bool:
     return truth
 
 
-def instrument(tree: nodes.Template, name: str | None, env: jinja2.Environment) -> list[str]:
+def instrument(tree: jinja2.nodes.Template, name: str | None, env: jinja2.Environment) -> list[str]:
     """트리의 모든 `If` 의 `test` 를 기록기 호출로 감싸고, 감싼 노드 id 목록을 돌려준다.
 
     🔴 템플릿이 기록기 이름을 스스로 쓰면 계측이 렌더 결과를 바꾼다(`{% if __branch_probe__ %}`
        가 참이 된다 — Grok `e4e26763` BROKEN). 그런 템플릿은 감싸지 않고 거부한다.
     """
-    if any(n.name == _PROBE for n in tree.find_all(nodes.Name)):
+    if any(n.name == _PROBE for n in tree.find_all(jinja2.nodes.Name)):
         raise ValueError(f"{name}: 템플릿이 예약된 이름 `{_PROBE}` 를 쓴다 — 계측하면 출력이 바뀐다")
     ids = []
-    for seq, node in enumerate(list(tree.find_all(nodes.If))):
+    for seq, node in enumerate(list(tree.find_all(jinja2.nodes.If))):
         key = f"{name}:{node.lineno}:{seq}"
-        call = nodes.Call(nodes.Name(_PROBE, "load"), [nodes.Const(key), node.test],
-                          [], None, None)
+        call = jinja2.nodes.Call(jinja2.nodes.Name(_PROBE, "load"),
+                                 [jinja2.nodes.Const(key), node.test], [], None, None)
         call.set_lineno(node.lineno)
         call.set_environment(env)
         node.test = call
@@ -84,7 +83,7 @@ def static_counts(templates_dir: Path = _TEMPLATES) -> dict[str, int]:
     for path in sorted(templates_dir.rglob("*.html")):
         name = path.relative_to(templates_dir).as_posix()
         tree = _ORIG_PARSE(env, path.read_text(encoding="utf-8"), name, str(path))
-        out[name] = len(list(tree.find_all(nodes.If)))
+        out[name] = len(list(tree.find_all(jinja2.nodes.If)))
     return out
 
 
