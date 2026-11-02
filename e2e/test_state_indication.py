@@ -582,3 +582,135 @@ def test_a_grade_paints_the_same_score_bar_on_every_screen(page, base_url, grade
         "둘 이상의 등급을 봐야 «등급마다» 를 말할 수 있다")
     assert not bad, (f"[{theme}] 같은 등급이 화면마다 다른 색으로 칠해진다:\n  "
                      + "\n  ".join(sorted(set(bad))[:12]))
+
+
+# ── G. forced-colors — 시스템 색으로 덮는 모드에서도 상태가 갈리는가 (회고 2026-09-16 P2-64) ──
+#
+# 🔴 forced-colors(Windows 고대비)에서 브라우저는 저자 색을 시스템 색으로 덮는다 — 크롬 에뮬레이션
+#    실측: 배경 → Canvas · 글자·테두리 → CanvasText · 그림자·그라디언트 → none ·
+#    `forced-color-adjust:none` 만 그대로. 그래서 «배경색만» 으로 나르는 상태는 이 모드에서
+#    아무것도 나르지 않는다. 리포에 `forced-colors` 선언이 0건이던 동안 아무도 재지 않았다.
+# 쌍은 손 목록이 아니라 DOM 이 «선언한» 상태에서 뽑는다:
+#   · ARIA — aria-checked · aria-pressed · aria-selected 의 true/false 형제(같은 부모) ·
+#     aria-sort 의 정렬/비정렬 · aria-current 가 있는 것과 없는 같은 종류의 형제
+#   · 체크박스 — checked·unchecked 의 «보이는 대리»(다음 형제)
+#   · 이 파일이 기록한 색만의 상태 — `.conn-dot.is-on` · `.is-off`
+# 판정: 쌍마다 (1) 두 상태가 각각 «무언가를 칠한다»(요소 상자를 찍은 픽셀이 한 색이 아니다)
+#       (2) 두 상태의 «칠해진 서명»(색·테두리·윤곽·글자 장식·굵기·의사요소·자식 표시)이 다르다.
+#       서명에서 글자 내용과 배치는 뺀다 — 항목마다 글자가 달라 «다르다» 가 공짜로 나오지 않게.
+
+_FORCED_SCREENS = ("/repos/owner/testrepo/settings", "/repos/owner/testrepo", "/dashboard")
+
+_FORCED_PAIRS_JS = r"""
+() => {
+  const SIG = ['backgroundColor', 'color', 'borderTopStyle', 'borderTopWidth', 'borderTopColor',
+               'borderBottomStyle', 'borderBottomWidth', 'borderBottomColor', 'outlineStyle',
+               'outlineWidth', 'outlineColor', 'textDecorationLine', 'fontWeight', 'opacity',
+               'forcedColorAdjust'];
+  const sig = el => { const cs = getComputedStyle(el); const parts = SIG.map(p => cs[p]);
+    ['::before', '::after'].forEach(ps => { const p = getComputedStyle(el, ps);
+      parts.push(ps, p.content, p.backgroundColor, p.borderTopStyle, p.borderTopWidth,
+                 p.borderTopColor, p.transform, p.color, p.display); });
+    // 🔴 자손 «전부» 의 표시 여부와 생성 글자(::before/::after content) — 정렬 방향 ▲▼⇅ 은
+    //    `th > button > span::after` 에 있다. 직계 자식만 보던 첫 판은 그것을 «같은 모양» 으로
+    //    잘못 읽었다(글자 노드 내용은 넣지 않는다 — 항목마다 달라 «다르다» 가 공짜가 된다).
+    Array.from(el.querySelectorAll('*')).slice(0, 60).forEach(c => { const s = getComputedStyle(c);
+      parts.push(c.tagName + ':' + s.display + ':' + s.visibility + ':' + s.opacity + ':'
+                 + getComputedStyle(c, '::before').content + ':' + getComputedStyle(c, '::after').content); });
+    return parts.join('|'); };
+  const shown = el => { if (!el) return false; const r = el.getBoundingClientRect();
+    return r.width >= 2 && r.height >= 2
+      && (!el.checkVisibility || el.checkVisibility({opacityProperty: true, visibilityProperty: true})); };
+  const desc = el => (el.tagName.toLowerCase() + (el.id ? '#' + el.id : '')
+    + ((typeof el.className === 'string' && el.className.trim())
+       ? '.' + el.className.trim().split(/\s+/).slice(0, 2).join('.') : '')).slice(0, 60);
+  let n = 0;
+  const mark = el => { if (!el.dataset.fcPair) el.dataset.fcPair = String(++n); return el.dataset.fcPair; };
+  const pairs = [];
+  const add = (kind, on, off) => { if (shown(on) && shown(off))
+    pairs.push({kind, on: mark(on), off: mark(off), onId: desc(on), offId: desc(off),
+                same: sig(on) === sig(off)}); };
+  for (const attr of ['aria-checked', 'aria-pressed', 'aria-selected']) {
+    const byParent = new Map();
+    document.querySelectorAll('[' + attr + ']').forEach(el => {
+      if (!byParent.has(el.parentElement)) byParent.set(el.parentElement, []);
+      byParent.get(el.parentElement).push(el); });
+    byParent.forEach(list => add(attr, list.find(e => e.getAttribute(attr) === 'true'),
+                                       list.find(e => e.getAttribute(attr) === 'false')));
+  }
+  const heads = Array.from(document.querySelectorAll('[aria-sort]'));
+  add('aria-sort', heads.find(h => ['ascending', 'descending'].includes(h.getAttribute('aria-sort'))),
+                   heads.find(h => h.getAttribute('aria-sort') === 'none'));
+  document.querySelectorAll('[aria-current]:not([aria-current="false"])').forEach(on => {
+    const sib = Array.from(on.parentElement ? on.parentElement.children : [])
+      .find(s => s !== on && s.tagName === on.tagName && !s.hasAttribute('aria-current'));
+    add('aria-current', on, sib); });
+  const boxes = Array.from(document.querySelectorAll('input[type=checkbox]'))
+    .filter(b => b.nextElementSibling);
+  const onBox = boxes.find(b => b.checked);
+  const offBox = onBox && boxes.find(b => !b.checked
+    && b.nextElementSibling.className === onBox.nextElementSibling.className);
+  add('checkbox', onBox && onBox.nextElementSibling, offBox && offBox.nextElementSibling);
+  // 시드에는 한 상태만 있다 — 바로 옆에 반대 상태의 복제를 두고 같은 문맥에서 잰다(B 와 같은 방식).
+  const dot = document.querySelector('.conn-dot');
+  if (dot) {
+    const twin = dot.cloneNode(true);
+    const want = dot.classList.contains('is-on') ? 'is-off' : 'is-on';
+    twin.classList.remove('is-on', 'is-off'); twin.classList.add(want);
+    dot.after(twin);
+    add('conn-dot', document.querySelector('.conn-dot.is-on'), document.querySelector('.conn-dot.is-off'));
+  }
+  return pairs;
+}
+"""
+
+# 찍은 PNG 의 «한 색이 아닌» 픽셀 수 — 빈 페이지(CSP 없음)의 canvas 로 디코드한다.
+_DISTINCT_PIXELS_JS = r"""
+async (b64) => {
+  const img = new Image(); img.src = 'data:image/png;base64,' + b64; await img.decode();
+  const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+  const g = c.getContext('2d'); g.drawImage(img, 0, 0);
+  const d = g.getImageData(0, 0, c.width, c.height).data;
+  let distinct = 0;
+  for (let i = 0; i < d.length; i += 4)
+    if (Math.abs(d[i] - d[0]) + Math.abs(d[i + 1] - d[1]) + Math.abs(d[i + 2] - d[2]) > 24) distinct++;
+  return distinct;
+}
+"""
+
+
+@pytest.mark.e2e
+def test_declared_states_stay_distinct_in_forced_colors(seeded_page, base_url):
+    """🔴 forced-colors 에서도 «켜짐·꺼짐» 이 둘 다 보이고 서로 달라야 한다 (1.4.1 · 1.4.11).
+
+    Both states of every declared state pair must paint something and differ, in forced colors.
+    """
+    import base64
+    page = seeded_page
+    decoder = page.context.new_page()
+    try:
+        page.emulate_media(forced_colors="active")
+        seen, bad = {}, []
+        for path in _FORCED_SCREENS:
+            page.set_viewport_size({"width": 1440, "height": 2000})
+            page.goto(f"{base_url}{path}")
+            page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
+            _open_menus(page)
+            _reveal(page)
+            assert page.evaluate("() => matchMedia('(forced-colors: active)').matches"), (
+                "forced-colors 에뮬레이션이 걸리지 않았다 — 재지 못한 것이지 통과가 아니다")
+            for p in page.evaluate(_FORCED_PAIRS_JS):
+                seen.setdefault(p["kind"], set()).add(path)
+                for side in ("on", "off"):
+                    png = page.locator(f'[data-fc-pair="{p[side]}"]').first.screenshot()
+                    if decoder.evaluate(_DISTINCT_PIXELS_JS, base64.b64encode(png).decode()) < 3:
+                        bad.append(f"{path} {p['kind']} {side}: {p[side + 'Id']} 가 아무것도 안 칠한다")
+                if p["same"]:
+                    bad.append(f"{path} {p['kind']}: {p['onId']} ↔ {p['offId']} 가 같은 모양이다")
+        # 🔴 기록된 색만의 상태와 ARIA 상태가 실제로 쌍으로 잡혀야 한다 — 0 이면 못 잰 것이다.
+        for kind in ("conn-dot", "checkbox", "aria-checked", "aria-sort"):
+            assert seen.get(kind), f"forced-colors 에서 {kind} 쌍을 하나도 못 잡았다 — 재지 못했다"
+        assert not bad, "forced-colors 에서 상태가 사라진다:\n  " + "\n  ".join(sorted(set(bad)))
+    finally:
+        decoder.close()
+        page.emulate_media(forced_colors="none")
