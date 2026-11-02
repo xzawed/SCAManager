@@ -45,6 +45,41 @@ def strip_css_comments(src: str) -> str:
         src)
 
 
+CSS_ROOTS = ("src/templates", "src/static/css")
+
+
+def css_sources() -> list[str]:
+    """CSS 를 담는 운영 파일 전부(빌드 산출물 `dist/` 제외) — 손 목록이 아니라 파생이다."""
+    out = []
+    for rel_root in CSS_ROOTS:
+        for path in sorted((ROOT / rel_root).rglob("*")):
+            if path.suffix in (".html", ".css") and "dist" not in path.parts:
+                out.append(path.relative_to(ROOT).as_posix())
+    return out
+
+
+def style_text(rel: str) -> str:
+    """판정할 CSS — `.css` 는 파일 전체, 템플릿은 `<style>` 블록만. 주석은 지운다.
+
+    템플릿 전체를 넘기면 블록 «첫 규칙» 의 선택자 앞에 HTML 이 붙어 선택자 열쇠가 어긋난다.
+    Templates contribute only their <style> blocks; comments are stripped.
+    """
+    text = read(rel)
+    if rel.endswith(".html"):
+        text = "\n".join(re.findall(r"<style[^>]*>(.*?)</style>", text, re.S | re.I))
+    return strip_css_comments(text)
+
+
+def declarations(body: str) -> dict[str, str]:
+    """선언 본문 → {속성: 값}. 값 안의 공백은 하나로 접는다."""
+    out = {}
+    for part in body.split(";"):
+        prop, sep, value = part.partition(":")
+        if sep and prop.strip():
+            out[prop.strip().lower()] = " ".join(value.split())
+    return out
+
+
 def theme_block(src: str, theme: str) -> str:
     """그 테마의 «모든» `[data-theme]` 블록(팔레트 + 의미 토큰)을 이어 붙인다."""
     src = strip_css_comments(src)
