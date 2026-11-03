@@ -5091,3 +5091,211 @@ def test_repos_report_states_how_many_unverified_scores_the_trend_averages(
             f"[{theme}] repos 리포트 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
             + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
                           for b in bad[:10]))
+
+
+# ── E-22. 한국어는 어절 사이에서만 줄을 바꾼다 — 일본어는 글자 사이 그대로 ─────────────────────
+#
+# 브라우저 기본값(`word-break: normal`)은 한글 음절 사이에서도 줄을 바꾼다 — 375px repos 리포트의
+# «미검증 포함» 줄이 «… 위 평 / 균 점수·등급은 …» 으로 끊겼다. `components.css` 의 `html:lang(ko)` 가
+# keep-all 을 건다. 🔴 일본어에 걸면 안 된다 — 띄어쓰기가 없어 keep-all 이면 줄을 못 바꾸고 넘친다.
+# 그래서 언어로 한정하고 일본어 쪽도 잰다. `landing.html` 은 head 가 따로라 그 길도 잰다.
+# Korean wraps only between words (keep-all scoped by lang); Japanese must keep breaking anywhere.
+
+_PHONE_WIDTHS = (320, 360, 375, 390, 414)
+
+# 한글이 든 어절마다 Range 를 만들어 그 글자 상자가 몇 줄에 걸쳤는지 센다. 같은 줄 = 상자 중심이 줄 높이
+# 절반 안 — 숫자와 한글이 다른 글꼴로 그려져 top 이 몇 px 어긋난다.
+# 어절 = 공백 사이, 단 가운뎃점(·) «뒤» 도 경계다 — `점수·등급은` 은 `점수·` 와 `등급은` 이다. 크롬은
+# keep-all 에서도 가운뎃점 뒤에서 줄을 바꾼다(414px 실측 «점수· / 등급은»). 가운뎃점 «앞» 에서 끊겨
+# 줄이 `·` 로 시작하면 여전히 쪼개짐이다.
+# 🔴 줄을 «세로 위치» 로만 가르므로 줄 상자가 계산된 줄 높이 간격으로 세로로 쌓일 때만 잴 수 있다 —
+#    다단(column)·세로쓰기는 두 줄을 같은 높이에 두고(Grok 반례: 2단 · 단 높이 1줄), 이동 말고 다른 변형
+#    (scale·rotate·zoom)·원근은 화면 위 간격을 줄 높이와 다르게 만든다(Grok 반례: scaleY(0.25) · 조상
+#    perspective + translate Z). 조상 속성 검사 + «화면 위 상자 = 배치 상자» 검사에 걸리면 `unmeasurable`
+#    로 돌려 시험을 빨갛게 한다 — 등장 애니메이션은 이동뿐이라 잰다.
+# Per Hangul word, count the line boxes its glyph rects span; a break right after a middle dot is a
+# word boundary (Korean convention), a break before it is still a split. Lines are told apart by
+# vertical position at the computed line-height, so multi-column, vertical writing and any
+# non-translation transform on the element or an ancestor are reported as unmeasurable.
+_WORD_SPLIT_JS = r"""(sel) => {
+    const lineCount = (rects, lh) => {
+        const centres = [];
+        for (const r of rects) {
+            if (r.width === 0 || r.height === 0) continue;
+            const c = (r.top + r.bottom) / 2;
+            if (!centres.some(v => Math.abs(v - c) < lh / 2)) centres.push(c);
+        }
+        return centres.length;
+    };
+    const out = {elements: 0, words: 0, wrapped: 0, split: [], wordBreak: [], overflow: [],
+                 unmeasurable: []};
+    for (const el of document.querySelectorAll(sel)) {
+        const cs = getComputedStyle(el);
+        const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.2;
+        out.elements += 1;
+        out.wordBreak.push(cs.wordBreak);
+        // 칠해지지 않는 요소(닫힌 details 안 등)는 잴 것이 아니다 — 불투명도는 줄바꿈과 무관해 묻지 않는다.
+        // Unpainted elements are unmeasurable; opacity does not affect line breaking, so it is not asked.
+        if (!el.checkVisibility({visibilityProperty: true})) {
+            out.unmeasurable.push(`${el.tagName.toLowerCase()} not painted (checkVisibility)`);
+        }
+        for (let a = el; a; a = a.parentElement) {
+            const s = getComputedStyle(a);
+            const m = /^matrix\(([^)]+)\)$/.exec(s.transform);
+            const [ta, tb, tc, td] = m ? m[1].split(',').map(Number) : [];
+            const translateOnly = s.transform === 'none' || (m && ta === 1 && tb === 0 && tc === 0 && td === 1);
+            if (s.columnCount !== 'auto' || s.columnWidth !== 'auto' || s.writingMode !== 'horizontal-tb'
+                    || !translateOnly || s.scale !== 'none' || s.rotate !== 'none' || (s.zoom && s.zoom !== '1')) {
+                out.unmeasurable.push(`${a.tagName.toLowerCase()} columns=${s.columnCount}/${s.columnWidth} `
+                    + `${s.writingMode} transform=${s.transform} scale=${s.scale} rotate=${s.rotate} zoom=${s.zoom}`);
+                break;
+            }
+        }
+        // 화면 위 상자 = 배치 상자여야 한다 — 다르면 원근·변형(조상의 perspective + translate Z 등)이 화면 위
+        // 줄 간격을 계산된 줄 높이와 다르게 만들었다. 속성을 하나씩 막는 대신 결과를 잰다.
+        // The painted box must equal the layout box; otherwise a projection or transform changed spacing.
+        const vb = el.getBoundingClientRect();
+        if (Math.abs(vb.height - el.offsetHeight) > 1 || Math.abs(vb.width - el.offsetWidth) > 1) {
+            out.unmeasurable.push(`${el.tagName.toLowerCase()} painted ${vb.width.toFixed(1)}x${vb.height.toFixed(1)}`
+                + ` != layout ${el.offsetWidth}x${el.offsetHeight}`);
+        }
+        if (el.scrollWidth > el.clientWidth + 1) out.overflow.push(el.textContent.trim().slice(0, 40));
+        const whole = document.createRange();
+        whole.selectNodeContents(el);
+        if (lineCount(whole.getClientRects(), lh) >= 2) out.wrapped += 1;
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+            for (const m of n.data.matchAll(/[^\s·]+·?/g)) {
+                if (!/[가-힣]/.test(m[0])) continue;
+                const r = document.createRange();
+                r.setStart(n, m.index);
+                r.setEnd(n, m.index + m[0].length);
+                out.words += 1;
+                const k = lineCount(r.getClientRects(), lh);
+                if (k > 1) out.split.push(`${m[0]}(${k})`);
+            }
+        }
+    }
+    return out;
+}"""
+
+# 같은 자리(같은 부모·같은 상속)에 좁힌 복제를 붙인다 — 계기의 바닥과 일본어 넘침 판정에 쓴다.
+# Clone next to the original (same parent, same cascade), narrowed; optional explicit word-break.
+_NARROW_CLONE_JS = r"""([sel, width, wordBreak]) => {
+    const el = document.querySelector(sel);
+    if (!el) return false;
+    const c = el.cloneNode(true);
+    c.setAttribute('data-e2e-narrow', '');
+    c.style.width = width;
+    if (wordBreak) c.style.wordBreak = wordBreak;
+    el.after(c);
+    return true;
+}"""
+
+
+def _measure_narrow_clone(page, sel: str, width: str, word_break: str | None) -> dict:
+    assert page.evaluate(_NARROW_CLONE_JS, [sel, width, word_break]), f"{sel} 가 없다 — 복제할 원본이 없다"
+    try:
+        return page.evaluate(_WORD_SPLIT_JS, "[data-e2e-narrow]")
+    finally:
+        page.evaluate("() => document.querySelectorAll('[data-e2e-narrow]').forEach(e => e.remove())")
+
+
+def _korean_wrap_failures(page, sel: str) -> list[str]:
+    """다섯 폭마다 — 줄이 바뀌었고(잴 자리) · 어절이 안 쪼개졌고 · keep-all 이고 · 안 넘쳤는가.
+
+    미달은 모아서 돌려준다 — 첫 미달에서 멈추면 다른 폭의 상태가 가려진다.
+    Collects every miss across the five widths instead of stopping at the first.
+    """
+    failures = []
+    for width in _PHONE_WIDTHS:
+        page.set_viewport_size({"width": width, "height": 812})
+        probe = page.evaluate(_WORD_SPLIT_JS, sel)
+        if not probe["elements"] or probe["words"] < 5:
+            failures.append(f"{width}px: 잴 한국어가 없다 — {probe}")
+            continue
+        if probe["unmeasurable"]:
+            failures.append(f"{width}px: 줄을 세로 위치로 가를 수 없는 배치 {probe['unmeasurable']} — 못 잰다")
+        if not probe["wrapped"]:
+            failures.append(f"{width}px: 줄이 한 번도 안 바뀌었다 — 쪼개짐을 잴 자리가 없다")
+        if probe["split"]:
+            failures.append(f"{width}px: 어절이 두 줄에 걸쳤다 {probe['split']}")
+        if set(probe["wordBreak"]) != {"keep-all"}:
+            failures.append(f"{width}px: word-break = {sorted(set(probe['wordBreak']))} (keep-all 이어야 한다)")
+        if probe["overflow"]:
+            failures.append(f"{width}px: 글자가 상자 밖으로 넘쳤다 {probe['overflow']}")
+    # 🔴 바닥 — 같은 자리의 break-all · 3em 복제에선 쪼개짐이 보여야 한다. 못 보면 위의 «쪼개짐 없음» 은
+    #    잰 결과가 아니다(계기가 줄을 못 센다).
+    # Floor: a break-all clone at 3em must show splits, or «no split» above means nothing.
+    floor = _measure_narrow_clone(page, sel, "3em", "break-all")
+    if not floor["split"]:
+        failures.append(f"바닥: break-all · 3em 복제에서도 쪼개짐 0 — 계기가 줄을 못 센다 {floor}")
+    return failures
+
+
+def _open_trend_note(page, base_url: str, repo: str, language: str) -> None:
+    from urllib.parse import quote  # noqa: PLC0415
+
+    page.context.add_cookies([{"name": "preferred_language", "value": language, "url": base_url}])
+    page.set_viewport_size({"width": 375, "height": 812})
+    page.goto(f"{base_url}/dashboard?mode=repos&days=7&repo={quote(repo, safe='')}")
+    assert "localhost" in page.url, f"{page.url[:60]} 로 나갔다 — 남의 페이지를 잰다"
+    lang = page.evaluate("() => document.documentElement.lang")
+    assert lang == language, f"<html lang={lang!r}> — {language} 화면을 열지 못했다"
+
+
+def test_korean_report_note_wraps_between_words_on_a_phone(seeded_page, base_url, unverified_repo):
+    """🔴 폰 폭 다섯 — repos 리포트의 «미검증 포함» 줄(한국어)이 어절 사이에서만 줄을 바꾼다.
+
+    수정 전 실측(375px): «… 있습니다 — 위 평 / 균 점수·등급은 …» — `평균` 이 두 줄에 걸쳤다.
+    Korean must wrap only between words at five phone widths; before the fix «평균» was split.
+    """
+    with unverified_trend_day(unverified_repo, window_days=7):
+        _open_trend_note(seeded_page, base_url, unverified_repo, "ko")
+        failures = _korean_wrap_failures(seeded_page, ".repos-trend-note")
+    assert not failures, "repos 리포트 «미검증 포함» 줄:\n  " + "\n  ".join(failures)
+
+
+def test_korean_landing_wraps_between_words_on_a_phone(anonymous_page, base_url):
+    """🔴 head 가 따로인 랜딩도 같다 — 부제·기능 카드 설명이 어절 사이에서만 줄을 바꾼다.
+
+    `landing.html` 은 `base.html` 을 상속하지 않는다 — 규칙이 랜딩이 안 읽는 CSS 로 옮겨 가면 여기만 빨개진다.
+    The landing has its own head; this goes red if the rule moves to a sheet it does not load.
+    """
+    anonymous_page.context.add_cookies([{"name": "preferred_language", "value": "ko", "url": base_url}])
+    anonymous_page.set_viewport_size({"width": 375, "height": 812})
+    anonymous_page.goto(base_url)
+    lang = anonymous_page.evaluate("() => document.documentElement.lang")
+    assert lang == "ko", f"<html lang={lang!r}> — 한국어 랜딩을 열지 못했다"
+    assert anonymous_page.locator(".features-grid").count() == 1, "기능 카드가 없다 — 랜딩이 아니다"
+    failures = _korean_wrap_failures(anonymous_page, ".hero-sub, .features-grid .card p")
+    assert not failures, "랜딩 부제·기능 카드:\n  " + "\n  ".join(failures)
+
+
+def test_japanese_report_note_still_breaks_between_characters(seeded_page, base_url, unverified_repo):
+    """🔴 일본어엔 keep-all 이 걸리지 않는다 — 걸리면 띄어쓰기 없는 문장이 줄을 못 바꾸고 넘친다.
+
+    같은 줄을 일본어로 열어 7em 으로 좁힌 복제가 넘치지 않는지 잰다. 바닥 = 같은 복제에 keep-all 을
+    직접 주면 넘친다 — 이게 안 넘치면 넘침 판정이 아무것도 못 잡는 것이다.
+    Japanese must still break between characters: a 7em clone must not overflow, while the same
+    clone with an explicit keep-all must (the floor).
+    """
+    with unverified_trend_day(unverified_repo, window_days=7):
+        _open_trend_note(seeded_page, base_url, unverified_repo, "ja")
+        note = seeded_page.evaluate(_WORD_SPLIT_JS, ".repos-trend-note")
+        inherited = _measure_narrow_clone(seeded_page, ".repos-trend-note", "7em", None)
+        floor = _measure_narrow_clone(seeded_page, ".repos-trend-note", "7em", "keep-all")
+    failures = []
+    if note["elements"] != 1:
+        failures.append(f"일본어 «미검증 포함» 줄이 {note['elements']}개 — 1개여야 잴 수 있다")
+    if note["unmeasurable"] or inherited["unmeasurable"]:
+        failures.append(f"줄을 세로 위치로 가를 수 없는 배치 — 못 잰다 {note['unmeasurable']}")
+    if note["wordBreak"] != ["normal"]:
+        failures.append(f"원본 word-break = {note['wordBreak']} (normal 이어야 한다)")
+    if note["overflow"]:
+        failures.append(f"375px 원본이 넘쳤다 {note['overflow']}")
+    if inherited["overflow"] or inherited["wrapped"] != 1:
+        failures.append(f"7em 복제가 넘쳤거나 줄을 안 바꿨다 — 일본어가 글자 사이에서 못 끊긴다 {inherited}")
+    if not floor["overflow"]:
+        failures.append(f"바닥: keep-all 을 준 7em 복제도 안 넘쳤다 — 넘침 판정이 못 잡는다 {floor}")
+    assert not failures, "일본어 «미검증 포함» 줄:\n  " + "\n  ".join(failures)
