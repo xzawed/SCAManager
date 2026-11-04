@@ -607,7 +607,7 @@ def _settle_animations(page) -> None:
         .map(a => a.finished.catch(() => {})))""")
 
 
-def _reveal_all(page) -> None:
+def _reveal_all(page, *, account: bool = True) -> None:
     """🔴 화면 «전체» 를 드러낸 뒤 잰다 — 안 그러면 첫 화면 아래는 관측되지 않는다.
 
     `base.html::_revealIO` 가 `.card`·`.s-card`·`.kpi-card`·`.reveal` 에 `.reveal` 을 붙이고,
@@ -630,10 +630,14 @@ def _reveal_all(page) -> None:
     3초·2프레임이 지나도 안 붙으면 스크롤로는 못 드러나는 요소(문서 끝 40px 안 등)다 —
     억지로 드러내지 않고 남겨 둬야 시험이 그것을 잡는다.
 
+    🔴 끝에서 «드러나지 않은 것» 을 판정한다(`_assert_reveals_accounted`) — 훑는 곳이 곧 판정하는 곳이다.
+    판정을 공용 측정 헬퍼 셋에만 두었던 첫 판은, 이 함수로 훑고 글자를 재는 시험 27개(관리자 세 화면 ·
+    비로그인 랜딩 포함)를 비켜 갔다. `account=False` 는 «여는 동작 전» 처럼 곧 다시 훑을 중간 상태에만 쓴다.
+
     Scroll first: reveal-on-intersect content is invisible (and unmeasurable) until it enters
     the viewport, and `_settle_animations` cannot help because no Animation exists yet. Then
     wait for the observer itself, frame by frame: a fixed sleep can pass with no rendering
-    update at all on a slow headless runner.
+    update at all on a slow headless runner. Every sweep ends by accounting for what stayed hidden.
     """
     page.evaluate("""async () => {
         const frame = () => new Promise(r => requestAnimationFrame(() => r()));
@@ -660,6 +664,10 @@ def _reveal_all(page) -> None:
         await frame();
     }""")
     _settle_animations(page)
+    if account:
+        where = page.evaluate("""() => location.pathname + location.search + ' ['
+            + (document.documentElement.dataset.theme || document.body.dataset.theme || '-') + ']'""")
+        _assert_reveals_accounted(page, where)
 
 
 def unrevealed_counts(page) -> dict:
@@ -688,7 +696,7 @@ def unrevealed_counts(page) -> dict:
 # 🔴 W16 — 스윕 뒤에도 안 드러난 `.reveal` 은 «다른 상태의 몫» 이어야 하고, 그 상태를 여는 스윕이 있어야 한다.
 #    {그 상태에서 숨는 자리의 셀렉터: 그 상태를 여는 시험}. 2026-11-04 인구조사(57면 — 넓은 화면·폰 폭·상호작용
 #    상태): 안 드러난 24개가 전부 설정 «단순» 모드의 `.adv-only` 였고 상세 모드 화면에서는 0 이었다.
-#    여기 없는 자리에 `.reveal` 이 숨으면 공용 측정 헬퍼가 red — 그 상태를 여는 스윕을 만들고 이 표에 올린다.
+#    여기 없는 자리에 `.reveal` 이 숨으면 `_reveal_all` 이 red — 그 상태를 여는 스윕을 만들고 이 표에 올린다.
 # Every `.reveal` still hidden after the sweep must belong to a known state that some sweep opens.
 _REVEAL_STATE_OWNERS = {
     'body[data-settings-mode="simple"] .adv-only': "test_token_text_meets_aa_in_settings_advanced",
@@ -716,7 +724,7 @@ def _assert_reveals_accounted(page, where: str) -> None:
     """스윕 뒤 안 드러난 `.reveal` 을 판정한다 — 칠해지는 자리에 남은 것은 0, 안 칠해지는 것은 아는 상태의 몫.
 
     🔴 자리를 차지한 채 opacity<0.99 면 «재지 못한 글자» 다 — 감사는 그것을 «보이지 않음» 으로
-       건너뛴다(안 쟀음 ≠ 통과). 전엔 이 판정이 두 경로에서만 돌았다.
+       건너뛴다(안 쟀음 ≠ 통과). 그래서 `_reveal_all` 이 훑을 때마다 끝에서 이것을 부른다.
     🔴 상자 0 인 것의 주인을 모르면 그 글자는 어느 스윕도 안 잰다(W16 — 세기만 하고 매핑하지 않았다).
     """
     rows = page.evaluate(_UNREVEALED_JS, list(_REVEAL_STATE_OWNERS))
@@ -953,7 +961,8 @@ def _assert_token_text_aa(page, base_url, theme, path, viewport=None, prepare=No
     #    글자색 위에 다음 테마의 바탕이 겹친 값이 나온다).
     page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
     page.wait_for_timeout(400)
-    _reveal_all(page)
+    # 여는 동작이 남았으면 이 스윕은 중간 상태다 — 판정은 연 «뒤» 의 스윕이 한다.
+    _reveal_all(page, account=prepare is None)
     if prepare is not None:
         prepare(page)
         # 🔴 여는 단계가 «새 내용» 을 표시하면 그 조상이 아직 `.reveal`(opacity 0) 일 수
@@ -961,7 +970,6 @@ def _assert_token_text_aa(page, base_url, theme, path, viewport=None, prepare=No
         #    `#telegramOtpDisplay` 가 그 상태로 「브라우저가 안 칠한다」로 잡혔다
         #    (로컬은 카드가 이미 드러나 있어 재현되지 않았다). 연 «뒤» 다시 돌린다.
         _reveal_all(page)
-    _assert_reveals_accounted(page, f"[{theme}] {path}")
     res = page.evaluate(_ALL_TEXT_AUDIT_JS)
 
     assert not res.get("error"), res.get("error")
@@ -1140,11 +1148,10 @@ def test_token_text_meets_aa_in_settings_advanced(seeded_page, base_url, theme):
     seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
     seeded_page.wait_for_timeout(350)
     _open_settings_advanced(seeded_page)
-    _reveal_all(seeded_page)
     # 🔴 이 시험은 `_REVEAL_STATE_OWNERS` 의 주인이다 — 단순 모드에서 숨은 `.adv-only` 가 여기서 «전부»
     #    드러나야 한다. 상세 모드에선 그 셀렉터(`[data-settings-mode="simple"]`)가 아무것도 안 고르므로,
-    #    덜 드러난 카드는 주인 없는 것으로 잡힌다.
-    _assert_reveals_accounted(seeded_page, f"[{theme}] 설정 상세 모드")
+    #    이 스윕 끝의 판정(`_reveal_all`)이 덜 드러난 카드를 주인 없는 것으로 잡는다.
+    _reveal_all(seeded_page)
 
     # 🔴 «두 감사를 다» 돌린다. 처음엔 토큰 글자(--text-2/3)만 보게 썼는데, 이 화면에서
     #    고친 것은 «accent 를 글자로 쓰는 태그»(`.field-tag`) 였다 — 그 축을 안 보고 있었다.
@@ -1320,13 +1327,9 @@ def test_landing_text_meets_aa(anonymous_page, base_url, theme):
     anonymous_page.goto(base_url)
     anonymous_page.evaluate("(t) => document.body.setAttribute('data-theme', t)", theme)
     anonymous_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
-    anonymous_page.evaluate("""() => new Promise(r => {
-        let y = 0;
-        const step = () => { window.scrollTo(0, y); y += 600;
-          if (y < document.body.scrollHeight) setTimeout(step, 30); else r(); };
-        step(); })""")
-    anonymous_page.evaluate("() => window.scrollTo(0, 0)")
-    _settle_animations(anonymous_page)
+    # 공용 스윕으로 훑는다 — 자체 루프(30ms 고정 대기)는 관찰자 판정을 못 기다렸고, 드러나지 않은 것을
+    # 판정하지도 않았다(`_reveal_all` 이 끝에서 판정한다).
+    _reveal_all(anonymous_page)
     anonymous_page.wait_for_timeout(300)
 
     total, bad = 0, []
@@ -4936,7 +4939,6 @@ def _assert_arm_text_meets_aa(page, url: str, opened: str, theme: str, arm: str)
     page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
     page.wait_for_timeout(350)
     _reveal_all(page)
-    _assert_reveals_accounted(page, f"[{theme}] {arm}")
     res = page.evaluate(_ALL_TEXT_AUDIT_JS)
     assert not res.get("error"), res.get("error")
     bad = [dict(b, state="쉼") for b in res["bad"]]

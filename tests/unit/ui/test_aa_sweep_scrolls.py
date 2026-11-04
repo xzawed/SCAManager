@@ -40,8 +40,8 @@ _SWEEP = _ROOT / "e2e" / "test_theme_mobile_guards.py"
 _AUDIT_SUFFIXES = ("_AUDIT_JS", "_BASE_JS")
 
 # 스크롤을 «자기 방식으로» 하는 함수의 면제 — 사유와 함께 두고, 사라지면 red 다.
-# 🔴 지금은 비어 있다. 판정식이 `_reveal_all(` «또는» `scrollTo(` 를 받으므로, 자체
-#    스크롤 루프를 가진 랜딩 스윕은 면제 없이 그대로 통과한다. 면제를 남겨뒀더니
+# 🔴 지금은 비어 있다. 스윕은 `_reveal_all(` 만 인정한다 — 그 헬퍼가 끝에서 «드러나지 않은 것» 을
+#    판정하므로, 자체 `scrollTo` 루프는 그 판정을 비켜 간다(랜딩 스윕이 그랬다). 면제를 남겨뒀더니
 #    역방향 검사가 곧바로 「죽은 면제」로 잡았다 — 필요 없는 면제는 두지 않는다.
 _EXEMPT: dict[str, str] = {}
 
@@ -83,7 +83,7 @@ def sweep_functions() -> dict[str, bool]:
         if not (names & audits):
             continue
         body = ast.unparse(node)
-        out[node.name] = ("_reveal_all(" in body) or ("scrollTo(" in body)
+        out[node.name] = "_reveal_all(" in body
     return out
 
 
@@ -122,6 +122,31 @@ def test_the_scroll_helper_actually_scrolls():
     assert "scrollHeight" in body, "문서 끝까지 훑지 않는다 — 일부만 드러난다"
     assert "_settle_animations(" in body, (
         "드러낸 뒤 애니메이션을 정착시키지 않는다 — 페이드 «도중» 값을 재게 된다")
+    assert "_assert_reveals_accounted(" in body, (
+        "훑은 뒤 «드러나지 않은 것» 을 판정하지 않는다 — 스윕을 부르는 시험마다 판정을 따로 달아야 하고, "
+        "빠뜨린 시험에서는 멈춘 카드의 글자가 안 잰 초록이 된다")
+
+
+def test_a_sweep_that_skips_accounting_is_followed_by_one_that_does():
+    """🔴 `_reveal_all(..., account=False)` 는 «곧 다시 훑을» 중간 상태용이다 — 그 함수의 마지막 스윕은 판정한다.
+
+    판정을 끈 스윕 바로 뒤에 감사를 돌리면 드러나지 않은 글자가 다시 «안 잰 초록» 이 된다 —
+    판정이 공용 헬퍼 셋에만 있던 첫 판이 스윕하는 시험 27개를 비켜 간 것과 같은 모양이다.
+    A sweep with accounting switched off must be followed, in the same function, by one that accounts.
+    """
+    tree = ast.parse(_SWEEP.read_text(encoding="utf-8"))
+    swept, bad = 0, []
+    for fn in ast.walk(tree):
+        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) or fn.name == "_reveal_all":
+            continue
+        calls = sorted((n for n in ast.walk(fn) if isinstance(n, ast.Call)
+                        and isinstance(n.func, ast.Name) and n.func.id == "_reveal_all"),
+                       key=lambda n: (n.lineno, n.col_offset))
+        swept += bool(calls)
+        if calls and any(k.arg == "account" for k in calls[-1].keywords):
+            bad.append(f"{fn.name} (줄 {calls[-1].lineno})")
+    assert swept, "`_reveal_all` 을 부르는 함수를 0개 찾았다 — 스캔이 죽었다(공허한 초록)"
+    assert not bad, "마지막 스윕이 판정을 끈 채 끝난다:\n  " + "\n  ".join(bad)
 
 
 def test_exemptions_still_point_at_a_real_sweep():
