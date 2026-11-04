@@ -699,9 +699,13 @@ _UNREVEALED_JS = r"""(owners) => {
   for (const e of document.querySelectorAll('.reveal')) {
     if (parseFloat(getComputedStyle(e).opacity) >= 0.99) continue;
     const r = e.getBoundingClientRect();
+    // 🔴 «상자가 있다» ≠ «칠해진다» — 닫힌 <details> 안은 상자가 있어도 안 칠해진다(브라우저에게 묻는다).
+    //    opacity 는 묻지 않는다 — 지금 재는 것이 바로 opacity 가 덜 오른 요소다.
+    const painted = r.width >= 1 && r.height >= 1
+        && e.checkVisibility({visibilityProperty: true, contentVisibilityAuto: true});
     const owner = owners.find(sel => Array.from(document.querySelectorAll(sel)).some(h => h.contains(e)));
     out.push({el: e.tagName.toLowerCase() + Array.from(e.classList).map(c => '.' + c).join(''),
-              boxed: r.width >= 1 && r.height >= 1, owner: owner || null,
+              painted, owner: owner || null,
               text: (e.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 40)});
   }
   return out;
@@ -709,15 +713,15 @@ _UNREVEALED_JS = r"""(owners) => {
 
 
 def _assert_reveals_accounted(page, where: str) -> None:
-    """스윕 뒤 안 드러난 `.reveal` 을 판정한다 — 자리를 차지한 것은 0, 상자 0 인 것은 아는 상태의 몫.
+    """스윕 뒤 안 드러난 `.reveal` 을 판정한다 — 칠해지는 자리에 남은 것은 0, 안 칠해지는 것은 아는 상태의 몫.
 
     🔴 자리를 차지한 채 opacity<0.99 면 «재지 못한 글자» 다 — 감사는 그것을 «보이지 않음» 으로
        건너뛴다(안 쟀음 ≠ 통과). 전엔 이 판정이 두 경로에서만 돌았다.
     🔴 상자 0 인 것의 주인을 모르면 그 글자는 어느 스윕도 안 잰다(W16 — 세기만 하고 매핑하지 않았다).
     """
     rows = page.evaluate(_UNREVEALED_JS, list(_REVEAL_STATE_OWNERS))
-    stuck = [r for r in rows if r["boxed"]]
-    orphan = [r for r in rows if not r["boxed"] and not r["owner"]]
+    stuck = [r for r in rows if r["painted"]]
+    orphan = [r for r in rows if not r["painted"] and not r["owner"]]
     assert not stuck, (
         f"{where}: 스윕 뒤에도 자리를 차지한 채 opacity<0.99 인 `.reveal` {len(stuck)}개 — 그 글자는 "
         "어떤 감사에도 안 잡힌다: " + ", ".join(f"{r['el']} «{r['text']}»" for r in stuck[:6]))
