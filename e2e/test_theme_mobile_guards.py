@@ -685,6 +685,55 @@ def unrevealed_counts(page) -> dict:
     }""")
 
 
+# 🔴 W16 — 스윕 뒤에도 안 드러난 `.reveal` 은 «다른 상태의 몫» 이어야 하고, 그 상태를 여는 스윕이 있어야 한다.
+#    {그 상태에서 숨는 자리의 셀렉터: 그 상태를 여는 시험}. 2026-11-04 인구조사(57면 — 넓은 화면·폰 폭·상호작용
+#    상태): 안 드러난 24개가 전부 설정 «단순» 모드의 `.adv-only` 였고 상세 모드 화면에서는 0 이었다.
+#    여기 없는 자리에 `.reveal` 이 숨으면 공용 측정 헬퍼가 red — 그 상태를 여는 스윕을 만들고 이 표에 올린다.
+# Every `.reveal` still hidden after the sweep must belong to a known state that some sweep opens.
+_REVEAL_STATE_OWNERS = {
+    'body[data-settings-mode="simple"] .adv-only': "test_token_text_meets_aa_in_settings_advanced",
+}
+
+_UNREVEALED_JS = r"""(owners) => {
+  const out = [];
+  for (const e of document.querySelectorAll('.reveal')) {
+    if (parseFloat(getComputedStyle(e).opacity) >= 0.99) continue;
+    const r = e.getBoundingClientRect();
+    const owner = owners.find(sel => Array.from(document.querySelectorAll(sel)).some(h => h.contains(e)));
+    out.push({el: e.tagName.toLowerCase() + Array.from(e.classList).map(c => '.' + c).join(''),
+              boxed: r.width >= 1 && r.height >= 1, owner: owner || null,
+              text: (e.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 40)});
+  }
+  return out;
+}"""
+
+
+def _assert_reveals_accounted(page, where: str) -> None:
+    """스윕 뒤 안 드러난 `.reveal` 을 판정한다 — 자리를 차지한 것은 0, 상자 0 인 것은 아는 상태의 몫.
+
+    🔴 자리를 차지한 채 opacity<0.99 면 «재지 못한 글자» 다 — 감사는 그것을 «보이지 않음» 으로
+       건너뛴다(안 쟀음 ≠ 통과). 전엔 이 판정이 두 경로에서만 돌았다.
+    🔴 상자 0 인 것의 주인을 모르면 그 글자는 어느 스윕도 안 잰다(W16 — 세기만 하고 매핑하지 않았다).
+    """
+    rows = page.evaluate(_UNREVEALED_JS, list(_REVEAL_STATE_OWNERS))
+    stuck = [r for r in rows if r["boxed"]]
+    orphan = [r for r in rows if not r["boxed"] and not r["owner"]]
+    assert not stuck, (
+        f"{where}: 스윕 뒤에도 자리를 차지한 채 opacity<0.99 인 `.reveal` {len(stuck)}개 — 그 글자는 "
+        "어떤 감사에도 안 잡힌다: " + ", ".join(f"{r['el']} «{r['text']}»" for r in stuck[:6]))
+    assert not orphan, (
+        f"{where}: 아는 상태 밖에서 숨은 `.reveal` {len(orphan)}개 — 그 상태를 여는 스윕을 만들고 "
+        "`_REVEAL_STATE_OWNERS` 에 올린다: " + ", ".join(f"{r['el']} «{r['text']}»" for r in orphan[:6]))
+
+
+def test_every_reveal_state_names_a_sweep_that_exists():
+    """`_REVEAL_STATE_OWNERS` 의 주인은 이 모듈의 시험이다 — 이름만 남은 주인은 그 상태를 아무도 안 연다."""
+    assert _REVEAL_STATE_OWNERS, "주인 표가 비었다 — 단순 모드의 `.adv-only` 도 주인이 있어야 한다"
+    missing = [name for name in _REVEAL_STATE_OWNERS.values()
+               if not (name.startswith("test_") and callable(globals().get(name)))]
+    assert not missing, f"주인으로 적힌 시험이 이 모듈에 없다: {missing}"
+
+
 @pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
 @pytest.mark.parametrize("path", _TOKEN_TEXT_PATHS)
 def test_token_text_meets_aa_against_painted_background(seeded_page, base_url, theme, path):
@@ -908,6 +957,7 @@ def _assert_token_text_aa(page, base_url, theme, path, viewport=None, prepare=No
         #    `#telegramOtpDisplay` 가 그 상태로 「브라우저가 안 칠한다」로 잡혔다
         #    (로컬은 카드가 이미 드러나 있어 재현되지 않았다). 연 «뒤» 다시 돌린다.
         _reveal_all(page)
+    _assert_reveals_accounted(page, f"[{theme}] {path}")
     res = page.evaluate(_ALL_TEXT_AUDIT_JS)
 
     assert not res.get("error"), res.get("error")
@@ -1087,6 +1137,10 @@ def test_token_text_meets_aa_in_settings_advanced(seeded_page, base_url, theme):
     seeded_page.wait_for_timeout(350)
     _open_settings_advanced(seeded_page)
     _reveal_all(seeded_page)
+    # 🔴 이 시험은 `_REVEAL_STATE_OWNERS` 의 주인이다 — 단순 모드에서 숨은 `.adv-only` 가 여기서 «전부»
+    #    드러나야 한다. 상세 모드에선 그 셀렉터(`[data-settings-mode="simple"]`)가 아무것도 안 고르므로,
+    #    덜 드러난 카드는 주인 없는 것으로 잡힌다.
+    _assert_reveals_accounted(seeded_page, f"[{theme}] 설정 상세 모드")
 
     # 🔴 «두 감사를 다» 돌린다. 처음엔 토큰 글자(--text-2/3)만 보게 썼는데, 이 화면에서
     #    고친 것은 «accent 를 글자로 쓰는 태그»(`.field-tag`) 였다 — 그 축을 안 보고 있었다.
@@ -4878,6 +4932,7 @@ def _assert_arm_text_meets_aa(page, url: str, opened: str, theme: str, arm: str)
     page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
     page.wait_for_timeout(350)
     _reveal_all(page)
+    _assert_reveals_accounted(page, f"[{theme}] {arm}")
     res = page.evaluate(_ALL_TEXT_AUDIT_JS)
     assert not res.get("error"), res.get("error")
     bad = [dict(b, state="쉼") for b in res["bad"]]
