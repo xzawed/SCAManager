@@ -114,6 +114,7 @@
 
 .ri-kpi-card {
   background: var(--bg-card);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
   backdrop-filter: blur(12px) saturate(150%);
   border: 1px solid var(--border-subtle);
   border-radius: 12px;
@@ -170,6 +171,7 @@
 /* ── 공통 카드 / Common card ────────────────────────────── */
 .ri-card {
   background: var(--bg-card);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
   backdrop-filter: blur(12px) saturate(150%);
   border: 1px solid var(--border-subtle);
   border-radius: 12px;
@@ -444,6 +446,7 @@
 /* ── AI 내러티브 카드 / AI narrative card ───────────────── */
 .ri-narrative-card {
   background: var(--bg-card);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
   backdrop-filter: blur(12px) saturate(150%);
   border: 1px solid var(--border-subtle);
   border-radius: 12px;

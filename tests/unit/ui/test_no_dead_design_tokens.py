@@ -25,7 +25,10 @@ Dead tokens lie: a themed palette that nothing reads still reads as "we have one
 import pathlib
 import re
 
-from ._contrast import ROOT, strip_css_comments
+import pytest
+
+from ._contrast import ROOT
+from ._css_structure import scan, style_spans
 
 # 토큰을 «선언» 하는 곳 — 소스 CSS 전부. `dist/` 는 추적되지 않는 빌드 산출물이라 제외한다
 # (tailwind 가 main.css 에서 생성하며, 독립적인 소비자가 아니다).
@@ -33,19 +36,11 @@ _CSS_DIR = ROOT / "src" / "static" / "css"
 
 # 토큰을 «읽는» 곳 — 제품 코드(`src/`)만이다. 확장자로 파생하고 손으로 파일을 적지 않는다.
 # 테스트·문서를 넣으면 그것들이 이름을 «언급» 하는 것만으로 죽은 토큰이 살아난다.
+# 🔴 `.json` 도 소비자다 — i18n 번역문이 `var(--accent-text)` 로 토큰을 읽는다(회고 P2-37).
 _CONSUMER_GLOB = "src/**/*"
-_CONSUMER_SUFFIXES = {".css", ".html", ".js", ".mjs", ".ts", ".py"}
+_CONSUMER_SUFFIXES = {".css", ".html", ".js", ".mjs", ".ts", ".py", ".json"}
 _EXCLUDED_PARTS = ("__pycache__", "vendor", "node_modules")
 _EXCLUDED_DIRS = (_CSS_DIR / "dist",)
-
-# 커스텀 프로퍼티 «선언» 은 블록 시작(`{`)·직전 선언의 끝(`;`)·줄머리 뒤에서만 시작한다.
-#
-# 🔴 줄 단위로 보면 안 된다. 첫 판은 「`{` 가 있는 줄은 셀렉터」로 걸렀는데, 그러면
-#    `:root { --zz: red; }` 한 줄짜리 블록의 선언이 통째로 안 보인다 — 역-뮤테이션을
-#    심었더니 가드가 **초록으로 통과했다**(실측). 부재보다 나쁜 거짓 집행자였다.
-# 🔴 `.btn--primary:hover` 를 선언으로 세면 안 된다. 이 경계 조건이 그것도 막는다 —
-#    `--primary` 앞에 `.btn` 이 있어 `{`/`;`/줄머리 어느 것도 아니다(실측: 그렇게 7건 오판).
-_DECL_RE = re.compile(r"(?:^|[{;])\s*(--[\w-]+)\s*:", re.MULTILINE)
 
 
 def _css_sources() -> dict[pathlib.Path, str]:
@@ -54,12 +49,45 @@ def _css_sources() -> dict[pathlib.Path, str]:
     return {p: p.read_text(encoding="utf-8") for p in files}
 
 
+def _blocks(css: str, where: str):
+    """구조 스캐너가 읽은 블록. 🔴 깨진 원문에서는 판정하지 않는다(회고 P2-51) — 「죽은 토큰 0」은
+    그 CSS 가 브라우저에 산다는 전제 위에 선다. 주석이 규칙을 삼키면 그 안의 선언·읽기는 없다."""
+    res = scan(css)
+    assert not res.defects, (
+        f"전제 깨짐 — {where} 에 구조 결함 {res.defects[:3]} 이 있으면 «선언» 과 «읽기» 를 믿을 수"
+        " 없다. `tests/unit/ui/test_css_structure.py` 를 먼저 고친다.")
+    return res.blocks
+
+
+def _declarations(css: str, where: str) -> list[str]:
+    """커스텀 프로퍼티 «선언» 이름 — 구조 스캐너가 읽은 선언만.
+
+    🔴 셀렉터(`.btn--primary:hover`)·한 줄 블록(`:root { --zz: red; }`)·한 줄에 둘을 글자로 가르던
+       정규식이 두 번 거짓말했다(초록으로 통과한 역-뮤테이션 · 셀렉터 7건 오판). 선언 자리는
+       구조가 정한다.
+    """
+    return [p for b in _blocks(css, where) for p, _ in b.decls if p.startswith("--")]
+
+
+def _reads(rel: str, text: str) -> str:
+    """소비자에서 «읽기» 를 찾을 원문 — CSS 는 선언 값만, 템플릿 `<style>` 도 그 선언 값으로 바꾼다."""
+    if rel.endswith(".css"):
+        return "\n".join(v for b in _blocks(text, rel) for _, v in b.decls)
+    if rel.endswith(".html"):
+        pieces, last = [], 0
+        for start, end in style_spans(text):
+            pieces += [text[last:start], _reads(f"{rel}.css", text[start:end])]
+            last = end
+        return "".join(pieces) + text[last:]
+    return text
+
+
 def declared_tokens() -> dict[str, set[str]]:
-    """`--x: value;` 형태의 «선언» 만 모은다 → {토큰: {파일명}}."""
+    """«선언» 만 모은다 → {토큰: {파일명}}."""
     out: dict[str, set[str]] = {}
     for path, src in _css_sources().items():
-        for m in _DECL_RE.finditer(strip_css_comments(src)):
-            out.setdefault(m.group(1), set()).add(path.name)
+        for name in _declarations(src, path.name):
+            out.setdefault(name, set()).add(path.name)
     assert len(out) > 50, f"선언이 {len(out)}개뿐 — 파서가 늙었다(공허한 초록 방지)"
     return out
 
@@ -87,20 +115,61 @@ def _read_probe(name: str) -> re.Pattern[str]:
     return re.compile(rf"""var\(\s*{tok}(?![\w-])|['"]{tok}(?![\w-])""")
 
 
-def unread_tokens() -> dict[str, set[str]]:
-    """선언됐으나 제품 코드가 «읽지» 않는 토큰."""
-    declared = declared_tokens()
-    probes = {name: _read_probe(name) for name in declared}
-    unread = dict(declared)
+def _real_consumers() -> list[tuple[str, str]]:
+    out = []
     for path in _consumer_files():
         try:
-            text = path.read_text(encoding="utf-8")
+            out.append((path.relative_to(ROOT).as_posix(), path.read_text(encoding="utf-8")))
         except (UnicodeDecodeError, OSError):
             continue
+    return out
+
+
+def unread_tokens(css_sources: dict[str, str] | None = None,
+                  consumers: list[tuple[str, str]] | None = None) -> dict[str, set[str]]:
+    """선언됐으나 제품 코드가 «읽지» 않는 토큰. 인자를 주면 그 원문으로 판정한다(시험용)."""
+    if css_sources is None:
+        declared = declared_tokens()
+    else:
+        declared = {}
+        for name, src in css_sources.items():
+            for tok in _declarations(src, name):
+                declared.setdefault(tok, set()).add(name)
+    probes = {name: _read_probe(name) for name in declared}
+    unread = dict(declared)
+    for rel, text in (_real_consumers() if consumers is None else consumers):
+        reads = _reads(rel, text)
         for name in list(unread):
-            if probes[name].search(text):
+            if probes[name].search(reads):
                 del unread[name]
     return unread
+
+
+def test_translation_files_are_consumers():
+    """회고 P2-37 — i18n 번역문이 CSS 변수를 «읽는다»(`var(--accent-text)`). 소비자에서 빼면
+    번역문만 읽는 토큰이 «죽은 것» 으로 나와 지우라는 처방을 받는다."""
+    seen = {p.relative_to(ROOT).as_posix() for p in _consumer_files()}
+    translations = {p.relative_to(ROOT).as_posix()
+                    for p in (ROOT / "src" / "i18n" / "translations").glob("*.json")}
+    assert translations and translations <= seen, sorted(translations - seen)
+
+
+def test_a_commented_out_read_is_not_a_read():
+    """회고 P2-51 — 주석 속 `var(--x)` 는 브라우저가 읽지 않는다. 원문 글자를 세면 산다."""
+    css = {"tokens.css": ":root { --zz-c: red; }"}
+    consumers = [("src/static/css/a.css", "/* .x { color: var(--zz-c); } */\n.y { color: red; }")]
+    assert "--zz-c" in unread_tokens(css, consumers)
+    # 바닥 — 규칙 안의 같은 읽기는 읽기다.
+    assert "--zz-c" not in unread_tokens(css, [("src/static/css/a.css", ".x { color: var(--zz-c); }")])
+
+
+def test_a_structurally_broken_stylesheet_fails_the_premise():
+    """회고 P2-51 — «죽은 토큰 0» 은 CSS 가 온전하다는 전제 위에 선다. 깨진 시트에선 판정하지 않는다."""
+    with pytest.raises(AssertionError, match="전제"):
+        unread_tokens({"tokens.css": ":root { --zz-b: red; "}, [("src/x.html", "var(--zz-b)")])
+    with pytest.raises(AssertionError, match="전제"):
+        unread_tokens({"tokens.css": ":root { --zz-b: red; }"},
+                      [("src/static/css/a.css", ".x { color: var(--zz-b); \n.y { color: red; }")])
 
 
 def test_no_declared_token_is_left_unread():
@@ -150,13 +219,13 @@ def test_declaration_parser_sees_every_css_shape():
         "테마 블록": '[data-theme="light"] { --e-tok: red; }',
     }
     for label, css in shapes.items():
-        found = {m.group(1) for m in _DECL_RE.finditer(css)}
+        found = set(_declarations(css, label))
         assert found, f"{label} 형태의 선언을 파서가 못 본다 — 그 축이 통째로 열려 있다"
-    assert {m.group(1) for m in _DECL_RE.finditer(shapes["한 줄에 둘"])} == {
+    assert set(_declarations(shapes["한 줄에 둘"], "한 줄에 둘")) == {
         "--c-tok",
         "--d-tok",
     }, "한 줄에 둘 있으면 하나만 본다 — `;` 경계 소실"
     # 셀렉터는 선언이 아니다
-    assert not {m.group(1) for m in _DECL_RE.finditer(".btn--primary:hover { color: red; }")}, (
+    assert not _declarations(".btn--primary:hover { color: red; }", "셀렉터"), (
         "`.btn--primary:hover` 를 선언으로 센다 — 있지도 않은 토큰이 죽은 것으로 나온다"
     )

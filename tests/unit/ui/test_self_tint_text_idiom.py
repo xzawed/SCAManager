@@ -34,14 +34,16 @@ from __future__ import annotations
 
 import re
 
-from ._contrast import ROOT, strip_css_comments
+import pytest
+
+from ._css_structure import authored_sources, scan
 
 # 글자용으로 설계된 토큰 — 자기 틴트를 깔아도 면이 거의 안 움직인다.
 _TEXT_TOKENS = {"--text-1", "--text-2", "--text-3"}
 
-_COLOR = re.compile(r"(?<![-\w])color:\s*var\((--[\w-]+)\)")
-_BG = re.compile(r"(?<![-\w])background(?:-color)?:\s*([^;]+);")
-_RULE = re.compile(r"([^{}]+)\{([^}]*)\}")
+# `color` 값 «전체» 가 토큰 하나 — `var(--x)` · `var(--x, 대체)` · `!important`.
+# The whole `color` value is one token reference.
+_COLOR_TOKEN = re.compile(r"var\(\s*(--[\w-]+)\s*(?:,[^()]*)?\)\s*(?:!important)?", re.I)
 _VAR = re.compile(r"var\(\s*(--[\w-]+)")
 
 
@@ -65,31 +67,62 @@ def _tinted_tokens(value: str) -> set[str]:
     return out
 
 
-def _sources() -> dict[str, str]:
-    """정적 CSS + 템플릿 `<style>` 블록. 🔴 둘을 같이 봐야 한다 — 이 관용구의 여섯 곳 중
-    네 곳이 템플릿 안에 있다."""
-    out: dict[str, str] = {}
-    for f in sorted((ROOT / "src" / "static" / "css").glob("*.css")):
-        out[f.name] = strip_css_comments(f.read_text(encoding="utf-8"))
-    for f in sorted((ROOT / "src" / "templates").rglob("*.html")):
-        blocks = re.findall(r"<style[^>]*>(.*?)</style>", f.read_text(encoding="utf-8"),
-                            re.S | re.I)
-        if blocks:
-            out[f.name] = strip_css_comments("\n".join(blocks))
+def self_tint_sites(css: str) -> list[tuple[int, str, str]]:
+    """CSS 원문 하나 → (줄, 셀렉터 끝, 토큰). 규칙마다 «칠해지는» 값으로 판정한다.
+
+    🔴 선언 순서대로 배경 겹을 갱신하고 마지막 값이 이긴다 — `background` 단축 속성은 색·이미지
+       겹을 둘 다 덮고, `background-color`·`background-image` 는 제 겹만 덮는다. 정규식으로
+       «첫 배경» 을 보던 판정은 세미콜론 없는 마지막 선언 · 두 번째 `background` ·
+       `background-image` 를 놓치고(회고 P2-4), 덮여서 칠해지지 않는 틴트는 위반으로 셌다.
+    Per rule, judge the values that actually paint: declarations in order, last one wins.
+    """
+    out = []
+    for b in scan(css).blocks:
+        if b.kind != "style":
+            continue
+        color, layers = None, {"color": None, "image": None}
+        for prop, value in b.decls:
+            if prop == "color":
+                color = value
+            elif prop == "background":
+                layers = {"color": value, "image": value}
+            elif prop == "background-color":
+                layers["color"] = value
+            elif prop == "background-image":
+                layers["image"] = value
+        m = _COLOR_TOKEN.fullmatch(color or "")
+        if m and m.group(1) in set().union(*(_tinted_tokens(v) for v in layers.values() if v)):
+            out.append((b.line, " ".join(b.prelude.split())[-60:], m.group(1)))
     return out
 
 
-def _self_tint_sites() -> list[tuple[str, str, str]]:
-    sites = []
-    for name, src in _sources().items():
-        for m in _RULE.finditer(src):
-            selector, body = m.group(1).strip().replace("\n", " "), m.group(2)
-            bg, col = _BG.search(body), _COLOR.search(body)
-            if not (bg and col):
-                continue
-            if col.group(1) in _tinted_tokens(bg.group(1)):
-                sites.append((name, selector[-60:], col.group(1)))
-    return sites
+def _self_tint_sites() -> list[tuple[str, int, str, str]]:
+    """정적 CSS + 템플릿 `<style>` 전부(🔴 둘을 같이 봐야 한다 — 이 관용구의 여섯 곳 중 네 곳이
+    템플릿 안에 있었다)."""
+    return [(s.path, s.line + ln - 1, sel, tok)
+            for s in authored_sources() for ln, sel, tok in self_tint_sites(s.text)]
+
+
+_TINT = "color-mix(in srgb, var(--danger) 15%, transparent)"
+
+
+@pytest.mark.parametrize("css", [
+    f".x {{ color: var(--danger); background: {_TINT} }}",
+    f".x {{ background: var(--bg-card); color: var(--danger); background: {_TINT}; }}",
+    f".x {{ background-image: linear-gradient({_TINT}, transparent); color: var(--danger); }}",
+], ids=["배경이 세미콜론 없는 마지막 선언", "두 번째 background 가 칠한다", "background-image 겹"])
+def test_the_painted_background_decides(css):
+    r"""회고 P2-4 의 반례 셋 — 칠해지는 배경은 «처음 적힌 배경» 이 아니다."""
+    assert [tok for _, _, tok in self_tint_sites(css)] == ["--danger"], css
+
+
+@pytest.mark.parametrize("css", [
+    f".x {{ background: {_TINT}; background: var(--bg-card); color: var(--danger); }}",
+    f".x {{ background-color: {_TINT}; background: var(--bg-card); color: var(--danger); }}",
+], ids=["뒤 background 가 덮는다", "단축 속성이 background-color 를 덮는다"])
+def test_an_overridden_tint_is_not_what_gets_painted(css):
+    r"""cheap\claimed — «첫 배경» 을 보는 판정은 덮여서 칠해지지 않는 틴트를 위반으로 센다."""
+    assert self_tint_sites(css) == [], css
 
 
 def test_the_idiom_is_caught_written_either_way_round():
@@ -111,16 +144,16 @@ def test_the_scan_actually_reaches_both_static_css_and_template_styles():
 
     이 관용구의 실제 사용처가 템플릿에 몰려 있어서, 정적 CSS 만 읽으면 조용히 통과한다.
     """
-    srcs = _sources()
-    assert any(n.endswith(".css") for n in srcs), "정적 CSS 를 하나도 안 읽었다"
-    assert any(n.endswith(".html") for n in srcs), "템플릿 `<style>` 을 하나도 안 읽었다"
+    srcs = authored_sources()
+    assert any(s.path.endswith(".css") for s in srcs), "정적 CSS 를 하나도 안 읽었다"
+    assert any(s.path.endswith(".html") for s in srcs), "템플릿 `<style>` 을 하나도 안 읽었다"
     # 규칙을 실제로 파싱했는가 — 이 리포에는 수백 개가 있다.
-    assert sum(len(_RULE.findall(s)) for s in srcs.values()) > 200
+    assert sum(b.kind == "style" for s in srcs for b in scan(s.text).blocks) > 200
 
 
 def test_no_rule_paints_text_with_the_token_that_tints_its_own_background():
-    bad = [(f, s, t) for f, s, t in _self_tint_sites() if t not in _TEXT_TOKENS]
+    bad = [(f, ln, s, t) for f, ln, s, t in _self_tint_sites() if t not in _TEXT_TOKENS]
     assert not bad, (
         "면을 만든 토큰을 글자로도 쓴다 — 면·테두리·글자를 «함께» 고른 잠긴 3종 세트"
         "(`--grade-c`/`--grade-f` 등)로 옮긴다:\n  "
-        + "\n  ".join(f"{f}: {s}  ({t})" for f, s, t in bad))
+        + "\n  ".join(f"{f}:{ln}: {s}  ({t})" for f, ln, s, t in bad))

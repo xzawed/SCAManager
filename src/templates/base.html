@@ -112,6 +112,7 @@
       top: 0;
       z-index: 100;
       box-shadow: 0 1px 0 rgba(255,255,255,0.06);
+      -webkit-backdrop-filter: blur(12px);
       backdrop-filter: blur(12px);
     }
     .nav-logo {
@@ -248,7 +249,7 @@
       z-index: 200;
     }
     .theme-switcher.open .theme-dropdown { display: block; }
-    body[data-theme="pastel"] .theme-dropdown { backdrop-filter: blur(20px); }
+    body[data-theme="pastel"] .theme-dropdown { -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
     .theme-option, .lang-option {
       display: flex;
       align-items: center;
@@ -289,7 +290,7 @@
       border: 1px solid var(--border-subtle);
       transition: background var(--transition), border-color var(--transition);
     }
-    body[data-theme="pastel"] .card { backdrop-filter: blur(16px); }
+    body[data-theme="pastel"] .card { -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
 
     /* ── 구조화 카드 (신규 페이지 표준) ──────── */
     .s-card {
@@ -309,7 +310,7 @@
       gap: var(--space-3);
     }
     .s-card-body { padding: var(--space-5) 20px; }
-    body[data-theme="pastel"] .s-card { backdrop-filter: blur(16px); }
+    body[data-theme="pastel"] .s-card { -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
 
     /* ── 등급 배지 ─────────────────────────────── */
     .grade {
@@ -674,6 +675,7 @@
     /* nav blur 강화 + 하단 보더 (aurora 위에 떠있는 느낌)
        Nav blur enhancement + bottom border (floating above aurora) */
     nav {
+      -webkit-backdrop-filter: blur(20px) saturate(180%);
       backdrop-filter: blur(20px) saturate(180%);
       border-bottom: 1px solid var(--border-subtle);
     }
