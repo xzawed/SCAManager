@@ -466,20 +466,28 @@ class _StyleAndLinks(HTMLParser):
     HTML 주석·`<script>` 안의 `<style>` 글자는 태그가 아니다 — 브라우저와 같다.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, text: str) -> None:
         super().__init__()
         self.styles: list[tuple[int, str]] = []
+        self.spans: list[tuple[int, int]] = []
         self.hrefs: list[str] = []
         self._buf: list[str] | None = None
-        self._line = 0
+        self._line = self._open = 0
+        self._line_starts = [0] + [i + 1 for i, ch in enumerate(text) if ch == "\n"]
+
+    def _offset(self) -> int:
+        line, col = self.getpos()
+        return self._line_starts[line - 1] + col
 
     def handle_starttag(self, tag, attrs):
         a = dict(attrs)
         if tag == "style":
             # CSS 는 여는 태그가 «끝난» 줄에서 시작한다 — 속성이 여러 줄이면 그만큼 내려간다.
             # The CSS starts on the line where the start tag ends.
+            tag_text = self.get_starttag_text() or ""
             self._buf = []
-            self._line = self.getpos()[0] + (self.get_starttag_text() or "").count("\n")
+            self._line = self.getpos()[0] + tag_text.count("\n")
+            self._open = self._offset() + len(tag_text)
         elif tag == "link" and "stylesheet" in (a.get("rel") or "").split() and a.get("href"):
             self.hrefs.append(a["href"])
 
@@ -490,11 +498,12 @@ class _StyleAndLinks(HTMLParser):
     def handle_endtag(self, tag):
         if tag == "style" and self._buf is not None:
             self.styles.append((self._line, "".join(self._buf)))
+            self.spans.append((self._open, self._offset()))
             self._buf = None
 
 
 def _parse_html(text: str) -> _StyleAndLinks:
-    p = _StyleAndLinks()
+    p = _StyleAndLinks(text)
     p.feed(text)
     p.close()
     return p
@@ -503,6 +512,11 @@ def _parse_html(text: str) -> _StyleAndLinks:
 def style_blocks(html: str) -> list[tuple[int, str]]:
     """템플릿 원문의 `<style>` 몸체 → [(파일 안에서 `<style>` 태그가 있는 줄, CSS)]."""
     return _parse_html(html).styles
+
+
+def style_spans(html: str) -> list[tuple[int, int]]:
+    """템플릿 원문에서 `<style>` 몸체가 차지하는 [시작, 끝) 위치 — `style_blocks` 와 같은 순서."""
+    return _parse_html(html).spans
 
 
 @dataclass(frozen=True)

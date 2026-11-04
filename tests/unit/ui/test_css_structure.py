@@ -41,7 +41,7 @@ from ._css_structure import (BLOCK_IN_BRACKET, MISMATCHED_CLOSE, NESTED_OPENER,
                              NESTED_RULE, ROOT, STRAY_CLOSE, STRAY_SEMICOLON,
                              STRAY_TERMINATOR, UNTERMINATED_COMMENT, UNTERMINATED_STRING,
                              authored_sources, chromium_expected, linked_stylesheets, scan,
-                             selector_signature, style_blocks)
+                             selector_signature, style_blocks, style_spans)
 
 _BASE = (
     ".a { color: red; }\n"
@@ -235,6 +235,17 @@ def test_style_blocks_are_read_by_an_html_parser_not_a_regex():
     cheap = re.findall(r"<style[^>]*>(.*?)</style>", html, re.S | re.I)
     assert "-->" in cheap[0], "싼 과정이 정말로 주석 속에서 시작하는가"
     assert style_blocks(html) == [(4, "\n.real { color: red; }\n")]
+
+
+def test_style_spans_point_at_exactly_the_style_bodies():
+    """`style_spans` 의 [시작, 끝) 이 `style_blocks` 의 몸체와 글자째 같다 — 원문 치환이 이 자리를 쓴다."""
+    seen = 0
+    for f in sorted((ROOT / "src" / "templates").rglob("*.html")):
+        html = f.read_text(encoding="utf-8")
+        spans = style_spans(html)
+        assert [html[s:e] for s, e in spans] == [css for _, css in style_blocks(html)], f.name
+        seen += len(spans)
+    assert seen >= 10, "`<style>` 자리를 거의 못 찾았다"
 
 
 class _Markup(HTMLParser):
