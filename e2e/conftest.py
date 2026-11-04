@@ -1348,20 +1348,21 @@ def rls_catalog_double(*, force: bool = True, bypasses: bool = True,
 
 
 @contextlib.contextmanager
-def acting_as(user_id: int, login: str = "e2e-other"):
+def acting_as(user_id: int, login: str = "e2e-other", **fields):
     """이 창 동안 `/dashboard` 가 **다른 사용자**로 돈다.
 
     🔴 `require_login` 을 갈아야 한다 — `/dashboard` 가 무는 것이 그것이다
        (`src/ui/routes/dashboard.py`). `get_current_user` 만 갈면 아무것도 안 바뀐다:
        `require_login` 은 그것을 **평범한 함수로** 부르므로 FastAPI override 가 안 탄다
        (Grok `01a09a3b` 이 내 계획의 이 대목을 잡았다). 템플릿의 nav 를 위해 둘 다 간다.
+    `fields` 는 `CurrentUser` 의 나머지 필드(`is_telegram_connected` 등)다.
     ⚠️ 앱 전역 상태다 — 순차 실행 전제(이 스위트가 그렇다).
     """
     from src.auth.session import CurrentUser, get_current_user, require_login  # noqa: PLC0415
     from src.main import app  # noqa: PLC0415
 
     other = CurrentUser(id=user_id, github_login=login, email=f"{login}@test.com",
-                        display_name=login, plaintext_token="gho_e2e_test_token")
+                        display_name=login, plaintext_token="gho_e2e_test_token", **fields)
     saved = {k: app.dependency_overrides.get(k) for k in (require_login, get_current_user)}
     app.dependency_overrides[require_login] = lambda: other
     app.dependency_overrides[get_current_user] = lambda: other
@@ -1596,6 +1597,149 @@ def empty_user(live_server):
     """
     db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
     return _seed_empty_user(db_path)
+
+
+# ── 막 시작한 사용자의 리포 둘 (#1639 W12 · 분기 프로브 main `25ad2665`) ──────────
+#
+# 프로브가 «한 번도 안 그려졌다» 고 한 팔 가운데 새 표면을 내는 것들을 이 사용자가 연다:
+# 첫 분석 상세(`analysis_detail.html` 추세 조건 거짓 — 차트와 Chart.js 스크립트가 빠진다) ·
+# 점수가 하나도 기록 안 된 개요 카드(`overview.html` 의 `elif item.analysis_count`) ·
+# repos 리포트 AI 제안(`dashboard.html` 의 `repo_report.ai_suggestions`) · 문제 파일 카드
+# (`repo_insights.html` 의 `problem_files`) · 설정의 webhook 경고 배너와 텔레그램 «연결됨».
+# 분석 0개 리포 상세는 `analysis_free_repo`(사용자 9105)가 이미 갖고 있다.
+# 🔴 전용 사용자다 — 소유 필터가 `user_id == me OR user_id IS NULL` 이라 이 리포들은 사용자 1
+#    에게 안 보인다(개요 카드 수 · KPI 그대로).
+# 🔴 앱이 쓰는 모양으로 심는다 — 결과 JSON 은 운영 writer(`build_analysis_result_dict`)가 만들고,
+#    점수·등급 NULL 여부는 파이프라인과 같은 규칙(`should_null_persist_score`)이 정한다. 손으로 쓴
+#    부분집합은 `breakdown` 이 빠져 운영이 못 내는 화면(점수 상세 카드 없는 첫 분석)을 쟀다.
+FRESH_USER_ID = 9201
+FRESH_LOGIN = "e2e-fresh"
+FRESH_FIRST_REPO = "owner/e2efresh-first"
+FRESH_UNSCORED_REPO = "owner/e2efresh-unscored"
+# 첫 리포에 등록된 훅 id — 설정 화면의 stale 판정(`_detect_stale_webhook`)은 id 가 있어야 돈다.
+FRESH_WEBHOOK_ID = 920101
+FRESH_SUGGESTION = "e2e: 첫 분석의 제안 — 함수 이름을 동사로 시작하세요"
+FRESH_PROBLEM_FILE = "src/e2e_fresh/handler.py"
+
+
+def _seed_fresh_user(db_path: str) -> dict:
+    """막 시작한 사용자 + 리포 둘(AI 리뷰 성공 분석 1 · 점수 없는 분석 1) → 좌표 dict."""
+    from datetime import datetime, timedelta, timezone  # noqa: PLC0415
+
+    from sqlalchemy import create_engine, text  # noqa: PLC0415
+    from sqlalchemy.orm import sessionmaker  # noqa: PLC0415
+
+    from src.analyzer.io.ai_review import AiReviewResult, _default_result  # noqa: PLC0415
+    from src.config import settings  # noqa: PLC0415
+    from src.models.analysis import Analysis  # noqa: PLC0415
+    from src.models.repository import Repository  # noqa: PLC0415
+    from src.scorer.calculator import calculate_score  # noqa: PLC0415
+    from src.scorer.reliability import score_is_unreliable, should_null_persist_score  # noqa: PLC0415
+    from src.worker.pipeline import build_analysis_result_dict  # noqa: PLC0415
+
+    at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=1)
+    reviews = {
+        # AI 리뷰가 성공한 첫 분석 — 카테고리 피드백 다섯 칸과 제안·파일 피드백을 함께 낸다.
+        # 성공 호출은 리뷰어가 쓴 모델과 토큰을 남긴다(파이프라인이 그 값을 비용 열로 옮긴다).
+        FRESH_FIRST_REPO: AiReviewResult(
+            used_model=settings.claude_review_model, input_tokens=3200, output_tokens=1400,
+            commit_score=14, ai_score=16, test_score=8, summary="e2e: 첫 분석 요약",
+            suggestions=[FRESH_SUGGESTION],
+            commit_message_feedback="e2e: 커밋 메시지가 바꾼 이유를 말한다",
+            code_quality_feedback="e2e: 함수가 짧고 이름이 분명하다",
+            security_feedback="e2e: 입력 검증이 있다",
+            direction_feedback="e2e: 구현 방향이 요구와 맞다",
+            test_feedback="e2e: 경계값 시험이 하나 더 있으면 좋다",
+            file_feedbacks=[{"file": FRESH_PROBLEM_FILE,
+                             "issues": ["라인 3: 예외를 삼키지 말고 로그를 남기세요"]}]),
+        # AI 호출이 예외로 끝난 분석 — 리뷰어의 실패 경로가 돌려주는 그 기본값이다.
+        FRESH_UNSCORED_REPO: _default_result("api_error", error_type="APIConnectionError"),
+    }
+    seeds = {}
+    for full_name, review in reviews.items():
+        # 파이프라인의 저장 순서 그대로 — 채점 → 결과 dict → NULL 저장 판정.
+        score_result = calculate_score([], review)
+        result = build_analysis_result_dict(review, score_result, [], source="push")
+        null = should_null_persist_score(result)
+        seeds[full_name] = (None if null else score_result.total,
+                            None if null else score_result.grade, result, review)
+    engine = create_engine(f"sqlite:///{db_path}")
+    session = sessionmaker(bind=engine)()
+    try:
+        session.execute(text(
+            "INSERT OR IGNORE INTO users (id, github_id, github_login, github_access_token,"
+            " email, display_name, telegram_user_id, created_at)"
+            " VALUES (:id, :gid, :login, :tok, :mail, :name, :tg, datetime('now'))"
+        ), {"id": FRESH_USER_ID, "gid": FRESH_USER_ID, "login": FRESH_LOGIN,
+            "tok": "gho_e2e_fresh", "mail": f"{FRESH_LOGIN}@test.com", "name": "E2E Fresh",
+            "tg": str(FRESH_USER_ID)})
+        for full_name, (score, grade, result, review) in seeds.items():
+            repo = session.query(Repository).filter_by(full_name=full_name).first()
+            if repo is None:
+                repo = Repository(
+                    full_name=full_name, user_id=FRESH_USER_ID,
+                    webhook_id=FRESH_WEBHOOK_ID if full_name == FRESH_FIRST_REPO else None)
+                session.add(repo)
+                session.flush()
+            sha = f"{full_name.split('/')[1]}-001"
+            if session.query(Analysis).filter_by(commit_sha=sha).first() is None:
+                session.add(Analysis(
+                    repo_id=repo.id, commit_sha=sha, commit_message=f"e2e: {full_name} 첫 분석",
+                    score=score, grade=grade, result=result, author_login=FRESH_LOGIN,
+                    score_unreliable=score_is_unreliable(result), created_at=at,
+                    # `_save_and_gate` 와 같은 식 — 실패 리뷰는 모델 None·토큰 0 이라 NULL 이 된다.
+                    review_model=getattr(review, "used_model", None),
+                    input_tokens=getattr(review, "input_tokens", None) or None,
+                    output_tokens=getattr(review, "output_tokens", None) or None))
+        session.commit()
+        rows = {full_name: session.query(Analysis).join(Repository).filter(
+                    Repository.full_name == full_name).all() for full_name in seeds}
+        owned = session.query(Repository).filter_by(user_id=FRESH_USER_ID).count()
+        shape = {name: [(a.score, a.grade, a.score_unreliable, a.input_tokens is not None) for a in got]
+                 for name, got in rows.items()}
+        first_id = rows[FRESH_FIRST_REPO][0].id if rows[FRESH_FIRST_REPO] else None
+    finally:
+        session.close()
+        engine.dispose()
+    # 🔴 팔을 여는 전제를 여기서 말한다 — 어긋나면 «재지 못한 초록» 대신 이유로 멈춘다.
+    assert owned == 2, f"이 사용자의 리포가 {owned}개 — 다른 픽스처가 같은 사용자를 썼는지 볼 것"
+    first = shape[FRESH_FIRST_REPO]
+    assert (len(first) == 1 and first[0][0] is not None and first[0][1] and first[0][2:] == (False, True)
+            and shape[FRESH_UNSCORED_REPO] == [(None, None, True, False)]), (
+        f"분석 모양이 다르다 {shape!r} — 첫 리포는 점수·비용 열이 있는 분석이 «하나»(추세 차트 거짓 팔)여야 하고, "
+        "점수 없는 리포는 점수·등급·비용 열 NULL 이어야 개요 카드가 «기록된 점수 없음» 으로 간다")
+    return {"user_id": FRESH_USER_ID, "login": FRESH_LOGIN, "first_analysis_id": first_id}
+
+
+@pytest.fixture(scope="session")
+def fresh_user(live_server):
+    """막 시작한 사용자 — 첫 분석만 있는 리포와 점수가 기록 안 된 리포를 가진다."""
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    return _seed_fresh_user(db_path)
+
+
+@contextlib.contextmanager
+def stale_webhook_listing(hook_id: int = FRESH_WEBHOOK_ID):
+    """이 창 동안 GitHub 훅 목록이 `check_suite` 를 구독하지 않은 옛 훅을 돌려준다.
+
+    🔴 바꿔 끼우는 것은 GitHub 응답(`list_webhooks`)뿐이다 — stale 판정(`_detect_stale_webhook`)은
+       진짜 코드가 돈다. 훅은 `check_suite` 가 `WEBHOOK_EVENTS` 에 들어가기 전에 등록된 모양이다.
+    ⚠️ 앱 전역 상태다 — 순차 실행 전제(이 스위트가 그렇다).
+    The GitHub hook listing returns a hook registered before `check_suite` was subscribed.
+    """
+    from unittest import mock  # noqa: PLC0415
+
+    from src.github_client.repos import WEBHOOK_EVENTS  # noqa: PLC0415
+
+    events = [e for e in WEBHOOK_EVENTS if e != "check_suite"]
+    assert len(events) == len(WEBHOOK_EVENTS) - 1, (
+        f"WEBHOOK_EVENTS 에 check_suite 가 없다({WEBHOOK_EVENTS!r}) — 옛 훅 모양을 못 만든다")
+
+    async def _listing(token, repo_full_name):  # noqa: ARG001 — `list_webhooks` 서명
+        return [{"id": hook_id, "events": events}]
+
+    with mock.patch("src.ui.routes.settings.list_webhooks", _listing):
+        yield
 
 
 @pytest.fixture
