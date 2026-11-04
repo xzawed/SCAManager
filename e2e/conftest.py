@@ -1886,6 +1886,95 @@ def settled_users(live_server):
     return _seed_settled_users(db_path)
 
 
+# ── 오래 쓴 사용자 (#1639 W12 «낮음» · 분기 프로브 main `25ad2665`) ─────────────
+#
+# 피드백을 기준(`feedback_status` 의 threshold 10)만큼 남겨 대시보드의 피드백 CTA 가 사라진 사용자.
+# 그 리포는 예전에 고정한 리뷰 모델이 카탈로그(`CLAUDE_MODELS`)에서 빠졌다 — 설정 화면이 그 값을
+# «내린 모델» 선택지로 보여 준다(`settings.html` 의 저장값 보존). 내린 모델은 요율만 남은
+# `CLAUDE_RETIRED_MODEL_PRICING` 의 id 다(설정을 안 바꾼 리포는 지금도 그 모델로 리뷰를 받는다).
+# 🔴 피드백은 «내 리포 또는 소유자 없는 리포» 로 센다 — 시드는 템플릿이 읽는 `feedback_status` 로 되읽는다.
+BUSY_USER_ID = 9204
+BUSY_LOGIN = "e2e-busy"
+BUSY_REPO = "owner/e2ebusy"
+BUSY_RETIRED_MODEL = "claude-sonnet-4-6"
+
+
+def _seed_busy_user(db_path: str) -> dict:
+    """피드백 10건을 남긴 사용자 + 내린 모델을 고정한 리포 → 좌표 dict."""
+    from datetime import datetime, timedelta, timezone  # noqa: PLC0415
+
+    from sqlalchemy import create_engine, text  # noqa: PLC0415
+    from sqlalchemy.orm import sessionmaker  # noqa: PLC0415
+
+    from src.analyzer.io.ai_review import AiReviewResult  # noqa: PLC0415
+    from src.constants import CLAUDE_MODELS, CLAUDE_RETIRED_MODEL_PRICING  # noqa: PLC0415
+    from src.models.analysis import Analysis  # noqa: PLC0415
+    from src.models.analysis_feedback import AnalysisFeedback  # noqa: PLC0415
+    from src.models.repo_config import RepoConfig  # noqa: PLC0415
+    from src.models.repository import Repository  # noqa: PLC0415
+    from src.services import dashboard_service  # noqa: PLC0415
+
+    assert BUSY_RETIRED_MODEL in CLAUDE_RETIRED_MODEL_PRICING and \
+        BUSY_RETIRED_MODEL not in {m["id"] for m in CLAUDE_MODELS}, (
+        f"{BUSY_RETIRED_MODEL} 이 «내린 모델» 이 아니다 — 카탈로그에 있거나 요율이 없다")
+    threshold = 10
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    # 고정한 모델로 리뷰를 받았다 — 리뷰어가 그 모델 id 를 남긴다.
+    fields = _writer_analysis_fields(AiReviewResult(
+        used_model=BUSY_RETIRED_MODEL, input_tokens=1800, output_tokens=700,
+        commit_score=15, ai_score=16, test_score=7, summary="e2e: 꾸준히 쓴 리포의 리뷰",
+        suggestions=["e2e: 오류 경로를 기록하세요"], commit_message_feedback="e2e: 분명하다",
+        code_quality_feedback="e2e: 읽기 쉽다", security_feedback="e2e: 문제 없음",
+        direction_feedback="e2e: 요구와 맞다", test_feedback="e2e: 경계값이 있다"))
+    engine = create_engine(f"sqlite:///{db_path}")
+    session = sessionmaker(bind=engine)()
+    try:
+        session.execute(text(
+            "INSERT OR IGNORE INTO users (id, github_id, github_login, github_access_token,"
+            " email, display_name, created_at)"
+            " VALUES (:id, :gid, :login, :tok, :mail, :name, datetime('now', '-40 days'))"
+        ), {"id": BUSY_USER_ID, "gid": BUSY_USER_ID, "login": BUSY_LOGIN, "tok": "gho_e2e_busy",
+            "mail": f"{BUSY_LOGIN}@test.com", "name": "E2E Busy"})
+        repo = session.query(Repository).filter_by(full_name=BUSY_REPO).first()
+        if repo is None:
+            repo = Repository(full_name=BUSY_REPO, user_id=BUSY_USER_ID, created_at=now - timedelta(days=35))
+            session.add(repo)
+            session.flush()
+        if session.query(RepoConfig).filter_by(repo_full_name=BUSY_REPO).first() is None:
+            session.add(RepoConfig(repo_full_name=BUSY_REPO, review_model=BUSY_RETIRED_MODEL))
+        for i in range(threshold):
+            sha = f"e2ebusy-{i:03d}"
+            analysis = session.query(Analysis).filter_by(commit_sha=sha).first()
+            if analysis is None:
+                analysis = Analysis(repo_id=repo.id, commit_sha=sha, commit_message=f"e2e: 변경 {i}",
+                                    author_login=BUSY_LOGIN, created_at=now - timedelta(days=threshold - i),
+                                    **fields)
+                session.add(analysis)
+                session.flush()
+            if session.query(AnalysisFeedback).filter_by(
+                    analysis_id=analysis.id, user_id=BUSY_USER_ID).first() is None:
+                session.add(AnalysisFeedback(analysis_id=analysis.id, user_id=BUSY_USER_ID,
+                                             thumbs=1 if i % 3 else -1,
+                                             created_at=analysis.created_at + timedelta(hours=1)))
+        session.commit()
+        status = dashboard_service.feedback_status(session, user_id=BUSY_USER_ID)
+        pinned = session.query(RepoConfig).filter_by(repo_full_name=BUSY_REPO).one().review_model
+    finally:
+        session.close()
+        engine.dispose()
+    assert status["count"] >= threshold and status["show_cta"] is False, (
+        f"피드백 {status['count']}건 · show_cta={status['show_cta']!r} — 기준 {threshold}건을 넘어야 CTA 가 사라진다")
+    assert pinned == BUSY_RETIRED_MODEL, f"리포 고정 모델이 {pinned!r} — «내린 모델» 선택지가 안 열린다"
+    return {"user": (BUSY_USER_ID, BUSY_LOGIN), "repo": BUSY_REPO, "retired_model": BUSY_RETIRED_MODEL}
+
+
+@pytest.fixture(scope="session")
+def busy_user(live_server):
+    """피드백 10건을 남긴 사용자 + 내린 모델을 고정한 리포."""
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    return _seed_busy_user(db_path)
+
+
 @pytest.fixture
 def insight_success(live_server, seeded_analysis):
     """insight 성공 그리드가 열린 상태 — **이 시험 동안만** API 키를 켠다."""
