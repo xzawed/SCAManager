@@ -18,7 +18,6 @@ from pathlib import Path
 
 import pytest
 
-from e2e.conftest import admin_session_cookie
 from e2e.test_theme_mobile_guards import _reveal_all
 
 _TEMPLATES = Path(__file__).resolve().parents[1] / "src" / "templates"
@@ -101,6 +100,15 @@ class _Tables(HTMLParser):
             self.count += 1
 
 
+def _listed_templates() -> set[str]:
+    """이 시험이 아는 템플릿 — 재는 것 + 사유 있는 면제.
+
+    닫힘 시험은 페이지를 열지 않는다 — 목록을 이 함수로 읽어, admin 관용구 가드
+    (`tests/unit/ui/test_aa_sweep_scrolls.py`)의 모듈 상수 추적이 그것을 «admin 을 여는 시험» 으로 세지 않게 한다.
+    """
+    return set(_TABLE_SURFACES) | set(_HEADERLESS)
+
+
 def _templates_with_tables() -> set[str]:
     out = set()
     for path in sorted(_TEMPLATES.rglob("*.html")):
@@ -115,7 +123,7 @@ def test_every_template_with_a_table_is_measured_or_says_why():
     """표가 있는 템플릿은 전부 재거나(`_TABLE_SURFACES`) 사유를 댄다(`_HEADERLESS`) — 새 표가 조용히 빠지지 않게."""
     found = _templates_with_tables()
     assert found, f"{_TEMPLATES} 에서 표를 하나도 못 찾았다 — 경로가 바뀌었거나 파서가 고장났다"
-    listed = set(_TABLE_SURFACES) | set(_HEADERLESS)
+    listed = _listed_templates()
     assert found == listed, (
         f"표가 있는 템플릿 ↔ 이 시험의 목록이 다르다 — 목록에 없음 {sorted(found - listed)} · "
         f"표가 없는데 목록에 있음 {sorted(listed - found)}")
@@ -125,13 +133,15 @@ def test_every_template_with_a_table_is_measured_or_says_why():
 
 
 @pytest.mark.parametrize("template", sorted(_TABLE_SURFACES))
-def test_table_header_and_body_columns_line_up(seeded_page, base_url, seeded_analysis,
+def test_table_header_and_body_columns_line_up(admin_page, base_url, seeded_analysis,
                                                paginated_history, calibration_feedback, template):
-    """머리글 칸과 본문 칸이 같은 x 에서 시작한다(허용 1px) — 넓은 화면(1440)과 폰 폭(375)."""
+    """머리글 칸과 본문 칸이 같은 x 에서 시작한다(허용 1px) — 넓은 화면(1440)과 폰 폭(375).
+
+    🔴 `admin_page` 로 연다 — admin 화면은 진짜 세션 쿠키로만 열린다(아니면 GitHub 로그인 페이지를 잰다).
+       다른 화면은 같은 사용자 1 이라 쿠키가 있어도 그대로다.
+    """
     path, states = _TABLE_SURFACES[template]
-    page = seeded_page
-    if path.startswith("/admin/"):
-        page.context.add_cookies([admin_session_cookie()])
+    page = admin_page
     bad, unmeasured, rows_wide = [], [], {}
     for width in (1440, 375):
         for state in states:
