@@ -29,6 +29,7 @@ from e2e.conftest import (CONFIG_MODEL_ID, CONFIG_USER_ID, DELTA_DAYS,
                           FRESH_SUGGESTION, FRESH_UNSCORED_REPO, FRESH_USER_ID,
                           SETTLED_FLAT_LOGIN, SETTLED_FLAT_USER_ID,
                           SETTLED_UP_LOGIN, SETTLED_UP_USER_ID,
+                          BUSY_LOGIN, BUSY_REPO, BUSY_RETIRED_MODEL, BUSY_USER_ID,
                           INSIGHT_LANGUAGE, REPO_NARRATIVE_TEXT,
                           VARIANT_BREAKDOWN, VARIANT_FEEDBACKS,
                           acting_as, apply_theme, claude_api_call_count, delta_repo_name,
@@ -5209,6 +5210,68 @@ def test_all_text_meets_aa_in_arms_after_history_builds_up(
         if user is not None:
             stack.enter_context(acting_as(user[0], login=user[1]))
         _assert_arm_text_meets_aa(admin_page, url, opened, theme, arm)
+
+
+# ── E-25. 드물게 보는 팔 (#1639 W12 «낮음» · 분기 프로브 main `25ad2665`) ──────────
+#
+# 같은 마크업이거나 무언가가 «없는» 팔이다. {이름: (주소, 사용자 (id, 로그인) 또는 None(사용자 1),
+# 그 창의 환경변수, 그 팔이 그려졌는지 되짚는 식)}. 관리자 화면이 있어 시험은 `admin_page` 로 돈다.
+_LOW_ARMS = {
+    # `dashboard.html` 의 `{% elif selected_repo %}` — repos 리포트에서 이름이 맞는 리포가 없다.
+    "repos-report-unknown-repo": (
+        "/dashboard?mode=repos&repo=owner%2Fe2e-no-such-repo", None, {},
+        f"""() => {{ const p = document.querySelector('.repos-empty');
+                   return !!p && p.checkVisibility()
+                       && {json.dumps(_catalog_texts('dashboard.repo_not_found'))}.includes(p.textContent.trim()); }}"""),
+    # `dashboard.html` 의 `{% if security and security.kill_switch_active %}` — 보안 자동 처리를 끈 운영(환경변수).
+    "security-kill-switch": (
+        "/dashboard?mode=security", None, {"SECURITY_AUTO_PROCESS_DISABLED": "1"},
+        f"""() => {{ const s = document.querySelector('.dash-insight-status');
+                   return !!s && s.checkVisibility()
+                       && {json.dumps(_catalog_texts('dashboard.security.kill_switch_active'))}
+                            .includes(s.textContent.trim()); }}"""),
+    # `dashboard.html` 의 `{% if feedback and feedback.show_cta %}` 거짓 — 피드백 10건을 넘겨 CTA 가 사라졌다.
+    "dashboard-feedback-cta-gone": (
+        "/dashboard", (BUSY_USER_ID, BUSY_LOGIN), {},
+        """() => document.querySelectorAll('.kpi.dash-kpi').length > 0
+                 && document.querySelector('.dash-cta-banner') === null"""),
+    # `admin_tenants.html` 의 `{% if t.last_analysis_at %}` 거짓 — 리포만 있고 분석이 아직 없는 사용자는 `-`.
+    "admin-tenants-no-analysis-yet": (
+        "/admin/tenants", None, {},
+        """() => Array.from(document.querySelectorAll('tr')).some(tr =>
+                 tr.querySelector('.login-name')?.textContent.trim() === 'e2e-noanalysis'
+                 && tr.cells.length > 5 && tr.cells[5].textContent.trim() === '-')"""),
+    # `settings.html` 의 «내린 모델» 선택지 — 고정한 모델이 카탈로그에서 빠졌다(상세 모드의 모델 고르기).
+    "settings-retired-model": (
+        f"/repos/{BUSY_REPO.replace('/', '%2F')}/settings?mode=advanced", (BUSY_USER_ID, BUSY_LOGIN), {},
+        f"""() => {{ const s = document.querySelector('select[name="review_model"]');
+                   const o = s && s.selectedOptions[0];
+                   return !!s && s.checkVisibility() && !!o && o.value === {json.dumps(BUSY_RETIRED_MODEL)}
+                       && {json.dumps(_catalog_texts('settings.model_retired'))}
+                            .some(t => o.textContent.includes(t)); }}"""),
+}
+
+
+@pytest.mark.parametrize("arm", sorted(_LOW_ARMS))
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_all_text_meets_aa_in_arms_rarely_seen(
+        admin_page, base_url, busy_user, analysis_free_repo, theme, arm):
+    """🔴 드물게 보는 팔의 글자도 AA 를 넘어야 한다 — e2e 가 한 번도 안 그린 팔이다.
+
+    없는 리포 이름의 repos 리포트 · 보안 자동 처리 kill-switch · 피드백 CTA 가 사라진 대시보드 ·
+    분석 없는 사용자가 있는 관리자 사용자 표 · 내린 모델을 고정한 리포의 설정. 분기 프로브(main `25ad2665`)가
+    이 팔들을 미관측으로 셌다.
+    """
+    from unittest import mock  # noqa: PLC0415
+
+    path, user, env, opened = _LOW_ARMS[arm]
+    with contextlib.ExitStack() as stack:
+        if user is not None:
+            stack.enter_context(acting_as(user[0], login=user[1]))
+        if env:
+            # 앱 서버가 같은 프로세스라 요청 때 읽는 환경변수를 이 창 동안만 바꾼다.
+            stack.enter_context(mock.patch.dict(os.environ, env))
+        _assert_arm_text_meets_aa(admin_page, f"{base_url}{path}", opened, theme, arm)
 
 
 # ── E-20. 리포 인사이트 서술 — 카드·실패 줄과 «새로 고침» 링크 (#1639 W12 · repo_insights.html) ──
