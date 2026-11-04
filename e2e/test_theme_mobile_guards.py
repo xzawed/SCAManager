@@ -5166,17 +5166,8 @@ _HISTORY_ARMS = {
         f"/repos/{FRESH_FIRST_REPO.replace('/', '%2F')}", (FRESH_USER_ID, FRESH_LOGIN),
         r"""() => Array.from(document.querySelectorAll('span')).some(
                  e => /^\$\d+\.\d{4}$/.test(e.textContent.trim()) && e.checkVisibility())"""),
-    # `dashboard.html` 의 `{% if security.recent_pending %}` 거짓 — 알림은 있는데 대기 0 인 안내 줄.
-    "security-alerts-none-pending": (
-        "/dashboard?mode=security", (SETTLED_UP_USER_ID, SETTLED_UP_LOGIN),
-        f"""() => {{ const g = document.querySelector('.dash-insight-grid'); if (!g) return false;
-                   const cards = g.querySelectorAll(':scope > .dash-insight-card');
-                   const last = cards[cards.length - 1];
-                   const small = last && last.querySelector(':scope > small');
-                   return cards.length === 4 && !last.querySelector('.dash-insight-list') && !!small
-                       && small.checkVisibility()
-                       && {json.dumps(_catalog_texts('dashboard.security.recent_pending_empty'))}
-                            .includes(small.textContent.trim()); }}"""),
+    # 🔴 `dashboard.html` 의 `{% if security.recent_pending %}` 거짓(알림은 있는데 대기 0)은 여기 없다 — 운영은
+    #    알림의 `user_decision` 을 쓰지 않아 모든 알림이 대기다(도달 불가, #1639 W12 분류).
     # `dashboard.html` auto-merge KPI 의 `{% if auto_merge.delta > 0 %}` 참 — 직전 창보다 오른 성공률(▲).
     "auto-merge-delta-up": (
         "/dashboard", (SETTLED_UP_USER_ID, SETTLED_UP_LOGIN),
@@ -5209,7 +5200,7 @@ def test_all_text_meets_aa_in_arms_after_history_builds_up(
         admin_page, base_url, fresh_user, settled_users, unclaimed_repo, theme, arm):
     """🔴 기록이 쌓인 뒤에만 열리는 팔의 글자도 AA 를 넘어야 한다 — e2e 가 한 번도 안 그린 팔이다.
 
-    이번 달 비용 · 대기 0 인 보안 화면 · auto-merge 증감 ▲ · 변화 없음 · 403 화면 · 로그인한 사용자의 404.
+    이번 달 비용 · auto-merge 증감 ▲ · 변화 없음 · 403 화면 · 로그인한 사용자의 404.
     분기 프로브(main `25ad2665`)가 이 팔들을 미관측으로 셌다.
     """
     path, user, opened = _HISTORY_ARMS[arm]
