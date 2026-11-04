@@ -238,7 +238,7 @@ def test_style_blocks_are_read_by_an_html_parser_not_a_regex():
 def test_no_extracted_style_block_contains_markup():
     """운영 템플릿 바닥 — 진짜 `<style>` 몸체엔 HTML 이 없다(추출이 어긋나면 `-->`·`<link` 가 든다)."""
     leaked = [(s.path, s.line) for s in authored_sources() if s.path.endswith(".html")
-              and re.search(r"-->|<link\b|<script\b|</?div\b", s.text)]
+              and re.search(r"-->|<link\b|<script\b|</?div\b", s.text, re.I)]
     assert not leaked, leaked
 
 

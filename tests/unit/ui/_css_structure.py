@@ -541,7 +541,9 @@ def template_links() -> dict[str, tuple[str | None, frozenset[str]]]:
     Per template name: the parent it extends (Jinja AST) and the stylesheet hrefs it links.
     """
     import jinja2  # pylint: disable=import-outside-toplevel
-    env = jinja2.Environment()
+    # 파싱만 한다(렌더 안 함) — CodeQL `py/jinja2/autoescape-false` 는 시험 코드에도 뜬다.
+    # Parse only (never rendered); CodeQL flags autoescape=False even in test code.
+    env = jinja2.Environment(autoescape=True)
     out: dict[str, tuple[str | None, frozenset[str]]] = {}
     for f in sorted(_TEMPLATES.rglob("*.html")):
         text = f.read_text(encoding="utf-8")
