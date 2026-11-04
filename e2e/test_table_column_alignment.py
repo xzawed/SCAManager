@@ -6,8 +6,9 @@
 이 시험은 원인과 무관하게 «그려진» 위치를 잰다(colspan·숨김 열 불일치도 같은 증상이다).
 
 🔴 화면 목록은 손으로 적되 닫는다 — 표가 있는 템플릿 집합(소스 파생)과 이 목록 + 사유 있는 면제가 같아야 한다.
-🔴 폰 폭에서 머리글이 안 그려지는 표(카드형으로 바뀌는 표)는 그 폭에서만 건너뛴다. 넓은 화면에서는 모든 표를
-   재야 하고, 잰 행이 0 이면 «재지 못한 것» 이라 red 다.
+🔴 폰 폭에서 열을 통째로 숨기는 표(리포 상세 «커밋»·«출처», 인사이트 «도구»)는 남은 열을 잰다. 숨김은 머리글과
+   본문이 같아야 한다 — 한쪽만 숨으면 그 줄의 뒤 칸이 한 칸씩 당겨지는 어긋남이다. 두 폭 모두 못 잰 표와
+   잰 행 0 은 «재지 못한 것» 이라 red 다.
 
 Header and body columns start at the same x on every screen that has a table.
 """
@@ -45,9 +46,13 @@ _TABLE_SURFACES = {
 _HEADERLESS = {"analysis_detail.html": '<thead class="sr-only">'}
 
 # 표마다: 마지막 머리글 행의 칸 시작 x(colspan 반영)와, 칸 수가 같은 본문 행의 칸 시작 x 를 맞댄다.
+# 미디어 쿼리가 숨긴 열(상자 0)은 머리글과 본문이 같이 숨어야 맞고, 둘 다 그려진 열은 x 가 1px 안이어야 맞다.
+# 머리글이 하나도 안 그려진 표만 «못 잼» 이다.
 _TABLE_JS = r"""(rootSel) => {
   const root = document.querySelector(rootSel);
   const out = [];
+  const box = e => { const r = e.getBoundingClientRect(); return {x: r.left, painted: r.width > 1 && r.height > 1}; };
+  const shown = v => v.painted ? Math.round(v.x) : '숨음';
   for (const [ti, t] of Array.from(root.querySelectorAll('table')).entries()) {
     const head = t.tHead ? Array.from(t.tHead.rows) : [];
     const hrow = head[head.length - 1];
@@ -56,11 +61,10 @@ _TABLE_JS = r"""(rootSel) => {
     const cols = [];
     let n = 0;
     for (const th of Array.from(hrow.cells)) {
-      const r = th.getBoundingClientRect();
-      cols.push({col: n, x: r.left, painted: r.width > 1 && r.height > 1});
+      cols.push({col: n, ...box(th)});
       n += th.colSpan || 1;
     }
-    if (!cols.every(c => c.painted)) { out.push({ti, cls, skip: '머리글이 안 그려졌다'}); continue; }
+    if (!cols.some(c => c.painted)) { out.push({ti, cls, skip: '머리글이 하나도 안 그려졌다'}); continue; }
     const bad = [];
     let rows = 0;
     for (const body of Array.from(t.tBodies)) {
@@ -70,19 +74,21 @@ _TABLE_JS = r"""(rootSel) => {
         let c = 0;
         const starts = [];
         for (const td of Array.from(tr.cells)) {
-          starts.push({col: c, x: td.getBoundingClientRect().left});
+          starts.push({col: c, ...box(td)});
           c += td.colSpan || 1;
         }
         if (c !== n) continue;            // 빈 상태 줄(colspan 한 칸) 등 — 열 구조가 다른 행
         rows++;
         for (const s of starts) {
           const h = cols.find(k => k.col === s.col);
-          if (h && Math.abs(h.x - s.x) > 1) bad.push({row: rows, col: s.col,
-                                                       th: Math.round(h.x), td: Math.round(s.x)});
+          if (!h) continue;
+          if (h.painted !== s.painted || (h.painted && Math.abs(h.x - s.x) > 1)) {
+            bad.push({row: rows, col: s.col, th: shown(h), td: shown(s)});
+          }
         }
       }
     }
-    out.push({ti, cls, cols: n, rows, bad});
+    out.push({ti, cls, cols: n, hidden: cols.filter(c => !c.painted).map(c => c.col), rows, bad});
   }
   return out;
 }"""
@@ -137,12 +143,13 @@ def test_table_header_and_body_columns_line_up(admin_page, base_url, seeded_anal
                                                paginated_history, calibration_feedback, template):
     """머리글 칸과 본문 칸이 같은 x 에서 시작한다(허용 1px) — 넓은 화면(1440)과 폰 폭(375).
 
+    숨은 열은 머리글과 본문이 같이 숨어야 한다(폰 폭에서 열을 줄이는 표).
     🔴 `admin_page` 로 연다 — admin 화면은 진짜 세션 쿠키로만 열린다(아니면 GitHub 로그인 페이지를 잰다).
        다른 화면은 같은 사용자 1 이라 쿠키가 있어도 그대로다.
     """
     path, states = _TABLE_SURFACES[template]
     page = admin_page
-    bad, unmeasured, rows_wide = [], [], {}
+    bad, unmeasured, rows = [], [], {}
     for width in (1440, 375):
         for state in states:
             page.set_viewport_size({"width": width, "height": 900})
@@ -158,17 +165,14 @@ def test_table_header_and_body_columns_line_up(admin_page, base_url, seeded_anal
             where = f"{width}px{' · ' + state if state else ''}"
             for t in page.evaluate(_TABLE_JS, root):
                 if "skip" in t:
-                    # 폰 폭의 카드형 표는 머리글을 숨긴다 — 넓은 화면에서만 «못 잼» 을 red 로 본다.
-                    if width == 1440:
-                        unmeasured.append(f"{where} 표{t['ti']} {t['cls']}: {t['skip']}")
+                    unmeasured.append(f"{where} 표{t['ti']} {t['cls']}: {t['skip']}")
                     continue
-                if width == 1440:
-                    rows_wide[state] = rows_wide.get(state, 0) + t["rows"]
+                rows[(width, state)] = rows.get((width, state), 0) + t["rows"]
                 bad += [f"{where} 표{t['ti']} {t['cls']} 열{b['col']}: th x={b['th']} · td x={b['td']} "
                         f"(행 {b['row']})" for b in t["bad"]]
-    assert not unmeasured, f"{template}: 넓은 화면에서 재지 못한 표 — " + " / ".join(unmeasured)
-    empty = [s or "(기본)" for s in states if rows_wide.get(s, 0) == 0]
+    assert not unmeasured, f"{template}: 재지 못한 표 — " + " / ".join(unmeasured)
+    empty = [f"{w}px · {s or '(기본)'}" for w in (1440, 375) for s in states if rows.get((w, s), 0) == 0]
     assert not empty, (
-        f"{template}: 넓은 화면에서 잰 본문 행이 0 인 상태 {empty} — 표가 비었거나 안 그려졌다"
+        f"{template}: 잰 본문 행이 0 인 상태 {empty} — 표가 비었거나 안 그려졌다"
         "(재지 못한 것이지 통과한 것이 아니다)")
     assert not bad, f"{template}: 머리글과 본문 열이 어긋났다 —\n  " + "\n  ".join(bad[:12])
