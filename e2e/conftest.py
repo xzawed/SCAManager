@@ -1630,6 +1630,7 @@ def _seed_fresh_user(db_path: str) -> dict:
     from sqlalchemy.orm import sessionmaker  # noqa: PLC0415
 
     from src.analyzer.io.ai_review import AiReviewResult, _default_result  # noqa: PLC0415
+    from src.config import settings  # noqa: PLC0415
     from src.models.analysis import Analysis  # noqa: PLC0415
     from src.models.repository import Repository  # noqa: PLC0415
     from src.scorer.calculator import calculate_score  # noqa: PLC0415
@@ -1639,7 +1640,9 @@ def _seed_fresh_user(db_path: str) -> dict:
     at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=1)
     reviews = {
         # AI 리뷰가 성공한 첫 분석 — 카테고리 피드백 다섯 칸과 제안·파일 피드백을 함께 낸다.
+        # 성공 호출은 리뷰어가 쓴 모델과 토큰을 남긴다(파이프라인이 그 값을 비용 열로 옮긴다).
         FRESH_FIRST_REPO: AiReviewResult(
+            used_model=settings.claude_review_model, input_tokens=3200, output_tokens=1400,
             commit_score=14, ai_score=16, test_score=8, summary="e2e: 첫 분석 요약",
             suggestions=[FRESH_SUGGESTION],
             commit_message_feedback="e2e: 커밋 메시지가 바꾼 이유를 말한다",
@@ -1659,7 +1662,7 @@ def _seed_fresh_user(db_path: str) -> dict:
         result = build_analysis_result_dict(review, score_result, [], source="push")
         null = should_null_persist_score(result)
         seeds[full_name] = (None if null else score_result.total,
-                            None if null else score_result.grade, result)
+                            None if null else score_result.grade, result, review)
     engine = create_engine(f"sqlite:///{db_path}")
     session = sessionmaker(bind=engine)()
     try:
@@ -1670,7 +1673,7 @@ def _seed_fresh_user(db_path: str) -> dict:
         ), {"id": FRESH_USER_ID, "gid": FRESH_USER_ID, "login": FRESH_LOGIN,
             "tok": "gho_e2e_fresh", "mail": f"{FRESH_LOGIN}@test.com", "name": "E2E Fresh",
             "tg": str(FRESH_USER_ID)})
-        for full_name, (score, grade, result) in seeds.items():
+        for full_name, (score, grade, result, review) in seeds.items():
             repo = session.query(Repository).filter_by(full_name=full_name).first()
             if repo is None:
                 repo = Repository(
@@ -1683,12 +1686,16 @@ def _seed_fresh_user(db_path: str) -> dict:
                 session.add(Analysis(
                     repo_id=repo.id, commit_sha=sha, commit_message=f"e2e: {full_name} 첫 분석",
                     score=score, grade=grade, result=result, author_login=FRESH_LOGIN,
-                    score_unreliable=score_is_unreliable(result), created_at=at))
+                    score_unreliable=score_is_unreliable(result), created_at=at,
+                    # `_save_and_gate` 와 같은 식 — 실패 리뷰는 모델 None·토큰 0 이라 NULL 이 된다.
+                    review_model=getattr(review, "used_model", None),
+                    input_tokens=getattr(review, "input_tokens", None) or None,
+                    output_tokens=getattr(review, "output_tokens", None) or None))
         session.commit()
         rows = {full_name: session.query(Analysis).join(Repository).filter(
                     Repository.full_name == full_name).all() for full_name in seeds}
         owned = session.query(Repository).filter_by(user_id=FRESH_USER_ID).count()
-        shape = {name: [(a.score, a.grade, a.score_unreliable) for a in got]
+        shape = {name: [(a.score, a.grade, a.score_unreliable, a.input_tokens is not None) for a in got]
                  for name, got in rows.items()}
         first_id = rows[FRESH_FIRST_REPO][0].id if rows[FRESH_FIRST_REPO] else None
     finally:
@@ -1697,10 +1704,10 @@ def _seed_fresh_user(db_path: str) -> dict:
     # 🔴 팔을 여는 전제를 여기서 말한다 — 어긋나면 «재지 못한 초록» 대신 이유로 멈춘다.
     assert owned == 2, f"이 사용자의 리포가 {owned}개 — 다른 픽스처가 같은 사용자를 썼는지 볼 것"
     first = shape[FRESH_FIRST_REPO]
-    assert (len(first) == 1 and first[0][0] is not None and first[0][1] and first[0][2] is False
-            and shape[FRESH_UNSCORED_REPO] == [(None, None, True)]), (
-        f"분석 모양이 다르다 {shape!r} — 첫 리포는 점수 있는 분석이 «하나»(추세 차트 거짓 팔)여야 하고, "
-        "점수 없는 리포는 점수·등급 NULL 이어야 개요 카드가 «기록된 점수 없음» 으로 간다")
+    assert (len(first) == 1 and first[0][0] is not None and first[0][1] and first[0][2:] == (False, True)
+            and shape[FRESH_UNSCORED_REPO] == [(None, None, True, False)]), (
+        f"분석 모양이 다르다 {shape!r} — 첫 리포는 점수·비용 열이 있는 분석이 «하나»(추세 차트 거짓 팔)여야 하고, "
+        "점수 없는 리포는 점수·등급·비용 열 NULL 이어야 개요 카드가 «기록된 점수 없음» 으로 간다")
     return {"user_id": FRESH_USER_ID, "login": FRESH_LOGIN, "first_analysis_id": first_id}
 
 
