@@ -1622,10 +1622,42 @@ FRESH_SUGGESTION = "e2e: 첫 분석의 제안 — 함수 이름을 동사로 시
 FRESH_PROBLEM_FILE = "src/e2e_fresh/handler.py"
 
 
-def _seed_fresh_user(db_path: str) -> dict:
-    """막 시작한 사용자 + 리포 둘(AI 리뷰 성공 분석 1 · 점수 없는 분석 1) → 좌표 dict."""
+def _writer_analysis_fields(review) -> dict:
+    """분석 행의 열을 운영 writer 로 만든다 — 파이프라인 `_save_and_gate` 와 같은 순서 · 같은 식.
+
+    채점(`calculate_score`) → 결과 dict(`build_analysis_result_dict`) → 점수·등급 NULL 저장 판정
+    (`should_null_persist_score`) → 비용 열(리뷰어가 남긴 모델·토큰 — 실패 리뷰는 모델 None·토큰 0 이라 NULL).
+    🔴 손으로 쓴 결과 JSON 은 운영이 못 내는 화면(점수 상세 카드 없는 첫 분석)을 쟀다.
+    Analysis columns built through the production writer path, in the pipeline's order.
+    """
+    from src.scorer.calculator import calculate_score  # noqa: PLC0415
+    from src.scorer.reliability import score_is_unreliable, should_null_persist_score  # noqa: PLC0415
+    from src.worker.pipeline import build_analysis_result_dict  # noqa: PLC0415
+
+    score_result = calculate_score([], review)
+    result = build_analysis_result_dict(review, score_result, [], source="push")
+    null = should_null_persist_score(result)
+    return {
+        "score": None if null else score_result.total,
+        "grade": None if null else score_result.grade,
+        "result": result,
+        "score_unreliable": score_is_unreliable(result),
+        "review_model": getattr(review, "used_model", None),
+        "input_tokens": getattr(review, "input_tokens", None) or None,
+        "output_tokens": getattr(review, "output_tokens", None) or None,
+    }
+
+
+def _recent_in_this_month():
+    """어제 — 단 이번 달 안(매월 1일 UTC 에는 그달 1일 0시). 리포 상세의 «이번 달 비용» 창이 이 행을 센다."""
     from datetime import datetime, timedelta, timezone  # noqa: PLC0415
 
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    return max(now - timedelta(days=1), now.replace(day=1, hour=0, minute=0, second=0, microsecond=0))
+
+
+def _seed_fresh_user(db_path: str) -> dict:
+    """막 시작한 사용자 + 리포 둘(AI 리뷰 성공 분석 1 · 점수 없는 분석 1) → 좌표 dict."""
     from sqlalchemy import create_engine, text  # noqa: PLC0415
     from sqlalchemy.orm import sessionmaker  # noqa: PLC0415
 
@@ -1633,11 +1665,8 @@ def _seed_fresh_user(db_path: str) -> dict:
     from src.config import settings  # noqa: PLC0415
     from src.models.analysis import Analysis  # noqa: PLC0415
     from src.models.repository import Repository  # noqa: PLC0415
-    from src.scorer.calculator import calculate_score  # noqa: PLC0415
-    from src.scorer.reliability import score_is_unreliable, should_null_persist_score  # noqa: PLC0415
-    from src.worker.pipeline import build_analysis_result_dict  # noqa: PLC0415
 
-    at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=1)
+    at = _recent_in_this_month()
     reviews = {
         # AI 리뷰가 성공한 첫 분석 — 카테고리 피드백 다섯 칸과 제안·파일 피드백을 함께 낸다.
         # 성공 호출은 리뷰어가 쓴 모델과 토큰을 남긴다(파이프라인이 그 값을 비용 열로 옮긴다).
@@ -1655,14 +1684,7 @@ def _seed_fresh_user(db_path: str) -> dict:
         # AI 호출이 예외로 끝난 분석 — 리뷰어의 실패 경로가 돌려주는 그 기본값이다.
         FRESH_UNSCORED_REPO: _default_result("api_error", error_type="APIConnectionError"),
     }
-    seeds = {}
-    for full_name, review in reviews.items():
-        # 파이프라인의 저장 순서 그대로 — 채점 → 결과 dict → NULL 저장 판정.
-        score_result = calculate_score([], review)
-        result = build_analysis_result_dict(review, score_result, [], source="push")
-        null = should_null_persist_score(result)
-        seeds[full_name] = (None if null else score_result.total,
-                            None if null else score_result.grade, result, review)
+    seeds = {full_name: _writer_analysis_fields(review) for full_name, review in reviews.items()}
     engine = create_engine(f"sqlite:///{db_path}")
     session = sessionmaker(bind=engine)()
     try:
@@ -1673,7 +1695,7 @@ def _seed_fresh_user(db_path: str) -> dict:
         ), {"id": FRESH_USER_ID, "gid": FRESH_USER_ID, "login": FRESH_LOGIN,
             "tok": "gho_e2e_fresh", "mail": f"{FRESH_LOGIN}@test.com", "name": "E2E Fresh",
             "tg": str(FRESH_USER_ID)})
-        for full_name, (score, grade, result, review) in seeds.items():
+        for full_name, fields in seeds.items():
             repo = session.query(Repository).filter_by(full_name=full_name).first()
             if repo is None:
                 repo = Repository(
@@ -1685,12 +1707,7 @@ def _seed_fresh_user(db_path: str) -> dict:
             if session.query(Analysis).filter_by(commit_sha=sha).first() is None:
                 session.add(Analysis(
                     repo_id=repo.id, commit_sha=sha, commit_message=f"e2e: {full_name} 첫 분석",
-                    score=score, grade=grade, result=result, author_login=FRESH_LOGIN,
-                    score_unreliable=score_is_unreliable(result), created_at=at,
-                    # `_save_and_gate` 와 같은 식 — 실패 리뷰는 모델 None·토큰 0 이라 NULL 이 된다.
-                    review_model=getattr(review, "used_model", None),
-                    input_tokens=getattr(review, "input_tokens", None) or None,
-                    output_tokens=getattr(review, "output_tokens", None) or None))
+                    author_login=FRESH_LOGIN, created_at=at, **fields))
         session.commit()
         rows = {full_name: session.query(Analysis).join(Repository).filter(
                     Repository.full_name == full_name).all() for full_name in seeds}
@@ -1740,6 +1757,122 @@ def stale_webhook_listing(hook_id: int = FRESH_WEBHOOK_ID):
 
     with mock.patch("src.ui.routes.settings.list_webhooks", _listing):
         yield
+
+
+# ── 기록이 쌓인 사용자 둘 (#1639 W12 «중간» · 분기 프로브 main `25ad2665`) ─────────────
+#
+# 머지 시도 · 처리된 보안 알림이 쌓인 뒤에만 열리는 팔이다 — auto-merge KPI 의 증감 «▲»(`kpi__delta--up`)와
+# «변화 없음»(`--flat`), 그리고 알림은 있는데 대기가 0 인 보안 화면의 안내 줄(`recent_pending` 거짓).
+# 🔴 사용자 1 은 `_seed_merge_history` 가 «▼» 로 고정했고 다른 시험이 그 값을 단언한다 — 전용 사용자 둘에 심는다.
+#    머지 시도와 보안 알림은 «내 리포 또는 소유자 없는 리포» 로 걸러진다(`_apply_merge_attempt_user_filter` ·
+#    `_apply_owner_filter`). 그래서 시드는 템플릿이 읽는 바로 그 함수로 되읽어 값을 단언한다.
+# 🔴 머지 판정은 `success` 가 아니라 `_merge_attempt_states.is_merged(state, success)` 다.
+SETTLED_UP_USER_ID = 9202
+SETTLED_UP_LOGIN = "e2e-settled-up"
+SETTLED_UP_REPO = "owner/e2esettled-up"
+SETTLED_FLAT_USER_ID = 9203
+SETTLED_FLAT_LOGIN = "e2e-settled-flat"
+SETTLED_FLAT_REPO = "owner/e2esettled-flat"
+
+
+def _seed_settled_users(db_path: str) -> dict:
+    """머지 성공률이 오른 사용자(직전 창 0% → 현재 100%)와 그대로인 사용자(100% → 100%) → 좌표 dict.
+
+    오른 쪽은 처리가 끝난 보안 알림 둘도 가진다(대기 0).
+    """
+    from datetime import datetime, timedelta, timezone  # noqa: PLC0415
+
+    from sqlalchemy import create_engine, text  # noqa: PLC0415
+    from sqlalchemy.orm import sessionmaker  # noqa: PLC0415
+
+    from src.analyzer.io.ai_review import AiReviewResult  # noqa: PLC0415
+    from src.config import settings  # noqa: PLC0415
+    from src.models.analysis import Analysis  # noqa: PLC0415
+    from src.models.merge_attempt import MergeAttempt  # noqa: PLC0415
+    from src.models.repository import Repository  # noqa: PLC0415
+    from src.models.security_alert_log import SecurityAlertProcessLog  # noqa: PLC0415
+    from src.services import dashboard_service  # noqa: PLC0415
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    cur_at, prev_at = now - timedelta(days=1), now - timedelta(days=10)
+    # {리포: (사용자 id, 로그인, [(PR, success, 실패 사유, state, 시각)])} — 창은 auto_merge_kpi 기본 7일.
+    plan = {
+        SETTLED_UP_REPO: (SETTLED_UP_USER_ID, SETTLED_UP_LOGIN, [
+            (9301, False, "unstable_ci", "legacy", prev_at),
+            (9302, True, None, "direct_merged", cur_at)]),
+        SETTLED_FLAT_REPO: (SETTLED_FLAT_USER_ID, SETTLED_FLAT_LOGIN, [
+            (9311, True, None, "direct_merged", prev_at),
+            (9312, True, None, "direct_merged", cur_at)]),
+    }
+    review = AiReviewResult(
+        used_model=settings.claude_review_model, input_tokens=2100, output_tokens=900,
+        commit_score=16, ai_score=17, test_score=8, summary="e2e: 머지된 PR 의 리뷰",
+        suggestions=["e2e: 실패 경로 시험을 하나 더 두세요"],
+        commit_message_feedback="e2e: 이유가 드러난다", code_quality_feedback="e2e: 읽기 쉽다",
+        security_feedback="e2e: 문제 없음", direction_feedback="e2e: 요구와 맞다",
+        test_feedback="e2e: 경계값이 있다")
+    fields = _writer_analysis_fields(review)
+    engine = create_engine(f"sqlite:///{db_path}")
+    session = sessionmaker(bind=engine)()
+    try:
+        for full_name, (uid, login, attempts) in plan.items():
+            session.execute(text(
+                "INSERT OR IGNORE INTO users (id, github_id, github_login, github_access_token,"
+                " email, display_name, created_at)"
+                " VALUES (:id, :gid, :login, :tok, :mail, :name, datetime('now'))"
+            ), {"id": uid, "gid": uid, "login": login, "tok": f"gho_{login}",
+                "mail": f"{login}@test.com", "name": login})
+            repo = session.query(Repository).filter_by(full_name=full_name).first()
+            if repo is None:
+                repo = Repository(full_name=full_name, user_id=uid)
+                session.add(repo)
+                session.flush()
+            sha = f"{full_name.split('/')[1]}-001"
+            analysis = session.query(Analysis).filter_by(commit_sha=sha).first()
+            if analysis is None:
+                analysis = Analysis(repo_id=repo.id, commit_sha=sha, commit_message=f"e2e: {full_name} 분석",
+                                    author_login=login, created_at=cur_at, **fields)
+                session.add(analysis)
+                session.flush()
+            for pr, success, reason, state, at in attempts:
+                if session.query(MergeAttempt).filter_by(repo_name=full_name, pr_number=pr).first() is None:
+                    session.add(MergeAttempt(
+                        analysis_id=analysis.id, repo_name=full_name, pr_number=pr, threshold=80,
+                        score=analysis.score, success=success, failure_reason=reason, state=state,
+                        attempted_at=at))
+            if full_name == SETTLED_UP_REPO:
+                # 처리가 끝난 알림 둘 — `user_decision` 이 있어 `list_pending` 에 안 잡힌다.
+                for number, cls, decision in ((9401, "false_positive", "accept_ai"),
+                                              (9402, "used_in_tests", "accept_ai")):
+                    if session.query(SecurityAlertProcessLog).filter_by(
+                            repo_id=repo.id, alert_type="code_scanning", alert_number=number).first() is None:
+                        session.add(SecurityAlertProcessLog(
+                            repo_id=repo.id, alert_type="code_scanning", alert_number=number, user_id=uid,
+                            ai_classification=cls, severity="medium", rule_id="py/e2e-rule",
+                            user_decision=decision, ai_confidence=0.8, ai_reason="e2e: 처리 끝난 알림"))
+        session.commit()
+        # 🔴 되읽기는 «템플릿이 읽는 바로 그 함수» 로 한다 — 행 수만 세면 소유 필터나 창이 어긋나도 초록이다.
+        up = dashboard_service.auto_merge_kpi(session, days=7, user_id=SETTLED_UP_USER_ID)
+        flat = dashboard_service.auto_merge_kpi(session, days=7, user_id=SETTLED_FLAT_USER_ID)
+        sec = dashboard_service.dashboard_security(session, user_id=SETTLED_UP_USER_ID)
+    finally:
+        session.close()
+        engine.dispose()
+    assert up["delta"] is not None and up["delta"] > 0, (
+        f"오른 사용자의 auto-merge delta 가 {up['delta']!r} — ▲ 팔이 닫힌 채다(창 · 소유 필터 확인)")
+    assert flat["delta"] == 0, (
+        f"그대로인 사용자의 auto-merge delta 가 {flat['delta']!r} — «변화 없음» 팔이 닫힌 채다")
+    assert sec["total_alerts"] > 0 and not sec["recent_pending"], (
+        f"보안 알림 {sec['total_alerts']}건 · 대기 {len(sec['recent_pending'])}건 — "
+        "«알림은 있는데 대기 0» 이어야 그 안내 줄이 열린다")
+    return {"up": (SETTLED_UP_USER_ID, SETTLED_UP_LOGIN), "flat": (SETTLED_FLAT_USER_ID, SETTLED_FLAT_LOGIN)}
+
+
+@pytest.fixture(scope="session")
+def settled_users(live_server):
+    """머지 시도 · 처리된 보안 알림이 쌓인 사용자 둘(auto-merge 증감 ▲ · 변화 없음, 보안 대기 0)."""
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    return _seed_settled_users(db_path)
 
 
 @pytest.fixture

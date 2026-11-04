@@ -27,6 +27,8 @@ from e2e.conftest import (CONFIG_MODEL_ID, CONFIG_USER_ID, DELTA_DAYS,
                           DELTA_USERS,
                           FRESH_FIRST_REPO, FRESH_LOGIN, FRESH_PROBLEM_FILE,
                           FRESH_SUGGESTION, FRESH_UNSCORED_REPO, FRESH_USER_ID,
+                          SETTLED_FLAT_LOGIN, SETTLED_FLAT_USER_ID,
+                          SETTLED_UP_LOGIN, SETTLED_UP_USER_ID,
                           INSIGHT_LANGUAGE, REPO_NARRATIVE_TEXT,
                           VARIANT_BREAKDOWN, VARIANT_FEEDBACKS,
                           acting_as, apply_theme, claude_api_call_count, delta_repo_name,
@@ -5133,6 +5135,89 @@ def test_the_stale_webhook_warning_keeps_its_icon_beside_the_text(
     assert all(got.values()), f"배너의 아이콘·글을 찾지 못했다 — 배너가 그려지지 않았다: {got!r}"
     off = {w: r for w, r in got.items() if not r["lineTop"] <= r["iconMid"] <= r["lineBottom"]}
     assert not off, f"⚠️ 가 글의 첫 줄 옆에 있지 않다 — {{폭: 아이콘 가운데 · 첫 줄 위·아래}} {off!r}"
+
+
+def _catalog_texts(key: str) -> list[str]:
+    """번역 키의 세 언어 문자열 — 팔 되짚기가 화면 언어(브라우저 Accept-Language)에 기대지 않게."""
+    root = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src", "i18n", "translations")
+    out = []
+    for lang in ("en", "ko", "ja"):
+        with open(os.path.join(root, f"{lang}.json"), encoding="utf-8") as fh:
+            node = json.load(fh)
+        for part in key.split("."):
+            node = node[part]
+        out.append(node)
+    return out
+
+
+# auto-merge KPI 카드 — 라벨의 «최종 성공 PR / 전체 PR» 표시(`N/M PR`)는 이 카드에만 있다.
+_AUTO_MERGE_KPI_JS = r"""Array.from(document.querySelectorAll('.kpi.dash-kpi')).find(k =>
+    Array.from(k.querySelectorAll('.kpi__label span')).some(s => /^\d+\/\d+ PR$/.test(s.textContent.trim())))"""
+
+# ── E-24. 기록이 쌓인 뒤의 팔 · 오류 화면 (#1639 W12 «중간» · 분기 프로브 main `25ad2665`) ──────────
+#
+# 같은 틀에 다른 글자·토큰이 들어가는 팔이다 — 위와 같은 측정을 돈다. {이름: (주소, 사용자 (id, 로그인) 또는
+# None(사용자 1), 그 팔이 그려졌는지 되짚는 식)}. 주소의 `{unclaimed_repo}` 는 그 픽스처가 채운다.
+# 🔴 오류 화면(403·404)은 처리기가 `get_current_user` 를 «직접» 부른다 — 의존성 override 가 안 타서, 로그인한 사용자의
+#    404 는 진짜 세션 쿠키로만 열린다. 이 표의 시험은 그래서 모두 `admin_page`(사용자 1 쿠키)로 돈다.
+_HISTORY_ARMS = {
+    # `repo_detail.html` 의 `{% if monthly_token_count > 0 %}` 참 — 이번 달 비용 `$…`(`--accent-text`).
+    "repo-detail-monthly-cost": (
+        f"/repos/{FRESH_FIRST_REPO.replace('/', '%2F')}", (FRESH_USER_ID, FRESH_LOGIN),
+        r"""() => Array.from(document.querySelectorAll('span')).some(
+                 e => /^\$\d+\.\d{4}$/.test(e.textContent.trim()) && e.checkVisibility())"""),
+    # `dashboard.html` 의 `{% if security.recent_pending %}` 거짓 — 알림은 있는데 대기 0 인 안내 줄.
+    "security-alerts-none-pending": (
+        "/dashboard?mode=security", (SETTLED_UP_USER_ID, SETTLED_UP_LOGIN),
+        f"""() => {{ const g = document.querySelector('.dash-insight-grid'); if (!g) return false;
+                   const cards = g.querySelectorAll(':scope > .dash-insight-card');
+                   const last = cards[cards.length - 1];
+                   const small = last && last.querySelector(':scope > small');
+                   return cards.length === 4 && !last.querySelector('.dash-insight-list') && !!small
+                       && small.checkVisibility()
+                       && {json.dumps(_catalog_texts('dashboard.security.recent_pending_empty'))}
+                            .includes(small.textContent.trim()); }}"""),
+    # `dashboard.html` auto-merge KPI 의 `{% if auto_merge.delta > 0 %}` 참 — 직전 창보다 오른 성공률(▲).
+    "auto-merge-delta-up": (
+        "/dashboard", (SETTLED_UP_USER_ID, SETTLED_UP_LOGIN),
+        f"""() => {{ const k = {_AUTO_MERGE_KPI_JS};
+                   return !!k && !!k.querySelector('.kpi__delta--up')?.checkVisibility(); }}"""),
+    # 같은 카드의 `{% else %}`(delta == 0) — «변화 없음». 비교가 없을 때(delta None)도 `--flat` 이라 글자로 가른다.
+    "auto-merge-delta-flat": (
+        "/dashboard", (SETTLED_FLAT_USER_ID, SETTLED_FLAT_LOGIN),
+        f"""() => {{ const k = {_AUTO_MERGE_KPI_JS}; const d = k && k.querySelector('.kpi__delta--flat');
+                   return !!d && d.checkVisibility()
+                       && {json.dumps(_catalog_texts('dashboard.delta.attempts_no_change'))}
+                            .includes(d.textContent.trim()); }}"""),
+    # `error.html` 의 `{% if status_code == 403 %}` 참(제목 · 본문 두 곳) — 소유자 없는 리포의 `refresh=1`.
+    "forbidden-page-403": (
+        "/repos/{unclaimed_repo}/insights?refresh=1", None,
+        """() => document.querySelector('.error-page__code')?.textContent.trim() === '403'
+                 && !!document.querySelector('.error-page__title')?.checkVisibility()"""),
+    # `error.html` 의 `{% if current_user %}` 참 — 로그인한 사용자의 404 에만 «대시보드로» 버튼이 붙는다.
+    "not-found-page-404-signed-in": (
+        "/e2e-no-such-page", None,
+        """() => document.querySelector('.error-page__code')?.textContent.trim() === '404'
+                 && !!document.querySelector('.error-page__actions a.btn--ghost[href="/dashboard"]')
+                      ?.checkVisibility()"""),
+}
+
+
+@pytest.mark.parametrize("arm", sorted(_HISTORY_ARMS))
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_all_text_meets_aa_in_arms_after_history_builds_up(
+        admin_page, base_url, fresh_user, settled_users, unclaimed_repo, theme, arm):
+    """🔴 기록이 쌓인 뒤에만 열리는 팔의 글자도 AA 를 넘어야 한다 — e2e 가 한 번도 안 그린 팔이다.
+
+    이번 달 비용 · 대기 0 인 보안 화면 · auto-merge 증감 ▲ · 변화 없음 · 403 화면 · 로그인한 사용자의 404.
+    분기 프로브(main `25ad2665`)가 이 팔들을 미관측으로 셌다.
+    """
+    path, user, opened = _HISTORY_ARMS[arm]
+    url = f"{base_url}{path.format(unclaimed_repo=unclaimed_repo.replace('/', '%2F'))}"
+    with contextlib.ExitStack() as stack:
+        if user is not None:
+            stack.enter_context(acting_as(user[0], login=user[1]))
+        _assert_arm_text_meets_aa(admin_page, url, opened, theme, arm)
 
 
 # ── E-20. 리포 인사이트 서술 — 카드·실패 줄과 «새로 고침» 링크 (#1639 W12 · repo_insights.html) ──
