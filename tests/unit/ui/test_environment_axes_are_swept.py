@@ -30,6 +30,7 @@ from pathlib import Path
 import pytest
 
 from ._contrast import ROOT, read, strip_css_comments
+from ._css_structure import style_blocks
 
 _E2E = Path(__file__).resolve().parents[3] / "e2e"
 
@@ -99,7 +100,7 @@ def _css_text(rel: str) -> str:
     """
     text = read(rel)
     if rel.endswith(".html"):
-        text = "\n".join(re.findall(r"<style[^>]*>(.*?)</style>", text, re.S | re.I))
+        text = "\n".join(css for _, css in style_blocks(text))
     return strip_css_comments(text)
 
 

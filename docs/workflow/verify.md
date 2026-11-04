@@ -99,7 +99,8 @@ if any(m.__tablename__ not in Base.metadata.tables for m in _FK_TARGET_MODELS):
    쓰므로 한쪽만 넣으면 `test_claim_review_body_edit_workflow.py` 가 red.
 3. 판정식은 **부분문자열이 상태를 대신하지 않게** — 개수·구조를 읽는다. `" failed" in out` 은
    SUT 가 인쇄한 문자열에도 맞는다(실측). 정본 관용구는 `check_test_count_sync.py` —
-   **줄을 고른 뒤** 그 줄에서 센다.
+   **줄을 고른 뒤** 그 줄에서 센다. CSS·`<style>` 은 `tests/unit/ui/_css_structure.py` 로
+   읽는다 — 정규식은 브라우저가 버린 규칙도 «있다» 로 읽는다.
 4. **믿기 전에 계기를 «뒤집어» 본다 — 두 목록을 적은 뒤에만 심는다. 목록 없이 심은 둘은
    뒤집기가 아니다.** `claimed` 는 계기의 «이름» 이 포함한다고 **적은** 항목 목록,
    `cheap` 는 첫 출력만 보고(소스를 열지 말고) 적은 «그 출력을 낼 가장 싼 과정» 이 포함하게
