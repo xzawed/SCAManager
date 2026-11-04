@@ -437,6 +437,9 @@
     color: var(--text-1);
   }
   .alert .me-2 { margin-right: .5rem; }
+  /* 글 덩어리는 아이콘 옆에서 줄어든다 — max-content 폭이면 flex-wrap 이 아이콘만 첫 줄에 남겼다.
+     The text block shrinks beside the icon; at max-content width the wrap left the icon alone. */
+  .alert > div { flex: 1 1 16rem; min-width: 0; }
   .alert .ms-auto { margin-left: auto; }
   .alert.mb-4 { margin-bottom: 1rem; }
   .btn.btn-sm { padding: .35rem .85rem; font-size: 12px; font-weight: 600; border-radius: 6px; border: 1px solid transparent; cursor: pointer; transition: box-shadow .15s ease, transform .1s ease; }

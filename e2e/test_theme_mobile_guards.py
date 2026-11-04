@@ -5008,6 +5008,34 @@ def test_a_linked_telegram_account_is_stated_in_the_success_colour(
     assert not off, f"«연결됨» 이 성공 글자색이 아니다 — {{테마: [글자색, --success-text]}} {off!r}"
 
 
+def test_the_stale_webhook_warning_keeps_its_icon_beside_the_text(
+        seeded_page, base_url, fresh_user):
+    """옛 훅 경고 배너의 ⚠️ 는 글과 같은 줄에서 시작한다 — 넓은 화면과 폰 폭 모두.
+
+    🔴 배너는 `flex-wrap` 플렉스인데 글 덩어리가 max-content 폭이라, 아이콘만 첫 줄에 남고 글이
+       다음 줄로 밀렸다(2026-11-04 W12 — 이 배너를 처음 그린 날 스크린샷에서 발견).
+    """
+    path, user, state, _ = _NEW_USER_ARMS["settings-stale-webhook-telegram-linked"]
+    got = {}
+    with _new_user_arm_state(user, state):
+        for width in (1440, 375):
+            seeded_page.set_viewport_size({"width": width, "height": 900})
+            seeded_page.goto(f"{base_url}{path}")
+            got[width] = seeded_page.evaluate("""() => {
+                const b = document.getElementById('webhookStaleBanner');
+                const icon = b && b.querySelector(':scope > span');
+                const text = b && b.querySelector(':scope > div');
+                if (!icon || !text) return null;
+                const i = icon.getBoundingClientRect(), t = text.getBoundingClientRect();
+                return {iconTop: Math.round(i.top), iconBottom: Math.round(i.bottom),
+                        textTop: Math.round(t.top), textBottom: Math.round(t.bottom)};
+            }""")
+    assert all(got.values()), f"배너의 아이콘·글을 찾지 못했다 — 배너가 그려지지 않았다: {got!r}"
+    apart = {w: r for w, r in got.items()
+             if not (r["iconTop"] < r["textBottom"] and r["textTop"] < r["iconBottom"])}
+    assert not apart, f"⚠️ 와 글이 다른 줄에 있다 — {{폭: 상자 위·아래}} {apart!r}"
+
+
 # ── E-20. 리포 인사이트 서술 — 카드·실패 줄과 «새로 고침» 링크 (#1639 W12 · repo_insights.html) ──
 #
 # 분기 프로브(`e2e/branchprobe.py`, 2026-11-02 전체 e2e)에서 양쪽 팔이 다 미관측인 노드는 둘뿐이었다 —
