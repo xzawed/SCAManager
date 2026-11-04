@@ -20,6 +20,11 @@ html, body {
   transition: background var(--dur-slow) var(--ease-out), color var(--dur-slow) var(--ease-out);
 }
 
+/* 한국어는 어절(띄어쓰기) 사이에서만 줄을 바꾼다 — 기본값은 음절 사이에서도 끊어 «평 / 균» 이 된다.
+   🔴 언어 한정을 풀지 않는다: 띄어쓰기가 없는 일본어는 keep-all 이면 줄을 못 바꾸고 넘친다(e2e E-22).
+   Korean wraps only between words; never widen this past :lang(ko) — Japanese has no spaces. */
+html:lang(ko) { word-break: keep-all; }
+
 button { font-family: inherit; }
 
 ::selection {
