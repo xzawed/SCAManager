@@ -13,6 +13,8 @@
 """
 # E2E regression guards — catppuccin token regression + WCAG 2.5.5 mobile click area.
 
+import contextlib
+import json
 import os
 
 import pytest
@@ -23,11 +25,13 @@ from e2e.conftest import (CONFIG_MODEL_ID, CONFIG_USER_ID, DELTA_DAYS,
                           SHRINK_USER_ID,
                           DELTA_REPO_SCORES, DELTA_SUGGESTION_COUNTS,
                           DELTA_USERS,
+                          FRESH_FIRST_REPO, FRESH_LOGIN, FRESH_PROBLEM_FILE,
+                          FRESH_SUGGESTION, FRESH_UNSCORED_REPO, FRESH_USER_ID,
                           INSIGHT_LANGUAGE, REPO_NARRATIVE_TEXT,
                           VARIANT_BREAKDOWN, VARIANT_FEEDBACKS,
                           acting_as, apply_theme, claude_api_call_count, delta_repo_name,
                           rls_catalog_double, repo_narrative_state,
-                          unverified_trend_day,
+                          stale_webhook_listing, unverified_trend_day,
                           expected_avg_delta, expected_cost_delta,
                           expected_score_delta, insight_key_window)
 
@@ -4862,26 +4866,146 @@ def test_all_text_meets_aa_in_arms_no_sweep_had_opened(
     덮었다 — 글자만 hover 토큰으로 바꾼 첫 수정도 dark 1.30 · light 1.27 · pastel 2.43 · catppuccin 1.14.
     """
     path, opened = _UNSWEPT_ARMS[arm]
-    seeded_page.set_viewport_size(_WIDE_VIEWPORT)
-    seeded_page.goto(f"{base_url}{path}")
-    assert "localhost" in seeded_page.url, f"{seeded_page.url[:60]} 로 나갔다 — 남의 페이지를 잰다"
-    apply_theme(seeded_page, theme)
-    seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
-    seeded_page.wait_for_timeout(350)
-    _reveal_all(seeded_page)
-    res = seeded_page.evaluate(_ALL_TEXT_AUDIT_JS)
+    _assert_arm_text_meets_aa(seeded_page, f"{base_url}{path}", opened, theme, arm)
+
+
+def _assert_arm_text_meets_aa(page, url: str, opened: str, theme: str, arm: str) -> None:
+    """한 팔의 화면을 열어 모든 글자(쉼 + hover 두 상태)가 AA 인지 재고, 그 팔이 그려졌는지 되짚는다."""
+    page.set_viewport_size(_WIDE_VIEWPORT)
+    page.goto(url)
+    assert "localhost" in page.url, f"{page.url[:60]} 로 나갔다 — 남의 페이지를 잰다"
+    apply_theme(page, theme)
+    page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
+    page.wait_for_timeout(350)
+    _reveal_all(page)
+    res = page.evaluate(_ALL_TEXT_AUDIT_JS)
     assert not res.get("error"), res.get("error")
     bad = [dict(b, state="쉼") for b in res["bad"]]
     # hover 축(E-1) — 출처 배지는 «행» 안에 있다. 행 hover 가 그 바탕을 바꾼다.
-    for state, hres in _audit_text_under_hover(seeded_page):
+    for state, hres in _audit_text_under_hover(page):
         assert not hres.get("error"), hres.get("error")
         bad += [dict(b, state=state) for b in hres["bad"]]
-    assert seeded_page.evaluate(opened), (
+    assert page.evaluate(opened), (
         f"[{arm}] 그 팔이 그려지지 않았다 — 재지 못한 것이지 통과한 것이 아니다")
     assert not bad, (
         f"[{theme}] {arm} — 글자 {len(bad)}건이 AA 미달 (관측 {sum(res['seen'].values())}건):\n  "
         + "\n  ".join(f"[{b['state']}] {b['ratio']} < {b['need']} bg={b['bg']} "
                       f"cls={b['cls']!r} {b['text']!r}" for b in bad[:10]))
+
+
+# ── E-23. 막 시작한 사용자가 보는 팔 (#1639 W12 · 분기 프로브 main `25ad2665`) ──────────
+#
+# 프로브가 «한 번도 안 그려졌다» 고 한 팔 가운데 새 표면을 내는 것들이다 — 위와 같은 측정을 그
+# 사용자로 돈다. {이름: (주소, (사용자 id, 로그인), 그 창의 상태, 그 팔이 그려졌는지 되짚는 식)}.
+# 주소의 `{first_analysis_id}` 는 `fresh_user` 가 채운다. 상태 `telegram` = 텔레그램 연결된 사용자,
+# `stale` = GitHub 훅 목록이 `check_suite` 를 구독하지 않은 옛 훅(`stale_webhook_listing`).
+_NEW_USER_ARMS = {
+    # `repo_detail.html` 의 `{%- if _sorted %}` 거짓 — 분석 0개 리포. 머리에 «분석 N건» 만 남고
+    # 차트·표가 빈 상태를 그린다.
+    "repo-detail-no-analyses": (
+        "/repos/owner%2Fe2enoanalysis", (NOANALYSIS_USER_ID, "e2e-noanalysis"), {},
+        """() => { const e = document.getElementById('chartEmpty');
+                   return document.querySelectorAll('.repo-hero__meta > span').length === 1
+                       && !!e && e.checkVisibility()
+                       && !!document.querySelector('#analysisTable td.filter-empty'); }"""),
+    # `analysis_detail.html` 의 추세 조건(`trend_data|length > 1`) 거짓 두 곳 — 리포의 첫 분석.
+    # 추세 카드와 Chart.js 스크립트가 빠진다(빠진 채로 JS 오류가 나면 `seeded_page` 가 잡는다).
+    "analysis-detail-first-analysis": (
+        f"/repos/{FRESH_FIRST_REPO.replace('/', '%2F')}/analyses/{{first_analysis_id}}",
+        (FRESH_USER_ID, FRESH_LOGIN), {},
+        f"""() => document.getElementById('trendChart') === null
+                  && Array.from(document.querySelectorAll('.ad-file-name')).some(
+                       e => e.textContent.trim() === {json.dumps(FRESH_PROBLEM_FILE)}
+                            && e.checkVisibility())"""),
+    # `overview.html` 의 `elif item.analysis_count` 두 곳 — 분석은 있는데 기록된 점수가 없다.
+    # 중립 등급 칩 «—» 와 «기록된 점수 없음» 줄.
+    "overview-unscored-card": (
+        "/", (FRESH_USER_ID, FRESH_LOGIN), {},
+        f"""() => Array.from(document.querySelectorAll('.repo-card')).some(c =>
+                 c.querySelector('.repo-card__name')?.textContent.trim()
+                     === {json.dumps(FRESH_UNSCORED_REPO)}
+                 && c.querySelector('.grade')?.textContent.trim() === '—'
+                 && c.querySelector('.repo-card__no-score')?.checkVisibility())"""),
+    # `dashboard.html` 의 `{% if repo_report.ai_suggestions %}` 참 — repos 리포트의 AI 제안 목록.
+    "repos-report-ai-suggestions": (
+        f"/dashboard?mode=repos&repo={FRESH_FIRST_REPO.replace('/', '%2F')}",
+        (FRESH_USER_ID, FRESH_LOGIN), {},
+        f"""() => Array.from(document.querySelectorAll('.repos-suggestion-text')).some(
+                 e => e.textContent.trim() === {json.dumps(FRESH_SUGGESTION)}
+                      && e.checkVisibility())"""),
+    # `repo_insights.html` 의 `{% if problem_files %}` 참 — AI 리뷰의 `file_feedbacks` 로 세는 카드.
+    "insights-problem-files": (
+        f"/repos/{FRESH_FIRST_REPO.replace('/', '%2F')}/insights", (FRESH_USER_ID, FRESH_LOGIN), {},
+        f"""() => Array.from(document.querySelectorAll('.ri-file-name')).some(
+                 e => e.textContent.trim() === {json.dumps(FRESH_PROBLEM_FILE)}
+                      && e.checkVisibility())"""),
+    # `settings.html` 의 `{% if webhook_stale %}` 참 + `{% if current_user.is_telegram_connected %}`
+    # 참 — 한 화면이라 함께 연다. 배너는 진짜 stale 판정이 낸다(바꾼 것은 GitHub 응답뿐).
+    "settings-stale-webhook-telegram-linked": (
+        f"/repos/{FRESH_FIRST_REPO.replace('/', '%2F')}/settings", (FRESH_USER_ID, FRESH_LOGIN),
+        {"telegram": True, "stale": True},
+        """() => !!document.getElementById('webhookStaleBanner')?.checkVisibility()
+                 && document.getElementById('issueTelegramOtp') === null
+                 && !!document.querySelector('#telegram-connect-section-notify p')?.checkVisibility()"""),
+}
+
+
+@contextlib.contextmanager
+def _new_user_arm_state(user, state):
+    """`_NEW_USER_ARMS` 한 줄의 사용자·상태로 앱을 돌린다."""
+    uid, login = user
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(acting_as(uid, login=login,
+                                      is_telegram_connected=state.get("telegram", False)))
+        if state.get("stale"):
+            stack.enter_context(stale_webhook_listing())
+        yield
+
+
+@pytest.mark.parametrize("arm", sorted(_NEW_USER_ARMS))
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_all_text_meets_aa_in_arms_a_new_user_opens(
+        seeded_page, base_url, fresh_user, analysis_free_repo, theme, arm):
+    """🔴 막 시작한 사용자가 보는 화면의 글자도 AA 를 넘어야 한다 — e2e 가 한 번도 안 그린 팔이다.
+
+    첫 분석 상세 · 분석 0개 리포 · 점수가 기록 안 된 카드 · 첫 리포의 AI 제안·문제 파일 ·
+    옛 훅 경고 배너 · 텔레그램 «연결됨». 분기 프로브(main `25ad2665`)가 이 팔들을 미관측으로 셌다.
+    """
+    path, user, state, opened = _NEW_USER_ARMS[arm]
+    with _new_user_arm_state(user, state):
+        _assert_arm_text_meets_aa(seeded_page, f"{base_url}{path.format(**fresh_user)}",
+                                  opened, theme, arm)
+
+
+def test_a_linked_telegram_account_is_stated_in_the_success_colour(
+        seeded_page, base_url, fresh_user):
+    """텔레그램 «연결됨» 은 성공 글자색(`--success-text`)이다 — 4테마 모두.
+
+    🔴 이 줄의 `text-success` 는 Bootstrap 이름인데 CSS 어디에도 규칙이 없어, «연결됨» 이 본문 글자색으로
+       나왔다(2026-11-04 W12 분류에서 발견 — 이 팔은 e2e 가 한 번도 그리지 않았다). 같은 화면의 연결
+       상태 점(`.conn-dot.is-on`)은 성공색이다.
+    """
+    path, user, state, _ = _NEW_USER_ARMS["settings-stale-webhook-telegram-linked"]
+    with _new_user_arm_state(user, state):
+        seeded_page.set_viewport_size(_WIDE_VIEWPORT)
+        seeded_page.goto(f"{base_url}{path}")
+        seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
+        got = {}
+        for theme in ("dark", "light", "pastel", "catppuccin"):
+            apply_theme(seeded_page, theme)
+            got[theme] = seeded_page.evaluate("""() => {
+                const p = document.querySelector('#telegram-connect-section-notify p');
+                if (!p) return null;
+                const ref = document.createElement('span');
+                ref.style.color = 'var(--success-text)';
+                p.parentElement.appendChild(ref);
+                const pair = [getComputedStyle(p).color, getComputedStyle(ref).color];
+                ref.remove();
+                return pair;
+            }""")
+    assert all(got.values()), f"«연결됨» 줄이 없다 — 연결된 사용자로 그리지 못했다: {got!r}"
+    off = {t: pair for t, pair in got.items() if pair[0] != pair[1]}
+    assert not off, f"«연결됨» 이 성공 글자색이 아니다 — {{테마: [글자색, --success-text]}} {off!r}"
 
 
 # ── E-20. 리포 인사이트 서술 — 카드·실패 줄과 «새로 고침» 링크 (#1639 W12 · repo_insights.html) ──
