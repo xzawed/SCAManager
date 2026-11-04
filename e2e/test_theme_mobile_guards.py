@@ -630,10 +630,15 @@ def _reveal_all(page) -> None:
     3초·2프레임이 지나도 안 붙으면 스크롤로는 못 드러나는 요소(문서 끝 40px 안 등)다 —
     억지로 드러내지 않고 남겨 둬야 시험이 그것을 잡는다.
 
+    🔴 끝에서 «드러나지 않은 것» 을 판정한다(`_assert_reveals_accounted`) — 훑는 곳이 곧 판정하는 곳이고,
+    끄는 스위치는 없다. 판정을 공용 측정 헬퍼 셋에만 두었던 첫 판은, 이 함수로 훑고 글자를 재는 시험 27개
+    (관리자 세 화면 · 비로그인 랜딩 포함)를 비켜 갔다. «여는 동작 전» 의 중간 스윕도 판정한다 — 그 상태는
+    그 화면의 기본 상태라 경로 스윕이 이미 판정을 통과한다(판정을 켠 채 폰 폭 메뉴 · 상호작용 상태 65건 통과).
+
     Scroll first: reveal-on-intersect content is invisible (and unmeasurable) until it enters
     the viewport, and `_settle_animations` cannot help because no Animation exists yet. Then
     wait for the observer itself, frame by frame: a fixed sleep can pass with no rendering
-    update at all on a slow headless runner.
+    update at all on a slow headless runner. Every sweep ends by accounting for what stayed hidden.
     """
     page.evaluate("""async () => {
         const frame = () => new Promise(r => requestAnimationFrame(() => r()));
@@ -660,6 +665,8 @@ def _reveal_all(page) -> None:
         await frame();
     }""")
     _settle_animations(page)
+    _assert_reveals_accounted(page, page.evaluate("""() => location.pathname + location.search + ' ['
+        + (document.documentElement.dataset.theme || document.body.dataset.theme || '-') + ']'"""))
 
 
 def unrevealed_counts(page) -> dict:
@@ -683,6 +690,60 @@ def unrevealed_counts(page) -> dict:
         }
         return out;
     }""")
+
+
+# 🔴 W16 — 스윕 뒤에도 안 드러난 `.reveal` 은 «다른 상태의 몫» 이어야 하고, 그 상태를 여는 스윕이 있어야 한다.
+#    {그 상태에서 숨는 자리의 셀렉터: 그 상태를 여는 시험}. 2026-11-04 인구조사(57면 — 넓은 화면·폰 폭·상호작용
+#    상태): 안 드러난 24개가 전부 설정 «단순» 모드의 `.adv-only` 였고 상세 모드 화면에서는 0 이었다.
+#    여기 없는 자리에 `.reveal` 이 숨으면 `_reveal_all` 이 red — 그 상태를 여는 스윕을 만들고 이 표에 올린다.
+# Every `.reveal` still hidden after the sweep must belong to a known state that some sweep opens.
+_REVEAL_STATE_OWNERS = {
+    'body[data-settings-mode="simple"] .adv-only': "test_token_text_meets_aa_in_settings_advanced",
+}
+
+_UNREVEALED_JS = r"""(owners) => {
+  const out = [];
+  for (const e of document.querySelectorAll('.reveal')) {
+    if (parseFloat(getComputedStyle(e).opacity) >= 0.99) continue;
+    const r = e.getBoundingClientRect();
+    // 🔴 «상자가 있다» ≠ «칠해진다» — 닫힌 <details> 안은 상자가 있어도 안 칠해진다(브라우저에게 묻는다).
+    //    opacity 는 묻지 않는다 — 지금 재는 것이 바로 opacity 가 덜 오른 요소다.
+    const painted = r.width >= 1 && r.height >= 1
+        && e.checkVisibility({visibilityProperty: true, contentVisibilityAuto: true});
+    const owner = owners.find(sel => Array.from(document.querySelectorAll(sel)).some(h => h.contains(e)));
+    out.push({el: e.tagName.toLowerCase() + (e.id ? '#' + e.id : '')
+                  + Array.from(e.classList).map(c => '.' + c).join(''),
+              painted, owner: owner || null,
+              text: (e.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 40)});
+  }
+  return out;
+}"""
+
+
+def _assert_reveals_accounted(page, where: str) -> None:
+    """스윕 뒤 안 드러난 `.reveal` 을 판정한다 — 칠해지는 자리에 남은 것은 0, 안 칠해지는 것은 아는 상태의 몫.
+
+    🔴 자리를 차지한 채 opacity<0.99 면 «재지 못한 글자» 다 — 감사는 그것을 «보이지 않음» 으로
+       건너뛴다(안 쟀음 ≠ 통과). 그래서 `_reveal_all` 이 훑을 때마다 끝에서 이것을 부른다.
+    🔴 상자 0 인 것의 주인을 모르면 그 글자는 어느 스윕도 안 잰다(W16 — 세기만 하고 매핑하지 않았다).
+    """
+    rows = page.evaluate(_UNREVEALED_JS, list(_REVEAL_STATE_OWNERS))
+    stuck = [r for r in rows if r["painted"]]
+    orphan = [r for r in rows if not r["painted"] and not r["owner"]]
+    assert not stuck, (
+        f"{where}: 스윕 뒤에도 자리를 차지한 채 opacity<0.99 인 `.reveal` {len(stuck)}개 — 그 글자는 "
+        "어떤 감사에도 안 잡힌다: " + ", ".join(f"{r['el']} «{r['text']}»" for r in stuck[:6]))
+    assert not orphan, (
+        f"{where}: 아는 상태 밖에서 숨은 `.reveal` {len(orphan)}개 — 그 상태를 여는 스윕을 만들고 "
+        "`_REVEAL_STATE_OWNERS` 에 올린다: " + ", ".join(f"{r['el']} «{r['text']}»" for r in orphan[:6]))
+
+
+def test_every_reveal_state_names_a_sweep_that_exists():
+    """`_REVEAL_STATE_OWNERS` 의 주인은 이 모듈의 시험이다 — 이름만 남은 주인은 그 상태를 아무도 안 연다."""
+    assert _REVEAL_STATE_OWNERS, "주인 표가 비었다 — 단순 모드의 `.adv-only` 도 주인이 있어야 한다"
+    missing = [name for name in _REVEAL_STATE_OWNERS.values()
+               if not (name.startswith("test_") and callable(globals().get(name)))]
+    assert not missing, f"주인으로 적힌 시험이 이 모듈에 없다: {missing}"
 
 
 @pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
@@ -1086,6 +1147,9 @@ def test_token_text_meets_aa_in_settings_advanced(seeded_page, base_url, theme):
     seeded_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
     seeded_page.wait_for_timeout(350)
     _open_settings_advanced(seeded_page)
+    # 🔴 이 시험은 `_REVEAL_STATE_OWNERS` 의 주인이다 — 단순 모드에서 숨은 `.adv-only` 가 여기서 «전부»
+    #    드러나야 한다. 상세 모드에선 그 셀렉터(`[data-settings-mode="simple"]`)가 아무것도 안 고르므로,
+    #    이 스윕 끝의 판정(`_reveal_all`)이 덜 드러난 카드를 주인 없는 것으로 잡는다.
     _reveal_all(seeded_page)
 
     # 🔴 «두 감사를 다» 돌린다. 처음엔 토큰 글자(--text-2/3)만 보게 썼는데, 이 화면에서
@@ -1262,13 +1326,9 @@ def test_landing_text_meets_aa(anonymous_page, base_url, theme):
     anonymous_page.goto(base_url)
     anonymous_page.evaluate("(t) => document.body.setAttribute('data-theme', t)", theme)
     anonymous_page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
-    anonymous_page.evaluate("""() => new Promise(r => {
-        let y = 0;
-        const step = () => { window.scrollTo(0, y); y += 600;
-          if (y < document.body.scrollHeight) setTimeout(step, 30); else r(); };
-        step(); })""")
-    anonymous_page.evaluate("() => window.scrollTo(0, 0)")
-    _settle_animations(anonymous_page)
+    # 공용 스윕으로 훑는다 — 자체 루프(30ms 고정 대기)는 관찰자 판정을 못 기다렸고, 드러나지 않은 것을
+    # 판정하지도 않았다(`_reveal_all` 이 끝에서 판정한다).
+    _reveal_all(anonymous_page)
     anonymous_page.wait_for_timeout(300)
 
     total, bad = 0, []
@@ -1902,7 +1962,12 @@ def test_the_sweep_waits_for_the_observer_not_the_clock(seeded_page, base_url):
     #    자라면 그 전제가 깨지므로 뒤에서 한 번 더 본다.
     assert 0 < page.evaluate(gap_js) < 40, "심은 요소가 문서 끝 40px 안에 놓이지 않았다"
 
-    _reveal_all(page)
+    # 🔴 스윕 끝 판정의 양성 대조군 — 자리를 차지한 채 갇힌 이 요소를 «멈춤 1개» 로 잡아 red 를 내야 한다
+    #    (다른 화면의 초록이 «판정이 아무것도 못 본다» 가 아니라는 근거). 판정은 훑기·정착이 끝난 뒤라
+    #    아래 단언은 그대로 스윕 뒤 상태를 잰다.
+    with pytest.raises(AssertionError,
+                       match=r"자리를 차지한 채 opacity<0\.99 인 `\.reveal` 1개 .*div#unrevealablePlant\.reveal"):
+        _reveal_all(page)
 
     assert 0 < page.evaluate(gap_js) < 40, (
         "helper 가 도는 사이 문서가 자라 심은 요소가 끝 40px 밖으로 밀렸다 — 재지 못한 것이다")
@@ -1921,6 +1986,31 @@ def test_the_sweep_waits_for_the_observer_not_the_clock(seeded_page, base_url):
     assert plant < 0.99, (
         "스크롤로 못 드러나는 요소(문서 끝 40px)까지 드러났다 — 관찰자를 건너뛰는 helper 는 "
         "진짜 갇힌 내용을 숨긴다")
+
+
+def test_the_sweep_accounts_hidden_reveals_by_their_owner(seeded_page, base_url):
+    """🔴 스윕 끝 판정의 «숨김» 갈래 대조군 — 주인 밖에서 숨은 `.reveal` 은 red, 주인 상태 안에서 숨은 것은 통과.
+
+    위 시험의 대조군은 «멈춤» 갈래만 잰다. 이 시험이 없을 때는 주인 판정(`assert not orphan`)을 지우거나
+    주인 셀렉터를 `body` 로 넓혀도 전부 초록이었다 — 그러면 숨은 패널 안 카드가 아무 스윕에도 안 재진다.
+    The hidden branch of the sweep's accounting: an unowned hidden `.reveal` fails, an owned one passes.
+    """
+    page = seeded_page
+    page.set_viewport_size(_WIDE_VIEWPORT)
+    page.goto(f"{base_url}/repos/owner%2Ftestrepo/settings?mode=simple")
+    owned_sel = next(iter(_REVEAL_STATE_OWNERS))
+    assert page.evaluate("(sel) => document.querySelectorAll(sel).length", owned_sel) > 0, (
+        f"`{owned_sel}` 이 아무것도 안 고른다 — 단순 모드가 안 걸려 대조군이 뜻을 잃었다")
+    page.evaluate("""() => { const d = document.createElement('div');
+        d.className = 'reveal'; d.id = 'orphanPlant'; d.textContent = 'e2e orphan';
+        d.style.display = 'none'; document.body.appendChild(d); }""")
+    with pytest.raises(AssertionError,
+                       match=r"아는 상태 밖에서 숨은 `\.reveal` 1개 .*div#orphanPlant\.reveal"):
+        _reveal_all(page)
+    # 같은 요소를 단순 모드에서 숨는 `.adv-only` 안으로 옮기면 그 상태의 몫이라 판정을 통과한다.
+    page.evaluate("""(sel) => { const d = document.getElementById('orphanPlant'); d.style.display = '';
+        document.querySelector(sel).appendChild(d); }""", owned_sel)
+    _reveal_all(page)
 
 
 # ── J. WCAG 2.5.8 타깃 크기 (24×24) — 모바일 ─────────────────────────────────
