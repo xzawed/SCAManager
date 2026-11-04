@@ -128,25 +128,33 @@ def test_the_scroll_helper_actually_scrolls():
 
 
 def test_a_sweep_that_skips_accounting_is_followed_by_one_that_does():
-    """🔴 `_reveal_all(..., account=False)` 는 «곧 다시 훑을» 중간 상태용이다 — 그 함수의 마지막 스윕은 판정한다.
+    """🔴 `_reveal_all(..., account=False)` 는 «곧 다시 훑을» 중간 상태용이다 — 그 함수는 뒤에서 판정한다.
 
     판정을 끈 스윕 바로 뒤에 감사를 돌리면 드러나지 않은 글자가 다시 «안 잰 초록» 이 된다 —
     판정이 공용 헬퍼 셋에만 있던 첫 판이 스윕하는 시험 27개를 비켜 간 것과 같은 모양이다.
-    A sweep with accounting switched off must be followed, in the same function, by one that accounts.
+    그래서 마지막 스윕이 판정을 껐으면, 그 뒤에 판정(`_assert_reveals_accounted`)을 직접 불러야 한다.
+    A sweep with accounting switched off must be followed, in the same function, by accounting.
     """
     tree = ast.parse(_SWEEP.read_text(encoding="utf-8"))
+
+    def calls_to(fn, name):
+        return sorted((n for n in ast.walk(fn) if isinstance(n, ast.Call)
+                       and isinstance(n.func, ast.Name) and n.func.id == name),
+                      key=lambda n: (n.lineno, n.col_offset))
+
     swept, bad = 0, []
     for fn in ast.walk(tree):
         if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) or fn.name == "_reveal_all":
             continue
-        calls = sorted((n for n in ast.walk(fn) if isinstance(n, ast.Call)
-                        and isinstance(n.func, ast.Name) and n.func.id == "_reveal_all"),
-                       key=lambda n: (n.lineno, n.col_offset))
+        calls = calls_to(fn, "_reveal_all")
         swept += bool(calls)
-        if calls and any(k.arg == "account" for k in calls[-1].keywords):
+        if not calls or not any(k.arg == "account" for k in calls[-1].keywords):
+            continue
+        last = (calls[-1].lineno, calls[-1].col_offset)
+        if not any((c.lineno, c.col_offset) > last for c in calls_to(fn, "_assert_reveals_accounted")):
             bad.append(f"{fn.name} (줄 {calls[-1].lineno})")
     assert swept, "`_reveal_all` 을 부르는 함수를 0개 찾았다 — 스캔이 죽었다(공허한 초록)"
-    assert not bad, "마지막 스윕이 판정을 끈 채 끝난다:\n  " + "\n  ".join(bad)
+    assert not bad, "마지막 스윕이 판정을 끈 채 끝나고 뒤에서 판정하지도 않는다:\n  " + "\n  ".join(bad)
 
 
 def test_exemptions_still_point_at_a_real_sweep():

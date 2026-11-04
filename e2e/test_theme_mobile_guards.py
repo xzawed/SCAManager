@@ -712,7 +712,8 @@ _UNREVEALED_JS = r"""(owners) => {
     const painted = r.width >= 1 && r.height >= 1
         && e.checkVisibility({visibilityProperty: true, contentVisibilityAuto: true});
     const owner = owners.find(sel => Array.from(document.querySelectorAll(sel)).some(h => h.contains(e)));
-    out.push({el: e.tagName.toLowerCase() + Array.from(e.classList).map(c => '.' + c).join(''),
+    out.push({el: e.tagName.toLowerCase() + (e.id ? '#' + e.id : '')
+                  + Array.from(e.classList).map(c => '.' + c).join(''),
               painted, owner: owner || null,
               text: (e.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 40)});
   }
@@ -1963,7 +1964,8 @@ def test_the_sweep_waits_for_the_observer_not_the_clock(seeded_page, base_url):
     #    자라면 그 전제가 깨지므로 뒤에서 한 번 더 본다.
     assert 0 < page.evaluate(gap_js) < 40, "심은 요소가 문서 끝 40px 안에 놓이지 않았다"
 
-    _reveal_all(page)
+    # 심은 요소는 일부러 못 드러나게 했다 — 스윕 끝 판정은 끄고, 그 판정이 이 요소를 잡는지 아래에서 직접 잰다.
+    _reveal_all(page, account=False)
 
     assert 0 < page.evaluate(gap_js) < 40, (
         "helper 가 도는 사이 문서가 자라 심은 요소가 끝 40px 밖으로 밀렸다 — 재지 못한 것이다")
@@ -1982,6 +1984,11 @@ def test_the_sweep_waits_for_the_observer_not_the_clock(seeded_page, base_url):
     assert plant < 0.99, (
         "스크롤로 못 드러나는 요소(문서 끝 40px)까지 드러났다 — 관찰자를 건너뛰는 helper 는 "
         "진짜 갇힌 내용을 숨긴다")
+    # 🔴 판정의 양성 대조군 — 자리를 차지한 채 갇힌 이 요소를 «멈춤» 으로 잡아야 한다(다른 화면의 초록이
+    #    «판정이 아무것도 못 본다» 가 아니라는 근거).
+    with pytest.raises(AssertionError,
+                       match=r"자리를 차지한 채 opacity<0\.99 인 `\.reveal` 1개 .*div#unrevealablePlant\.reveal"):
+        _assert_reveals_accounted(page, "문서 끝 40px 에 심은 요소")
 
 
 # ── J. WCAG 2.5.8 타깃 크기 (24×24) — 모바일 ─────────────────────────────────
