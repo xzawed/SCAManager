@@ -33,6 +33,8 @@ from __future__ import annotations
 
 import re
 
+from html.parser import HTMLParser
+
 import pytest
 
 from ._css_structure import (BLOCK_IN_BRACKET, MISMATCHED_CLOSE, NESTED_OPENER,
@@ -235,10 +237,43 @@ def test_style_blocks_are_read_by_an_html_parser_not_a_regex():
     assert style_blocks(html) == [(4, "\n.real { color: red; }\n")]
 
 
+class _Markup(HTMLParser):
+    """CSS 덩어리를 HTML 로 읽었을 때 태그·주석이 나오는가 — 진짜 `<style>` 몸체엔 없다."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.seen: list[str] = []
+
+    def handle_starttag(self, tag, attrs):
+        self.seen.append(f"<{tag}>")
+
+    def handle_endtag(self, tag):
+        self.seen.append(f"</{tag}>")
+
+    def handle_comment(self, data):
+        self.seen.append("<!--…-->")
+
+
+def _markup_in(css: str) -> list[str]:
+    """구조 스캐너가 읽은 셀렉터·선언에서만 찾는다 — CSS 주석 속 `<style>` 설명은 마크업이 아니다."""
+    p = _Markup()
+    for b in scan(css).blocks:
+        p.feed(" ".join([b.prelude, *(f"{name}:{value}" for name, value in b.decls)]) + "\n")
+    p.close()
+    return p.seen
+
+
 def test_no_extracted_style_block_contains_markup():
-    """운영 템플릿 바닥 — 진짜 `<style>` 몸체엔 HTML 이 없다(추출이 어긋나면 `-->`·`<link` 가 든다)."""
-    leaked = [(s.path, s.line) for s in authored_sources() if s.path.endswith(".html")
-              and re.search(r"-->|<link\b|<script\b|</?div\b", s.text, re.I)]
+    """운영 템플릿 바닥 — 진짜 `<style>` 몸체엔 HTML 이 없다(추출이 어긋나면 첫 셀렉터에 `<link>` 등이 든다).
+
+    🔴 정규식으로 태그를 찾지 않는다 — HTML 의 태그·주석 문법은 HTML 파서가 안다(CodeQL
+       `py/bad-tag-filter` 가 대문자 태그·`--!>` 를 놓친다고 짚었다).
+    """
+    assert _markup_in("x --> <LINK rel=stylesheet> .a { color: red; }") == ["<link>"], (
+        "바닥 — 셀렉터에 든 대문자 태그도 태그다")
+    assert _markup_in("/* 본 <style> 블록 */ .a { color: red; }") == [], "주석 속 글자는 마크업이 아니다"
+    leaked = [(s.path, s.line, _markup_in(s.text)) for s in authored_sources()
+              if s.path.endswith(".html") and _markup_in(s.text)]
     assert not leaked, leaked
 
 
