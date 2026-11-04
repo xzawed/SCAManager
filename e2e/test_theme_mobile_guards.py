@@ -5238,7 +5238,7 @@ _LOW_ARMS = {
     # `admin_tenants.html` 의 `{% if t.last_analysis_at %}` 거짓 — 리포만 있고 분석이 아직 없는 사용자는 `-`.
     "admin-tenants-no-analysis-yet": (
         "/admin/tenants", None, {},
-        """() => Array.from(document.querySelectorAll('tr')).some(tr =>
+        """() => Array.from(document.querySelectorAll('tbody tr')).some(tr =>
                  tr.querySelector('.login-name')?.textContent.trim() === 'e2e-noanalysis'
                  && tr.cells.length > 5 && tr.cells[5].textContent.trim() === '-')"""),
     # `settings.html` 의 «내린 모델» 선택지 — 고정한 모델이 카탈로그에서 빠졌다(상세 모드의 모델 고르기).
