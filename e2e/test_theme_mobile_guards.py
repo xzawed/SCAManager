@@ -4910,10 +4910,12 @@ _NEW_USER_ARMS = {
                        && !!document.querySelector('#analysisTable td.filter-empty'); }"""),
     # `analysis_detail.html` 의 추세 조건(`trend_data|length > 1`) 거짓 두 곳 — 리포의 첫 분석.
     # 추세 카드와 Chart.js 스크립트가 빠진다(빠진 채로 JS 오류가 나면 `seeded_page` 가 잡는다).
+    # 운영의 첫 분석은 점수 상세 카드(`.ad-breakdown`)를 늘 그린다 — 그 카드가 없으면 운영이 못 내는 화면을 잰 것이다.
     "analysis-detail-first-analysis": (
         f"/repos/{FRESH_FIRST_REPO.replace('/', '%2F')}/analyses/{{first_analysis_id}}",
         (FRESH_USER_ID, FRESH_LOGIN), {},
         f"""() => document.getElementById('trendChart') === null
+                  && !!document.querySelector('.ad-breakdown')?.checkVisibility()
                   && Array.from(document.querySelectorAll('.ad-file-name')).some(
                        e => e.textContent.trim() === {json.dumps(FRESH_PROBLEM_FILE)}
                             && e.checkVisibility())"""),
@@ -5010,10 +5012,13 @@ def test_a_linked_telegram_account_is_stated_in_the_success_colour(
 
 def test_the_stale_webhook_warning_keeps_its_icon_beside_the_text(
         seeded_page, base_url, fresh_user):
-    """옛 훅 경고 배너의 ⚠️ 는 글과 같은 줄에서 시작한다 — 넓은 화면과 폰 폭 모두.
+    """옛 훅 경고 배너의 ⚠️ 는 글의 첫 줄(제목) 옆에 선다 — 넓은 화면과 폰 폭 모두.
 
     🔴 배너는 `flex-wrap` 플렉스인데 글 덩어리가 max-content 폭이라, 아이콘만 첫 줄에 남고 글이
        다음 줄로 밀렸다(2026-11-04 W12 — 이 배너를 처음 그린 날 스크린샷에서 발견).
+    🔴 같은 플렉스 행에 있는 것만으로는 부족하다 — `.alert` 의 `align-items: center` 때문에 글이
+       여러 줄로 접히면 ⚠️ 가 글의 세로 가운데(폰 폭 4줄의 2·3줄 옆)에 섰다. 상자 겹침만 보던 첫 판은
+       그것을 못 갈랐다. 그래서 ⚠️ 의 세로 가운데가 글 첫 줄 조각의 위·아래 안에 있는지 잰다.
     """
     path, user, state, _ = _NEW_USER_ARMS["settings-stale-webhook-telegram-linked"]
     got = {}
@@ -5026,14 +5031,18 @@ def test_the_stale_webhook_warning_keeps_its_icon_beside_the_text(
                 const icon = b && b.querySelector(':scope > span');
                 const text = b && b.querySelector(':scope > div');
                 if (!icon || !text) return null;
-                const i = icon.getBoundingClientRect(), t = text.getBoundingClientRect();
-                return {iconTop: Math.round(i.top), iconBottom: Math.round(i.bottom),
-                        textTop: Math.round(t.top), textBottom: Math.round(t.bottom)};
+                const range = document.createRange();
+                range.selectNodeContents(text);
+                const rects = Array.from(range.getClientRects()).filter(r => r.width > 0 && r.height > 0);
+                if (!rects.length) return null;
+                const i = icon.getBoundingClientRect();
+                const r1 = v => Math.round(v * 10) / 10;
+                return {iconMid: r1((i.top + i.bottom) / 2), lineTop: r1(rects[0].top),
+                        lineBottom: r1(rects[0].bottom)};
             }""")
     assert all(got.values()), f"배너의 아이콘·글을 찾지 못했다 — 배너가 그려지지 않았다: {got!r}"
-    apart = {w: r for w, r in got.items()
-             if not (r["iconTop"] < r["textBottom"] and r["textTop"] < r["iconBottom"])}
-    assert not apart, f"⚠️ 와 글이 다른 줄에 있다 — {{폭: 상자 위·아래}} {apart!r}"
+    off = {w: r for w, r in got.items() if not r["lineTop"] <= r["iconMid"] <= r["lineBottom"]}
+    assert not off, f"⚠️ 가 글의 첫 줄 옆에 있지 않다 — {{폭: 아이콘 가운데 · 첫 줄 위·아래}} {off!r}"
 
 
 # ── E-20. 리포 인사이트 서술 — 카드·실패 줄과 «새로 고침» 링크 (#1639 W12 · repo_insights.html) ──

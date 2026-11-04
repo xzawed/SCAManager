@@ -1609,8 +1609,9 @@ def empty_user(live_server):
 # 분석 0개 리포 상세는 `analysis_free_repo`(사용자 9105)가 이미 갖고 있다.
 # 🔴 전용 사용자다 — 소유 필터가 `user_id == me OR user_id IS NULL` 이라 이 리포들은 사용자 1
 #    에게 안 보인다(개요 카드 수 · KPI 그대로).
-# 🔴 앱이 쓰는 모양으로 심는다 — 점수 NULL 이면 등급도 NULL(`src/worker/pipeline.py` 의
-#    `_null_persist`), `file_feedbacks`·`ai_suggestions` 는 AI 리뷰가 성공한 분석에만 있다.
+# 🔴 앱이 쓰는 모양으로 심는다 — 결과 JSON 은 운영 writer(`build_analysis_result_dict`)가 만들고,
+#    점수·등급 NULL 여부는 파이프라인과 같은 규칙(`should_null_persist_score`)이 정한다. 손으로 쓴
+#    부분집합은 `breakdown` 이 빠져 운영이 못 내는 화면(점수 상세 카드 없는 첫 분석)을 쟀다.
 FRESH_USER_ID = 9201
 FRESH_LOGIN = "e2e-fresh"
 FRESH_FIRST_REPO = "owner/e2efresh-first"
@@ -1628,21 +1629,37 @@ def _seed_fresh_user(db_path: str) -> dict:
     from sqlalchemy import create_engine, text  # noqa: PLC0415
     from sqlalchemy.orm import sessionmaker  # noqa: PLC0415
 
+    from src.analyzer.io.ai_review import AiReviewResult, _default_result  # noqa: PLC0415
     from src.models.analysis import Analysis  # noqa: PLC0415
     from src.models.repository import Repository  # noqa: PLC0415
-    from src.scorer.calculator import calculate_grade  # noqa: PLC0415
-    from src.scorer.reliability import score_is_unreliable  # noqa: PLC0415
+    from src.scorer.calculator import calculate_score  # noqa: PLC0415
+    from src.scorer.reliability import score_is_unreliable, should_null_persist_score  # noqa: PLC0415
+    from src.worker.pipeline import build_analysis_result_dict  # noqa: PLC0415
 
     at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=1)
-    seeds = {
-        FRESH_FIRST_REPO: (82, {
-            "summary": "e2e: 첫 분석", "issues": [], "ai_review_status": "success",
-            "ai_summary": "e2e: 첫 분석 요약", "ai_suggestions": [FRESH_SUGGESTION],
-            "file_feedbacks": [{"file": FRESH_PROBLEM_FILE,
-                                "issues": ["라인 3: 예외를 삼키지 말고 로그를 남기세요"]}]}),
-        FRESH_UNSCORED_REPO: (None, {
-            "summary": "e2e: AI 리뷰 실패", "issues": [], "ai_review_status": "api_error"}),
+    reviews = {
+        # AI 리뷰가 성공한 첫 분석 — 카테고리 피드백 다섯 칸과 제안·파일 피드백을 함께 낸다.
+        FRESH_FIRST_REPO: AiReviewResult(
+            commit_score=14, ai_score=16, test_score=8, summary="e2e: 첫 분석 요약",
+            suggestions=[FRESH_SUGGESTION],
+            commit_message_feedback="e2e: 커밋 메시지가 바꾼 이유를 말한다",
+            code_quality_feedback="e2e: 함수가 짧고 이름이 분명하다",
+            security_feedback="e2e: 입력 검증이 있다",
+            direction_feedback="e2e: 구현 방향이 요구와 맞다",
+            test_feedback="e2e: 경계값 시험이 하나 더 있으면 좋다",
+            file_feedbacks=[{"file": FRESH_PROBLEM_FILE,
+                             "issues": ["라인 3: 예외를 삼키지 말고 로그를 남기세요"]}]),
+        # AI 호출이 예외로 끝난 분석 — 리뷰어의 실패 경로가 돌려주는 그 기본값이다.
+        FRESH_UNSCORED_REPO: _default_result("api_error", error_type="APIConnectionError"),
     }
+    seeds = {}
+    for full_name, review in reviews.items():
+        # 파이프라인의 저장 순서 그대로 — 채점 → 결과 dict → NULL 저장 판정.
+        score_result = calculate_score([], review)
+        result = build_analysis_result_dict(review, score_result, [], source="push")
+        null = should_null_persist_score(result)
+        seeds[full_name] = (None if null else score_result.total,
+                            None if null else score_result.grade, result)
     engine = create_engine(f"sqlite:///{db_path}")
     session = sessionmaker(bind=engine)()
     try:
@@ -1653,7 +1670,7 @@ def _seed_fresh_user(db_path: str) -> dict:
         ), {"id": FRESH_USER_ID, "gid": FRESH_USER_ID, "login": FRESH_LOGIN,
             "tok": "gho_e2e_fresh", "mail": f"{FRESH_LOGIN}@test.com", "name": "E2E Fresh",
             "tg": str(FRESH_USER_ID)})
-        for full_name, (score, result) in seeds.items():
+        for full_name, (score, grade, result) in seeds.items():
             repo = session.query(Repository).filter_by(full_name=full_name).first()
             if repo is None:
                 repo = Repository(
@@ -1665,8 +1682,7 @@ def _seed_fresh_user(db_path: str) -> dict:
             if session.query(Analysis).filter_by(commit_sha=sha).first() is None:
                 session.add(Analysis(
                     repo_id=repo.id, commit_sha=sha, commit_message=f"e2e: {full_name} 첫 분석",
-                    score=score, grade=None if score is None else calculate_grade(score),
-                    result=result, author_login=FRESH_LOGIN,
+                    score=score, grade=grade, result=result, author_login=FRESH_LOGIN,
                     score_unreliable=score_is_unreliable(result), created_at=at))
         session.commit()
         rows = {full_name: session.query(Analysis).join(Repository).filter(
@@ -1680,9 +1696,10 @@ def _seed_fresh_user(db_path: str) -> dict:
         engine.dispose()
     # 🔴 팔을 여는 전제를 여기서 말한다 — 어긋나면 «재지 못한 초록» 대신 이유로 멈춘다.
     assert owned == 2, f"이 사용자의 리포가 {owned}개 — 다른 픽스처가 같은 사용자를 썼는지 볼 것"
-    assert shape == {FRESH_FIRST_REPO: [(82, "B", False)],
-                     FRESH_UNSCORED_REPO: [(None, None, True)]}, (
-        f"분석 모양이 다르다 {shape!r} — 첫 리포는 분석이 «하나»(추세 차트 거짓 팔)여야 하고, "
+    first = shape[FRESH_FIRST_REPO]
+    assert (len(first) == 1 and first[0][0] is not None and first[0][1] and first[0][2] is False
+            and shape[FRESH_UNSCORED_REPO] == [(None, None, True)]), (
+        f"분석 모양이 다르다 {shape!r} — 첫 리포는 점수 있는 분석이 «하나»(추세 차트 거짓 팔)여야 하고, "
         "점수 없는 리포는 점수·등급 NULL 이어야 개요 카드가 «기록된 점수 없음» 으로 간다")
     return {"user_id": FRESH_USER_ID, "login": FRESH_LOGIN, "first_analysis_id": first_id}
 

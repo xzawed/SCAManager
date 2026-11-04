@@ -437,6 +437,9 @@
     color: var(--text-1);
   }
   .alert .me-2 { margin-right: .5rem; }
+  /* 아이콘은 글의 첫 줄(제목) 옆에 선다 — 가운데 정렬이면 여러 줄로 접힌 글의 세로 가운데로 내려간다.
+     The icon sits beside the first text line; centring dropped it to the middle of a wrapped paragraph. */
+  .alert > .me-2 { align-self: flex-start; }
   /* 글 덩어리는 아이콘 옆에서 줄어든다 — max-content 폭이면 flex-wrap 이 아이콘만 첫 줄에 남겼다.
      The text block shrinks beside the icon; at max-content width the wrap left the icon alone. */
   .alert > div { flex: 1 1 16rem; min-width: 0; }
