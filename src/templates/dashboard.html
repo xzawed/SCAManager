@@ -274,6 +274,10 @@
     font-size: 14px; line-height: 1.5;
     color: var(--text-1, #fff);
     padding-left: 16px; position: relative;
+    /* 끊을 자리 없는 id(보안 대기 목록의 secret type 등)는 그 자리에서 줄을 바꾼다 — 안 그러면 한 칸
+       그리드 열이 그 길이만큼 넓어져 폰 폭 문서가 가로로 넘친다. `anywhere` 라야 최소 폭도 줄어든다.
+       An unbreakable id wraps in place; otherwise it widens the one-column grid past a phone screen. */
+    overflow-wrap: anywhere;
   }
   .dash-insight-list li::before {
     content: "·"; position: absolute; left: 4px; top: -2px;

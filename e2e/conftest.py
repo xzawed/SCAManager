@@ -670,25 +670,42 @@ def _seed_absence_analysis(db_path: str) -> int:
     return got[0]
 
 
+# GitHub REST 의 open alert 목록 한 항목 모양 — 폴링이 받는 그대로 writer 에 넣는다.
+# code scanning 의 심각도는 `rule.severity`(error·warning·note)가 먼저다(`_alert_metadata`).
+# 🔴 secret type 은 GitHub 문서에 있는 실제 값 중 긴 것이다 — 대기 목록은 그 id 를 그대로 적고,
+#    끊을 자리가 없는 50자라 폰 폭 그리드가 그 길이를 견디는지 잰다.
+# One item of GitHub's open-alert list responses, fed to the writer exactly as polling receives it.
+SECURITY_LONG_SECRET_TYPE = "google_cloud_storage_service_account_access_key_id"
+_SECURITY_ALERT_PAYLOADS = (
+    (("code-scanning", "code_scanning"),
+     [{"number": 9001, "state": "open",
+       "rule": {"id": "py/sql-injection", "severity": "error", "security_severity_level": "high"}}]),
+    (("secret-scanning", "secret_scanning"),
+     [{"number": 9002, "state": "open", "secret_type": SECURITY_LONG_SECRET_TYPE,
+       "secret_type_display_name": "Google Cloud Storage Service Account Access Key ID"}]),
+)
+
+
 def _seed_security_alerts(db_path: str) -> int:
-    """보안 알림 2건 — 대기 1 · 처리완료 1 → 시드한 행 수.
+    """보안 알림 2건(code scanning 1 · secret scanning 1)을 운영 writer 로 쓴다 → 새로 쓴 행 수.
 
     🔴 `?mode=security` 는 세 갈래다(`dashboard.html`):
        kill-switch → `total_alerts == 0` 빈 상태 → **4카드 그리드**.
-       e2e 는 알림이 0건이라 언제나 «빈 상태» 만 그렸다 — 카드·분류 수치·대기 목록은
-       한 번도 관측되지 않았다(#1639 W12-b).
+       e2e 는 알림이 0건이라 언제나 «빈 상태» 만 그렸다(#1639 W12-b).
+    🔴 운영이 쓰는 모양으로 심는다 — 알림 행을 쓰는 곳은 폴링(`security_scan_service._record_alerts`)
+       하나이고 GitHub 응답에서 심각도·규칙 id 만 옮긴다. AI 분류·사용자 결정을 쓰는 코드는 없다
+       (`record_user_decision` 은 호출처가 없다). 그래서 운영의 알림은 언제나 «미분류 · 대기» 다.
     🔴 «기존 리포를 재사용» 한다. 새 리포를 만들면 `active_repos.total` 이 또 움직인다
        (`dashboard_service.py::_kpi_active_repos` 의 `total` 은 Repository 수를 센다).
        보안 알림 자체는 `analyses` 를 거치지 않아 평균 점수·HIGH KPI 를 건드리지 않는다.
-    🔴 ORM 으로 넣는다 — `processed_at` 은 파이썬 측 `default` 라 원시 SQL 에서는
-       NOT NULL 위반이 되고 `INSERT OR IGNORE` 가 그것을 조용히 삼킨다(#1652 실측).
-    Seed two alerts so the security mode renders its 4-card grid instead of the empty state.
+    Seed two alerts through the production writer so the security mode renders its 4-card grid.
     """
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
 
     from src.models.repository import Repository  # noqa: PLC0415
     from src.models.security_alert_log import SecurityAlertProcessLog  # noqa: PLC0415
+    from src.services.security_scan_service import _record_alerts  # noqa: PLC0415
 
     engine = create_engine(f"sqlite:///{db_path}")
     session = sessionmaker(bind=engine)()
@@ -696,35 +713,40 @@ def _seed_security_alerts(db_path: str) -> int:
         repo = session.query(Repository).filter_by(full_name="owner/testrepo").first()
         if repo is None:
             raise RuntimeError("_seed_security_alerts: owner/testrepo must exist first")
-        rows = [
-            # 대기 — `user_decision IS NULL` 이라야 `list_pending` 에 잡힌다.
-            {"alert_number": 9001, "ai_classification": "actual_violation",
-             "severity": "high", "rule_id": "py/sql-injection", "user_decision": None,
-             "ai_confidence": 0.92, "ai_reason": "e2e: 사용자 입력이 쿼리에 직접 들어간다"},
-            # 처리완료 — `processed_count > 0` 을 만든다.
-            {"alert_number": 9002, "ai_classification": "false_positive",
-             "severity": "medium", "rule_id": "py/clear-text-logging",
-             "user_decision": "accept_ai", "ai_confidence": 0.71,
-             "ai_reason": "e2e: 테스트 픽스처에서만 쓰인다"},
-        ]
-        made = 0
-        for r in rows:
-            exists = session.query(SecurityAlertProcessLog).filter_by(
-                repo_id=repo.id, alert_type="code_scanning",
-                alert_number=r["alert_number"]).first()
-            if exists is None:
-                session.add(SecurityAlertProcessLog(
-                    repo_id=repo.id, alert_type="code_scanning", user_id=_E2E_USER_ID, **r))
-                made += 1
-        session.commit()
-        total = session.query(SecurityAlertProcessLog).count()
+        before = session.query(SecurityAlertProcessLog).count()
+        counts = {"code_scanning": 0, "secret_scanning": 0, "skipped": 0}
+        _record_alerts(session, repo.id, repo.full_name, list(_SECURITY_ALERT_PAYLOADS), counts)
+        made = session.query(SecurityAlertProcessLog).count() - before
+        foreign, view = _alerts_outside_production_shape(session)
     finally:
         session.close()
         engine.dispose()
-    assert total >= 2, (
-        f"보안 알림이 {total}건 — 2건 이상이어야 그리드가 열린다. "
-        "0이면 «못 쟀음» 이지 통과가 아니다")
+    # writer 는 한 건 실패를 롤백하고 넘어간다 — 센 수로 확인한다.
+    # The writer rolls back a failed row and moves on, so check its counts.
+    assert counts == {"code_scanning": 1, "secret_scanning": 1, "skipped": 0}, (
+        f"writer 가 두 알림을 다 쓰지 않았다: {counts}")
+    assert not foreign, (
+        f"운영이 쓰지 못하는 알림 값이 있다(번호·분류·결정·사용자): {foreign} — 그 화면은 운영에 없다")
+    assert view["total_alerts"] >= 2 and view["pending_count"] == view["total_alerts"], (
+        f"보안 화면 데이터가 «알림 2건 이상 · 전부 대기» 가 아니다(total={view['total_alerts']} "
+        f"pending={view['pending_count']}) — 0이면 «못 쟀음» 이지 통과가 아니다")
     return made
+
+
+def _alerts_outside_production_shape(session) -> tuple[list[tuple], dict]:
+    """운영 writer 가 쓰지 않는 값을 가진 알림 행 · 템플릿이 읽는 보안 화면 데이터.
+
+    🔴 모든 행을 본다 — 운영에서 알림을 쓰는 곳은 폴링 하나이고, AI 분류·사용자 결정을 쓰는 코드는 없다.
+    Rows carrying values the production writer never writes, plus the data the template reads.
+    """
+    from src.models.security_alert_log import SecurityAlertProcessLog  # noqa: PLC0415
+    from src.services.dashboard_service import dashboard_security  # noqa: PLC0415
+
+    foreign = [(r.alert_number, r.ai_classification, r.user_decision, r.user_id)
+               for r in session.query(SecurityAlertProcessLog).all()
+               if (r.ai_classification, r.ai_confidence, r.ai_reason, r.user_decision, r.user_id)
+               != (None, None, None, None, None)]
+    return foreign, dashboard_security(session, user_id=_E2E_USER_ID)
 
 
 def _seed_merge_history(db_path: str, analysis_id: int) -> dict[str, int]:
