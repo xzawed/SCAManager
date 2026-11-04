@@ -30,6 +30,7 @@ from dataclasses import dataclass
 
 from ._contrast import (AA, ROOT, THEMES, Unmeasurable, over, paint_colours, ratio, read,
                         strip_css_comments, token_scope)
+from ._css_structure import style_blocks
 
 _TOKENS = read("src/static/css/tokens.css")
 _SCOPES = {t: token_scope(_TOKENS, t) for t in THEMES}
@@ -69,8 +70,8 @@ def _all_pairs() -> list[Pair]:
     for f in sorted((ROOT / "src" / "templates").rglob("*.html")):
         text = f.read_text(encoding="utf-8")
         rel = f.relative_to(ROOT).as_posix()
-        for m in re.finditer(r"<style[^>]*>(.*?)</style>", text, re.S | re.I):
-            out += pairs_in(m.group(1), rel)
+        for _, css in style_blocks(text):
+            out += pairs_in(css, rel)
         # 인라인 `style=""` 도 한 규칙이다.
         for m in re.finditer(r'\bstyle="([^"]*)"', text):
             line = text.count("\n", 0, m.start()) + 1

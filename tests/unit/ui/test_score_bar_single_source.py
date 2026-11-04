@@ -16,6 +16,7 @@ from __future__ import annotations
 import re
 
 from ._contrast import ROOT, strip_css_comments
+from ._css_structure import style_blocks
 
 # `.score-bar` · `.score-bar--b` · `.score-bar::after` — `.score-bar-wrap` 같은 다른 이름은 아니다.
 _SCORE_BAR = re.compile(r"\.score-bar(?:--[\w-]+)?(?![\w-])")
@@ -32,9 +33,8 @@ def painted_score_bar_rules(src: str) -> list[str]:
 def _template_styles() -> list[tuple[str, str]]:
     out = []
     for f in sorted((ROOT / "src" / "templates").rglob("*.html")):
-        for m in re.finditer(r"<style[^>]*>(.*?)</style>", f.read_text(encoding="utf-8"),
-                             re.S | re.I):
-            out.append((f.relative_to(ROOT).as_posix(), m.group(1)))
+        for _, css in style_blocks(f.read_text(encoding="utf-8")):
+            out.append((f.relative_to(ROOT).as_posix(), css))
     return out
 
 

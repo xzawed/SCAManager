@@ -77,11 +77,11 @@ import subprocess  # nosec B404
 import pytest
 
 from ._contrast import ROOT, strip_css_comments
+from ._css_structure import style_blocks
 
 # `{` 앞의 셀렉터 머리 — 직전 `{` · `}` · `;` 뒤부터 `{` 까지.
 # A rule prelude: the text between the previous `{`/`}`/`;` and the next `{`.
 _PRELUDE = re.compile(r"([^{};]*)\{")
-_STYLE = re.compile(r"<style[^>]*>(.*?)</style>", re.S | re.I)
 
 # 가상 요소(구식 한 콜론 포함) · 타입 `tr` · 클래스 · `:is(`/`:where(` — 전부 «가린» 문자열에 쓴다.
 # Pseudo-element / `tr` type / class / :is( :where( — all applied to the masked compound.
@@ -306,12 +306,6 @@ def row_classes_in(text: str) -> set[str]:
         for m in re.finditer(rf"{target}\.id\s*=\s*(?P<q>[\"'`])(?P<v>.*?)(?P=q)", text):
             out |= {"#" + t for t in _class_tokens(m.group("v"))}
     return out
-
-
-def style_blocks(html: str) -> list[tuple[int, str]]:
-    """템플릿의 `<style>` 내용을 (파일 안 시작 줄, 원문) 으로.
-    The template's `<style>` contents with their file-relative start line."""
-    return [(html.count("\n", 0, m.start(1)) + 1, m.group(1)) for m in _STYLE.finditer(html)]
 
 
 def _tracked(under: str, suffix: str) -> list[str]:

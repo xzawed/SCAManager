@@ -1,7 +1,7 @@
 ## 지형
 
 페이지 = `src/ui/routes/<도메인>.py` → `TemplateResponse(request, "<x>.html", {..., "locale": get_locale(request)})`. `src/ui/router.py` 에서 `/repos/{name}`(catch-all)은 마지막. `landing.html` 만 독립 head, 나머지는 `base.html` 상속. 브라우저 화면 요청의 404·403 은 `src/ui/error_page.py` 가 `error.html` 로 그린다(`/api/…`·`Accept: */*` 는 JSON).
-CSS 순서 = `src/templates/base.html::css/tokens.css">` — tokens → themes → illustrations → dist/tailwind → components → pages.
+CSS 순서 = `src/templates/base.html::css/tokens.css">` 부터의 `<link>` 순서.
 
 ## 설정 토글을 추가한다
 
@@ -39,6 +39,7 @@ CSS 순서 = `src/templates/base.html::css/tokens.css">` — tokens → themes �
 8. 표 행(`tr`·행에 단 클래스)엔 ::before·::after 금지 — 강조선은 `td:first-child::before`(`tests/unit/ui/test_table_row_pseudo_element.py::def test_no_table_row`).
 9. hover 로 면을 바꾸면 행 = `--table-row-hover` · 카드 = `--bg-card-hover`(칩 면 `--bg-mute`·`--bg-card-hi` 금지 — `tests/unit/ui/test_hover_surface_contrast.py::def test_rows_and_cards_repaint_hover_with_the_hover_tokens`).
 10. 누르는 것은 `button`·`a[href]` 로 — `onclick` 만 단 `tr`·`th` 는 Tab 이 못 닿는다. 메뉴 키 계약 = `src/templates/base.html::function _wireMenuKeys`.
+11. CSS 중첩(규칙 안 규칙)은 쓰지 않는다 — `tests/unit/ui/test_css_structure.py` 가 결함으로 본다. Chromium 이 원문 규칙을 다 갖는지는 `e2e/test_stylesheet_integrity.py`.
 
 ## 검증
 
@@ -48,5 +49,5 @@ py -3 -m pytest e2e/ -p no:asyncio
 uvicorn src.main:app --reload --port 8000
 ```
 
-4테마(dark·light·pastel·catppuccin) × 모바일/데스크탑 확인. 테마 = 헤더 드롭다운 → `localStorage['sca-theme']`.
+4테마 × 모바일/데스크탑 확인. 테마 = 헤더 드롭다운 → `localStorage['sca-theme']`.
 언어 = `POST /api/users/me/preferred-language` → DB + Cookie `preferred_language`(httponly) → `LocaleMiddleware`. 없으면 `Accept-Language` → `DEFAULT_LOCALE`(`en`).

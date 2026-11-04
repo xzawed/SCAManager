@@ -11,6 +11,8 @@ import hashlib
 import pathlib
 import re
 
+from ._css_structure import style_blocks
+
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 
 AA = 4.5
@@ -99,7 +101,7 @@ def style_text(rel: str) -> str:
     """
     text = read(rel)
     if rel.endswith(".html"):
-        text = "\n".join(re.findall(r"<style[^>]*>(.*?)</style>", text, re.S | re.I))
+        text = "\n".join(css for _, css in style_blocks(text))
     return neutralize_strings(strip_css_comments(text))
 
 
