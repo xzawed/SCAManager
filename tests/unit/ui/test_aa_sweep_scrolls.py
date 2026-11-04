@@ -64,6 +64,27 @@ def _audit_constants() -> set[str]:
     return out
 
 
+def _calls_to(node, name: str) -> list[ast.Call]:
+    """`node` 안에서 `name(...)` 을 «부르는» 호출 — 글자가 아니라 구문 트리로 센다.
+
+    🔴 `ast.unparse` 한 본문에서 부분문자열로 찾으면 docstring 이나 문자열 상수의 언급도 «호출» 이 된다 —
+    랜딩 시험을 자체 스크롤 루프로 되돌리고 docstring 에 `_reveal_all(page)` 만 적어도 초록이었다.
+    Count real calls in the syntax tree; a substring search also matched a docstring mention.
+    """
+    return sorted((n for n in ast.walk(node) if isinstance(n, ast.Call)
+                   and isinstance(n.func, ast.Name) and n.func.id == name),
+                  key=lambda n: (n.lineno, n.col_offset))
+
+
+def _code_without_docstring(fn) -> str:
+    """함수 본문을 docstring 을 뺀 채로 펼친다 — 설명 문장이 «있다» 고 세지 않게."""
+    body = list(fn.body)
+    if body and isinstance(body[0], ast.Expr) and isinstance(getattr(body[0], "value", None), ast.Constant) \
+            and isinstance(body[0].value.value, str):
+        body = body[1:]
+    return "\n".join(ast.unparse(stmt) for stmt in body)
+
+
 def sweep_functions() -> dict[str, bool]:
     """{픽셀 감사를 돌리는 함수 이름: 스크롤을 태우는가}."""
     src = _SWEEP.read_text(encoding="utf-8")
@@ -82,8 +103,7 @@ def sweep_functions() -> dict[str, bool]:
         names = {n.id for n in ast.walk(node) if isinstance(n, ast.Name)}
         if not (names & audits):
             continue
-        body = ast.unparse(node)
-        out[node.name] = "_reveal_all(" in body
+        out[node.name] = bool(_calls_to(node, "_reveal_all"))
     return out
 
 
@@ -107,7 +127,7 @@ def test_the_scroll_helper_actually_scrolls():
     fn = next((n for n in ast.walk(tree)
                if isinstance(n, ast.FunctionDef) and n.name == "_reveal_all"), None)
     assert fn is not None, "`_reveal_all` 이 없다 — 스크롤 관용구가 사라졌다"
-    body = ast.unparse(fn)
+    body = _code_without_docstring(fn)
     # 🔴 `"scrollTo(" in body` 로는 부족하다 — 헬퍼 끝의 «맨 위로 복귀»(`scrollTo(0, 0)`)가
     #    그 조건을 혼자 만족시켜, 실제 훑기 루프를 지워도 초록이었다(뮤테이션 실증).
     #
@@ -122,39 +142,37 @@ def test_the_scroll_helper_actually_scrolls():
     assert "scrollHeight" in body, "문서 끝까지 훑지 않는다 — 일부만 드러난다"
     assert "_settle_animations(" in body, (
         "드러낸 뒤 애니메이션을 정착시키지 않는다 — 페이드 «도중» 값을 재게 된다")
-    assert "_assert_reveals_accounted(" in body, (
-        "훑은 뒤 «드러나지 않은 것» 을 판정하지 않는다 — 스윕을 부르는 시험마다 판정을 따로 달아야 하고, "
-        "빠뜨린 시험에서는 멈춘 카드의 글자가 안 잰 초록이 된다")
+    # 🔴 «드러나지 않은 것» 판정은 함수의 «마지막 문장» 이어야 한다 — 호출이 본문 어딘가에 있는지만 보면
+    #    `if False:` 로 감싸도 초록이었다(뮤테이션 실증). 조건·try 안이면 마지막 문장이 Expr 가 아니다.
+    last = fn.body[-1]
+    assert (isinstance(last, ast.Expr) and isinstance(last.value, ast.Call)
+            and isinstance(last.value.func, ast.Name)
+            and last.value.func.id == "_assert_reveals_accounted"), (
+        "`_reveal_all` 이 무조건 «드러나지 않은 것» 을 판정하며 끝나지 않는다 — 판정을 건너뛰는 스윕에서는 "
+        f"멈춘 카드의 글자가 안 잰 초록이 된다(마지막 문장: {ast.unparse(last)[:80]!r})")
 
 
-def test_a_sweep_that_skips_accounting_is_followed_by_one_that_does():
-    """🔴 `_reveal_all(..., account=False)` 는 «곧 다시 훑을» 중간 상태용이다 — 그 함수는 뒤에서 판정한다.
+def test_the_sweep_has_no_switch_to_skip_its_accounting():
+    """🔴 스윕에는 판정을 끄는 스위치가 없다 — `_reveal_all(page)` 하나의 모양뿐이다.
 
-    판정을 끈 스윕 바로 뒤에 감사를 돌리면 드러나지 않은 글자가 다시 «안 잰 초록» 이 된다 —
-    판정이 공용 헬퍼 셋에만 있던 첫 판이 스윕하는 시험 27개를 비켜 간 것과 같은 모양이다.
-    그래서 마지막 스윕이 판정을 껐으면, 그 뒤에 판정(`_assert_reveals_accounted`)을 직접 불러야 한다.
-    A sweep with accounting switched off must be followed, in the same function, by accounting.
+    판정을 끄는 인자(`account=False`)를 두었던 판은 «마지막 호출이 판정한다» 를 구문으로 강제하려 했지만,
+    조건문 안의 마지막 호출 · `**{"account": False}` · «끈 스윕 → 감사 → 켠 스윕» 순서를 못 갈랐다.
+    스위치를 없애면 갈라야 할 것이 없다(판정을 켠 채 «여는 동작 전» 스윕 65건 통과).
+    The sweep takes only `page`; with no switch there is nothing to bypass.
     """
     tree = ast.parse(_SWEEP.read_text(encoding="utf-8"))
-
-    def calls_to(fn, name):
-        return sorted((n for n in ast.walk(fn) if isinstance(n, ast.Call)
-                       and isinstance(n.func, ast.Name) and n.func.id == name),
-                      key=lambda n: (n.lineno, n.col_offset))
-
-    swept, bad = 0, []
-    for fn in ast.walk(tree):
-        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) or fn.name == "_reveal_all":
-            continue
-        calls = calls_to(fn, "_reveal_all")
-        swept += bool(calls)
-        if not calls or not any(k.arg == "account" for k in calls[-1].keywords):
-            continue
-        last = (calls[-1].lineno, calls[-1].col_offset)
-        if not any((c.lineno, c.col_offset) > last for c in calls_to(fn, "_assert_reveals_accounted")):
-            bad.append(f"{fn.name} (줄 {calls[-1].lineno})")
-    assert swept, "`_reveal_all` 을 부르는 함수를 0개 찾았다 — 스캔이 죽었다(공허한 초록)"
-    assert not bad, "마지막 스윕이 판정을 끈 채 끝나고 뒤에서 판정하지도 않는다:\n  " + "\n  ".join(bad)
+    fn = next((n for n in ast.walk(tree)
+               if isinstance(n, ast.FunctionDef) and n.name == "_reveal_all"), None)
+    assert fn is not None, "`_reveal_all` 이 없다"
+    a = fn.args
+    params = [p.arg for p in a.posonlyargs + a.args + a.kwonlyargs]
+    assert params == ["page"] and a.vararg is None and a.kwarg is None, (
+        f"`_reveal_all` 의 인자가 `page` 하나가 아니다({params}, *{a.vararg} **{a.kwarg}) — "
+        "판정을 끄는 길이 생긴다")
+    calls = _calls_to(tree, "_reveal_all")
+    assert calls, "`_reveal_all` 을 부르는 곳을 0개 찾았다 — 스캔이 죽었다(공허한 초록)"
+    odd = [f"줄 {c.lineno}" for c in calls if len(c.args) != 1 or c.keywords]
+    assert not odd, "`_reveal_all(page)` 모양이 아닌 호출 — 인자를 더 넘긴다:\n  " + "\n  ".join(odd)
 
 
 def test_exemptions_still_point_at_a_real_sweep():

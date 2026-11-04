@@ -607,7 +607,7 @@ def _settle_animations(page) -> None:
         .map(a => a.finished.catch(() => {})))""")
 
 
-def _reveal_all(page, *, account: bool = True) -> None:
+def _reveal_all(page) -> None:
     """🔴 화면 «전체» 를 드러낸 뒤 잰다 — 안 그러면 첫 화면 아래는 관측되지 않는다.
 
     `base.html::_revealIO` 가 `.card`·`.s-card`·`.kpi-card`·`.reveal` 에 `.reveal` 을 붙이고,
@@ -630,9 +630,10 @@ def _reveal_all(page, *, account: bool = True) -> None:
     3초·2프레임이 지나도 안 붙으면 스크롤로는 못 드러나는 요소(문서 끝 40px 안 등)다 —
     억지로 드러내지 않고 남겨 둬야 시험이 그것을 잡는다.
 
-    🔴 끝에서 «드러나지 않은 것» 을 판정한다(`_assert_reveals_accounted`) — 훑는 곳이 곧 판정하는 곳이다.
-    판정을 공용 측정 헬퍼 셋에만 두었던 첫 판은, 이 함수로 훑고 글자를 재는 시험 27개(관리자 세 화면 ·
-    비로그인 랜딩 포함)를 비켜 갔다. `account=False` 는 «여는 동작 전» 처럼 곧 다시 훑을 중간 상태에만 쓴다.
+    🔴 끝에서 «드러나지 않은 것» 을 판정한다(`_assert_reveals_accounted`) — 훑는 곳이 곧 판정하는 곳이고,
+    끄는 스위치는 없다. 판정을 공용 측정 헬퍼 셋에만 두었던 첫 판은, 이 함수로 훑고 글자를 재는 시험 27개
+    (관리자 세 화면 · 비로그인 랜딩 포함)를 비켜 갔다. «여는 동작 전» 의 중간 스윕도 판정한다 — 그 상태는
+    그 화면의 기본 상태라 경로 스윕이 이미 판정을 통과한다(판정을 켠 채 폰 폭 메뉴 · 상호작용 상태 65건 통과).
 
     Scroll first: reveal-on-intersect content is invisible (and unmeasurable) until it enters
     the viewport, and `_settle_animations` cannot help because no Animation exists yet. Then
@@ -664,10 +665,8 @@ def _reveal_all(page, *, account: bool = True) -> None:
         await frame();
     }""")
     _settle_animations(page)
-    if account:
-        where = page.evaluate("""() => location.pathname + location.search + ' ['
-            + (document.documentElement.dataset.theme || document.body.dataset.theme || '-') + ']'""")
-        _assert_reveals_accounted(page, where)
+    _assert_reveals_accounted(page, page.evaluate("""() => location.pathname + location.search + ' ['
+        + (document.documentElement.dataset.theme || document.body.dataset.theme || '-') + ']'"""))
 
 
 def unrevealed_counts(page) -> dict:
@@ -962,8 +961,7 @@ def _assert_token_text_aa(page, base_url, theme, path, viewport=None, prepare=No
     #    글자색 위에 다음 테마의 바탕이 겹친 값이 나온다).
     page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
     page.wait_for_timeout(400)
-    # 여는 동작이 남았으면 이 스윕은 중간 상태다 — 판정은 연 «뒤» 의 스윕이 한다.
-    _reveal_all(page, account=prepare is None)
+    _reveal_all(page)
     if prepare is not None:
         prepare(page)
         # 🔴 여는 단계가 «새 내용» 을 표시하면 그 조상이 아직 `.reveal`(opacity 0) 일 수
@@ -1988,6 +1986,31 @@ def test_the_sweep_waits_for_the_observer_not_the_clock(seeded_page, base_url):
     assert plant < 0.99, (
         "스크롤로 못 드러나는 요소(문서 끝 40px)까지 드러났다 — 관찰자를 건너뛰는 helper 는 "
         "진짜 갇힌 내용을 숨긴다")
+
+
+def test_the_sweep_accounts_hidden_reveals_by_their_owner(seeded_page, base_url):
+    """🔴 스윕 끝 판정의 «숨김» 갈래 대조군 — 주인 밖에서 숨은 `.reveal` 은 red, 주인 상태 안에서 숨은 것은 통과.
+
+    위 시험의 대조군은 «멈춤» 갈래만 잰다. 이 시험이 없을 때는 주인 판정(`assert not orphan`)을 지우거나
+    주인 셀렉터를 `body` 로 넓혀도 전부 초록이었다 — 그러면 숨은 패널 안 카드가 아무 스윕에도 안 재진다.
+    The hidden branch of the sweep's accounting: an unowned hidden `.reveal` fails, an owned one passes.
+    """
+    page = seeded_page
+    page.set_viewport_size(_WIDE_VIEWPORT)
+    page.goto(f"{base_url}/repos/owner%2Ftestrepo/settings?mode=simple")
+    owned_sel = next(iter(_REVEAL_STATE_OWNERS))
+    assert page.evaluate("(sel) => document.querySelectorAll(sel).length", owned_sel) > 0, (
+        f"`{owned_sel}` 이 아무것도 안 고른다 — 단순 모드가 안 걸려 대조군이 뜻을 잃었다")
+    page.evaluate("""() => { const d = document.createElement('div');
+        d.className = 'reveal'; d.id = 'orphanPlant'; d.textContent = 'e2e orphan';
+        d.style.display = 'none'; document.body.appendChild(d); }""")
+    with pytest.raises(AssertionError,
+                       match=r"아는 상태 밖에서 숨은 `\.reveal` 1개 .*div#orphanPlant\.reveal"):
+        _reveal_all(page)
+    # 같은 요소를 단순 모드에서 숨는 `.adv-only` 안으로 옮기면 그 상태의 몫이라 판정을 통과한다.
+    page.evaluate("""(sel) => { const d = document.getElementById('orphanPlant'); d.style.display = '';
+        document.querySelector(sel).appendChild(d); }""", owned_sel)
+    _reveal_all(page)
 
 
 # ── J. WCAG 2.5.8 타깃 크기 (24×24) — 모바일 ─────────────────────────────────
