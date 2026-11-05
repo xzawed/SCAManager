@@ -15,7 +15,7 @@ GitHub Push/PR → 정적 분석 + AI 리뷰 → 점수·등급 → 알림(Teleg
    정본은 [verify.md](docs/workflow/verify.md) 「판정식을 쓸 때」 3~5.
 4. **구현**
 5. **검증** — [verify.md](docs/workflow/verify.md) 의 절차를 그대로 따른다.
-6. **PR** — `gh pr create --body-file <임시파일>`. URL 안내 금지.
+6. **PR** — `gh pr create --body-file <임시파일>`(URL 안내 금지).
 7. **머지는 사용자가 한다.**
 
 ## 영역 문서
@@ -41,7 +41,7 @@ py -3 scripts/pre_push_gate.py      # CI 가드를 로컬에서 (--full: pylint�
 py -3 -m pytest e2e/ -p no:asyncio  # E2E (tests/ 와 같이 돌리지 않는다)
 ```
 
-이 개발 PC 엔 `make` 이 없다 — `make X` 실패는 환경 문제다(정본 = `Makefile`).
+이 PC 엔 `make` 이 없다 — `make X` 실패는 환경 문제다(정본 `Makefile`).
 
 최초 설정: `cp .env.example .env` → `py -3 -m pip install -r requirements.txt -r requirements-dev.txt`
 → `npm install && npm run build` → `py -3 -m pre_commit install` → `py -3 -m uvicorn src.main:app --reload`
@@ -51,22 +51,22 @@ py -3 -m pytest e2e/ -p no:asyncio  # E2E (tests/ 와 같이 돌리지 않는다
 - 옵션 제시는 장단점 표 + 권장안 1개.
 - PR 본문에 사람이 눈으로 확인할 항목 1~3개 — "테스트 통과" 만 적지 않는다.
 - 위임 작업 중 스스로 판단한 것은 PR 본문이나 응답 끝에 명시한다.
-- 스키마·API·권한·데이터모델 변경은 착수 전 확인받는다. 나머지는 진행하고 보고한다.
+- 스키마·API·권한·데이터모델 변경은 착수 전 확인받고, 나머지는 진행하고 보고한다.
 - 시각 변경(`templates/`·`static/`)은 사람이 봐야 한다 — 정적 테스트 통과는 근거가 아니다.
 - 운영 DB(MCP · `railway ssh`): SELECT 자율, 쓰기·DDL·PII·credential 조회는 사전 승인. 읽기는 `BEGIN READ ONLY`
   로만 — `SET SESSION …` 은 풀러(6543)가 앱 연결에 남겨 앱 쓰기를 막는다.
-- 문서 수치는 실행 결과를 옮긴다. 코드 좌표는 **줄번호가 아니라 앵커**다 — `path::파일에 실재하는 문자열`(`scripts/check_doc_anchors.py` 가 강제).
+- 문서 수치는 실행 결과를 옮긴다. 코드 좌표는 **줄번호가 아니라 앵커**다 — `path::파일에 실재하는 문자열`(`scripts/check_doc_anchors.py`).
 
 ## 파일 수정 제한
 
 `alembic/versions/` · `src/templates/*.html` · `Dockerfile` · `.dockerignore` · `alembic.ini` 은 테스트 불가
 환경에서 훅이 차단한다(로컬 PC·Codespaces 는 허용).
-🔴 차단은 `Write|Edit|MultiEdit` 에만 걸린다. **Bash 로 고치면 막히지 않는다** — PostToolUse 는 알리기만 한다.
+🔴 차단은 `Write|Edit|MultiEdit` 에만 걸린다 — **Bash 로 고치면 막히지 않는다**(PostToolUse 는 알리기만).
 
 ## 코드 주석
 
 한국어를 먼저 쓰고 다음 줄에 영어를 붙인다. `# TODO`·`# type: ignore` 같은 표준 태그는 영어 단독.
-관행이지 게이트는 아니다 — `py -3 scripts/i18n_comments/check_bilingual.py src/ --report` 가 비율을 잰다.
+관행이지 게이트는 아니다(비율 = `scripts/i18n_comments/check_bilingual.py src/ --report`).
 
 ## 문서 규칙
 
@@ -77,11 +77,11 @@ py -3 -m pytest e2e/ -p no:asyncio  # E2E (tests/ 와 같이 돌리지 않는다
 - 문서를 고쳐 자수가 늘면 무엇을 뺐는지 PR 본문에 적는다.
 - 새 문서 전에 기존 문서에 자리가 없는지 본다.
 - 문서 개수·문장 존재를 강제하는 테스트를 만들지 않는다(`len(docs) >= N`, 「이 문장이 살아 있을 것」).
-  그런 계약은 축소를 CI red 로 만든다 — 공허화 방어는 「집합이 비었는가」로 충분하다.
+  공허화 방어는 「집합이 비었는가」로 충분하다.
 - 테스트 수가 바뀌면 `docs/STATE.md` SSOT 불릿 **한 줄만** 고치고 `py -3 scripts/check_docs_sync.py --fix`.
 - `src/` 에 파일을 추가·삭제하면 `docs/architecture.md` 트리를 갱신한다.
 
 ## 진행 중인 일
 
-GitHub Issues. 여러 세션에 걸치는 작업은 `[WBS]` 추적 Issue 가 진입점이다:
-`gh issue list --search "WBS in:title"`
+GitHub Issues — 여러 세션 작업은 `[WBS]` Issue 가 진입점이다(`gh issue list --search "WBS in:title"`).
+메모리 진입점 절은 그 Issue 를 가리키고 수치·SHA 는 적지 않는다(`scripts/check_memory_refs.py`).
