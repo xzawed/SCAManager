@@ -311,18 +311,20 @@ def test_success_message_states_the_actual_scan_scope(capsys):
 # ── 구조 도구로 세는 것 — 파서 입구 · 파서 상속 · 리포 헬퍼 ──────────────────
 # What counts as a structural tool: parser read entries, parser subclassing, structural helpers.
 
+# 파서 상속 사례가 공유하는 꼬리 — 목록 안에서 문자열을 암묵적으로 잇지 않는다(CodeQL 쉼표 누락 경고).
+# Shared tail for the subclass cases; no implicit concatenation inside the list (CodeQL missing-comma rule).
+_FEED = "def test_x():\n    P().feed(open('x').read())\n"
+
+
 @pytest.mark.parametrize("src", [
     "import json\ndef test_x():\n    assert json.loads(open('x').read())['k'] == 1\n",
     "from json import load\ndef test_x():\n    assert load(open('x'))['k'] == 1\n",
     "import yaml\ndef test_x():\n    assert yaml.safe_load(open('x').read())['k']\n",
     "import tomllib\ndef test_x():\n    assert tomllib.loads(open('x').read())['k']\n",
     "import jinja2\ndef test_x():\n    assert jinja2.Environment().parse(open('x').read())\n",
-    "from html.parser import HTMLParser\nclass P(HTMLParser):\n    pass\n"
-    "def test_x():\n    P().feed(open('x').read())\n",
-    "import html.parser\nclass P(html.parser.HTMLParser):\n    pass\n"
-    "def test_x():\n    P().feed(open('x').read())\n",
-    "import html.parser as hp\nclass P(hp.HTMLParser):\n    pass\n"
-    "def test_x():\n    P().feed(open('x').read())\n",
+    "from html.parser import HTMLParser\nclass P(HTMLParser):\n    pass\n" + _FEED,
+    "import html.parser\nclass P(html.parser.HTMLParser):\n    pass\n" + _FEED,
+    "import html.parser as hp\nclass P(hp.HTMLParser):\n    pass\n" + _FEED,
 ], ids=["json.loads", "from-json-load", "yaml.safe_load", "tomllib.loads", "jinja2.Environment",
         "HTMLParser-subclass", "HTMLParser-dotted", "HTMLParser-alias"])
 def test_parser_read_entries_count_as_structural(fake_repo, src):
