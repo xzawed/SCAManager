@@ -114,6 +114,68 @@ def test_nav_stays_on_one_line_and_only_the_name_gives_way():
         "`.nav-user` 가 줄지 않는 상자다 — 긴 이름이 769px 이상에서 문서를 가로로 민다")
 
 
+_INSET = re.compile(r"env\(\s*safe-area-inset-(left|right)\b")
+
+
+def _values(decl: str) -> list[str]:
+    """선언 값을 최상위 공백으로 자른다 — 괄호 안(`max(1rem, env(…))`)은 자르지 않는다."""
+    out, depth, cur = [], 0, ""
+    for ch in decl.replace("!important", "").strip():
+        depth += {"(": 1, ")": -1}.get(ch, 0)
+        if ch.isspace() and depth == 0:
+            if cur:
+                out.append(cur)
+            cur = ""
+        else:
+            cur += ch
+    return out + ([cur] if cur else [])
+
+
+def _misplaced_insets(css: str) -> tuple[int, list[str]]:
+    """좌우 inset 을 쓰는 padding 선언 수와, inset 이 반대쪽 자리(또는 좌우 공용 값)에 든 선언."""
+    seen, wrong = 0, []
+    css = re.sub(r"/\*.*?\*/", " ", css, flags=re.S)
+    for prop, decl in re.findall(r"(padding(?:-left|-right)?)\s*:\s*([^;{}]+)", css):
+        if not _INSET.search(decl):
+            continue
+        seen += 1
+        vals = _values(decl)
+        if prop != "padding":
+            slots = {prop.split("-")[1]: decl}
+        elif len(vals) == 4:
+            slots = {"right": vals[1], "left": vals[3]}
+        else:
+            # 값이 하나 · 둘 · 셋이면 좌우가 같은 값을 받는다 — 한쪽 inset 이 반대쪽에도 붙는다.
+            slots = None
+        if slots is None or any(side != own for own, v in slots.items() for side in _INSET.findall(v)):
+            wrong.append(f"{prop}: {' '.join(vals)}")
+    return seen, wrong
+
+
+def test_the_inset_check_flips_on_a_swapped_declaration():
+    """계기 뒤집기 — 같은 판정이 맞은 선언은 통과시키고, 뒤바뀐 선언 · 좌우 공용 값 · 반대쪽 longhand 는 잡는가."""
+    good = "a { padding: 0 max(1rem, env(safe-area-inset-right)) 0 max(1rem, env(safe-area-inset-left)); }"
+    assert _misplaced_insets(good) == (1, []), "맞은 선언을 잡는다 — 거짓 red"
+    for bad in ("a { padding: 0 max(1rem, env(safe-area-inset-left)) 0 max(1rem, env(safe-area-inset-right)); }",
+                "a { padding: 0 max(1rem, env(safe-area-inset-left)); }",
+                "a { padding-left: env(safe-area-inset-right); }"):
+        seen, wrong = _misplaced_insets(bad)
+        assert seen == 1 and wrong, f"뒤바뀐 선언을 못 잡는다 — 거짓 초록: {bad}"
+
+
+def test_safe_area_insets_pad_their_own_side():
+    """🔴 좌우 safe-area inset 은 제 쪽 여백에 들어가야 한다.
+
+    `padding` 네 값은 위 · 오른쪽 · 아래 · 왼쪽이다. nav 는 오른쪽 자리에 왼쪽 inset 을 넣고 있어(기본 · 768px ·
+    480px), 한쪽에만 inset 이 있는 기기에서 여백이 반대쪽에 붙고 로고는 inset 밑에 있었다. 행동은
+    e2e(`test_nav_and_body_stay_inside_a_one_sided_safe_area`)가 inset 을 심어 잰다.
+    Each side's safe-area inset must pad its own side.
+    """
+    seen, wrong = _misplaced_insets(_read("src/templates/base.html"))
+    assert seen, "좌우 safe-area inset 을 쓰는 padding 이 없다 — 테스트 stale"
+    assert not wrong, "inset 이 반대쪽 여백에 들어 있다:\n  " + "\n  ".join(wrong)
+
+
 def test_dashboard_segment_toggles_scroll_internally():
     """🔴 세그먼트 토글은 좁은 화면에서 «안쪽» 으로 스크롤해야 한다.
 

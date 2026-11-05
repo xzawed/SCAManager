@@ -100,10 +100,12 @@
     /* ── 네비게이션 ───────────────────────────── */
     /* Step A (S4): nav 좌우 padding 에 safe-area-inset 적용 — iOS notch landscape 호환
        Step A (S4): safe-area-inset on nav left/right padding for iOS notch landscape */
+    /* padding 네 값은 위 · 오른쪽 · 아래 · 왼쪽 — 오른쪽 자리에 오른쪽 inset 을 둔다(아래 두 분기도 같다).
+       Four padding values run top, right, bottom, left: the right slot takes the right inset. */
     nav {
       background: var(--bg-nav);
       color: var(--text-3);
-      padding: 0 max(1.5rem, env(safe-area-inset-left)) 0 max(1.5rem, env(safe-area-inset-right));
+      padding: 0 max(1.5rem, env(safe-area-inset-right)) 0 max(1.5rem, env(safe-area-inset-left));
       display: flex;
       align-items: center;
       gap: var(--space-2);
@@ -522,7 +524,7 @@
     @media (max-width: 768px) {
       /* Step A (S4): 모바일 nav 좌우 padding safe-area-inset
          Step A (S4): mobile nav horizontal padding with safe-area-inset */
-      nav { padding: 0 max(1rem, env(safe-area-inset-left)) 0 max(1rem, env(safe-area-inset-right)); gap: var(--space-1); }
+      nav { padding: 0 max(1rem, env(safe-area-inset-right)) 0 max(1rem, env(safe-area-inset-left)); gap: var(--space-1); }
       .nav-links { display: none; }
       .nav-links.open {
         display: flex;
@@ -580,8 +582,8 @@
          뷰포트 아래로 내린다. 아이콘과 클릭 영역(40px)은 유지한다.
          nav cannot wrap and four children never shrink, so its min-content width stretches the
          whole document sideways. Fold labels/badge on narrow screens; keep icons and hit areas. */
-      nav { padding: 0 max(var(--space-3), env(safe-area-inset-left))
-                     0 max(var(--space-3), env(safe-area-inset-right)); }
+      nav { padding: 0 max(var(--space-3), env(safe-area-inset-right))
+                     0 max(var(--space-3), env(safe-area-inset-left)); }
       .nav-badge { display: none; }
       /* Step A (S4): 480px 분기 container 도 safe-area-inset */
       .container { padding: var(--space-4) max(var(--space-2), env(safe-area-inset-right)) var(--space-4) max(var(--space-2), env(safe-area-inset-left)); }
