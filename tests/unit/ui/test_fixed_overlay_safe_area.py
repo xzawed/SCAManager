@@ -21,11 +21,10 @@ from ._css_structure import authored_sources, scan
 
 _SIDES = ("top", "right", "bottom", "left")
 _INSET = {side: re.compile(rf"env\(\s*safe-area-inset-{side}\b", re.I) for side in _SIDES}
-_ZERO = re.compile(r"^-?0*\.?0+(?:px|rem|em|vh|vw|%)?$", re.I)
-
-
-def _decls(block) -> dict[str, str]:
-    return {k.strip().lower(): " ".join(v.replace("!important", "").split()) for k, v in block.decls}
+# 0 은 단위 · 부호 · `calc()` 를 가리지 않는다 — `0dvh` · `0pt` · `calc(0px)` · `-0.0rem`.
+# Zero regardless of unit, sign or a calc() wrapper.
+_ZERO = re.compile(r"^(?:calc\(\s*)?[-+]?0*\.?0+(?:[a-z%]+)?(?:\s*\))?$", re.I)
+_IMPORTANT = re.compile(r"!\s*important", re.I)
 
 
 def _split_values(value: str) -> list[str]:
@@ -42,19 +41,38 @@ def _split_values(value: str) -> list[str]:
     return [*parts, cur] if cur else parts
 
 
-def _offsets(decls: dict[str, str]) -> dict[str, str]:
-    """`top`·`right`·`bottom`·`left` 와 `inset` 단축(1~4 값)을 쪽별 값으로 편다."""
-    out = {}
-    vals = _split_values(decls.get("inset", ""))
+def _inset_sides(value: str) -> list[tuple[str, str]]:
+    """`inset` 단축(1~4 값) → [(쪽, 값)] — CSS 의 위 · 오른쪽 · 아래 · 왼쪽 순서."""
+    vals = _split_values(value)
     if len(vals) == 1:
         vals = vals * 4
     elif len(vals) == 2:
         vals = vals * 2
     elif len(vals) == 3:
         vals = [*vals, vals[1]]
-    out.update(zip(_SIDES, vals[:4]))
-    out.update({side: decls[side] for side in _SIDES if side in decls})
-    return out
+    return list(zip(_SIDES, vals[:4]))
+
+
+def _winning(block) -> dict[str, str]:
+    """블록 안 선언을 CSS 우선순위대로 편다 — 뒤에 온 선언이 이기되, 일반 선언은 앞의 `!important` 를 못 이긴다.
+
+    `inset` 단축은 그 자리에서 네 쪽으로 펼친다 — 개별 속성보다 뒤에 오면 그것을 덮는다(Grok O1 반례).
+    Resolve a block's declarations in cascade order: later wins, except a normal one never beats !important.
+    """
+    won: dict[str, tuple[str, bool]] = {}
+
+    def put(prop: str, value: str, important: bool) -> None:
+        prev = won.get(prop)
+        if prev is None or important or not prev[1]:
+            won[prop] = (value, important)
+
+    for raw_prop, raw_value in block.decls:
+        prop = raw_prop.strip().lower()
+        important = bool(_IMPORTANT.search(raw_value))
+        value = " ".join(_IMPORTANT.sub("", raw_value).split())
+        for side, v in (_inset_sides(value) if prop == "inset" else [(prop, value)]):
+            put(side, v, important)
+    return {prop: value for prop, (value, _) in won.items()}
 
 
 def _is_gap(value: str, nav_height: str) -> bool:
@@ -65,13 +83,14 @@ def _is_gap(value: str, nav_height: str) -> bool:
 def floating_offsets_without_inset(sources: list[tuple[str, str, int]], nav_height: str) -> tuple[int, list[str]]:
     """(띄운 거리 선언 수, safe-area 를 안 쓰는 곳) — `sources` = [(이름, CSS 본문, 그 본문 1행의 파일 줄)]."""
     blocks = [(name, first, b) for name, text, first in sources for b in scan(text).blocks if b.kind == "style"]
-    fixed = {sel for _, _, b in blocks if _decls(b).get("position") == "fixed" for sel in split_selectors(b.prelude)}
+    fixed = {sel for _, _, b in blocks if _winning(b).get("position") == "fixed" for sel in split_selectors(b.prelude)}
     seen, wrong = 0, []
     for name, first, b in blocks:
         selectors = [s for s in split_selectors(b.prelude) if s in fixed]
         if not selectors:
             continue
-        for side, value in _offsets(_decls(b)).items():
+        won = _winning(b)
+        for side, value in ((side, won[side]) for side in _SIDES if side in won):
             if not _is_gap(value, nav_height):
                 continue
             seen += 1
@@ -85,8 +104,8 @@ def _nav_height() -> str:
     for source in authored_sources():
         if source.path.endswith("templates/base.html"):
             for block in scan(source.text).blocks:
-                if block.kind == "style" and "nav" in split_selectors(block.prelude) and _decls(block).get("height"):
-                    return _decls(block)["height"]
+                if block.kind == "style" and "nav" in split_selectors(block.prelude) and _winning(block).get("height"):
+                    return _winning(block)["height"]
     raise AssertionError("base.html 에서 nav 높이를 못 읽었다 — nav 밑 패널을 가를 수 없다")
 
 
@@ -99,7 +118,10 @@ def _nav_height() -> str:
     (".t{position:fixed;bottom:calc(1rem + env(safe-area-inset-bottom))}"
      + "@media (max-width:480px){.t{bottom:1rem}}", ["bottom"]),
     (".a,.t{position:fixed}.t{left:16px}", ["left"]),
-], ids=["plain-gaps", "swapped-side", "inset-shorthand", "media-override", "selector-list"])
+    (".t{position:fixed;top:0;right:0;bottom:0;left:0;inset:1.5rem}", ["top", "right", "bottom", "left"]),
+    (".t{position:fixed;bottom:1rem !important;bottom:0}", ["bottom"]),
+], ids=["plain-gaps", "swapped-side", "inset-shorthand", "media-override", "selector-list",
+        "shorthand-after-longhands", "important-wins"])
 def test_the_check_catches_a_floating_offset_without_its_inset(css, expected):
     """🔴 띄운 거리에 그 쪽 inset 이 없으면 잡는다 — 다른 쪽 inset · 단축 속성 · 폭 분기의 덮어쓰기도."""
     seen, wrong = floating_offsets_without_inset([("t.css", css, 1)], "56px")
@@ -115,7 +137,10 @@ def test_the_check_catches_a_floating_offset_without_its_inset(css, expected):
     + "right:max(1rem, env(safe-area-inset-right))}",
     ".t{position:absolute;bottom:1rem}",
     ".t{position:fixed}/* .t{bottom:1rem} */",
-], ids=["full-bleed", "centred", "under-the-nav", "clears-the-inset", "not-fixed", "commented"])
+    ".t{position:fixed;top:0dvh;left:0pt;bottom:calc(0px);right:-0.0rem}",
+    ".t{position:fixed;bottom:1rem;bottom:calc(1rem + env(safe-area-inset-bottom))}",
+], ids=["full-bleed", "centred", "under-the-nav", "clears-the-inset", "not-fixed", "commented",
+        "zero-in-other-units", "later-declaration-wins"])
 def test_the_check_ignores_what_is_not_a_bare_floating_offset(css):
     """대조군 — 화면을 덮는 0 · 가운데 맞춤 퍼센트 · nav 밑 · inset 을 쓴 값 · fixed 아님 · 주석은 위반이 아니다."""
     assert floating_offsets_without_inset([("t.css", css, 1)], "56px")[1] == []
