@@ -534,7 +534,10 @@
         top: 56px;
         left: 0;
         right: 0;
-        background: var(--bg-nav);
+        /* 불투명 바탕 — nav 의 반투명 바탕을 쓰면, nav 의 블러 밖으로 펼친 이 패널 뒤로 페이지 제목이 비쳐 링크와
+           겹쳤다. --bg-base 는 네 테마 모두 nav 가 보이는 색에 가장 가깝다.
+           Opaque: with the translucent nav colour the page heading showed through this panel. */
+        background: var(--bg-base);
         /* Step A (S4): 모바일 메뉴 하단 padding 에 safe-area-inset-bottom. 화면 끝에서 끝까지 펼치는 패널이라
            좌우도 inset 을 피한다 — 16px 고정이면 한쪽 노치 · 펀치홀 밑에 링크가 깔린다.
            The panel spans the screen, so its sides clear a one-sided cutout as well as the home indicator. */

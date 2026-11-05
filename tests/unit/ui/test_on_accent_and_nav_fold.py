@@ -189,6 +189,45 @@ def test_safe_area_insets_pad_their_own_side():
     assert not wrong, "inset 이 반대쪽 여백에 들어 있다:\n  " + "\n  ".join(wrong)
 
 
+_THEMES = ("dark", "light", "pastel", "catppuccin")
+
+
+def _themes_where_not_opaque(token: str) -> list[str]:
+    """토큰이 알파 없는 색(#rgb · #rrggbb)이 아닌 테마 — 원천은 `tokens.css` 의 테마 블록이다."""
+    css = _read("src/static/css/tokens.css")
+    bad = []
+    for theme in _THEMES:
+        i = css.find(f'[data-theme="{theme}"] {{')
+        block = css[i:css.find("\n}", i)] if i >= 0 else ""
+        m = re.search(re.escape(token) + r":\s*([^;]+);", block)
+        if not m or not re.fullmatch(r"#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})", m.group(1).strip()):
+            bad.append(theme)
+    return bad
+
+
+def test_the_opacity_check_flips_on_a_translucent_token():
+    """계기 뒤집기 — nav 의 반투명 토큰은 네 테마 모두 걸리고, 바탕 토큰은 하나도 안 걸린다."""
+    assert _themes_where_not_opaque("--bg-nav") == list(_THEMES), "반투명 토큰을 불투명으로 읽었다 — 거짓 초록"
+    assert _themes_where_not_opaque("--bg-base") == [], "불투명 토큰을 반투명으로 읽었다 — 거짓 red"
+
+
+def test_open_mobile_menu_paints_an_opaque_surface():
+    """🔴 열린 모바일 메뉴 패널의 바탕은 네 테마 모두에서 불투명이어야 한다.
+
+    패널이 nav 의 반투명 바탕(--bg-nav)을 쓰면, 화면 끝까지 펼친 fixed 패널은 nav 의 블러 밖이라 아래 페이지 제목이
+    비쳐 링크 글자와 겹친다. 행동은 e2e(`test_open_mobile_menu_hides_the_page_behind_it`)가 칠해진 픽셀로 잰다.
+    The open mobile menu panel must sit on a token that is opaque in every theme.
+    """
+    src = strip_css_comments(_read("src/templates/base.html"))
+    rule = re.search(r"\.nav-links\.open\s*\{([^}]*)\}", src)
+    assert rule, "`.nav-links.open {` 규칙 부재 — 테스트 stale"
+    bg = re.search(r"background(?:-color)?\s*:\s*var\((--[\w-]+)\)\s*;", rule.group(1))
+    assert bg, f"`.nav-links.open` 바탕이 토큰 하나가 아니다 — 불투명인지 못 잰다: {rule.group(1).strip()[:120]}"
+    bad = _themes_where_not_opaque(bg.group(1))
+    assert not bad, f"`.nav-links.open` 바탕 `{bg.group(1)}` 이 {bad} 에서 불투명이 아니다 — 아래 페이지가 비친다"
+
+
+
 def test_dashboard_segment_toggles_scroll_internally():
     """🔴 세그먼트 토글은 좁은 화면에서 «안쪽» 으로 스크롤해야 한다.
 
