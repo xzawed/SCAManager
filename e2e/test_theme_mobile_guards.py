@@ -415,8 +415,8 @@ _CSS_BAND_STARTS_JS = r"""() => {
     for (const s of [...document.styleSheets, ...(document.adoptedStyleSheets || [])]) sheet(s);
     return {starts: [...starts].sort((a, b) => a - b), unparsed, unread};
 }"""
-# nav 안 칠해진 요소의 가장 오른쪽 끝 · 문서 넘침 · 스크롤바 폭 · 테마 라벨(숨겨져도 글자는 남는다 — 테마가
-# 바뀌었는가) · nav 항목(display: contents 는 그 자식이 항목이다)마다 세 가지:
+# nav 안 칠해진 요소의 양끝(끝 정렬이면 왼쪽으로 넘치고, 그 넘침은 스크롤되지 않는다) · 문서 넘침 · 스크롤바 폭 ·
+# 테마 라벨(숨겨져도 글자는 남는다 — 테마가 바뀌었는가) · nav 항목(display: contents 는 그 자식이 항목이다)마다 세 가지:
 #   꺾임 — 항목 안 글자가 두 줄 이상인가. 글자 노드가 여럿이어도 항목 단위로 센다(아이콘 + 라벨).
 #   삐져나옴 — 글자가 제 항목 상자 밖에 칠해지는가. 넘침을 자르는 상자(그 항목까지)로 자른 범위로 잰다 —
 #     말줄임 이름은 잘려서 들어가고, 자르지 않고 줄기만 하는 항목은 글자가 이웃 위에 칠해진다.
@@ -430,11 +430,13 @@ _NAV_FIT_JS = """async want => {
     for (let i = 0; i < 30 && window.innerWidth !== want; i++) await frame();
     await frame(); await frame();
     const doc = document.documentElement, vw = doc.clientWidth, nav = document.querySelector('nav');
-    let right = 0, painted = 0;
+    let left = 0, right = 0, painted = 0;
     for (const el of nav ? nav.querySelectorAll('*') : []) {
         if (!el.checkVisibility()) continue;
         painted += 1;
-        right = Math.max(right, el.getBoundingClientRect().right);
+        const b = el.getBoundingClientRect();
+        left = Math.min(left, b.left);
+        right = Math.max(right, b.right);
     }
     const items = [];
     const collect = parent => {
@@ -485,7 +487,8 @@ _NAV_FIT_JS = """async want => {
         const gap = boxes[i][0].left - boxes[i - 1][0].right;
         if (gap < -1) overlaps.push(`${boxes[i - 1][1]}↔${boxes[i][1]} ${Math.round(gap)}px`);
     }
-    return {over: doc.scrollWidth - vw, navOver: Math.round(right - vw), painted, wrapped, spills, overlaps,
+    return {over: doc.scrollWidth - vw, navOver: Math.round(right - vw), navLeft: Math.round(-left),
+            painted, wrapped, spills, overlaps,
             width: window.innerWidth, scrollbar: window.innerWidth - vw,
             scrollable: doc.scrollHeight > window.innerHeight + 1,
             label: ((document.getElementById('themeName') || {}).textContent || '').trim()};
@@ -544,10 +547,11 @@ def test_nav_fits_the_narrowest_width_of_every_css_band(scrollbar_browser, base_
                             "스크롤바로 재지 못했다")
                         with_bar += 1
                     labels.add(res["label"])
-                    if (res["over"] > 1 or res["navOver"] > 1 or res["wrapped"] or res["spills"]
-                            or res["overlaps"]):
-                        failures.append(f"{theme} {width}px: 문서 {res['over']}px · nav {res['navOver']}px · "
-                                        f"꺾임 {res['wrapped']} · 삐져나옴 {res['spills']} · 겹침 {res['overlaps']}")
+                    if (res["over"] > 1 or res["navOver"] > 1 or res["navLeft"] > 1 or res["wrapped"]
+                            or res["spills"] or res["overlaps"]):
+                        failures.append(f"{theme} {width}px: 문서 {res['over']}px · nav 왼쪽 {res['navLeft']}px · "
+                                        f"오른쪽 {res['navOver']}px · 꺾임 {res['wrapped']} · "
+                                        f"삐져나옴 {res['spills']} · 겹침 {res['overlaps']}")
     finally:
         context.close()
     assert not js_errors, f"JS 런타임 오류: {js_errors[:3]}"
