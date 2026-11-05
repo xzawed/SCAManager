@@ -10,7 +10,8 @@ Cycle 73 F1 — cron polling + GHAS graceful degradation + kill-switch + audit l
 4. alert 별 audit log upsert (분류 = pending — Phase 2 AI 분류 시점에 갱신)
 5. counts dict 반환 (운영 데이터 baseline)
 
-Phase 1 = read-only (자동 dismiss X). 사용자 1-click confirm 은 dashboard 에서 처리.
+Phase 1 = read-only (자동 dismiss X). 사용자 결정을 받는 화면은 아직 없다 — 대시보드는 알림을 보여 주기만 한다.
+Phase 1 is read-only (no auto-dismiss). No screen takes the user's decision yet — the dashboard only shows alerts.
 """
 from __future__ import annotations
 

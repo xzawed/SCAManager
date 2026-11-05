@@ -109,7 +109,6 @@
       "total_label": "Total alerts (cumulative)",
       "pending_title": "🔍 New pending",
       "pending_label": "Awaiting user decision",
-      "pending_hint": "User 1-click confirm required (Phase 1 — no auto-dismiss)",
       "classification_title": "📊 Classification distribution",
       "recent_pending_title": "💬 Recent pending (Top 5)",
       "recent_pending_empty": "No pending alerts."

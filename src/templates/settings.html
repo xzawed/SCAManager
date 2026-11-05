@@ -441,7 +441,9 @@
      The icon sits beside the first text line; centring dropped it to the middle of a wrapped paragraph. */
   .alert > .me-2 { align-self: flex-start; }
   /* 글 덩어리는 아이콘 옆에서 줄어든다 — max-content 폭이면 flex-wrap 이 아이콘만 첫 줄에 남겼다.
-     The text block shrinks beside the icon; at max-content width the wrap left the icon alone. */
+     한계: 뷰포트 304px 이하(폴더블 커버 화면)는 기본 폭 16rem 이 아이콘 옆에 안 들어가 아이콘이 혼자 첫 행에 남는다.
+     The text block shrinks beside the icon; at max-content width the wrap left the icon alone.
+     Limit: at viewports of 304px or less the 16rem basis no longer fits beside the icon, so it sits alone. */
   .alert > div { flex: 1 1 16rem; min-width: 0; }
   .alert .ms-auto { margin-left: auto; }
   .alert.mb-4 { margin-bottom: 1rem; }
