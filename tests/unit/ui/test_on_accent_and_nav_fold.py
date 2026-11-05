@@ -10,7 +10,7 @@ These are fast static guards that catch a revert where e2e is not run.
 import pathlib
 import re
 
-from ._contrast import strip_css_comments
+from ._contrast import THEMES, strip_css_comments
 
 _ROOT = pathlib.Path(__file__).resolve().parents[3]
 
@@ -189,14 +189,11 @@ def test_safe_area_insets_pad_their_own_side():
     assert not wrong, "inset 이 반대쪽 여백에 들어 있다:\n  " + "\n  ".join(wrong)
 
 
-_THEMES = ("dark", "light", "pastel", "catppuccin")
-
-
 def _themes_where_not_opaque(token: str) -> list[str]:
     """토큰이 알파 없는 색(#rgb · #rrggbb)이 아닌 테마 — 원천은 `tokens.css` 의 테마 블록이다."""
     css = _read("src/static/css/tokens.css")
     bad = []
-    for theme in _THEMES:
+    for theme in THEMES:
         i = css.find(f'[data-theme="{theme}"] {{')
         block = css[i:css.find("\n}", i)] if i >= 0 else ""
         m = re.search(re.escape(token) + r":\s*([^;]+);", block)
@@ -207,7 +204,7 @@ def _themes_where_not_opaque(token: str) -> list[str]:
 
 def test_the_opacity_check_flips_on_a_translucent_token():
     """계기 뒤집기 — nav 의 반투명 토큰은 네 테마 모두 걸리고, 바탕 토큰은 하나도 안 걸린다."""
-    assert _themes_where_not_opaque("--bg-nav") == list(_THEMES), "반투명 토큰을 불투명으로 읽었다 — 거짓 초록"
+    assert _themes_where_not_opaque("--bg-nav") == list(THEMES), "반투명 토큰을 불투명으로 읽었다 — 거짓 초록"
     assert _themes_where_not_opaque("--bg-base") == [], "불투명 토큰을 반투명으로 읽었다 — 거짓 red"
 
 
