@@ -30,7 +30,7 @@ from e2e.conftest import (CONFIG_MODEL_ID, CONFIG_USER_ID, DELTA_DAYS,
                           SETTLED_FLAT_LOGIN, SETTLED_FLAT_USER_ID,
                           SETTLED_UP_LOGIN, SETTLED_UP_USER_ID,
                           BUSY_LOGIN, BUSY_REPO, BUSY_RETIRED_MODEL, BUSY_USER_ID,
-                          INSIGHT_LANGUAGE, REPO_NARRATIVE_TEXT,
+                          INSIGHT_LANGUAGE, REPO_NARRATIVE_TEXT, SECURITY_LONG_SECRET_TYPE,
                           VARIANT_BREAKDOWN, VARIANT_FEEDBACKS,
                           acting_as, apply_theme, claude_api_call_count, delta_repo_name,
                           rls_catalog_double, repo_narrative_state,
@@ -2613,6 +2613,79 @@ def test_token_text_meets_aa_in_security_mode_with_alerts(
         f"[{theme}] 보안 그리드 글자 {len(bad)}건이 AA 미달 (관측 {total}건):\n  "
         + "\n  ".join(f"{b['ratio']} < {b['need']} cls={b['cls']!r} {b['text']!r}"
                       for b in bad[:10]))
+
+
+# 칠해진 카드만 센다 — 화면 밖 카드. 긴 id 는 «그 글자» 를 잰다: li 의 textContent 는 숨긴 자손의 글자도
+# 담으므로, 글자 노드를 골라 글리프 상자가 있고 칠해지는지 · 카드 안쪽 상자와 그 사이에서 넘침을 자르는
+# 조상 상자 안에 있는지(좌우 양쪽 · 자르는 축의 위아래)를 본다.
+# Painted cards only. For the long id, measure its own glyphs: painted at all, and inside the card's content
+# box and every clipping ancestor up to the card, on both sides (and vertically where it clips).
+_SECURITY_NARROW_JS = """(longId) => {
+    const doc = document.documentElement, vw = doc.clientWidth, outside = [];
+    for (const c of document.querySelectorAll('.dash-insight-grid > .dash-insight-card')) {
+        if (!c.checkVisibility()) continue;
+        const r = c.getBoundingClientRect();
+        if (r.left < -1 || r.right > vw + 1) outside.push(`${Math.round(r.left)}..${Math.round(r.right)}`);
+    }
+    let node = null;
+    for (const li of document.querySelectorAll('.dash-insight-list li')) {
+        const walker = document.createTreeWalker(li, NodeFilter.SHOW_TEXT);
+        for (let n = walker.nextNode(); n && !node; n = walker.nextNode()) {
+            if (n.data.includes(longId)) node = n;
+        }
+        if (node) break;
+    }
+    const res = {over: doc.scrollWidth - vw, outside, found: !!node, painted: false, spill: null};
+    if (!node) return res;
+    const holder = node.parentElement, at = node.data.indexOf(longId), range = document.createRange();
+    range.setStart(node, at);
+    range.setEnd(node, at + longId.length);
+    const rects = [...range.getClientRects()].filter(q => q.width > 0 && q.height > 0);
+    res.painted = rects.length > 0 && holder.checkVisibility({checkOpacity: true, checkVisibilityCSS: true});
+    let spill = null;
+    for (let a = holder; a; a = a.parentElement) {
+        const cs = getComputedStyle(a), b = a.getBoundingClientRect();
+        const card = a.classList.contains('dash-insight-card');
+        const padL = card ? parseFloat(cs.paddingLeft) : 0, padR = card ? parseFloat(cs.paddingRight) : 0;
+        const left = b.left + parseFloat(cs.borderLeftWidth) + padL;
+        const right = b.right - parseFloat(cs.borderRightWidth) - padR;
+        const top = b.top + parseFloat(cs.borderTopWidth), bottom = b.bottom - parseFloat(cs.borderBottomWidth);
+        const clipX = card || cs.overflowX !== 'visible', clipY = cs.overflowY !== 'visible';
+        for (const q of rects) {
+            const d = [];
+            if (clipX) d.push(left - q.left, q.right - right);
+            if (clipY) d.push(top - q.top, q.bottom - bottom);
+            for (const v of d) spill = spill === null ? v : Math.max(spill, v);
+        }
+        if (card) break;
+    }
+    res.spill = spill;
+    return res;
+}"""
+
+
+@pytest.mark.parametrize("width,height", _NARROW_VIEWPORTS)
+def test_security_grid_fits_narrow_viewports_with_long_rule_ids(
+        seeded_page, base_url, security_alerts, width, height):
+    """🔴 폰 폭 보안 그리드가 운영이 쓰는 긴 규칙 id 를 견디는가.
+
+    대기 목록은 GitHub 의 secret type 을 그대로 적는다(`_alert_metadata`). 끊을 자리가 없는 50자 id 가
+    한 칸 그리드의 열을 그 길이만큼 넓혀 문서가 가로로 넘쳤다(실측 320px 120px · 375px 65px).
+    따로 본다 — 문서 넘침 · 화면 밖 카드 · id 글자가 칠해지는가(폰에서만 숨겨도 red) · 그 글자가 카드 안쪽과
+    자르는 조상 상자 안에 있는가(왼쪽으로 밀어 자르거나 줄 수로 잘라도 red).
+    """
+    seeded_page.set_viewport_size({"width": width, "height": height})
+    seeded_page.goto(f"{base_url}/dashboard?mode=security")
+    _reveal_all(seeded_page)
+    res = seeded_page.evaluate(_SECURITY_NARROW_JS, SECURITY_LONG_SECRET_TYPE)
+    _assert_security_grid_was_rendered(seeded_page)
+    assert res["found"], (
+        f"대기 목록에 `{SECURITY_LONG_SECRET_TYPE}` 글자가 없다 — 재지 못한 것이지 통과한 것이 아니다")
+    assert res["painted"], (
+        f"{width}px 에서 `{SECURITY_LONG_SECRET_TYPE}` 가 칠해지지 않는다 — 숨긴 것은 고친 것이 아니다")
+    assert res["over"] <= 1 and not res["outside"] and res["spill"] <= 1, (
+        f"{width}px 보안 그리드가 넘친다 — 문서 {res['over']}px · 화면 밖 카드 {res['outside']} · "
+        f"긴 id 가 카드 안쪽이나 자르는 상자 밖으로 {res['spill']:.0f}px 나갔다")
 
 
 # ── E-6. overview 의 «머지 이력이 있을 때» — 실패 사유 목록 + auto-merge KPI ──
