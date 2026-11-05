@@ -697,25 +697,36 @@ _MENU_PANEL_BOX_JS = """() => {
 
 @pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
 def test_open_mobile_menu_hides_the_page_behind_it(page, base_url, theme):
-    """🔴 열린 모바일 메뉴 패널의 픽셀은 뒤의 페이지와 무관해야 한다 — 비치면 링크 글자가 제목과 겹친다."""
-    page.set_viewport_size({"width": 375, "height": 667})
-    page.goto(f"{base_url}/dashboard")
-    apply_theme(page, theme)
-    # 전환은 끄고(중간색 방지), 움직이는 배경 장식만 멈춘다 — 모든 animation 을 끄면 `.reveal` 이 못 드러난다.
-    page.add_style_tag(content="*,*::before,*::after{transition:none !important}"
-                               ".atmosphere,.atmosphere *{animation:none !important}")
-    _reveal_all(page)
-    _open_mobile_nav(page)
-    box = page.evaluate(_MENU_PANEL_BOX_JS)
-    assert box and box["width"] > 0 and box["height"] > 0, f"열린 메뉴 패널을 못 찾았다 — 재지 못했다: {box}"
-    below = {"x": 0, "y": box["y"] + box["height"] + 8, "width": 375, "height": 120}
-    panel_before, page_before = page.screenshot(clip=box), page.screenshot(clip=below)
-    page.add_style_tag(content=".container,.atmosphere{visibility:hidden !important}")
-    page.wait_for_timeout(100)
-    panel_after, page_after = page.screenshot(clip=box), page.screenshot(clip=below)
-    assert page_before != page_after, "뒤 내용을 숨겼는데 패널 밖 화면이 그대로다 — 뒤가 바뀌지 않아 재지 못했다"
-    assert panel_before == panel_after, (
-        f"[{theme}] 열린 모바일 메뉴 패널에 뒤의 페이지가 비친다 — 패널 바탕이 불투명하지 않다")
+    """🔴 열린 모바일 메뉴 패널의 픽셀은 뒤의 페이지와 무관해야 한다 — 비치면 링크 글자가 제목과 겹친다.
+
+    폰 폭(375px)과 481~768px 띠(600px), 그리고 링크에 마우스를 올린 상태에서 잰다 — 한 폭 · 쉬는 상태만 재면 그
+    띠나 hover 에서만 반투명으로 덮여도 초록이었다(적대 패스).
+    """
+    for width in (375, 600):
+        page.set_viewport_size({"width": width, "height": 667})
+        page.goto(f"{base_url}/dashboard")
+        apply_theme(page, theme)
+        # 전환은 끄고(중간색 방지), 움직이는 배경 장식만 멈춘다 — 모든 animation 을 끄면 `.reveal` 이 못 드러난다.
+        page.add_style_tag(content="*,*::before,*::after{transition:none !important}"
+                                   ".atmosphere,.atmosphere *{animation:none !important}")
+        _reveal_all(page)
+        _open_mobile_nav(page)
+        for state in ("쉬는", "hover"):
+            if state == "hover":
+                page.add_style_tag(content=".container,.atmosphere{visibility:visible !important}")
+                page.hover(".nav-links.open a.nav-link")
+            box = page.evaluate(_MENU_PANEL_BOX_JS)
+            assert box and box["width"] > 0 and box["height"] > 0, (
+                f"{width}px {state}: 열린 메뉴 패널을 못 찾았다 — 재지 못했다: {box}")
+            below = {"x": 0, "y": box["y"] + box["height"] + 8, "width": width, "height": 120}
+            panel_before, page_before = page.screenshot(clip=box), page.screenshot(clip=below)
+            page.add_style_tag(content=".container,.atmosphere{visibility:hidden !important}")
+            page.wait_for_timeout(100)
+            panel_after, page_after = page.screenshot(clip=box), page.screenshot(clip=below)
+            assert page_before != page_after, (
+                f"{width}px {state}: 뒤 내용을 숨겼는데 패널 밖 화면이 그대로다 — 뒤가 바뀌지 않아 재지 못했다")
+            assert panel_before == panel_after, (
+                f"[{theme}] {width}px {state}: 열린 모바일 메뉴 패널에 뒤의 페이지가 비친다 — 패널 바탕이 불투명하지 않다")
 
 
 @pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])

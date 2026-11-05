@@ -10,7 +10,7 @@ These are fast static guards that catch a revert where e2e is not run.
 import pathlib
 import re
 
-from ._contrast import THEMES, strip_css_comments
+from ._contrast import THEMES, css_sources, strip_css_comments
 
 _ROOT = pathlib.Path(__file__).resolve().parents[3]
 
@@ -189,23 +189,77 @@ def test_safe_area_insets_pad_their_own_side():
     assert not wrong, "inset 이 반대쪽 여백에 들어 있다:\n  " + "\n  ".join(wrong)
 
 
-def _themes_where_not_opaque(token: str) -> list[str]:
-    """토큰이 알파 없는 색(#rgb · #rrggbb)이 아닌 테마 — 원천은 `tokens.css` 의 테마 블록이다."""
-    css = _read("src/static/css/tokens.css")
+_ALPHA_FREE = re.compile(r"#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})")
+
+
+def _translucent_definitions(token: str) -> list[str]:
+    """토큰의 정의 중 알파 없는 색(#rgb · #rrggbb)이 아닌 것 · 정의가 빠진 테마.
+
+    정의는 CSS 를 담은 운영 파일 전부(`css_sources`)에서 찾는다 — 테마마다 블록이 둘(본 블록 · 별칭 블록)이라 첫
+    블록만 보면 뒤 블록의 반투명 정의가 지나갔다(적대 패스).
+    """
     bad = []
+    for rel in css_sources():
+        src = strip_css_comments(_read(rel))
+        for m in re.finditer(re.escape(token) + r"\s*:\s*([^;{}]+)", src):
+            value = m.group(1).replace("!important", "").strip()
+            if not _ALPHA_FREE.fullmatch(value):
+                bad.append(f"{rel}: {token}: {value}")
+    tokens_css = _read("src/static/css/tokens.css")
     for theme in THEMES:
-        i = css.find(f'[data-theme="{theme}"] {{')
-        block = css[i:css.find("\n}", i)] if i >= 0 else ""
-        m = re.search(re.escape(token) + r":\s*([^;]+);", block)
-        if not m or not re.fullmatch(r"#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})", m.group(1).strip()):
-            bad.append(theme)
+        i = tokens_css.find(f'[data-theme="{theme}"] {{')
+        block = tokens_css[i:tokens_css.find("\n}", i)] if i >= 0 else ""
+        if not re.search(re.escape(token) + r"\s*:", block):
+            bad.append(f"tokens.css [{theme}]: {token} 정의 없음")
     return bad
 
 
-def test_the_opacity_check_flips_on_a_translucent_token():
-    """계기 뒤집기 — nav 의 반투명 토큰은 네 테마 모두 걸리고, 바탕 토큰은 하나도 안 걸린다."""
-    assert _themes_where_not_opaque("--bg-nav") == list(THEMES), "반투명 토큰을 불투명으로 읽었다 — 거짓 초록"
-    assert _themes_where_not_opaque("--bg-base") == [], "불투명 토큰을 반투명으로 읽었다 — 거짓 red"
+def _panel_violations(src: str) -> list[str]:
+    """열린 모바일 메뉴(`.nav-links` 요소)가 주어인 모든 규칙에서 패널을 비치게 할 수 있는 선언.
+
+    @media · :hover 안의 규칙, 같은 규칙의 뒤 선언까지 본다 — 첫 규칙의 첫 선언만 보면 뒤 선언 · 다른 분기 · hover 가
+    반투명으로 덮어도 초록이었다(적대 패스). 바탕은 토큰 하나(var(--x))여야 하고 그 토큰은 모든 정의가 불투명이어야
+    한다. 바탕 그림 · 1 미만 opacity · 섞기 모드도 걸린다. 패널 바탕 선언이 하나도 없으면 그것도 걸린다.
+    """
+    out, backgrounds = [], 0
+    for selectors, body in re.findall(r"([^{}]+)\{([^{}]*)\}", strip_css_comments(src)):
+        subjects = [re.split(r"[\s>+~]+", part.strip())[-1] for part in selectors.split(",") if part.strip()]
+        if not any("nav-links" in re.findall(r"\.([\w-]+)", s) or "navLinks" in re.findall(r"#([\w-]+)", s)
+                   for s in subjects):
+            continue
+        for prop, value in re.findall(r"([\w-]+)\s*:\s*([^;]+)", body):
+            prop, value = prop.lower(), value.replace("!important", "").strip()
+            if prop in ("background", "background-color"):
+                backgrounds += 1
+                token = re.fullmatch(r"var\((--[\w-]+)\)", value)
+                if not token:
+                    out.append(f"{selectors.strip()} {{ {prop}: {value} }} — 토큰 하나가 아니다")
+                else:
+                    out += [f"{selectors.strip()} — {b}" for b in _translucent_definitions(token.group(1))]
+            elif prop == "background-image" and value != "none":
+                out.append(f"{selectors.strip()} {{ {prop}: {value} }} — 바탕 그림")
+            elif prop == "opacity" and value not in ("1", "100%"):
+                out.append(f"{selectors.strip()} {{ opacity: {value} }}")
+            elif prop == "mix-blend-mode" and value != "normal":
+                out.append(f"{selectors.strip()} {{ mix-blend-mode: {value} }}")
+    if not backgrounds:
+        out.append("열린 모바일 메뉴의 바탕 선언이 없다 — nav 의 반투명 바탕이 비친다")
+    return out
+
+
+def test_the_panel_check_flips_on_every_translucent_form():
+    """계기 뒤집기 — 맞은 규칙은 통과, 적대 패스가 찾은 꼴(뒤 선언 · @media 덮기 · hover 덮기 · opacity · 그림)은 걸린다."""
+    good = ".nav-links.open { position: fixed; background: var(--bg-base); }"
+    assert _panel_violations(good) == [], _panel_violations(good)
+    assert _translucent_definitions("--bg-nav"), "반투명 토큰을 불투명으로 읽었다 — 거짓 초록"
+    for bad in (good.replace("var(--bg-base);", "var(--bg-base); background: var(--bg-nav);"),
+                good.replace("var(--bg-base);", "var(--bg-base); background: rgba(8, 8, 16, 0.72);"),
+                good + " @media (max-width: 768px) { .nav-links.open { background: var(--bg-nav); } }",
+                good + " .nav-links.open:hover { background: var(--bg-nav); }",
+                good.replace("var(--bg-base);", "var(--bg-base); opacity: 0.8;"),
+                good.replace("var(--bg-base);", "var(--bg-base); background-image: linear-gradient(red, blue);"),
+                ".nav-links.open { position: fixed; }"):
+        assert _panel_violations(bad), f"반투명 꼴을 못 잡는다 — 거짓 초록: {bad}"
 
 
 def test_open_mobile_menu_paints_an_opaque_surface():
@@ -213,16 +267,10 @@ def test_open_mobile_menu_paints_an_opaque_surface():
 
     패널이 nav 의 반투명 바탕(--bg-nav)을 쓰면, 화면 끝까지 펼친 fixed 패널은 nav 의 블러 밖이라 아래 페이지 제목이
     비쳐 링크 글자와 겹친다. 행동은 e2e(`test_open_mobile_menu_hides_the_page_behind_it`)가 칠해진 픽셀로 잰다.
-    The open mobile menu panel must sit on a token that is opaque in every theme.
+    The open mobile menu panel must sit on a token that is opaque in every theme, in every rule that targets it.
     """
-    src = strip_css_comments(_read("src/templates/base.html"))
-    rule = re.search(r"\.nav-links\.open\s*\{([^}]*)\}", src)
-    assert rule, "`.nav-links.open {` 규칙 부재 — 테스트 stale"
-    bg = re.search(r"background(?:-color)?\s*:\s*var\((--[\w-]+)\)\s*;", rule.group(1))
-    assert bg, f"`.nav-links.open` 바탕이 토큰 하나가 아니다 — 불투명인지 못 잰다: {rule.group(1).strip()[:120]}"
-    bad = _themes_where_not_opaque(bg.group(1))
-    assert not bad, f"`.nav-links.open` 바탕 `{bg.group(1)}` 이 {bad} 에서 불투명이 아니다 — 아래 페이지가 비친다"
-
+    bad = _panel_violations(_read("src/templates/base.html"))
+    assert not bad, "열린 모바일 메뉴 패널이 비칠 수 있다:\n  " + "\n  ".join(bad)
 
 
 def test_dashboard_segment_toggles_scroll_internally():
