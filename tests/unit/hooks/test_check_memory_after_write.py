@@ -20,13 +20,12 @@ _HOOK = _ROOT / ".claude" / "hooks" / "check_memory_after_write.py"
 
 
 def _load():
+    """훅 모듈 — 시험 안에서 불러온다. 훅이 없으면 수집 오류가 아니라 그 시험의 단언으로 red 다."""
+    assert _HOOK.is_file(), f"훅 파일이 없다 — {_HOOK}"
     spec = importlib.util.spec_from_file_location("check_memory_after_write", _HOOK)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
-
-
-hook = _load()
 
 
 def _memory(tmp_path: Path, body: str) -> Path:
@@ -40,7 +39,7 @@ def _run(monkeypatch, capsys, memory_dir: Path, path: str) -> str:
     monkeypatch.setenv("CLAUDE_PROJECT_MEMORY_DIR", str(memory_dir))
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"tool_name": "Write",
                                                               "tool_input": {"file_path": path}})))
-    assert hook.main() == 0
+    assert _load().main() == 0
     return capsys.readouterr().out
 
 
@@ -66,7 +65,7 @@ def test_a_clean_memory_write_stays_silent(tmp_path, monkeypatch, capsys):
 def test_unreadable_input_is_ignored(raw, monkeypatch, capsys):
     """무엇을 썼는지 모르면 조용히 넘어간다 — 훅이 쓰기 도구 전체를 시끄럽게 만들면 안 된다."""
     monkeypatch.setattr(sys, "stdin", io.StringIO(raw))
-    assert hook.main() == 0
+    assert _load().main() == 0
     assert capsys.readouterr().out == ""
 
 
@@ -103,6 +102,7 @@ def test_a_failing_checker_never_breaks_the_write(tmp_path, monkeypatch, capsys)
 
 def test_only_paths_that_may_be_memory_reach_the_checker(tmp_path, monkeypatch):
     """메모리일 수 없는 쓰기는 검사 모듈을 부르지도 않는다 — 모듈이 편집 중에 깨져 있어도 다른 쓰기는 조용하다."""
+    hook = _load()
     mem = _memory(tmp_path, "- 인덱스\n")
     monkeypatch.setenv("CLAUDE_PROJECT_MEMORY_DIR", str(mem))
     assert hook.may_be_memory(str(mem / "MEMORY.md")) is True
