@@ -504,17 +504,25 @@ def test_wiki_link_to_nothing_is_flagged(tmp_path):
     assert any("missing-thing" in line for line in out), out
 
 
-@pytest.mark.parametrize("ref", [
-    "docs/**/*.md", "scripts/check_x.py::_SYMBOL", "docs/a.md:42", "docs/a.md:10-20",
-    "src/i18n/{en,ko}.json", "tests/unit/<area>",
-])
+@pytest.mark.parametrize("ref", ["docs/**/*.md", "src/i18n/{en,ko}.json", "tests/unit/<area>", "docs/a?.md"])
 def test_non_path_tokens_are_not_asked_to_exist(ref):
-    """🔴 glob·앵커·줄번호·플레이스홀더는 «경로가 아니다».
+    """🔴 glob · 플레이스홀더는 «경로가 아니다» — 존재를 물으면 안 된다.
 
-    실측으로 이 넷을 경로로 세다가 부재 60건을 99건으로 부풀린 적이 있다 — 계기가
-    결론을 만든 것이다.
+    실측으로 이런 것을 경로로 세다가 부재 60건을 99건으로 부풀린 적이 있다 — 계기가 결론을 만든 것이다.
     """
-    assert mod._is_concrete_path(ref) is False
+    assert mod._coordinate(ref) is None
+
+
+@pytest.mark.parametrize(("ref", "want"), [
+    ("scripts/check_x.py::_SYMBOL", ("scripts/check_x.py", "_SYMBOL")),
+    ("docs/a.md:42", ("docs/a.md", None)),
+    ("docs/a.md:10-20", ("docs/a.md", None)),
+    ("docs/STATE.md#종합-수치", ("docs/STATE.md", None)),
+    ("docs/runbooks/", ("docs/runbooks/", None)),
+])
+def test_anchor_line_fragment_and_directory_refs_keep_their_path(ref, want):
+    """🔴 앵커 · 줄 · 조각 · 디렉토리 좌표는 경로 부분으로 잰다 — 통째로 건너뛰면 파일이 사라져도 조용하다."""
+    assert mod._coordinate(ref) == want
 
 
 def test_advisory_mode_never_fails_the_session(tmp_path, monkeypatch, capsys):
@@ -551,30 +559,50 @@ def test_session_start_wires_the_advisory_flag():
     assert all("--advisory" in c for c in hit), f"`--advisory` 없이 걸려 있다: {hit}"
 
 
-def test_reverse_judges_every_line_under_an_entry_point_heading(tmp_path):
-    """🔴 «진입점» 제목 아래 절 전체가 처방이다 — 그 낱말이 없는 줄도 다음 세션이 그대로 따른다.
+_SECTION_NOTE = "\n".join([
+    "# 메모 제목",
+    "- 머리 `docs/pre.md`",
+    "## 🔖 다음 세션 진입점",
+    "1. 다음 `docs/in-1.md`",
+    "#1746 에 남긴 댓글 — 공백 없는 `#` 은 제목이 아니다",
+    "### 세부",
+    "2. 이어서 `docs/in-2.md`",
+    "### 진입점 1 — 세부",
+    "3. `docs/in-3.md`",
+    "### 이어서 할 일",
+    "4. `docs/in-4.md`",
+    "~~~bash",
+    "## 펜스 안의 줄은 제목이 아니다",
+    "~~~",
+    "```md",
+    "## 이것도 펜스 안",
+    "```",
+    "5. `docs/in-5.md`",
+    "# 옛 기록",
+    "- 역사 `docs/hist-1.md`",
+    "## 다음 세션 시작점",
+    "6. `docs/in-6.md`",
+    "## 관련",
+    "- 역사 `docs/hist-2.md`",
+    "# ▶️ 진입점 = 1수준 제목도 절을 연다",
+    "7. `docs/in-7.md`",
+]) + "\n"
 
-    실측: 세션 메모리의 `## 🔖 다음 세션 진입점` 절은 번호 목록으로 할 일 · 좌표를 적는데, 줄마다
-    «진입점» 을 쓰지 않는다. 줄 단위 낱말만 보면 그 절이 통째로 판정 밖이었다(P2-71).
-    계기 뒤집기 — 같은 죽은 좌표가 절 안에서는 red, 같은 수준의 다음 제목 뒤(역사)에서는 조용하다.
+
+def test_entry_point_sections_follow_heading_levels(tmp_path):
+    """🔴 «진입점» · «시작점» 제목 아래 절 = 같은 수준 이상의 다음 제목까지 — 그 낱말이 없는 줄도 처방이다(P2-71).
+
+    세션 메모리의 `## 🔖 다음 세션 진입점` 절은 번호 목록으로 할 일 · 좌표를 적고 줄마다 그 낱말을 쓰지 않는다.
+    더 깊은 하위 제목은 절 안이다 — 하위 제목이 그 낱말을 또 써서 수준을 덮으면 다음 형제 하위 제목에서 바깥
+    절이 일찍 끝났다(적대 패스 실측). 공백 없는 `#1746 …` 줄과 펜스(``` · ~~~) 안의 `#` 줄은 제목이 아니다.
+    1수준 제목도 절을 연다. 계기 뒤집기 — 절 안 7곳은 red, 밖 3곳은 조용하다.
     """
-    body = "\n".join([
-        "## 기록",
-        "- 옛 이야기 `docs/old.md`",
-        "## 🔖 다음 세션 진입점",
-        "1. 다음 PR = `docs/gone.md`",
-        "```bash",
-        "# 펜스 안의 줄은 제목이 아니다",
-        "```",
-        "2. 이어서 `docs/also-gone.md`",
-        "## 관련",
-        "- 역사 `docs/history.md`",
-    ]) + "\n"
-    mem = _mem(tmp_path, {"MEMORY.md": "- 인덱스\n", "project_now.md": body})
-    out = mod.reverse_dangling(mem, tmp_path / "repo")
-    assert any("docs/gone.md" in line for line in out), out
-    assert any("docs/also-gone.md" in line for line in out), f"펜스 속 `#` 줄이 절을 끊었다: {out}"
-    assert not any("docs/old.md" in line or "docs/history.md" in line for line in out), out
+    mem = _mem(tmp_path, {"MEMORY.md": "- 인덱스\n", "project_now.md": _SECTION_NOTE})
+    out = " ".join(mod.reverse_dangling(mem, tmp_path / "repo"))
+    missed = [n for n in range(1, 8) if f"docs/in-{n}.md" not in out]
+    assert not missed, f"절 안인데 판정하지 않았다: {missed}\n{out}"
+    judged = [n for n in ("pre", "hist-1", "hist-2") if f"docs/{n}.md" in out]
+    assert not judged, f"절 밖(역사)까지 판정했다: {judged}\n{out}"
 
 
 def test_reverse_judges_the_entry_point_word_like_the_start_point_word(tmp_path):
@@ -584,25 +612,42 @@ def test_reverse_judges_the_entry_point_word_like_the_start_point_word(tmp_path)
     assert any("docs/gone.md" in line for line in out), out
 
 
-def test_reverse_judges_root_level_files_and_resolves_memory_names(tmp_path):
-    """🔴 리포 루트 파일도 좌표다 — 접두사 목록 밖이라 «삭제 금지» 라 적힌 죽은 루트 파일 위에서 초록이었다.
+def test_bare_names_are_judged_by_kind_and_must_sit_at_the_root(tmp_path):
+    """🔴 처방 줄의 맨 파일 이름은 리포 루트나 메모리 디렉토리에 있어야 한다(P1-22 · P2-23).
 
-    처방 줄의 맨 파일 이름은 리포 루트나 메모리 디렉토리에 있어야 한다(P1-22 · P2-23). 다른 곳의 파일은
-    경로를 다 적는다 — 줄인 이름은 다음 세션이 어디를 열지 모른다. 죽은 파일을 역사로 말할 때는 백틱을
-    빼고 적는다(백틱 = 살아 있는 좌표).
+    접두사 목록 밖이라 «삭제 금지» 라 적힌 죽은 루트 파일 위에서 초록이었다. 더 깊은 곳에 실재해도 줄인 이름은
+    red — 다음 세션이 어디를 열지 모른다. 점 파일 · Makefile · 여러 확장자를 함께 심는다. 죽은 파일을 역사로
+    말할 때는 백틱을 뺀다(백틱 = 살아 있는 좌표). 메모리 이름은 메모리 디렉토리에서 찾는다.
     """
     repo = tmp_path / "repo"
-    repo.mkdir()
+    (repo / "src" / "templates").mkdir(parents=True)
+    (repo / "src" / "templates" / "dashboard.html").write_text("x", encoding="utf-8")
     (repo / "README.md").write_text("x", encoding="utf-8")
     # 이름을 조립한다 — 백틱 슬러그를 글자로 적으면 정방향 축이 이 파일을 «없는 메모리 참조» 로 읽는다.
     note = "feedback_" + "x.md"
-    index = f"- 시작점 = `AGENTS.md` · `README.md` · `{note}` · `dashboard.html`\n- 역사: AGENTS.md 는 삭제됐다\n"
-    mem = _mem(tmp_path, {"MEMORY.md": index, note: "본문\n"})
-    out = mod.reverse_dangling(mem, repo)
-    assert any("AGENTS.md" in line for line in out), out
-    assert any("dashboard.html" in line for line in out), f"줄인 이름이 통과했다: {out}"
-    assert not any("README.md" in line or note in line for line in out), out
+    index = (f"- 시작점 = `AGENTS.md` · `dashboard.html` · `.missing-config.yaml` · `Makefile` · `ci.yml` · "
+             f"`x.toml` · `README.md` · `{note}`\n- 역사: AGENTS.md 는 삭제됐다\n")
+    out = mod.reverse_dangling(_mem(tmp_path, {"MEMORY.md": index, note: "본문\n"}), repo)
+    text = " ".join(out)
+    for name in ("AGENTS.md", "dashboard.html", ".missing-config.yaml", "Makefile", "ci.yml", "x.toml"):
+        assert f"{name} — 처방인데" in text, (name, out)
+    assert "README.md" not in text and note not in text, out
     assert sum("AGENTS.md" in line for line in out) == 1, f"백틱 없는 역사 언급까지 잡았다: {out}"
+
+
+def test_new_value_kinds_apply_in_session_notes_too(tmp_path):
+    """🔴 새 값 셋(맨 파일 이름 · 테스트 수 · 머지 커밋)은 인덱스 밖 세션 메모의 진입점 절 · 진입점 줄에서도 잰다.
+
+    이 PR 을 부른 표면이 그쪽이다 — 양성 시험이 인덱스에만 있으면 «인덱스에서만 잰다» 로 줄여도 초록이었다.
+    """
+    root = Path(__file__).resolve().parents[3]
+    note = "## 🔖 다음 세션 진입점\n1. `AGENTS.md` 를 연다 · E2E 531 · #1 `0123abcd`\n"
+    mem = _mem(tmp_path, {"MEMORY.md": "- 인덱스\n", "project_now.md": note,
+                          "project_old.md": "▶️ 진입점 = `Makefile.md` · 단위 8761\n"})
+    text = " ".join(mod.reverse_dangling(mem, root))
+    for needle in ("project_now.md:2  AGENTS.md", "«E2E 531»", "`0123abcd`", "project_old.md:1  Makefile.md",
+                   "«단위 8761»"):
+        assert needle in text, (needle, text)
 
 
 def test_reverse_flags_test_counts_copied_onto_prescriptive_lines(tmp_path):
@@ -622,37 +667,107 @@ def test_reverse_flags_test_counts_copied_onto_prescriptive_lines(tmp_path):
     assert all(line.startswith("MEMORY.md:1") for line in hits), out
 
 
-def test_reverse_verifies_merge_record_shas(tmp_path):
-    """🔴 «#번호 `sha`» 머지 기록의 커밋은 리포에 있어야 한다 — 날조 · 오타 SHA 가 exit 0 이었다(P2-72).
+@pytest.mark.parametrize("text", [
+    "E2E 531", "E2E: 532", "e2e 531", "e2e(441 passed/1 skipped)", "E2E **536**(531 + 2)",
+    "단위 8754", "단위 **8754**", "단위 테스트 8761 통과", "단위는 8761",
+    "8961 수집", "**8968** 수집", "8968개 수집", "8751 passed / 4 skipped",
+])
+def test_copied_test_counts_are_flagged_in_their_common_forms(text, tmp_path):
+    """🔴 수치는 여러 꼴로 옮겨 적힌다 — 글자 인접 한 꼴만 보면 «단위 테스트 8761» · «e2e 531» 이 지나갔다(적대 패스)."""
+    out = mod.reverse_dangling(_mem(tmp_path, {"MEMORY.md": "- 진입점 · " + text + "\n"}), tmp_path / "repo")
+    assert any("테스트 수" in line for line in out), (text, out)
 
-    다른 꼴의 hex(배포 ID · 세션 ID)는 글자로 커밋과 못 가르므로 이 꼴만 본다(실측: 메모리의 이 꼴 33건은
-    전부 실재 커밋, 다른 꼴 4건은 배포 · Grok 세션 ID). 계기 뒤집기 — 실재 커밋(HEAD)은 통과, 없는 커밋은 red.
+
+@pytest.mark.parametrize("text", [
+    "E2E 잡 30→45분", "단위 +1", "#1746 나머지 61건", "배치 단위 500건씩", "E2E 2026-11-05 재실행", "E2E 3000ms 대기",
+])
+def test_numbers_that_are_not_test_counts_stay_quiet(text, tmp_path):
+    """대조군 — 날짜 · 시간 · 다른 뜻의 «단위» 는 테스트 수가 아니다(적대 패스가 잡은 거짓 red)."""
+    out = mod.reverse_dangling(_mem(tmp_path, {"MEMORY.md": "- 진입점 · " + text + "\n"}), tmp_path / "repo")
+    assert not any("테스트 수" in line for line in out), (text, out)
+
+
+def test_merge_record_shas_are_checked_in_every_merge_form(tmp_path):
+    """🔴 머지 기록의 커밋은 리포에 있어야 한다 — 날조 · 오타 SHA 가 exit 0 이었다(P2-72).
+
+    꼴 = «#번호 `sha`» · «(#번호) `sha`» · «#번호 머지 `sha`» · «#번호·`sha`», 길이 7~40. 다른 꼴의 hex(배포 ·
+    세션 ID)는 글자로 커밋과 못 가르므로 보지 않는다. 역사 줄의 머지 기록은 재지 않는다(append-only 역사).
+    계기 뒤집기 — 실재 커밋(HEAD)은 모든 꼴에서 통과, 없는 커밋은 모든 꼴에서 red.
     """
     root = Path(__file__).resolve().parents[3]
-    head = mod.subprocess.run(["git", "-C", str(root), "rev-parse", "--short=8", "HEAD"],
-                              capture_output=True, text=True, check=True).stdout.strip()
-    mem = _mem(tmp_path, {"MEMORY.md": f"- ✅ #1 `{head}` · #2 `0123abcd`\n- 배포 `0badc0de`\n"})
-    out = mod.reverse_dangling(mem, root)
-    assert any("0123abcd" in line for line in out), out
-    assert not any(head in line for line in out), out
-    assert not any("0badc0de" in line for line in out), f"머지 기록 꼴이 아닌 hex 를 판정했다: {out}"
+
+    def rev(*args):
+        return mod.subprocess.run(["git", "-C", str(root), "rev-parse", *args, "HEAD"],
+                                  capture_output=True, text=True, check=True).stdout.strip()
+
+    short, full = rev("--short=8"), rev()
+    fakes = ("0123abc", "0123abcd" * 5, "0123abce", "0123abcf", "0123abd0")
+    good = f"- ✅ #1 `{short}` · (#2) `{full}` · #3 머지 `{short}` · #4·`{short}`\n"
+    bad = f"- ✅ #5 `{fakes[0]}` · #6 `{fakes[1]}` · #7 머지 `{fakes[2]}` · (#8) `{fakes[3]}` · #9·`{fakes[4]}`\n"
+    mem = _mem(tmp_path, {"MEMORY.md": good + bad + "- 배포 `0badc0de`\n",
+                          "project_old.md": "옛 기록 — #10 `0123abd1` 머지\n"})
+    text = " ".join(mod.reverse_dangling(mem, root))
+    for sha in fakes:
+        assert f"`{sha}` — 머지 기록인데" in text, (sha, text)
+    assert short not in text and full not in text, text
+    assert "0badc0de" not in text, f"머지 기록 꼴이 아닌 hex 를 판정했다: {text}"
+    assert "0123abd1" not in text, f"역사 줄의 머지 기록까지 쟀다: {text}"
 
 
-def test_reverse_fails_closed_when_commits_cannot_be_checked(tmp_path):
-    """🔴 git 으로 확인하지 못하면 «없는 커밋» 도 «통과» 도 아니다 — 못 쟀다고 red 로 말한다."""
+def test_reverse_fails_closed_when_git_fails(tmp_path):
+    """🔴 git 이 실패하면(리포가 아님) «없는 커밋» 도 «통과» 도 아니다 — 못 쟀다고 red 로 말한다."""
     mem = _mem(tmp_path, {"MEMORY.md": "- ✅ #1 `0123abcd`\n"})
     out = mod.reverse_dangling(mem, tmp_path / "not-a-repo")
     assert any("확인하지 못했다" in line for line in out), out
 
 
-# 🔴 판정 범위 — 이 축이 보는 «값» 은 셋뿐이다: 백틱 좌표(접두사 경로 · 맨 파일 이름) · «#번호 `sha`» 꼴의
-#    커밋 · E2E/단위/수집 테스트 수. 다른 값은 보지 않는다 — 아래가 그 부류이고, 처방 줄에 있어도 조용하다.
-#    여기서 «잡힌다» 를 단언하면 다음 사람은 이 축이 값 전부를 본다고 읽는다(P2-76).
+@pytest.mark.parametrize("exc", [FileNotFoundError("git"), mod.subprocess.TimeoutExpired("git", 60)])
+def test_reverse_fails_closed_when_git_cannot_run(exc, tmp_path, monkeypatch):
+    """🔴 git 을 아예 못 부르거나(실행 파일 없음) 시간이 넘어도 red — 예외 길이 «통과» 로 새면 안 된다."""
+    def boom(*_args, **_kwargs):
+        raise exc
+
+    monkeypatch.setattr(mod.subprocess, "run", boom)
+    out = mod.reverse_dangling(_mem(tmp_path, {"MEMORY.md": "- ✅ #1 `0123abcd`\n"}), tmp_path / "repo")
+    assert any("확인하지 못했다" in line for line in out), out
+
+
+def test_anchor_line_and_directory_coordinates_are_judged(tmp_path):
+    """🔴 앵커 · 줄 · 디렉토리 좌표는 경로 부분으로 잰다 — 예전엔 통째로 건너뛰어 파일이 사라져도 조용했다.
+
+    앵커(`path::글자`)는 그 글자가 파일에 있어야 산 좌표다(CLAUDE.md 의 앵커 규약). `path#조각` 은 경로만 본다 —
+    예전엔 조각까지 경로로 읽어 산 파일을 red 로 만들었다. 계기 뒤집기 — 산 좌표 셋은 조용, 죽은 좌표 넷은 red.
+    """
+    root = Path(__file__).resolve().parents[3]
+    line = ("- 진입점 · `scripts/check_memory_refs.py::reverse_dangling` · `scripts/check_memory_refs.py::_NO_ANCHOR_"
+            "HERE_` · `src/gone_module.py::run` · `e2e/test_gone.py:42-43` · `docs/runbooks-gone/` · "
+            "`docs/STATE.md#종합-수치` · `docs/workflow/`\n")
+    text = " ".join(mod.reverse_dangling(_mem(tmp_path, {"MEMORY.md": line}), root))
+    for dead in ("_NO_ANCHOR_HERE_", "src/gone_module.py::run", "e2e/test_gone.py:42-43", "docs/runbooks-gone/"):
+        assert dead in text, (dead, text)
+    for alive in ("::reverse_dangling", "docs/STATE.md#", "docs/workflow/ "):
+        assert alive not in text, (alive, text)
+
+
+def test_markdown_links_inside_code_are_not_coordinates(tmp_path):
+    """대조군 — 백틱 코드 속 `handlers[i](event)` 는 마크다운 링크가 아니다(적대 패스가 잡은 거짓 red)."""
+    out = mod.reverse_dangling(_mem(tmp_path, {"MEMORY.md": "- ▶️ 진입점: `handlers[i](event)` 로 부른다\n"}),
+                               tmp_path / "repo")
+    assert out == [], out
+
+
+# 🔴 판정 범위 — 이 축이 처방 줄에서 보는 «값» 은 셋뿐이다: 백틱 좌표(접두사 경로 · 맨 파일 이름 · 앵커) ·
+#    테스트 수의 흔한 꼴(E2E N · 단위 N · N 수집 · N passed) · 머지 기록 꼴(«#번호 (머지) `sha`»)의 커밋.
+#    다른 값은 보지 않는다 — 아래가 그 부류이고, 처방 줄에 있어도 조용하다. 줄 번호의 유효성 · CommonMark 의
+#    setext 제목 · 들여 쓴 제목도 보지 않는다. 여기서 «잡힌다» 를 단언하면 다음 사람은 이 축이 값 전부를 본다고
+#    읽는다(P2-76).
 # witness-corpus: 역방향 축이 판정하지 않는 값의 부류 — 처방 줄에 있어도 조용하다
 _VALUES_THE_SCAN_DOES_NOT_JUDGE = (
     "배포 `0badc0de`",          # 머지 기록 꼴이 아닌 hex — 배포 · 세션 ID 와 글자로 못 가른다
+    "#1 `ABCDEF01`",            # 대문자 hex — git 이 쓰는 꼴이 아니다
     "#99999 OPEN",              # PR 번호 · 상태 — 네트워크 없이는 못 잰다
     "docs/gone.md 를 연다",     # 백틱 없는 경로 — 백틱 = 좌표라는 규약 밖
+    "E2E 는 531 이다",          # 흔한 꼴 밖의 수치 표현 — 꼴을 넓히면 이 시험을 함께 고친다
 )
 
 

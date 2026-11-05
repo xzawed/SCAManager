@@ -121,13 +121,15 @@ def normalize(slug: str) -> str:
 #    (같은 수준 이상의 다음 제목까지, 코드 펜스 안의 `#` 줄은 제목이 아니다). 진입점 절은 번호 목록으로
 #    할 일 · 좌표를 적고 줄마다 그 낱말을 쓰지 않는다 — 줄 단위로만 보면 그 절이 통째로 판정 밖이었다.
 # 🔴 처방 줄 위에서 보는 값은 셋뿐이다(그 밖의 값은 판정하지 않는다 — 시험이 그 부류를 고정한다):
-#    · 백틱 좌표 — 접두사 경로와 맨 파일 이름(리포 루트 · 메모리 디렉토리에 있어야 한다). 백틱 = 살아 있는
-#      좌표다 — 죽은 파일을 역사로 말할 때는 백틱을 뺀다. 루트 파일을 못 봐 «삭제 금지» 라 적힌 죽은
-#      루트 파일 위에서 초록이었다.
-#    · E2E/단위/수집 테스트 수 — 원천(`docs/STATE.md` · `e2e/EXPECTED_COUNT`)이 말한다. 처방 줄에 복사한
-#      수치가 main 보다 6 PR 뒤처졌고, 그 수치를 무효로 만든 커밋들에서 이 훅은 돌고도 초록이었다.
-#    · «#번호 `sha`» 머지 기록의 커밋 — 리포에 있어야 한다. 다른 꼴의 hex 는 배포 · 세션 ID 와 글자로
-#      못 가르므로 보지 않는다. git 으로 확인하지 못하면 못 쟀다고 red 다.
+#    · 백틱 좌표 — 접두사 경로와 맨 파일 이름(리포 루트 · 메모리 디렉토리에 있어야 한다). 앵커
+#      (`path::글자`)는 그 글자가 파일에 있어야 하고, `path:줄` · `path#조각` · 끝 `/` 는 경로만 본다.
+#      백틱 = 살아 있는 좌표다 — 죽은 파일을 역사로 말할 때는 백틱을 뺀다. 루트 파일을 못 봐 «삭제 금지»
+#      라 적힌 죽은 루트 파일 위에서 초록이었다.
+#    · 테스트 수의 흔한 꼴(E2E N · 단위 N · N 수집 · N passed) — 원천(`docs/STATE.md` ·
+#      `e2e/EXPECTED_COUNT`)이 말한다. 처방 줄에 복사한 수치가 main 보다 6 PR 뒤처졌고, 그 수치를 무효로
+#      만든 커밋들에서 이 훅은 돌고도 초록이었다.
+#    · 머지 기록(«#번호 (머지) `sha`») 의 커밋 — 리포에 있어야 한다. 다른 꼴의 hex 는 배포 · 세션 ID 와
+#      글자로 못 가르므로 보지 않는다. git 으로 확인하지 못하면(실패 · 실행 불가) 못 쟀다고 red 다.
 #
 # Reverse axis: only prescriptive surfaces are judged; old narrative is append-only history.
 # Wiki links resolve by frontmatter `name:` as well as by filename. Prescriptive lines are judged for
@@ -143,8 +145,16 @@ _REPO_PATH = re.compile(
 _BARE_FILE = re.compile(
     r"`(\.?[A-Za-z0-9_-][A-Za-z0-9_.-]*\.(?:md|py|ya?ml|toml|json|ini|cfg|txt|html|js|mjs|css|sh|lock)"
     r"|Makefile|Dockerfile)`")
-_TEST_COUNT = re.compile(r"(?:E2E|단위)\s*\**\s*\d{3,}|\d{3,}\**\s*수집")
-_MERGE_SHA = re.compile(r"#\d+\s*`([0-9a-f]{7,40})`")
+_BACKTICK_SPAN = re.compile(r"`[^`\n]*`")
+# 테스트 수의 흔한 꼴 — E2E/e2e N · 단위(테스트)(는) N · N(개) 수집 · N passed. 날짜(2026-11-05) · 시간(3000ms) ·
+# 「단위 500건씩」 같은 다른 뜻은 뒤따르는 글자로 거른다. 그 밖의 꼴은 판정하지 않는다(시험이 고정).
+_TEST_COUNT = re.compile(
+    r"(?i:e2e)\s*[:(]?\s*\**\s*\d{3,}(?![\d.,:/-]|\s*ms)"
+    r"|단위(?:\s*테스트)?\s*[:는은]?\s*\**\s*\d{3,}(?![\d.,:/-]|\s*건)"
+    r"|\d{3,}\**\s*(?:개\s*)?수집"
+    r"|\d{3,}\s+passed")
+# 머지 기록 — «#번호 `sha`» · «(#번호) `sha`» · «#번호 머지 `sha`» · «#번호·`sha`».
+_MERGE_SHA = re.compile(r"#\d+\)?(?:\s*(?:머지|squash|merge))?\s*·?\s*`([0-9a-f]{7,40})`")
 _ANY_WIKI = re.compile(r"\[\[([a-z0-9][a-z0-9_-]{6,})\]\]")
 _FRONTMATTER_NAME = re.compile(r"^name:\s*(\S+)\s*$", re.M)
 
@@ -161,16 +171,20 @@ def memory_identities(memory_dir: Path) -> set[str]:
     return ids
 
 
-def _is_concrete_path(ref: str) -> bool:
-    """glob·앵커(`path::sym`)·줄번호 좌표는 «경로가 아니다» — 존재를 물으면 안 된다.
+def _coordinate(ref: str) -> tuple[str, str | None] | None:
+    """백틱 좌표 → (경로, 앵커). glob · 플레이스홀더는 좌표가 아니다(None).
 
-    실측으로 이 셋을 경로로 세다가 부재 60건을 99건으로 부풀린 적이 있다.
+    `path::앵커` 는 경로가 있고 그 글자가 파일에 있어야 산 좌표다(CLAUDE.md 의 앵커 규약). `path:줄` ·
+    `path#조각` 은 경로만 본다(줄 번호 · 조각은 재지 않는다). 끝의 `/` 는 디렉토리다. 예전에는 앵커 · 줄 ·
+    디렉토리 좌표를 통째로 건너뛰어, 파일이 사라져도 조용했다.
     """
-    if "*" in ref or "?" in ref or "{" in ref or "<" in ref or ref.endswith("/"):
-        return False
-    if "::" in ref:
-        return False
-    return not re.search(r":\d+(?:[-,]\d+)*$", ref)
+    if any(ch in ref for ch in "*?{<"):
+        return None
+    path, sep, anchor = ref.partition("::")
+    path = re.sub(r":\d+(?:[-,]\d+)*$", "", path).split("#", 1)[0]
+    if not path:
+        return None
+    return path, (anchor if sep and anchor else None)
 
 
 def _lines_with_surface(path: Path):
@@ -183,7 +197,9 @@ def _lines_with_surface(path: Path):
             level = len(m.group(1))
             if entry_level is not None and level <= entry_level:
                 entry_level = None
-            if _PRESCRIPTIVE_LINE.search(m.group(2)):
+            # 이미 진입점 절 안이면 하위 제목이 그 낱말을 또 써도 바깥 절의 수준을 덮지 않는다 — 덮으면
+            # 다음 형제 하위 제목에서 바깥 절이 일찍 끝난다.
+            if entry_level is None and _PRESCRIPTIVE_LINE.search(m.group(2)):
                 entry_level = level
         prescriptive = (path.name == _PRESCRIPTIVE_FILE or entry_level is not None
                         or bool(_PRESCRIPTIVE_LINE.search(line)))
@@ -222,13 +238,20 @@ def reverse_dangling(memory_dir: Path, project_root: Path) -> list[str]:
             if not prescriptive:
                 continue
             for rx in (_MD_LINK, _REPO_PATH, _BARE_FILE):
-                for m in rx.finditer(line):
+                # 마크다운 링크는 백틱 코드 밖에서만 찾는다 — `handlers[i](event)` 는 링크가 아니다.
+                text = _BACKTICK_SPAN.sub(" ", line) if rx is _MD_LINK else line
+                for m in rx.finditer(text):
                     ref = m.group(1).strip().rstrip(".,")
-                    if not _is_concrete_path(ref):
+                    coord = _coordinate(ref)
+                    if coord is None:
                         continue
-                    if (memory_dir / ref).exists() or (project_root / ref).exists():
-                        continue
-                    out.append(f"{path.name}:{lineno}  {ref} — 처방인데 그 자리가 없다")
+                    rel, anchor = coord
+                    found = next((b / rel for b in (memory_dir, project_root) if (b / rel).exists()), None)
+                    if found is None:
+                        out.append(f"{path.name}:{lineno}  {ref} — 처방인데 그 자리가 없다")
+                    elif anchor and (not found.is_file()
+                                     or anchor not in found.read_text(encoding="utf-8", errors="replace")):
+                        out.append(f"{path.name}:{lineno}  {ref} — 그 파일에 앵커 «{anchor}» 가 없다")
             for m in _TEST_COUNT.finditer(line):
                 out.append(f"{path.name}:{lineno}  «{m.group(0).replace('*', '')}» — 처방 줄의 테스트 수는 썩는다"
                            "(원천 = `docs/STATE.md` · `e2e/EXPECTED_COUNT` — 수치 대신 그쪽을 가리킨다)")
