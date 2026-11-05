@@ -69,6 +69,7 @@ def _source_files() -> list[Path]:
 def _hits() -> list[tuple[str, int, int]]:
     """(파일, 줄번호, 바이트값) — 소스에 박힌 제어 바이트."""
     found: list[tuple[str, int, int]] = []
+    # fail-open-reviewed: 판정 대상이 제어 «바이트» 자체다 — 주석·문자열 어디에 있든 금지라 원문 바이트 소속이 정확한 판정이다
     for p in _source_files():
         try:
             raw = io.open(p, "rb").read()

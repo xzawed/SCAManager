@@ -20,6 +20,8 @@ import pathlib
 
 import pytest
 
+from ._code_view import template_code
+
 _ROOT = pathlib.Path(__file__).resolve().parents[3]
 
 # 템플릿 → vendor <script onload> 가 호출하는 ready 핸들러명 (document.<name>)
@@ -36,13 +38,19 @@ def _read(rel: str) -> str:
     return (_ROOT / rel).read_text(encoding="utf-8")
 
 
+def _code(rel: str) -> str:
+    """주석을 지운 본문 — 있어야 할 것은 여기서 찾는다(주석 처리된 가드로 통과하지 않게).
+    없어야 할 것은 `_read` 원문에서 찾는다. Presence on the comment-free view, absence on raw."""
+    return template_code(_read(rel))
+
+
 @pytest.mark.parametrize("tpl", sorted(_CHART_TEMPLATES))
 def test_chart_template_has_async_load_race_guard(tpl):
     """모든 차트 템플릿은 `new Chart` 앞에 typeof Chart undefined early-return 가드 유지.
 
     Every chart template keeps a typeof-Chart early-return guard before `new Chart`.
     """
-    src = _read(tpl)
+    src = _code(tpl)
     assert "new Chart(" in src, f"{tpl}: 차트 생성 코드 부재 — 테스트가 stale 함"
     assert "if (typeof Chart === 'undefined') return;" in src, (
         f"{tpl}: Chart.js async 로드 race 가드 누락 → hx-boost swap 시 "
@@ -67,10 +75,10 @@ def test_chart_vendor_script_has_onload_repaint(tpl, ready):
 
     The vendored Chart.js <script> keeps an onload repaint hook and a fetchpriority hint.
     """
-    src = _read(tpl)
+    raw, src = _read(tpl), _code(tpl)
     # bare(무-onload) vendor script 회귀 차단 — async 로드 후 자동 페인트 불가해짐
     # Block regression to a bare vendor <script> (no onload → no auto-repaint after async load)
-    assert '<script src="/static/vendor/chart.umd.min.js"></script>' not in src, (
+    assert '<script src="/static/vendor/chart.umd.min.js"></script>' not in raw, (
         f"{tpl}: bare chart vendor script 회귀 (onload 미부착)"
     )
     # onload 가 ready 핸들러를 호출 (존재 가드 동반 — onload 가 정의 전 발화해도 안전).
@@ -100,7 +108,7 @@ def test_dashboard_loads_chartjs_in_repos_mode():
     dashboard.html must load Chart.js in repos mode too (vendor <script> condition includes the
     repos-mode chart), invoke _reposChartReady on onload, and expose that ready handler.
     """
-    src = _read("src/templates/dashboard.html")
+    src = _code("src/templates/dashboard.html")
     assert "_show_repos_trend" in src, (
         "dashboard.html: Chart.js vendor 로드 조건에 repos 모드 차트 조건(_show_repos_trend) 누락 "
         "→ repos 모드 Chart.js 미로드 → repoTrendChart 영구 공백"
@@ -127,7 +135,7 @@ def test_repo_detail_i18n_accessible_to_buildchart():
     탐색으로 접근) + (2) buildChart 가 I18N 미정의 시 graceful return(onload race: I18N 정의 전
     호출 시 throw 대신 skip, 이후 applyFilters→buildChart 가 정상 렌더).
     """
-    src = _read("src/templates/repo_detail.html")
+    raw, src = _read("src/templates/repo_detail.html"), _code("src/templates/repo_detail.html")
     # (1) repo 고유 전역 노출 — buildChart(별도 block)가 접근. IIFE-격리 const 단독이면 ReferenceError.
     assert "window._repoChartI18N" in src, (
         "repo_detail.html: I18N 을 repo 고유 전역(window._repoChartI18N)으로 미노출 → IIFE const "
@@ -136,7 +144,7 @@ def test_repo_detail_i18n_accessible_to_buildchart():
     # 🔴 범용 window.I18N 전역 회귀 차단 — 다른 페이지(add_repo 의 var I18N 등)와 충돌해 hx-boost
     # 왕복 시 덮어써져 차트 재빌드가 깨진다. repo 고유 네임스페이스만 허용.
     # `window.I18N = {` 할당 패턴만 검사(주석의 'window.I18N' 언급은 허용)
-    assert "window.I18N = {" not in src, (
+    assert "window.I18N = {" not in raw, (
         "repo_detail.html: 범용 window.I18N 전역 할당 회귀 → 다른 페이지 var I18N(add_repo.html:201)과 "
         "충돌. window._repoChartI18N 고유 네임스페이스 사용"
     )

@@ -15,9 +15,12 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 os.environ.setdefault("GITHUB_WEBHOOK_SECRET", "test-secret")
 
 # pylint: disable=wrong-import-position
+import ast
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock
+
+import pytest
 
 import src.repositories.claude_api_cost_repo as cost_repo
 import src.services.analytics_service as analytics_service
@@ -159,6 +162,37 @@ def test_operations_merge_kpi_uses_naive_bound():
 #    복사-붙여넣기 형태**다. 「전수 검사했으니 이 클래스는 끝났다」로 읽지 말 것.
 # A spelling tripwire for the exact copy-paste that survived #1197 — not proof the class is closed.
 
+def _tzinfo_strips(src: str) -> list[int]:
+    """`<식>.replace(..., tzinfo=None, ...)` 호출의 줄 번호 — 구문 트리에서 찾는다.
+
+    Line numbers of `.replace(tzinfo=None)` calls, found in the syntax tree.
+    """
+    return sorted(
+        n.lineno for n in ast.walk(ast.parse(src))
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "replace"
+        and any(k.arg == "tzinfo" and isinstance(k.value, ast.Constant) and k.value.value is None
+                for k in n.keywords))
+
+
+@pytest.mark.parametrize("src,expected", [
+    ("x = dt.replace(tzinfo=None)\n", [1]),
+    ("x = dt.replace( tzinfo = None )\n", [1]),
+    ("x = dt.replace(\n    tzinfo=None,\n)\n", [1]),
+    ("# dt.replace(tzinfo=None) 는 쓰지 않는다\nx = 1\n", []),
+    ('"""dt.replace(tzinfo=None)"""\n', []),
+    ("x = dt.replace(tzinfo=timezone.utc)\n", []),
+], ids=["plain", "spaced", "multiline", "comment", "docstring", "other-tz"])
+def test_tzinfo_strip_detector(src, expected):
+    """계기 자기검증 — 띄어쓰기·줄바꿈 변형은 잡고, 주석·문자열·다른 시간대는 안 센다."""
+    assert _tzinfo_strips(src) == expected
+
+
+def test_the_detector_sees_the_helper_body():
+    """대조축 — 헬퍼 본체에는 이 호출이 실제로 있다. 탐지기가 운영 코드의 모양을 못 보면 위 쓸이는 공허하다."""
+    helper = next((Path(__file__).resolve().parents[2] / "src").rglob("time_utils.py"))
+    assert _tzinfo_strips(helper.read_text(encoding="utf-8")), f"{helper} 에서 벗기기 호출을 못 찾았다"
+
+
 def test_no_raw_tzinfo_stripping_outside_the_helper():
     """`src/` 어디에도 생 `.replace(tzinfo=None)` 이 없어야 한다 — `time_utils.py` 제외.
 
@@ -166,9 +200,9 @@ def test_no_raw_tzinfo_stripping_outside_the_helper():
     `insight_narrative_cache_repo` 의 1곳은 그대로였다. 각 지점마다 시간대 불변식 테스트를
     쓰는 것은 현실적이지 않고, 새로 추가되는 지점은 어차피 아무도 안 본다.
 
-    🔴 **이 검사가 보증하지 않는 것**: 문자열 일치라서 동치 표기(`replace(**{...})`,
-    `datetime(dt.year, …)`)는 통과한다. 초록은 "이 표기가 없다" 이지 "변환 없는 벗기기가
-    없다" 가 아니다.
+    호출을 구문 트리에서 찾는다 — 띄어쓰기·줄바꿈이 달라도 잡고, 주석 속 언급은 세지 않는다.
+    🔴 **이 검사가 보증하지 않는 것**: 동치 표기(`replace(**{...})`, `datetime(dt.year, …)`)는
+    통과한다. 초록은 "이 호출 모양이 없다" 이지 "변환 없는 벗기기가 없다" 가 아니다.
     """
     root = Path(__file__).resolve().parents[2]
     allowed = {"time_utils.py"}  # 헬퍼 본체 — 여기가 유일하게 정당한 사용처
@@ -178,10 +212,10 @@ def test_no_raw_tzinfo_stripping_outside_the_helper():
         if path.name in allowed:
             continue
         text = path.read_text(encoding="utf-8")
-        for lineno, line in enumerate(text.splitlines(), 1):
-            if "replace(tzinfo=None)" in line:
-                rel = path.relative_to(root).as_posix()
-                offenders.append(f"{rel}:{lineno}  {line.strip()}")
+        lines = text.splitlines()
+        for lineno in _tzinfo_strips(text):
+            rel = path.relative_to(root).as_posix()
+            offenders.append(f"{rel}:{lineno}  {lines[lineno - 1].strip()}")
 
     assert not offenders, (
         "생 tzinfo 벗기기가 헬퍼를 우회한다 — 값이 UTC 가 아니면 오프셋만큼 어긋난다:\n  "

@@ -20,6 +20,8 @@ os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
 
 from src.models.analysis import Analysis
 
+from ._migration_source import module_constants, sql_literals
+
 _VERSIONS = pathlib.Path(__file__).resolve().parents[3] / "alembic" / "versions"
 _NEW = "ix_analyses_repo_scores"
 _NEW_COLUMNS = ["repo_id", "score", "score_unreliable"]
@@ -116,9 +118,11 @@ def test_downgrade_restores_the_0046_partial_index():
     assert str(kw.get("sqlite_where")) == _OLD_WHERE, kw
     assert drop[1:] == (_NEW, {"table_name": "analyses", "if_exists": True}), drop
     # 되살리는 술어가 0046 원본과 같은 글자인가 — 다르면 왕복 뒤 스키마가 0047 과 갈린다.
-    source_0046 = next(_VERSIONS.glob("0046_*.py")).read_text(encoding="utf-8")
-    assert f'_INDEX = "{_OLD}"' in source_0046
-    assert source_0046.count(f'"{_OLD_WHERE}"') == 2, "0046 의 양 방언 술어가 바뀌었다"
+    # 구문 트리로 읽는다 — 주석·docstring 속 인용은 이름·술어로 세지 않는다.
+    # Read the syntax tree, so quoted names or predicates in comments do not count.
+    source_0046 = next(_VERSIONS.glob("0046_*.py"))
+    assert module_constants(source_0046).get("_INDEX") == _OLD
+    assert sql_literals(source_0046, "upgrade").count(_OLD_WHERE) == 2, "0046 의 양 방언 술어가 바뀌었다"
 
 
 def test_the_model_declares_what_the_migration_creates():

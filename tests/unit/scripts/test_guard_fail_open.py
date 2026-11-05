@@ -1,22 +1,48 @@
 """`check_guard_fail_open.py` (B8) 회귀 가드 — fail-open 저술을 write-time 에 잡는가.
 
-## 배경 (2026-07-20 Grok 최종 적대검증)
-
-문서 재구성은 불변식 3(배선)만 기계화했고, **불변식 1(fail-closed)의 write-time 게이트가
-없었다**. B8 은 그 floor — 파일 읽어 판정하는 check 가드가 구조 도구 없이 bare substring 만
-쓰면 차단. 이 테스트는 B8 이 (1) 현 baseline 통과 (2) 합성 fail-open 가드를 실제로 잡는지 확인.
+B8 은 floor 다 — 파일을 읽어 판정하는 파이썬 코드가 구조 도구를 하나도 부르지 않으면 차단한다.
+이 테스트는 B8 이 (1) 현 baseline 통과 (2) 합성 fail-open 파일을 실제로 잡는지 (3) 정당한
+구조 판정(파서 입구 · 파서 상속 · 구조 도구를 부르는 리포 헬퍼)을 오탐하지 않는지 확인한다.
 
 🔴 이 게이트도 관측자이므로 3-불변식 적용 — 판정을 AST 호출 관측으로(산문 통과 방지) +
 실경로 뮤테이션 red + 배선 확인.
 """
 import importlib.util
+import re
 import sys
 from pathlib import Path
+
+import pytest
+import yaml
 
 from tests.unit.scripts._wiring_shape import surface_invokes
 
 _ROOT = Path(__file__).resolve().parents[3]
 _SCRIPT = _ROOT / "scripts" / "check_guard_fail_open.py"
+
+# 구조 도구(re)를 **호출**하는 건강한 판정 — 표면을 비우지 않으면서 후보 0 으로 둔다.
+# A healthy reader that calls a structural tool: keeps a surface non-empty with zero candidates.
+_HEALTHY = (
+    "import re\n"
+    "def main():\n"
+    "    text = open('x').read()\n"
+    "    return 1 if re.search(r'p', text) else 0\n"
+)
+# 파일을 읽고 bare substring 으로 판정 — B8 이 잡아야 하는 모양(#1136 클래스).
+# Reads a file and decides by bare substring: the shape B8 exists to block.
+_BARE = (
+    "def main():\n"
+    "    text = open('x').read()\n"
+    "    return 1 if 'X' in text else 0\n"
+)
+# 가짜 리포의 네 표면 — (모듈 속성, 리포 안 디렉터리, 그 표면 glob 에 걸리는 건강한 파일).
+# The fake repo's four surfaces: (module attribute, directory, a healthy file its glob matches).
+_SURFACES = {
+    "_SCRIPTS": ("scripts", "check_ok.py"),
+    "_HOOKS": (".claude/hooks", "ok_hook.py"),
+    "_TESTS": ("tests", "unit/test_ok.py"),
+    "_E2E": ("e2e", "test_ok.py"),
+}
 
 
 def _load():
@@ -27,131 +53,116 @@ def _load():
     return mod
 
 
+@pytest.fixture
+def fake_repo(tmp_path, monkeypatch):
+    """네 표면을 tmp 가짜 리포의 건강한 파일 하나씩으로 고정한다 — 판정이 실제 리포 상태에 기대지 않게.
+
+    `raising=False` — 표면 속성이 없는 판(되돌린 B8)에서도 픽스처는 서고, 시험은 단언에서 빨개진다.
+    Pins all four surfaces to a tmp fake repo, one healthy file each, so verdicts never lean on the
+    real tree. raising=False keeps the fixture standing on a reverted B8 so failures are assertions.
+    """
+    mod = _load()
+    monkeypatch.setattr(mod, "_ROOT", tmp_path, raising=False)
+    dirs = {}
+    for attr, (rel_dir, healthy) in _SURFACES.items():
+        d = tmp_path / rel_dir
+        (d / healthy).parent.mkdir(parents=True, exist_ok=True)
+        (d / healthy).write_text(_HEALTHY, encoding="utf-8")
+        monkeypatch.setattr(mod, attr, d, raising=False)
+        dirs[attr] = d
+    return mod, dirs
+
+
+def _put(path: Path, src: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(src, encoding="utf-8")
+
+
 def test_current_guards_have_no_fail_open_candidate():
-    """🔴 현 check 가드는 전부 구조 도구 사용(bare-substring fail-open 0) — baseline."""
+    """🔴 현 리포의 네 표면은 전부 구조 판정(bare-substring fail-open 0) — baseline."""
     mod = _load()
     assert mod.fail_open_candidates() == [], (
         f"fail-open 후보(구조 도구 0): {mod.fail_open_candidates()}"
     )
 
 
-def test_b8_flags_a_synthetic_bare_substring_guard(tmp_path, monkeypatch):
+def test_fake_repo_baseline_is_green(fake_repo):
+    """대조군 — 건강한 가짜 리포는 통과한다. 아래 red 들의 원인이 시험이 심은 한 가지임을 보인다."""
+    mod, _ = fake_repo
+    assert mod.fail_open_candidates() == []
+    assert mod.main() == 0
+
+
+def test_b8_flags_a_synthetic_bare_substring_guard(fake_repo):
     """🔴 합성 fail-open 가드(파일 읽고 bare `X in text` 판정)를 실제로 잡는가 — 뮤테이션.
 
     #1136 클래스(echo 산문이 통과시키는 가드)를 저술 시점에 차단하는 것이 B8 의 존재 이유.
     """
-    mod = _load()
-    fake = tmp_path / "check_fake_fail_open.py"
-    fake.write_text(
-        "def main():\n"
-        "    text = open('x').read()\n"
-        "    return 1 if 'WARNING' in text else 0\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(mod, "_SCRIPTS", tmp_path)
-    assert "check_fake_fail_open.py" in mod.fail_open_candidates(), (
+    mod, dirs = fake_repo
+    _put(dirs["_SCRIPTS"] / "check_fake_fail_open.py", _BARE)
+    assert "scripts/check_fake_fail_open.py" in mod.fail_open_candidates(), (
         "합성 bare-substring 가드를 탐지하지 못했다 — B8 fail-open"
     )
 
 
-def test_b8_passes_a_guard_that_uses_a_structural_tool(tmp_path, monkeypatch):
+def test_b8_passes_a_guard_that_uses_a_structural_tool(fake_repo):
     """대조군 — 구조 도구(re)를 **호출**하는 가드는 통과."""
-    mod = _load()
-    ok = tmp_path / "check_fake_ok.py"
-    ok.write_text(
-        "import re\n"
-        "def main():\n"
-        "    text = open('x').read()\n"
-        "    return 1 if re.search(r'pat', text) else 0\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(mod, "_SCRIPTS", tmp_path)
+    mod, dirs = fake_repo
+    _put(dirs["_SCRIPTS"] / "check_fake_ok.py", _HEALTHY)
     assert mod.fail_open_candidates() == []
 
 
-def test_b8_detection_uses_ast_calls_not_import_mention(tmp_path, monkeypatch):
+def test_b8_detection_uses_ast_calls_not_import_mention(fake_repo):
     """🔴 도구 **import·언급**만으로는 통과시키면 안 된다 — 실제 **호출**을 봐야 한다.
 
     이 게이트 자신이 산문(import re 만 하고 re 미호출)에 속으면 fail-open 이다.
-    check_architecture_tree_sync 가 정확히 그 상태(re import 없이 bare in)였고 B8 이 잡았다.
     """
-    mod = _load()
+    mod, dirs = fake_repo
     # re 를 import 만 하고 호출 안 함 + bare substring 판정 → 여전히 fail-open 후보
-    trap = tmp_path / "check_fake_trap.py"
-    trap.write_text(
-        "import re  # 언급만\n"
-        "def main():\n"
-        "    text = open('x').read()\n"
-        "    return 1 if 'X' in text else 0\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(mod, "_SCRIPTS", tmp_path)
-    assert "check_fake_trap.py" in mod.fail_open_candidates(), (
+    _put(dirs["_SCRIPTS"] / "check_fake_trap.py", "import re  # 언급만\n" + _BARE)
+    assert "scripts/check_fake_trap.py" in mod.fail_open_candidates(), (
         "re 를 import 만 하고 호출 안 하는데 통과시켰다 — import 언급에 속음(fail-open)"
     )
 
 
-def test_escape_hatch_exempts_reviewed_guards(tmp_path, monkeypatch):
+def test_escape_hatch_exempts_reviewed_guards(fake_repo):
     """정당한 substring-only 가드는 `# fail-open-reviewed:` 로 면제 — 과탐(가드 자살) 방지."""
-    mod = _load()
-    reviewed = tmp_path / "check_fake_reviewed.py"
-    reviewed.write_text(
-        "# fail-open-reviewed: presence check, tree is not AST-parseable\n"
-        "def main():\n"
-        "    text = open('x').read()\n"
-        "    return 1 if 'X' in text else 0\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(mod, "_SCRIPTS", tmp_path)
+    mod, dirs = fake_repo
+    _put(dirs["_SCRIPTS"] / "check_fake_reviewed.py",
+         "# fail-open-reviewed: presence check, tree is not AST-parseable\n" + _BARE)
     assert mod.fail_open_candidates() == []
 
 
-def test_escape_in_string_literal_does_not_exempt(tmp_path, monkeypatch):
+def test_escape_in_string_literal_does_not_exempt(fake_repo):
     """🔴 문자열/docstring 안의 `# fail-open-reviewed:` 언급은 면제 아님 — 면제 기제 자체 fail-open 봉인.
 
-    이전 `_ESCAPE in src` bare-substring 면제는 docstring/문자열 안 언급도 파일 전체를 면제시켜,
-    이 게이트가 잡으려는 바로 그 클래스(산문 통과)를 면제 기제에서 재생산했다. tokenize 로 실제
-    주석 토큰만 인정하게 봉인.
+    tokenize 로 실제 주석 토큰만 인정한다 — 문자열 안 언급이 파일 전체를 면제시키면
+    이 게이트가 잡으려는 클래스(산문 통과)를 면제 기제에서 재생산한다.
     """
-    mod = _load()
-    trap = tmp_path / "check_fake_string_escape.py"
-    trap.write_text(
-        'DOC = "이 가드는 # fail-open-reviewed: 방식 설명"  # 문자열 안 언급(주석 아님)\n'
-        "def main():\n"
-        "    text = open('x').read()\n"
-        "    return 1 if 'X' in text else 0\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(mod, "_SCRIPTS", tmp_path)
-    assert "check_fake_string_escape.py" in mod.fail_open_candidates(), (
+    mod, dirs = fake_repo
+    _put(dirs["_SCRIPTS"] / "check_fake_string_escape.py",
+         'DOC = "이 가드는 # fail-open-reviewed: 방식 설명"  # 문자열 안 언급(주석 아님)\n' + _BARE)
+    assert "scripts/check_fake_string_escape.py" in mod.fail_open_candidates(), (
         "문자열 안 escape 언급이 파일 전체를 면제 — 면제 기제 자체가 fail-open"
     )
 
 
-def test_b8_passes_guard_using_aliased_or_from_structural_import(tmp_path, monkeypatch):
+def test_b8_passes_guard_using_aliased_or_from_structural_import(fake_repo):
     """🔴 alias·from-import 구조 도구도 인정 — `import re as r`·`from re import search`.
 
-    이전 `root.id in _STRUCTURAL_MODULES` 는 alias 를 못 봐 정당한 구조 가드를 오탐(false-positive)
-    → 저자가 실제로는 구조 도구를 쓰는데도 거짓 escape 주석을 달아야 했다. import 해소로 봉인.
+    alias 를 못 보면 정당한 구조 가드를 오탐(false-positive)해 저자가 거짓 escape 주석을 달아야 한다.
     """
-    mod = _load()
-    aliased = tmp_path / "check_fake_aliased.py"
-    aliased.write_text(
-        "import re as _re\n"
-        "def main():\n"
-        "    text = open('x').read()\n"
-        "    return 1 if _re.search(r'p', text) else 0\n",
-        encoding="utf-8",
-    )
-    from_import = tmp_path / "check_fake_fromimport.py"
-    from_import.write_text(
-        "from re import search\n"
-        "def main():\n"
-        "    text = open('x').read()\n"
-        "    return 1 if search(r'p', text) else 0\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(mod, "_SCRIPTS", tmp_path)
+    mod, dirs = fake_repo
+    _put(dirs["_SCRIPTS"] / "check_fake_aliased.py",
+         "import re as _re\n"
+         "def main():\n"
+         "    text = open('x').read()\n"
+         "    return 1 if _re.search(r'p', text) else 0\n")
+    _put(dirs["_SCRIPTS"] / "check_fake_fromimport.py",
+         "from re import search\n"
+         "def main():\n"
+         "    text = open('x').read()\n"
+         "    return 1 if search(r'p', text) else 0\n")
     assert mod.fail_open_candidates() == [], (
         f"alias/from-import 구조 도구 가드를 오탐: {mod.fail_open_candidates()}"
     )
@@ -161,186 +172,238 @@ def test_b8_is_wired():
     """🔴 B8 이 pre-commit·CI 에 배선됐는지."""
     pc = (_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
     ci = "\n".join(p.read_text(encoding="utf-8") for p in (_ROOT / ".github" / "workflows").glob("*.yml"))
-    # 🔴 bare stem substring 이었다 (실측 뮤테이션 GROK-20260731-7) — B8 자신의 배선 freeze 가
-    # 이 파일이 강제하려는 fail-open 을 범하고 있었다. 이제 인터프리터 호출을 요구한다.
-    # B8's own wiring freeze committed the very fail-open it exists to block.
+    # 🔴 bare stem substring 이면 실행 엔트리를 지우고 이름만 남겨도 통과한다 — 인터프리터 호출을 요구한다.
+    # A bare stem substring passes with the entry gone and only the name left; require an invocation.
     ref = "scripts/check_guard_fail_open.py"
     assert surface_invokes(pc, ref), "pre-commit 에서 실행되지 않음 (이름 언급은 배선 아님)"
     assert surface_invokes(ci, ref), "CI 에서 실행되지 않음 (이름 언급은 배선 아님)"
 
 
-# ── R16: B8 자기 스캔 범위 관측 (backlog R16 — 뮤테이션 GROK-9 실측) ──────────
-# B8 was blind to its own scan scope: an emptied glob still printed the success line.
+def test_pre_commit_runs_b8_when_any_scanned_surface_changes():
+    """🔴 pre-commit 의 `files:` 가 네 표면 모두를 덮는다 — 시험만 고친 커밋에서도 B8 이 돈다.
 
-def test_main_fails_when_script_scan_scope_is_empty(tmp_path, monkeypatch, capsys):
-    """🔴 scripts 표면 파일 0개 = exit 1 — 범위 붕괴를 성공으로 읽으면 안 된다 (R16).
-
-    현행 main() 은 스캔 범위가 비어도 `✅ … 0개` 성공 문구 + exit 0 이다(backlog R16:
-    "범위를 비워도 성공 문구를 출력" = fail-open). glob 경로가 무너지는(디렉토리 이동·오타)
-    최악의 경우가 가장 조용히 통과하는 구조 — GROK-9 뮤테이션이 실측한 미탐과 같은 뿌리다.
-    범위 붕괴는 fail-closed(exit 1)로 승격돼야 한다.
-    An empty scripts surface must exit 1: scope collapse is not success (fail-closed).
+    표본은 손 목록이 아니라 B8 자신의 표면에서 파생한다(표면마다 첫 파일). `files:` 가 옛
+    `^scripts/check_` 에 머물면 tests/ 편집 커밋은 B8 없이 지나가고 CI 에서야 빨개진다.
+    Samples come from B8's own surfaces, so a `files:` pattern stuck on scripts/ turns this red.
     """
     mod = _load()
-    hooks = tmp_path / "hooks"
-    hooks.mkdir()
-    # 후보가 아닌 정상 훅 1개 — 실패 사유를 "scripts 표면 0개" 로 격리한다.
-    # One healthy hook so the only failure cause is the empty scripts surface.
-    (hooks / "ok_hook.py").write_text("def main():\n    return 0\n", encoding="utf-8")
-    monkeypatch.setattr(mod, "_SCRIPTS", tmp_path)   # check_*.py 0개 / zero check_*.py files
-    monkeypatch.setattr(mod, "_HOOKS", hooks)
-    assert mod.main() == 1, "scripts 스캔 범위가 비었는데 성공했다 — 범위 붕괴 fail-open (R16)"
+    hooks = [h for repo in yaml.safe_load((_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8"))["repos"]
+             for h in repo.get("hooks", []) if h.get("id") == "check-guard-fail-open"]
+    assert len(hooks) == 1, f"check-guard-fail-open 훅이 {len(hooks)}개다"
+    pattern = re.compile(hooks[0]["files"])
+    surfaces = mod._scan_targets()  # pylint: disable=protected-access
+    assert len(surfaces) == len(_SURFACES), f"표면 수가 바뀌었다: {sorted(surfaces)}"
+    for label, files in surfaces.items():
+        assert files, f"{label} 표면이 비었다 — 표본을 못 뽑는다"
+        sample = files[0].relative_to(_ROOT).as_posix()
+        assert pattern.search(sample), f"pre-commit `files:` 가 {label} 의 {sample} 을 안 덮는다"
+
+
+# ── 표면 붕괴 · 구문 깨짐 (빈 범위 위의 초록 금지) ─────────────────────────
+# An empty surface or an unparseable file must never sit under a success banner.
+
+@pytest.mark.parametrize("surface", sorted(_SURFACES))
+def test_main_fails_when_any_scan_surface_is_empty(fake_repo, surface, capsys):
+    """🔴 표면 하나라도 파일 0개 = exit 1 — glob 경로가 무너진 것을 «위반 0건» 으로 읽으면 안 된다."""
+    mod, dirs = fake_repo
+    for p in dirs[surface].rglob("*.py"):
+        p.unlink()
+    assert mod.main() == 1, f"{surface} 표면이 비었는데 성공했다 — 범위 붕괴 fail-open"
     assert "✅" not in capsys.readouterr().out, "범위 붕괴인데 성공 문구가 출력됐다"
 
 
-def test_main_fails_when_hook_scan_scope_is_empty(tmp_path, monkeypatch):
-    """🔴 반대 방향 — hooks 표면 파일 0개여도 exit 1 (R16).
+_BROKEN_NAMES = {"_SCRIPTS": "check_broken_syntax.py", "_HOOKS": "broken_hook.py",
+                 "_TESTS": "unit/test_broken_syntax.py", "_E2E": "test_broken_syntax.py"}
 
-    `.claude/hooks/*.py` 는 시크릿 덤프 차단·편집 가드 등 실가드가 사는 표면이다.
-    디렉토리 이동/오타로 glob 이 비면 그 전부가 미탐인데 성공으로 읽으면 안 된다.
-    The hooks surface going empty is the same scope collapse in the other direction.
+
+@pytest.mark.parametrize("surface", sorted(_SURFACES))
+def test_syntax_broken_file_fails_main(fake_repo, surface, capsys):
+    """🔴 어느 표면이든 구문 깨진 파일이 하나라도 있으면 main() = exit 1.
+
+    `ast.parse` 실패를 skip 하면 «파일은 있는데 분석 0개» 위에 ✅ 가 뜬다. 가드·훅·시험은 모두
+    실행되는 파일이라 구문 깨짐은 그 자체로 결함이다 — 건강한 파일 옆에 있어도 red 여야 한다.
+    A file that cannot parse cannot run: any surface carrying one must turn main() red.
     """
-    mod = _load()
-    scripts = tmp_path / "scripts"
-    scripts.mkdir()
-    # 술어를 통과하는 정상 가드 1개 — 실패 사유를 "hooks 표면 0개" 로 격리한다.
-    # One predicate-passing guard so the only failure cause is the empty hooks surface.
-    (scripts / "check_ok.py").write_text(
-        "import re\n"
-        "def main():\n"
-        "    text = open('x').read()\n"
-        "    return 1 if re.search(r'p', text) else 0\n",
-        encoding="utf-8",
+    mod, dirs = fake_repo
+    rel = _BROKEN_NAMES[surface]
+    _put(dirs[surface] / rel, "def broken(:\n")
+    assert mod.main() == 1, f"{surface} 에 구문 깨진 파일이 있는데 성공했다 — silent skip fail-open"
+    out = capsys.readouterr().out
+    assert "✅" not in out, "구문 깨진 파일 위에 성공 문구가 출력됐다"
+    assert Path(rel).name in out, "어느 파일이 구문 깨졌는지 출력에 없다 — 저자가 고칠 대상을 알 수 없다"
+
+
+# ── 표면 — 훅 · 시험 · e2e 도 같은 floor ──────────────────────────────────
+
+def test_hook_surface_is_scanned_for_fail_open(fake_repo):
+    """🔴 `.claude/hooks/*.py` 도 fail-open 판정 대상 — 훅도 파일을 읽어 pass/fail 을 판정한다."""
+    mod, dirs = fake_repo
+    _put(dirs["_HOOKS"] / "bad_hook.py", _BARE)
+    assert ".claude/hooks/bad_hook.py" in mod.fail_open_candidates(), (
+        "훅 표면의 bare-substring 판정을 탐지하지 못했다 — hooks 미스캔(fail-open)"
     )
-    hooks = tmp_path / "hooks"
-    hooks.mkdir()  # *.py 0개 / zero hook files
-    monkeypatch.setattr(mod, "_SCRIPTS", scripts)
-    monkeypatch.setattr(mod, "_HOOKS", hooks)
-    assert mod.main() == 1, "hooks 스캔 범위가 비었는데 성공했다 — 범위 붕괴 fail-open (R16)"
 
 
-def test_hook_surface_is_scanned_for_fail_open(tmp_path, monkeypatch):
-    """🔴 `.claude/hooks/*.py` 도 fail-open 판정 대상 — scripts-only 범위 확장 (R16).
+@pytest.mark.parametrize("surface", ["_TESTS", "_E2E"])
+def test_test_surfaces_are_scanned_for_fail_open(fake_repo, surface):
+    """🔴 시험도 가드다 — `tests/**` · `e2e/**` 의 bare-substring 판정을 하위 디렉터리까지 잡는다.
 
-    B8 은 `scripts/check_*.py` 만 glob 해서 훅 표면의 bare-substring 판정은 원리적으로
-    미탐이었다(GROK-9 뮤테이션과 같은 뿌리 — 관측자 없는 표면). 훅도 파일을 읽어 pass/fail
-    을 판정하는 관측자이므로 같은 floor 를 적용해야 한다.
-    Hooks read files and decide pass/fail too — the same floor must cover them.
+    가드 인구는 tests/ 로 옮겨 갔다(정적 소스 검사 · 배선 검사). 그 표면을 안 보면 floor 는
+    가장 많은 가드를 못 본다. 깊은 경로에 심어 `rglob` 이 아니라 한 층 glob 이면 red 가 되게 한다.
+    Tests are guards too; plant the file two levels deep so a one-level glob turns this red.
     """
+    mod, dirs = fake_repo
+    bad = dirs[surface] / "deep" / "nested" / "test_bad.py"
+    _put(bad, _BARE)
+    label = bad.relative_to(dirs[surface].parent).as_posix()
+    assert label in mod.fail_open_candidates(), f"{label} 의 bare-substring 판정을 탐지하지 못했다"
+
+
+def test_read_bytes_reader_is_flagged(fake_repo):
+    """🔴 `read_bytes` 로 읽는 bare-substring 훅도 후보다 — 읽기 API 를 바꿔 floor 밑으로 못 들어간다."""
+    mod, dirs = fake_repo
+    _put(dirs["_HOOKS"] / "bytes_probe_hook.py",
+         "from pathlib import Path\n"
+         "def main():\n"
+         "    text = Path('x').read_bytes().decode('utf-8')\n"
+         "    return 1 if 'X' in text else 0\n")
+    assert ".claude/hooks/bytes_probe_hook.py" in mod.fail_open_candidates(), (
+        "read_bytes 로 읽는 bare-substring 훅을 탐지하지 못했다 — _reads_a_file 이름 집합 누락"
+    )
+
+
+def test_failure_message_points_at_helpers_that_exist(fake_repo, capsys):
+    """실패 문구가 가리키는 헬퍼 경로는 실제 리포에 있다 — 옮기거나 지우면 문구가 저자를 헛걸음시킨다."""
+    mod, dirs = fake_repo
+    _put(dirs["_TESTS"] / "unit" / "test_bare.py", _BARE)
+    assert mod.main() == 1
+    named = re.findall(r"`((?:tests|scripts)/[\w/.-]+\.py)`", capsys.readouterr().out)
+    assert named, "실패 문구에서 헬퍼 경로를 하나도 못 읽었다 — 이 대조가 공허하다"
+    missing = [p for p in named if not (_ROOT / p).is_file()]
+    assert not missing, f"실패 문구가 없는 파일을 가리킨다: {missing}"
+
+
+def test_every_real_surface_is_scanned():
+    """실제 리포의 네 표면이 전부 비어 있지 않다 — 위 baseline 이 공허하지 않다는 바닥."""
     mod = _load()
-    bad = tmp_path / "bad_hook.py"
-    bad.write_text(
-        "def main():\n"
-        "    text = open('x').read()\n"
-        "    return 1 if 'X' in text else 0\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(mod, "_HOOKS", tmp_path)
-    assert "bad_hook.py" in mod.fail_open_candidates(), (
-        "훅 표면의 bare-substring 판정을 탐지하지 못했다 — hooks 미스캔(fail-open, R16)"
-    )
-
-
-def test_real_hooks_pass_the_predicate():
-    """실제 리포 훅은 전부 구조 도구 사용 — 범위 확장의 오탐 0 baseline (R16).
-
-    실측(2026-08-02): `.claude/hooks/*.py` 4개 전부 구조 도구 호출 — 확장해도 오탐 0
-    (정책 17 guard-suicide 위험 없음). hooks 표면이 비면 이 단언이 공허해지므로
-    표면 비어있지 않음을 먼저 고정한다(공허화 방지).
-    Anti-vacuity first: an empty hooks surface would make this baseline vacuously true.
-    """
-    mod = _load()
-    assert list(mod._HOOKS.glob("*.py")), "hooks 표면이 비었다 — 이 baseline 은 공허하다"
-    assert mod.fail_open_candidates() == [], (
-        f"실제 훅에서 fail-open 오탐 발생: {mod.fail_open_candidates()}"
-    )
+    surfaces = mod._scan_targets()  # pylint: disable=protected-access
+    assert set(surfaces) == {"scripts/check_*.py", ".claude/hooks/*.py", "tests/**/*.py", "e2e/**/*.py"}
+    empty = [label for label, files in surfaces.items() if not files]
+    assert not empty, f"비어 있는 표면: {empty}"
 
 
 def test_success_message_states_the_actual_scan_scope(capsys):
-    """🔴 성공 문구는 실제 스캔 범위 + 범위 밖을 정직하게 명시해야 한다 (R16 최소 조치).
+    """🔴 성공 문구는 표면마다 **실제로 읽은 개수**와 범위 밖을 적는다 — 개수는 `_scan_targets()` 에서 파생.
 
-    현행 ✅ 문구는 전 표면을 검증한 듯 읽히지만 실제 범위는 scripts(+hooks)뿐이다 —
-    AGENTS.md 가 기록한 최다 재발 사고(#1136·#1156)는 정확히 범위 밖(tests/** test-as-guard)
-    에 있었다. backlog R16 이 확정한 오탐 위험 0 의 최소 조치 = 성공 문구를 실제 스캔 범위
-    (`scripts/check_*.py` 개수 + `.claude/hooks/*.py` 개수)로 한정하고 범위 밖을 명시하는 것.
-    The success line must state what was scanned and what was not (tests/** test-as-guard).
+    «가드 전부 통과» 처럼 읽히면 범위 밖까지 덮은 것으로 오독된다. 손으로 적은 숫자가 아니라
+    표면이 돌려준 개수를 대조해, 문구와 실제 범위가 갈리면 red 가 된다.
+    The banner states each surface's scanned count (derived) and what lies outside the floor.
     """
     mod = _load()
     assert mod.main() == 0
     out = capsys.readouterr().out
-    assert "scripts/check_*.py" in out, "성공 문구에 scripts 스캔 범위 명시 없음 (R16)"
-    assert ".claude/hooks" in out, "성공 문구에 hooks 스캔 범위 명시 없음 (R16)"
-    assert "tests/" in out, "성공 문구에 범위 밖(tests/** test-as-guard) 명시 없음 (R16)"
+    for label, files in mod._scan_targets().items():  # pylint: disable=protected-access
+        assert f"{len(files)}개({label})" in out, f"성공 문구에 {label} 표면의 실제 개수가 없다:\n{out}"
+    assert ".mjs" in out, "성공 문구에 범위 밖(파이썬이 아닌 판정 코드)이 없다"
 
 
-# ── 잔여 fail-open 2건 (Grok claim-review 019fbe1f-6f5e-7652-bcb2-6d51fa8402be) ──
-# Two residual fail-open holes Grok reproduced against the R16 version of B8.
+# ── 구조 도구로 세는 것 — 파서 입구 · 파서 상속 · 리포 헬퍼 ──────────────────
+# What counts as a structural tool: parser read entries, parser subclassing, structural helpers.
 
-def test_syntax_broken_guard_file_fails_main(tmp_path, monkeypatch, capsys):
-    """🔴 구문 깨진 가드 파일이 하나라도 있으면 main() = exit 1 (GROK-20260802-1 재현).
+@pytest.mark.parametrize("src", [
+    "import json\ndef test_x():\n    assert json.loads(open('x').read())['k'] == 1\n",
+    "from json import load\ndef test_x():\n    assert load(open('x'))['k'] == 1\n",
+    "import yaml\ndef test_x():\n    assert yaml.safe_load(open('x').read())['k']\n",
+    "import tomllib\ndef test_x():\n    assert tomllib.loads(open('x').read())['k']\n",
+    "import jinja2\ndef test_x():\n    assert jinja2.Environment().parse(open('x').read())\n",
+    "from html.parser import HTMLParser\nclass P(HTMLParser):\n    pass\n"
+    "def test_x():\n    P().feed(open('x').read())\n",
+], ids=["json.loads", "from-json-load", "yaml.safe_load", "tomllib.loads", "jinja2.Environment",
+        "HTMLParser-subclass"])
+def test_parser_read_entries_count_as_structural(fake_repo, src):
+    """파서로 구조를 읽는 시험은 후보가 아니다 — 데이터 파일을 파싱해 키로 판정하는 것은 구조 판정이다."""
+    mod, dirs = fake_repo
+    _put(dirs["_TESTS"] / "unit" / "test_parsed.py", src)
+    assert mod.fail_open_candidates() == [], f"파서 판정을 오탐: {mod.fail_open_candidates()}"
 
-    R16 빈-표면 검사는 "파일 0개" 만 막는다 — glob 파일 수 > 0 이어도 **전부(또는 일부)
-    SyntaxError** 면 `fail_open_candidates()` 의 `except SyntaxError: continue` 가 조용히
-    skip 해 분석 0개 위에 ✅ exit 0 이 나온다(Grok 재현: "파일 0개" 는 막고 "분석 0개" 는
-    안 막는다). scripts/hooks 는 **실행돼야 하는** 파일이라 구문 깨짐 = 실행 불가능한 가드
-    = 그 자체로 결함(오탐 0) — 전부/일부 무관하게 red 여야 한다.
-    A guard that cannot parse cannot run: any syntax-broken file on either surface must
-    turn main() red, regardless of how many healthy files sit next to it.
+
+@pytest.mark.parametrize("src", [
+    "import json\ndef test_x():\n    print(json.dumps({}))\n    assert 'X' in open('x').read()\n",
+    "from json import dumps\ndef test_x():\n    dumps({})\n    assert 'X' in open('x').read()\n",
+    "import yaml\ndef test_x():\n    yaml.safe_dump({})\n    assert 'X' in open('x').read()\n",
+], ids=["json.dumps", "from-json-dumps", "yaml.safe_dump"])
+def test_parser_write_calls_do_not_count(fake_repo, src):
+    """🔴 파서 모듈의 **쓰기** 호출은 구조 판정이 아니다 — `json.dumps` 하나로 bare substring 이 통과하면 안 된다.
+
+    모듈 이름만 보면 직렬화 한 번이 파일 전체를 면제한다. 읽기 입구만 센다.
+    Only read entries count; one serializer call must not exempt a bare-substring file.
     """
-    mod = _load()
-    scripts = tmp_path / "scripts"
-    scripts.mkdir()
-    # 술어를 통과하는 정상 가드 1개 — "표면 비어있음" 이 아니라 "구문 깨짐" 만 실패 사유로 격리.
-    # One predicate-passing guard isolates the failure cause to the broken file, not emptiness.
-    (scripts / "check_ok.py").write_text(
-        "import re\n"
-        "def main():\n"
-        "    text = open('x').read()\n"
-        "    return 1 if re.search(r'p', text) else 0\n",
-        encoding="utf-8",
-    )
-    # 확실한 SyntaxError — ast.parse 가 반드시 실패한다.
-    # A guaranteed SyntaxError so ast.parse must fail.
-    (scripts / "check_broken_syntax.py").write_text(
-        "def broken(:\n", encoding="utf-8"
-    )
-    hooks = tmp_path / "hooks"
-    hooks.mkdir()
-    # 정상 훅 1개 — hooks 표면 붕괴(R16)로 오귀속되지 않게 한다.
-    # One healthy hook so the R16 empty-surface check cannot be the failure cause.
-    (hooks / "ok_hook.py").write_text("def main():\n    return 0\n", encoding="utf-8")
-    monkeypatch.setattr(mod, "_SCRIPTS", scripts)
-    monkeypatch.setattr(mod, "_HOOKS", hooks)
-    assert mod.main() == 1, (
-        "구문 깨진 가드가 있는데 성공했다 — SyntaxError silent skip fail-open (GROK-20260802-1)"
-    )
-    out = capsys.readouterr().out
-    assert "✅" not in out, "구문 깨진 가드 위에 성공 문구가 출력됐다"
-    assert "check_broken_syntax.py" in out, (
-        "어느 파일이 구문 깨졌는지 출력에 없다 — 저자가 고칠 대상을 알 수 없다"
+    mod, dirs = fake_repo
+    _put(dirs["_TESTS"] / "unit" / "test_writes.py", src)
+    assert "tests/unit/test_writes.py" in mod.fail_open_candidates(), (
+        "직렬화 호출이 bare-substring 판정을 면제했다 — 파서 모듈 전체를 구조 도구로 셌다"
     )
 
 
-def test_read_bytes_reader_is_flagged(tmp_path, monkeypatch):
-    """🔴 `read_bytes` 로 읽는 bare-substring 훅도 후보다 (GROK-20260802-2 재현).
+# witness-corpus: 리포가 실제로 쓰는 구조 파서인데 B8 카탈로그 밖 — tokenize(B8) · shlex(_wiring_shape) · xml.etree(check_test_count_sync)
+_UNLISTED_PARSERS = {
+    "tokenize": "import io\nimport tokenize\n"
+                "def test_x():\n    assert list(tokenize.generate_tokens(io.StringIO(open('x').read()).readline))\n",
+    "shlex": "import shlex\ndef test_x():\n    assert shlex.split(open('x').read()) == ['a']\n",
+    "xml.etree.ElementTree": "import xml.etree.ElementTree as ET\n"
+                             "def test_x():\n    assert ET.fromstring(open('x').read()).tag == 'a'\n",
+}
 
-    `_reads_a_file` 의 이름 집합 `("read_text", "open", "read")` 는 `read_bytes` 를 모른다 —
-    `Path('x').read_bytes()` 로 읽고 decode 후 bare `'X' in text` 로 판정하는 훅은 "파일을
-    읽지 않는다" 로 오판돼 후보에서 빠진다(Grok 재현). 읽기 API 를 한 글자 바꾸는 것만으로
-    B8 floor 를 우회할 수 있으면 floor 가 아니다.
-    Switching the read API to `read_bytes` must not tunnel under the floor.
+
+@pytest.mark.parametrize("module", sorted(_UNLISTED_PARSERS))
+def test_parser_outside_the_catalog_is_flagged_not_waved_through(fake_repo, module):
+    """카탈로그 밖의 파서만 쓰는 판정은 후보로 걸린다 — floor 는 모르는 도구를 통과시키는 쪽이 아니라 막는 쪽으로 틀린다.
+
+    그런 파일은 `_PARSE_ENTRIES` 에 그 파서의 읽기 입구를 더하거나 `# fail-open-reviewed:` 로 사유를 단다.
+    An unlisted parser errs toward flagging; extend the read-entry catalog or state a reason.
     """
-    mod = _load()
-    bad = tmp_path / "bytes_probe_hook.py"
-    bad.write_text(
-        "from pathlib import Path\n"
-        "def main():\n"
-        "    text = Path('x').read_bytes().decode('utf-8')\n"
-        "    return 1 if 'X' in text else 0\n",
-        encoding="utf-8",
+    mod, dirs = fake_repo
+    _put(dirs["_TESTS"] / "unit" / "test_unlisted.py", _UNLISTED_PARSERS[module])
+    assert "tests/unit/test_unlisted.py" in mod.fail_open_candidates(), (
+        f"카탈로그 밖 파서({module}) 판정을 구조 판정으로 셌다 — 카탈로그가 아닌 무언가가 통과시킨다"
     )
-    monkeypatch.setattr(mod, "_HOOKS", tmp_path)
-    assert "bytes_probe_hook.py" in mod.fail_open_candidates(), (
-        "read_bytes 로 읽는 bare-substring 훅을 탐지하지 못했다 — "
-        "_reads_a_file 이름 집합 누락 fail-open (GROK-20260802-2)"
+
+
+_HELPER = "import re\n_P = re.compile(r'#.*')\ndef code(s):\n    return _P.sub('', s)\n"
+
+
+@pytest.mark.parametrize("importer,line", [
+    ("unit/test_rel.py", "from ._clean import code\n"),
+    ("unit/test_abs.py", "from tests.unit._clean import code\n"),
+    ("unit/test_mod.py", "from tests.unit import _clean\n"),
+], ids=["relative", "absolute", "module"])
+def test_call_into_a_structural_repo_helper_counts(fake_repo, importer, line):
+    """구조 도구를 부르는 리포 헬퍼에 판정을 맡긴 시험은 후보가 아니다 — 판정이 헬퍼에서 일어난다.
+
+    `surface_invokes`(배선) · `start_argv`(Dockerfile) · 템플릿 코드 뷰가 이 모양이다.
+    """
+    mod, dirs = fake_repo
+    _put(dirs["_TESTS"] / "unit" / "_clean.py", _HELPER)
+    call = "_clean.code" if "import _clean" in line else "code"
+    _put(dirs["_TESTS"] / importer,
+         line + f"def test_x():\n    assert 'X' in {call}(open('x').read())\n")
+    assert mod.fail_open_candidates() == [], f"구조 헬퍼 판정을 오탐: {mod.fail_open_candidates()}"
+
+
+@pytest.mark.parametrize("helper,line", [
+    ("def code(s):\n    return s\n", "from ._clean import code\n_ = code('')\n"),
+    (_HELPER, "from ._clean import _P\n"),
+], ids=["helper-without-tool", "imported-but-not-called"])
+def test_repo_helper_does_not_count_unless_it_is_structural_and_called(fake_repo, helper, line):
+    """🔴 대조축 — 구조 도구가 없는 헬퍼를 부르거나, 구조 헬퍼를 가져오기만 하면 여전히 후보다.
+
+    헬퍼 해소가 «리포 모듈을 import 하면 통과» 로 무너지면 floor 가 사라진다.
+    Helper resolution must not collapse into "importing any repo module passes".
+    """
+    mod, dirs = fake_repo
+    _put(dirs["_TESTS"] / "unit" / "_clean.py", helper)
+    _put(dirs["_TESTS"] / "unit" / "test_weak.py",
+         line + "def test_x():\n    assert 'X' in open('x').read()\n")
+    assert "tests/unit/test_weak.py" in mod.fail_open_candidates(), (
+        "구조 판정이 아닌 헬퍼 사용이 bare-substring 판정을 면제했다"
     )

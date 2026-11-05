@@ -43,6 +43,8 @@ import pytest  # noqa: E402
 
 from src.ui.routes import add_repo as AR  # noqa: E402
 
+from ._code_view import template_code  # noqa: E402
+
 
 class _User:
     id = 1
@@ -68,7 +70,8 @@ def test_the_client_already_has_an_error_branch():
 
     없다면 「서버만 고치면 된다」는 이 파일의 근거가 무너진다.
     """
-    html = io.open("src/templates/add_repo.html", encoding="utf-8").read()
+    # 주석을 지운 본문 — 주석 처리된 오류 분기로는 통과하지 않는다. Comment-free view.
+    html = template_code(io.open("src/templates/add_repo.html", encoding="utf-8").read())
     assert "!resp.ok" in html, "클라이언트가 응답 상태를 안 본다"
     assert "loadFailed" in html, "클라이언트에 로딩 실패 문구 경로가 없다"
 

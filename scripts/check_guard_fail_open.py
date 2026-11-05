@@ -1,37 +1,37 @@
 #!/usr/bin/env python3
-"""가드(scripts/check_*.py)의 **fail-open 저술 floor 게이트** — write-time (backlog B8).
+"""가드·시험의 **fail-open 저술 floor 게이트** — write-time (backlog B8).
 
-## 배경 (2026-07-20 Grok 최종 적대검증)
+파일을 읽어 pass/fail 을 판정하는 파이썬 코드가 구조 도구를 하나도 **부르지** 않으면 fail-open
+후보로 차단한다. bare `X in file_text` 는 주석·docstring·산문이 통과시킨다(#1136 클래스).
 
-이 저장소 최다 반복 실수 = observer-lie(가드가 산문/echo 로 통과). 문서 재구성은 규율을
-AGENTS.md·guards.md 로 옮기고 **불변식 3(배선)만** 기계화했으나, **불변식 1(fail-closed:
-통과가 산문으로 충족되면 안 됨)의 write-time 게이트는 없었다** — fail-open 저술은 여전히
-review 에서만 잡혔다(#1136 echo · #1156 대기). Grok: "rate-limiting step 미변".
+## 표면
 
-## 🔴 이 게이트가 하는 것 (floor — 완전 탐지기 아님, 정직히)
+`scripts/check_*.py` · `.claude/hooks/*.py` · `tests/**/*.py` · `e2e/**/*.py` — 가드 인구는 시험으로
+옮겨 갔다(정적 소스 검사 · 배선 검사). 표면 하나라도 0개면 glob 붕괴로, 구문이 깨진 파일이 하나라도
+있으면 분석 불가로 실패한다(빈 범위 위의 초록 금지).
 
-**파일을 읽어 pass/fail 을 판정하는 check 가드가 구조 분석 도구(ast·re·subprocess)를 하나도
-안 쓰면 = fail-open 후보로 차단.** bare `X in file_text` 만으로 판정하는 가드(#1136 클래스)를
-저술 시점에 잡는다.
+## 구조 도구로 세는 것 — 언급이 아니라 **호출**
 
-🔴 **한계 (감추지 않음)**: 이건 **floor 이지 천장이 아니다**. 구조 도구를 import 하고도 **결정
-자체는 bare substring** 으로 하는 가드는 이 게이트를 통과한다(Grok 이 원한 "결정 표현식 AST
-분석" 은 더 강하고 어렵다 — 오탐 위험). 그 강한 버전은 backlog B8 잔여로 남긴다. 여기서는
-가장 egregious 한 "구조 도구 0" 케이스만 확실히 막는다.
+- `ast` · `re` · `subprocess` 의 어떤 호출이든.
+- 파서의 **읽기 입구** — `json.load(s)` · `yaml.safe_load` 등 · `tomllib.load(s)` ·
+  `jinja2.Environment`/`Template`. `json.dumps` 같은 쓰기는 구조를 보지 않는다.
+- `HTMLParser` 상속 — 상속해 쓰는 파서다.
+- 리포 안 모듈에서 가져온 이름의 호출 — 그 모듈 자신이 위 도구를 부를 때(한 단계만).
 
-## 자기 3-불변식 적용 (이 게이트도 관측자다)
+## 🔴 한계 (floor 이지 천장이 아니다)
 
-- fail-closed: 도구 사용을 **AST 호출 관측**으로 판정(import·주석 언급이 아니라 실제 `ast.`/
-  `re.`/`subprocess.` **호출**). 산문이 통과시킬 수 없다.
-- 실경로 뮤테이션: 회귀 테스트가 합성 bare-substring 가드 → 차단 실증.
-- 배선: pre-commit + CI. `test_guard_wiring_coverage` 가 배선 강제.
+- 파일 단위다 — 구조 도구를 한 번이라도 부르면 그 파일의 다른 판정이 bare substring 이어도
+  통과한다. «결정 표현식» 분석은 이 게이트가 하지 않는다.
+- 파이썬만 읽는다 — `.claude/workflows/*.mjs` · 셸의 판정은 범위 밖이다.
 
-escape hatch: 정당한 substring-only 가드는 `# fail-open-reviewed: <사유>` 주석으로 면제.
+escape: 정당한 substring-only 판정은 `# fail-open-reviewed: <사유>` 주석(실제 주석 토큰만 인정).
+Floor gate: Python that reads a file and decides pass/fail must call a structural tool.
 """
 import ast
 import io
 import sys
 import tokenize
+import warnings
 from pathlib import Path
 
 try:
@@ -41,22 +41,38 @@ except Exception:  # pragma: no cover
 
 _ROOT = Path(__file__).resolve().parents[1]
 _SCRIPTS = _ROOT / "scripts"
-# 🔴 훅 표면도 스캔한다 (backlog R16 — R6 이 "B8 이 .claude/hooks/** 미검" 을 적발).
-#    실측(2026-08-02): 현 훅 4종 전부 구조 도구 사용 = 오탐 0 확인 후 확대.
-# Scan the hook surface too (backlog R16; R6 flagged the gap). Measured zero false
-# positives on the four existing hooks before widening.
 _HOOKS = _ROOT / ".claude" / "hooks"
+_TESTS = _ROOT / "tests"
+_E2E = _ROOT / "e2e"
 
 _ESCAPE = "# fail-open-reviewed:"
-# 구조 분석 도구 — 이 중 하나라도 **호출**하면 bare-substring 이 아니다.
+# 구조 분석 도구 — 이 모듈의 **어떤** 호출이든 bare-substring 이 아니다.
+# Structural modules: any call on them counts.
 _STRUCTURAL_MODULES = {"ast", "re", "subprocess"}
+# 파서 — 구조를 «읽는» 입구만 센다. 쓰기(`json.dumps` · `yaml.safe_dump`)는 구조를 보지 않는다.
+# Parsers count only through their read entries; serializers never look at structure.
+_PARSE_ENTRIES = {
+    "json": frozenset({"load", "loads"}),
+    "yaml": frozenset({"safe_load", "safe_load_all", "load", "load_all", "full_load", "full_load_all"}),
+    "tomllib": frozenset({"load", "loads"}),
+    "jinja2": frozenset({"Environment", "Template"}),
+}
+# 상속해 쓰는 파서 — `class P(HTMLParser)` 가 그 파서를 쓰는 모양이다.
+# Parsers used by subclassing.
+_PARSER_BASES = {"html.parser": frozenset({"HTMLParser"})}
+
+
+def _parse(src: str) -> ast.Module:
+    """`ast.parse` — 문자열 안의 잘못된 이스케이프가 내는 `SyntaxWarning` 은 이 게이트의 질문이 아니다."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", SyntaxWarning)
+        return ast.parse(src)
 
 
 def _reads_a_file(tree: ast.AST) -> bool:
     """파일을 읽는가 — `.read_text(...)`/`.read_bytes(...)` 또는 `open(...)` 호출.
 
-    🔴 `read_bytes` 포함 (Grok claim-review `019fbe1f` GROK-20260802-2 재현 적발) —
-    bytes 로 읽어 decode 후 bare substring 판정하는 가드가 이름 집합 밖이라 미탐이었다.
+    🔴 `read_bytes` 포함 — bytes 로 읽어 decode 후 bare substring 판정하는 가드가 이름 집합 밖이면 미탐이다.
     Includes read_bytes: a guard reading bytes then substring-deciding escaped the name set.
     """
     for n in ast.walk(tree):
@@ -67,44 +83,123 @@ def _reads_a_file(tree: ast.AST) -> bool:
     return False
 
 
-def _structural_import_names(tree: ast.AST) -> tuple[set, set]:
+def _tool_names(tree: ast.AST) -> tuple[dict, set, set, set]:
     """구조 도구를 가리키는 이름을 import 에서 해소 — alias·from-import 인정.
 
+    반환 = (모듈 별칭 → 셀 속성 집합(None = 전부), 직접 부르는 이름, 상속할 이름, 상속할 이름의 모듈 별칭).
     🔴 `import re as r` / `from re import search` 를 못 보면 정당한 가드를 fail-open 오탐한다.
-    Resolve names that point at a structural tool, honoring aliases and from-imports.
-    Returns (module_aliases, direct_names): `<alias>.attr(...)` 용 alias 집합 + `search(...)` 용 bare 명.
+    Resolve names pointing at a structural tool, honoring aliases and from-imports.
     """
-    module_aliases = set()  # `import re as r` → {"r"}; `import re` → {"re"}
-    direct_names = set()    # `from re import search as s` → {"s"}
+    modules: dict = {}      # `import re as r` → {"r": None}; `import json` → {"json": {"load", "loads"}}
+    direct: set = set()     # `from re import search as s` → {"s"}; `from json import loads` → {"loads"}
+    bases: set = set()      # `from html.parser import HTMLParser` → {"HTMLParser"}
+    base_modules: dict = {}  # `import html.parser as hp` → {"hp": {"HTMLParser"}}
     for n in ast.walk(tree):
         if isinstance(n, ast.Import):
             for a in n.names:
+                bound = a.asname or a.name
                 if a.name in _STRUCTURAL_MODULES:
-                    module_aliases.add(a.asname or a.name)
-        elif isinstance(n, ast.ImportFrom):
-            if n.module in _STRUCTURAL_MODULES:
-                for a in n.names:
-                    direct_names.add(a.asname or a.name)
-    return module_aliases, direct_names
+                    modules[bound] = None
+                elif a.name in _PARSE_ENTRIES:
+                    modules[bound] = _PARSE_ENTRIES[a.name]
+                elif a.name in _PARSER_BASES and a.asname:
+                    base_modules[a.asname] = _PARSER_BASES[a.name]
+        elif isinstance(n, ast.ImportFrom) and not n.level:
+            for a in n.names:
+                bound = a.asname or a.name
+                if n.module in _STRUCTURAL_MODULES or a.name in _PARSE_ENTRIES.get(n.module, ()):
+                    direct.add(bound)
+                if a.name in _PARSER_BASES.get(n.module, ()):
+                    bases.add(bound)
+    return modules, direct, bases, base_modules
 
 
-def _calls_structural_tool(tree: ast.AST) -> bool:
-    """실제로 **호출**되는 구조 분석 도구가 있는가 — `re.search(...)`·`r.search(...)`·`search(...)`.
+def _inherits(cls: ast.ClassDef, bases: set, base_modules: dict) -> bool:
+    for b in cls.bases:
+        if isinstance(b, ast.Name) and b.id in bases:
+            return True
+        if (isinstance(b, ast.Attribute) and isinstance(b.value, ast.Name)
+                and b.attr in base_modules.get(b.value.id, ())):
+            return True
+    return False
 
-    🔴 import·주석 언급이 아니라 `<alias>.<attr>(...)` 호출 또는 from-import 된 이름 호출을 본다
-    (산문 통과 방지). alias·from-import 를 해소해 정당한 가드 오탐도 막는다.
+
+def _module_file(base: Path, parts: list[str]) -> Path | None:
+    candidate = base.joinpath(*parts).with_suffix(".py") if parts else None
+    return candidate if candidate is not None and candidate.is_file() else None
+
+
+def _local_helper_names(tree: ast.AST, importer: Path, cache: dict) -> tuple[set, set]:
+    """이 파일이 가져오는 리포 안 모듈 중 **그 자신이 구조 도구를 부르는** 것 — (모듈 별칭, 가져온 이름).
+
+    `from ._contrast import strip_css_comments` · `from tests.unit.scripts._wiring_shape import
+    surface_invokes` · `from tests.unit import _clean` 를 해소한다. 헬퍼의 헬퍼는 따라가지 않는다
+    (한 단계 — 위임만 하는 헬퍼는 구조 도구 0 으로 남는다, fail-closed 쪽).
+    Names imported from repo modules that themselves call a structural tool (one level deep).
     """
-    module_aliases, direct_names = _structural_import_names(tree)
+    aliases, names = set(), set()
+
+    def structural(path: Path) -> bool:
+        key = str(path)
+        if key not in cache:
+            try:
+                cache[key] = _calls_structural_tool(_parse(path.read_text(encoding="utf-8")))
+            except (SyntaxError, UnicodeDecodeError, OSError):
+                cache[key] = False
+        return cache[key]
+
     for n in ast.walk(tree):
+        if isinstance(n, ast.ImportFrom):
+            base = _ROOT
+            if n.level:
+                base = importer.parent
+                for _ in range(n.level - 1):
+                    base = base.parent
+            parts = n.module.split(".") if n.module else []
+            target = _module_file(base, parts)
+            for a in n.names:
+                if target is not None:
+                    if structural(target):
+                        names.add(a.asname or a.name)
+                    continue
+                sub = _module_file(base, [*parts, a.name])  # `from pkg import module`
+                if sub is not None and structural(sub):
+                    aliases.add(a.asname or a.name)
+        elif isinstance(n, ast.Import):
+            for a in n.names:
+                target = _module_file(_ROOT, a.name.split("."))
+                if a.asname and target is not None and structural(target):
+                    aliases.add(a.asname)
+    return aliases, names
+
+
+def _calls_structural_tool(tree: ast.AST, importer: Path | None = None, cache: dict | None = None) -> bool:
+    """실제로 **호출**되는 구조 도구가 있는가 — `re.search(...)` · `json.loads(...)` · `search(...)` ·
+    `class P(HTMLParser)` · (importer 가 주어지면) 구조 헬퍼의 이름 호출.
+
+    🔴 import·주석 언급이 아니라 호출을 본다(산문 통과 방지). alias·from-import 를 해소해 정당한
+    가드 오탐도 막는다.
+    """
+    modules, direct, bases, base_modules = _tool_names(tree)
+    helper_aliases, helper_names = (
+        _local_helper_names(tree, importer, cache if cache is not None else {})
+        if importer is not None else (set(), set()))
+    for n in ast.walk(tree):
+        if isinstance(n, ast.ClassDef) and _inherits(n, bases, base_modules):
+            return True
         if not isinstance(n, ast.Call):
             continue
         func = n.func
-        # <alias>.attr(...) — 예: re.search / r.search
+        # <alias>.attr(...) — 예: re.search / r.search / json.loads / _contrast.strip_css_comments
         if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
-            if func.value.id in module_aliases:
+            owner = func.value.id
+            if owner in modules and (modules[owner] is None or func.attr in modules[owner]):
                 return True
-        # from-import 된 함수 호출 — 예: search(...)
-        if isinstance(func, ast.Name) and func.id in direct_names:
+            # 헬퍼 모듈의 함수 · 헬퍼에서 가져온 객체의 메서드(`_PATTERN.sub(...)`)
+            if owner in helper_aliases or owner in helper_names:
+                return True
+        # 직접 부르는 이름 — 예: search(...) · loads(...) · strip_css_comments(...)
+        if isinstance(func, ast.Name) and (func.id in direct or func.id in helper_names):
             return True
     return False
 
@@ -126,91 +221,87 @@ def _has_escape_comment(src: str) -> bool:
     return False
 
 
-def _scan_targets() -> tuple[list[Path], list[Path]]:
-    """스캔 표면 2종 — `scripts/check_*.py` + `.claude/hooks/*.py`.
+def _scan_targets() -> dict[str, list[Path]]:
+    """스캔 표면 4종 — 표시 이름 → 파일. main() 이 표면별 붕괴(glob 0건)를 구별해 fail-closed 한다.
 
-    표면별로 따로 반환한다 — main() 이 **표면별 붕괴**(glob 0건)를 구별해 fail-closed 하기 위함.
-    Two scan surfaces, returned separately so main() can fail closed per-surface on collapse.
+    Four scan surfaces keyed by label, so main() can fail closed per surface on collapse.
     """
-    return sorted(_SCRIPTS.glob("check_*.py")), sorted(_HOOKS.glob("*.py"))
+    return {
+        "scripts/check_*.py": sorted(_SCRIPTS.glob("check_*.py")),
+        ".claude/hooks/*.py": sorted(_HOOKS.glob("*.py")),
+        "tests/**/*.py": sorted(_TESTS.rglob("*.py")),
+        "e2e/**/*.py": sorted(_E2E.rglob("*.py")),
+    }
+
+
+def _label(path: Path) -> str:
+    """리포 기준 상대 경로 — 시험 파일 이름은 디렉터리마다 겹친다. 리포 밖이면 파일 이름."""
+    try:
+        return path.relative_to(_ROOT).as_posix()
+    except ValueError:
+        return path.name
+
+
+def _judge() -> tuple[list[str], list[str]]:
+    """(구문이 깨진 파일, fail-open 후보) — 네 표면을 한 번씩만 파싱한다."""
+    broken, candidates = [], []
+    cache: dict = {}
+    for files in _scan_targets().values():
+        for path in files:
+            src = path.read_text(encoding="utf-8")
+            try:
+                tree = _parse(src)
+            except SyntaxError:
+                broken.append(_label(path))
+                continue
+            if (_reads_a_file(tree) and not _calls_structural_tool(tree, path, cache)
+                    and not _has_escape_comment(src)):
+                candidates.append(_label(path))
+    return broken, candidates
 
 
 def fail_open_candidates() -> list[str]:
-    out = []
-    scripts, hooks = _scan_targets()
-    for path in scripts + hooks:
-        src = path.read_text(encoding="utf-8")
-        if _has_escape_comment(src):
-            continue  # 명시 면제 (실제 주석 토큰에 한함)
-        try:
-            tree = ast.parse(src)
-        except SyntaxError:
-            # 구문 깨짐은 별도 축(`unparseable_files`)이 main 에서 exit 1 로 승격한다 —
-            # 여기서의 skip 이 조용한 미탐이 되지 않게 한다(GROK-20260802-1).
-            # Broken syntax is escalated to exit 1 by `unparseable_files` in main, so this
-            # skip can no longer become a silent miss.
-            continue
-        if _reads_a_file(tree) and not _calls_structural_tool(tree):
-            out.append(path.name)
-    return out
+    return _judge()[1]
 
 
 def unparseable_files() -> list[str]:
-    """양 표면에서 `ast.parse` 가 SyntaxError 를 내는 파일명 목록.
+    """네 표면에서 `ast.parse` 가 SyntaxError 를 내는 파일 — 실행되는 파일이라 구문 깨짐 = 결함이다.
 
-    🔴 Grok claim-review `019fbe1f` GROK-20260802-1 재현 적발 — 표면에 파일이 있어도
-    **전부 구문 깨짐**이면 후보 skip 으로 ✅ exit 0 이었다("파일 0개" 만 막고 "분석 0개" 는
-    안 막음). scripts/hooks 는 실행돼야 하는 파일이라 구문 깨짐 = 실행 불가능한 가드 = 결함
-    (오탐 0 — 정당하게 파싱 불가한 파일이 이 표면에 있을 수 없다).
-    Files whose ast.parse raises SyntaxError. A guard that cannot parse cannot run — that is
-    a defect, not a skip (zero false positives on these surfaces).
+    🔴 skip 하면 «파일은 있는데 분석 0개» 위에 ✅ 가 뜬다(파일 0개만 막고 분석 0개는 안 막음).
+    Files whose ast.parse raises SyntaxError: a file that cannot parse cannot run.
     """
-    scripts, hooks = _scan_targets()
-    broken = []
-    for path in scripts + hooks:
-        try:
-            ast.parse(path.read_text(encoding="utf-8"))
-        except SyntaxError:
-            broken.append(path.name)
-    return broken
+    return _judge()[0]
 
 
 def main() -> int:
-    # 🔴 빈 표면은 "통과" 가 아니라 glob/경로 붕괴다 (backlog R16 — 뮤테이션 GROK-9:
-    #    범위를 비워도 ✅ 성공 문구가 나왔다). 표면 중 하나라도 0건이면 fail-closed.
-    # An empty surface means the glob/path collapsed, not a pass (mutation GROK-9 measured
-    # a green banner over an empty scope). Fail closed if either surface scans zero files.
-    scripts, hooks = _scan_targets()
-    if not scripts or not hooks:
-        print(f"❌ 스캔 범위 붕괴 — scripts/check_*.py {len(scripts)}개 · "
-              f".claude/hooks/*.py {len(hooks)}개")
+    # 🔴 빈 표면은 "통과" 가 아니라 glob/경로 붕괴다 — 표면 중 하나라도 0건이면 fail-closed.
+    # An empty surface means the glob/path collapsed, not a pass.
+    surfaces = _scan_targets()
+    counts = " + ".join(f"{len(files)}개({label})" for label, files in surfaces.items())
+    if any(not files for files in surfaces.values()):
+        print(f"❌ 스캔 범위 붕괴 — {counts}")
         print("   빈 표면은 '위반 0건' 이 아니라 glob/경로가 무너졌다는 뜻이다(fail-closed).")
         return 1
-    # 🔴 구문 깨진 파일은 skip 이 아니라 실패다 (GROK-20260802-1 — 전부 깨져도 ✅ 이던 미탐).
-    # A syntax-broken file is a failure, not a skip (all-broken surfaces used to pass green).
-    broken = unparseable_files()
+    broken, candidates = _judge()
     if broken:
-        print("❌ 구문 오류로 분석 불가한 가드/훅 파일 — 실행도 불가능한 상태다:")
+        print("❌ 구문 오류로 분석 불가한 파일 — 실행도 불가능한 상태다:")
         for b in broken:
             print(f"   - {b}")
         return 1
-    candidates = fail_open_candidates()
     if candidates:
-        print("❌ 파일을 읽어 판정하나 구조 분석 도구(ast/re/subprocess)를 하나도 안 쓰는 가드:")
+        print("❌ 파일을 읽어 판정하나 구조 도구(ast · re · subprocess · 파서 입구 · 구조 헬퍼)를 하나도 안 부르는 파일:")
         for c in candidates:
             print(f"   - {c}")
-        print("→ bare `X in text` substring 판정은 산문/echo 가 통과시킨다(fail-open, #1136 클래스).")
-        print("   ast.parse/re.search/subprocess 로 **구조**를 보거나, 정당하면")
+        print("→ bare `X in text` 판정은 주석·docstring·산문이 통과시킨다(fail-open, #1136 클래스).")
+        print("   구조를 읽을 것 — 템플릿·JS 는 `tests/unit/ui/_code_view.py`(있어야 할 것은 주석을 지운 본문,")
+        print("   없어야 할 것은 원문) · 마이그레이션 SQL 은 `tests/unit/migrations/_migration_source.py` ·")
+        print("   그 밖은 ast · 파서. 판정 대상이 정당하게 원문 글자 자체면")
         print(f"   `{_ESCAPE} <사유>` 주석으로 면제할 것.")
         return 1
-    # 🔴 성공 문구는 **실제 스캔 범위**를 명시한다 (backlog R16) — "가드 전부 통과" 처럼 읽히면
-    #    범위 밖(test-as-guard)의 fail-open 까지 덮은 것으로 오독된다.
-    # The banner names the exact scope; a generic "all guards pass" would be read as covering
-    # the test-as-guard surface this floor cannot see.
-    print(f"✅ 스캔 {len(scripts)}개(scripts/check_*.py) + {len(hooks)}개(.claude/hooks/*.py) — "
-          "bare-substring fail-open 0")
-    print("   범위 밖: tests/** test-as-guard 표면 — write-time 규율(guards.md) + "
-          "review-time claim-review 로만 방어된다(B8 floor 한계).")
+    # 🔴 성공 문구는 **실제 스캔 범위**와 범위 밖을 적는다 — "가드 전부 통과" 처럼 읽히면 오독된다.
+    # The banner names the exact scope and what lies outside it.
+    print(f"✅ 스캔 {counts} — bare-substring fail-open 0")
+    print("   범위 밖: 파이썬이 아닌 판정 코드(.claude/workflows/*.mjs · 셸) — 이 floor 는 파이썬 구문 트리만 읽는다.")
     return 0
 
 

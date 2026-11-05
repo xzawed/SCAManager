@@ -20,6 +20,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ._code_view import template_code
+
 
 # 템플릿 파일 경로 — 프로젝트 루트 기준
 # Template file path — relative to project root
@@ -36,7 +38,7 @@ def test_dashboard_html_bg2_fallback_input_variant_present():
     사이클 113 P0-F: --bg-2 미정의 테마에서 input 배경색 폴백 보장.
     Cycle 113 P0-F: ensures input background color fallback when --bg-2 is undefined.
     """
-    content = _DASHBOARD_TMPL.read_text(encoding="utf-8")
+    content = template_code(_DASHBOARD_TMPL.read_text(encoding="utf-8"))
     assert "var(--bg-2, var(--bg-input))" in content, (
         "dashboard.html에 var(--bg-2, var(--bg-input)) 폴백이 없습니다. "
         "repos-selector 배경색 폴백이 제거됐을 수 있습니다."
@@ -52,7 +54,7 @@ def test_dashboard_html_bg2_fallback_card_variant_present():
     사이클 113 P0-F: --bg-2 미정의 테마에서 카드 배경색 폴백 보장.
     Cycle 113 P0-F: ensures card background color fallback when --bg-2 is undefined.
     """
-    content = _DASHBOARD_TMPL.read_text(encoding="utf-8")
+    content = template_code(_DASHBOARD_TMPL.read_text(encoding="utf-8"))
     assert "var(--bg-2, var(--bg-card))" in content, (
         "dashboard.html에 var(--bg-2, var(--bg-card)) 폴백이 없습니다. "
         "repos-cat-card 또는 repos-suggestion-count 배경색 폴백이 제거됐을 수 있습니다."
@@ -66,7 +68,8 @@ def test_dashboard_html_bg2_fallback_all_three_selectors():
     사이클 113 P0-F: var(--bg-2, ... 패턴이 최소 3회 등장해야 3개 선택자 모두 적용된 것.
     Cycle 113 P0-F: var(--bg-2, ... pattern must appear at least 3 times to cover all selectors.
     """
-    content = _DASHBOARD_TMPL.read_text(encoding="utf-8")
+    # 주석을 지운 본문에서 센다 — 주석 속 «var(--bg-2,» 가 개수를 채우지 않게.
+    content = template_code(_DASHBOARD_TMPL.read_text(encoding="utf-8"))
     # "var(--bg-2," 패턴이 3개 이상 존재해야 함 (각 CSS 선택자 1건)
     # "var(--bg-2," pattern must appear at least 3 times (one per CSS selector)
     count = content.count("var(--bg-2,")

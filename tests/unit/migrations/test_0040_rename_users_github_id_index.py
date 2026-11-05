@@ -40,13 +40,16 @@ def test_0040_upgrade_idempotent_if_exists():
     `IF EXISTS` 로 source 부재 시 no-op. CI clean DB 미검출 → 소스 정적 단언.
     """
     from pathlib import Path  # noqa: PLC0415
-    src = (
-        Path(__file__).resolve().parents[3]
-        / "alembic" / "versions" / "0040_rename_users_github_id_index.py"
-    ).read_text(encoding="utf-8")
-    assert "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_github_id" in src, (
+
+    from ._migration_source import sql_literals  # noqa: PLC0415
+    # upgrade 가 실제로 보내는 SQL 에서 찾는다 — 주석·docstring 의 인용으로는 통과하지 않는다.
+    # Look in the SQL upgrade actually sends, so a quoting comment or docstring cannot pass it.
+    sent = sql_literals(
+        Path(__file__).resolve().parents[3] / "alembic" / "versions" / "0040_rename_users_github_id_index.py",
+        "upgrade")
+    assert any("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_github_id" in sql for sql in sent), (
         "0040 end-state 보장(neither 상태 시 UNIQUE 인덱스 생성) 제거됨 — github_id 인덱스 미보장 회귀"
     )
-    assert "DROP INDEX IF EXISTS ix_users_google_id" in src, (
+    assert any("DROP INDEX IF EXISTS ix_users_google_id" in sql for sql in sent), (
         "0040 멱등성 가드(stale source DROP) 제거됨 — 병존/재실행 상태 회귀"
     )

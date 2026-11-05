@@ -44,10 +44,13 @@ def test_0039_upgrade_idempotent_drops_existing_fk():
     소스에 멱등 가드 존재를 정적 단언한다.
     """
     from pathlib import Path  # noqa: PLC0415
-    src = (
-        Path(__file__).resolve().parents[3]
-        / "alembic" / "versions" / "0039_repositories_user_id_fk.py"
-    ).read_text(encoding="utf-8")
-    assert "DROP CONSTRAINT IF EXISTS repositories_user_id_fkey" in src, (
+
+    from ._migration_source import sql_literals  # noqa: PLC0415
+    # upgrade 가 실제로 보내는 SQL 에서 찾는다 — 주석·docstring 의 인용으로는 통과하지 않는다.
+    # Look in the SQL upgrade actually sends, so a quoting comment or docstring cannot pass it.
+    sent = sql_literals(
+        Path(__file__).resolve().parents[3] / "alembic" / "versions" / "0039_repositories_user_id_fk.py",
+        "upgrade")
+    assert any("DROP CONSTRAINT IF EXISTS repositories_user_id_fkey" in sql for sql in sent), (
         "0039 멱등성 가드(DROP IF EXISTS) 제거됨 — 사전 존재 FK 에 create 실패 시 alembic 고착 회귀"
     )

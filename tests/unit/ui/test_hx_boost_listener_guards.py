@@ -11,6 +11,8 @@ keep the remove-before-add pattern so they do not pile up on hx-boost body-swap 
 """
 import pathlib
 
+from ._code_view import js_code, template_code
+
 _ROOT = pathlib.Path(__file__).resolve().parents[3]
 
 
@@ -18,9 +20,16 @@ def _read(rel: str) -> str:
     return (_ROOT / rel).read_text(encoding="utf-8")
 
 
+def _code(rel: str) -> str:
+    """주석을 지운 본문 — 있어야 할 것은 여기서 찾는다. 없어야 할 것은 `_read` 원문에서 찾는다.
+    Presence on the comment-free view (template or plain JS), absence on the raw text."""
+    raw = _read(rel)
+    return template_code(raw) if rel.endswith(".html") else js_code(raw)
+
+
 def test_add_repo_pagehide_uses_remove_before_add():
     """add_repo.html pagehide 리스너는 named handler + remove-before-add (#35)."""
-    src = _read("src/templates/add_repo.html")
+    raw, src = _read("src/templates/add_repo.html"), _code("src/templates/add_repo.html")
     # named handler 저장 + 선행 removeEventListener 존재
     # Named handler storage + preceding removeEventListener present
     assert "document._addRepoPagehide" in src
@@ -28,8 +37,8 @@ def test_add_repo_pagehide_uses_remove_before_add():
     assert "addEventListener('pagehide', document._addRepoPagehide)" in src
     # 익명 화살표 리스너 회귀 차단 (제거 불가 → 누적)
     # Block regression to an anonymous arrow listener (unremovable → pile-up)
-    assert "addEventListener('pagehide', () =>" not in src
-    assert "addEventListener('pagehide', ()=>" not in src
+    assert "addEventListener('pagehide', () =>" not in raw
+    assert "addEventListener('pagehide', ()=>" not in raw
 
 
 def test_effects_animations_reinit_on_hx_boost():
@@ -44,7 +53,7 @@ def test_effects_animations_reinit_on_hx_boost():
     Before fix: the IIFE binds init() only to DOMContentLoaded → after an hx-boost body
     swap the score-bar / SVG draw / count-up animations never re-run (opacity:0 / 0% freeze).
     """
-    src = _read("src/static/js/effects.js")
+    raw, src = _read("src/static/js/effects.js"), _code("src/static/js/effects.js")
     # named handler 단일 슬롯 저장 + 선행 removeEventListener (누적 방지)
     # Single-slot named handler storage + preceding removeEventListener (no accumulation)
     assert "document._fxEffectsHandler" in src
@@ -54,8 +63,8 @@ def test_effects_animations_reinit_on_hx_boost():
     assert 'addEventListener("htmx:historyRestore", document._fxEffectsHandler)' in src
     # 익명 리스너 회귀 차단 (제거 불가 → 누적)
     # Block regression to an anonymous listener (unremovable → pile-up)
-    assert 'addEventListener("htmx:afterSettle", function' not in src
-    assert 'addEventListener("htmx:afterSettle", () =>' not in src
+    assert 'addEventListener("htmx:afterSettle", function' not in raw
+    assert 'addEventListener("htmx:afterSettle", () =>' not in raw
 
 
 def test_oncein_view_has_io_miss_safety_net():
@@ -72,7 +81,7 @@ def test_oncein_view_has_io_miss_safety_net():
     when the IntersectionObserver callback never fires (count-up "0"-prefill freeze).
     e2e is not run in fast CI, so this static guard seals the regression there.
     """
-    src = _read("src/static/js/effects.js")
+    raw, src = _read("src/static/js/effects.js"), _code("src/static/js/effects.js")
     idx = src.find("function onceInView")
     assert idx >= 0, "onceInView 함수 부재 — 테스트 stale"
     # onceInView 함수 전체 범위 (다음 함수 선언 전까지) — scroll 안전망 포함
@@ -110,9 +119,9 @@ def test_oncein_view_has_io_miss_safety_net():
     # P1 regression guard: no blanket dispose may return to init() (it tears down the prior
     # init's safety net while freshOnly(seen) blocks re-registration → count-up "0" freeze).
     assert (
-        "_disposers.pop" not in src
-        and "_disposers.push" not in src
-        and "while (_disposers" not in src
+        "_disposers.pop" not in raw
+        and "_disposers.push" not in raw
+        and "while (_disposers" not in raw
     ), "init() 일괄 dispose 재유입 → P1 count-up '0' 고착 회귀 (이중 init + freshOnly 재등록 차단)"
 
 
@@ -132,7 +141,7 @@ def test_setupcountup_has_cross_closure_guard():
     "0"-prefilled node as target=0 (0→0 freeze). The per-closure `seen` cannot stop it; the
     onceInView safety net only guarantees the callback fires, not the (already-corrupted) target.
     """
-    src = _read("src/static/js/effects.js")
+    src = _code("src/static/js/effects.js")
     idx = src.find("function setupCountUp")
     assert idx >= 0, "setupCountUp 함수 부재 — 테스트 stale"
     nxt = src.find("function ", idx + 1)
@@ -162,7 +171,7 @@ def test_setup_bars_have_cross_closure_guard():
     setupScoreBars/setupFreqBars must carry the same cross-closure DOM guard as count-up so a later
     hx-boost closure cannot re-capture the pre-filled "0%" (→ 0%-width bar freeze on the same card).
     """
-    src = _read("src/static/js/effects.js")
+    src = _code("src/static/js/effects.js")
     for fn, stamp in (("function setupScoreBars", "sbBound"), ("function setupFreqBars", "fbBound")):
         idx = src.find(fn)
         assert idx >= 0, f"{fn} 부재 — 테스트 stale"

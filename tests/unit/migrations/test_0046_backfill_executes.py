@@ -28,6 +28,8 @@ from sqlalchemy.pool import StaticPool
 
 from src.scorer.reliability import score_is_unreliable
 
+from ._migration_source import sql_literals
+
 _ROOT = Path(__file__).resolve().parents[3]
 _REV = _ROOT / "alembic" / "versions" / "0046_analysis_score_unreliable.py"
 
@@ -149,4 +151,8 @@ def test_backfill_chunks_instead_of_loading_everything(db):
     chunk = mod._CHUNK  # pylint: disable=protected-access
     assert isinstance(chunk, int), f"청크 크기가 정수가 아니다: {chunk!r}"
     assert 0 < chunk <= 5000, f"청크 크기가 범위 밖이다: {chunk}"
-    assert "LIMIT" in _REV.read_text(encoding="utf-8"), "백필이 LIMIT 없이 전량을 읽는다"
+    # 백필이 실제로 보내는 SELECT 에서 찾는다 — 주석의 «LIMIT» 로는 통과하지 않는다.
+    # Look in the SELECT the backfill actually sends, not in a comment that mentions LIMIT.
+    selects = [sql for sql in sql_literals(_REV, "_backfill") if sql.startswith("SELECT")]
+    assert selects and all(" LIMIT " in f"{sql} " for sql in selects), (
+        f"백필이 LIMIT 없이 전량을 읽는다: {selects}")

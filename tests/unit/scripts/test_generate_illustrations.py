@@ -75,6 +75,7 @@ def test_generate_one_writes_b64_to_disk(tmp_path, monkeypatch):
     assert out_path is not None
     assert out_path == tmp_path / "filter_empty.png"
     assert out_path.exists()
+    # fail-open-reviewed: 시험이 방금 쓴 tmp 파일의 PNG 매직 바이트를 본다 — 주석이 대신할 수 없는 바이트 자체다
     assert out_path.read_bytes().startswith(b"\x89PNG")  # PNG magic header
 
 

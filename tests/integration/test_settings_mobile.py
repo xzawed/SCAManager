@@ -14,15 +14,20 @@ Cycle 81 PR-A fix-up 학습 (TestClient lifespan 비활성):
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
+# 주석을 지운 본문 — 주석 속 규칙으로는 통과하지 않는다. Comment-free template view.
+from tests.unit.ui._code_view import template_code
+
 
 @pytest.fixture(scope="module")
 def settings_html() -> str:
-    """settings.html 본문 read (templates 정적 자원)."""
-    return (Path(__file__).resolve().parents[2] / "src" / "templates" / "settings.html").read_text(encoding='utf-8')
+    """settings.html 의 주석을 지운 본문 (templates 정적 자원)."""
+    return template_code(
+        (Path(__file__).resolve().parents[2] / "src" / "templates" / "settings.html").read_text(encoding='utf-8'))
 
 
 # ─── 768px↓ 분기 신설 ────────────────────────────────────────────
@@ -113,4 +118,4 @@ def test_existing_details_preserved(settings_html):
 def test_pwa_manifest_unchanged():
     """PR-A PWA manifest = settings 변경 무영향."""
     manifest = (Path(__file__).resolve().parents[2] / "src" / "static" / "manifest.json").read_text(encoding='utf-8')
-    assert '"display": "standalone"' in manifest
+    assert json.loads(manifest)["display"] == "standalone"
