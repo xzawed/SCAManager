@@ -562,6 +562,125 @@ def test_nav_fits_the_narrowest_width_of_every_css_band(scrollbar_browser, base_
         + "\n  ".join(failures))
 
 
+# 노치 · 펀치홀 기기 — nav(열린 모바일 메뉴 포함)와 본문이 화면의 안전 영역 안에 칠해지는가.
+# `padding` 네 값은 위 · 오른쪽 · 아래 · 왼쪽 순서다. nav 는 오른쪽 자리에 왼쪽 inset 을 넣어, 한쪽에만 inset 이
+# 있는 기기(가로로 든 폰의 펀치홀 등)에서 여백이 반대쪽에 붙고 로고는 inset 밑에 있었다(기본 · 768px · 480px 세 곳).
+# 화면 끝에서 끝까지 펼치는 모바일 메뉴는 좌우가 16px 고정이라 링크가 inset 밑에 깔렸다.
+# 🔴 nav 는 칠해진 글자(넘침을 자르는 조상으로 자른 범위)와 누르는 컨트롤(a · button) 상자로 잰다 — 메뉴 패널 같은
+#    배경 상자는 화면 끝까지 칠해도 된다. 본문은 자식이 안쪽에서 스크롤될 수 있어 내용 상자(테두리 · 여백 안쪽)로 잰다.
+# 🔴 inset 은 CDP 로 심고 env() 로 다시 읽는다 — 못 심었으면 «안전 영역 안» 은 공허한 초록이다. inset 이 그 폭의
+#    기본 여백보다 작으면 max() 가 기본 여백을 골라 쏠림이 안 보인다 — 그것도 red 다.
+# 🔴 여백 규칙은 폭 분기마다 따로 있다 — nav 시험과 같이 CSS 폭 분기를 읽어 구간마다 가장 좁은 폭을 잰다. 햄버거가
+#    보이는 폭에서는 메뉴를 열고 한 번 더 잰다.
+# Notch / cutout devices: with a one-sided inset planted through CDP and read back through env(), the nav's painted
+# text and controls (the open mobile menu too) and the body's content box stay inside the safe area at the narrowest
+# width of every CSS band.
+_SAFE_AREA_INSET = 32
+_SAFE_AREA_JS = """async want => {
+    const frame = () => new Promise(r => requestAnimationFrame(() => r()));
+    for (let i = 0; i < 30 && window.innerWidth !== want; i++) await frame();
+    await frame(); await frame();
+    const env = side => {
+        const probe = document.createElement('div');
+        probe.style.cssText = `position:absolute;height:0;width:env(safe-area-inset-${side}, 0px)`;
+        document.body.appendChild(probe);
+        const w = probe.getBoundingClientRect().width;
+        probe.remove();
+        return w;
+    };
+    const pads = el => {
+        const s = getComputedStyle(el);
+        return [parseFloat(s.paddingLeft), parseFloat(s.paddingRight)];
+    };
+    const doc = document.documentElement, nav = document.querySelector('nav');
+    let left = Infinity, right = -Infinity, painted = 0;
+    const take = (l, r) => {
+        if (r <= l) return;
+        painted += 1;
+        left = Math.min(left, l);
+        right = Math.max(right, r);
+    };
+    if (nav) {
+        const walker = document.createTreeWalker(nav, NodeFilter.SHOW_TEXT);
+        for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+            if (!n.data.trim() || !n.parentElement.checkVisibility()) continue;
+            let lo = -Infinity, hi = Infinity;
+            for (let a = n.parentElement; a && a !== nav; a = a.parentElement) {
+                if (getComputedStyle(a).overflowX === 'visible') continue;
+                const b = a.getBoundingClientRect();
+                lo = Math.max(lo, b.left + a.clientLeft);
+                hi = Math.min(hi, b.left + a.clientLeft + a.clientWidth);
+            }
+            const range = document.createRange();
+            range.selectNodeContents(n);
+            for (const q of range.getClientRects()) take(Math.max(q.left, lo), Math.min(q.right, hi));
+        }
+        for (const el of nav.querySelectorAll('a, button')) {
+            if (!el.checkVisibility()) continue;
+            const b = el.getBoundingClientRect();
+            take(b.left, b.right);
+        }
+    }
+    const menu = document.querySelector('.nav-links.open'), main = document.querySelector('.container');
+    let body = null;
+    if (main) {
+        const b = main.getBoundingClientRect(), s = getComputedStyle(main), [pl, pr] = pads(main);
+        body = [b.left + parseFloat(s.borderLeftWidth) + pl, b.right - parseFloat(s.borderRightWidth) - pr];
+    }
+    const burger = document.getElementById('navHamburger');
+    return {width: window.innerWidth, vw: doc.clientWidth, over: doc.scrollWidth - doc.clientWidth,
+            inset: {left: env('left'), right: env('right')}, painted, nav: [left, right], body,
+            burger: !!burger && burger.checkVisibility(), menu: !!menu && menu.checkVisibility(),
+            pads: {nav: nav ? pads(nav) : [0, 0], body: main ? pads(main) : [0, 0],
+                   menu: menu ? pads(menu) : null}};
+}"""
+
+
+@pytest.mark.parametrize("side", ["left", "right"])
+def test_nav_and_body_stay_inside_a_one_sided_safe_area(page, base_url, side):
+    """🔴 한쪽에만 inset 이 있으면 그쪽 여백이 inset 만큼 벌어져야 한다 — 반대쪽이 아니라."""
+    page.set_viewport_size({"width": 1280, "height": 640})
+    page.goto(f"{base_url}/dashboard")
+    bands = page.evaluate(_CSS_BAND_STARTS_JS)
+    assert not bands["unparsed"] and not bands["unread"], f"폭 조건이나 시트를 못 읽었다 — 그 구간은 재지 않는다: {bands}"
+    widths = sorted({320, *(w for w in bands["starts"] if 320 < w < 1280)})
+    assert {481, 769} <= set(widths), f"CSS 에서 읽은 구간 시작 {bands['starts']} 에 480 · 768px 분기가 없다"
+    want = {"left": 0, "right": 0, side: _SAFE_AREA_INSET}
+    cdp = page.context.new_cdp_session(page)
+    cdp.send("Emulation.setSafeAreaInsetsOverride", {"insets": {"top": 0, "bottom": 0, **want}})
+    failures, opened = [], 0
+
+    def check(width: int, res: dict, where: str) -> None:
+        assert res["width"] == width, f"{width}px 를 요청했는데 {res['width']}px 에서 쟀다"
+        assert res["inset"] == want, f"{width}px: inset {want} 를 심었는데 env() 가 {res['inset']} — 못 심었다"
+        assert res["painted"] and res["body"], f"{width}px: nav 나 본문을 못 찾았다 — 재지 못했다"
+        for name, pad in res["pads"].items():
+            assert pad is None or _SAFE_AREA_INSET > min(pad) + 1, (
+                f"{width}px {name}: 좌우 여백 {pad} 이 둘 다 inset {_SAFE_AREA_INSET}px 이상 — 쏠림이 안 보인다"
+                "(기본 여백이 inset 보다 크거나, 한쪽 inset 이 양쪽에 붙었다)")
+        lo, hi = want["left"], res["vw"] - want["right"]
+        for name, (a, b) in ((where, res["nav"]), ("본문", res["body"])):
+            if a < lo - 1 or b > hi + 1:
+                failures.append(f"{width}px {name}: {a:.0f}~{b:.0f}px — 안전 영역 {lo}~{hi}px 밖")
+        if res["over"] > 1:
+            failures.append(f"{width}px {where}: 문서가 {res['over']}px 가로로 넘친다")
+
+    for width in widths:
+        page.set_viewport_size({"width": width, "height": 640})
+        res = page.evaluate(_SAFE_AREA_JS, width)
+        check(width, res, "nav")
+        if res["burger"]:
+            page.click("#navHamburger")
+            menu = page.evaluate(_SAFE_AREA_JS, width)
+            assert menu["menu"], f"{width}px: 햄버거를 눌렀는데 메뉴가 안 열렸다 — 재지 못했다"
+            check(width, menu, "열린 메뉴")
+            opened += 1
+            page.click("#navHamburger")
+    assert opened, f"햄버거가 보이는 폭이 없었다(잰 폭 {widths}) — 열린 메뉴를 재지 못했다"
+    assert not failures, (f"[{side} inset {_SAFE_AREA_INSET}px] 안전 영역 밖에 칠해진다(잰 폭 {widths}):\n  "
+                          + "\n  ".join(failures))
+
+
 @pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
 def test_primary_button_label_meets_aa(page, base_url, theme):
     """🔴 채워진 기본 버튼의 «라벨» 이 네 테마 모두에서 AA(4.5:1)를 넘어야 한다.
