@@ -169,13 +169,20 @@ def test_docs_sync_history_tail_is_not_the_head(tmp_path):
     """
     root = _count_fixture(tmp_path)
     state = root / "docs" / "STATE.md"
-    _mutate(state, "| 전체 테스트 | **", "| 전체 테스트 | **9")  # 머리만 훼손
+    _mutate(state, "| 전체 테스트 | **", "| 전체 테스트 | **9")  # 머리만 훼손 — 원값 앞에 9 를 붙인다
 
     ok, msgs = check_docs_sync.check_consistency(root)
     assert not ok
     joined = " ".join(msgs)
-    assert "STATE 추적셀(전체)=9" in joined, joined     # 머리는 훼손값
-    assert "STATE 이력 마지막(전체)=9" not in joined, joined  # 꼬리는 원값 — 독립 축
+    # 🔴 값을 «정확히» 읽어 견준다 — 「=9 가 들어 있나」 부분문자열로 보면 전체 수가 9 로 시작하는 순간
+    #    (9000 수집) 정상 꼬리까지 훼손으로 읽혀 거짓 red 였다. 부분문자열은 상태가 아니다.
+    # Compare exact values: a «contains =9» check went false-red once the total itself started with 9.
+    head = re.search(r"STATE 추적셀\(전체\)=(\d+)", joined)
+    tail = re.search(r"STATE 이력 마지막\(전체\)=(\d+)", joined)
+    assert head and tail, joined
+    assert head.group(1) == "9" + tail.group(1), joined   # 머리는 훼손값(원값 앞에 9)
+    total = re.search(r"STATE 종합\(전체\)=(\d+)", joined)
+    assert total and tail.group(1) == total.group(1), joined  # 꼬리는 원값 — 독립 축
 
 
 # --- P0-1: `_STATE_CELL_TOTAL` 전역 첫-매치가 원장을 덮어쓴다 ---
