@@ -8,6 +8,7 @@ Behavioral judgment lives in e2e (real browser: painted color, document overflow
 These are fast static guards that catch a revert where e2e is not run.
 """
 import pathlib
+import re
 
 _ROOT = pathlib.Path(__file__).resolve().parents[3]
 
@@ -58,21 +59,58 @@ def test_light_accent_themes_do_not_use_white_on_accent():
         )
 
 
-def test_nav_folds_labels_on_narrow_viewport():
-    """🔴 좁은 화면에서 nav 가 라벨을 접어야 한다 — 안 접으면 문서가 가로로 밀린다.
+def _max_width_blocks(src: str) -> list[tuple[int, str]]:
+    """`@media (max-width: Npx) { … }` 블록마다 (N, 본문) — 중괄호 짝으로 끝을 찾는다."""
+    out = []
+    for m in re.finditer(r"@media \(max-width: (\d+)px\) \{", src):
+        depth, j = 1, m.end()
+        while depth and j < len(src):
+            depth += {"{": 1, "}": -1}.get(src[j], 0)
+            j += 1
+        out.append((int(m.group(1)), src[m.end():j - 1]))
+    return out
 
-    `nav` 는 `flex-wrap: nowrap` 이고 자식 넷이 `flex-shrink: 0` 이라 좁아져도 줄바꿈으로
-    도망치지 못하고 **문서 전체**를 늘린다(실측: min-content 409px 고정 → 320px 에서 +89px).
-    The nav cannot wrap, so its min-content width stretches the document sideways.
+
+def _hidden_selectors(block: str) -> set[str]:
+    """블록 안에서 `display: none` 을 거는 규칙의 선택자 조각들."""
+    hidden = set()
+    for sel, decl in re.findall(r"([^{}]+)\{([^{}]*)\}", block):
+        if re.search(r"display:\s*none", decl):
+            hidden |= {s.strip() for s in sel.split(",")}
+    return hidden
+
+
+def test_nav_folds_labels_up_to_the_width_they_need():
+    """🔴 nav 라벨 접기는 라벨을 다 편 nav 가 들어가는 폭까지 걸려야 한다 — 안 접으면 문서가 가로로 밀린다.
+
+    `nav` 는 줄바꿈하지 않고 대부분의 항목이 제 글자 폭 아래로 줄지 않아, 접지 않은 폭에서는 **문서 전체**를
+    늘린다(실측: 320px +89px). 접기가 480px 에서 멈추면 481px 부터 사용자 이름 · 테마/언어 이름 · 펼침 표시가
+    돌아오는데, 그 nav 의 최소 폭은 588~652px(ja · catppuccin 이 가장 넓다)라 481~652px 가 가로로 밀렸다.
+    The fold must reach the width the full-label nav needs (measured up to 652px).
     """
     src = _read("src/templates/base.html")
-    i = src.find("@media (max-width: 480px) {")
-    assert i >= 0, "480px 분기 부재 — 테스트 stale"
-    block = src[i:src.find("\n    }", i)]
-    assert "#themeName" in block and "#langName" in block, (
-        "좁은 화면에서 테마/언어 «라벨» 을 접지 않는다 — nav min-content 가 뷰포트를 넘어 "
-        "문서가 가로로 스크롤된다 (실측 320px +89px)"
-    )
+    targets = (".nav-user-name", "#themeName", "#langName", ".theme-btn .chevron")
+    folding = [n for n, body in _max_width_blocks(src) if set(targets) <= _hidden_selectors(body)]
+    assert folding, f"{targets} 를 함께 접는 max-width 분기가 없다 — 좁은 화면에서 문서가 가로로 밀린다"
+    assert max(folding) >= 652, (
+        f"라벨 접기가 {max(folding)}px 에서 멈춘다 — 라벨을 다 편 nav 는 652px 까지 필요하다(실측 ja · catppuccin)")
+
+
+def test_nav_stays_on_one_line_and_only_the_name_gives_way():
+    """🔴 nav 는 한 줄이고, 자리가 모자라면 사용자 이름만 줄어든다.
+
+    769px 이상에서는 nav 링크와 140px 까지 자라는 이름이 돌아온다. 이름 묶음(`.nav-user`)이 줄지 않는 상자이면
+    긴 GitHub 프로필 이름이 문서를 가로로 밀었고(실측 +47~76px), 일본어 링크는 넘치는 대신 여러 줄로 쌓였다.
+    The nav never wraps, and the user group is unwrapped so only the name (overflow hidden) shrinks.
+    """
+    src = _read("src/templates/base.html")
+    nav = re.search(r"\n    nav \{([^}]*)\}", src)
+    assert nav, "`nav {` 규칙 부재 — 테스트 stale"
+    assert re.search(r"white-space:\s*nowrap", nav.group(1)), (
+        "nav 가 한 줄이 아니다 — 일본어 링크가 자리가 모자라면 여러 줄로 쌓인다(실측 769px 7줄)")
+    user = re.search(r"\.nav-user \{([^}]*)\}", src)
+    assert user and re.search(r"display:\s*contents", user.group(1)), (
+        "`.nav-user` 가 줄지 않는 상자다 — 긴 이름이 769px 이상에서 문서를 가로로 민다")
 
 
 def test_dashboard_segment_toggles_scroll_internally():

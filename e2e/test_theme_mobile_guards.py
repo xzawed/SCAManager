@@ -358,77 +358,160 @@ def test_no_horizontal_overflow_on_narrow_viewports(page, base_url, width, heigh
     )
 
 
+# 폰과 데스크톱 사이 — nav 가 문서를 가로로 밀지 않는가.
 # 768px 규칙은 nav 링크만 햄버거로 접고, 480px 규칙이 접던 것(테마·언어 이름 · 사용자 이름 · 펼침 표시)은
-# 481px 부터 다시 보였다. 그 nav 의 최소 폭(실측 588~652px — ja · catppuccin 이 가장 넓다)이 뷰포트보다 넓어
-# 481~652px 의 모든 화면이 가로로 넘쳤다(481px 에서 107~171px). 위 시험은 320 · 375px 만 쟀다.
-# 🔴 한 폭 구간 안에서는 같은 규칙이 걸려 nav 내용이 같으므로 넘침은 그 구간의 가장 좁은 폭에서 가장 크다.
-#    그래서 폭을 촘촘히 쓸지 않고 페이지 CSS 에서 폭 분기를 읽어 구간마다 가장 좁은 폭만 잰다 — 분기가 새로
-#    생기면 그 구간도 저절로 잰다. 라벨이 가장 긴 조합을 놓치지 않게 세 언어 × 네 테마를 다 돈다.
-# Between phone and desktop: read the width breakpoints from the page CSS and measure the narrowest width
-# of every band (nav content is constant inside a band), in three languages and four themes.
+# 481px 부터 다시 보였다. 라벨을 다 편 nav 의 최소 폭(실측 588~652px — ja · catppuccin 이 가장 넓다)이 뷰포트보다
+# 넓어 481~652px 의 모든 화면이 가로로 넘쳤다(481px 에서 107~171px). 769px 부터는 nav 링크와 140px 까지 자라는
+# 사용자 이름이 돌아와, 긴 GitHub 프로필 이름(실측 «Christopher Montgomery» +27px)이나 자리를 차지하는 스크롤바
+# (Windows 크롬 15px)에서 또 넘쳤고, 일본어 nav 링크는 넘치는 대신 여러 줄로 꺾였다. 위 시험은 320 · 375px 만 쟀다.
+# 🔴 최악 조건에서 잰다 — 이름은 상한(140px)을 넘는 길이, 스크롤바가 자리를 차지하는 브라우저(Playwright 는 기본으로
+#    스크롤바를 숨긴다), 세 언어 × 네 테마. 넘침 · 꺾인 글자 · 겹친 항목을 따로 본다.
+# 🔴 한 폭 구간 안에서는 같은 규칙이 걸려 nav 내용이 같으므로 넘침은 그 구간의 가장 좁은 폭에서 가장 크다. 그래서
+#    폭을 촘촘히 쓸지 않고 페이지 CSS 에서 폭 분기를 읽어 구간마다 가장 좁은 폭만 잰다 — 분기가 새로 생기면 그
+#    구간도 저절로 잰다. 읽지 못한 폭 조건(calc · 컨테이너 질의 · 모르는 꼴)이 하나라도 있으면 red 다.
+# Between phone and desktop, in the worst case (a name past the 140px cap, scrollbars that take space, three
+# languages x four themes): read every width breakpoint from the page CSS and measure the narrowest width of each
+# band. Any width condition the reader cannot parse fails the test.
 _CSS_BAND_STARTS_JS = r"""() => {
-    const starts = new Set();
+    const starts = new Set(), unparsed = [];
     let unread = 0;
+    // em · rem 은 미디어 쿼리에서 초기 글자 크기(16px) 기준이다 — 빌드한 tailwind 가 rem 분기를 쓴다.
+    const px = (n, u) => Number(n) * (u === 'px' ? 1 : 16);
+    // 조건이 참인 쪽의 경계 → 다음 구간이 시작하는 폭. `<=` · max 는 N+1, `<` 는 N, `>=` · min 은 N, `>` 는 N+1.
+    const add = (op, v) => starts.add(op === '<=' || op === '>' ? Math.floor(v) + 1 : Math.ceil(v));
+    const flip = {'<=': '>=', '<': '>', '>=': '<=', '>': '<'};
+    const N = String.raw`(\d+(?:\.\d+)?)(px|r?em)\b`, OP = '(<=|<|>=|>)';
+    const read = text => {
+        let rest = (text || '').replace(/\s+/g, ' ');
+        const take = (re, fn) => { rest = rest.replace(re, (...m) => { fn(m); return ' '; }); };
+        take(new RegExp(N + ' ?' + OP + ' ?width ?' + OP + ' ?' + N, 'g'),
+             m => { add(flip[m[3]], px(m[1], m[2])); add(m[4], px(m[5], m[6])); });
+        take(new RegExp('(max|min)-width: ?' + N, 'g'), m => add(m[1] === 'max' ? '<=' : '>=', px(m[2], m[3])));
+        take(new RegExp(String.raw`\bwidth ?` + OP + ' ?' + N, 'g'), m => add(m[1], px(m[2], m[3])));
+        take(new RegExp(N + ' ?' + OP + String.raw` ?width\b`, 'g'), m => add(flip[m[3]], px(m[1], m[2])));
+        if (/width|aspect-ratio/.test(rest)) unparsed.push(text);
+    };
     const walk = rules => {
         for (const r of rules) {
-            if (r instanceof CSSMediaRule) {
-                // em · rem 은 미디어 쿼리에서 초기 글자 크기(16px) 기준이다 — 빌드한 tailwind 가 rem 분기를 쓴다.
-                // em/rem in media queries resolve against the initial font size (16px).
-                const rx = /(max|min)-width:\s*(\d+(?:\.\d+)?)(px|r?em)/g;
-                for (const m of r.media.mediaText.matchAll(rx)) {
-                    const px = Number(m[2]) * (m[3] === 'px' ? 1 : 16);
-                    starts.add(m[1] === 'max' ? Math.floor(px) + 1 : Math.ceil(px));
-                }
+            if (r instanceof CSSImportRule) {
+                read(r.media.mediaText);
+                if (r.styleSheet) sheet(r.styleSheet);
+                continue;
             }
+            if (r instanceof CSSMediaRule) read(r.media.mediaText);
+            else if (typeof CSSContainerRule !== 'undefined' && r instanceof CSSContainerRule
+                     && /width|aspect-ratio/.test(r.conditionText)) unparsed.push('@container ' + r.conditionText);
             if (r.cssRules) walk(r.cssRules);
         }
     };
-    for (const s of document.styleSheets) {
+    const sheet = s => {
+        read(s.media && s.media.mediaText);
         try { walk(s.cssRules); } catch (e) { unread += 1; }
-    }
-    return {starts: [...starts].sort((a, b) => a - b), unread};
+    };
+    for (const s of document.styleSheets) sheet(s);
+    return {starts: [...starts].sort((a, b) => a - b), unparsed, unread};
 }"""
-# nav 안의 칠해진 요소 중 가장 오른쪽 끝 · 문서 넘침 · 테마 라벨(숨겨져도 글자는 남는다 — 테마가 바뀌었는가).
-# Rightmost painted element in the nav, document overflow, and the theme label text.
+# nav 안 칠해진 요소의 가장 오른쪽 끝 · 두 줄 이상으로 꺾인 글자 · 서로 겹친 nav 항목(display: contents 는 그
+# 자식이 항목이다) · 문서 넘침 · 스크롤바 폭 · 테마 라벨(숨겨져도 글자는 남는다 — 테마가 바뀌었는가).
+# The nav's rightmost painted edge, wrapped text, overlapping nav items, document overflow, scrollbar width.
 _NAV_FIT_JS = """() => {
     const doc = document.documentElement, vw = doc.clientWidth, nav = document.querySelector('nav');
     let right = 0, painted = 0;
+    const wrapped = [], items = [];
     for (const el of nav ? nav.querySelectorAll('*') : []) {
         if (!el.checkVisibility()) continue;
         painted += 1;
         right = Math.max(right, el.getBoundingClientRect().right);
+        for (const n of el.childNodes) {
+            if (n.nodeType !== 3 || !n.data.trim()) continue;
+            const range = document.createRange();
+            range.selectNodeContents(n);
+            const tops = [];
+            for (const q of range.getClientRects()) {
+                if (q.width > 0 && !tops.some(t => Math.abs(t - q.top) < 2)) tops.push(q.top);
+            }
+            if (tops.length > 1) wrapped.push(`«${n.data.trim().slice(0, 16)}» ${tops.length}줄`);
+        }
     }
-    return {over: doc.scrollWidth - vw, navOver: Math.round(right - vw), painted,
+    const collect = parent => {
+        for (const c of parent.children) {
+            if (getComputedStyle(c).display === 'contents') collect(c);
+            else if (c.checkVisibility()) items.push(c);
+        }
+    };
+    if (nav) collect(nav);
+    const boxes = items.map(c => [c.getBoundingClientRect(), c.className || c.tagName])
+        .filter(([b]) => b.width > 0).sort((a, b) => a[0].left - b[0].left);
+    const overlaps = [];
+    for (let i = 1; i < boxes.length; i++) {
+        const gap = boxes[i][0].left - boxes[i - 1][0].right;
+        if (gap < -1) overlaps.push(`${boxes[i - 1][1]}↔${boxes[i][1]} ${Math.round(gap)}px`);
+    }
+    return {over: doc.scrollWidth - vw, navOver: Math.round(right - vw), painted, wrapped, overlaps,
+            scrollbar: window.innerWidth - vw, scrollable: doc.scrollHeight > window.innerHeight + 1,
             label: ((document.getElementById('themeName') || {}).textContent || '').trim()};
 }"""
+# 상한(140px)을 넘는 GitHub 프로필 이름 — 이름이 길수록 nav 자리는 좁아지기만 한다.
+# A GitHub profile name past the 140px cap; a longer name only ever takes more nav room.
+_NAV_LONG_NAME = "Christopher Montgomery-Wellington"
+
+
+@pytest.fixture(scope="module")
+def scrollbar_browser(browser_instance):
+    """스크롤바가 자리를 차지하는 Chromium — Playwright 는 기본으로 `--hide-scrollbars` 를 건다.
+
+    A Chromium whose scrollbars take layout space (Playwright hides them by default).
+    """
+    browser = browser_instance.browser_type.launch(
+        headless=True, ignore_default_args=["--hide-scrollbars"])
+    yield browser
+    browser.close()
 
 
 @pytest.mark.parametrize("lang", ["en", "ko", "ja"])
-def test_nav_fits_the_narrowest_width_of_every_css_band(seeded_page, base_url, lang):
-    """🔴 폭 구간마다 가장 좁은 폭에서 nav 가 화면 안에 있고 문서가 가로로 넘치지 않는가 — 네 테마 모두."""
-    seeded_page.context.add_cookies([{"name": "preferred_language", "value": lang, "url": base_url}])
-    seeded_page.set_viewport_size({"width": 1280, "height": 800})
-    seeded_page.goto(f"{base_url}/dashboard")
-    assert seeded_page.evaluate("() => document.documentElement.lang") == lang, (
-        f"{lang} 화면을 열지 못했다 — 그 언어의 라벨을 잰 것이 아니다")
-    bands = seeded_page.evaluate(_CSS_BAND_STARTS_JS)
-    widths = sorted({320, *(w for w in bands["starts"] if 320 < w < 1280)})
-    assert {481, 769} <= set(widths), (
-        f"CSS 에서 읽은 구간 시작 {bands['starts']} 에 480 · 768px 분기가 없다 — "
-        f"읽기가 죽었다(못 읽은 시트 {bands['unread']}개)")
-    failures, labels = [], set()
-    for theme in ("dark", "light", "pastel", "catppuccin"):
-        apply_theme(seeded_page, theme)
-        for width in widths:
-            seeded_page.set_viewport_size({"width": width, "height": 800})
-            res = seeded_page.evaluate(_NAV_FIT_JS)
-            assert res["painted"], f"{width}px nav 에 칠해진 요소가 없다 — 재지 못했다"
-            labels.add(res["label"])
-            if res["over"] > 1 or res["navOver"] > 1:
-                failures.append(f"{theme} {width}px: 문서 {res['over']}px · nav {res['navOver']}px")
+def test_nav_fits_the_narrowest_width_of_every_css_band(scrollbar_browser, base_url, lang):
+    """🔴 폭 구간마다 가장 좁은 폭에서 nav 가 화면 안에 한 줄로, 겹침 없이 들어가는가 — 최악 조건 · 네 테마."""
+    context = scrollbar_browser.new_context(base_url=base_url)
+    context.add_cookies([{"name": "preferred_language", "value": lang, "url": base_url}])
+    page = context.new_page()
+    js_errors: list[str] = []
+    page.on("pageerror", lambda err: js_errors.append(str(err)))
+    try:
+        with acting_as(EMPTY_USER_ID, login="e2e-longname", display_name=_NAV_LONG_NAME):
+            page.set_viewport_size({"width": 1280, "height": 360})
+            page.goto(f"{base_url}/dashboard")
+            assert page.evaluate("() => document.documentElement.lang") == lang, (
+                f"{lang} 화면을 열지 못했다 — 그 언어의 라벨을 잰 것이 아니다")
+            bands = page.evaluate(_CSS_BAND_STARTS_JS)
+            assert not bands["unparsed"], (
+                f"폭 조건을 못 읽었다 — 그 분기의 구간은 재지 않는다: {bands['unparsed']}")
+            widths = sorted({320, *(w for w in bands["starts"] if 320 < w < 1280)})
+            assert {481, 769} <= set(widths), (
+                f"CSS 에서 읽은 구간 시작 {bands['starts']} 에 480 · 768px 분기가 없다 — "
+                f"읽기가 죽었다(못 읽은 시트 {bands['unread']}개)")
+            failures, labels, with_bar = [], set(), 0
+            for theme in ("dark", "light", "pastel", "catppuccin"):
+                apply_theme(page, theme)
+                for width in widths:
+                    page.set_viewport_size({"width": width, "height": 360})
+                    res = page.evaluate(_NAV_FIT_JS)
+                    assert res["painted"], f"{width}px nav 에 칠해진 요소가 없다 — 재지 못했다"
+                    if res["scrollable"]:
+                        assert res["scrollbar"] >= 10, (
+                            f"{width}px 세로로 넘치는데 스크롤바 폭이 {res['scrollbar']}px — 자리를 차지하는 "
+                            "스크롤바로 재지 못했다")
+                        with_bar += 1
+                    labels.add(res["label"])
+                    if res["over"] > 1 or res["navOver"] > 1 or res["wrapped"] or res["overlaps"]:
+                        failures.append(f"{theme} {width}px: 문서 {res['over']}px · nav {res['navOver']}px · "
+                                        f"꺾임 {res['wrapped']} · 겹침 {res['overlaps']}")
+    finally:
+        context.close()
+    assert not js_errors, f"JS 런타임 오류: {js_errors[:3]}"
     assert len(labels) == 4, f"네 테마의 라벨이 {sorted(labels)} — 테마가 바뀌지 않았다"
+    assert with_bar, "어느 폭에서도 스크롤바가 생기지 않았다 — 자리를 차지하는 스크롤바로 잰 적이 없다"
     assert not failures, (
-        f"[{lang}] 폭 구간의 가장 좁은 폭에서 nav 가 화면을 넘는다(잰 폭 {widths}):\n  "
+        f"[{lang}] 폭 구간의 가장 좁은 폭에서 nav 가 화면을 넘거나 꺾이거나 겹친다(잰 폭 {widths}):\n  "
         + "\n  ".join(failures))
 
 
