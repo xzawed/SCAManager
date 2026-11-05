@@ -12,16 +12,19 @@
 
 **막지 못한다.** PostToolUse 는 쓰기 «뒤» 에 불린다 — 보이게 할 뿐 되돌리지 않는다. Bash 로 쓴 메모리는 보지
 않는다(Write|Edit|MultiEdit 만). 정방향 축(리포 문서 → 메모리 슬러그)은 리포 쪽 변경이라 pre-commit 이 본다.
+워크트리 세션은 메모리 디렉토리를 그 체크아웃 경로로 유도하므로(`CLAUDE_PROJECT_MEMORY_DIR` 가 없으면) 조용하다.
 
 Detection only, after the write: runs the reverse axis when the written file is inside this repo's memory dir.
 """
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[2]
+_PROJECTS_ROOT = Path.home() / ".claude" / "projects"
 
 
 def _make_stdout_safe() -> None:
@@ -52,8 +55,29 @@ def is_inside(path: str, directory: Path) -> bool:
         return False
 
 
+def read_payload() -> object:
+    """stdin 을 **바이트로 읽어 UTF-8 로 직접 디코드**한다 — `doc_review_gate.read_payload` 와 같은 관용구.
+
+    🔴 `json.load(sys.stdin)` 를 쓰면 안 된다 — 실훅 자식 프로세스의 stdin 은 cp949 라, 한글이 든 메모리 경로가
+    깨져 «메모리 밖» 으로 읽히고 이 훅이 조용히 죽었다(적대 패스 실측). 깨진 입력이면 None.
+    """
+    try:
+        raw = getattr(sys.stdin, "buffer", sys.stdin).read()
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8", errors="replace")
+        return json.loads(raw)
+    except (ValueError, RecursionError):
+        return None
+
+
+def may_be_memory(path: str) -> bool:
+    """메모리일 수 있는 경로인가 — 아니면 검사 모듈을 아예 불러오지 않는다(모듈이 깨져 있어도 다른 쓰기는 조용하다)."""
+    env = os.environ.get("CLAUDE_PROJECT_MEMORY_DIR")
+    return is_inside(path, Path(env)) if env else is_inside(path, _PROJECTS_ROOT)
+
+
 def build_message(found: list[str]) -> str:
-    lines = [f"🔴 방금 고친 메모리의 «처방» 이 없는 자리 · 썩는 값을 가리킵니다 ({len(found)}건):"]
+    lines = [f"🔴 메모리의 «처방» 이 없는 자리 · 썩는 값을 가리킵니다 (메모리 전체 기준 {len(found)}건):"]
     lines += [f"   {line}" for line in found]
     lines += [
         "   살아 있는 좌표로 고치거나(백틱 = 살아 있는 좌표), 테스트 수는 원천을 가리키게 바꾸세요.",
@@ -62,27 +86,32 @@ def build_message(found: list[str]) -> str:
     return "\n".join(lines)
 
 
+def _emit(message: str) -> None:
+    print(json.dumps({"systemMessage": message,
+                      "hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": message}},
+                     ensure_ascii=True))
+
+
 def main() -> int:
     _make_stdout_safe()
+    path = written_path(read_payload())
+    if not path or not may_be_memory(path):
+        return 0
+    # 🔴 검사가 무엇으로 넘어져도 이 훅은 exit 0 이다 — 대신 못 잰 것을 한 줄로 보인다(조용해지지 않는다).
+    #    Whatever the checker raises, exit 0 and say it could not check.
     try:
-        payload = json.load(sys.stdin)
-    except (ValueError, RecursionError):
-        return 0  # 입력이 없거나 깨지면 무엇을 썼는지 모른다 — 조용히 넘어간다
-    path = written_path(payload)
-    if not path:
-        return 0
-    sys.path.insert(0, str(_ROOT))
-    import scripts.check_memory_refs as refs  # noqa: PLC0415 — 메모리 경로일 때만 부른다
+        sys.path.insert(0, str(_ROOT))
+        import scripts.check_memory_refs as refs  # noqa: PLC0415 — 메모리일 수 있는 경로일 때만 부른다
 
-    memory_dir = refs.resolve_memory_dir(_ROOT)
-    if memory_dir is None or not memory_dir.is_dir() or not is_inside(path, memory_dir):
+        memory_dir = refs.resolve_memory_dir(_ROOT)
+        if memory_dir is None or not memory_dir.is_dir() or not is_inside(path, memory_dir):
+            return 0
+        found = refs.reverse_dangling(memory_dir, _ROOT)
+    except Exception as exc:  # noqa: BLE001 — 조언 훅은 어떤 실패로도 쓰기 흐름을 시끄럽게 깨지 않는다
+        _emit(f"⚠️ 메모리 역방향 가드를 돌리지 못했다 — {type(exc).__name__}: {str(exc)[:200]}")
         return 0
-    found = refs.reverse_dangling(memory_dir, _ROOT)
     if found:
-        message = build_message(found)
-        print(json.dumps({"systemMessage": message,
-                          "hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": message}},
-                         ensure_ascii=True))
+        _emit(build_message(found))
     return 0
 
 

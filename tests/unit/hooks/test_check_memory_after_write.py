@@ -8,6 +8,8 @@ from __future__ import annotations
 import importlib.util
 import io
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -66,6 +68,48 @@ def test_unreadable_input_is_ignored(raw, monkeypatch, capsys):
     monkeypatch.setattr(sys, "stdin", io.StringIO(raw))
     assert hook.main() == 0
     assert capsys.readouterr().out == ""
+
+
+def test_a_memory_dir_with_korean_in_its_path_still_reports(tmp_path):
+    """🔴 실훅 자식의 stdin 은 cp949 다 — 바이트로 읽어 UTF-8 로 디코드하지 않으면 한글 경로가 깨져 조용히 죽는다.
+
+    자식 프로세스의 stdin 인코딩을 cp949 로 강제해 어느 OS 에서든 그 조건을 만든다(적대 패스 실측 재현).
+    """
+    mem = tmp_path / "메모리" / "memory"
+    mem.mkdir(parents=True)
+    (mem / "MEMORY.md").write_text("- 진입점 = `docs/gone-for-good.md`\n", encoding="utf-8")
+    env = {k: v for k, v in os.environ.items() if k not in ("PYTHONIOENCODING", "PYTHONUTF8")}
+    env.update(CLAUDE_PROJECT_MEMORY_DIR=str(mem), PYTHONIOENCODING="cp949")
+    payload = json.dumps({"tool_name": "Write", "tool_input": {"file_path": str(mem / "MEMORY.md")}},
+                         ensure_ascii=False).encode("utf-8")
+    res = subprocess.run([sys.executable, str(_HOOK)], input=payload, capture_output=True, env=env, timeout=120,
+                         check=False)
+    assert res.returncode == 0, res.stderr.decode("utf-8", "replace")
+    assert b"docs/gone-for-good.md" in res.stdout, (res.stdout, res.stderr.decode("utf-8", "replace"))
+
+
+def test_a_failing_checker_never_breaks_the_write(tmp_path, monkeypatch, capsys):
+    """🔴 검사가 무엇으로 넘어져도 exit 0 — 대신 «못 돌렸다» 를 한 줄로 보인다(조용해지지 않는다)."""
+    import scripts.check_memory_refs as refs  # noqa: PLC0415
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("검사가 넘어졌다")
+
+    monkeypatch.setattr(refs, "reverse_dangling", boom)
+    mem = _memory(tmp_path, "- 인덱스\n")
+    payload = json.loads(_run(monkeypatch, capsys, mem, str(mem / "MEMORY.md")))
+    assert "돌리지 못했다" in payload["systemMessage"] and "RuntimeError" in payload["systemMessage"], payload
+
+
+def test_only_paths_that_may_be_memory_reach_the_checker(tmp_path, monkeypatch):
+    """메모리일 수 없는 쓰기는 검사 모듈을 부르지도 않는다 — 모듈이 편집 중에 깨져 있어도 다른 쓰기는 조용하다."""
+    mem = _memory(tmp_path, "- 인덱스\n")
+    monkeypatch.setenv("CLAUDE_PROJECT_MEMORY_DIR", str(mem))
+    assert hook.may_be_memory(str(mem / "MEMORY.md")) is True
+    assert hook.may_be_memory(str(_ROOT / "README.md")) is False
+    monkeypatch.delenv("CLAUDE_PROJECT_MEMORY_DIR")
+    assert hook.may_be_memory(str(_ROOT / "README.md")) is False
+    assert hook.may_be_memory(str(Path.home() / ".claude" / "projects" / "x" / "memory" / "MEMORY.md")) is True
 
 
 def test_the_hook_is_wired_after_every_write_tool():
