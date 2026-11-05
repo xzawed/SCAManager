@@ -372,8 +372,12 @@ _CSS_BAND_STARTS_JS = r"""() => {
     const walk = rules => {
         for (const r of rules) {
             if (r instanceof CSSMediaRule) {
-                for (const m of r.media.mediaText.matchAll(/(max|min)-width:\s*(\d+(?:\.\d+)?)px/g)) {
-                    starts.add(m[1] === 'max' ? Math.floor(Number(m[2])) + 1 : Math.ceil(Number(m[2])));
+                // em · rem 은 미디어 쿼리에서 초기 글자 크기(16px) 기준이다 — 빌드한 tailwind 가 rem 분기를 쓴다.
+                // em/rem in media queries resolve against the initial font size (16px).
+                const rx = /(max|min)-width:\s*(\d+(?:\.\d+)?)(px|r?em)/g;
+                for (const m of r.media.mediaText.matchAll(rx)) {
+                    const px = Number(m[2]) * (m[3] === 'px' ? 1 : 16);
+                    starts.add(m[1] === 'max' ? Math.floor(px) + 1 : Math.ceil(px));
                 }
             }
             if (r.cssRules) walk(r.cssRules);
