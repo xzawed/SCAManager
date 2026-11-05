@@ -108,6 +108,9 @@
       align-items: center;
       gap: var(--space-2);
       height: 56px;
+      /* nav 는 한 줄이다 — 일본어 링크는 글자 사이에서 꺾일 수 있어, 자리가 모자라면 넘치는 대신 여러 줄로
+         쌓였다(실측 769px «ダッシュボード» 7줄). Keep every nav label on one line. */
+      white-space: nowrap;
       position: sticky;
       top: 0;
       z-index: 100;
@@ -169,12 +172,11 @@
     .nav-hamburger:hover { background: rgba(255,255,255,.08); }
 
     /* ── 사용자 정보 & 로그아웃 ──────────────── */
-    .nav-user {
-      display: flex;
-      align-items: center;
-      gap: var(--space-2);
-      flex-shrink: 0;
-    }
+    /* 상자를 풀어 이름 · 로그아웃 · 아바타를 nav 의 flex 항목으로 올린다 — 자리가 모자라면 이름만 말줄임으로
+       줄어든다(넘침 숨김이라 최소 폭이 0). 묶음 상자가 줄지 않으면 긴 GitHub 프로필 이름이 769px 이상에서 문서를
+       가로로 밀었다(실측 이름 상한 140px +47~76px). 나머지 항목은 제 글자 폭 아래로 줄지 않아 겹치지 않는다.
+       Unwrap the group so only the name (overflow hidden, min width 0) shrinks when the nav runs short. */
+    .nav-user { display: contents; }
     .nav-user-name {
       font-size: var(--fs-xs);
       color: var(--text-3);
@@ -556,11 +558,19 @@
       .nav-logout-btn { padding: 8px 12px; min-height: 40px; box-sizing: border-box; }
     }
 
+    /* 라벨 접기는 480px 가 아니라 여기까지 — 768px 규칙은 nav 링크만 접어, 라벨을 다 편 nav 의 최소 폭
+       (실측 588~652px, ja · catppuccin 이 가장 넓다)이 481px 부터 뷰포트를 넘었다. 아이콘은 남는다.
+       Fold the labels up to here, not 480px: with every label shown the nav needs up to 652px. */
+    @media (max-width: 680px) {
+      .nav-user-name { display: none; }
+      #themeName, #langName { display: none; }
+      .theme-btn .chevron { display: none; }
+    }
+
     /* ── 반응형 (소형) ─────────────────────────── */
     @media (max-width: 480px) {
       nav { gap: var(--space-1); }
       .nav-logo strong { display: none; }
-      .nav-user-name { display: none; }
       /* Step A (S3): theme/logout 버튼 클릭 영역 보강 (이전 11px → 안 변경하고 padding 만 확장) */
       .theme-btn, .nav-logout-btn { padding: 8px 10px; font-size: 11px; min-height: 40px; box-sizing: border-box; }
       /* 🔴 nav 는 flex-wrap: nowrap 이고 자식 넷이 flex-shrink: 0 이라, 좁아져도 줄바꿈으로
@@ -573,8 +583,6 @@
       nav { padding: 0 max(var(--space-3), env(safe-area-inset-left))
                      0 max(var(--space-3), env(safe-area-inset-right)); }
       .nav-badge { display: none; }
-      #themeName, #langName { display: none; }
-      .theme-btn .chevron { display: none; }
       /* Step A (S4): 480px 분기 container 도 safe-area-inset */
       .container { padding: var(--space-4) max(var(--space-2), env(safe-area-inset-right)) var(--space-4) max(var(--space-2), env(safe-area-inset-left)); }
     }

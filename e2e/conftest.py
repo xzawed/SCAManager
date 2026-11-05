@@ -1370,13 +1370,14 @@ def rls_catalog_double(*, force: bool = True, bypasses: bool = True,
 
 
 @contextlib.contextmanager
-def acting_as(user_id: int, login: str = "e2e-other", **fields):
+def acting_as(user_id: int, login: str = "e2e-other", display_name: str | None = None, **fields):
     """이 창 동안 `/dashboard` 가 **다른 사용자**로 돈다.
 
     🔴 `require_login` 을 갈아야 한다 — `/dashboard` 가 무는 것이 그것이다
        (`src/ui/routes/dashboard.py`). `get_current_user` 만 갈면 아무것도 안 바뀐다:
        `require_login` 은 그것을 **평범한 함수로** 부르므로 FastAPI override 가 안 탄다
        (Grok `01a09a3b` 이 내 계획의 이 대목을 잡았다). 템플릿의 nav 를 위해 둘 다 간다.
+    `display_name` 을 안 주면 login 이다(GitHub 프로필 이름이 없는 사용자와 같다).
     `fields` 는 `CurrentUser` 의 나머지 필드(`is_telegram_connected` 등)다.
     ⚠️ 앱 전역 상태다 — 순차 실행 전제(이 스위트가 그렇다).
     """
@@ -1384,7 +1385,8 @@ def acting_as(user_id: int, login: str = "e2e-other", **fields):
     from src.main import app  # noqa: PLC0415
 
     other = CurrentUser(id=user_id, github_login=login, email=f"{login}@test.com",
-                        display_name=login, plaintext_token="gho_e2e_test_token", **fields)
+                        display_name=display_name or login, plaintext_token="gho_e2e_test_token",
+                        **fields)
     saved = {k: app.dependency_overrides.get(k) for k in (require_login, get_current_user)}
     app.dependency_overrides[require_login] = lambda: other
     app.dependency_overrides[get_current_user] = lambda: other
