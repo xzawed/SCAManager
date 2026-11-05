@@ -182,9 +182,9 @@ def test_b8_is_wired():
 def test_pre_commit_runs_b8_when_any_scanned_surface_changes():
     """🔴 pre-commit 의 `files:` 가 네 표면 모두를 덮는다 — 시험만 고친 커밋에서도 B8 이 돈다.
 
-    표본은 손 목록이 아니라 B8 자신의 표면에서 파생한다(표면마다 첫 파일). `files:` 가 옛
-    `^scripts/check_` 에 머물면 tests/ 편집 커밋은 B8 없이 지나가고 CI 에서야 빨개진다.
-    Samples come from B8's own surfaces, so a `files:` pattern stuck on scripts/ turns this red.
+    대조할 경로는 손 목록이 아니라 B8 자신의 표면 전부다. `files:` 가 옛 `^scripts/check_` 에
+    머물면 tests/ 편집 커밋은 B8 없이 지나가고 CI 에서야 빨개진다.
+    Every path B8 scans must match, so a `files:` pattern stuck on scripts/ turns this red.
     """
     mod = _load()
     hooks = [h for repo in yaml.safe_load((_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8"))["repos"]
@@ -194,9 +194,10 @@ def test_pre_commit_runs_b8_when_any_scanned_surface_changes():
     surfaces = mod._scan_targets()  # pylint: disable=protected-access
     assert len(surfaces) == len(_SURFACES), f"표면 수가 바뀌었다: {sorted(surfaces)}"
     for label, files in surfaces.items():
-        assert files, f"{label} 표면이 비었다 — 표본을 못 뽑는다"
-        sample = files[0].relative_to(_ROOT).as_posix()
-        assert pattern.search(sample), f"pre-commit `files:` 가 {label} 의 {sample} 을 안 덮는다"
+        assert files, f"{label} 표면이 비었다 — 대조할 파일이 없다"
+        missed = [p.relative_to(_ROOT).as_posix() for p in files
+                  if not pattern.search(p.relative_to(_ROOT).as_posix())]
+        assert not missed, f"pre-commit `files:` 가 {label} 의 {len(missed)}개를 안 덮는다: {missed[:5]}"
 
 
 # ── 표면 붕괴 · 구문 깨짐 (빈 범위 위의 초록 금지) ─────────────────────────
@@ -372,28 +373,44 @@ def test_parser_outside_the_catalog_is_flagged_not_waved_through(fake_repo, modu
 _HELPER = "import re\n_P = re.compile(r'#.*')\ndef code(s):\n    return _P.sub('', s)\n"
 
 
-@pytest.mark.parametrize("importer,line", [
-    ("unit/test_rel.py", "from ._clean import code\n"),
-    ("unit/test_abs.py", "from tests.unit._clean import code\n"),
-    ("unit/test_mod.py", "from tests.unit import _clean\n"),
-], ids=["relative", "absolute", "module"])
-def test_call_into_a_structural_repo_helper_counts(fake_repo, importer, line):
+@pytest.mark.parametrize("helper,line,call", [
+    ("unit/_clean.py", "from ._clean import code\n", "code"),
+    ("unit/_clean.py", "from tests.unit._clean import code\n", "code"),
+    ("unit/_clean.py", "from tests.unit import _clean\n", "_clean.code"),
+    ("unit/_clean.py", "from . import _clean\n", "_clean.code"),
+    ("unit/_clean.py", "from ._clean import *\n", "code"),
+    ("unit/cleanpkg/__init__.py", "from .cleanpkg import code\n", "code"),
+    ("unit/cleanpkg/__init__.py", "from . import cleanpkg\n", "cleanpkg.code"),
+], ids=["relative", "absolute", "module", "relative-module", "star", "package", "package-module"])
+def test_call_into_a_structural_repo_helper_counts(fake_repo, helper, line, call):
     """구조 도구를 부르는 리포 헬퍼에 판정을 맡긴 시험은 후보가 아니다 — 판정이 헬퍼에서 일어난다.
 
-    `surface_invokes`(배선) · `start_argv`(Dockerfile) · 템플릿 코드 뷰가 이 모양이다.
+    `surface_invokes`(배선) · `start_argv`(Dockerfile) · 템플릿 코드 뷰가 이 모양이다. 실제 리포처럼
+    `tests/unit/__init__.py`(구조 도구 없음)를 두어, 패키지가 하위 모듈보다 먼저 잡히면 빨개지게 한다.
+    A non-structural tests/unit/__init__.py mirrors the real tree, so resolving the package before
+    the submodule turns this red.
     """
     mod, dirs = fake_repo
-    _put(dirs["_TESTS"] / "unit" / "_clean.py", _HELPER)
-    call = "_clean.code" if "import _clean" in line else "code"
-    _put(dirs["_TESTS"] / importer,
+    _put(dirs["_TESTS"] / "unit" / "__init__.py", "")
+    _put(dirs["_TESTS"] / helper, _HELPER)
+    _put(dirs["_TESTS"] / "unit" / "test_uses_helper.py",
          line + f"def test_x():\n    assert 'X' in {call}(open('x').read())\n")
     assert mod.fail_open_candidates() == [], f"구조 헬퍼 판정을 오탐: {mod.fail_open_candidates()}"
 
 
+def test_star_import_from_a_structural_module_counts(fake_repo):
+    """`from re import *` 뒤의 `search(...)` 도 구조 도구 호출이다 — from-import 해소에 별표도 든다."""
+    mod, dirs = fake_repo
+    _put(dirs["_TESTS"] / "unit" / "test_star.py",
+         "from re import *\ndef test_x():\n    assert search(r'p', open('x').read())\n")
+    assert mod.fail_open_candidates() == [], f"별표 import 구조 도구를 오탐: {mod.fail_open_candidates()}"
+
+
 @pytest.mark.parametrize("helper,line", [
     ("def code(s):\n    return s\n", "from ._clean import code\n_ = code('')\n"),
+    ("def code(s):\n    return s\n", "from ._clean import *\n_ = code('')\n"),
     (_HELPER, "from ._clean import _P\n"),
-], ids=["helper-without-tool", "imported-but-not-called"])
+], ids=["helper-without-tool", "star-from-helper-without-tool", "imported-but-not-called"])
 def test_repo_helper_does_not_count_unless_it_is_structural_and_called(fake_repo, helper, line):
     """🔴 대조축 — 구조 도구가 없는 헬퍼를 부르거나, 구조 헬퍼를 가져오기만 하면 여전히 후보다.
 

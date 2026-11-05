@@ -28,6 +28,8 @@ escape: 정당한 substring-only 판정은 `# fail-open-reviewed: <사유>` 주�
 Floor gate: Python that reads a file and decides pass/fail must call a structural tool.
 """
 import ast
+import functools
+import importlib
 import io
 import sys
 import tokenize
@@ -106,12 +108,40 @@ def _tool_names(tree: ast.AST) -> tuple[dict, set, set, set]:
                     base_modules[a.asname] = _PARSER_BASES[a.name]
         elif isinstance(n, ast.ImportFrom) and not n.level:
             for a in n.names:
+                if a.name == "*":  # `from re import *` — 그 모듈이 내보내는 이름 전부
+                    direct |= _star_names(n.module)
+                    bases |= _PARSER_BASES.get(n.module, frozenset())
+                    continue
                 bound = a.asname or a.name
                 if n.module in _STRUCTURAL_MODULES or a.name in _PARSE_ENTRIES.get(n.module, ()):
                     direct.add(bound)
                 if a.name in _PARSER_BASES.get(n.module, ()):
                     bases.add(bound)
     return modules, direct, bases, base_modules
+
+
+@functools.lru_cache(maxsize=None)
+def _star_names(module: str | None) -> frozenset:
+    """`from <module> import *` 가 묶는 구조 도구 이름 — 구조 모듈은 공개 이름 전부, 파서는 읽기 입구만."""
+    if module in _STRUCTURAL_MODULES:
+        mod = importlib.import_module(module)
+        return frozenset(getattr(mod, "__all__", None) or (x for x in dir(mod) if not x.startswith("_")))
+    return _PARSE_ENTRIES.get(module, frozenset())
+
+
+def _public_names(tree: ast.Module) -> set:
+    """`from helper import *` 가 묶는 이름 — `__all__` 리터럴이 있으면 그것, 없으면 `_` 로 안 시작하는 최상위 이름."""
+    for n in tree.body:
+        if (isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "__all__" for t in n.targets)
+                and isinstance(n.value, (ast.List, ast.Tuple))):
+            return {e.value for e in n.value.elts if isinstance(e, ast.Constant) and isinstance(e.value, str)}
+    out = set()
+    for n in tree.body:
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            out.add(n.name)
+        elif isinstance(n, ast.Assign):
+            out |= {t.id for t in n.targets if isinstance(t, ast.Name)}
+    return {name for name in out if not name.startswith("_")}
 
 
 def _inherits(cls: ast.ClassDef, bases: set, base_modules: dict) -> bool:
@@ -125,8 +155,13 @@ def _inherits(cls: ast.ClassDef, bases: set, base_modules: dict) -> bool:
 
 
 def _module_file(base: Path, parts: list[str]) -> Path | None:
-    candidate = base.joinpath(*parts).with_suffix(".py") if parts else None
-    return candidate if candidate is not None and candidate.is_file() else None
+    """`a.b` → `a/b.py` 또는 패키지 `a/b/__init__.py` — 없으면 None."""
+    if not parts:
+        return None
+    for candidate in (base.joinpath(*parts).with_suffix(".py"), base.joinpath(*parts, "__init__.py")):
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 def _local_helper_names(tree: ast.AST, importer: Path, cache: dict) -> tuple[set, set]:
@@ -139,13 +174,15 @@ def _local_helper_names(tree: ast.AST, importer: Path, cache: dict) -> tuple[set
     """
     aliases, names = set(), set()
 
-    def structural(path: Path) -> bool:
+    def helper_tree(path: Path) -> ast.Module | None:
+        """구조 도구를 부르는 헬퍼면 그 구문 트리, 아니면(또는 못 읽으면) None."""
         key = str(path)
         if key not in cache:
             try:
-                cache[key] = _calls_structural_tool(_parse(path.read_text(encoding="utf-8")))
+                parsed = _parse(path.read_text(encoding="utf-8"))
             except (SyntaxError, UnicodeDecodeError, OSError):
-                cache[key] = False
+                parsed = None
+            cache[key] = parsed if parsed is not None and _calls_structural_tool(parsed) else None
         return cache[key]
 
     for n in ast.walk(tree):
@@ -156,19 +193,27 @@ def _local_helper_names(tree: ast.AST, importer: Path, cache: dict) -> tuple[set
                 for _ in range(n.level - 1):
                     base = base.parent
             parts = n.module.split(".") if n.module else []
-            target = _module_file(base, parts)
             for a in n.names:
-                if target is not None:
-                    if structural(target):
-                        names.add(a.asname or a.name)
+                if a.name == "*":
+                    target = _module_file(base, parts)
+                    helper = helper_tree(target) if target is not None else None
+                    if helper is not None:
+                        names |= _public_names(helper)
                     continue
-                sub = _module_file(base, [*parts, a.name])  # `from pkg import module`
-                if sub is not None and structural(sub):
-                    aliases.add(a.asname or a.name)
+                # 하위 모듈이 먼저다 — `from tests.unit import _clean` 의 `tests/unit/__init__.py` 는 비어 있다.
+                # Submodule first: the package __init__ next to it is usually empty.
+                sub = _module_file(base, [*parts, a.name])
+                if sub is not None:
+                    if helper_tree(sub) is not None:
+                        aliases.add(a.asname or a.name)
+                    continue
+                target = _module_file(base, parts)
+                if target is not None and helper_tree(target) is not None:
+                    names.add(a.asname or a.name)
         elif isinstance(n, ast.Import):
             for a in n.names:
                 target = _module_file(_ROOT, a.name.split("."))
-                if a.asname and target is not None and structural(target):
+                if a.asname and target is not None and helper_tree(target) is not None:
                     aliases.add(a.asname)
     return aliases, names
 
