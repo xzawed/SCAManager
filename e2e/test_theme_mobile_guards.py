@@ -681,6 +681,54 @@ def test_nav_and_body_stay_inside_a_one_sided_safe_area(page, base_url, side):
                           + "\n  ".join(failures))
 
 
+# 열린 모바일 메뉴 — 패널이 뒤의 페이지를 가리는가.
+# 패널은 nav 의 반투명 바탕(--bg-nav, 알파 0.72~0.82)을 썼는데, 화면 끝까지 펼친 fixed 패널은 nav 의 블러 밖이라
+# 아래 페이지 제목이 그대로 비쳐 링크 글자와 겹쳤다. 불투명 바탕으로 바꿨다(사용자 결정).
+# 🔴 «불투명» 은 계산값이 아니라 칠해진 픽셀로 잰다 — 메뉴를 연 채 패널을 찍고, 뒤 내용을 숨긴 뒤 다시 찍어 두 장이
+#    같아야 한다. 숨기기가 화면을 실제로 바꿨는지는 패널 밖을 찍어 확인한다(안 바뀌었으면 재지 못한 것이다).
+# The open mobile menu must hide the page behind it: identical panel pixels with and without the content behind.
+_MENU_PANEL_BOX_JS = """() => {
+    const panel = document.querySelector('.nav-links.open');
+    if (!panel || !panel.checkVisibility()) return null;
+    const r = panel.getBoundingClientRect();
+    return {x: Math.ceil(r.left), y: Math.ceil(r.top), width: Math.floor(r.width), height: Math.floor(r.height) - 1};
+}"""
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_open_mobile_menu_hides_the_page_behind_it(page, base_url, theme):
+    """🔴 열린 모바일 메뉴 패널의 픽셀은 뒤의 페이지와 무관해야 한다 — 비치면 링크 글자가 제목과 겹친다.
+
+    폰 폭(375px)과 481~768px 띠(600px), 그리고 링크에 마우스를 올린 상태에서 잰다 — 한 폭 · 쉬는 상태만 재면 그
+    띠나 hover 에서만 반투명으로 덮여도 초록이었다(적대 패스).
+    """
+    for width in (375, 600):
+        page.set_viewport_size({"width": width, "height": 667})
+        page.goto(f"{base_url}/dashboard")
+        apply_theme(page, theme)
+        # 전환은 끄고(중간색 방지), 움직이는 배경 장식만 멈춘다 — 모든 animation 을 끄면 `.reveal` 이 못 드러난다.
+        page.add_style_tag(content="*,*::before,*::after{transition:none !important}"
+                                   ".atmosphere,.atmosphere *{animation:none !important}")
+        _reveal_all(page)
+        _open_mobile_nav(page)
+        for state in ("쉬는", "hover"):
+            if state == "hover":
+                page.add_style_tag(content=".container,.atmosphere{visibility:visible !important}")
+                page.hover(".nav-links.open a.nav-link")
+            box = page.evaluate(_MENU_PANEL_BOX_JS)
+            assert box and box["width"] > 0 and box["height"] > 0, (
+                f"{width}px {state}: 열린 메뉴 패널을 못 찾았다 — 재지 못했다: {box}")
+            below = {"x": 0, "y": box["y"] + box["height"] + 8, "width": width, "height": 120}
+            panel_before, page_before = page.screenshot(clip=box), page.screenshot(clip=below)
+            page.add_style_tag(content=".container,.atmosphere{visibility:hidden !important}")
+            page.wait_for_timeout(100)
+            panel_after, page_after = page.screenshot(clip=box), page.screenshot(clip=below)
+            assert page_before != page_after, (
+                f"{width}px {state}: 뒤 내용을 숨겼는데 패널 밖 화면이 그대로다 — 뒤가 바뀌지 않아 재지 못했다")
+            assert panel_before == panel_after, (
+                f"[{theme}] {width}px {state}: 열린 모바일 메뉴 패널에 뒤의 페이지가 비친다 — 패널 바탕이 불투명하지 않다")
+
+
 @pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
 def test_primary_button_label_meets_aa(page, base_url, theme):
     """🔴 채워진 기본 버튼의 «라벨» 이 네 테마 모두에서 AA(4.5:1)를 넘어야 한다.
