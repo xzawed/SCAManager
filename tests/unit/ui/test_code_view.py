@@ -39,6 +39,33 @@ def test_js_strings_keep_their_comment_lookalikes(live):
     assert js_code(live + "\n") == live + "\n"
 
 
+@pytest.mark.parametrize("src", [
+    'x = s.replace(/"/g, "&quot;"); // GUARD\n',
+    "x = s.replace(/'/g, '&#39;'); // GUARD\n",
+    "x = s.replace(/`/g, ''); // GUARD\ny = 1;\n",
+], ids=["double-quote", "single-quote", "backtick"])
+def test_js_regex_literal_with_a_quote_does_not_hide_a_comment(src):
+    """🔴 정규식 리터럴 속 따옴표를 문자열 시작으로 읽으면 그 뒤 주석이 «코드» 로 남는다(실제 `repo_detail.html` 에 `/"/g` 가 있다)."""
+    assert "GUARD" not in js_code(src)
+
+
+@pytest.mark.parametrize("live", [
+    "var ok = /\\/\\//.test(u);",
+    "return /a\\/*b/.test(s);",
+    "if (!/^https?:\\/\\//.test(u)) return;",
+    "var r = [/x/g, /y/];",
+], ids=["escaped-slashes", "slash-star-inside", "after-not", "in-array"])
+def test_js_regex_literals_keep_their_comment_lookalikes(live):
+    """대조군 — 정규식 리터럴 안의 `//`·`/*` 는 코드다. 지우면 있어야 할 것이 사라진다."""
+    assert js_code(live + "\n") == live + "\n"
+
+
+def test_js_division_is_not_a_regex():
+    """나눗셈의 `/` 는 정규식이 아니다 — 뒤의 주석은 지우고 식은 남긴다."""
+    src = "y = a / b; // one\nz = (c) / 2 / d; // two\n"
+    assert js_code(src) == "y = a / b; \nz = (c) / 2 / d; \n"
+
+
 def test_js_block_comment_does_not_glue_tokens():
     """블록 주석 자리는 공백이다 — `a/**/b` 가 `ab` 가 되면 없던 이름이 생긴다."""
     assert js_code("return a/**/b;") == "return a b;"
@@ -65,6 +92,24 @@ def test_template_comments_hide_the_code_they_quote(commented):
     html = "<body>\n" + commented + "\n</body>\n"
     assert "GUARD" in html
     assert "GUARD" not in template_code(html)
+
+
+def test_script_lookalike_inside_an_attribute_is_not_a_script():
+    """🔴 속성값 안의 `<script>` 는 태그가 아니다 — 스크립트로 읽으면 뒤의 HTML 주석이 «JS» 로 남는다."""
+    html = '<div data-x="<script>">a</div>\n<!-- GUARD -->\n<p>keep</p>\n'
+    view = template_code(html)
+    assert "GUARD" not in view
+    assert view == '<div data-x="<script>">a</div>\n\n<p>keep</p>\n'
+
+
+@pytest.mark.parametrize("live", [
+    '<p>{{ "{#" }}</p>\n<p>keep</p>',
+    "<p>{% set x = '{#' %}{{ x }}</p>\n<p>keep</p>",
+], ids=["expression", "statement"])
+def test_jinja_comment_opener_inside_an_expression_is_not_a_comment(live):
+    """Jinja 식·문 안의 `{#` 는 주석이 아니다(Jinja 도 그렇게 읽는다) — 거기서 지우기 시작하면 코드가 사라진다."""
+    html = live + "\n"
+    assert template_code(html) == html
 
 
 @pytest.mark.parametrize("live", [

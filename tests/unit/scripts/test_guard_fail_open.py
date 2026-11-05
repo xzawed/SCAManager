@@ -319,8 +319,12 @@ def test_success_message_states_the_actual_scan_scope(capsys):
     "import jinja2\ndef test_x():\n    assert jinja2.Environment().parse(open('x').read())\n",
     "from html.parser import HTMLParser\nclass P(HTMLParser):\n    pass\n"
     "def test_x():\n    P().feed(open('x').read())\n",
+    "import html.parser\nclass P(html.parser.HTMLParser):\n    pass\n"
+    "def test_x():\n    P().feed(open('x').read())\n",
+    "import html.parser as hp\nclass P(hp.HTMLParser):\n    pass\n"
+    "def test_x():\n    P().feed(open('x').read())\n",
 ], ids=["json.loads", "from-json-load", "yaml.safe_load", "tomllib.loads", "jinja2.Environment",
-        "HTMLParser-subclass"])
+        "HTMLParser-subclass", "HTMLParser-dotted", "HTMLParser-alias"])
 def test_parser_read_entries_count_as_structural(fake_repo, src):
     """파서로 구조를 읽는 시험은 후보가 아니다 — 데이터 파일을 파싱해 키로 판정하는 것은 구조 판정이다."""
     mod, dirs = fake_repo
@@ -396,6 +400,20 @@ def test_call_into_a_structural_repo_helper_counts(fake_repo, helper, line, call
     _put(dirs["_TESTS"] / "unit" / "test_uses_helper.py",
          line + f"def test_x():\n    assert 'X' in {call}(open('x').read())\n")
     assert mod.fail_open_candidates() == [], f"구조 헬퍼 판정을 오탐: {mod.fail_open_candidates()}"
+
+
+@pytest.mark.parametrize("call", ["code", "re.search"], ids=["re-exported-function", "re-exported-module"])
+def test_star_import_binds_what_the_helper_imports(fake_repo, call):
+    """`from helper import *` 는 헬퍼가 import 해 온 공개 이름도 묶는다(`__all__` 이 없을 때 파이썬이 그렇게 한다).
+
+    헬퍼가 다른 모듈에서 가져온 함수(`style_blocks`)나 `re` 자체를 별표로 받아 부르는 판정을 막으면 과탐이다.
+    """
+    mod, dirs = fake_repo
+    _put(dirs["_TESTS"] / "unit" / "__init__.py", "")
+    _put(dirs["_TESTS"] / "unit" / "_clean.py", "import re\nfrom ._dep import code\n_P = re.compile('x')\n")
+    _put(dirs["_TESTS"] / "unit" / "test_star_reexport.py",
+         f"from ._clean import *\ndef test_x():\n    assert {call}('p', open('x').read())\n")
+    assert mod.fail_open_candidates() == [], f"별표가 묶는 재수출 이름을 못 봤다: {mod.fail_open_candidates()}"
 
 
 def test_star_import_from_a_structural_module_counts(fake_repo):

@@ -88,14 +88,14 @@ def _reads_a_file(tree: ast.AST) -> bool:
 def _tool_names(tree: ast.AST) -> tuple[dict, set, set, set]:
     """구조 도구를 가리키는 이름을 import 에서 해소 — alias·from-import 인정.
 
-    반환 = (모듈 별칭 → 셀 속성 집합(None = 전부), 직접 부르는 이름, 상속할 이름, 상속할 이름의 모듈 별칭).
+    반환 = (모듈 별칭 → 셀 속성 집합(None = 전부), 직접 부르는 이름, 상속할 이름, 상속할 점 이름).
     🔴 `import re as r` / `from re import search` 를 못 보면 정당한 가드를 fail-open 오탐한다.
     Resolve names pointing at a structural tool, honoring aliases and from-imports.
     """
     modules: dict = {}      # `import re as r` → {"r": None}; `import json` → {"json": {"load", "loads"}}
     direct: set = set()     # `from re import search as s` → {"s"}; `from json import loads` → {"loads"}
     bases: set = set()      # `from html.parser import HTMLParser` → {"HTMLParser"}
-    base_modules: dict = {}  # `import html.parser as hp` → {"hp": {"HTMLParser"}}
+    dotted: set = set()     # `import html.parser` → {"html.parser.HTMLParser"}; `... as hp` → {"hp.HTMLParser"}
     for n in ast.walk(tree):
         if isinstance(n, ast.Import):
             for a in n.names:
@@ -104,8 +104,8 @@ def _tool_names(tree: ast.AST) -> tuple[dict, set, set, set]:
                     modules[bound] = None
                 elif a.name in _PARSE_ENTRIES:
                     modules[bound] = _PARSE_ENTRIES[a.name]
-                elif a.name in _PARSER_BASES and a.asname:
-                    base_modules[a.asname] = _PARSER_BASES[a.name]
+                elif a.name in _PARSER_BASES:
+                    dotted |= {f"{a.asname or a.name}.{base}" for base in _PARSER_BASES[a.name]}
         elif isinstance(n, ast.ImportFrom) and not n.level:
             for a in n.names:
                 if a.name == "*":  # `from re import *` — 그 모듈이 내보내는 이름 전부
@@ -117,7 +117,7 @@ def _tool_names(tree: ast.AST) -> tuple[dict, set, set, set]:
                     direct.add(bound)
                 if a.name in _PARSER_BASES.get(n.module, ()):
                     bases.add(bound)
-    return modules, direct, bases, base_modules
+    return modules, direct, bases, dotted
 
 
 @functools.lru_cache(maxsize=None)
@@ -141,15 +141,29 @@ def _public_names(tree: ast.Module) -> set:
             out.add(n.name)
         elif isinstance(n, ast.Assign):
             out |= {t.id for t in n.targets if isinstance(t, ast.Name)}
+        elif isinstance(n, ast.Import):  # `import re` 도 별표로 넘어간다 — 파이썬이 그렇게 묶는다
+            out |= {a.asname or a.name.split(".")[0] for a in n.names}
+        elif isinstance(n, ast.ImportFrom):
+            out |= {a.asname or a.name for a in n.names if a.name != "*"}
     return {name for name in out if not name.startswith("_")}
 
 
-def _inherits(cls: ast.ClassDef, bases: set, base_modules: dict) -> bool:
+def _dotted(node: ast.AST) -> str | None:
+    """`html.parser.HTMLParser` 같은 점 이름 — 이름·속성 사슬이 아니면 None."""
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        head = _dotted(node.value)
+        return f"{head}.{node.attr}" if head is not None else None
+    return None
+
+
+def _inherits(cls: ast.ClassDef, bases: set, dotted: set) -> bool:
+    """`class P(HTMLParser)` · `class P(html.parser.HTMLParser)` · `class P(hp.HTMLParser)`."""
     for b in cls.bases:
         if isinstance(b, ast.Name) and b.id in bases:
             return True
-        if (isinstance(b, ast.Attribute) and isinstance(b.value, ast.Name)
-                and b.attr in base_modules.get(b.value.id, ())):
+        if _dotted(b) in dotted:
             return True
     return False
 
@@ -225,12 +239,12 @@ def _calls_structural_tool(tree: ast.AST, importer: Path | None = None, cache: d
     🔴 import·주석 언급이 아니라 호출을 본다(산문 통과 방지). alias·from-import 를 해소해 정당한
     가드 오탐도 막는다.
     """
-    modules, direct, bases, base_modules = _tool_names(tree)
+    modules, direct, bases, dotted = _tool_names(tree)
     helper_aliases, helper_names = (
         _local_helper_names(tree, importer, cache if cache is not None else {})
         if importer is not None else (set(), set()))
     for n in ast.walk(tree):
-        if isinstance(n, ast.ClassDef) and _inherits(n, bases, base_modules):
+        if isinstance(n, ast.ClassDef) and _inherits(n, bases, dotted):
             return True
         if not isinstance(n, ast.Call):
             continue

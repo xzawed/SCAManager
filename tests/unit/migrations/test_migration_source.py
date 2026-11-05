@@ -41,6 +41,30 @@ def test_sent_sql_is_found(tmp_path, call):
     assert _SQL in sql_literals(path, "upgrade")
 
 
+def test_sql_string_literals_keep_their_dashes(tmp_path):
+    """SQL 문자열 리터럴 안의 `--` 는 주석이 아니다 — 지우면 보내는 SQL 이 잘린다(Grok C7 반례)."""
+    path = tmp_path / "m.py"
+    path.write_text("def upgrade():\n    op.execute(\"SELECT '--keep me' AS x -- note\\nFROM t\")\n",
+                    encoding="utf-8")
+    assert sql_literals(path, "upgrade") == ["SELECT '--keep me' AS x FROM t"]
+
+
+def test_results_follow_source_order(tmp_path):
+    """결과는 소스 순서다 — 구문 트리 너비 우선 순서가 새지 않는다(Grok C7 반례)."""
+    path = tmp_path / "m.py"
+    path.write_text('def upgrade():\n    conn.execute(sa.text("FIRST"))\n    op.execute("SECOND")\n',
+                    encoding="utf-8")
+    assert sql_literals(path, "upgrade") == ["FIRST", "SECOND"]
+
+
+def test_async_and_nested_definitions(tmp_path):
+    """`async def upgrade` 도 찾는다. upgrade 안에서 정의한 함수의 SQL 은 upgrade 의 SQL 로 센다(그 안에서 부르니까)."""
+    path = tmp_path / "m.py"
+    path.write_text('async def upgrade():\n    def inner():\n        op.execute("NESTED")\n    inner()\n',
+                    encoding="utf-8")
+    assert sql_literals(path, "upgrade") == ["NESTED"]
+
+
 def test_missing_function_is_red_not_empty(tmp_path):
     """못 재면 red — 함수 이름이 틀리면 빈 목록(«SQL 없음») 이 아니라 실패다."""
     path = tmp_path / "m.py"
