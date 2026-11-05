@@ -80,20 +80,21 @@ def _hidden_selectors(block: str) -> set[str]:
     return hidden
 
 
-def test_nav_folds_labels_up_to_the_width_they_need():
-    """🔴 nav 라벨 접기는 라벨을 다 편 nav 가 들어가는 폭까지 걸려야 한다 — 안 접으면 문서가 가로로 밀린다.
+def test_nav_folds_labels_past_the_phone_breakpoint():
+    """🔴 nav 라벨 접기는 480px 너머까지 걸려야 한다 — 안 접으면 문서가 가로로 밀린다.
 
     `nav` 는 줄바꿈하지 않고 대부분의 항목이 제 글자 폭 아래로 줄지 않아, 접지 않은 폭에서는 **문서 전체**를
     늘린다(실측: 320px +89px). 접기가 480px 에서 멈추면 481px 부터 사용자 이름 · 테마/언어 이름 · 펼침 표시가
     돌아오는데, 그 nav 의 최소 폭은 588~652px(ja · catppuccin 이 가장 넓다)라 481~652px 가 가로로 밀렸다.
-    The fold must reach the width the full-label nav needs (measured up to 652px).
+    어디까지 걸려야 하는지는 e2e(`test_nav_fits_the_narrowest_width_of_every_css_band`)가 최악 조건으로 잰다.
+    The fold must reach past 480px; the e2e measures how far it has to go.
     """
     src = _read("src/templates/base.html")
     targets = (".nav-user-name", "#themeName", "#langName", ".theme-btn .chevron")
     folding = [n for n, body in _max_width_blocks(src) if set(targets) <= _hidden_selectors(body)]
     assert folding, f"{targets} 를 함께 접는 max-width 분기가 없다 — 좁은 화면에서 문서가 가로로 밀린다"
-    assert max(folding) >= 652, (
-        f"라벨 접기가 {max(folding)}px 에서 멈춘다 — 라벨을 다 편 nav 는 652px 까지 필요하다(실측 ja · catppuccin)")
+    assert max(folding) > 480, (
+        f"라벨 접기가 {max(folding)}px 에서 멈춘다 — 481px 부터 라벨을 다 편 nav(588~652px)가 문서를 민다")
 
 
 def test_nav_stays_on_one_line_and_only_the_name_gives_way():
