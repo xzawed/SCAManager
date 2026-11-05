@@ -14,6 +14,7 @@ Behaviour guard: the script had zero behavioural tests while its hardcoded memor
 so it silently passed forever. The negative controls below are the point of this file.
 """
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -697,8 +698,8 @@ def test_merge_record_shas_are_checked_in_every_merge_form(tmp_path):
     root = Path(__file__).resolve().parents[3]
 
     def rev(*args):
-        return mod.subprocess.run(["git", "-C", str(root), "rev-parse", *args, "HEAD"],
-                                  capture_output=True, text=True, check=True).stdout.strip()
+        return subprocess.run(["git", "-C", str(root), "rev-parse", *args, "HEAD"],
+                              capture_output=True, text=True, check=True).stdout.strip()
 
     short, full = rev("--short=8"), rev()
     fakes = ("0123abc", "0123abcd" * 5, "0123abce", "0123abcf", "0123abd0")
@@ -721,13 +722,13 @@ def test_reverse_fails_closed_when_git_fails(tmp_path):
     assert any("확인하지 못했다" in line for line in out), out
 
 
-@pytest.mark.parametrize("exc", [FileNotFoundError("git"), mod.subprocess.TimeoutExpired("git", 60)])
+@pytest.mark.parametrize("exc", [FileNotFoundError("git"), subprocess.TimeoutExpired("git", 60)])
 def test_reverse_fails_closed_when_git_cannot_run(exc, tmp_path, monkeypatch):
     """🔴 git 을 아예 못 부르거나(실행 파일 없음) 시간이 넘어도 red — 예외 길이 «통과» 로 새면 안 된다."""
     def boom(*_args, **_kwargs):
         raise exc
 
-    monkeypatch.setattr(mod.subprocess, "run", boom)
+    monkeypatch.setattr(subprocess, "run", boom)
     out = mod.reverse_dangling(_mem(tmp_path, {"MEMORY.md": "- ✅ #1 `0123abcd`\n"}), tmp_path / "repo")
     assert any("확인하지 못했다" in line for line in out), out
 
