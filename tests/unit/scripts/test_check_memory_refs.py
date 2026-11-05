@@ -551,26 +551,114 @@ def test_session_start_wires_the_advisory_flag():
     assert all("--advisory" in c for c in hit), f"`--advisory` 없이 걸려 있다: {hit}"
 
 
-# 🔴 알려진 잔여 — 역방향 스캔은 «접두사 8개» 로만 경로를 알아본다
-#    (`docs|src|tests|scripts|e2e|alembic|.claude|.github`). 그 밖의 실제 리포 파일이
-#    처방 문장에 백틱으로 적히면 **판정 자체가 일어나지 않는다** — 없는 파일을 가리켜도
-#    조용하다. 아래 둘은 실재하는 리포 루트 파일이고, 검사가 «못 알아보는» 부류다.
-#    범위를 넓히면 산문 오탐이 늘어 경고가 죽으므로, 넓히지 않고 한계를 기록한다.
-# witness-corpus: 접두사 목록 밖의 실제 리포 경로 — 스캔이 아예 보지 않는 부류다
-_PATHS_THE_SCAN_CANNOT_SEE = (
-    "README.md",
-    ".pre-commit-config.yaml",
+def test_reverse_judges_every_line_under_an_entry_point_heading(tmp_path):
+    """🔴 «진입점» 제목 아래 절 전체가 처방이다 — 그 낱말이 없는 줄도 다음 세션이 그대로 따른다.
+
+    실측: 세션 메모리의 `## 🔖 다음 세션 진입점` 절은 번호 목록으로 할 일 · 좌표를 적는데, 줄마다
+    «진입점» 을 쓰지 않는다. 줄 단위 낱말만 보면 그 절이 통째로 판정 밖이었다(P2-71).
+    계기 뒤집기 — 같은 죽은 좌표가 절 안에서는 red, 같은 수준의 다음 제목 뒤(역사)에서는 조용하다.
+    """
+    body = "\n".join([
+        "## 기록",
+        "- 옛 이야기 `docs/old.md`",
+        "## 🔖 다음 세션 진입점",
+        "1. 다음 PR = `docs/gone.md`",
+        "```bash",
+        "# 펜스 안의 줄은 제목이 아니다",
+        "```",
+        "2. 이어서 `docs/also-gone.md`",
+        "## 관련",
+        "- 역사 `docs/history.md`",
+    ]) + "\n"
+    mem = _mem(tmp_path, {"MEMORY.md": "- 인덱스\n", "project_now.md": body})
+    out = mod.reverse_dangling(mem, tmp_path / "repo")
+    assert any("docs/gone.md" in line for line in out), out
+    assert any("docs/also-gone.md" in line for line in out), f"펜스 속 `#` 줄이 절을 끊었다: {out}"
+    assert not any("docs/old.md" in line or "docs/history.md" in line for line in out), out
+
+
+def test_reverse_judges_the_entry_point_word_like_the_start_point_word(tmp_path):
+    """🔴 «진입점» 은 «시작점» 과 같은 처방이다 — 이 WBS 가 쓰는 낱말을 안 보면 축이 공허하다(P2-71)."""
+    mem = _mem(tmp_path, {"MEMORY.md": "- 인덱스\n", "project_old.md": "▶️ 진입점 = `docs/gone.md`\n"})
+    out = mod.reverse_dangling(mem, tmp_path / "repo")
+    assert any("docs/gone.md" in line for line in out), out
+
+
+def test_reverse_judges_root_level_files_and_resolves_memory_names(tmp_path):
+    """🔴 리포 루트 파일도 좌표다 — 접두사 목록 밖이라 «삭제 금지» 라 적힌 죽은 루트 파일 위에서 초록이었다.
+
+    처방 줄의 맨 파일 이름은 리포 루트나 메모리 디렉토리에 있어야 한다(P1-22 · P2-23). 다른 곳의 파일은
+    경로를 다 적는다 — 줄인 이름은 다음 세션이 어디를 열지 모른다. 죽은 파일을 역사로 말할 때는 백틱을
+    빼고 적는다(백틱 = 살아 있는 좌표).
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "README.md").write_text("x", encoding="utf-8")
+    # 이름을 조립한다 — 백틱 슬러그를 글자로 적으면 정방향 축이 이 파일을 «없는 메모리 참조» 로 읽는다.
+    note = "feedback_" + "x.md"
+    index = f"- 시작점 = `AGENTS.md` · `README.md` · `{note}` · `dashboard.html`\n- 역사: AGENTS.md 는 삭제됐다\n"
+    mem = _mem(tmp_path, {"MEMORY.md": index, note: "본문\n"})
+    out = mod.reverse_dangling(mem, repo)
+    assert any("AGENTS.md" in line for line in out), out
+    assert any("dashboard.html" in line for line in out), f"줄인 이름이 통과했다: {out}"
+    assert not any("README.md" in line or note in line for line in out), out
+    assert sum("AGENTS.md" in line for line in out) == 1, f"백틱 없는 역사 언급까지 잡았다: {out}"
+
+
+def test_reverse_flags_test_counts_copied_onto_prescriptive_lines(tmp_path):
+    """🔴 테스트 수는 원천(`docs/STATE.md` · `e2e/EXPECTED_COUNT`)이 말한다 — 처방 줄에 복사하면 썩는다.
+
+    실측: 인덱스 진입점의 수치가 main 보다 6 PR 뒤처졌고(P2-3), 그 수치를 무효로 만든 커밋 5개에서
+    훅은 매번 돌고도 초록이었다 — 두 수치를 잇는 규칙이 없었다(P2-73 · P2-75).
+    계기 뒤집기 — 같은 글이 처방 줄에서는 red, 역사 줄에서는 조용하다.
+    """
+    mem = _mem(tmp_path, {
+        "MEMORY.md": "- 진행 중 · E2E 531 · 단위 **8754** · 8961 수집\n",
+        "project_old.md": "당시 E2E 531 · 단위 8754 · 8961 수집\n",
+    })
+    out = mod.reverse_dangling(mem, tmp_path / "repo")
+    hits = [line for line in out if "테스트 수" in line]
+    assert len(hits) == 3, out
+    assert all(line.startswith("MEMORY.md:1") for line in hits), out
+
+
+def test_reverse_verifies_merge_record_shas(tmp_path):
+    """🔴 «#번호 `sha`» 머지 기록의 커밋은 리포에 있어야 한다 — 날조 · 오타 SHA 가 exit 0 이었다(P2-72).
+
+    다른 꼴의 hex(배포 ID · 세션 ID)는 글자로 커밋과 못 가르므로 이 꼴만 본다(실측: 메모리의 이 꼴 33건은
+    전부 실재 커밋, 다른 꼴 4건은 배포 · Grok 세션 ID). 계기 뒤집기 — 실재 커밋(HEAD)은 통과, 없는 커밋은 red.
+    """
+    root = Path(__file__).resolve().parents[3]
+    head = mod.subprocess.run(["git", "-C", str(root), "rev-parse", "--short=8", "HEAD"],
+                              capture_output=True, text=True, check=True).stdout.strip()
+    mem = _mem(tmp_path, {"MEMORY.md": f"- ✅ #1 `{head}` · #2 `0123abcd`\n- 배포 `0badc0de`\n"})
+    out = mod.reverse_dangling(mem, root)
+    assert any("0123abcd" in line for line in out), out
+    assert not any(head in line for line in out), out
+    assert not any("0badc0de" in line for line in out), f"머지 기록 꼴이 아닌 hex 를 판정했다: {out}"
+
+
+def test_reverse_fails_closed_when_commits_cannot_be_checked(tmp_path):
+    """🔴 git 으로 확인하지 못하면 «없는 커밋» 도 «통과» 도 아니다 — 못 쟀다고 red 로 말한다."""
+    mem = _mem(tmp_path, {"MEMORY.md": "- ✅ #1 `0123abcd`\n"})
+    out = mod.reverse_dangling(mem, tmp_path / "not-a-repo")
+    assert any("확인하지 못했다" in line for line in out), out
+
+
+# 🔴 판정 범위 — 이 축이 보는 «값» 은 셋뿐이다: 백틱 좌표(접두사 경로 · 맨 파일 이름) · «#번호 `sha`» 꼴의
+#    커밋 · E2E/단위/수집 테스트 수. 다른 값은 보지 않는다 — 아래가 그 부류이고, 처방 줄에 있어도 조용하다.
+#    여기서 «잡힌다» 를 단언하면 다음 사람은 이 축이 값 전부를 본다고 읽는다(P2-76).
+# witness-corpus: 역방향 축이 판정하지 않는 값의 부류 — 처방 줄에 있어도 조용하다
+_VALUES_THE_SCAN_DOES_NOT_JUDGE = (
+    "배포 `0badc0de`",          # 머지 기록 꼴이 아닌 hex — 배포 · 세션 ID 와 글자로 못 가른다
+    "#99999 OPEN",              # PR 번호 · 상태 — 네트워크 없이는 못 잰다
+    "docs/gone.md 를 연다",     # 백틱 없는 경로 — 백틱 = 좌표라는 규약 밖
 )
 
 
-@pytest.mark.parametrize("ref", _PATHS_THE_SCAN_CANNOT_SEE)
-def test_paths_outside_the_prefix_list_are_never_judged(ref, tmp_path):
-    """🔴 이 둘은 «잘못 잡는» 것이 아니라 «아예 안 보는» 잔여다 — 숨기지 않고 고정한다.
-
-    처방 문장이 이 부류의 죽은 경로를 가리켜도 역방향 스캔은 침묵한다. 여기서 「잡힌다」
-    를 단언하면 다음 사람은 이 스캔이 리포 전체를 본다고 믿게 된다.
-    """
-    mem = _mem(tmp_path, {"MEMORY.md": "- 시작점 = `" + ref + "`" + chr(10)})
+@pytest.mark.parametrize("text", _VALUES_THE_SCAN_DOES_NOT_JUDGE)
+def test_values_outside_the_three_kinds_are_not_judged(text, tmp_path):
+    """🔴 판정하지 않는 부류를 숨기지 않고 고정한다 — 넓히면 이 시험과 위 주석을 함께 고친다."""
+    mem = _mem(tmp_path, {"MEMORY.md": "- 진입점 " + text + "\n"})
     assert mod.reverse_dangling(mem, tmp_path / "repo") == [], (
-        "이 부류가 잡히기 시작했다면 접두사 범위가 넓어진 것이다 — "
-        "이 시험과 위 주석을 함께 갱신할 것")
+        "이 부류가 잡히기 시작했다면 판정 범위가 넓어진 것이다 — 이 시험과 위 주석을 함께 갱신할 것")
