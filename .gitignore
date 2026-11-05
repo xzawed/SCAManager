@@ -36,6 +36,9 @@ review-tmp-*/
 .idea/
 *.swp
 *.swo
+# Git Bash 가 죽을 때 작업 디렉터리에 남기는 덤프 — `git add -A` 가 커밋에 넣는다.
+# Crash dump Git Bash leaves in the working directory; `git add -A` would commit it.
+*.stackdump
 
 # Testing
 .pytest_cache/
