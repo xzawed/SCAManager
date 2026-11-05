@@ -556,11 +556,19 @@
       .nav-logout-btn { padding: 8px 12px; min-height: 40px; box-sizing: border-box; }
     }
 
+    /* 라벨 접기는 480px 가 아니라 여기까지 — 768px 규칙은 nav 링크만 접어, 라벨을 다 편 nav 의 최소 폭
+       (실측 588~652px, ja · catppuccin 이 가장 넓다)이 481px 부터 뷰포트를 넘었다. 아이콘은 남는다.
+       Fold the labels up to here, not 480px: with every label shown the nav needs up to 652px. */
+    @media (max-width: 680px) {
+      .nav-user-name { display: none; }
+      #themeName, #langName { display: none; }
+      .theme-btn .chevron { display: none; }
+    }
+
     /* ── 반응형 (소형) ─────────────────────────── */
     @media (max-width: 480px) {
       nav { gap: var(--space-1); }
       .nav-logo strong { display: none; }
-      .nav-user-name { display: none; }
       /* Step A (S3): theme/logout 버튼 클릭 영역 보강 (이전 11px → 안 변경하고 padding 만 확장) */
       .theme-btn, .nav-logout-btn { padding: 8px 10px; font-size: 11px; min-height: 40px; box-sizing: border-box; }
       /* 🔴 nav 는 flex-wrap: nowrap 이고 자식 넷이 flex-shrink: 0 이라, 좁아져도 줄바꿈으로
@@ -573,8 +581,6 @@
       nav { padding: 0 max(var(--space-3), env(safe-area-inset-left))
                      0 max(var(--space-3), env(safe-area-inset-right)); }
       .nav-badge { display: none; }
-      #themeName, #langName { display: none; }
-      .theme-btn .chevron { display: none; }
       /* Step A (S4): 480px 분기 container 도 safe-area-inset */
       .container { padding: var(--space-4) max(var(--space-2), env(safe-area-inset-right)) var(--space-4) max(var(--space-2), env(safe-area-inset-left)); }
     }

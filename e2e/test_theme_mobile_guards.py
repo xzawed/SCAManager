@@ -358,6 +358,76 @@ def test_no_horizontal_overflow_on_narrow_viewports(page, base_url, width, heigh
     )
 
 
+# 768px 규칙은 nav 링크만 햄버거로 접고, 480px 규칙이 접던 것(테마·언어 이름 · 사용자 이름 · 펼침 표시)은
+# 481px 부터 다시 보였다. 그 nav 의 최소 폭(실측 588~652px — ja · catppuccin 이 가장 넓다)이 뷰포트보다 넓어
+# 481~652px 의 모든 화면이 가로로 넘쳤다(481px 에서 107~171px). 위 시험은 320 · 375px 만 쟀다.
+# 🔴 한 폭 구간 안에서는 같은 규칙이 걸려 nav 내용이 같으므로 넘침은 그 구간의 가장 좁은 폭에서 가장 크다.
+#    그래서 폭을 촘촘히 쓸지 않고 페이지 CSS 에서 폭 분기를 읽어 구간마다 가장 좁은 폭만 잰다 — 분기가 새로
+#    생기면 그 구간도 저절로 잰다. 라벨이 가장 긴 조합을 놓치지 않게 세 언어 × 네 테마를 다 돈다.
+# Between phone and desktop: read the width breakpoints from the page CSS and measure the narrowest width
+# of every band (nav content is constant inside a band), in three languages and four themes.
+_CSS_BAND_STARTS_JS = r"""() => {
+    const starts = new Set();
+    let unread = 0;
+    const walk = rules => {
+        for (const r of rules) {
+            if (r instanceof CSSMediaRule) {
+                for (const m of r.media.mediaText.matchAll(/(max|min)-width:\s*(\d+(?:\.\d+)?)px/g)) {
+                    starts.add(m[1] === 'max' ? Math.floor(Number(m[2])) + 1 : Math.ceil(Number(m[2])));
+                }
+            }
+            if (r.cssRules) walk(r.cssRules);
+        }
+    };
+    for (const s of document.styleSheets) {
+        try { walk(s.cssRules); } catch (e) { unread += 1; }
+    }
+    return {starts: [...starts].sort((a, b) => a - b), unread};
+}"""
+# nav 안의 칠해진 요소 중 가장 오른쪽 끝 · 문서 넘침 · 테마 라벨(숨겨져도 글자는 남는다 — 테마가 바뀌었는가).
+# Rightmost painted element in the nav, document overflow, and the theme label text.
+_NAV_FIT_JS = """() => {
+    const doc = document.documentElement, vw = doc.clientWidth, nav = document.querySelector('nav');
+    let right = 0, painted = 0;
+    for (const el of nav ? nav.querySelectorAll('*') : []) {
+        if (!el.checkVisibility()) continue;
+        painted += 1;
+        right = Math.max(right, el.getBoundingClientRect().right);
+    }
+    return {over: doc.scrollWidth - vw, navOver: Math.round(right - vw), painted,
+            label: ((document.getElementById('themeName') || {}).textContent || '').trim()};
+}"""
+
+
+@pytest.mark.parametrize("lang", ["en", "ko", "ja"])
+def test_nav_fits_the_narrowest_width_of_every_css_band(seeded_page, base_url, lang):
+    """🔴 폭 구간마다 가장 좁은 폭에서 nav 가 화면 안에 있고 문서가 가로로 넘치지 않는가 — 네 테마 모두."""
+    seeded_page.context.add_cookies([{"name": "preferred_language", "value": lang, "url": base_url}])
+    seeded_page.set_viewport_size({"width": 1280, "height": 800})
+    seeded_page.goto(f"{base_url}/dashboard")
+    assert seeded_page.evaluate("() => document.documentElement.lang") == lang, (
+        f"{lang} 화면을 열지 못했다 — 그 언어의 라벨을 잰 것이 아니다")
+    bands = seeded_page.evaluate(_CSS_BAND_STARTS_JS)
+    widths = sorted({320, *(w for w in bands["starts"] if 320 < w < 1280)})
+    assert {481, 769} <= set(widths), (
+        f"CSS 에서 읽은 구간 시작 {bands['starts']} 에 480 · 768px 분기가 없다 — "
+        f"읽기가 죽었다(못 읽은 시트 {bands['unread']}개)")
+    failures, labels = [], set()
+    for theme in ("dark", "light", "pastel", "catppuccin"):
+        apply_theme(seeded_page, theme)
+        for width in widths:
+            seeded_page.set_viewport_size({"width": width, "height": 800})
+            res = seeded_page.evaluate(_NAV_FIT_JS)
+            assert res["painted"], f"{width}px nav 에 칠해진 요소가 없다 — 재지 못했다"
+            labels.add(res["label"])
+            if res["over"] > 1 or res["navOver"] > 1:
+                failures.append(f"{theme} {width}px: 문서 {res['over']}px · nav {res['navOver']}px")
+    assert len(labels) == 4, f"네 테마의 라벨이 {sorted(labels)} — 테마가 바뀌지 않았다"
+    assert not failures, (
+        f"[{lang}] 폭 구간의 가장 좁은 폭에서 nav 가 화면을 넘는다(잰 폭 {widths}):\n  "
+        + "\n  ".join(failures))
+
+
 @pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
 def test_primary_button_label_meets_aa(page, base_url, theme):
     """🔴 채워진 기본 버튼의 «라벨» 이 네 테마 모두에서 AA(4.5:1)를 넘어야 한다.
