@@ -23,6 +23,7 @@ import os
 import sys
 from pathlib import Path
 
+# fail-open-reviewed: 판정은 scripts/check_memory_refs.py(re · subprocess)가 한다 — 이 훅은 stdin 의 경로가 메모리 안인가만 본다
 _ROOT = Path(__file__).resolve().parents[2]
 _PROJECTS_ROOT = Path.home() / ".claude" / "projects"
 
