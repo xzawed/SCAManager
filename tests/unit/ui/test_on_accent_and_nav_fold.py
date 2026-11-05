@@ -10,6 +10,8 @@ These are fast static guards that catch a revert where e2e is not run.
 import pathlib
 import re
 
+from ._contrast import strip_css_comments
+
 _ROOT = pathlib.Path(__file__).resolve().parents[3]
 
 
@@ -114,7 +116,8 @@ def test_nav_stays_on_one_line_and_only_the_name_gives_way():
         "`.nav-user` 가 줄지 않는 상자다 — 긴 이름이 769px 이상에서 문서를 가로로 민다")
 
 
-_INSET = re.compile(r"env\(\s*safe-area-inset-(left|right)\b")
+_INSET = re.compile(r"env\(\s*safe-area-inset-(left|right)\b", re.I)
+_SLOTS = ("top", "right", "bottom", "left")
 
 
 def _values(decl: str) -> list[str]:
@@ -132,22 +135,26 @@ def _values(decl: str) -> list[str]:
 
 
 def _misplaced_insets(css: str) -> tuple[int, list[str]]:
-    """좌우 inset 을 쓰는 padding 선언 수와, inset 이 반대쪽 자리(또는 좌우 공용 값)에 든 선언."""
+    """좌우 inset 을 쓰는 padding 선언 수와, inset 이 제 쪽이 아닌 자리(위 · 아래 · 반대쪽 · 좌우 공용 값)에 든 선언.
+
+    CSS 의 속성 · 함수 이름은 대소문자를 가리지 않는다 — 판정도 가리지 않는다.
+    """
     seen, wrong = 0, []
-    css = re.sub(r"/\*.*?\*/", " ", css, flags=re.S)
-    for prop, decl in re.findall(r"(padding(?:-left|-right)?)\s*:\s*([^;{}]+)", css):
+    pattern = r"(padding(?:-(?:top|right|bottom|left))?)\s*:\s*([^;{}]+)"
+    for prop, decl in re.findall(pattern, strip_css_comments(css), flags=re.I):
         if not _INSET.search(decl):
             continue
         seen += 1
-        vals = _values(decl)
+        prop, vals = prop.lower(), _values(decl)
         if prop != "padding":
             slots = {prop.split("-")[1]: decl}
         elif len(vals) == 4:
-            slots = {"right": vals[1], "left": vals[3]}
+            slots = dict(zip(_SLOTS, vals))
         else:
             # 값이 하나 · 둘 · 셋이면 좌우가 같은 값을 받는다 — 한쪽 inset 이 반대쪽에도 붙는다.
             slots = None
-        if slots is None or any(side != own for own, v in slots.items() for side in _INSET.findall(v)):
+        # 좌우 inset 은 제 이름의 자리에만 — 위 · 아래 자리에 든 것도 틀렸다.
+        if slots is None or any(side.lower() != own for own, v in slots.items() for side in _INSET.findall(v)):
             wrong.append(f"{prop}: {' '.join(vals)}")
     return seen, wrong
 
@@ -158,7 +165,13 @@ def test_the_inset_check_flips_on_a_swapped_declaration():
     assert _misplaced_insets(good) == (1, []), "맞은 선언을 잡는다 — 거짓 red"
     for bad in ("a { padding: 0 max(1rem, env(safe-area-inset-left)) 0 max(1rem, env(safe-area-inset-right)); }",
                 "a { padding: 0 max(1rem, env(safe-area-inset-left)); }",
-                "a { padding-left: env(safe-area-inset-right); }"):
+                "a { padding-left: env(safe-area-inset-right); }",
+                # 뒤 두 값이 뒤바뀐 메뉴 패널 — 왼쪽 inset 이 아래 자리로 갔다.
+                "a { padding: 1rem max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-left)) "
+                "calc(1rem + env(safe-area-inset-bottom, 0px)); }",
+                "a { padding: env(safe-area-inset-left) 1rem 0 1rem; }",
+                "a { padding-top: env(safe-area-inset-right); }",
+                "a { PADDING: 0 MAX(1rem, ENV(safe-area-inset-left)) 0 MAX(1rem, ENV(safe-area-inset-right)); }"):
         seen, wrong = _misplaced_insets(bad)
         assert seen == 1 and wrong, f"뒤바뀐 선언을 못 잡는다 — 거짓 초록: {bad}"
 
