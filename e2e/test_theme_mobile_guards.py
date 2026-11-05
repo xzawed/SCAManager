@@ -631,7 +631,8 @@ def test_nav_and_body_stay_inside_a_one_sided_safe_area(page, base_url, side):
         assert res["painted"] and res["body"], f"{width}px: nav 나 본문을 못 찾았다 — 재지 못했다"
         for name, pad in (("nav", res["navPad"]), ("본문", res["bodyPad"])):
             assert _SAFE_AREA_INSET > min(pad) + 1, (
-                f"{width}px {name}: 기본 여백 {min(pad)}px 이 inset {_SAFE_AREA_INSET}px 보다 크다 — 쏠림이 안 보인다")
+                f"{width}px {name}: 좌우 여백 {pad} 이 둘 다 inset {_SAFE_AREA_INSET}px 이상 — 쏠림이 안 보인다"
+                "(기본 여백이 inset 보다 크거나, 한쪽 inset 이 양쪽에 붙었다)")
         lo, hi = want["left"], res["vw"] - want["right"]
         for name, (a, b) in (("nav", res["nav"]), ("본문", res["body"])):
             if a < lo - 1 or b > hi + 1:
