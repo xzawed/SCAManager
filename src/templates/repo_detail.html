@@ -483,6 +483,12 @@
     /* Narrow mobile: hide commit (col2) + source (col6) → collapse to 4 cols */
     .tbl th:nth-child(2), .tbl td:nth-child(2),
     .tbl th:nth-child(6), .tbl td:nth-child(6) { display: none; }
+    /* 남은 네 열이 카드 안에 들어가게 — 셀 좌우 여백 16→8px, 점수는 막대 없이 숫자만.
+       한계: 뷰포트 320px 에서는 등급 열이 아직 가려진다 — 영어 28px(대문자 + 자간 머리글) · 일본어 3px.
+       Fit the four remaining columns: 8px side padding, the score as a number without its bar.
+       Limit: at a 320px viewport the grade column is still cut — 28px in English, 3px in Japanese. */
+    .tbl th, .tbl td { padding-left: var(--space-2); padding-right: var(--space-2); }
+    .tbl .score-bar { display: none; }
   }
   @media (max-width: 768px) {
     .repo-wrap { padding: var(--space-5, 1.25rem) var(--space-4, 1rem) var(--space-6, 1.5rem); }
