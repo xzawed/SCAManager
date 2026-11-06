@@ -5,10 +5,14 @@
 넘치지 않으므로, 페이지 넘침 검사로는 보이지 않았다. 수정 전 375px 에서는 등급 열이 한국어 60px ·
 영어 83px 가려졌고, 날짜가 하이픈에서 두 줄로 접혔다.
 
-🔴 가장 긴 값으로 잰다 — 점수 100 · 다섯 자리 PR · 영어 머리글(대문자 + 자간). 짧은 값이나 한국어로만
+🔴 가장 긴 값으로 잰다 — 점수 100 · 다섯 자리 PR · 영어 머리글(대문자). 짧은 값이나 한국어로만
    재면 «다 보임» 이 거짓 초록이다.
-🔴 한계 — 320px 에서는 등급 열이 아직 가려진다(영어 28px · 일본어 3px — 그 CSS 규칙 옆 주석). 날짜 한
-   줄은 375px 부터 시험한다(한국어는 360px 부터 한 줄이다).
+🔴 글꼴은 환경마다 다르다 — 앱은 웹 글꼴 없이 설치된 글꼴로 그린다. 같은 규칙도 CI 의 Linux 글꼴(DejaVu Sans ·
+   WenQuanYi)은 Windows 글꼴보다 넓게 그려, 여백 8px 만 줄인 첫 판은 Windows 에서 초록 · CI 에서 red 였다
+   (영어 360px 14px 가려짐). 폭 목록은 넓은 쪽 글꼴에서도 여유가 남는 곳까지만 둔다 — 날짜 한 줄은
+   375px 부터 시험한다.
+
+Fonts differ per environment (no web font); the widths here hold with margin under CI's wider Linux fonts.
 
 The repo-detail history table fits inside its card at phone widths, measured with the widest values.
 """
