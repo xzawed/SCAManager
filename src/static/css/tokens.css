@@ -515,7 +515,11 @@
   --tracking-tight:   var(--ls-tight);
 
   /* Animation convenience refs (Phase 2 legacy) */
-  --anim-page-in:   page-in 0.35s var(--ease-out) both;
+  /* 🔴 page-in 은 끝난 뒤 남지 않는다(backwards) — `both` 면 마지막 `translateY(0)` 이 `.container` 에 남아
+     그 안의 모든 `position: fixed`(이슈 모달 · 토스트)가 화면이 아니라 본문 상자를 기준으로 그려졌다.
+     page-in must not persist after it ends: a lingering transform made .container the containing block
+     of every fixed overlay inside it. */
+  --anim-page-in:   page-in 0.35s var(--ease-out) backwards;
   --anim-reveal-up: reveal-up 0.4s var(--ease-out) both;
   --anim-badge-pop: badge-pop 0.4s var(--ease-spring) both;
 

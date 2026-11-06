@@ -1189,7 +1189,11 @@ body.fx-ready .fx-enter.is-in-view {
 
 /* ── 성공 토스트 / Success toast ─────────────────────────────── */
 .issue-toast {
-  position: fixed; bottom: 1.5rem; right: 1.5rem;
+  /* 띄운 거리는 안전 영역 가장자리에서 — 홈 표시줄 · 가로 모드 노치 밑에 깔리지 않게.
+     Offset from the safe-area edge so the home indicator or a landscape notch never covers it. */
+  position: fixed;
+  bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+  right: calc(1.5rem + env(safe-area-inset-right, 0px));
   background: var(--bg-card); border: 1px solid var(--border-subtle);
   border-radius: 10px; padding: 0.75rem 1.25rem;
   font-size: 13px; font-weight: 600; color: var(--text-1);

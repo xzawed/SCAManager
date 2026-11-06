@@ -362,7 +362,8 @@
 
   /* Save toast */
   .save-toast {
-    position:fixed; top:1.1rem; left:50%; transform:translateX(-50%);
+    /* 위 거리는 안전 영역 가장자리에서 — 상태 표시줄 · 노치 밑에 깔리지 않게. Offset from the safe-area top. */
+    position:fixed; top:calc(1.1rem + env(safe-area-inset-top, 0px)); left:50%; transform:translateX(-50%);
     padding:.65rem 1.4rem; border-radius:10px;
     font-size:13px; font-weight:600; z-index:1000;
     box-shadow:0 4px 18px rgba(0,0,0,.18);

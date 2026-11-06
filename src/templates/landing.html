@@ -133,12 +133,13 @@
     /* ── 오류 배너 ──────────────────────────────────────── */
     /* 🔴 left:50% + translateX(-50%) + auto 폭이면 «줄어든 폭» 이 화면 절반으로 묶인다 — 375px 에서
        ~180px 로 한 단어씩 줄바꿈되며 히어로 제목을 덮었다. 좌우 16px 안에서 내용 폭만큼, 가운데.
-       Centre within 16px gutters at content width; left:50% capped the shrink-to-fit width at half the viewport. */
+       Centre within 16px gutters at content width; left:50% capped the shrink-to-fit width at half the viewport.
+       좌우 여백은 16px 과 그 쪽 inset 중 큰 값 — 가로 모드 노치 밑으로 들어가지 않게. Gutters clear a side notch. */
     .auth-error-banner {
       position: fixed;
       top: calc(72px + env(safe-area-inset-top, 0px));
-      left: 16px;
-      right: 16px;
+      left: max(16px, env(safe-area-inset-left));
+      right: max(16px, env(safe-area-inset-right));
       width: fit-content;
       margin: 0 auto;
       z-index: 200;

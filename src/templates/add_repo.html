@@ -24,7 +24,8 @@
   /* 토스트 에러 팝업
      Toast error popup */
   .toast {
-    position: fixed; top: 1.5rem; left: 50%; transform: translateX(-50%);
+    /* 위 거리는 안전 영역 가장자리에서 — 상태 표시줄 · 노치 밑에 깔리지 않게. Offset from the safe-area top. */
+    position: fixed; top: calc(1.5rem + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%);
     /* 🔴 danger 면 위 글자는 danger 전용 on-토큰을 쓴다 — accent 용을 빌리면
        면이 달라 테마마다 우연히 맞거나 틀린다(pastel 4.28 이었다). */
     background: var(--danger, #f87171); color: var(--danger-text-on, #fff);
