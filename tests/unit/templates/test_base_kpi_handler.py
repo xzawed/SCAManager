@@ -8,9 +8,12 @@ with remove-before-add (back-nav re-init symmetry). Source-level check — no br
 """
 from pathlib import Path
 
-_BASE_HTML = (
+from tests.unit.ui._code_view import template_code
+
+# 주석을 지운 본문 — 주석이 등록 코드를 인용해도 통과하지 않게. Comment-free view of base.html.
+_BASE_HTML = template_code((
     Path(__file__).resolve().parents[3] / "src" / "templates" / "base.html"
-).read_text(encoding="utf-8")
+).read_text(encoding="utf-8"))
 
 
 def test_kpi_countup_registers_on_both_hx_boost_events():

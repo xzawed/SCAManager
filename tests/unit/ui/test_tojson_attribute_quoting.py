@@ -23,6 +23,8 @@ import pathlib
 
 import pytest
 
+from ._code_view import template_code
+
 _DQ = '"'
 _SQ = "'"
 _TEMPLATE_DIR = pathlib.Path(__file__).resolve().parents[3] / "src" / "templates"
@@ -109,8 +111,9 @@ def test_json_carrying_attributes_still_exist():
     `len(sites) >= 20` 은 다른 곳의 `tojson` 으로 충족되므로, 이 4곳이 통째로
     삭제돼도 알아채지 못한다(Grok 리뷰 지적).
     """
-    detail = (_TEMPLATE_DIR / "analysis_detail.html").read_text(encoding="utf-8")
-    settings = (_TEMPLATE_DIR / "settings.html").read_text(encoding="utf-8")
+    # 주석을 지운 본문 — 주석 처리된 속성으로는 «존재» 가 채워지지 않는다. Comment-free views.
+    detail = template_code((_TEMPLATE_DIR / "analysis_detail.html").read_text(encoding="utf-8"))
+    settings = template_code((_TEMPLATE_DIR / "settings.html").read_text(encoding="utf-8"))
 
     for attr in ("data-ai-suggestions", "data-static-issues"):
         assert f"{attr}={_SQ}" in detail, f"{attr} 가 홑따옴표 속성으로 존재하지 않는다"

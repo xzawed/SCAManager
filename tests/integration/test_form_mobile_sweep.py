@@ -10,14 +10,19 @@ Cycle 81 PR-A fix-up 학습 — HTML 정적 검증 (CSS string in) — 운영 en
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
+# 주석을 지운 본문 — 주석 속 규칙으로는 통과하지 않는다. Comment-free template view.
+from tests.unit.ui._code_view import template_code
+
 
 @pytest.fixture(scope="module")
 def add_repo_html() -> str:
-    return (Path(__file__).resolve().parents[2] / "src" / "templates" / "add_repo.html").read_text(encoding='utf-8')
+    return template_code(
+        (Path(__file__).resolve().parents[2] / "src" / "templates" / "add_repo.html").read_text(encoding='utf-8'))
 
 
 # ─── add_repo.html 모바일 분기 신설 ──────────────────────────────
@@ -66,17 +71,19 @@ def test_add_repo_form_select_ios_focus_zoom_preserved(add_repo_html):
 def test_pwa_manifest_unchanged():
     """PR-A PWA manifest = 본 PR 무영향."""
     manifest = (Path(__file__).resolve().parents[2] / "src" / "static" / "manifest.json").read_text(encoding='utf-8')
-    assert '"display": "standalone"' in manifest
+    assert json.loads(manifest)["display"] == "standalone"
 
 
 def test_dashboard_mobile_priority_unchanged():
     """PR-B dashboard 모바일 KPI 우선순위 = 본 PR 무영향."""
-    dashboard_html = (Path(__file__).resolve().parents[2] / "src" / "templates" / "dashboard.html").read_text(encoding='utf-8')
+    dashboard_html = template_code(
+        (Path(__file__).resolve().parents[2] / "src" / "templates" / "dashboard.html").read_text(encoding='utf-8'))
     assert ".dash-kpi:nth-child(3) { order: 1;" in dashboard_html
 
 
 def test_settings_mobile_768px_unchanged():
     """PR-C settings 모바일 768px↓ = 본 PR 무영향."""
-    settings_html = (Path(__file__).resolve().parents[2] / "src" / "templates" / "settings.html").read_text(encoding='utf-8')
+    settings_html = template_code(
+        (Path(__file__).resolve().parents[2] / "src" / "templates" / "settings.html").read_text(encoding='utf-8'))
     assert "@media (max-width: 768px)" in settings_html
     assert ".s-card-body { padding: 0.85rem; }" in settings_html

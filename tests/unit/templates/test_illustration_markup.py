@@ -6,6 +6,9 @@ from pathlib import Path
 
 import pytest
 
+from tests.unit.ui._code_view import template_code
+from tests.unit.ui._contrast import strip_css_comments
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ILLUSTRATIONS_DIR = REPO_ROOT / "src" / "static" / "illustrations"
 TEMPLATES_DIR = REPO_ROOT / "src" / "templates"
@@ -39,7 +42,8 @@ def test_illustrations_css_exists_with_theme_compat():
     """
     css = CSS_DIR / "illustrations.css"
     assert css.exists()
-    body = css.read_text(encoding="utf-8")
+    # 주석을 지운 CSS — 주석 속 선택자·토큰으로는 통과하지 않는다. Comment-free CSS.
+    body = strip_css_comments(css.read_text(encoding="utf-8"))
     assert ".illustration" in body
     assert ".illustration--hero" in body
     assert ".illustration--empty" in body
@@ -54,7 +58,7 @@ def test_base_html_includes_illustrations_css():
 
     base.html includes illustrations.css link (global 4-theme reach).
     """
-    base = (TEMPLATES_DIR / "base.html").read_text(encoding="utf-8")
+    base = template_code((TEMPLATES_DIR / "base.html").read_text(encoding="utf-8"))
     assert "/static/css/illustrations.css" in base
 
 
@@ -75,7 +79,7 @@ def test_template_references_illustration(template, png_ref):
     Each of 4 pages references its assigned PNG (Step 2-B completion signal).
     login.html 삭제 후 4개로 축소 (사이클 117 PR #578).
     """
-    body = (TEMPLATES_DIR / template).read_text(encoding="utf-8")
+    body = template_code((TEMPLATES_DIR / template).read_text(encoding="utf-8"))
     assert (
         f"/static/illustrations/{png_ref}" in body
     ), f"{template} 의 {png_ref} 참조 누락 (Step 2-B 회귀)"
@@ -88,7 +92,7 @@ def test_decorative_illustrations_have_presentation_role():
     login.html → landing.html 교체 (사이클 117 — login.html 삭제).
     """
     for template in ["landing.html", "dashboard.html", "overview.html", "add_repo.html"]:
-        body = (TEMPLATES_DIR / template).read_text(encoding="utf-8")
+        body = template_code((TEMPLATES_DIR / template).read_text(encoding="utf-8"))
         if 'src="/static/illustrations/' in body:
             assert (
                 'role="presentation"' in body

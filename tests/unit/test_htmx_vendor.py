@@ -19,6 +19,8 @@ os.environ.setdefault("GITHUB_CLIENT_ID", "test-github-client-id")
 os.environ.setdefault("GITHUB_CLIENT_SECRET", "test-github-client-secret")
 os.environ.setdefault("SESSION_SECRET", "test-session-secret-32-chars-long!")
 
+from tests.unit.ui._code_view import template_code  # noqa: E402  # pylint: disable=wrong-import-position
+
 # 프로젝트 루트 기준 절대 경로 — CI / 로컬 모두 동일하게 동작
 # Absolute path anchored at project root — works on CI and local alike
 _PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -47,8 +49,8 @@ def test_base_template_loads_htmx():
     base.html must contain a <script> tag that loads htmx.min.js from the
     vendored path so every page inheriting the base layout gets HTMX.
     """
-    content = _BASE_HTML.read_text(encoding="utf-8")
-    # 스크립트 src 에 vendor/htmx.min.js 경로가 포함되어야 함
+    content = template_code(_BASE_HTML.read_text(encoding="utf-8"))
+    # 스크립트 src 에 vendor/htmx.min.js 경로가 포함되어야 함 — 주석 속 언급은 세지 않는다
     # The script src attribute must reference the vendored htmx path
     assert "vendor/htmx.min.js" in content, (
         "base.html 에 htmx.min.js 를 로드하는 <script> 태그가 없습니다.\n"
@@ -63,8 +65,8 @@ def test_base_template_body_has_hx_boost():
     all same-origin anchor and form navigations to fetch-based requests,
     enabling SPA-like transitions without a full page reload.
     """
-    content = _BASE_HTML.read_text(encoding="utf-8")
-    # hx-boost="true" 가 body 태그 어딘가에 존재하는지 확인
+    content = template_code(_BASE_HTML.read_text(encoding="utf-8"))
+    # hx-boost="true" 가 body 태그 어딘가에 존재하는지 확인 — 주석 속 언급은 세지 않는다
     # Check that hx-boost="true" appears somewhere in the body opening tag region
     assert 'hx-boost="true"' in content, (
         'base.html 의 <body> 태그에 hx-boost="true" 속성이 없습니다.\n'

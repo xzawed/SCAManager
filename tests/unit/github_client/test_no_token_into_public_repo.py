@@ -183,14 +183,23 @@ def test_add_repo_only_claims_installed_when_the_commit_succeeded():
     공개 리포는 이제 의도적으로 거부되므로, 그 거부가 성공으로 보이면 사용자는
     훅이 도는 줄 알고 기다린다 — 조용한 거짓이다.
     """
+    import ast  # pylint: disable=import-outside-toplevel
     from pathlib import Path  # pylint: disable=import-outside-toplevel
 
     src = Path(__file__).resolve().parents[3] / "src" / "ui" / "routes" / "add_repo.py"
-    text = src.read_text(encoding="utf-8")
+    # 구문 트리로 본다 — 주석이 «구판은 …» 으로 같은 코드를 인용해도 통과하지 않게.
+    # Read the syntax tree so a comment quoting the same code cannot satisfy the check.
+    nodes = list(ast.walk(ast.parse(src.read_text(encoding="utf-8"))))
 
-    assert "hook_committed = await commit_scamanager_files(" in text, (
-        "add_repo 가 커밋 결과를 받지 않는다 — 거부를 성공으로 표시한다"
-    )
-    assert '"?hook_installed=1" if hook_committed else ""' in text, (
-        "설치 배너가 커밋 성공 여부와 무관하게 붙는다"
-    )
+    def _is_name(node, name):
+        return isinstance(node, ast.Name) and node.id == name
+
+    receives = [n for n in nodes if isinstance(n, ast.Assign)
+                and any(_is_name(t, "hook_committed") for t in n.targets)
+                and isinstance(n.value, ast.Await) and isinstance(n.value.value, ast.Call)
+                and _is_name(n.value.value.func, "commit_scamanager_files")]
+    assert receives, "add_repo 가 커밋 결과를 받지 않는다 — 거부를 성공으로 표시한다"
+    banners = [n for n in nodes if isinstance(n, ast.IfExp) and _is_name(n.test, "hook_committed")
+               and isinstance(n.body, ast.Constant) and n.body.value == "?hook_installed=1"
+               and isinstance(n.orelse, ast.Constant) and n.orelse.value == ""]
+    assert banners, "설치 배너가 커밋 성공 여부와 무관하게 붙는다"
