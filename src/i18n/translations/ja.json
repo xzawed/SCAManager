@@ -109,7 +109,6 @@
       "total_label": "全 alert 累計",
       "pending_title": "🔍 新規 pending",
       "pending_label": "ユーザー決定待ち",
-      "pending_hint": "ユーザー 1-click confirm 必須 (Phase 1 — 自動 dismiss なし)",
       "classification_title": "📊 分類分布",
       "recent_pending_title": "💬 最近 pending (Top 5)",
       "recent_pending_empty": "pending alert なし。"

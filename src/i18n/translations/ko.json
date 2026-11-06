@@ -109,7 +109,6 @@
       "total_label": "전체 alert 누적",
       "pending_title": "🔍 신규 pending",
       "pending_label": "사용자 결정 대기",
-      "pending_hint": "사용자 1-click confirm 의무 (Phase 1 — 자동 dismiss X)",
       "classification_title": "📊 분류 분포",
       "recent_pending_title": "💬 최근 pending (Top 5)",
       "recent_pending_empty": "pending alert 없음."
