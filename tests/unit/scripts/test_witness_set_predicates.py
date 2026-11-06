@@ -400,3 +400,161 @@ def test_ci_reads_the_body_before_the_guard_uses_it():
     assert body_at < guard_at, (
         f"본문 조회(idx {body_at})가 witness 가드(idx {guard_at}) 뒤에 있다 — "
         "가드가 읽을 때 본문이 아직 없다")
+
+
+# ─── 검사 표면 — `.claude` 전부 + 파일을 읽는 시험의 «판정에 쓰는» 술어 (#1746 K19) ──────────
+#
+# 🔴 가드 인구는 시험으로 옮겨 갔는데 이 검사는 `src` · `scripts` 만 봤고(P1-38) `.claude` 는 아예
+#    못 봤다(P1-21). 시험을 통째로 보면 assert 단언과 측정 대상 목록이 걸려 앞으로의 PR 마다 비용이다
+#    (최근 머지 40건 소급: 14건). 그래서 시험은 파일을 읽는 것만, 그 안에서도 판정에 쓰는 술어만 본다.
+#    `.mjs` 는 파이썬이 아니라 범위 밖이다. 측정 대상 목록의 빠짐은 이 검사가 아니라 «닫기»
+#    (소스에서 파생한 집합과 대조)가 맡는다.
+
+@pytest.mark.parametrize("path, surface", [
+    ("src/gate/engine.py", "full"),
+    ("scripts/check_example.py", "full"),
+    (".claude/hooks/check_example.py", "full"),
+    (".claude/statusline/render.py", "full"),
+    ("tests/unit/ui/test_example.py", "judgment"),
+    ("e2e/test_example.py", "judgment"),
+    (".claude/workflows/review.mjs", None),
+    ("src/static/js/app.js", None),
+])
+def test_each_path_lands_on_its_surface(path, surface):
+    from scripts.check_witness_set_predicates import surface_of  # noqa: PLC0415
+
+    assert surface_of(path) == surface, f"{path} → {surface_of(path)!r} (기대 {surface!r})"
+
+
+# witness-corpus: 리포 최상위의 다른 파이썬 — 어느 검사 표면에도 들지 않아야 하는 경로
+_OUTSIDE_SURFACES = [
+    "alembic/versions/0049_overview_index.py",
+    "docs/tools/render_badges.py",
+    "bin/release_notes.py",
+]
+
+
+@pytest.mark.parametrize("path", _OUTSIDE_SURFACES)
+def test_python_outside_every_surface_is_not_scanned(path):
+    from scripts.check_witness_set_predicates import surface_of  # noqa: PLC0415
+
+    assert surface_of(path) is None, f"{path} 가 검사 표면 {surface_of(path)!r} 로 읽혔다"
+
+
+# 시험 파일 하나 — 줄마다 «판정에 쓰는가» 가 다르다(번호는 1부터, 기대값으로 쓴다).
+_JUDGMENT_SAMPLE = (
+    "import pathlib\n"                                                              # 1
+    '_KINDS = ("alpha", "beta", "gamma")\n'                                          # 2 판정 카탈로그 정의
+    '_ROWS = ("r1", "r2", "r3")\n'                                                   # 3 시험 데이터 목록
+    '_PICKED = [k for k in ("x", "alpha") if k in _KINDS]\n'                         # 4 모듈 최상위의 판정
+    "def classify(name):\n"                                                          # 5
+    '    return name in ("delta", "epsilon", "zeta")\n'                              # 6 도우미의 판정
+    "def test_reads():\n"                                                            # 7
+    '    text = pathlib.Path("README.md").read_text()\n'                             # 8
+    "    for row in _ROWS:\n"                                                        # 9
+    '        assert "alpha" in text\n'                                               # 10 assert 단언
+    "    assert all(\n"                                                              # 11
+    '        k in ("eta", "theta", "iota") for k in text.split()\n'                  # 12 여러 줄 assert 의 둘째 줄
+    "    )\n"                                                                        # 13
+    '    assert_kinds = [k for k in text.split() if k in ("kappa", "lam", "mu")]\n'  # 14 이름에만 assert
+    '    assert text; picked = [k for k in text.split() if k in ("nu", "xi", "pi")]\n'  # 15 같은 줄의 assert 밖
+)
+
+
+def test_tests_count_only_the_predicates_that_decide(tmp_path):
+    """🔴 시험에서는 «판정에 쓰는» 술어만 센다 — 계기 뒤집기.
+
+    claimed(이름 «판정에 쓰는 술어» 가 포함한다고 적은 것): 판정에 쓰이는 카탈로그의 정의 줄 · 모듈 최상위의
+    판정 · 도우미 함수가 돌려주는 판정 · 이름에만 assert 가 든 변수 줄 · assert 와 같은 줄이지만 assert 밖인 판정.
+    cheap(첫 출력만 보고 적은 가장 싼 과정 «assert 로 시작하는 줄과 모듈 최상위 줄을 뺀다» 가 포함할 것):
+    도우미의 판정 · 여러 줄 assert 의 둘째 줄.
+    claimed\\cheap → 반드시 잡혀야: 2 · 4(모듈 최상위) · 14 · 15(assert 로 시작하는 줄).
+    cheap\\claimed → 반드시 무시돼야: 12(여러 줄 assert 의 둘째 줄).
+    두 번째 싼 과정 «assert 문이 걸친 줄을 뺀다» 는 15 를 놓친다 — 그래서 줄이 아니라 노드로 가른다.
+    판정에 안 쓰이는 목록(3)과 assert 단언(10)은 무시돼야 한다.
+    """
+    from scripts.check_witness_set_predicates import find_predicates  # noqa: PLC0415
+
+    sample = tmp_path / "test_sample.py"
+    sample.write_text(_JUDGMENT_SAMPLE, encoding="utf-8")
+    judged = sorted({line for line, _k, _s, _e in find_predicates(sample, judgment_only=True)})
+    assert judged == [2, 4, 6, 14, 15], f"시험의 판정 술어 줄: {judged}"
+
+
+def test_full_surfaces_keep_every_predicate(tmp_path):
+    """대조군 — 전 표면(`src` · `scripts` · `.claude`) 규칙은 그대로다: 정의 줄 · assert 안까지 센다."""
+    from scripts.check_witness_set_predicates import find_predicates  # noqa: PLC0415
+
+    sample = tmp_path / "sample.py"
+    sample.write_text(_JUDGMENT_SAMPLE, encoding="utf-8")
+    full = sorted({line for line, _k, _s, _e in find_predicates(sample)})
+    assert full == [2, 3, 4, 6, 10, 12, 14, 15], f"전 표면 술어 줄: {full}"
+
+
+def test_growing_a_judgment_catalogue_in_a_test_is_still_a_new_predicate(tmp_path):
+    """🔴 판정에 쓰이는 카탈로그는 시험에서도 정의 줄을 센다 — 값을 더하기만 하면 `in` 줄은 안 바뀐다.
+
+    시험 데이터 목록을 빼려고 정의 줄을 통째로 빼면, 판정 카탈로그를 키우는 변경이 diff 밖으로 빠진다
+    (`test_growing_a_catalogue_is_itself_a_new_predicate` 가 전 표면에서 막는 바로 그 꼴).
+    """
+    from scripts.check_witness_set_predicates import find_predicates  # noqa: PLC0415
+
+    sample = tmp_path / "test_cat.py"
+    sample.write_text('_SAFE = frozenset({"hmac", "secrets"})\n'
+                      'TEXT = open("x").read()\n'
+                      "def is_safe(name):\n    return name in _SAFE\n", encoding="utf-8")
+    lines = sorted({line for line, _k, _s, _e in find_predicates(sample, judgment_only=True)})
+    assert lines == [1, 4], f"판정 카탈로그의 정의 줄(1)과 사용 줄(4)을 세야 한다: {lines}"
+
+
+def test_a_test_that_reads_no_file_is_not_scanned(tmp_path):
+    """시험 표면은 파일을 읽는 시험만 본다(B8 의 «파일을 읽는가» 와 같은 판정) — 전 표면은 읽기와 무관하다."""
+    from scripts.check_witness_set_predicates import predicates_on_surface  # noqa: PLC0415
+
+    body = 'def classify(n):\n    return n in ("a", "b", "c")\n'
+    pure = tmp_path / "test_pure.py"
+    pure.write_text(body, encoding="utf-8")
+    reads = tmp_path / "test_reads.py"
+    reads.write_text(body + 'TEXT = open("x").read()\n', encoding="utf-8")
+    assert predicates_on_surface("tests/unit/test_pure.py", pure) == []
+    assert [h[0] for h in predicates_on_surface("tests/unit/test_reads.py", reads)] == [2]
+    assert [h[0] for h in predicates_on_surface(".claude/hooks/pure.py", pure)] == [2]
+    assert predicates_on_surface("alembic/versions/pure.py", pure) == []
+
+
+def _git_scenario(root: pathlib.Path, files: dict[str, str]) -> str:
+    """빈 리포에 기준 커밋 하나 → `files` 를 더한 커밋 하나. 기준 커밋의 sha 를 돌려준다."""
+    def git(*args: str) -> str:
+        return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=root,
+                              check=True, capture_output=True, text=True).stdout.strip()
+
+    git("init", "-q")
+    (root / "README.md").write_text("base\n", encoding="utf-8")
+    git("add", "README.md")
+    git("commit", "-q", "-m", "base")
+    base = git("rev-parse", "HEAD")
+    for rel, text in files.items():
+        target = root / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+        git("add", rel)
+    git("commit", "-q", "-m", "change")
+    return base
+
+
+@pytest.mark.parametrize("rel, text, blocked", [
+    (".claude/hooks/new_hook.py", 'def f(k):\n    return k in ("alpha", "beta", "gamma")\n', True),
+    ("tests/unit/test_new.py",
+     'TEXT = open("x").read()\ndef f(k):\n    return k in ("alpha", "beta", "gamma")\n', True),
+    ("tests/unit/test_new.py", 'TEXT = open("x").read()\ndef test_f():\n    assert "alpha" in TEXT\n', False),
+    (".claude/workflows/new.mjs", 'if (["alpha", "beta", "gamma"].includes(k)) {}\n', False),
+])
+def test_the_widened_surfaces_reach_the_gate(tmp_path, rel, text, blocked):
+    """통합 — 정본 스크립트를 임시 리포의 실제 diff 로 태운다. 막히면 그 파일이 목록에 나온다."""
+    base = _git_scenario(tmp_path, {rel: text})
+    env = {**os.environ, "PR_BODY": "본문 — 면제 선언 없음"}
+    proc = subprocess.run([sys.executable, str(_SCRIPT), base], cwd=str(tmp_path), env=env,
+                          capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
+    listed = [ln.split()[1].rsplit(":", 1)[0] for ln in proc.stdout.splitlines() if ln.startswith("   - ")]
+    assert proc.returncode == (1 if blocked else 0), proc.stdout + proc.stderr
+    assert listed == ([rel] if blocked else []), f"막힌 목록: {listed}\n{proc.stdout}"

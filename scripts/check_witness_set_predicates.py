@@ -26,6 +26,13 @@ Grok(01a043d1)이 그 결함들을 한 문장으로 묶었다:
     # witness-corpus: <왜 이것들이 같은 부류인가 — 16자 이상>
     _SOME_NAME = ["+0", "00", ".0"]
 
+## 표면
+
+- 전 표면 `src` · `scripts` · `.claude` — 술어를 전부 본다.
+- 시험 표면 `tests` · `e2e` — 파일을 읽는 시험만, 판정에 쓰는 술어만 본다(assert 단언 · 판정에 안 쓰이는
+  목록 제외). 측정 대상 목록의 빠짐은 이 검사가 아니라 «닫기»(소스에서 파생한 집합과 대조)가 맡는다.
+- `.mjs` 등 파이썬이 아닌 파일은 범위 밖이다.
+
 ## 🔴 이 가드도 같은 기전에 걸린다
 
 무엇이 「증거집합 술어」인지 판정하는 것 자체가 증거집합 술어다. 그래서 넓게 잡고
@@ -58,6 +65,9 @@ from check_claim_review_trace import (  # noqa: E402  # pylint: disable=wrong-im
     read_pr_body,
     strip_html_comments,
 )
+# «파일을 읽는가» 는 B8 과 같은 판정을 쓴다 — 사본을 두면 두 가드의 시험 표면이 갈라진다.
+# The same "reads a file" predicate as B8; a copy would let the two guards' test surfaces drift.
+from check_guard_fail_open import _reads_a_file  # noqa: E402  # pylint: disable=wrong-import-position
 
 
 def _make_stdout_safe() -> None:
@@ -97,7 +107,14 @@ EXEMPT = re.compile(
     r"^[ \t]*(?![`'\"])witness-corpus-not-applicable\s*:\s*\S.{%d,}" % (MIN_REASON - 1),
     re.MULTILINE)
 
-_SCANNED = ("src", "scripts")
+# 전 표면 — 이 최상위 디렉터리의 파이썬은 술어를 전부 본다(카탈로그 정의 줄 · assert 안 포함).
+# Full surfaces: every predicate in Python under these top-level directories.
+_SCANNED = ("src", "scripts", ".claude")
+# 시험 표면 — 파일을 읽는 시험만, 그 안에서도 «판정에 쓰는» 술어만 본다. assert 단언과 판정에 안 쓰이는
+# 목록(측정 대상 · 시험 데이터)은 빼고, 판정에 쓰이는 카탈로그는 정의 줄도 센다(#1746 K19).
+# `.mjs` 는 파이썬이 아니라 어느 표면에도 들지 않는다.
+# Test surfaces: only tests that read a file, and only the predicates that decide.
+_TEST_SCANNED = ("tests", "e2e")
 
 # (줄, 형태, 증거 수, 증거값) — 증거값이 있어야 「바깥」을 잴 수 있다.
 Hit = tuple[int, str, int, frozenset]
@@ -211,36 +228,100 @@ def _call_hits(node: ast.Call) -> list[Hit]:
     return out
 
 
-def find_predicates(path: pathlib.Path) -> list[Hit]:
-    """파일에서 유한 증거집합 술어를 찾는다 -> [(줄, 형태, 증거 수, 증거값)]."""
-    try:
-        tree = ast.parse(path.read_text(encoding="utf-8", errors="ignore"))
-    except SyntaxError:
-        return []
-    consts = _module_constants(tree)
-    values = _module_values(tree)
-    hits: list[Hit] = []
+def _definition_hits(tree: ast.Module, consts: dict[str, int],
+                     values: dict[str, frozenset[str]]) -> list[tuple[str, Hit]]:
+    """카탈로그 **정의 줄** -> [(이름, Hit)].
 
-    # 🔴 카탈로그 **정의 줄**도 술어로 센다. 이름에 값을 하나 더 넣기만 하면
-    #    `in` 줄은 안 바뀌어 diff 밖으로 빠진다 — 그것이 오늘의 실제 결함이었다
-    #    (`_STRONG_MODULES` 에 이름을 더하는 것으로 오라클이 넓어진다). Grok 01a043f2 Q2.
-    # A catalogue that merely GROWS leaves the `in` line untouched; count the definition.
+    🔴 카탈로그 정의 줄도 술어로 센다. 이름에 값을 하나 더 넣기만 하면
+    `in` 줄은 안 바뀌어 diff 밖으로 빠진다 — 그것이 오늘의 실제 결함이었다
+    (`_STRONG_MODULES` 에 이름을 더하는 것으로 오라클이 넓어진다). Grok 01a043f2 Q2.
+    A catalogue that merely GROWS leaves the `in` line untouched; count the definition.
+    """
+    out: list[tuple[str, Hit]] = []
     for node in tree.body:
         targets = ([node.target] if isinstance(node, ast.AnnAssign)
                    else getattr(node, "targets", []))
         for target in targets:
             if isinstance(target, ast.Name) \
                     and consts.get(target.id, 0) >= MIN_CATALOGUE_SIZE:
-                hits.append((node.lineno, f"카탈로그 정의 {target.id}",
-                             consts[target.id], values.get(target.id, frozenset())))
+                out.append((target.id, (node.lineno, f"카탈로그 정의 {target.id}",
+                                        consts[target.id], values.get(target.id, frozenset()))))
+    return out
 
+
+def _membership_tests(tree: ast.AST, skip: frozenset[int]) -> list[ast.Compare]:
+    """`in` / `not in` 비교 노드 — `skip` 에 든 노드(assert 아래)는 뺀다."""
+    return [node for node in ast.walk(tree)
+            if id(node) not in skip and isinstance(node, ast.Compare)
+            and any(isinstance(o, ast.In | ast.NotIn) for o in node.ops)]
+
+
+def _under_assert(tree: ast.AST) -> frozenset[int]:
+    """assert 문 아래의 모든 노드 id.
+
+    🔴 줄이 아니라 **노드**로 가른다 — `assert ok; picked = [k for k in xs if k in (...)]` 처럼 같은 줄의
+    다른 문장은 assert 밖의 판정이다. assert 가 걸친 줄을 통째로 빼면 그것을 놓친다.
+    Split by node, not by line: another statement on the assert's line is a judgment.
+    """
+    return frozenset(id(sub) for node in ast.walk(tree) if isinstance(node, ast.Assert)
+                     for sub in ast.walk(node))
+
+
+def find_predicates(path: pathlib.Path, *, judgment_only: bool = False) -> list[Hit]:
+    """파일에서 유한 증거집합 술어를 찾는다 -> [(줄, 형태, 증거 수, 증거값)].
+
+    `judgment_only` = 시험 표면의 규칙 — assert 아래의 술어를 빼고, 카탈로그 정의 줄은 그 이름이
+    assert 밖의 `in` 판정에 쓰일 때만 센다(측정 대상 · 시험 데이터 목록은 판정이 아니다).
+    `judgment_only` applies the test-surface rule: no predicates under an assert, and a catalogue
+    definition counts only when an `in` judgment outside any assert uses that name.
+    """
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8", errors="ignore"))
+    except SyntaxError:
+        return []
+    consts = _module_constants(tree)
+    values = _module_values(tree)
+    skip = _under_assert(tree) if judgment_only else frozenset()
+
+    hits: list[Hit] = []
+    for node in _membership_tests(tree, skip):
+        hits += _compare_hits(node, consts, values)
     for node in ast.walk(tree):
-        if isinstance(node, ast.Compare) \
-                and any(isinstance(o, ast.In | ast.NotIn) for o in node.ops):
-            hits += _compare_hits(node, consts, values)
-        elif isinstance(node, ast.Call):
+        if id(node) not in skip and isinstance(node, ast.Call):
             hits += _call_hits(node)
+
+    judged = {side.id for node in _membership_tests(tree, skip)
+              for side in [node.left, *node.comparators] if isinstance(side, ast.Name)}
+    hits += [hit for name, hit in _definition_hits(tree, consts, values)
+             if not judgment_only or name in judged]
     return sorted(set(hits))
+
+
+def surface_of(rel: str) -> str | None:
+    """리포 기준 POSIX 경로 -> 검사 표면 — `"full"` · `"judgment"`(시험) · None(범위 밖)."""
+    if not rel.endswith(".py"):
+        return None
+    top = rel.split("/", 1)[0]
+    if top in _SCANNED:
+        return "full"
+    if top in _TEST_SCANNED:
+        return "judgment"
+    return None
+
+
+def predicates_on_surface(rel: str, path: pathlib.Path) -> list[Hit]:
+    """그 경로의 표면 규칙으로 찾은 술어 — 시험 표면은 파일을 읽는 시험만 본다."""
+    surface = surface_of(rel)
+    if surface is None:
+        return []
+    if surface == "judgment":
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8", errors="ignore"))
+        except SyntaxError:
+            return []
+        if not _reads_a_file(tree):
+            return []
+    return find_predicates(path, judgment_only=surface == "judgment")
 
 
 def outside_witness(values: list[str], *, needles: set[str]) -> list[str]:
@@ -279,9 +360,9 @@ def _git(*args: str) -> str:
 
 
 def _added_files(base: str) -> list[pathlib.Path]:
+    """PR 이 바꾼 파일 중 어느 검사 표면에 드는 것."""
     out = _git("diff", "--name-only", f"{base}...HEAD")
-    return [pathlib.Path(p) for p in out.split("\n")
-            if p.strip() and p.split("/")[0] in _SCANNED and p.endswith(".py")]
+    return [pathlib.Path(p.strip()) for p in out.split("\n") if p.strip() and surface_of(p.strip())]
 
 
 def _added_lines(base: str, path: pathlib.Path) -> set[int]:
@@ -340,7 +421,7 @@ def _new_predicates(base: str) -> list[tuple[str, int, str, frozenset]]:
         if not path.exists():
             continue
         added = _added_lines(base, path)
-        for line, kind, _size, evidence in find_predicates(path):
+        for line, kind, _size, evidence in predicates_on_surface(path.as_posix(), path):
             if line in added:
                 out.append((path.as_posix(), line, kind, evidence))
     return out
