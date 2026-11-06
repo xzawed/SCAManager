@@ -483,6 +483,15 @@
     /* Narrow mobile: hide commit (col2) + source (col6) → collapse to 4 cols */
     .tbl th:nth-child(2), .tbl td:nth-child(2),
     .tbl th:nth-child(6), .tbl td:nth-child(6) { display: none; }
+    /* 남은 네 열이 카드 안에 들어가게 — 셀 좌우 여백 16→6px, 머리글 자간 0, 점수는 막대 없이 숫자만.
+       글꼴은 기기마다 다르다(웹 글꼴 없음) — 넓게 그리는 Linux 글꼴(CI)에서도 360px 부터 세 언어가 다 보인다.
+       한계: 320px 은 그 글꼴의 영어 머리글에서 등급 열이 19px 가려진다(Windows 글꼴은 다 보인다).
+       Fit the four columns: 6px side padding, no header tracking, the score as a number without its bar.
+       Fonts vary by device (no web font); even the wide Linux fonts in CI fit from 360px.
+       Limit: at 320px those fonts still cut 19px of the grade column under the English headers. */
+    .tbl th, .tbl td { padding-left: calc(var(--space-1) * 1.5); padding-right: calc(var(--space-1) * 1.5); }
+    .tbl th { letter-spacing: 0; }
+    .tbl .score-bar { display: none; }
   }
   @media (max-width: 768px) {
     .repo-wrap { padding: var(--space-5, 1.25rem) var(--space-4, 1rem) var(--space-6, 1.5rem); }
