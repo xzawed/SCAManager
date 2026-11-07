@@ -1,6 +1,6 @@
 ## 배포 (Railway)
 
-`.github/workflows/` 에 배포 워크플로는 없다. main 푸시 → 체크가 끝나면(Wait for CI) Railway 가 루트 `Dockerfile` 을 감지해 빌드한다(대시보드 빌더 값과 무관). 실패 체크 스위트가 하나라도 있으면(Dependabot 작업 포함) `SKIPPED` 다. 배포 설정의 정본은 **Railway 대시보드**이고 아래 값은 그 사본이다 — 대시보드를 바꾸면 같은 PR 에서 고친다. 읽기: `railway environment config --json` · MCP `describe-service`.
+`.github/workflows/` 에 배포 워크플로는 없다. main 푸시 → 체크가 끝나면(Wait for CI) Railway 가 루트 `Dockerfile` 을 감지해 빌드한다(대시보드 빌더 값과 무관). 실패 체크 스위트가 하나라도 있으면(Dependabot 작업 포함) `SKIPPED` 다. 배포 설정의 정본은 **Railway 대시보드**이고 아래 값은 그 사본이다 — 대시보드를 바꾸면 같은 PR 에서 고친다. 읽기: `py -3 scripts/railway_config.py` · MCP `describe-service`.
 
 한 배포의 순서:
 
