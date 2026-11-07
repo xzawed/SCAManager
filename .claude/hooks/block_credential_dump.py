@@ -32,6 +32,7 @@ Blocking without an alternative gets hooks disabled; every denial teaches the sa
 Threat model: an honest session dumping by accident. Deliberate evasion (indirection, arbitrary code)
 cannot be enumerated by a text hook; prior approval of production access covers it.
 """
+import fnmatch
 import json
 import re
 import shlex
@@ -62,6 +63,7 @@ def _is_railway(tok):
 _SAFE_IDIOM = 'railway variables --kv | cut -d= -f1 | grep -i CRON'
 _SAFE_CONFIG = "py -3 scripts/railway_config.py"
 _SAFE_ENV = "$env:NAME  (YAML 의 env: 키를 찾는 grep 이면 콜론을 빼고: grep -n 'env' <파일>)"
+_SAFE_DOTENV = "grep -c NAME .env  (있는지만 센다 — 값은 열지 않는다)"
 
 # ── 무엇이 덤프를 «중화» 하는가 ─────────────────────────────────────────────
 # What neutralizes a dump.
@@ -138,21 +140,29 @@ _LISTING_PREFIXES = frozenset({"command", "builtin", "exec", "sudo", "nohup", "t
 _ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*")
 
 
-def _lists_environment(stage):
-    """단계가 환경 전체를 찍는가 / Does this stage list the whole environment?"""
+def _command_words(stage):
+    """명령 자리의 (첫 낱말 소문자, 나머지 낱말) — 앞쪽 대입 · 실행 접두어 · 괄호 · 경로 · .exe 를 걷어 낸다.
+    (head lower-cased, rest) at the command position; assignments, prefixes, parens, paths and .exe stripped."""
     try:
         toks = shlex.split(stage, posix=True)
     except ValueError:
         toks = stage.split()
     words = [w for w in (t.strip("(){}") for t in toks) if w]
     i = 0
-    while i < len(words) and (words[i] in _LISTING_PREFIXES or _ASSIGNMENT.fullmatch(words[i])):
+    while i < len(words) and (words[i].lower() in _LISTING_PREFIXES or _ASSIGNMENT.fullmatch(words[i])):
         i += 1
     if i >= len(words):
-        return False
-    head = words[i].replace("\\", "/").rsplit("/", 1)[-1]
-    head = head[:-4] if head.lower().endswith(".exe") else head
-    rest = words[i + 1:]
+        return "", []
+    # PowerShell · Windows 의 명령 찾기는 대소문자를 가리지 않는다(`ENV` 도 env.exe) — 소문자로 비교한다.
+    # Command lookup is case-insensitive in PowerShell / on Windows; compare lower-cased.
+    head = words[i].replace("\\", "/").rsplit("/", 1)[-1].lower()
+    head = head[:-4] if head.endswith(".exe") else head
+    return head, words[i + 1:]
+
+
+def _lists_environment(stage):
+    """단계가 환경 전체를 찍는가 / Does this stage list the whole environment?"""
+    head, rest = _command_words(stage)
     if head == "env":
         # 값을 받는 옵션(-u/--unset NAME · -C/--chdir DIR)의 값은 명령이 아니다. -S 의 값은 실행할 명령이다.
         # Values of -u/--unset and -C/--chdir are not commands; -S carries the command itself.
@@ -205,6 +215,88 @@ def _railway_inner_lists_environment(stage):
     return False
 
 
+# ── .env 읽기 — 판정을 뒤집는다: .env 꼴 경로가 나오면 막고, 안전한 꼴만 통과 ──────────────────
+# 🔴 읽기 도구를 열거하면 늘 빠진다(cat · type → grep · head → diff · base64 · tac · cut …, 보안 리뷰 지적 2회).
+#    경로 변형(.env.local · .env.production.local · .env-old · prod.env)도 같다. 그래서 «.env 꼴 경로가 남아
+#    있으면 읽기» 로 보고, 안전한 꼴만 통과시킨다:
+#    - 값 없는 템플릿 — 마지막 경로 이름이 정확히 .env.example · .env.sample · .env.template
+#    - .env 가 쓰기 대상(`>` · `>>`)으로만 나오는 꼴
+#    - 개수 · 존재 · 파일 이름만 내는 grep 계열(-c · -q · -l) — 사용자 관행(값은 열지 않는다)
+#    - 옮기기 · 지우기 · 정보 보기 · 쓰기 명령(아래 목록) · git 의 상태 확인
+#    - 바로 다음 단계의 `cut -d= -f1`(이름만) — 중화 판정이 맡는다
+# Inverted: any .env-like path counts as a read unless the form is known safe.
+_PATHISH = re.compile(r"[^\s'\";|&()<>]+")
+_REDIRECT_TARGET = re.compile(r">>?\s*(['\"]?)[^\s'\";|&()<>]+\1")
+_DOTENV_TEMPLATES = frozenset({".env.example", ".env.sample", ".env.template"})
+_DOTENV_SAFE_HEADS = frozenset({
+    "cp", "mv", "ls", "dir", "rm", "del", "touch", "test", "[", "[[", "stat", "chmod", "attrib",
+    "test-path", "copy-item", "move-item", "remove-item", "new-item", "get-item", "get-childitem",
+    "set-content", "add-content", "out-file",
+})
+_GIT_SAFE_SUBCOMMANDS = frozenset({"check-ignore", "ls-files", "status"})
+# 와일드카드 경로가 .env 를 집을 수 있는지 볼 때 대 보는 이름들 / names a glob is tested against
+_DOTENV_PROBES = (".env", ".env.local", ".env.production", ".env.development", ".env-old", "prod.env")
+
+
+def _is_dotenv_name(comp):
+    """마지막 경로 이름이 .env 꼴인가(템플릿 제외) — NTFS 스트림 접미 · 와일드카드까지.
+    Is this final path component .env-like (templates excepted), including NTFS streams and globs?"""
+    comp = re.sub(r"^[a-z]:", "", comp).split(":", 1)[0]  # 드라이브 · `.env::$DATA` 스트림 접미 제거
+    if not comp or comp in _DOTENV_TEMPLATES:
+        return False
+    if any(ch in comp for ch in "*?["):
+        # 와일드카드는 대 보는 이름 중 하나라도 집으면 .env 다. 점으로 시작하는 이름은 패턴도 점으로 시작할 때만
+        # (bash 는 `*` 가 점 파일을 집지 않는다).
+        # A glob is .env-like if it can match a probe; dot-names only when the pattern starts with a dot.
+        return any(fnmatch.fnmatchcase(probe, comp) for probe in _DOTENV_PROBES
+                   if comp.startswith(".") or not probe.startswith("."))
+    return comp == ".env" or comp.startswith((".env.", ".env-", ".env_")) or comp.endswith(".env")
+
+
+def _has_dotenv_path(text):
+    """.env 꼴 경로가 있는가(템플릿 제외) / Is there a .env-like path (templates excepted)?"""
+    for tok in _PATHISH.findall(text):
+        comp = tok.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1].rsplit("=", 1)[-1].lower()
+        if _is_dotenv_name(comp):
+            return True
+    return False
+
+
+def _count_only_grep(stage):
+    """grep 계열이 개수 · 존재 · 파일 이름만 내는가 — 플래그를 토큰으로 읽는다(대소문자 구분).
+    문맥 · 일치 부분 출력 플래그(-A · -B · -C · -o 등)가 하나라도 있으면 아니다(보안 리뷰 지적 — 첫 판은
+    대소문자를 무시해 `-C` 문맥 출력을 «개수만» 으로 읽었다). rg 의 -L 은 «링크 따라가기» 라 제외.
+    Count/existence/filename-only grep, flags read as tokens (case-sensitive); any context or
+    match-output flag disqualifies it. rg's -L means follow links."""
+    head, words = _command_words(stage)
+    if head not in ("grep", "egrep", "fgrep", "rg"):
+        return False
+    shorts = {ch for w in words if w.startswith("-") and not w.startswith("--") for ch in w[1:]}
+    longs = {w.split("=", 1)[0] for w in words if w.startswith("--")}
+    if any(ch in "ABCo" for ch in shorts) or longs & {
+            "--after-context", "--before-context", "--context", "--only-matching",
+            "--passthru", "--passthrough", "--json", "--replace", "--vimgrep"}:
+        return False
+    quiet = "cql" if head == "rg" else "cqlL"
+    return any(ch in quiet for ch in shorts) or bool(longs & {
+        "--count", "--quiet", "--silent", "--files-with-matches", "--files-without-match"})
+
+
+def _mentions_dotenv(stage):
+    """쓰기 대상을 뺀 나머지에 .env 꼴 경로가 있는가 / A .env-like path outside write targets?"""
+    return _has_dotenv_path(_REDIRECT_TARGET.sub(" ", stage))
+
+
+def _reads_dotenv(stage):
+    """단계가 .env 내용을 출력할 수 있는가 / Can this stage print .env contents?"""
+    if not _mentions_dotenv(stage) or _count_only_grep(stage):
+        return False
+    head, words = _command_words(_REDIRECT_TARGET.sub(" ", stage))
+    if head in _DOTENV_SAFE_HEADS:
+        return False
+    return not (head == "git" and words and words[0].lower() in _GIT_SAFE_SUBCOMMANDS)
+
+
 # ── credential **값**을 stdout 으로 쏟는 명령: (판정 함수, 사유, 중화 수단, 안내) ──────
 # Commands that dump credential values: (matcher, reason, neutralizers, hint).
 # 🔴 `.env\b(?!\.)` 부정 lookahead — 커밋된 템플릿 `.env.example` 은 값이 없고
@@ -219,7 +311,7 @@ _BLOCKED = (
     # Aliases from the CLI help; the plain form is blocked too so a CLI change cannot leak silently.
     (re.compile(_RW + r"\s+(?:environment|env)\b[^|&;]*?\s(?:config|show|info)\b", re.IGNORECASE).search,
      "railway environment config — 서비스 변수 값까지 평문 출력", (), _SAFE_CONFIG),
-    (re.compile(r"\bprintenv\b").search,
+    (re.compile(r"\bprintenv\b", re.IGNORECASE).search,
      "printenv — 프로세스 env 값 덤프", (_NAMES,), _SAFE_IDIOM),
     # 운영 컨테이너(ssh)나 Railway 변수를 주입한 로컬 실행(run = local)의 **안쪽 명령**이 환경 전체를
     # 찍는 꼴 — 안쪽 명령을 토큰으로 떼어 아래 셸 나열 판정에 넘긴다(`--env production` 인자는 대상 아님).
@@ -230,8 +322,8 @@ _BLOCKED = (
     # The process environment file (NUL-separated); a cut does not neutralize it.
     (re.compile(r"/proc/[^\s/]+/environ\b").search,
      "/proc/*/environ — 프로세스 env 값 덤프", (), _SAFE_IDIOM),
-    (re.compile(r"\b(?:cat|type|gc|Get-Content)\b[^|&;]*\.env\b(?!\.)", re.IGNORECASE).search,
-     "cat/type/Get-Content .env — 시크릿 파일 직접 열람", (_NAMES,), _SAFE_IDIOM),
+    (_reads_dotenv,
+     ".env 읽기 — 시크릿 파일 직접 열람", (_NAMES,), _SAFE_DOTENV),
     # PowerShell 의 printenv — env: 드라이브 경로는 **정확히 변수 이름 하나 + 구분자** 일 때만 통과한다.
     # 그 밖은 전부 덤프로 본다: 빈 경로 · 구분자 · 와일드카드 · 따옴표로 쪼갠 와일드카드(`env:A'*'`) ·
     # 변수 전개(`env:$p`). 덤프 꼴을 열거하는 판정은 세 번 뚫렸다(보안 리뷰 지적 3회).
@@ -311,7 +403,13 @@ def _decide_segment(segment):
     commented = "#" in segment
     for i, stage in enumerate(stages):
         for matcher, reason, neutralizers, hint in _BLOCKED:
-            if matcher(stage) and (commented or not _neutralized(stages, i, neutralizers)):
+            hit = matcher(stage)
+            # 🔴 .env 를 다루는 «안전한» 명령도 출력이 다음 단계로 넘어가면 읽기다(`ls .env | xargs cat` ·
+            #    `Get-Item .env | Get-Content` — 보안 리뷰 지적). 안전은 파이프라인의 마지막 단계일 때만.
+            # A "safe" .env command whose output flows to a next stage is a read; safe only as the last stage.
+            if not hit and matcher is _reads_dotenv and i + 1 < len(stages) and _mentions_dotenv(stage):
+                hit = True
+            if hit and (commented or not _neutralized(stages, i, neutralizers)):
                 return reason, hint
     return None
 
@@ -382,6 +480,8 @@ def main():
         safe = f"배포 설정은 변수 값을 뺀 읽기로 보세요:\n  {_SAFE_CONFIG}\n\n"
     elif hint == _SAFE_ENV:
         safe = f"변수 하나만 필요하면 그 이름으로 읽으세요:\n  {_SAFE_ENV}\n\n"
+    elif hint == _SAFE_DOTENV:
+        safe = f".env 는 값 없이 확인하세요:\n  {_SAFE_DOTENV}\n\n"
     else:
         safe = f"이름만 필요하면 값을 먼저 잘라내세요:\n  {hint}\n\n"
 

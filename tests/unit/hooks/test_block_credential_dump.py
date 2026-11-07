@@ -256,6 +256,35 @@ _BLOCKED = [
     pytest.param("railway ssh --session main env", id="ssh-optional-value-option-then-env"),
     pytest.param("railway ssh -d abc123 -- env", id="ssh-deployment-instance-then-env"),
     pytest.param("railway ssh -i ~/.ssh/id_ed25519 env", id="ssh-identity-file-then-env"),
+    # 🔴 .env 를 읽는 다른 도구 · .env 변형(.env.local 등) — 일치 줄이 값째 나온다(자동 보안 리뷰 일곱 번째 지적).
+    # Other .env readers and .env variants print matching lines with values (seventh automated review).
+    pytest.param("grep DATABASE_URL .env", id="grep-dotenv"),
+    pytest.param("rg KEY .env", id="rg-dotenv"),
+    pytest.param("head -n 5 .env", id="head-dotenv"),
+    pytest.param("tail .env", id="tail-dotenv"),
+    pytest.param("awk -F= '{print $2}' .env", id="awk-dotenv-values"),
+    pytest.param("sed -n 1p .env", id="sed-dotenv"),
+    pytest.param("cat .env.local", id="cat-dotenv-local"),
+    pytest.param("grep TOKEN .env.production", id="grep-dotenv-production"),
+    # 🔴 판정을 뒤집었다 — .env 꼴 경로가 나오면 막고 안전한 꼴만 통과(자동 보안 리뷰 여덟 번째 지적).
+    #    경로 변형(.env.production.local · .env-old · prod.env)과 목록 밖 읽기 도구(diff · base64 · tac · cut 등).
+    # Inverted: any .env-like path is denied unless the form is known safe (eighth automated review).
+    pytest.param("cat .env.production.local", id="dotenv-double-suffix"),
+    pytest.param("cat .env-old", id="dotenv-dash-suffix"),
+    pytest.param("cat prod.env", id="dotenv-name-suffix"),
+    pytest.param("diff .env .env.example", id="diff-dotenv"),
+    pytest.param("base64 .env", id="base64-dotenv"),
+    pytest.param("tac .env", id="tac-dotenv"),
+    pytest.param("cut -d= -f2 .env", id="cut-values-dotenv"),
+    pytest.param("source .env && env", id="source-dotenv-then-env"),
+    # 🔴 자동 보안 리뷰 아홉 번째 지적 — 문맥 출력 플래그(-C)를 «개수만» 으로 읽던 결함 · 와일드카드 경로 ·
+    #    NTFS 스트림 · 안전한 명령의 출력이 다음 단계로 넘어가는 꼴.
+    # Ninth review: context flags read as count-only, glob paths, NTFS streams, safe heads piped onward.
+    pytest.param("grep -C 3 KEY .env", id="grep-context-dotenv"),
+    pytest.param("grep -c -A2 KEY .env", id="grep-count-with-context-flag"),
+    pytest.param("cat .env*", id="dotenv-glob-suffix"),
+    pytest.param("cat *.env", id="dotenv-glob-name"),
+    pytest.param("ls .env | xargs cat", id="safe-head-piped-to-reader"),
 ]
 
 
@@ -352,6 +381,24 @@ _ALLOWED = [
     pytest.param('env -S "python x.py"', id="env-split-string-runner"),
     pytest.param("railway.cmd variable set A=1", id="railway-cmd-shim-write"),
     pytest.param("railway run -s api npm test", id="run-service-option-benign"),
+    # .env 는 개수·존재만 본다(사용자 관행 — 값은 열지 않는다). 템플릿·쓰기도 통과.
+    # Counting/existence checks on .env (the user's practice), templates and writes stay allowed.
+    pytest.param("grep -c DATABASE_URL .env", id="grep-count-dotenv"),
+    pytest.param("grep -q TOKEN .env", id="grep-quiet-dotenv"),
+    pytest.param("rg -l KEY .env", id="rg-files-with-matches-dotenv"),
+    pytest.param("grep KEY .env.example", id="grep-dotenv-example"),
+    pytest.param("cp .env.example .env", id="copy-template-to-dotenv"),
+    pytest.param("ls -la .envrc", id="envrc-not-dotenv"),
+    # 안전한 꼴 — 옮기기 · 지우기 · 정보만 보기 · 쓰기 대상으로만 나오는 .env · 템플릿 · 이름만 자르기.
+    # Safe forms: move/remove/metadata, .env only as a write target, templates, names-only cut.
+    pytest.param("ls -la .env", id="ls-dotenv"),
+    pytest.param("test -f .env", id="test-f-dotenv"),
+    pytest.param("echo 'A=1' >> .env", id="append-to-dotenv"),
+    pytest.param("Test-Path .env", id="test-path-dotenv"),
+    pytest.param("cat .env | cut -d= -f1", id="dotenv-names-only"),
+    pytest.param("cat config/.env.sample", id="dotenv-sample-template"),
+    pytest.param("grep -ci KEY .env", id="grep-count-ignore-case-dotenv"),
+    pytest.param("ls .env*", id="ls-dotenv-glob"),
     pytest.param("export PATH=$PATH:/opt/bin", id="export-path-assignment"),
     pytest.param("declare -A map", id="declare-assoc-array"),
     pytest.param("declare -f", id="declare-functions-only"),
@@ -399,6 +446,16 @@ _POWERSHELL_BLOCKED = [
     pytest.param("railway environment config --json", id="ps-env-config"),
     # PowerShell 은 명령 이름 대소문자를 가리지 않는다 / PowerShell command names are case-insensitive.
     pytest.param("Railway variables --kv", id="ps-railway-capitalized"),
+    # PowerShell 의 명령 이름 · Windows 실행 파일 찾기는 대소문자를 가리지 않는다(보안 리뷰 일곱 번째 지적).
+    # Command lookup is case-insensitive in PowerShell / on Windows (seventh review).
+    pytest.param("Printenv", id="ps-printenv-capitalized"),
+    pytest.param("ENV | Sort-Object", id="ps-env-uppercase"),
+    pytest.param("Select-String -Path .env -Pattern KEY", id="ps-select-string-dotenv"),
+    pytest.param("sls KEY .env", id="ps-sls-dotenv"),
+    pytest.param("findstr KEY .env", id="ps-findstr-dotenv"),
+    pytest.param("Get-Content .e*", id="ps-get-content-dotenv-glob"),
+    pytest.param("Get-Content .env::$DATA", id="ps-get-content-dotenv-ads"),
+    pytest.param("Get-Item .env | Get-Content", id="ps-get-item-piped-to-get-content"),
     pytest.param("& 'railway' env config --json", id="ps-call-operator-quoted"),
     pytest.param("Get-Content .env", id="ps-get-content-dotenv"),
     pytest.param("gc D:\\Source\\SCAManager\\.env", id="ps-gc-dotenv-abspath"),
