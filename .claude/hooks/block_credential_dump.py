@@ -33,10 +33,13 @@ Threat model: an honest session dumping by accident. Deliberate evasion (indirec
 cannot be enumerated by a text hook; prior approval of production access covers it.
 """
 import fnmatch
+import functools
 import json
+import os
 import re
 import shlex
 import sys
+import time
 
 # 판정하는 셸 도구 / shell tools this hook judges
 _SHELL_TOOLS = ("Bash", "PowerShell")
@@ -64,6 +67,7 @@ _SAFE_IDIOM = 'railway variables --kv | cut -d= -f1 | grep -i CRON'
 _SAFE_CONFIG = "py -3 scripts/railway_config.py"
 _SAFE_ENV = "$env:NAME  (YAML 의 env: 키를 찾는 grep 이면 콜론을 빼고: grep -n 'env' <파일>)"
 _SAFE_DOTENV = "grep -c NAME .env  (있는지만 센다 — 값은 열지 않는다)"
+_SAFE_SEARCH = "Grep 도구 · git grep KEY · grep -rn --exclude='.env*' --exclude='*.env' KEY <폴더>"
 
 # ── 무엇이 덤프를 «중화» 하는가 ─────────────────────────────────────────────
 # What neutralizes a dump.
@@ -234,52 +238,164 @@ _DOTENV_SAFE_HEADS = frozenset({
     "set-content", "add-content", "out-file",
 })
 _GIT_SAFE_SUBCOMMANDS = frozenset({"check-ignore", "ls-files", "status"})
-# 와일드카드 경로가 .env 를 집을 수 있는지 볼 때 대 보는 이름들 / names a glob is tested against
-_DOTENV_PROBES = (".env", ".env.local", ".env.production", ".env.development", ".env-old", "prod.env")
+# 글롭 값을 받는 옵션. 제외 글롭의 값만 경로 후보에서 뺀다 — 포함 글롭(`--include=.env` · `-Filter .env`)의
+# 값은 그 파일을 읽겠다는 뜻이라 후보로 남긴다(보안 리뷰 HIGH). rg 의 -g/--glob/--iglob 은 `!` 가 붙으면 제외.
+# 🔴 `-exclude` 는 PowerShell 매개변수다 — grep 에선 `-e xclude`(패턴) 라 뒤 토큰이 읽을 파일이 된다(14차 HIGH).
+# Glob-valued options: only exclusion values leave the path candidates; inclusion values stay (they select
+# files to read). rg's -g/--glob/--iglob exclude when prefixed with `!`. `-exclude` is PowerShell-only:
+# for grep it parses as `-e xclude`, so the next token is a file to read.
+_GREP_EXCLUDE_OPTIONS = frozenset({"--exclude", "--exclude-dir"})
+_PS_EXCLUDE_OPTIONS = frozenset({"-exclude"})
+_RG_GLOB_OPTIONS = frozenset({"-g", "--glob", "--iglob"})
+
+# 훅 입력의 작업 폴더 후보와 셸 — decide_with_hint 가 정한다. 경로 · 와일드카드를 실제 폴더에 대 볼 때 쓴다.
+# 🔴 작업 폴더는 «하나» 가 아니라 «후보 전부» 다 — 처음 폴더 + 명령 안의 모든 cd 대상(서브셸 · 조건부 포함).
+#    cd 추적이 틀려도 판정이 느슨해지지 않도록, 상대 경로는 후보 모두에서 깨끗해야 통과한다(13차 HIGH).
+# Session cwd candidates and shell from the hook input. The cwd is a SET: the starting folder plus every cd
+# target in the command (subshells and conditionals too), so a wrong guess about cd can never loosen a verdict.
+_CONTEXT = {"cwds": [None], "shell": "bash", "dotglob": False}
+_MAX_CWDS = 8
+# Bash 의 `*` 가 점 파일을 집게 하는 설정 — 명령에 있으면 셸별 규칙을 PowerShell 처럼 본다(14차).
+# Settings that make Bash `*` match dot-files; when present, treat globs like PowerShell's.
+_DOTGLOB = re.compile(r"dotglob|globdots|GLOBIGNORE", re.IGNORECASE)
+
+
+def _bases():
+    """작업 폴더 후보들(None = 훅 프로세스의 cwd) / candidate working directories."""
+    return [cwd or os.getcwd() for cwd in _CONTEXT["cwds"]]
+
+
+def _resolve_all(path):
+    """작업 폴더 후보마다의 절대 경로 / Absolute path against every cwd candidate."""
+    path = os.path.expanduser(path)
+    return [path] if os.path.isabs(path) else [os.path.join(base, path) for base in _bases()]
+
+
+def _cwd_unknown():
+    """작업 폴더 후보 중에 훅이 모르는 것이 있는가 / Is any cwd candidate unknown to the hook?"""
+    return any(_unresolvable(base) for base in _bases())
+
+
+def _unresolvable(path):
+    """셸이 펼칠 값(`$VAR` · `%VAR%` · `~user` · 폴더 부분의 와일드카드)이라 훅이 실제 경로를 알 수 없는가.
+    Does the path hold something only the shell can expand (variables, ~user, a wildcard in a folder part)?"""
+    folder = path.replace("\\", "/").rpartition("/")[0]
+    return bool(re.search(r"[$%]|^~[^/]", path) or any(ch in folder for ch in "*?["))
+
+
+def _star_hits_dotfiles(pattern):
+    """와일드카드가 점 파일을 집는가 — PowerShell · dotglob 이면 늘, Bash 는 패턴이 점으로 시작할 때만.
+    Does the glob match dot-files? Always in PowerShell or with dotglob; in Bash only for a leading dot."""
+    return _CONTEXT["shell"] == "powershell" or _CONTEXT["dotglob"] or pattern.startswith(".")
+
+
+def _name_glob_may_hit_dotenv(pattern):
+    """폴더를 읽을 수 없을 때의 막는 쪽 판정 — 이름 와일드카드가 .env 꼴 이름을 집을 수 있는가.
+    Fail-closed fallback when the folder cannot be read: could this name glob match a .env-like name?"""
+    pattern = pattern.lower()
+    dot_ok = _star_hits_dotfiles(pattern)
+    return any(fnmatch.fnmatchcase(probe, pattern) for probe in (".env", ".env.local", "prod.env")
+               if dot_ok or not probe.startswith("."))
 
 
 def _is_dotenv_name(comp):
-    """마지막 경로 이름이 .env 꼴인가(템플릿 제외) — NTFS 스트림 접미 · 와일드카드까지.
-    Is this final path component .env-like (templates excepted), including NTFS streams and globs?"""
+    """마지막 경로 이름이 .env 꼴인가(템플릿 제외 · NTFS 스트림 접미 제거) / Is this name .env-like?"""
     comp = re.sub(r"^[a-z]:", "", comp).split(":", 1)[0]  # 드라이브 · `.env::$DATA` 스트림 접미 제거
     if not comp or comp in _DOTENV_TEMPLATES:
         return False
-    if any(ch in comp for ch in "*?["):
-        # 와일드카드는 대 보는 이름 중 하나라도 집으면 .env 다. 점으로 시작하는 이름은 패턴도 점으로 시작할 때만
-        # (bash 는 `*` 가 점 파일을 집지 않는다).
-        # A glob is .env-like if it can match a probe; dot-names only when the pattern starts with a dot.
-        return any(fnmatch.fnmatchcase(probe, comp) for probe in _DOTENV_PROBES
-                   if comp.startswith(".") or not probe.startswith("."))
     return comp == ".env" or comp.startswith((".env.", ".env-", ".env_")) or comp.endswith(".env")
 
 
+def _glob_matches(norm):
+    """와일드카드 경로가 실제로 집는 항목(절대 경로, 작업 폴더 후보 전부) — Bash 의 `*` 는 점 파일을 집지 않고
+    PowerShell 의 `*` 는 집는다. 어느 후보에도 그 폴더가 없거나 읽을 수 없으면 None(호출자가 막는 쪽으로).
+    Entries a glob really matches across every cwd candidate; None when no candidate has a readable folder."""
+    folder, _, pattern = norm.rpartition("/")
+    if _cwd_unknown() and not os.path.isabs(os.path.expanduser(folder or ".")):
+        return None
+    dot_ok = _star_hits_dotfiles(pattern)
+    found, readable = [], False
+    for base in _resolve_all(folder or "."):
+        if not os.path.isdir(base):
+            continue  # 이 후보엔 그 폴더가 없다 — 셸이 거기 있지 않았다 / not this candidate
+        try:
+            names = os.listdir(base)
+        except OSError:
+            return None  # 못 읽음 — 호출자가 막는 쪽으로 판정한다 / unreadable: callers fail closed
+        readable = True
+        found.extend(os.path.join(base, name) for name in names
+                     if fnmatch.fnmatchcase(name.lower(), pattern.lower())
+                     and (dot_ok or not name.startswith(".")))
+    return found if readable else None
+
+
+# 옵션이 글롭 값을 받는 명령 — 그 명령에서만 제외 글롭 값을 경로로 보지 않는다(보안 리뷰 지적).
+# Commands whose options take glob values; only there are exclusion globs not treated as paths.
+_GREP_FAMILY = frozenset({"grep", "egrep", "fgrep", "rgrep"})
+_PS_GLOB_OPTION_HEADS = frozenset({"get-childitem", "gci", "select-string", "sls"})
+# 괄호 · 치환 껍데기 — `(cat .env)` 의 `.env)` · `$(ls .env)` 의 `$(ls` 를 경로로 읽으려면 벗긴다(14차 반영 중 실측).
+# Grouping and substitution wrappers around a token (`.env)`, `$(ls`) are peeled before the path check.
+_TOKEN_WRAPPERS = re.compile(r"^(?:[$<>@]?[({])+|[)}]+$")
+
+
+def _exclude_options_for(head):
+    """그 명령에서 제외 글롭 값을 받는 옵션들 / exclusion options that take a glob for this command."""
+    if head in _GREP_FAMILY:
+        return _GREP_EXCLUDE_OPTIONS
+    if head in _PS_GLOB_OPTION_HEADS or (head in ("ls", "dir") and _CONTEXT["shell"] == "powershell"):
+        return _PS_EXCLUDE_OPTIONS
+    return frozenset()
+
+
+def _path_tokens(text):
+    """명령의 경로 후보 토큰. 백슬래시는 / 로(Windows 경로). 옵션의 `=값` · `KEY=값` 의 값도 후보에 넣는다.
+    제외 글롭 값 옵션(grep --exclude · PowerShell -Exclude · rg -g '!…')의 값은 그런 옵션이 있는 명령에서만 뺀다.
+    Path-like tokens; `--opt=value` and `KEY=value` values are candidates too. Exclusion-glob option values
+    are dropped only for commands that really have such options."""
+    text = text.replace("\\", "/")
+    try:
+        toks = shlex.split(text, posix=True)
+    except ValueError:
+        toks = _PATHISH.findall(text)
+    head = _command_words(text)[0]
+    excludes = _exclude_options_for(head)
+    rg_globs = head == "rg"
+    out, skip = [], False
+    for raw in toks:
+        if skip:
+            skip = False
+            continue
+        tok = _TOKEN_WRAPPERS.sub("", raw.strip("`"))
+        name, eq, value = tok.partition("=")
+        low = name.lower()
+        if low in excludes:
+            skip = not eq  # `--exclude X` 는 다음 토큰, `--exclude=X` 는 이 토큰 / next token or this one
+            continue
+        if rg_globs and low in _RG_GLOB_OPTIONS and eq and value.startswith("!"):
+            continue  # `--glob=!x` 는 제외 / an excluding rg glob
+        if tok.startswith("!"):
+            continue  # 부정 글롭(rg -g '!x' 의 값) — 제외 / a negated glob excludes
+        if tok and not tok.startswith("-"):
+            out.append(tok.rstrip("/"))
+        if eq and value:
+            out.append(value.rstrip("/"))
+    return out
+
+
 def _has_dotenv_path(text):
-    """.env 꼴 경로가 있는가(템플릿 제외) / Is there a .env-like path (templates excepted)?"""
-    for tok in _PATHISH.findall(text):
-        comp = tok.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1].rsplit("=", 1)[-1].lower()
-        if _is_dotenv_name(comp):
+    """.env 꼴 경로가 있는가(템플릿 제외 · 와일드카드는 실제 항목) / Is there a .env-like path?"""
+    for tok in _path_tokens(text):
+        comp = tok.rsplit("/", 1)[-1].lower()
+        if any(ch in comp for ch in "*?["):
+            matches = None if _unresolvable(tok) else _glob_matches(tok)
+            if matches is None:
+                if _name_glob_may_hit_dotenv(comp):  # 못 읽으면 이름으로 — 막는 쪽 / unreadable: by name
+                    return True
+            elif any(_is_dotenv_name(os.path.basename(m).lower()) for m in matches):
+                return True
+        elif _is_dotenv_name(comp):
             return True
     return False
-
-
-def _count_only_grep(stage):
-    """grep 계열이 개수 · 존재 · 파일 이름만 내는가 — 플래그를 토큰으로 읽는다(대소문자 구분).
-    문맥 · 일치 부분 출력 플래그(-A · -B · -C · -o 등)가 하나라도 있으면 아니다(보안 리뷰 지적 — 첫 판은
-    대소문자를 무시해 `-C` 문맥 출력을 «개수만» 으로 읽었다). rg 의 -L 은 «링크 따라가기» 라 제외.
-    Count/existence/filename-only grep, flags read as tokens (case-sensitive); any context or
-    match-output flag disqualifies it. rg's -L means follow links."""
-    head, words = _command_words(stage)
-    if head not in ("grep", "egrep", "fgrep", "rg"):
-        return False
-    shorts = {ch for w in words if w.startswith("-") and not w.startswith("--") for ch in w[1:]}
-    longs = {w.split("=", 1)[0] for w in words if w.startswith("--")}
-    if any(ch in "ABCo" for ch in shorts) or longs & {
-            "--after-context", "--before-context", "--context", "--only-matching",
-            "--passthru", "--passthrough", "--json", "--replace", "--vimgrep"}:
-        return False
-    quiet = "cql" if head == "rg" else "cqlL"
-    return any(ch in quiet for ch in shorts) or bool(longs & {
-        "--count", "--quiet", "--silent", "--files-with-matches", "--files-without-match"})
 
 
 def _mentions_dotenv(stage):
@@ -295,6 +411,426 @@ def _reads_dotenv(stage):
     if head in _DOTENV_SAFE_HEADS:
         return False
     return not (head == "git" and words and words[0].lower() in _GIT_SAFE_SUBCOMMANDS)
+
+
+# ── 재귀 검색 · 나열 파이프라인이 .env 를 읽는가 (회고 원장 R-4) ─────────────────────────────
+# 🔴 grep -r · findstr /s · Get-ChildItem | Select-String 은 .gitignore 를 보지 않아 .env 의 일치 줄을 값째 낸다.
+#    rg 는 숨김 · .gitignore 파일을 기본으로 건너뛰지만, 무시 해제(-u)는 숨김 아닌 .env 꼴(prod.env)을, 숨김까지
+#    풀면(-uu) 전부를, 포함 글롭(-g X)은 그 규칙들을 넘어 맞는 파일을 읽는다. 명령 글자로는 «그 폴더에 어떤 .env 꼴
+#    파일이 있는가» 를 알 수 없어 파일 시스템을 본다 — 실제로 있는 파일마다 그 검색의 포함 · 제외 규칙에 대 본다
+#    (고정 표본 이름에 대 보면 prod.env 를 놓친다, 14차). 큰 폴더는 2초 · 2만 파일에서, 못 읽는 하위 폴더는 바로
+#    멈추고 «있다» 로 본다(막는 쪽). 개수만 · 파일 이름만 내는 검색은 통과.
+# Recursive searches ignore .gitignore; the hook enumerates the .env-like files really on disk and checks each
+# against the search's own include/exclude rules (bounded, fail closed).
+_GREP_VALUE_OPTIONS = frozenset({"-e", "-f", "-m", "-A", "-B", "-C", "-d", "-D", "--regexp", "--file",
+                                 "--max-count", "--context", "--after-context", "--before-context",
+                                 "--exclude", "--include", "--exclude-dir", "--label", "-g", "--glob",
+                                 "--iglob", "-t", "-T", "--type", "--type-not", "-j", "--threads"})
+_WALK_SKIP = frozenset({".git", "node_modules", ".venv", "venv", "__pycache__", ".mypy_cache",
+                        ".pytest_cache", ".ruff_cache", ".tox"})
+# 검색 명령 — 단계의 첫 낱말이 아니어도 찾는다(env · timeout · sudo · if · do · ! 같은 접두 뒤, 14차 반영 중 실측).
+# Search commands, found anywhere in the stage (past env, timeout, sudo, if, do, ! and other prefixes).
+_SEARCH_COMMANDS = frozenset({"grep", "egrep", "fgrep", "rgrep", "rg", "findstr"})
+
+
+def _plain_words(text):
+    """shlex 낱말 — 백슬래시는 / 로, 괄호 · 치환 껍데기는 벗기고 빈 것은 뺀다.
+    shlex words with backslashes as slashes and grouping/substitution wrappers peeled."""
+    text = text.replace("\\", "/")
+    try:
+        toks = shlex.split(text, posix=True)
+    except ValueError:
+        toks = text.split()
+    return [w for w in (_TOKEN_WRAPPERS.sub("", t.strip("`")) for t in toks) if w]
+
+
+def _command_name(word):
+    """경로 · .exe 를 걷은 소문자 이름 / lower-cased base name without path or .exe."""
+    name = word.rsplit("/", 1)[-1].lower()
+    return name[:-4] if name.endswith(".exe") else name
+
+
+def _walk_dotenv(root, recursive):
+    """폴더 아래 .env 꼴 파일의 상대 경로 조각들 — 너무 크거나 오래 걸리거나 못 읽은 하위 폴더가 있으면 None.
+    recursive=False 면 바로 아래만 본다. Relative path parts of .env-like files under a folder; None when
+    too big, too slow or partly unreadable. Only the top level when not recursive."""
+    deadline, seen, found, errors = time.monotonic() + 2.0, 0, [], []
+    for dirpath, dirnames, filenames in os.walk(root, onerror=errors.append):
+        rel = os.path.relpath(dirpath, root).replace("\\", "/")
+        prefix = () if rel == "." else tuple(rel.split("/"))
+        dirnames[:] = [d for d in dirnames if d not in _WALK_SKIP] if recursive else []
+        found.extend(prefix + (name,) for name in filenames if _is_dotenv_name(name.lower()))
+        seen += len(filenames)
+        if seen > 20000 or time.monotonic() > deadline:
+            return None
+    return None if errors else found
+
+
+def _dotenv_files(target, recursive=True):
+    """대상(파일 · 폴더 · 와일드카드) 아래 .env 꼴 파일의 상대 경로 조각들 — 작업 폴더 후보 전부에서. 셀 수 없으면
+    None(막는 쪽): 셸만 아는 경로 · 모르는 작업 폴더 · 어느 후보에도 없는 대상 · 너무 큰 폴더.
+    .env-like files under the target across every cwd candidate, or None when they cannot be enumerated."""
+    if _unresolvable(target):
+        return None
+    if any(ch in target for ch in "*?["):
+        matches = _glob_matches(target)
+        if matches is None:
+            return None
+        found = []
+        for match in matches:
+            sub = _dotenv_files(match, recursive)
+            if sub is None:
+                return None
+            found.extend(sub)
+        return found
+    if _cwd_unknown() and not os.path.isabs(os.path.expanduser(target)):
+        return None
+    roots = list(dict.fromkeys(os.path.normpath(r) for r in _resolve_all(target) if os.path.exists(r)))
+    if not roots:
+        return None  # 어느 후보에도 없는 대상 — 막는 쪽 / missing under every candidate: fail closed
+    found = []
+    for root in roots:
+        if os.path.isdir(root):
+            sub = _walk_dotenv(root, recursive)
+            if sub is None:
+                return None
+            found.extend(sub)
+        elif _is_dotenv_name(os.path.basename(root).lower()):
+            found.append((os.path.basename(root),))
+    return found
+
+
+def _search_call(stage):
+    """단계 안의 검색 명령 → (이름, 인자, 앞 낱말들). `git … grep` 은 git 의 하위 명령이라 «git-grep» 으로 낸다.
+    The search command in a stage as (name, args, preceding words); `git … grep` is reported as git-grep."""
+    words = _plain_words(stage)
+    for k, word in enumerate(words):
+        name = _command_name(word)
+        if name not in _SEARCH_COMMANDS:
+            continue
+        before = [_command_name(w) for w in words[:k]]
+        return ("git-grep" if "git" in before else name), words[k + 1:], words[:k]
+    return None
+
+
+def _search_targets(words):
+    """패턴 다음의 위치 인자 = 검색 대상. -e · -f 로 패턴을 주면 첫 위치 인자부터 대상이다.
+    Positional arguments after the pattern; with -e/-f every positional argument is a target."""
+    positional, skip, pattern_given = [], False, False
+    for w in words:
+        if skip:
+            skip = False
+        elif w in _GREP_VALUE_OPTIONS:
+            skip = True
+            pattern_given = pattern_given or w in ("-e", "-f", "--regexp", "--file")
+        elif w.startswith("-"):
+            pattern_given = pattern_given or w.startswith(("--regexp=", "--file="))
+        else:
+            positional.append(w)
+    return positional if pattern_given else positional[1:]
+
+
+def _recurse_value(value):
+    """grep 의 디렉터리 동작 값이 recurse 인가 — GNU 는 겹치지 않는 앞부분(rec)도 받는다.
+    Is a grep directories action `recurse`? GNU accepts unambiguous prefixes (rec)."""
+    return len(value) >= 3 and "recurse".startswith(value)
+
+
+def _grep_is_recursive(name, args):
+    """grep 계열이 재귀인가 — rgrep · -r/-R(붙여 쓴 꼴 포함) · --recursive · --dereference-recursive 와 그 줄임
+    (GNU 는 겹치지 않는 앞부분을 받는다: --rec · --der, 13차) · -d recurse · --directories=recurse(--di 줄임).
+    Is this grep recursive? Bundled short flags, GNU long-option abbreviations, -d/--directories recurse."""
+    if name == "rgrep":
+        return True
+    for i, w in enumerate(args):
+        nxt = args[i + 1] if i + 1 < len(args) else ""
+        opt, eq, value = w.partition("=")
+        if not w.startswith("--"):
+            if re.match(r"-[A-Za-z]*[rR]", w) or (re.fullmatch(r"-[A-Za-z]*d", w) and _recurse_value(nxt)):
+                return True
+            continue
+        if len(opt) >= 5 and ("--recursive".startswith(opt) or "--dereference-recursive".startswith(opt)):
+            return True
+        if len(opt) >= 4 and "--directories".startswith(opt) and _recurse_value(value if eq else nxt):
+            return True
+    return False
+
+
+def _grep_filters(args):
+    """grep 의 파일 거르개 [(종류, 글롭)] — 순서대로(마지막 일치가 이긴다) / grep file filters, in order."""
+    filters, take = [], None
+    for w in args:
+        if take:
+            filters.append((take, w))
+            take = None
+            continue
+        opt, eq, value = w.partition("=")
+        if opt in ("--include", "--exclude", "--exclude-dir"):
+            if eq:
+                filters.append((opt, value))
+            else:
+                take = opt
+    return filters
+
+
+def _grep_reads(parts, filters):
+    """grep -r 이 그 파일을 읽는가 — --exclude-dir 는 폴더 이름, --include/--exclude 는 파일 이름에 대고 마지막 일치가
+    이긴다. 아무것도 안 맞으면 첫 거르개가 --include 일 때만 건너뛴다(GNU 규칙). 포함은 대소문자 무시(넓게), 제외는
+    구분(좁게) — 막는 쪽. Would grep -r read this file? GNU last-match-wins; with no match the file is skipped
+    only when the first filter is --include. Includes match case-insensitively, excludes case-sensitively."""
+    *dirs, name = parts
+    if any(kind == "--exclude-dir" and fnmatch.fnmatchcase(d, glob) for kind, glob in filters for d in dirs):
+        return False
+    verdict = None
+    for kind, glob in filters:
+        if kind == "--include" and fnmatch.fnmatchcase(name.lower(), glob.lower()):
+            verdict = True
+        elif kind == "--exclude" and fnmatch.fnmatchcase(name, glob):
+            verdict = False
+    if verdict is not None:
+        return verdict
+    first = next((kind for kind, _glob in filters if kind != "--exclude-dir"), None)
+    return first != "--include"
+
+
+def _rg_globs(args):
+    """rg 의 -g/--glob/--iglob 값들(`!` 는 제외) / rg glob values (`!` excludes)."""
+    globs, take = [], False
+    for w in args:
+        if take:
+            globs.append(w)
+            take = False
+            continue
+        opt, eq, value = w.partition("=")
+        if opt in _RG_GLOB_OPTIONS:
+            if eq:
+                globs.append(value)
+            else:
+                take = True
+    return globs
+
+
+def _include_glob_hits(glob, parts):
+    """rg 포함 글롭이 맞는가 — 넓게: 대소문자 무시, `/` 가 있으면 상대 경로 전체(앞의 `**/` 는 없어도 맞음), 없으면
+    마지막 이름. Does an rg include glob match? Broadly: case-insensitive, whole relative path when it has `/`."""
+    glob = glob.lower().lstrip("/")
+    rel = "/".join(parts).lower()
+    if "/" not in glob:
+        return fnmatch.fnmatchcase(parts[-1].lower(), glob)
+    return fnmatch.fnmatchcase(rel, glob) or (glob.startswith("**/") and fnmatch.fnmatchcase(rel, glob[3:]))
+
+
+def _rg_reads(parts, globs, no_ignore, hidden):
+    """rg 가 그 파일을 읽는가 — 포함 글롭이 맞으면 무시 · 숨김 규칙을 넘어 읽고(재정의가 가장 먼저), 포함 글롭이
+    있는데 안 맞으면 안 읽는다. 제외 글롭이 이름에 맞으면 안 읽는다. 그 밖은 무시 해제일 때만, 숨김(점으로 시작)은
+    숨김 포함일 때만 읽는다. 숨김 폴더는 숨김 포함이거나 그 폴더를 집는 포함 글롭이 있을 때만 내려간다.
+    .env 꼴은 .gitignore 에 있다고 본다(가정 — 아니면 rg 기본값도 읽는다).
+    Would rg read this file? Include globs override ignore and hidden rules; .env-like files are assumed
+    to be gitignored."""
+    *dirs, name = parts
+    includes = [g for g in globs if not g.startswith("!")]
+    excludes = [g[1:] for g in globs if g.startswith("!")]
+    if not hidden and any(d.startswith(".") and not any(_include_glob_hits(g, [d]) for g in includes)
+                          for d in dirs):
+        return False
+    if any(_include_glob_hits(g, parts) for g in includes):
+        return True
+    if includes:
+        return False
+    if any("/" not in g and fnmatch.fnmatchcase(name, g) for g in excludes):
+        return False
+    return no_ignore and (hidden or not name.startswith("."))
+
+
+# 값을 받는 짧은 옵션 글자 — 묶음에서 이 글자 뒤는 그 값이다(grep 도움말 · rg 도움말).
+# Short options that take a value; in a bundle, everything after such a letter is its value.
+_GREP_VALUED_SHORTS = "efmABCdD"
+_RG_VALUED_SHORTS = "efgtTjmABCrEMd"
+
+
+def _short_flags(words, valued):
+    """짧은 옵션 묶음의 플래그 글자 — 값을 받는 글자를 만나면 묶음의 나머지(없으면 다음 낱말)는 그 값이다.
+    `-exclude` 는 `-e xclude` 라 c · l 이 플래그가 아니다(14차 반영 중 실측 — «개수만» 으로 오판했다).
+    Flag letters of short-option bundles; after a value-taking letter the rest (or the next word) is its value."""
+    flags, skip = set(), False
+    for w in words:
+        if skip:
+            skip = False
+            continue
+        if w.startswith("--"):
+            skip = "=" not in w and w in _GREP_VALUE_OPTIONS
+            continue
+        if not w.startswith("-") or w == "-":
+            continue
+        for i, ch in enumerate(w[1:], 1):
+            flags.add(ch)
+            if ch in valued:
+                skip = i == len(w) - 1
+                break
+    return flags
+
+
+def _count_only_words(head, words):
+    """검색이 개수 · 존재 · 파일 이름만 내는가 — 플래그를 토큰으로 읽는다(대소문자 구분).
+    문맥 · 일치 부분 출력 플래그(-A · -B · -C · -o 등)가 하나라도 있으면 아니다(보안 리뷰 지적 — 첫 판은
+    대소문자를 무시해 `-C` 문맥 출력을 «개수만» 으로 읽었다). rg 의 -L 은 «링크 따라가기» 라 제외.
+    Count/existence/filename-only search, flags read as tokens (case-sensitive); any context or
+    match-output flag disqualifies it. rg's -L means follow links."""
+    if head not in _SEARCH_COMMANDS and head != "git-grep":
+        return False
+    shorts = _short_flags(words, _RG_VALUED_SHORTS if head == "rg" else _GREP_VALUED_SHORTS)
+    longs = {w.split("=", 1)[0] for w in words if w.startswith("--")}
+    if any(ch in "ABCo" for ch in shorts) or longs & {
+            "--after-context", "--before-context", "--context", "--only-matching",
+            "--passthru", "--passthrough", "--json", "--replace", "--vimgrep"}:
+        return False
+    quiet = "cql" if head == "rg" else "cqlL"
+    return any(ch in quiet for ch in shorts) or bool(longs & {
+        "--count", "--count-matches", "--quiet", "--silent", "--files-with-matches", "--files-without-match",
+        "--name-only", "--files"})
+
+
+def _count_only_grep(stage):
+    """단계의 grep 계열이 개수 · 존재 · 파일 이름만 내는가 / count/filename-only grep at the command position."""
+    head, words = _command_words(stage)
+    return _count_only_words(head, words)
+
+
+def _findstr_reads_dotenv(args):
+    """findstr /s 는 «파일 패턴» 을 그 폴더 아래 전부에 적용한다 — 실제 .env 꼴 파일 이름이 패턴에 맞으면 읽기.
+    Windows 의 `*` 는 점 파일도 집는다. /m(파일 이름만)은 통과. 스위치를 붙여 써도(`/si`) 재귀다.
+    findstr /s applies its file patterns recursively; /m (file names only) passes."""
+    switches = [w for w in args if re.fullmatch(r"/[a-z]+(?::.*)?", w, re.IGNORECASE)]
+    if not any(re.fullmatch(r"/[a-z]*s[a-z]*", w, re.IGNORECASE) for w in switches):
+        return False
+    if any(re.fullmatch(r"/[a-z]*m[a-z]*", w, re.IGNORECASE) for w in switches):
+        return False
+    pattern_given = any(w.lower().startswith(("/c:", "/g:")) for w in switches)
+    rest = [w for w in args if w not in switches]
+    for pat in (rest if pattern_given else rest[1:]) or ["*"]:
+        folder, _, glob = pat.rpartition("/")
+        files = _dotenv_files(folder or ".")
+        if files is None or any(fnmatch.fnmatchcase(parts[-1].lower(), glob.lower()) for parts in files):
+            return True
+    return False
+
+
+def _reads_any(_parts):
+    """거르개 없이 다 읽는다(.gitignore 를 끈 git grep) / reads everything (git grep with .gitignore off)."""
+    return True
+
+
+def _recursive_search_reads_dotenv(stage):
+    """재귀 검색이 실제로 읽을 .env 꼴 파일이 검색 대상 아래에 있는가(작업 폴더 후보 전부에서).
+    Would a recursive search read a .env-like file under its targets (across every cwd candidate)?"""
+    call = _search_call(stage)
+    if call is None:
+        return False
+    name, args, before = call
+    if name == "findstr":
+        return _findstr_reads_dotenv(args)
+    if name == "git-grep":
+        # git grep 은 기본으로 추적 파일만 본다. --no-index(--exclude-standard 없이)와 --no-exclude-standard 는
+        # .gitignore 를 무시한다(git 문서). git grep searches tracked files unless .gitignore is switched off.
+        lows = [w.lower() for w in args]
+        if not ("--no-exclude-standard" in lows or ("--no-index" in lows and "--exclude-standard" not in lows)):
+            return False
+        reads = _reads_any
+    elif name == "rg":
+        u_count = (sum(w.count("u") for w in args if re.match(r"-[A-Za-z.]", w))
+                   + sum(w == "--unrestricted" for w in args))
+        no_ignore = u_count >= 1 or any(w.startswith("--no-ignore") for w in args)
+        hidden = u_count >= 2 or "--hidden" in args or any(re.match(r"-[A-Za-z]*\.", w) for w in args)
+        reads = functools.partial(_rg_reads, globs=_rg_globs(args), no_ignore=no_ignore, hidden=hidden)
+    else:
+        if not _grep_is_recursive(name, args):
+            return False
+        reads = functools.partial(_grep_reads, filters=_grep_filters(args))
+    if _count_only_words(name, args):
+        return False
+    # 앞 낱말이 작업 폴더를 바꾸면(`env -C 폴더` · `--chdir`) 그 폴더를 모른다 — 막는 쪽.
+    # A prefix that changes directory (env -C / --chdir) leaves the cwd unknown: fail closed.
+    if any(w == "-C" or w.startswith("--chdir") for w in before):
+        return True
+    for target in _search_targets(args) or ["."]:
+        files = _dotenv_files(target)
+        if files is None or any(reads(parts) for parts in files):
+            return True
+    return False
+
+
+_PS_LISTERS = frozenset({"get-childitem", "gci", "ls", "dir"})
+_PS_READERS = frozenset({"select-string", "sls", "get-content", "gc", "cat", "type"})
+# 나열한 파일 객체를 받아도 내용을 읽지 않는 단계 — 속성만 고르거나 세거나 줄 세운다. 읽기 cmdlet 을 열거하면
+# 스크립트 블록 안의 .NET 읽기를 놓친다(14차) — 그래서 안전한 단계를 열거하고 나머지를 읽기로 본다.
+# Stages that take file objects without reading content; everything else after a listing counts as a read.
+_PS_PROPERTY_STAGES = frozenset({"select-object", "select", "measure-object", "measure", "sort-object", "sort",
+                                 "format-table", "ft", "format-list", "fl", "format-wide", "fw", "where-object",
+                                 "where", "?", "group-object", "group", "out-null", "out-host", "out-string"})
+_PS_DOTNET_READ = re.compile(r"\[(?:system\.)?io\.file\]|readall|opentext|openread|streamreader", re.IGNORECASE)
+
+
+def _ps_stage_reads_nothing(stage):
+    """나열 뒤 단계가 파일 내용을 읽지 않는가 — 속성 단계이고 안에 읽기 명령 · .NET 읽기가 없을 때만.
+    Does a stage after a listing leave file contents alone?"""
+    head, _words = _command_words(stage)
+    if head not in _PS_PROPERTY_STAGES or _PS_DOTNET_READ.search(stage):
+        return False
+    return not any(tok.strip("{}()$;") in _PS_READERS for tok in stage.lower().split())
+
+
+def _ps_listing_params(words):
+    """Get-ChildItem 매개변수 → (대상, 포함 글롭, 제외 글롭, 재귀인가). 매개변수 이름은 앞부분만 써도 된다(`-Rec`).
+    -Depth 도 재귀로 본다(막는 쪽). Get-ChildItem parameters; unique name prefixes count, -Depth recurses."""
+    targets, incl, excl, take, recurse = [], [], [], None, False
+    for w in words:
+        low = w.lower()
+        if take == "target":
+            targets.extend(p for p in w.split(",") if p)
+        elif take in ("incl", "excl"):
+            (incl if take == "incl" else excl).extend(g for g in low.split(",") if g)
+        if take:
+            take = None
+        elif low in ("-path", "-literalpath"):
+            take = "target"
+        elif low in ("-filter", "-include"):
+            take = "incl"
+        elif low == "-exclude":
+            take = "excl"
+        elif low == "-r" or (len(low) >= 3 and "-recurse".startswith(low)):
+            recurse = True
+        elif len(low) >= 3 and "-depth".startswith(low):
+            recurse, take = True, "skip"
+        elif low == "-attributes":
+            take = "skip"
+        elif not w.startswith("-"):
+            targets.append(w)
+    return targets, incl, excl, recurse
+
+
+def _listing_pipeline_reads_dotenv(stages):
+    """PowerShell `Get-ChildItem [-Recurse] [경로] | …` — 나열한 파일 객체를 뒤 단계가 읽는가. 뒤 단계가 모두 속성
+    단계가 아니면 읽기다(`% { [IO.File]::ReadAllText($_) }` 도). 재귀가 아니어도 나열한 폴더 바로 아래의 .env 는
+    읽힌다(`Get-ChildItem | Select-String KEY`, 14차 반영 중 실측). Bash 의 ls 는 이름 글자만 내보내 대상 아님.
+    In PowerShell, listed file objects count as read unless every later stage is property-only; a
+    non-recursive listing still exposes the .env right under the folder. Bash ls emits names only."""
+    if _CONTEXT["shell"] != "powershell":
+        return False
+    for i, stage in enumerate(stages[:-1]):
+        head, words = _command_words(stage.replace("\\", "/"))
+        if head not in _PS_LISTERS or all(_ps_stage_reads_nothing(s) for s in stages[i + 1:]):
+            continue
+        targets, incl, excl, recurse = _ps_listing_params(words)
+        for target in targets or ["."]:
+            files = _dotenv_files(target, recursive=recurse)
+            if files is None:
+                return True
+            for parts in files:
+                low = parts[-1].lower()
+                if (not incl or any(fnmatch.fnmatchcase(low, g) for g in incl)) \
+                        and not any(fnmatch.fnmatchcase(low, g) for g in excl):
+                    return True
+    return False
 
 
 # ── credential **값**을 stdout 으로 쏟는 명령: (판정 함수, 사유, 중화 수단, 안내) ──────
@@ -324,6 +860,8 @@ _BLOCKED = (
      "/proc/*/environ — 프로세스 env 값 덤프", (), _SAFE_IDIOM),
     (_reads_dotenv,
      ".env 읽기 — 시크릿 파일 직접 열람", (_NAMES,), _SAFE_DOTENV),
+    (_recursive_search_reads_dotenv,
+     "재귀 검색 — .gitignore 를 무시해 .env 까지 읽는다", (), _SAFE_SEARCH),
     # PowerShell 의 printenv — env: 드라이브 경로는 **정확히 변수 이름 하나 + 구분자** 일 때만 통과한다.
     # 그 밖은 전부 덤프로 본다: 빈 경로 · 구분자 · 와일드카드 · 따옴표로 쪼갠 와일드카드(`env:A'*'`) ·
     # 변수 전개(`env:$p`). 덤프 꼴을 열거하는 판정은 세 번 뚫렸다(보안 리뷰 지적 3회).
@@ -358,9 +896,70 @@ _BLOCKED = (
 # 세그먼트로 두고, 그 안에서 **단계별로** 판정한다(이름만 자르는 cut 은 덤프 바로 다음 단계여야 한다).
 # 🔴 `;`/`&&`/`||`/`&` chain independent commands that cannot neutralize one another. A pipeline stays one
 # segment and is judged stage by stage — the names-only cut must be the very next stage.
-# `||` 는 `[|]{2}` 로 쓴다 — 같은 뜻이고, 증거집합 가드가 교대를 `|` 로 쪼갤 때 빈 조각을 만들지 않는다.
-# `||` is written `[|]{2}`: same meaning, and no empty piece when the witness guard splits on `|`.
-_SEPARATORS = re.compile(r"&&|[|]{2}|;|\n|&")
+# 🔴 구분자는 **따옴표 밖**에서만 나눈다 — `grep -rniE "A|B" src/` 의 정규식 교대를 단계로 쪼개면, 잘린 앞 조각이
+#    검색 대상을 잃고 «현재 폴더» 로 읽혀 오판한다(R-4 시험에서 실측). 따옴표가 닫히지 않으면 나누지 않는다
+#    (나뉘지 않은 쪽은 중화를 받기 어려워 막는 쪽이다).
+# Split only on separators outside quotes; an unclosed quote stops splitting (the fail-closed side).
+_SEGMENT_SEPARATORS = ("&&", "||", ";", "\n", "&")
+# 이스케이프(Bash `\` · PowerShell 백틱)나 닫히지 않은 따옴표가 있으면 따옴표 인식 분할을 믿지 않고 예전의 무조건
+# 분할로 돌아간다 — `echo \"; env` 의 `\"` 를 따옴표로 읽으면 `; env` 가 앞 세그먼트에 묶인다(보안 리뷰 HIGH).
+# With escapes or an unclosed quote, fall back to the unconditional split (an escaped quote must not glue segments).
+# 구분자 목록에서 만든다 — 정규식 글자에 `|` 교대를 직접 쓰면 증거집합 가드가 조각(`[` 등)을 증거로 센다.
+# Built from the separator list; a literal `|` alternation would feed fragments to the witness guard.
+_NAIVE_SEGMENT_SPLIT = re.compile("|".join(re.escape(s) for s in _SEGMENT_SEPARATORS))
+
+
+def _quotes_trustworthy(text):
+    """이스케이프 · 주석이 없고 따옴표가 모두 닫혔는가 — 주석 속 홑따옴표(`# it's`)를 따옴표로 읽으면 뒤
+    명령이 묶인다(보안 리뷰 HIGH). No escapes or comments, and every quote closed?"""
+    if "\\" in text or "`" in text or "#" in text:
+        return False
+    quote = None
+    for ch in text:
+        if quote:
+            quote = None if ch == quote else quote
+        elif ch in "'\"":
+            quote = ch
+    return quote is None
+
+
+def _split_segments(command):
+    """세그먼트 분할 — 줄바꿈은 늘 나누고, 줄 안은 따옴표를 믿을 수 있을 때만 따옴표 밖에서.
+    Always split on newlines; within a line, quote-aware only when quotes can be trusted."""
+    parts = []
+    for line in command.split("\n"):
+        parts.extend(_split_unquoted(line, _SEGMENT_SEPARATORS) if _quotes_trustworthy(line)
+                     else _NAIVE_SEGMENT_SPLIT.split(line))
+    return parts
+
+
+def _split_stages(segment):
+    """단계 분할 — 따옴표를 믿을 수 있을 때만 따옴표 밖에서 / Split pipeline stages (quote-aware only when safe)."""
+    if _quotes_trustworthy(segment):
+        return _split_unquoted(segment, ("|",))
+    return segment.split("|")
+
+
+def _split_unquoted(text, separators):
+    """따옴표 밖의 구분자로만 나눈다(긴 구분자 먼저) / Split on separators outside quotes (longest first)."""
+    parts, buf, quote, i = [], [], None, 0
+    while i < len(text):
+        ch = text[i]
+        if quote or ch in "'\"":
+            quote = None if ch == quote else (quote or ch)
+            buf.append(ch)
+            i += 1
+            continue
+        sep = next((s for s in separators if text.startswith(s, i)), None)
+        if sep:
+            parts.append("".join(buf))
+            buf = []
+            i += len(sep)
+        else:
+            buf.append(ch)
+            i += 1
+    parts.append("".join(buf))
+    return parts
 
 
 # 🔴 리디렉션(`>&2` · `> 파일` · `<`)과 명령·프로세스 치환(`$(` · `<(` · `>(`)이 든 단계는 중화하지 않는다 —
@@ -396,11 +995,15 @@ def _neutralized(stages, i, neutralizers):
 def _decide_segment(segment):
     """단일 명령(파이프라인 포함)에 대한 판정 — 차단 사유와 안내를 내거나 None.
     Verdict for one command (pipeline included): (reason, hint) or None."""
-    stages = segment.split("|")
+    stages = _split_stages(segment)
     # 🔴 `#` 이 있으면 그 뒤가 주석일 수 있다 — `--kv # | cut -d= -f1` 의 cut 은 실행되지 않는다(Grok G1).
     #    단계 분해는 주석을 모르므로, `#` 이 든 세그먼트에서는 어떤 중화도 인정하지 않는다.
     # A `#` may start a comment («--kv # | cut» never runs the cut), so no neutralizer counts there.
     commented = "#" in segment
+    # 나열 → 내용 읽기 파이프라인(`Get-ChildItem [-Recurse] | Select-String`) — 단계 하나로는 안 보인다.
+    # A listing piped into a content reader is only visible across stages.
+    if len(stages) > 1 and _listing_pipeline_reads_dotenv(stages):
+        return "나열 → 내용 읽기 — .env 까지 읽는다", _SAFE_SEARCH
     for i, stage in enumerate(stages):
         for matcher, reason, neutralizers, hint in _BLOCKED:
             hit = matcher(stage)
@@ -429,15 +1032,85 @@ def decide(command):
     return found[0] if found else None
 
 
-def decide_with_hint(command):
-    """(사유, 안내) 또는 None / (reason, hint) or None."""
+def decide_with_hint(command, cwd=None, shell="bash"):
+    """(사유, 안내) 또는 None / (reason, hint) or None.
+    cwd · shell 은 훅 입력의 작업 폴더와 셸 — 경로 · 와일드카드 · 재귀 검색 대상을 실제 폴더에 대 볼 때 쓴다.
+    먼저 명령 안의 모든 cd 를 따라 작업 폴더 후보를 모은 뒤(줄이지 않는다), 세그먼트마다 그 후보 전부로 판정한다.
+    cwd and shell come from the hook input. Every cd in the command first grows the cwd candidates (never
+    shrinks them); then each segment is judged against all of them."""
+    _CONTEXT.update(cwds=[os.path.normpath(cwd or os.getcwd())], shell=shell,
+                    dotglob=bool(command and _DOTGLOB.search(command)))
     if not command:
         return None
-    for segment in _SEPARATORS.split(command):
+    segments = _all_segments(command)
+    for segment in segments:
+        _follow_directory_change(segment)
+    for segment in segments:
         found = _decide_segment(segment)
         if found:
             return found
     return None
+
+
+def _all_segments(command):
+    """세그먼트 + 명령 · 프로세스 치환 안의 세그먼트. 따옴표 안의 치환(`"$(cat .env)"`)을 한 토큰으로 묶으면 안의
+    읽기를 놓친다(13차 HIGH) — 그래서 치환 안 글자를 따로 떼어 같은 판정을 거친다. 괄호 짝을 세고(닫히지 않으면
+    끝까지), Bash 는 백틱 치환 · `<(…)` · `>(…)` 도, PowerShell 은 `$(…)` · `@(…)` 를 본다.
+    Segments plus those inside command/process substitutions, so a substitution inside quotes is judged
+    as a command of its own."""
+    segments = _split_segments(command)
+    powershell = _CONTEXT["shell"] == "powershell"
+    opener = re.compile(r"[$@]\(" if powershell else r"[$<>]\(")
+    for match in opener.finditer(command):
+        depth, j = 1, match.end()
+        while j < len(command) and depth:
+            depth += {"(": 1, ")": -1}.get(command[j], 0)
+            j += 1
+        segments.extend(_split_segments(command[match.end(): j - 1 if depth == 0 else j]))
+    if not powershell:
+        for body in re.findall(r"`([^`]*)`", command):
+            segments.extend(_split_segments(body))
+    return segments
+
+
+_CD_HEADS = frozenset({"cd", "pushd", "set-location", "sl", "chdir"})
+_UNKNOWN_CWD = "$UNKNOWN-CWD"  # `_unresolvable` 이 잡는 표지 — 뒤 판정이 막는 쪽으로 간다 / fail-closed marker
+
+
+def _add_cwd(path):
+    """작업 폴더 후보를 더한다 — 너무 많으면 «모름» 으로(막는 쪽) / add a cwd candidate; too many → unknown."""
+    cwds = _CONTEXT["cwds"]
+    if path not in cwds:
+        cwds.append(path if len(cwds) < _MAX_CWDS else _UNKNOWN_CWD)
+
+
+def _follow_directory_change(segment):
+    """cd 를 따라 작업 폴더 후보를 늘린다 — 줄이지 않는다. 서브셸 · 조건부 · 루프 안의 cd(`(cd x; …)` · `if cd x` ·
+    `do cd $d`)도 후보에 넣어, 셸이 실제로 어디서 돌든 그 폴더가 후보에 있게 한다(13차 HIGH — 서브셸 cd 를 건너뛰면
+    판정이 느슨해졌다). 셸만 아는 대상(`cd $X`) · 되돌아가기(`cd -` · popd) · 어느 후보에서도 없는 폴더는 «모름» 을
+    더해 뒤의 파일 시스템 판정이 막는 쪽으로 가게 한다.
+    Grow (never shrink) the cwd candidates with every cd, including those in subshells, conditionals and
+    loops; unknown targets add an unknown marker so later checks fail closed."""
+    words = _plain_words(segment)
+    for k, word in enumerate(words):
+        name = _command_name(word)
+        if name == "popd":
+            _add_cwd(_UNKNOWN_CWD)
+            return
+        if name not in _CD_HEADS:
+            continue
+        rest = words[k + 1:]
+        if rest and rest[0] == "-":
+            _add_cwd(_UNKNOWN_CWD)
+            return
+        target = next((w for w in rest if not w.startswith("-")), "~")
+        if _unresolvable(target):
+            _add_cwd(_UNKNOWN_CWD)
+            return
+        found = [os.path.normpath(p) for p in _resolve_all(target) if not _unresolvable(p) and os.path.isdir(p)]
+        for path in found or [_UNKNOWN_CWD]:
+            _add_cwd(path)
+        return
 
 
 def _make_stdout_safe():
@@ -470,7 +1143,8 @@ def main():
         found = ("Railway MCP list_variables — 서비스 변수 값(KEY=VALUE) 덤프", _SAFE_IDIOM)
     elif tool in _SHELL_TOOLS:
         command = (payload.get("tool_input") or {}).get("command") or ""
-        found = decide_with_hint(command)
+        found = decide_with_hint(command, payload.get("cwd"),
+                                 "powershell" if tool == "PowerShell" else "bash")
     else:
         return 0
     if found is None:
@@ -482,6 +1156,8 @@ def main():
         safe = f"변수 하나만 필요하면 그 이름으로 읽으세요:\n  {_SAFE_ENV}\n\n"
     elif hint == _SAFE_DOTENV:
         safe = f".env 는 값 없이 확인하세요:\n  {_SAFE_DOTENV}\n\n"
+    elif hint == _SAFE_SEARCH:
+        safe = f"재귀 검색은 .env 를 건너뛰는 방법으로:\n  {_SAFE_SEARCH}\n\n"
     else:
         safe = f"이름만 필요하면 값을 먼저 잘라내세요:\n  {hint}\n\n"
 
