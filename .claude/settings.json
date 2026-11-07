@@ -29,7 +29,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash",
+        "matcher": "Bash|PowerShell|mcp__.*railway.*__list_variables",
         "hooks": [
           {
             "type": "command",

@@ -25,6 +25,7 @@ Command constants hold commands only, never real key material; neutral `_CMD_*` 
 self-inflicted CodeQL alerts of #1109.
 """
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -134,6 +135,127 @@ _BLOCKED = [
     pytest.param("printenv | grep KEY; echo a=b | cut -d= -f1", id="bypass-semicolon-before-safe"),
     pytest.param("cat .env; echo a=b | cut -d= -f1", id="bypass-catenv-then-safe"),
     pytest.param("railway variables --set FOO=1 && railway variables --kv", id="bypass-and-after-write"),
+    # 🔴 배포 설정 «읽기» 로 문서가 처방했던 명령 — CLI 가 서비스·공유 변수 값을 평문으로 싣는다.
+    #    별칭은 CLI 도움말 그대로: environment = env, config = show = info. `--json` 없는 꼴도 막는다 —
+    #    지금 판은 개수만 찍지만 판이 바뀌면 조용히 값이 나온다. 안전 대체는 scripts/railway_config.py.
+    # The deploy-config "read" the docs prescribed prints raw service/shared variable values.
+    # Aliases follow the CLI help; the plain form is blocked too (fail-closed across CLI versions).
+    pytest.param("railway environment config --json", id="env-config-json"),
+    pytest.param("timeout 60 railway environment config --json 2>&1 | head -c 3000", id="env-config-json-head"),
+    pytest.param("railway environment config", id="env-config-plain"),
+    pytest.param("railway environment config --environment production --json", id="env-config-flag-between"),
+    pytest.param("railway environment --json config", id="env-config-flag-before"),
+    pytest.param("railway env config --json", id="env-alias-config"),
+    pytest.param("railway environment show --json", id="env-config-alias-show"),
+    pytest.param("railway env info", id="env-alias-info"),
+    pytest.param(
+        'railway environment config --json | py -3 -c "import json,sys; print(json.load(sys.stdin))"',
+        id="env-config-piped-to-python",
+    ),
+    # 🔴 `variable` 의 별칭(variables · vars · var)도 같은 값을 쏟는다 — 종전 패턴은 `variables` 하나만 봤다.
+    # Every alias of `variable` dumps the same values; the old pattern knew only `variables`.
+    pytest.param("railway variable list --kv", id="variable-singular-list-kv"),
+    pytest.param("railway var --kv", id="variable-alias-var"),
+    pytest.param("railway vars --json", id="variable-alias-vars-json"),
+    pytest.param("railway variable ls --service api --json", id="variable-ls-json"),
+    # 🔴 `cut -d= -f1` 은 KEY=VALUE 줄에서만 값을 지운다. 종전 판정은 세그먼트 어디에든 cut 이 있으면
+    #    통과시켜, JSON·표 출력(줄에 `=` 없음 → 줄 통째 출력)과 «cut 이 덤프보다 앞» 인 꼴이 새었다.
+    #    쓰기 단계도 같은 파이프라인의 다른 단계를 덮지 못한다.
+    # cut only strips values from KEY=VALUE lines; a cut anywhere in the segment used to excuse JSON/table
+    # dumps and a cut placed *before* the dump. A write stage must not excuse a sibling stage either.
+    pytest.param("railway variables --json | cut -d= -f1", id="cut-after-json-dump"),
+    pytest.param("railway variables | cut -d= -f1", id="cut-after-table-dump"),
+    pytest.param("cut -d= -f1 names.txt | railway variables --kv", id="cut-before-dump"),
+    pytest.param("railway variable set A=1 | railway variables --kv", id="write-stage-then-dump-stage"),
+    # 🔴 옵션 값이 하위 명령처럼 보여도 읽기다 — 서비스 이름이 `set` 인 목록 조회.
+    #    «뒤에 set 글자가 있으면 쓰기» 같은 싼 판정의 대조군 (Grok G1 지적 뒤 추가).
+    # An option value that looks like a subcommand is still a read (service named «set»).
+    pytest.param("railway variables --service set", id="read-with-service-named-set"),
+    pytest.param("railway variable -s delete --kv", id="read-with-service-named-delete"),
+    # 🔴 «이름만» 처럼 보이지만 값을 그대로 내는 cut (Grok G1 재검증 반례 — 원래 훅부터 있던 구멍).
+    # cut forms that look names-only but still print values (Grok G1 re-review; present since the first hook).
+    pytest.param("railway variables --kv | cut -d= -f1-", id="cut-field-range-to-end"),
+    pytest.param("railway variables --kv | cut -d= -f1,2", id="cut-field-list"),
+    pytest.param("railway variables --kv | cut -d= -f1 --complement", id="cut-complement"),
+    pytest.param("printenv | cut -d= -f1-", id="printenv-cut-range"),
+    # 🔴 주석 속 쓰기 글자가 읽기를 덮지 못한다 (Grok G1 세 번째 반례).
+    # A write-looking word in a comment must not excuse a read (Grok G1 third counterexample).
+    pytest.param("railway variables # --set", id="comment-with-legacy-set"),
+    pytest.param("railway variables --kv # set FOO=1", id="comment-with-set-subcommand"),
+    # 🔴 따옴표 안의 공백·플래그 글자는 옵션 **값**이다 (Grok G1 네 번째 반례).
+    #    서비스 이름 `x set` 은 읽기이고, `--kv x` 라는 서비스 이름은 KV 출력이 아니다(표 출력 → cut 무력).
+    # Quoted spaces/flags are option VALUES: service «x set» is a read; service «--kv x» is not KV output.
+    pytest.param('railway variables --service "x set" --kv', id="quoted-service-value-with-set"),
+    pytest.param('railway variables --service "--kv x" | cut -d= -f1', id="quoted-service-value-with-kv"),
+    pytest.param('railway variables --service "unbalanced --kv | cut -d= -f1', id="unbalanced-quote"),
+    # 🔴 주석 뒤의 cut 은 실행되지 않는다 (Grok G1 다섯 번째 반례) · 사이 단계는 값을 복제할 수 있다 ·
+    #    --json 이 함께 있으면 KV 출력이 아니다.
+    # A cut after a comment never runs (Grok G1 fifth); a stage in between can copy values; --json wins over --kv.
+    pytest.param("railway variables --kv # | cut -d= -f1", id="comment-before-cut"),
+    pytest.param("railway variables --kv | tee /dev/stderr | cut -d= -f1", id="tee-between-dump-and-cut"),
+    pytest.param("printenv | tee env.log | cut -d= -f1", id="printenv-tee-before-cut"),
+    pytest.param("railway variables --kv --json | cut -d= -f1", id="kv-with-json"),
+    # 🔴 운영 컨테이너(ssh)나 Railway 변수를 주입한 로컬 실행(run · local)에서 env 를 통째로 찍는 꼴.
+    # Dumping the whole env inside the production container (ssh) or a Railway-injected local run.
+    pytest.param("railway ssh -- env", id="ssh-env"),
+    pytest.param("railway ssh env | grep DATABASE", id="ssh-env-grep"),
+    pytest.param("railway run env", id="run-env"),
+    pytest.param("railway local -- env | sort", id="local-alias-env"),
+    # 🔴 printenv 와 같은 부류 — Bash·cmd 의 env 전체 출력(원래 훅부터 비어 있던 형제).
+    # Same class as printenv: whole-env listings in Bash/cmd (siblings missing since the first hook).
+    pytest.param("env", id="bare-env"),
+    pytest.param("env | grep KEY", id="bare-env-grep"),
+    pytest.param("set | grep TOKEN", id="bare-set-grep"),
+    pytest.param("export -p", id="export-p"),
+    pytest.param("declare -x", id="declare-x"),
+    # 🔴 이름 없는 declare 는 -x · -p 만이 아니라 대부분의 플래그에서 값을 나열한다(-f · -F 만 함수).
+    # Flags-only declare lists values for most flags, not just -x/-p (only -f/-F print functions).
+    pytest.param("declare", id="declare-bare"),
+    pytest.param("declare -i", id="declare-integer-listing"),
+    pytest.param("typeset -r", id="typeset-readonly-listing"),
+    pytest.param("cmd /c set", id="cmd-set"),
+    # cmd 의 `set NAME` 은 접두어로 나열한다(`set A` → A 로 시작하는 변수 전부) — 보안 리뷰 지적.
+    # cmd's `set NAME` is a prefix listing (security review).
+    pytest.param("cmd /c set ANTHROPIC", id="cmd-set-prefix-listing"),
+    pytest.param('cmd.exe /c "set"', id="cmd-exe-quoted-set"),
+    pytest.param('powershell -c "Get-ChildItem env:"', id="bash-invokes-powershell-env-drive"),
+    # 🔴 명령 자리를 토큰으로 본다 — 숫자 플래그(Grok G4) · 접두어 · 경로 · 괄호 · 따옴표 · 앞쪽 대입
+    #    (자동 보안 리뷰 네 번째 지적).
+    # The command position is read as tokens: digit flags (Grok G4), prefixes, paths, parens, quotes.
+    pytest.param("env -0", id="env-null-flag"),
+    pytest.param("command env", id="env-command-prefix"),
+    pytest.param("/usr/bin/env", id="env-absolute-path"),
+    pytest.param("(env) | sort", id="env-in-subshell"),
+    pytest.param('"env"', id="env-quoted"),
+    pytest.param("FOO=1 env", id="env-after-assignment"),
+    pytest.param("sudo env | grep KEY", id="env-sudo"),
+    pytest.param("builtin set", id="set-builtin-prefix"),
+    pytest.param("railway ssh -- set", id="ssh-inner-set"),
+    pytest.param("railway run -- export -p", id="run-inner-export-p"),
+    pytest.param("railway ssh -s api -- env", id="ssh-option-value-then-env"),
+    pytest.param("cat /proc/self/environ", id="proc-self-environ"),
+    pytest.param("tr '\\0' '\\n' < /proc/1/environ", id="proc-pid-environ"),
+    # 🔴 리디렉션 · 치환이 든 단계는 중화하지 않는다 — 출력이 cut 을 비켜 가거나 쓰기 안에서 읽기가 돈다.
+    # Redirection or substitution in the dump stage defeats neutralization.
+    pytest.param("railway variables --kv >&2 | cut -d= -f1", id="kv-redirected-to-stderr-before-cut"),
+    pytest.param("printenv > /dev/stderr | cut -d= -f1", id="printenv-redirected-before-cut"),
+    pytest.param("railway variable set A=$(railway variables --kv)", id="read-inside-write-substitution"),
+    pytest.param("railway variable set A=1 railway variables --kv", id="two-calls-one-stage"),
+    # 🔴 railway 낱말의 경로 · 확장자 · 따옴표 · 대소문자(자동 보안 리뷰 다섯 번째 지적).
+    # Path, extension, quotes and case of the railway word (fifth automated review).
+    pytest.param("railway.cmd variables --kv", id="railway-cmd-shim"),
+    pytest.param('"railway" variables --kv', id="railway-quoted"),
+    pytest.param("C:\\Users\\me\\AppData\\Roaming\\npm\\railway.cmd environment config --json",
+                 id="railway-shim-full-path-config"),
+    pytest.param("railway.ps1 env config", id="railway-ps1-shim-config"),
+    # 🔴 값을 받는 env 옵션 뒤의 낱말은 명령이 아니다 · ssh/run 옵션 값 개수와 무관하게 안쪽 명령을 본다.
+    # A value after an env option is not a command; the inner command is found regardless of option arity.
+    pytest.param("env -u FOO", id="env-unset-only"),
+    pytest.param("env --unset=FOO | sort", id="env-unset-eq-only"),
+    pytest.param("env -C /tmp", id="env-chdir-only"),
+    pytest.param("railway ssh --session main env", id="ssh-optional-value-option-then-env"),
+    pytest.param("railway ssh -d abc123 -- env", id="ssh-deployment-instance-then-env"),
+    pytest.param("railway ssh -i ~/.ssh/id_ed25519 env", id="ssh-identity-file-then-env"),
 ]
 
 
@@ -183,6 +305,58 @@ _ALLOWED = [
     ),
     pytest.param("railway variables --set A=1 && git status", id="write-then-benign"),
     pytest.param("git status; ls -la", id="two-benign-segments"),
+    # 안전 대체 — 서비스마다 deploy·build 절만 남긴 배포 설정 읽기. 막히면 다시 덤프 꼴로 돌아간다.
+    # The safe reader keeps only deploy/build per service; blocking it pushes sessions back to the dump.
+    pytest.param("py -3 scripts/railway_config.py", id="safe-config-reader"),
+    pytest.param("py -3 scripts/railway_config.py --environment production", id="safe-config-reader-env"),
+    # 값을 내지 않는 environment 하위 명령 — «railway environment 면 전부» 같은 과잉 패턴을 잡는 대조군.
+    # Value-free environment subcommands: controls against an over-broad «any railway environment».
+    pytest.param("railway environment list --json", id="env-list"),
+    pytest.param("railway environment link production", id="env-link"),
+    pytest.param("railway env", id="env-bare"),
+    # 쓰기 하위 명령 — 값을 넣거나 지우는 것이지 꺼내는 것이 아니다.
+    # Write subcommands put or remove values; they do not read them out.
+    pytest.param("railway variable set FOO=bar --skip-deploys", id="variable-set"),
+    pytest.param("railway var delete FOO", id="variable-alias-delete"),
+    pytest.param("railway variables --set-from-stdin FOO", id="variable-legacy-set-from-stdin"),
+    # 🔴 하위 명령 앞에 `variable` 의 옵션이 와도 쓰기다(Grok G1 반례 — 종전엔 오탐 차단).
+    # Options before the subcommand keep it a write (Grok G1 counterexample; was a false deny).
+    pytest.param("railway variable --service SCAManager set FOO=bar", id="variable-options-then-set"),
+    pytest.param("railway var -s api -e production delete FOO", id="variable-short-options-then-delete"),
+    pytest.param("railway variables --service=api --skip-deploys set A=1", id="variable-eq-option-then-set"),
+    pytest.param('railway variable --service "my api" set A=1', id="variable-quoted-service-then-set"),
+    pytest.param('railway variables --kv --service "a b" | cut -d= -f1', id="safe-idiom-quoted-service"),
+    # ssh·run 자체는 막지 않는다 — env 를 통째로 찍는 꼴만. 이름만 자르면 통과.
+    # ssh/run themselves stay allowed; only a whole-env dump is blocked, and names-only passes.
+    pytest.param("railway variables --kv | cut -f1 -d=", id="safe-idiom-cut-reversed-flags"),
+    pytest.param("printenv | cut -d = -f 1", id="safe-idiom-cut-spaced"),
+    pytest.param("railway ssh -- ls /app", id="ssh-benign"),
+    pytest.param("railway run npm test --env production", id="run-benign-env-flag"),
+    pytest.param("railway run -- env | cut -d= -f1", id="run-env-names-only"),
+    # 단계 전체가 env 출력 명령일 때만 막는다 — 변수 설정·옵션·이름만 자르기는 통과.
+    # Only a stage that is exactly the listing is blocked; setting, options and names-only pass.
+    pytest.param("env FOO=1 python x.py", id="env-sets-variable-for-command"),
+    pytest.param("set -euo pipefail", id="set-shell-options"),
+    pytest.param("export FOO=bar", id="export-assignment"),
+    pytest.param("env | cut -d= -f1", id="env-names-only"),
+    pytest.param("declare -a arr", id="declare-array"),
+    # env 가 «실행기» 인 꼴 — 옵션·대입 뒤에 실행할 명령이 남는다. 그 밖의 낱말 자리 env 도 통과.
+    # env as a runner (a command follows options/assignments), and env in a non-command position.
+    pytest.param("/usr/bin/env python3 x.py", id="env-shebang-style-runner"),
+    pytest.param("env -i python x.py", id="env-empty-environment-runner"),
+    pytest.param("command -v env", id="command-v-env"),
+    # 따옴표 짝이 안 맞는 조각(`;` 로 잘린 PowerShell 인자 등)에 env 낱말이 있어도 railway 호출이 없으면 통과.
+    # An unbalanced fragment mentioning env passes unless it is a railway ssh/run/local call.
+    pytest.param("echo 'env", id="unbalanced-quote-without-railway"),
+    pytest.param("env -u FOO python x.py", id="env-unset-then-runner"),
+    pytest.param('env -S "python x.py"', id="env-split-string-runner"),
+    pytest.param("railway.cmd variable set A=1", id="railway-cmd-shim-write"),
+    pytest.param("railway run -s api npm test", id="run-service-option-benign"),
+    pytest.param("export PATH=$PATH:/opt/bin", id="export-path-assignment"),
+    pytest.param("declare -A map", id="declare-assoc-array"),
+    pytest.param("declare -f", id="declare-functions-only"),
+    pytest.param("cmd /c set FOO=bar", id="cmd-set-assignment"),
+    pytest.param("declare -F", id="declare-function-names-only"),
 ]
 
 
@@ -197,16 +371,146 @@ def test_benign_command_is_not_denied(command):
     )
 
 
-# --- 6. 비-Bash 도구는 무조건 통과 -------------------------------------------
+# --- 6. 셸이 아닌 도구는 무조건 통과 -----------------------------------------
 
 
 @pytest.mark.parametrize("tool_name", ["Read", "Edit", "Write", "Grep", "Glob"])
 def test_non_bash_tool_always_passes(tool_name):
-    """Bash 외 도구는 판정 대상 아님 — 오작동 시 전 도구가 마비된다."""
+    """셸(Bash·PowerShell) 외 도구는 판정 대상 아님 — 오작동 시 전 도구가 마비된다."""
     decision, _ = _decide(_CMD_INCIDENT, tool_name=tool_name)
     assert decision != "deny", (
-        f"{tool_name} 도구가 차단됐다 — 이 훅은 Bash stdout 만 대상으로 한다."
+        f"{tool_name} 도구가 차단됐다 — 이 훅은 셸 명령의 stdout 만 대상으로 한다."
     )
+
+
+# --- 6-1. PowerShell 도구도 같은 훅을 지난다 ----------------------------------
+# 🔴 이 PC 의 기본 셸 도구는 PowerShell 이다. 훅이 Bash 에만 걸려 있던 동안 PowerShell 로는
+#    `railway variables --kv` 조차 통과했다. PowerShell 고유의 덤프 꼴(Get-Content .env · env: 드라이브)도
+#    Bash 쪽 cat .env · printenv 와 같은 부류로 막는다. 한 변수만 읽는 `$env:NAME` 은 Bash 의
+#    `echo $NAME` 처럼 통과 — «env: 가 들어가면 전부» 같은 과잉 패턴을 잡는 대조군이다.
+# The PowerShell tool used to bypass the Bash-only hook entirely. Its native dump forms join the same
+# classes as cat .env / printenv; reading one `$env:NAME` stays allowed (control for an over-broad «env:»).
+
+_POWERSHELL_BLOCKED = [
+    pytest.param("railway variables --kv", id="ps-railway-variables"),
+    # 🔴 PowerShell 백틱 이스케이프 — `x` set` 은 서비스 이름 «x set» 하나다(읽기). shlex 는 모른다.
+    # PowerShell backtick escape: «x` set» is one service name (a read); shlex cannot tell.
+    pytest.param("railway variables --service x` set --kv", id="ps-backtick-escaped-space"),
+    pytest.param("railway environment config --json", id="ps-env-config"),
+    # PowerShell 은 명령 이름 대소문자를 가리지 않는다 / PowerShell command names are case-insensitive.
+    pytest.param("Railway variables --kv", id="ps-railway-capitalized"),
+    pytest.param("& 'railway' env config --json", id="ps-call-operator-quoted"),
+    pytest.param("Get-Content .env", id="ps-get-content-dotenv"),
+    pytest.param("gc D:\\Source\\SCAManager\\.env", id="ps-gc-dotenv-abspath"),
+    pytest.param("get-content .env | Select-String KEY", id="ps-get-content-lowercase"),
+    pytest.param("Get-ChildItem env:", id="ps-env-drive"),
+    pytest.param("gci Env:", id="ps-env-drive-alias-case"),
+    pytest.param("dir env: | Sort-Object Name", id="ps-env-drive-dir"),
+    pytest.param("[Environment]::GetEnvironmentVariables()", id="ps-dotnet-env-dump"),
+    # 🔴 매개변수 · 따옴표 · 와일드카드 · 경로 구분자가 붙은 env: 드라이브 (자동 보안 리뷰 지적).
+    # env: drive with a parameter, quotes, a wildcard or a path separator (automated security review).
+    pytest.param("Get-ChildItem -Path Env:", id="ps-env-drive-path-param"),
+    pytest.param("gci 'env:'", id="ps-env-drive-quoted"),
+    pytest.param("Get-Item env:*", id="ps-env-drive-wildcard"),
+    pytest.param("dir Env:\\", id="ps-env-drive-backslash"),
+    # 🔴 이름 앞부분 + 와일드카드는 여러 변수를 나열한다 (자동 보안 리뷰 두 번째 지적).
+    # A name prefix plus a wildcard lists many variables (second automated security review).
+    pytest.param("gci env:A*", id="ps-env-drive-prefix-wildcard"),
+    pytest.param("Get-ChildItem Env:ANTHROPIC*", id="ps-env-drive-named-wildcard"),
+    pytest.param("Get-ChildItem env:[A-Z]*", id="ps-env-drive-bracket-wildcard"),
+    pytest.param("dir env:?", id="ps-env-drive-question-wildcard"),
+    # 🔴 따옴표로 쪼갠 와일드카드 · 변수 전개 · 공급자 경로 (자동 보안 리뷰 세 번째 지적) — 판정을 뒤집어
+    #    «정확히 이름 하나» 만 통과시킨다.
+    # Split-quote wildcards, expansion and provider paths (third review); only one exact name passes.
+    pytest.param("gci env:A'*'", id="ps-env-drive-single-quoted-wildcard"),
+    pytest.param('gci env:A"*"', id="ps-env-drive-double-quoted-wildcard"),
+    pytest.param("$p='*'; gci env:$p", id="ps-env-drive-variable-expansion"),
+    pytest.param("gci Environment::", id="ps-environment-provider-path"),
+    pytest.param("Get-ChildItem Microsoft.PowerShell.Core\\Environment::", id="ps-environment-provider-qualified"),
+]
+
+_POWERSHELL_ALLOWED = [
+    pytest.param("git status", id="ps-git-status"),
+    pytest.param("Get-Content README.md", id="ps-get-content-readme"),
+    pytest.param("Get-Content .env.example", id="ps-get-content-env-example"),
+    pytest.param("$env:PATH -split ';'", id="ps-single-variable"),
+    pytest.param("Get-Item env:PATH", id="ps-single-variable-item"),
+    pytest.param("Write-Output ${env:USERPROFILE}", id="ps-single-variable-braced"),
+    pytest.param("Get-Item -Path env:TEMP", id="ps-single-variable-path-param"),
+    pytest.param("[Environment]::GetEnvironmentVariable('PATH')", id="ps-dotnet-single-variable"),
+    pytest.param("py -3 scripts/railway_config.py", id="ps-safe-config-reader"),
+]
+
+
+@pytest.mark.parametrize("command", _POWERSHELL_BLOCKED)
+def test_powershell_dump_is_denied(command):
+    """🔴 PowerShell 도구로 보낸 덤프 명령도 deny — Bash 만 보던 공백 봉인."""
+    decision, _ = _decide(command, tool_name="PowerShell")
+    assert decision == "deny", (
+        f"PowerShell 에서 차단되지 않음: {command!r}\n"
+        "해결 / Fix: 훅이 PowerShell 도구도 판정하고, PowerShell 고유 덤프 꼴을 _BLOCKED 에 둔다."
+    )
+
+
+@pytest.mark.parametrize("command", _POWERSHELL_ALLOWED)
+def test_powershell_benign_is_not_denied(command):
+    """PowerShell 의 정상 명령은 통과 — 한 변수 읽기와 안전 대체 포함(과잉 차단 봉인)."""
+    decision, reason = _decide(command, tool_name="PowerShell")
+    assert decision != "deny", (
+        f"PowerShell 오탐 차단: {command!r}\n훅 사유: {reason}"
+    )
+
+
+# --- 6-1b. 중화 목록 밖의 실제 덤프 명령 — 넓은 탐지기가 잡아야 한다 ----------------
+# 훅의 별칭·옵션·하위 명령 목록은 **중화**(쓰기 · KV 출력) 판정에만 쓴다. 덤프 자체는 넓은 탐지기가
+# 잡는다 — 그것을 그 목록이 알아보지 못하는 실제 명령으로 확인한다. 출처: deploy.md 처방을 그대로
+# 실행하는 꼴(출력을 head 로 자른 형태) · 07-19 사고 부류 · PowerShell/.NET 공식 문서의 환경 변수 나열 예.
+# The alias/option/subcommand catalogues only judge neutralizers; the broad detectors must catch dumps
+# those catalogues never see. Sources: the deploy.md prescription as run, the 07-19 class, PowerShell docs.
+
+# witness-corpus: 문서 처방 · CLI 도움말 · 사고 부류 · 공식 문서에서 옮긴 값 덤프 명령 — 중화 목록이 아니라 넓은 탐지기가 잡아야 한다
+_REAL_DUMPS = [
+    ("Bash", "timeout 60 railway environment config --json 2>&1 | head -c 3000"),
+    ("Bash", "railway environment config"),  # CLI 도움말 사용법 줄 / CLI help usage line
+    ("Bash", "printenv"),
+    ("PowerShell", "dir env:"),  # about_Environment_Variables
+    ("PowerShell", "Get-Item Env:*"),
+    ("PowerShell", "Get-ChildItem Env:"),
+    ("PowerShell", "[Environment]::GetEnvironmentVariables()"),  # .NET 문서 / .NET docs
+]
+
+
+@pytest.mark.parametrize(("tool", "command"), _REAL_DUMPS)
+def test_real_dump_commands_are_denied_by_the_broad_detectors(tool, command):
+    """🔴 중화 목록이 모르는 실제 덤프 명령도 deny — 목록이 아니라 탐지기가 문지기다."""
+    decision, _ = _decide(command, tool_name=tool)
+    assert decision == "deny", f"실제 덤프 명령이 통과했다({tool}): {command!r}"
+
+
+# --- 6-2. Railway MCP 의 변수 목록 도구 --------------------------------------
+# 🔴 `list_variables` 는 설명 그대로 «KEY=VALUE 쌍을 반환» 한다 — 셸을 거치지 않는 같은 덤프다.
+#    값 개수만 내는 `get_service_config` 는 통과(과잉 차단 대조군).
+# Railway MCP `list_variables` returns KEY=VALUE pairs; `get_service_config` (variable count only) stays.
+
+_MCP_LIST = "mcp__railway__list_variables"
+
+
+def test_railway_mcp_variable_listing_is_denied():
+    """🔴 Railway MCP 변수 목록 도구도 deny — 명령 글자가 없어도 도구 이름으로 판정한다."""
+    decision, reason = _decide("", tool_name=_MCP_LIST)
+    assert decision == "deny", f"{_MCP_LIST} 가 통과했다 — 서비스 변수 값이 그대로 나온다."
+    assert "cut -d= -f1" in reason, f"이름만 보는 안전 대안이 사유에 없다: {reason}"
+
+
+@pytest.mark.parametrize("tool_name", [
+    "mcp__railway__get_service_config",
+    "mcp__railway__list_services",
+    "mcp__railway__get_logs",
+])
+def test_other_railway_mcp_tools_pass(tool_name):
+    """값을 내지 않는 Railway MCP 도구는 통과 — «railway MCP 면 전부» 같은 과잉 판정 대조군."""
+    decision, _ = _decide("", tool_name=tool_name)
+    assert decision != "deny", f"{tool_name} 가 차단됐다 — 변수 값을 내지 않는 도구다."
 
 
 # --- 7. 차단 메시지 유용성 ----------------------------------------------------
@@ -220,6 +524,17 @@ def test_deny_reason_teaches_the_safe_idiom():
         "차단 사유에 안전 관용구(`cut -d= -f1`)가 없다.\n"
         f"현재 사유: {reason}\n"
         "대안을 알려주지 않는 차단은 사용자가 훅을 끄게 만든다."
+    )
+
+
+def test_config_deny_reason_points_to_the_safe_reader():
+    """🔴 배포 설정 덤프를 막을 때는 값 없는 읽기(scripts/railway_config.py)를 안내한다.
+    `cut -d= -f1` 은 JSON 설정에 쓸 수 없다 — 대안이 틀리면 대안이 없는 것과 같다."""
+    decision, reason = _decide("railway environment config --json")
+    assert decision == "deny"
+    assert "scripts/railway_config.py" in reason, (
+        "배포 설정 차단 사유에 안전 대체(scripts/railway_config.py)가 없다.\n"
+        f"현재 사유: {reason}"
     )
 
 
@@ -269,7 +584,9 @@ def pretooluse_commands_for(settings, tool):
     out = []
     for entry in settings.get("hooks", {}).get("PreToolUse", []):
         tokens = [t.strip() for t in entry.get("matcher", "").split("|")]
-        if tool not in tokens:
+        # matcher 토큰은 정규식일 수 있다(`mcp__.*railway.*__list_variables`) — 통째 일치로 본다.
+        # Tokens may be regexes; a plain name still fullmatches itself.
+        if not any(re.fullmatch(t, tool) for t in tokens if t):
             continue
         for hook in entry.get("hooks", []):
             cmd = hook.get("command", "")
@@ -293,6 +610,15 @@ def test_extractor_handles_alternation_and_args():
     assert pretooluse_commands_for(fake, "Bash") == ["python .claude/hooks/h.py"]
 
 
+def test_extractor_matches_regex_tokens_whole():
+    """정규식 토큰은 통째 일치 — `mcp__.*railway.*__list_variables` 가 다른 도구를 집지 않는다."""
+    fake = {"hooks": {"PreToolUse": [{"matcher": "Bash|mcp__.*railway.*__list_variables", "hooks": [
+        {"type": "command", "command": "python h.py"}]}]}}
+    assert pretooluse_commands_for(fake, "mcp__railway__list_variables") == ["python h.py"]
+    assert pretooluse_commands_for(fake, "mcp__railway__list_variables_v2") == []
+    assert pretooluse_commands_for(fake, "BashOutput") == []
+
+
 def test_extractor_ignores_other_tool_groups():
     """🔴 부정 통제 — Write/Edit 그룹은 Bash 로 집계되지 않는다(공허 통과 차단)."""
     fake = {"hooks": {"PreToolUse": [{"matcher": "Write|Edit", "hooks": [
@@ -312,6 +638,25 @@ def test_hook_wired_to_pretooluse_bash():
         "block_credential_dump.py 가 PreToolUse(Bash) 에 미배선 — 차단이 인지 의존으로 회귀한다.\n"
         f"현재 Bash 배선: {commands}\n"
         "해결 / Fix: .claude/settings.json 의 hooks.PreToolUse 에 matcher 'Bash' 그룹 추가."
+    )
+
+
+def test_hook_wired_to_pretooluse_powershell():
+    """🔴 PowerShell 도구에도 배선 — Bash 만 배선이면 PowerShell 로 같은 덤프가 통과한다."""
+    commands = pretooluse_commands_for(_settings(), "PowerShell")
+    assert any_invokes(commands, ".claude/hooks/block_credential_dump.py"), (
+        "block_credential_dump.py 가 PreToolUse(PowerShell) 에 미배선.\n"
+        f"현재 PowerShell 배선: {commands}\n"
+        "해결 / Fix: .claude/settings.json 의 PreToolUse matcher 를 'Bash|PowerShell' 로."
+    )
+
+
+def test_hook_wired_to_railway_mcp_variable_listing():
+    """🔴 Railway MCP 변수 목록 도구에도 배선 — 셸 밖의 같은 덤프 경로."""
+    commands = pretooluse_commands_for(_settings(), _MCP_LIST)
+    assert any_invokes(commands, ".claude/hooks/block_credential_dump.py"), (
+        f"block_credential_dump.py 가 PreToolUse({_MCP_LIST}) 에 미배선.\n"
+        f"현재 배선: {commands}"
     )
 
 
