@@ -56,11 +56,15 @@ _CMD_INCIDENT = (
 _CMD_NAMES_ONLY = "railway variables --kv | cut -d= -f1 | grep -i CRON"
 
 
-def _payload(command, tool_name=_TOOL):
-    return json.dumps({"tool_name": tool_name, "tool_input": {"command": command}})
+def _payload(command, tool_name=_TOOL, cwd=None):
+    payload = {"tool_name": tool_name, "tool_input": {"command": command}}
+    if cwd is not None:
+        # 하네스는 훅 입력에 세션의 작업 폴더(cwd)를 싣는다 / the harness passes the session cwd
+        payload["cwd"] = str(cwd)
+    return json.dumps(payload)
 
 
-def _run_hook(command, tool_name=_TOOL):
+def _run_hook(command, tool_name=_TOOL, cwd=None):
     """훅을 배선된 방식대로 실제 실행 — import 우회 없이 stdin/stdout 계약 확인.
 
     Run the hook exactly as wired (subprocess + stdin JSON), not via import.
@@ -72,7 +76,7 @@ def _run_hook(command, tool_name=_TOOL):
     )
     return subprocess.run(
         [sys.executable, str(_HOOK)],
-        input=_payload(command, tool_name).encode("utf-8"),
+        input=_payload(command, tool_name, cwd).encode("utf-8"),
         capture_output=True,
         timeout=20,
         check=False,
@@ -80,12 +84,12 @@ def _run_hook(command, tool_name=_TOOL):
     )
 
 
-def _decide(command, tool_name=_TOOL):
+def _decide(command, tool_name=_TOOL, cwd=None):
     """(permissionDecision, reason) 반환. 통과(무출력)면 (None, "").
 
     Returns the decision pair; (None, "") means the hook stayed silent = allow.
     """
-    proc = _run_hook(command, tool_name)
+    proc = _run_hook(command, tool_name, cwd)
     stdout = proc.stdout.decode("utf-8", errors="replace").strip()
     stderr = proc.stderr.decode("utf-8", errors="replace").strip()
     # 훅은 무슨 일이 있어도 exit 0 — 비정상 종료는 harness 를 막거나 무음 실패한다.
@@ -282,8 +286,6 @@ _BLOCKED = [
     # Ninth review: context flags read as count-only, glob paths, NTFS streams, safe heads piped onward.
     pytest.param("grep -C 3 KEY .env", id="grep-context-dotenv"),
     pytest.param("grep -c -A2 KEY .env", id="grep-count-with-context-flag"),
-    pytest.param("cat .env*", id="dotenv-glob-suffix"),
-    pytest.param("cat *.env", id="dotenv-glob-name"),
     pytest.param("ls .env | xargs cat", id="safe-head-piped-to-reader"),
 ]
 
@@ -453,7 +455,6 @@ _POWERSHELL_BLOCKED = [
     pytest.param("Select-String -Path .env -Pattern KEY", id="ps-select-string-dotenv"),
     pytest.param("sls KEY .env", id="ps-sls-dotenv"),
     pytest.param("findstr KEY .env", id="ps-findstr-dotenv"),
-    pytest.param("Get-Content .e*", id="ps-get-content-dotenv-glob"),
     pytest.param("Get-Content .env::$DATA", id="ps-get-content-dotenv-ads"),
     pytest.param("Get-Item .env | Get-Content", id="ps-get-item-piped-to-get-content"),
     pytest.param("& 'railway' env config --json", id="ps-call-operator-quoted"),
@@ -542,6 +543,246 @@ def test_real_dump_commands_are_denied_by_the_broad_detectors(tool, command):
     """🔴 중화 목록이 모르는 실제 덤프 명령도 deny — 목록이 아니라 탐지기가 문지기다."""
     decision, _ = _decide(command, tool_name=tool)
     assert decision == "deny", f"실제 덤프 명령이 통과했다({tool}): {command!r}"
+
+
+# --- 6-1c. 재귀 검색이 .env 를 읽는 꼴 (회고 원장 R-4) ----------------------------
+# 🔴 grep -r · rg 의 무시 해제+숨김 포함 · findstr /s · Get-ChildItem -Recurse | Select-String 은 .gitignore 를
+#    보지 않아 .env 의 일치 줄을 값째 낸다. 훅은 검색 대상 폴더(하위 포함)에 .env 꼴 파일이 있는지 «파일
+#    시스템» 으로 본다 — 그래서 시험은 임시 폴더에 내용 없는 가짜 .env 를 심고, 훅 입력의 cwd 를 그 폴더로
+#    준다(이 PC 의 실제 .env 에도, CI 에 .env 가 없다는 사실에도 기대지 않는다).
+# Recursive searches ignore .gitignore and print .env lines. The hook checks the searched tree on disk,
+# so tests plant a dummy .env in a temp folder and pass that folder as the payload cwd.
+
+
+@pytest.fixture
+def repo_like(tmp_path):
+    """가짜 .env 가 루트와 깊은 곳에 있고, src/ 에는 없는 폴더 / a tree with dummy .env files outside src/."""
+    (tmp_path / ".env").write_text("PLANT=1\n", encoding="utf-8")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.py").write_text("X = 1\n", encoding="utf-8")
+    (tmp_path / "nested" / "deep").mkdir(parents=True)
+    (tmp_path / "nested" / "deep" / ".env.local").write_text("PLANT=2\n", encoding="utf-8")
+    return tmp_path
+
+
+@pytest.fixture
+def dot_only(tmp_path):
+    """점 파일 .env 하나와 보통 파일만 있는 폴더 — 셸마다 다른 `*` 판정의 대조군.
+    A folder with only a dot-file .env and a normal file: control for shell-specific `*` semantics."""
+    (tmp_path / ".env").write_text("PLANT=1\n", encoding="utf-8")
+    (tmp_path / "notes.txt").write_text("hello\n", encoding="utf-8")
+    return tmp_path
+
+
+# 🔴 와일드카드는 실제 폴더 항목에 대 본다(9차 반영의 «이름을 집을 수 있나» 판정은 맨 `*` 을 모두 막았다).
+#    Bash 의 `*` 는 점 파일을 집지 않고 PowerShell 의 `*` 는 집는다.
+# Globs are matched against real entries; Bash `*` skips dot-files, PowerShell `*` does not.
+_GLOB_CASES = [
+    pytest.param("Bash", "cat .env*", "deny", id="bash-dotenv-glob-suffix"),
+    pytest.param("PowerShell", "Get-Content .e*", "deny", id="ps-dotenv-glob-prefix"),
+    pytest.param("PowerShell", "Get-Content *", "deny", id="ps-star-includes-dotfiles"),
+    pytest.param("Bash", "cat *", "allow", id="bash-star-skips-dotfiles"),
+    pytest.param("Bash", "grep -n TODO *", "allow", id="bash-grep-star-skips-dotfiles"),
+    pytest.param("Bash", "wc -l *.txt", "allow", id="bash-glob-without-dotenv"),
+    # dotglob 을 켜면 Bash 의 `*` 도 점 파일을 집는다(14차) / with dotglob, Bash `*` matches dot-files too
+    pytest.param("Bash", "shopt -s dotglob; cat *", "deny", id="bash-dotglob-star-includes-dotfiles"),
+]
+
+
+@pytest.mark.parametrize(("tool", "command", "expected"), _GLOB_CASES)
+def test_globs_are_matched_against_real_entries(dot_only, tool, command, expected):
+    """와일드카드가 실제로 .env 꼴 파일을 집을 때만 읽기로 본다(셸별 점 파일 규칙 포함)."""
+    decision, reason = _decide(command, tool_name=tool, cwd=dot_only)
+    if expected == "deny":
+        assert decision == "deny", f"와일드카드가 .env 를 집는데 통과했다({tool}): {command!r}"
+    else:
+        assert decision != "deny", f"와일드카드가 .env 를 못 집는데 막혔다({tool}): {command!r}\n{reason}"
+
+
+def test_name_glob_matching_a_real_env_file_is_denied(tmp_path):
+    """`*.env` 는 실제로 prod.env 같은 파일이 있을 때 읽기다 / `*.env` is a read when such a file exists."""
+    (tmp_path / "prod.env").write_text("PLANT=1\n", encoding="utf-8")
+    decision, _ = _decide("cat *.env", cwd=tmp_path)
+    assert decision == "deny"
+
+
+_RECURSIVE_BLOCKED = [
+    pytest.param("Bash", "grep -rn API_KEY .", id="grep-r-dot"),
+    pytest.param("Bash", "grep -r TOKEN", id="grep-r-default-cwd"),
+    pytest.param("Bash", "grep -Rn SECRET ./", id="grep-R-dot-slash"),
+    pytest.param("Bash", "egrep -ri 'KEY|TOKEN' .", id="egrep-ri"),
+    pytest.param("Bash", "grep -rn KEY nested", id="grep-r-nested-dotenv-local"),
+    pytest.param("Bash", "grep --recursive -n KEY .", id="grep-long-recursive"),
+    pytest.param("Bash", "rg -uu KEY", id="rg-uu"),
+    pytest.param("Bash", "rg --no-ignore --hidden KEY .", id="rg-no-ignore-hidden"),
+    pytest.param("PowerShell", "findstr /s /i KEY *", id="ps-findstr-recursive"),
+    pytest.param("PowerShell", "Get-ChildItem -Recurse | Select-String KEY", id="ps-gci-recurse-sls"),
+    pytest.param("PowerShell", "gci -r | sls KEY", id="ps-gci-r-sls-aliases"),
+    pytest.param("PowerShell", "Select-String -Path * -Pattern KEY", id="ps-sls-wildcard-includes-dotfiles"),
+    # 🔴 자동 보안 리뷰 11차 — `cd` 뒤 폴더 · `-d recurse` · rgrep · 스크립트 블록 안 읽기 · 풀 수 없는 경로.
+    # Eleventh review: cd before the search, -d recurse, rgrep, readers inside script blocks, unresolvable paths.
+    pytest.param("Bash", "cd nested && grep -rn KEY .", id="cd-then-grep-r"),
+    pytest.param("Bash", "grep -d recurse -n KEY .", id="grep-directories-recurse"),
+    pytest.param("Bash", "rgrep KEY .", id="rgrep"),
+    pytest.param("PowerShell", "gci -r | % { gc $_ }", id="ps-gci-r-foreach-gc"),
+    pytest.param("Bash", "grep -rn KEY $PROJECT_DIR", id="grep-r-unexpanded-variable"),
+    pytest.param("Bash", "cat */*.env", id="glob-in-folder-part"),
+    # 🔴 자동 보안 리뷰 12차 — 포함 글롭 값 · 서브셸 안의 cd · 대상 없는 cd · 붙여 쓴 findstr 스위치.
+    # Twelfth review: include-glob values, cd inside a subshell, a missing cd target, combined findstr switches.
+    pytest.param("PowerShell", "Get-ChildItem -Filter .env | Get-Content", id="ps-gci-filter-dotenv-piped"),
+    pytest.param("Bash", "grep -rn --include=.env KEY .", id="grep-r-include-dotenv"),
+    pytest.param("Bash", "(cd src); grep -rn KEY .", id="subshell-cd-does-not-move-later-search"),
+    pytest.param("Bash", "cd missing-folder; grep -rn KEY .", id="cd-to-missing-folder-then-search"),
+    pytest.param("PowerShell", "findstr /si KEY *", id="ps-findstr-combined-switches"),
+    # PowerShell 은 매개변수 이름의 앞부분만 써도 된다(`-Rec`) — Grok R-4 반례.
+    # PowerShell accepts unique parameter-name prefixes (`-Rec`) — Grok R-4 counterexample.
+    pytest.param("PowerShell", "Get-ChildItem -Rec | Select-String KEY", id="ps-recurse-prefix"),
+    pytest.param("PowerShell", "gci -recu | sls KEY", id="ps-recurse-prefix-alias"),
+    # 🔴 자동 보안 리뷰 13차 — 서브셸 안의 cd · GNU long 옵션 줄임 · 실제로 있는 .env 꼴 파일 기준의 제외 판정.
+    # Thirteenth review: cd inside a subshell, abbreviated GNU long options, exclusions checked against real files.
+    pytest.param("Bash", "grep --recur -n KEY .", id="grep-long-option-prefix"),
+    pytest.param("Bash", "grep -nd recurse KEY .", id="grep-bundled-d-recurse"),
+    # 작업 폴더는 «후보 전부» — cd 가 실제로 안 돌았을 수도 있으니(조건부 · 실패) 처음 폴더도 늘 본다.
+    # The starting folder is always a candidate: the cd may not have run.
+    pytest.param("Bash", "cd src && grep -rn KEY .", id="cd-into-clean-folder-still-checks-starting-folder"),
+    # 🔴 자동 보안 리뷰 14차 · 반영 중 실측 — 접두 뒤의 검색 · 비재귀 나열 파이프라인 · 스크립트 블록 안의 .NET 읽기 ·
+    #    rg 포함 글롭(무시 · 숨김 규칙을 넘는다) · .gitignore 를 끈 git grep.
+    # Fourteenth review: searches behind prefixes, non-recursive listing pipelines, .NET reads in script
+    # blocks, rg include globs (they override ignore and hidden rules), git grep with .gitignore off.
+    pytest.param("Bash", "env grep -rn KEY .", id="env-prefix-before-search"),
+    pytest.param("Bash", "timeout 10 grep -rn KEY .", id="timeout-prefix-before-search"),
+    pytest.param("Bash", "if grep -rn KEY .; then echo y; fi", id="if-keyword-before-search"),
+    pytest.param("Bash", "rg -g '*' KEY", id="rg-include-glob-overrides-hidden-and-ignore"),
+    pytest.param("Bash", "git grep --no-index KEY", id="git-grep-no-index"),
+    pytest.param("PowerShell", "Get-ChildItem | Select-String KEY", id="ps-non-recursive-listing-piped-to-sls"),
+    pytest.param("PowerShell", "gci -r | ForEach-Object { [IO.File]::ReadAllText($_.FullName) }",
+                 id="ps-listing-dotnet-read-in-script-block"),
+]
+
+
+def test_cd_inside_a_subshell_cannot_make_the_search_lenient(tmp_path):
+    """🔴 HIGH 봉인 — 시작 폴더는 깨끗하고 .env 는 옆 폴더에만 있다. 서브셸 · 루프 · `env -C` 안의 폴더 이동을
+    건너뛰면 판정이 느슨해진다 — 처음 폴더와 지나간 모든 폴더에서 다 깨끗해야 통과(자동 보안 리뷰 13 · 14차).
+    A cd inside a subshell, loop or `env -C` must never loosen the verdict: clean from every folder, or denied."""
+    clean, dirty = tmp_path / "clean", tmp_path / "dirty"
+    clean.mkdir()
+    dirty.mkdir()
+    (clean / "app.py").write_text("X = 1\n", encoding="utf-8")
+    (dirty / ".env.local").write_text("PLANT=1\n", encoding="utf-8")
+    decision, reason = _decide("grep -rn KEY .", cwd=clean)
+    assert decision != "deny", f"대조군 — 깨끗한 시작 폴더의 재귀 검색이 막혔다: {reason}"
+    for command in ("(cd ../dirty; grep -rn KEY .)", "env -C ../dirty grep -rn KEY .",
+                    "for d in ../dirty; do cd $d; grep -rn KEY .; done"):
+        decision, _ = _decide(command, cwd=clean)
+        assert decision == "deny", f"폴더 이동 뒤 재귀 검색이 통과했다 — 그 폴더엔 .env.local 이 있다: {command!r}"
+
+
+def test_rg_reads_a_non_hidden_dotenv_once_ignore_rules_are_off(tmp_path):
+    """rg -u(무시 해제)는 숨김이 아닌 .env 꼴(prod.env)을 읽는다 — 숨김까지 풀어야만 읽는다고 보면 놓친다(14차).
+    .env 꼴은 .gitignore 에 있다고 보므로 rg 기본값 · 그 파일을 못 집는 포함 글롭은 통과(대조군).
+    rg -u reads a non-hidden .env-like file; plain rg and a non-matching include glob pass (controls)."""
+    (tmp_path / "prod.env").write_text("PLANT=1\n", encoding="utf-8")
+    (tmp_path / "app.py").write_text("X = 1\n", encoding="utf-8")
+    decision, _ = _decide("rg -u KEY .", cwd=tmp_path)
+    assert decision == "deny", "rg -u 가 prod.env 를 읽는데 통과했다."
+    for command in ("rg KEY .", "rg -u -g '*.py' KEY ."):
+        decision, reason = _decide(command, cwd=tmp_path)
+        assert decision != "deny", f"prod.env 를 못 읽는 rg 인데 막혔다: {command!r}\n{reason}"
+
+
+def test_grouping_and_substitution_wrappers_do_not_hide_a_dotenv_read():
+    """`(cat .env)` 의 `.env)` · `$(ls .env)` 의 `$(ls` 처럼 괄호 · 치환 껍데기가 붙은 토큰도 경로로 읽는다(14차
+    반영 중 실측 — 껍데기 때문에 .env 이름을 못 알아봤다). grep 의 `-exclude` 는 `-e xclude` 라 뒤 토큰이 읽을 파일이다.
+    Wrapped tokens are still paths; grep's `-exclude` parses as `-e xclude`, so the next token is read."""
+    for tool, command in (("Bash", "(cat .env)"), ("Bash", "cat $(ls .env)"), ("PowerShell", "(Get-Content .env)"),
+                          ("Bash", "grep -exclude .env KEY")):
+        decision, _ = _decide(command, tool_name=tool)
+        assert decision == "deny", f"껍데기 · 옵션 오독 뒤의 .env 읽기가 통과했다({tool}): {command!r}"
+
+
+def test_exclusion_is_checked_against_the_real_dotenv_files(tmp_path):
+    """제외 글롭이 실제로 있는 .env 꼴 파일을 다 빼야 통과 — `.env*` 는 prod.env 를 못 뺀다(13차).
+    An exclusion passes only if it covers every .env-like file actually present."""
+    (tmp_path / "prod.env").write_text("PLANT=1\n", encoding="utf-8")
+    decision, _ = _decide("grep -rn --exclude='.env*' KEY .", cwd=tmp_path)
+    assert decision == "deny", "--exclude='.env*' 가 prod.env 를 못 빼는데 통과했다."
+    decision, reason = _decide("grep -rn --exclude='*.env' KEY .", cwd=tmp_path)
+    assert decision != "deny", f"prod.env 를 빼는 제외인데 막혔다: {reason}"
+
+_RECURSIVE_ALLOWED = [
+    pytest.param("Bash", "grep -rn KEY src", id="grep-r-folder-without-dotenv"),
+    pytest.param("Bash", "grep -rc KEY .", id="grep-r-count-only"),
+    pytest.param("Bash", "grep -rl KEY .", id="grep-r-files-only"),
+    pytest.param("Bash", "grep -rn --exclude='.env*' KEY .", id="grep-r-excludes-dotenv"),
+    pytest.param("Bash", "rg KEY .", id="rg-default-skips-hidden-and-ignored"),
+    pytest.param("Bash", "rg --no-ignore KEY .", id="rg-no-ignore-still-skips-hidden"),
+    pytest.param("Bash", "rg -uu -g '!.env*' KEY", id="rg-uu-with-exclude-glob"),
+    pytest.param("Bash", "git grep KEY", id="git-grep-tracked-only"),
+    pytest.param("PowerShell", "Get-ChildItem -Recurse src | Select-String KEY", id="ps-gci-recurse-src"),
+    pytest.param("PowerShell", "Get-ChildItem -Recurse -Filter *.py | Select-String KEY", id="ps-gci-filter-py"),
+    pytest.param("PowerShell", "findstr /s /i KEY *.py", id="ps-findstr-recursive-py-only"),
+    pytest.param("Bash", "grep -rn --include=*.py KEY .", id="grep-r-include-py-only"),
+    pytest.param("Bash", "timeout 10 grep -rn KEY src", id="timeout-prefix-search-in-clean-folder"),
+    pytest.param("Bash", "rg -uu -g '*.py' KEY", id="rg-include-glob-cannot-match-dotenv"),
+    pytest.param("PowerShell", "Get-ChildItem -Recurse | Measure-Object", id="ps-listing-counted-only"),
+    pytest.param("PowerShell", "Get-ChildItem | Select-Object Name", id="ps-listing-names-only"),
+]
+
+
+def test_escaped_quote_does_not_hide_the_next_segment():
+    """🔴 HIGH 퇴행 봉인 — `\\"` 는 따옴표가 아니다. 따옴표 인식 분할이 이스케이프를 모르면 `; env` 를 같은
+    세그먼트로 묶어 명령 자리 판정을 놓친다 → 이스케이프가 있으면 무조건 분할로 돌아간다(자동 보안 리뷰 11차).
+    An escaped quote must not glue `; env` into the previous segment (eleventh review, HIGH)."""
+    for command in ('echo \\"; env', 'ls \\" ; cat .env', "echo `\"; env"):
+        decision, _ = _decide(command)
+        assert decision == "deny", f"이스케이프 뒤의 덤프가 통과했다: {command!r}"
+
+
+def test_command_substitution_inside_quotes_is_judged_as_a_command():
+    """🔴 HIGH 퇴행 봉인 — 따옴표 안의 명령 치환(`"$(cat .env)"`)을 한 토큰으로 묶으면 안의 읽기를 놓친다.
+    치환 안의 명령을 따로 떼어 같은 판정을 거친다(자동 보안 리뷰 13차).
+    A command substitution inside quotes is judged as its own command (thirteenth review, HIGH)."""
+    for command in ('echo "$(cat .env)"', 'echo "x $(printenv) y"', "echo \"$(railway variables --kv)\""):
+        decision, _ = _decide(command)
+        assert decision == "deny", f"치환 안의 덤프가 통과했다: {command!r}"
+
+
+def test_apostrophe_in_a_comment_does_not_glue_the_next_line():
+    """🔴 HIGH 봉인 — 주석 속 홑따옴표(`# it's fine`)를 따옴표로 읽으면 줄바꿈 뒤 명령이 앞 세그먼트에 묶여
+    명령 자리 판정을 놓친다 → 줄바꿈은 늘 나누고, `#` 이 있으면 무조건 분할로(자동 보안 리뷰 12차).
+    A quote inside a comment must not glue the next line into the previous segment (twelfth review, HIGH)."""
+    for command in ("echo hi # it's fine\nenv", "ls # don't\nset", "echo 'a' # x'\ncat .env"):
+        decision, _ = _decide(command)
+        assert decision == "deny", f"주석 뒤 줄의 덤프가 통과했다: {command!r}"
+
+
+@pytest.mark.parametrize(("tool", "command"), _RECURSIVE_BLOCKED)
+def test_recursive_search_over_a_tree_with_dotenv_is_denied(repo_like, tool, command):
+    """🔴 .env 가 있는 폴더를 재귀로 뒤지는 검색은 deny — .gitignore 를 무시해 값이 나온다."""
+    decision, _ = _decide(command, tool_name=tool, cwd=repo_like)
+    assert decision == "deny", f"재귀 검색이 통과했다({tool}): {command!r} — .env 의 일치 줄이 값째 나온다."
+
+
+@pytest.mark.parametrize(("tool", "command"), _RECURSIVE_ALLOWED)
+def test_recursive_search_that_cannot_print_dotenv_passes(repo_like, tool, command):
+    """.env 를 못 집는 재귀 검색은 통과 — 다른 폴더 · 개수만 · 제외 · rg 기본값 · git grep."""
+    decision, reason = _decide(command, tool_name=tool, cwd=repo_like)
+    assert decision != "deny", f"오탐 차단({tool}): {command!r}\n훅 사유: {reason}"
+
+
+def test_recursive_search_in_a_tree_without_dotenv_passes(tmp_path):
+    """🔴 대조군 — .env 가 없는 폴더의 재귀 검색은 막지 않는다(«재귀면 전부» 같은 과잉 판정 봉인)."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.py").write_text("X = 1\n", encoding="utf-8")
+    decision, reason = _decide("grep -rn KEY .", cwd=tmp_path)
+    assert decision != "deny", f".env 가 없는데 막혔다: {reason}"
+
+
+def test_recursive_search_deny_reason_points_to_safe_search(repo_like):
+    """막을 때는 .env 를 건너뛰는 검색(Grep 도구 · git grep · --exclude)을 안내한다."""
+    decision, reason = _decide("grep -rn KEY .", cwd=repo_like)
+    assert decision == "deny"
+    assert "git grep" in reason, f"안전한 검색 안내가 없다: {reason}"
 
 
 # --- 6-2. Railway MCP 의 변수 목록 도구 --------------------------------------
