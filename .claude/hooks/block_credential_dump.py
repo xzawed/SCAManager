@@ -1153,6 +1153,7 @@ _PROD_REASONS = {
 # Verbs that take an inner command; only for them do `--` and the first positional start its arguments.
 _PROD_INNER_COMMAND = frozenset({"ssh", "run", "local"})
 _PROD_SHELL_WRAPPERS = frozenset({"bash", "sh", "zsh", "dash", "ksh"})
+_PROD_SHELL_VALUE_OPTIONS = frozenset({"-o", "-O", "+o", "+O", "--rcfile", "--init-file"})
 _PROD_PS_WRAPPERS = frozenset({"powershell", "pwsh"})
 _PROD_PKG_RUNNERS = frozenset({"npx", "bunx", "pnpx"})
 # 셸 키워드 · 실행기 · PowerShell 블록 머리 — 이 뒤에서는 첫 railway 낱말부터를 호출로 본다. 재시도 루프
@@ -1298,11 +1299,22 @@ def _prod_unwrap(head, rest):
     """알려진 래퍼 안쪽의 명령 글자 — 셸 `-c` · `cmd /c` · PowerShell `-Command` · `env`. 없으면 None.
     The command text inside a known wrapper (shell -c, cmd /c, PowerShell -Command, env), or None."""
     if head in _PROD_SHELL_WRAPPERS:
-        for k, word in enumerate(rest):
+        # 값을 받는 셸 옵션(`-o pipefail` · `-O extglob` · `--rcfile x`)의 값은 스크립트 파일이 아니다 · `<<<` 는
+        # 글자를 명령으로 먹인다(자동 보안 리뷰 11-11) / skip shell option values; `<<<` feeds text as commands
+        k = 0
+        while k < len(rest):
+            word = rest[k]
+            if word in _PROD_SHELL_VALUE_OPTIONS:
+                k += 2
+                continue
+            if word.startswith("<<<"):
+                return word[3:] or (rest[k + 1] if k + 1 < len(rest) else None)
             if word.startswith("-") and not word.startswith("--") and "c" in word[1:]:
                 return rest[k + 1] if k + 1 < len(rest) else None
-            if not word.startswith("-"):
-                return None  # 스크립트 파일 실행 — 글자 훅이 볼 수 없다 / a script file: beyond a text hook
+            if word.startswith(("-", "+")):
+                k += 1
+                continue
+            return None  # 스크립트 파일 실행 — 글자 훅이 볼 수 없다 / a script file: beyond a text hook
         return None
     if head == "cmd":
         for k, word in enumerate(rest):
@@ -1317,7 +1329,15 @@ def _prod_unwrap(head, rest):
     if head == "env":
         k = 0
         while k < len(rest) and (rest[k].startswith("-") or _ASSIGNMENT.fullmatch(rest[k])):
-            k += 2 if rest[k] in ("-u", "--unset", "-C", "--chdir") else 1
+            word = rest[k]
+            # `-S` · `--split-string` 의 값은 실행할 명령 한 줄이다 / the value of -S is the command line itself
+            if word in ("-S", "--split-string"):
+                return rest[k + 1] if k + 1 < len(rest) else None
+            if word.startswith("--split-string="):
+                return word.split("=", 1)[1]
+            if word.startswith("-S") and len(word) > 2:
+                return word[2:]
+            k += 2 if word in ("-u", "--unset", "-C", "--chdir") else 1
         return " ".join(shlex.quote(word) for word in rest[k:]) if k < len(rest) else None
     if head in ("invoke-expression", "iex"):
         return " ".join(rest) or None
@@ -1347,6 +1367,66 @@ def _prod_pipes_into_runner(text):
     """뒤 파이프 단계가 글자를 실행하는 명령인가 — `cat <<'EOF' | bash` · `'@ | iex` 는 글자 heredoc 이라도 돈다
     (Grok 3차 반례 · Claude 확인). Does a later pipeline stage execute the text?"""
     return any(_prod_runs_text(_prod_head(_command_words(stage)[0])) for stage in _split_stages(text)[1:])
+
+
+def _prod_reads_stdin(head, rest):
+    """파이프 뒤에서 stdin 을 명령으로 읽는가 — `bash` · `sh -s` · `powershell -` · 인자 없는 `iex` · `cmd`.
+    스크립트 파일을 받거나 `-c` · `-Command` 로 명령을 받으면 stdin 이 아니다(그쪽은 unwrap 이 본다).
+    Does this stage read its commands from stdin? A script file or an inline -c/-Command is not stdin."""
+    if head in _PROD_SHELL_WRAPPERS:
+        k = 0
+        while k < len(rest):
+            word = rest[k]
+            if word in _PROD_SHELL_VALUE_OPTIONS:
+                k += 2
+                continue
+            if word.startswith("-") and not word.startswith("--") and "c" in word[1:]:
+                return False
+            if word.startswith(("-", "+")) and word != "-":
+                k += 1
+                continue
+            return word == "-"
+        return True
+    if head in _PROD_PS_WRAPPERS:
+        lowered = [word.lower() for word in rest]
+        if "-file" in lowered or "-f" in lowered:
+            return False
+        for k, word in enumerate(lowered):
+            if word in ("-command", "-c"):
+                return k + 1 < len(lowered) and lowered[k + 1] == "-"
+        return True
+    if head in ("invoke-expression", "iex"):
+        return not rest
+    if head == "cmd":
+        return not any(word.lower() in ("/c", "/k", "/r") for word in rest)
+    return False
+
+
+def _prod_find_heredoc(line):
+    """따옴표 밖의 heredoc 연산자 — 따옴표 안의 `<<'EOF'` 는 글자다(자동 보안 리뷰 11-11: 그것을 heredoc 으로 읽으면
+    다음 줄의 실제 명령이 «본문» 으로 빠진다). `<<<` 는 heredoc 이 아니다.
+    The heredoc operator outside quotes (a quoted one would swallow the real commands that follow)."""
+    quote, i = None, 0
+    while i < len(line):
+        ch = line[i]
+        if quote:
+            if ch == quote:
+                quote = None
+            elif ch == "\\" and quote == '"':
+                i += 1
+        elif ch in "'\"":
+            quote = ch
+        elif ch == "\\":
+            i += 1
+        elif line.startswith("<<<", i):
+            i += 3
+            continue
+        elif line.startswith("<<", i):
+            match = _PROD_HEREDOC.match(line, i)
+            if match:
+                return match
+        i += 1
+    return None
 
 
 def _prod_substitutions(text):
@@ -1402,7 +1482,7 @@ def _prod_without_heredoc_data(text):
         # PowerShell here-string(`@'…'@` 글자 · `@"…"@` 는 `$(…)` 가 돈다) — 닫는 줄은 `'@` · `"@` 로 시작한다
         # PowerShell here-strings: @'…'@ is literal, @"…"@ still runs $(…); the closing line starts with '@ or "@
         here = _PROD_PS_HERESTRING.search(line) if powershell else None
-        match = None if here else _PROD_HEREDOC.search(line)
+        match = None if here else _prod_find_heredoc(line)
         if not here and not match:
             continue
         runs = (_prod_runs_text(_prod_receiver(line[:(here or match).start()]))
@@ -1438,11 +1518,22 @@ def _prod_decide_text(text, depth):
         if reason:
             return reason
     for segment in _split_segments(text):
-        for stage in _split_stages(segment):
+        stages = _split_stages(segment)
+        for index, stage in enumerate(stages):
             head, rest = _command_words(stage)
             head = _prod_head(head)
             if not head:
                 continue
+            if index and _prod_reads_stdin(head, rest):
+                # 앞 단계가 내보내는 글자가 이 명령의 입력이라 실행된다 — 앞 단계의 낱말을 명령으로 본다(자동 보안 리뷰
+                # 11-11: `echo "railway up" | bash`). 파일을 내보내는 앞 단계(`cat x.sh | bash`)는 스크립트 파일 부류다.
+                # Text from earlier stages is executed here, so judge their words as commands.
+                for earlier in stages[:index]:
+                    first, more = _command_words(earlier)
+                    for word in [first, *more]:
+                        reason = _prod_decide_text(word, depth + 1)
+                        if reason:
+                            return reason
             args = _prod_railway_args(head, rest)
             if args is None and head in _PROD_SCAN_HEADS:
                 first = next((k for k, word in enumerate(rest) if _is_railway(word)), None)

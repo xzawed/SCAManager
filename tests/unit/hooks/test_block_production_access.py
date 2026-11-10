@@ -206,6 +206,19 @@ _DENIED_SHAPES = [
     "npm.cmd exec @railway/cli up",
     "npx.cmd @railway/cli ssh",
     "cat <<'EOF' | bash\nrailway up\nEOF",
+    # 자동 보안 리뷰(11-11) — 글자를 stdin 으로 셸에 넘기기 · 셸 here-string · 따옴표 안의 `<<'EOF'` · 셸 옵션 값 · env -S
+    # Automated security review: text piped into a shell, shell here-strings, a quoted `<<'EOF'`, shell option
+    # values and env -S.
+    'echo "railway up" | bash',
+    "printf '%s\\n' 'railway ssh' | sh",
+    'bash <<< "railway redeploy"',
+    "echo \"see <<'EOF' in the docs\"\nrailway up\nEOF",
+    'bash -o pipefail -c "railway up"',
+    "bash -O extglob -c 'railway ssh'",
+    'bash +o posix -c "railway up"',
+    'bash --rcfile x -c "railway up"',
+    'env -S "railway up"',
+    'env --split-string="railway ssh"',
 ]
 
 
@@ -250,6 +263,8 @@ def test_powershell_literal_here_string_is_allowed(command):
     'git commit -m @"\n$(railway up)\n"@',
     "@'\nrailway up\n'@ | iex",
     "@'\nrailway redeploy\n'@ | Invoke-Expression",
+    "'railway up' | iex",
+    "Write-Output 'railway ssh' | Invoke-Expression",
 ])
 def test_powershell_here_string_that_runs_is_denied(command):
     """Invoke-Expression 에 먹이는 here-string · 큰따옴표 here-string 의 `$(…)` 는 돈다 / these run."""
@@ -269,6 +284,8 @@ def test_text_that_really_runs_railway_is_denied(command):
 
 
 _ALLOWED_LOOPS = [
+    'echo "railway status" | bash',
+    'bash -o pipefail -c "railway status"',
     "while ! railway status; do sleep 5; done",
     "until railway deployment list --json | grep -q SUCCESS; do sleep 30; done",
     "timeout 60 railway logs --lines 20",
@@ -329,6 +346,9 @@ _DENIED_MCP = [
     "mcp__supabase-local__apply_migration",
     "mcp__supabase-local__deploy_edge_function",
     "mcp__plugin_supabase_supabase__execute_sql",
+    # claude.ai 커넥터 이름은 대문자로 시작한다 / claude.ai connector names are capitalized
+    "mcp__claude_ai_Supabase__execute_sql",
+    "mcp__claude_ai_Railway__deploy",
 ]
 
 
@@ -407,7 +427,8 @@ def test_production_deny_output_is_ascii():
 
 
 @pytest.mark.parametrize("tool", ["mcp__railway__deploy", "mcp__plugin_railway_railway__deploy",
-                                  "mcp__supabase-local__execute_sql", "mcp__plugin_supabase_supabase__execute_sql"])
+                                  "mcp__supabase-local__execute_sql", "mcp__plugin_supabase_supabase__execute_sql",
+                                  "mcp__claude_ai_Supabase__execute_sql", "mcp__claude_ai_Railway__deploy"])
 def test_hook_is_wired_for_production_mcp_tools(tool):
     """🔴 settings.json 이 운영 MCP 도구에도 훅을 건다 — 배선이 없으면 MCP 로 같은 변경이 통과한다.
     settings.json wires the hook for production MCP tools too."""

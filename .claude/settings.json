@@ -29,7 +29,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash|PowerShell|mcp__.*railway.*|mcp__.*supabase.*",
+        "matcher": "Bash|PowerShell|mcp__.*[Rr]ailway.*|mcp__.*[Ss]upabase.*",
         "hooks": [
           {
             "type": "command",
