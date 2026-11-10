@@ -1153,7 +1153,6 @@ _PROD_REASONS = {
 # Verbs that take an inner command; only for them do `--` and the first positional start its arguments.
 _PROD_INNER_COMMAND = frozenset({"ssh", "run", "local"})
 _PROD_SHELL_WRAPPERS = frozenset({"bash", "sh", "zsh", "dash", "ksh"})
-_PROD_SHELL_VALUE_OPTIONS = frozenset({"-o", "-O", "+o", "+O", "--rcfile", "--init-file"})
 _PROD_PS_WRAPPERS = frozenset({"powershell", "pwsh"})
 _PROD_PKG_RUNNERS = frozenset({"npx", "bunx", "pnpx"})
 # 셸 키워드 · 실행기 · PowerShell 블록 머리 — 이 뒤에서는 첫 railway 낱말부터를 호출로 본다. 재시도 루프
@@ -1295,27 +1294,41 @@ def _prod_railway_args(head, rest):
     return None
 
 
+def _prod_shell_scan(rest):
+    """셸 래퍼 인자 → (안쪽 `-c` 명령 또는 None, stdin 을 명령으로 읽는가). unwrap 과 stdin 판정이 같은 해석을 쓴다.
+    - 값을 받는 옵션(`-o pipefail` · 묶음 `-eo pipefail` · `-O extglob` · `+o posix` · `--rcfile x`)의 값은 스크립트가 아니다.
+    - `-s` 는 위치 인자가 있어도 stdin 을 읽고, 스크립트 자리의 `-` · `/dev/stdin` 도 stdin 이다.
+    - `<<<` 는 글자를 명령으로 먹인다(자동 보안 리뷰 11-11 두 차례).
+    Shell wrapper arguments → (inline -c command or None, reads stdin?), shared by unwrap and the stdin check."""
+    k, from_stdin = 0, False
+    while k < len(rest):
+        word = rest[k]
+        if word.startswith("<<<"):
+            return (word[3:] or (rest[k + 1] if k + 1 < len(rest) else None)), False
+        if word in ("--rcfile", "--init-file"):
+            k += 2
+            continue
+        if word.startswith("--"):
+            k += 1
+            continue
+        if word[:1] in ("-", "+") and len(word) > 1:
+            flags = word[1:]
+            if word[0] == "-" and "c" in flags:
+                return (rest[k + 1] if k + 1 < len(rest) else None), False
+            from_stdin = from_stdin or (word[0] == "-" and "s" in flags)
+            k += 2 if ("o" in flags or "O" in flags) else 1
+            continue
+        # 첫 위치 인자 — 스크립트 파일(글자 훅 밖)이거나 `-s` 뒤의 위치 매개변수
+        # the first positional: a script file (beyond a text hook) or positional parameters after -s
+        return None, from_stdin or word in ("-", "/dev/stdin")
+    return None, True
+
+
 def _prod_unwrap(head, rest):
     """알려진 래퍼 안쪽의 명령 글자 — 셸 `-c` · `cmd /c` · PowerShell `-Command` · `env`. 없으면 None.
     The command text inside a known wrapper (shell -c, cmd /c, PowerShell -Command, env), or None."""
     if head in _PROD_SHELL_WRAPPERS:
-        # 값을 받는 셸 옵션(`-o pipefail` · `-O extglob` · `--rcfile x`)의 값은 스크립트 파일이 아니다 · `<<<` 는
-        # 글자를 명령으로 먹인다(자동 보안 리뷰 11-11) / skip shell option values; `<<<` feeds text as commands
-        k = 0
-        while k < len(rest):
-            word = rest[k]
-            if word in _PROD_SHELL_VALUE_OPTIONS:
-                k += 2
-                continue
-            if word.startswith("<<<"):
-                return word[3:] or (rest[k + 1] if k + 1 < len(rest) else None)
-            if word.startswith("-") and not word.startswith("--") and "c" in word[1:]:
-                return rest[k + 1] if k + 1 < len(rest) else None
-            if word.startswith(("-", "+")):
-                k += 1
-                continue
-            return None  # 스크립트 파일 실행 — 글자 훅이 볼 수 없다 / a script file: beyond a text hook
-        return None
+        return _prod_shell_scan(rest)[0]
     if head == "cmd":
         for k, word in enumerate(rest):
             if word.lower() in ("/c", "/k", "/r"):
@@ -1374,23 +1387,13 @@ def _prod_reads_stdin(head, rest):
     스크립트 파일을 받거나 `-c` · `-Command` 로 명령을 받으면 stdin 이 아니다(그쪽은 unwrap 이 본다).
     Does this stage read its commands from stdin? A script file or an inline -c/-Command is not stdin."""
     if head in _PROD_SHELL_WRAPPERS:
-        k = 0
-        while k < len(rest):
-            word = rest[k]
-            if word in _PROD_SHELL_VALUE_OPTIONS:
-                k += 2
-                continue
-            if word.startswith("-") and not word.startswith("--") and "c" in word[1:]:
-                return False
-            if word.startswith(("-", "+")) and word != "-":
-                k += 1
-                continue
-            return word == "-"
-        return True
+        inner, from_stdin = _prod_shell_scan(rest)
+        return inner is None and from_stdin
     if head in _PROD_PS_WRAPPERS:
         lowered = [word.lower() for word in rest]
-        if "-file" in lowered or "-f" in lowered:
-            return False
+        for k, word in enumerate(lowered):
+            if word in ("-file", "-f"):
+                return k + 1 < len(lowered) and lowered[k + 1] == "-"  # `-File -` 는 stdin / -File - reads stdin
         for k, word in enumerate(lowered):
             if word in ("-command", "-c"):
                 return k + 1 < len(lowered) and lowered[k + 1] == "-"
@@ -1528,10 +1531,12 @@ def _prod_decide_text(text, depth):
                 # 앞 단계가 내보내는 글자가 이 명령의 입력이라 실행된다 — 앞 단계의 낱말을 명령으로 본다(자동 보안 리뷰
                 # 11-11: `echo "railway up" | bash`). 파일을 내보내는 앞 단계(`cat x.sh | bash`)는 스크립트 파일 부류다.
                 # Text from earlier stages is executed here, so judge their words as commands.
+                # 낱말 하나씩과 이어 붙인 인자 전체 — `echo railway up | bash` 는 따옴표 없이 두 낱말로 넘긴다
+                # each word and the joined arguments (`echo railway up | bash` passes two unquoted words)
                 for earlier in stages[:index]:
                     first, more = _command_words(earlier)
-                    for word in [first, *more]:
-                        reason = _prod_decide_text(word, depth + 1)
+                    for piece in [first, *more, " ".join(more)]:
+                        reason = _prod_decide_text(piece, depth + 1)
                         if reason:
                             return reason
             args = _prod_railway_args(head, rest)

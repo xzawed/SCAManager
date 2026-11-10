@@ -219,6 +219,13 @@ _DENIED_SHAPES = [
     'bash --rcfile x -c "railway up"',
     'env -S "railway up"',
     'env --split-string="railway ssh"',
+    # 자동 보안 리뷰 2차(11-11) 중 정직한 꼴 — 따옴표 없이 넘긴 글자 · 묶음 셸 옵션(`-eo pipefail`) · `bash -s`
+    # The honest shapes from the second automated review: unquoted piped words, clustered shell options, bash -s
+    "echo railway up | bash",
+    'bash -eo pipefail -c "railway up"',
+    "bash -euo pipefail -c 'railway ssh'",
+    "echo 'railway up' | bash -s foo",
+    "echo 'railway up' | bash /dev/stdin",
 ]
 
 
@@ -265,6 +272,8 @@ def test_powershell_literal_here_string_is_allowed(command):
     "@'\nrailway redeploy\n'@ | Invoke-Expression",
     "'railway up' | iex",
     "Write-Output 'railway ssh' | Invoke-Expression",
+    "Write-Output railway redeploy | iex",
+    "'railway up' | pwsh -File -",
 ])
 def test_powershell_here_string_that_runs_is_denied(command):
     """Invoke-Expression 에 먹이는 here-string · 큰따옴표 here-string 의 `$(…)` 는 돈다 / these run."""
@@ -285,7 +294,9 @@ def test_text_that_really_runs_railway_is_denied(command):
 
 _ALLOWED_LOOPS = [
     'echo "railway status" | bash',
+    "echo railway status | bash",
     'bash -o pipefail -c "railway status"',
+    "bash -eo pipefail -c 'railway status'",
     "while ! railway status; do sleep 5; done",
     "until railway deployment list --json | grep -q SUCCESS; do sleep 30; done",
     "timeout 60 railway logs --lines 20",
