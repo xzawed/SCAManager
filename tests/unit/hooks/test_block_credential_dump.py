@@ -357,8 +357,9 @@ _ALLOWED = [
     pytest.param("railway variables --service=api --skip-deploys set A=1", id="variable-eq-option-then-set"),
     pytest.param('railway variable --service "my api" set A=1', id="variable-quoted-service-then-set"),
     pytest.param('railway variables --kv --service "a b" | cut -d= -f1', id="safe-idiom-quoted-service"),
-    # ssh·run 자체는 막지 않는다 — env 를 통째로 찍는 꼴만. 이름만 자르면 통과.
-    # ssh/run themselves stay allowed; only a whole-env dump is blocked, and names-only passes.
+    # credential 판정은 ssh·run 자체를 막지 않는다 — env 를 통째로 찍는 꼴만(이름만 자르면 통과). ssh·run 은
+    # 같은 훅의 운영 접근 판정이 막는다(test_block_production_access.py).
+    # The credential verdict leaves ssh/run alone (only a whole-env dump); the production verdict denies them.
     pytest.param("railway variables --kv | cut -f1 -d=", id="safe-idiom-cut-reversed-flags"),
     pytest.param("printenv | cut -d = -f 1", id="safe-idiom-cut-spaced"),
     pytest.param("railway ssh -- ls /app", id="ssh-benign"),
@@ -411,9 +412,13 @@ _ALLOWED = [
 
 @pytest.mark.parametrize("command", _ALLOWED)
 def test_benign_command_is_not_denied(command):
-    """정상 명령은 통과 — 특히 소스 grep 과 이름만 추출 관용구(과잉 차단 봉인)."""
+    """정상 명령은 credential 사유로 막히지 않는다 — 특히 소스 grep 과 이름만 추출 관용구(과잉 차단 봉인).
+    같은 훅의 운영 접근 판정(회고 L02)은 ssh · run · 변수 쓰기 같은 운영 접근을 다른 사유로 막는다 — 그 판정은
+    credential 판정이 통과시킨 명령만 보므로, «credential 사유가 아닌가» 가 곧 «credential 판정이 막지 않았나» 다.
+    Benign commands are not denied for a credential reason. The production-access verdict in the same hook
+    runs only after the credential verdict passes, so a non-credential reason proves the latter passed."""
     decision, reason = _decide(command)
-    assert decision != "deny", (
+    assert not (decision == "deny" and "[credential 보호]" in reason), (
         f"오탐 차단: {command!r} 는 credential 값을 노출하지 않는다.\n"
         f"훅 사유: {reason}\n"
         "해결 / Fix: 허용 예외(cut -d= -f1 / --set / 비대상 명령)를 넓혀라."
