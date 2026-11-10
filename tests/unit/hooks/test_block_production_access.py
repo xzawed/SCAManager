@@ -310,6 +310,24 @@ def test_reads_inside_loops_and_runners_are_allowed(command):
     assert _shell_verdict(command) is None, f"읽기가 막혔다: {command!r}"
 
 
+# 셸 묶음 옵션 판정(`"c" in flags` · `"s"` · `"o"`/`"O"`)이 «아니다» 로 가는 쪽 — 그 글자가 없는 묶음은 안쪽 명령을
+# 열지 않고 · stdin 을 강제하지 않고 · 다음 낱말을 값으로 먹지 않는다.
+# The negative side of the clustered-flag checks: clusters without c/s/o/O.
+# witness-corpus: c · s · o · O 가 없는 셸 묶음 옵션 — 첫 위치 낱말은 스크립트, -c 앞에선 안쪽 명령이 그대로 판정, 단독이면 stdin
+_FLAGS_WITHOUT_C_S_O = ["-l", "-i", "-v", "-n", "-ilv"]
+
+
+@pytest.mark.parametrize("flag", _FLAGS_WITHOUT_C_S_O)
+def test_shell_flags_without_c_s_o_keep_their_plain_meaning(flag):
+    """c · s · o 가 없는 묶음 옵션의 세 갈래를 모두 잰다 / all three branches for flags without c, s, o."""
+    # 그 뒤 첫 위치 낱말은 스크립트 파일 — 안쪽 명령도 stdin 도 아니다 / the next positional is a script file
+    assert _MOD._prod_shell_scan([flag, "script.sh"]) == (None, False)
+    # -c 앞에 와도 안쪽 명령은 그대로 판정된다 / before -c, the inner command is still judged
+    assert _shell_verdict(f'bash {flag} -c "railway up"'), f"bash {flag} -c 가 통과했다"
+    # 그 옵션만 있는 셸은 stdin 을 명령으로 읽는다 / a shell with only that flag reads stdin
+    assert _shell_verdict(f"echo 'railway up' | bash {flag}"), f"| bash {flag} 가 통과했다"
+
+
 @pytest.mark.parametrize("command", [
     "& railway.cmd redeploy", "& 'C:/npm/railway.cmd' ssh", "RAILWAY SSH",
     'Invoke-Expression "railway ssh"', "iex 'railway up'",
