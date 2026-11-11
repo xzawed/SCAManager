@@ -53,8 +53,8 @@ py -3 -m pytest e2e/ -p no:asyncio  # E2E (tests/ 와 같이 돌리지 않는다
 - 위임 작업 중 스스로 판단한 것은 PR 본문이나 응답 끝에 명시한다.
 - 스키마·API·권한·데이터모델 변경은 착수 전 확인받고, 나머지는 진행하고 보고한다.
 - 시각 변경(`templates/`·`static/`)은 사람이 봐야 한다 — 정적 테스트 통과는 근거가 아니다.
-- 운영은 행위로 가른다: 배포·로그·상태 읽기만 자율, `railway ssh`·`run`·배포·변수 변경·DB SQL 은 사용자가
-  `!` 로(훅 차단). DB 는 `BEGIN READ ONLY` 로만 — `SET SESSION …` 은 풀러가 앱 연결에 남긴다.
+- 운영은 행위로 가른다: 배포·로그·상태 읽기와 DB 읽기(`scripts/observe_db.py` — 관측 역할)만 자율,
+  `railway ssh`·`run`·배포·변수 변경·그 밖의 DB SQL 은 사용자가 `!` 로(훅 차단). `SET SESSION …` 은 풀러가 앱 연결에 남긴다.
 - 문서 수치는 실행 결과를 옮긴다. 코드 좌표는 **줄번호가 아니라 앵커**다 — `path::파일에 실재하는 문자열`(`scripts/check_doc_anchors.py` 가 강제).
 
 ## 파일 수정 제한

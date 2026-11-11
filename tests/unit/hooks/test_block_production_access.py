@@ -447,6 +447,16 @@ def test_redeploy_denial_points_to_the_checked_script():
     assert decision == "deny" and "scripts/railway_redeploy.py" in reason, reason
 
 
+@pytest.mark.parametrize("tool_name,command", [
+    ("Bash", "railway ssh"),
+    ("mcp__supabase-local__execute_sql", ""),
+])
+def test_db_denial_points_to_the_observer_tool(tool_name, command):
+    """운영 DB 로 가는 길을 막을 때 관측 역할 조회 도구를 대안으로 알린다 / a DB-path denial names the observer tool."""
+    decision, reason = _decision(_run(tool_name, command))
+    assert decision == "deny" and "scripts/observe_db.py" in reason, reason
+
+
 def test_variable_listing_keeps_the_credential_reason():
     """MCP 변수 목록은 지금처럼 credential 사유로 막는다 — 운영 접근 판정이 그 안내를 덮지 않는다.
     The MCP variable listing keeps its credential reason; the production verdict does not replace it."""
