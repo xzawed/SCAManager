@@ -152,7 +152,7 @@ async def test_heal_is_reported_once_per_event(_fresh_state):
 
 
 async def test_results_name_each_pool_and_code():
-    results = await hb.run_db_heartbeat(pools={"web": lambda: _Session(),
+    results = await hb.run_db_heartbeat(pools={"web": _Session,
                                                "worker": lambda: _Session(row=_DB_READ_ONLY)})
     assert results == {"web": "ok", "worker": "failed:read-only:database"}
 
