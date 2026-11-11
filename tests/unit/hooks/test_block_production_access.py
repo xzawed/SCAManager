@@ -440,6 +440,13 @@ def test_wired_hook_allows_reads(tool_name, command):
     assert decision is None, f"읽기가 막혔다: {tool_name} {command!r}"
 
 
+def test_redeploy_denial_points_to_the_checked_script():
+    """날 재배포를 막을 때 조건을 확인하는 스크립트를 대안으로 알린다 — 대안 없는 차단은 훅을 끄게 만든다.
+    A raw redeploy denial points to the checked script; a block without an alternative gets hooks disabled."""
+    decision, reason = _decision(_run("Bash", "railway redeploy --from-source -y"))
+    assert decision == "deny" and "scripts/railway_redeploy.py" in reason, reason
+
+
 def test_variable_listing_keeps_the_credential_reason():
     """MCP 변수 목록은 지금처럼 credential 사유로 막는다 — 운영 접근 판정이 그 안내를 덮지 않는다.
     The MCP variable listing keeps its credential reason; the production verdict does not replace it."""
