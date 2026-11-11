@@ -13,7 +13,7 @@ src/
 ├── crypto.py
 ├── database.py  # engine·Base·FailoverSessionFactory·RLS 리스너
 ├── logging_config.py  # 멱등 설정·시크릿 리댁션
-├── scheduler.py  # 인앱 JOBS 6 — `/api/internal/cron/*` 와 1:1
+├── scheduler.py  # 인앱 JOBS 7 — `/api/internal/cron/*` 와 1:1
 ├── webhook/  # HMAC 검증·loop_guard · providers/{github,telegram,railway}
 ├── worker/
 ├── analyzer/  # pure/ · io/(static·ai_review·tools/ 22) · configs/(eslint=`.mjs`)

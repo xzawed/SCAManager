@@ -167,13 +167,35 @@ def _count_log_errors(run, railway, dep_id):
             for name, pattern in _LOG_CLASSES.items()}
 
 
+def _report_log_errors(run, railway_exe):
+    """가장 새 배포의 상태와 로그 오류 부류 개수만 찍는다 — 줄 내용은 찍지 않는다(읽기만, 0 · 3).
+    Print the newest deployment's status and per-class error counts only; never a log line (read-only)."""
+    try:
+        railway = railway_exe or _railway_exe()
+        newest = _newest(run, railway)
+        if newest is None:
+            print("🔴 배포 목록이 비었다")
+            return 3
+        counts = _count_log_errors(run, railway, newest["id"])
+    except (CommandFailed, subprocess.TimeoutExpired, json.JSONDecodeError, OSError) as exc:
+        print(f"🔴 로그를 읽지 못했다: {exc}")
+        return 3
+    print(f"가장 새 배포 {str(newest['id'])[:8]} {newest['status']} · 커밋 {str(newest['commit'])[:8]} · "
+          "로그 오류 부류(개수만): " + " · ".join(f"{k} {v}" for k, v in counts.items()))
+    return 0
+
+
 def main(argv=None, *, run=_run, sleep=time.sleep, now=time.time, marker=MARKER, railway_exe=None):
     """0 = 성공(또는 --check 통과) · 1 = 거부 · 2 = 다시 건 배포가 성공하지 못함 · 3 = 도구 실패(막는 쪽).
     0 success (or --check passed) · 1 refused · 2 the retried deployment did not succeed · 3 tool failure."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument("--restart", action="store_true", help="크래시한 배포를 빌드 없이 재시작")
     parser.add_argument("--check", action="store_true", help="조건만 본다")
+    parser.add_argument("--log-errors", action="store_true",
+                        help="가장 새 배포의 로그 오류 부류를 개수만 센다 — 배포하지 않는다(자동 배포 뒤 확인용)")
     args = parser.parse_args(argv)
+    if args.log_errors:
+        return _report_log_errors(run, railway_exe)
     action = "restart" if args.restart else "redeploy"
     try:
         railway = railway_exe or _railway_exe()

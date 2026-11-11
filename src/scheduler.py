@@ -41,6 +41,7 @@ from src.services.cron_service import (
     run_weekly_reports,
     sweep_analysis_attempts,
 )
+from src.services.db_heartbeat_service import run_db_heartbeat
 from src.services.merge_retry_service import process_pending_retries
 from src.services.security_scan_service import scan_all_repos
 from src.shared.off_loop import run_blocking
@@ -158,6 +159,14 @@ async def _scan_security():
     logger.info("scheduler scan_security: totals=%s", totals)
 
 
+async def _db_heartbeat():
+    """웹 · 워커 풀의 쓰기 경로 하트비트 — 세션 READ ONLY 는 되돌리고, 막히면 알린다(서비스가 알림까지 한다).
+    Write-path heartbeat for the web and worker pools; the service heals and alerts on its own."""
+    results = await run_db_heartbeat()
+    if any(r != "ok" for r in results.values()):
+        logger.info("scheduler db_heartbeat: %s", results)
+
+
 # 🔴 구 railway.toml `[[deploy.cronJobs]]` 5종과 **동일 주기** — 값 변경은 운영 동작 변경이다.
 # Same schedules as the (inert) railway.toml cron blocks; guarded by tests.
 JOBS = (
@@ -167,6 +176,8 @@ JOBS = (
     Job("retention-sweep", _retention_sweep, daily_at=(20, 0)),                  # 0 20 * * *
     Job("weekly-reports", _weekly_reports, weekly_at=(0, 0, 0)),                 # 0 0 * * 1
     Job("scan-security", _scan_security, daily_at=(4, 0)),                       # 0 4 * * *
+    # 회고 원장 L02 3층 — 풀 연결에 남은 세션 READ ONLY(2026-10-25 25시간 장애)를 1분 안에 / within a minute
+    Job("db-heartbeat", _db_heartbeat, every_seconds=60),
 )
 
 
@@ -181,6 +192,7 @@ CRON_PATH_TO_JOB = {
     "sweep-orphans": "sweep-orphans",
     "retention-sweep": "retention-sweep",
     "scan-security": "scan-security",
+    "db-heartbeat": "db-heartbeat",
 }
 
 # 🔴 의도적으로 주기 실행하지 **않는** cron 경로 → 사유 (2026-07-19 회고 P1).
@@ -191,7 +203,7 @@ CRON_PATH_TO_JOB = {
 # 🔴 이 목록이 존재하는 진짜 이유: `scan-security` 는 엔드포인트가 있는데 스케줄러 job 이 없어
 # **출시 이래 주기 실행 0회**였고, 문서는 실행된다고 단언했다 — 2026-07-19 P0(Railway cron 5종
 # 전면 미실행)과 **정확히 같은 실패 모드**다. 파리티 가드가 이 갭을 구조로 고정한다.
-# 🔴 현재 비어 있다 — 2026-07-19 사용자 결정으로 `scan-security` 가 활성화되어 6종 전부 스케줄된다.
+# 🔴 현재 비어 있다 — cron 경로 7종 전부 스케줄된다(`scan-security` 는 2026-07-19 사용자 결정으로 편입).
 # 빈 dict 를 남겨두는 이유: 향후 미스케줄 엔드포인트가 생기면 **여기 등재가 강제**되고
 # (파리티 가드가 CI FAIL), 사유를 값으로 남기게 된다.
 # Intentionally empty — every cron path is scheduled as of 2026-07-19. Kept so any future
