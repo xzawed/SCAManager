@@ -1179,6 +1179,7 @@ _PROD_SUPABASE_MCP_READS = frozenset({
     "generate_typescript_types", "list_notebooks", "get_notebook", "authenticate", "complete_authentication",
 })
 _PROD_SAFE_READS = "railway deployment list --json · railway logs <id> · railway status · railway metrics"
+_PROD_SAFE_REDEPLOY = "py -3 scripts/railway_redeploy.py [--restart]"
 
 
 def _prod_variable_writes(args):
@@ -1594,7 +1595,9 @@ def _emit_production_deny(tool, reason):
                 "운영 컨테이너 코드 실행 · 운영 변수를 넣은 실행 · 배포 · 변수 · 환경 변경 · 운영 DB SQL 은\n"
                 "사용자가 직접 실행한다. 2026-10-25 에 에이전트 측정 코드가 운영 워커 쓰기를 25시간 막았다.\n\n"
                 "→ 사용자에게 이 명령과 목적을 보여 주고 `! <명령>` 으로 실행해 달라고 요청하세요.\n"
-                f"자율로 되는 읽기: {_PROD_SAFE_READS}"
+                f"자율로 되는 읽기: {_PROD_SAFE_READS}\n"
+                "실패한 배포 재시도 · 크래시 재시작은 조건(main 최신 커밋 · CI 초록 · 교체 중 아님)을 확인하는\n"
+                f"`{_PROD_SAFE_REDEPLOY}` 로 자율 — `--check` 로 조건부터 본다."
             ),
         }
     }
