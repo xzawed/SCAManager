@@ -31,6 +31,16 @@ Blocking without an alternative gets hooks disabled; every denial teaches the sa
 운영 접근 자체의 사전 승인이 맡는다.
 Threat model: an honest session dumping by accident. Deliberate evasion (indirection, arbitrary code)
 cannot be enumerated by a text hook; prior approval of production access covers it.
+
+🔴 운영 접근(회고 2026-11-06 원장 L02, P0) — 같은 훅이 그 «사전 승인» 을 기계로 집행한다. 운영은 SQL 동사가
+아니라 행위로 가른다: railway 는 읽기(배포 목록 · 로그 · 상태 · 지표 · 도움말)만 통과시키는 허용 목록이고,
+운영 컨테이너 코드 실행 · 운영 변수를 넣은 실행 · 배포 · 변수 · 환경 변경과 Railway · Supabase MCP 의 변경 ·
+SQL 도구는 막는다 — 사용자가 `!` 로 직접 실행한다. 훅을 하나 더 띄우지 않고 이 파일에 둔 것은 셸 명령마다
+드는 훅 고정 비용 때문이다(회고 L11) — 해석기(세그먼트 · 단계 · 명령 자리)도 같이 쓴다.
+The same hook enforces that prior approval: production is judged by action (railway reads only; code in
+the production container, runs with production variables, deploy/variable/environment changes and the
+changing or SQL MCP tools are denied — the user runs them with `!`). Kept in this file to avoid a second
+hook process per shell call; it reuses the same parser.
 """
 import fnmatch
 import functools
@@ -1113,6 +1123,485 @@ def _follow_directory_change(segment):
         return
 
 
+# ── 운영 접근 — 행위로 가른다 (회고 2026-11-06 원장 L02, P0) ─────────────────────────────
+# 🔴 10-25 사고: 에이전트 측정 코드가 운영 컨테이너에서(`railway ssh`) 앱 워커 자격으로 돌며 세션 설정을 풀러
+#    연결에 남겨 25시간 워커 쓰기를 막았다. 위임 규칙은 «SELECT 자율» 이었다 — 위험은 SQL 동사가 아니라 운영
+#    런타임의 코드 실행 · 운영 변수를 쓴 실행 · 운영 상태 변경이다. 그래서 railway 는 **허용 목록**으로 본다:
+#    배포 목록 · 로그 · 상태 · 지표 · 도움말만 자율, 그 밖(새 하위 명령 · 별칭 포함)은 사용자가 `!` 로 실행한다.
+#    bypass 권한 모드에서는 훅의 «ask» 와 settings 의 ask 규칙이 창 없이 통과했다(11-10 실측) — 그래서 deny 만 낸다.
+# Production access is judged by action. railway is an allowlist: reads only; everything else (new
+# subcommands too) is run by the user with `!`. In bypass mode "ask" was auto-allowed, so only deny.
+_PROD_READ_SUBCOMMANDS = frozenset({"status", "whoami", "list", "ls", "logs", "metrics", "docs", "help",
+                                    "completion", "check_updates", "check-updates"})
+# 두 번째 낱말까지 봐야 읽기인 명령 — 그 밖의 짝은 운영 변경이다(`railway domain` 홀로는 도메인을 새로 만든다).
+# Reads only with these second words; a bare `railway domain` generates a new domain.
+_PROD_READ_PAIRS = {
+    "deployment": frozenset({"list", "ls"}), "deployments": frozenset({"list", "ls"}),
+    "service": frozenset({"list", "ls", "status", "logs"}),
+    "domain": frozenset({"list", "ls", "status"}),
+    "environment": frozenset({"list", "ls"}), "env": frozenset({"list", "ls"}),
+}
+# 도움말 · 판 출력 — `--` 뒤는 안쪽 명령의 인자라 보지 않는다 / help and version flags (before any `--`)
+_PROD_HELP_FLAGS = frozenset({"--help", "-h", "--version", "-V"})
+_PROD_REASONS = {
+    "ssh": "운영 컨테이너에서 코드 실행", "run": "운영 변수를 넣은 로컬 실행", "local": "운영 변수를 넣은 로컬 실행",
+    "shell": "운영 변수를 넣은 셸", "dev": "운영 변수를 넣은 로컬 실행", "connect": "운영 DB 셸",
+    "up": "배포", "deploy": "템플릿 배포", "redeploy": "재배포", "restart": "재시작", "down": "배포 제거",
+    "agent": "Railway Agent(운영 조작 가능)",
+}
+# 안쪽 명령을 받는 하위 명령 — 이것들만 `--` 와 첫 위치 낱말 뒤가 안쪽 명령의 인자다
+# Verbs that take an inner command; only for them do `--` and the first positional start its arguments.
+_PROD_INNER_COMMAND = frozenset({"ssh", "run", "local"})
+_PROD_SHELL_WRAPPERS = frozenset({"bash", "sh", "zsh", "dash", "ksh"})
+_PROD_PS_WRAPPERS = frozenset({"powershell", "pwsh"})
+_PROD_PKG_RUNNERS = frozenset({"npx", "bunx", "pnpx"})
+# 셸 키워드 · 실행기 · PowerShell 블록 머리 — 이 뒤에서는 첫 railway 낱말부터를 호출로 본다. 재시도 루프
+# (`for …; do railway redeploy; done`) · 시간 제한(`timeout 300 railway up`) · Git Bash 의 `winpty` 가 자연스러운 꼴이다.
+# Shell keywords, runners and PowerShell block heads: the first railway word after them starts the call.
+_PROD_SCAN_HEADS = frozenset({
+    "if", "then", "else", "elif", "do", "while", "until", "!",
+    "timeout", "gtimeout", "nice", "ionice", "stdbuf", "winpty", "unbuffer", "xargs", "watch", "setsid", "flock",
+    "elseif", "foreach", "for", "switch", "try", "finally", "start-process", "saps", "start",
+})
+_PROD_MAX_DEPTH = 4
+# 읽기 MCP 도구 — Railway 는 이것만 통과(허용 목록). Supabase 는 SQL · 마이그레이션 · 배포 · 브랜치 조작을 막는다
+# (어느 프로젝트를 가리키는지 훅은 모른다 — DB 를 바꾸거나 SQL 을 도는 도구는 운영 DB 접근으로 본다).
+# Read-only MCP tools (allowlists); the hook cannot tell which project a server points at.
+_PROD_RAILWAY_MCP_READS = frozenset({
+    "list_deployments", "get_logs", "environment_status", "list_services", "list_projects", "list_workspaces",
+    "whoami", "docs_search", "docs_fetch", "http_error_rate", "http_requests", "http_response_time",
+    "service_metrics", "get_service_config", "domain_status", "list_domains", "list_tcp_proxies",
+    "get_tcp_proxy", "private_network_status", "search_templates", "authenticate", "complete_authentication",
+})
+_PROD_SUPABASE_MCP_READS = frozenset({
+    "search_docs", "list_tables", "list_extensions", "list_migrations", "get_advisors", "get_project_url",
+    "get_publishable_keys", "query_logs", "list_branches", "list_edge_functions", "get_edge_function",
+    "generate_typescript_types", "list_notebooks", "get_notebook", "authenticate", "complete_authentication",
+})
+_PROD_SAFE_READS = "railway deployment list --json · railway logs <id> · railway status · railway metrics"
+
+
+def _prod_variable_writes(args):
+    """`railway variable …` 인자가 쓰기(설정 · 삭제)인가 — 값을 받는 옵션의 값은 하위 명령이 아니다.
+    Do these `railway variable` arguments write? Values of value-taking options are not subcommands."""
+    k, sub = 1, None
+    while k < len(args):
+        tok = args[k]
+        name = tok.split("=", 1)[0] if tok.startswith("--") else tok
+        if name in _VARIABLE_SET_OPTIONS:
+            return True
+        if name in _VARIABLE_VALUE_OPTIONS:
+            k += 1 if "=" in tok else 2
+            continue
+        if tok == "--":
+            break
+        if sub is None and not tok.startswith("-"):
+            sub = tok.lower()
+        k += 1
+    return sub in _VARIABLE_WRITE_SUBCOMMANDS
+
+
+# 값을 받는 옵션 — 그 값은 위치 낱말이 아니다(Grok 3차 반례: `railway domain --port 3000 list` 는 읽기).
+# 모르는 값 옵션은 막는 쪽으로 틀린다(읽기가 막혀 사용자가 돌린다).
+# Value-taking options; an unknown one errs toward denying a read, never toward allowing a change.
+_PROD_VALUE_OPTIONS = _VARIABLE_VALUE_OPTIONS | {"--port"}
+
+
+def _prod_head(head):
+    """Windows 실행 파일 이름(.cmd · .ps1 · .bat)을 뗀다 — `npm.cmd exec …` 도 npm 이다(Grok 3차 반례).
+    Strip Windows shim extensions so npm.cmd is npm."""
+    for ext in (".cmd", ".ps1", ".bat"):
+        if head.endswith(ext):
+            return head[: -len(ext)]
+    return head
+
+
+def _prod_positionals(tokens):
+    """위치 낱말의 자리 — 옵션과, 값을 받는 옵션(`-s api`)의 값은 뺀다 / positions of positional words."""
+    out, k = [], 0
+    while k < len(tokens):
+        tok = tokens[k]
+        if tok.split("=", 1)[0] in _PROD_VALUE_OPTIONS:
+            k += 1 if "=" in tok else 2
+            continue
+        if not tok.startswith("-"):
+            out.append(k)
+        k += 1
+    return out
+
+
+def _prod_classify(args):
+    """railway 인자 → None(읽기 · 도움말) 또는 운영 접근 사유 / None for reads and help, else the reason.
+    🔴 Grok 반례(11-11) 세 가지를 막는다: 하위 명령 앞 `--` 는 옵션 끝일 뿐이다(`railway -- redeploy` 도 재배포),
+    안쪽 명령의 `--version` 은 railway 의 도움말이 아니다(`railway ssh node --version` 은 운영에서 node 를 돈다),
+    `-s api` 같은 옵션 값은 둘째 낱말이 아니다(`railway domain -s api list` 는 읽기).
+    Grok counterexamples: a leading `--` only ends options; the inner command's --version is not railway's;
+    option values are not the second word."""
+    k, lead = 0, []
+    while k < len(args) and args[k].startswith("-"):
+        lead.append(args[k])
+        k += 2 if args[k] in _PROD_VALUE_OPTIONS else 1
+    if any(word in _PROD_HELP_FLAGS for word in lead):
+        return None
+    if k >= len(args):
+        return None  # `railway` 홀로 · 옵션만 = 도움말 / bare railway prints help
+    sub = args[k].lower()
+    rest = args[k + 1:]
+    if sub in _PROD_INNER_COMMAND:
+        # 안쪽 명령을 받는 하위 명령 — `--` 다음과 첫 위치 낱말부터는 안쪽 명령의 인자다(그 `--version` 은 node 것)
+        # verbs that take an inner command: after `--` or the first positional word, arguments belong to it
+        rest = rest[:rest.index("--")] if "--" in rest else rest
+        positions = _prod_positionals(rest)
+        help_zone = rest[:positions[0]] if positions else rest
+    else:
+        # 그 밖의 `--` 는 옵션 끝일 뿐이고 `--help` 는 어디 있든 도움말이다(Grok 재판정 반례 — `railway service -- status`
+        # 는 읽기, `railway variable set --help` 는 도움말) / elsewhere `--` only ends options and --help anywhere is help
+        rest = [word for word in rest if word != "--"]
+        positions = _prod_positionals(rest)
+        help_zone = rest
+    if any(word in _PROD_HELP_FLAGS for word in help_zone):
+        return None
+    if sub in _PROD_READ_SUBCOMMANDS:
+        return None
+    if sub in _VARIABLE_ALIASES:
+        return f"railway {sub} — 서비스 변수 변경" if _prod_variable_writes(args[k:]) else None
+    pair = _PROD_READ_PAIRS.get(sub)
+    if pair is not None:
+        second = rest[positions[0]].lower() if positions else ""
+        return None if second in pair else f"railway {sub} {second}".rstrip() + " — 운영 상태 변경"
+    return f"railway {sub} — {_PROD_REASONS.get(sub, '운영 접근(허용 목록 밖)')}"
+
+
+def _prod_railway_args(head, rest):
+    """railway 호출이면 그 인자(npx @railway/cli 포함), 아니면 None.
+    The railway arguments when this stage invokes railway (npx @railway/cli included), else None."""
+    if _is_railway(head):
+        return rest
+    # `pnpm dlx` · `yarn dlx` · `npm exec` · `npm x` 도 패키지 실행기다(Grok 재판정 반례 — `npm exec @railway/cli up`)
+    # package runner subcommands too (Grok re-judgment counterexample: npm exec @railway/cli up)
+    runner_sub = bool(head in ("pnpm", "yarn", "npm") and rest and rest[0] in ("dlx", "exec", "x"))
+    words = rest[1:] if runner_sub else rest
+    if head in _PROD_PKG_RUNNERS or runner_sub:
+        k = 0
+        while k < len(words) and words[k].startswith("-"):
+            # `-p/--package <pkg>` 의 값은 실행할 명령이 아니다 — `npx -p @railway/cli railway up` 은 railway 를 돈다
+            # the value of -p/--package is not the command (Grok counterexample: npx --package=@railway/cli railway up)
+            k += 2 if words[k] in ("-p", "--package") else 1
+        if k < len(words) and (words[k] == "@railway/cli" or words[k].startswith("@railway/cli@")):
+            return words[k + 1:]
+        if k < len(words) and _is_railway(words[k]):
+            return words[k + 1:]
+    return None
+
+
+def _prod_shell_scan(rest):
+    """셸 래퍼 인자 → (안쪽 `-c` 명령 또는 None, stdin 을 명령으로 읽는가). unwrap 과 stdin 판정이 같은 해석을 쓴다.
+    - 값을 받는 옵션(`-o pipefail` · 묶음 `-eo pipefail` · `-O extglob` · `+o posix` · `--rcfile x`)의 값은 스크립트가 아니다.
+    - `-s` 는 위치 인자가 있어도 stdin 을 읽고, 스크립트 자리의 `-` · `/dev/stdin` 도 stdin 이다.
+    - `<<<` 는 글자를 명령으로 먹인다(자동 보안 리뷰 11-11 두 차례).
+    Shell wrapper arguments → (inline -c command or None, reads stdin?), shared by unwrap and the stdin check."""
+    k, from_stdin = 0, False
+    while k < len(rest):
+        word = rest[k]
+        if word.startswith("<<<"):
+            return (word[3:] or (rest[k + 1] if k + 1 < len(rest) else None)), False
+        if word in ("--rcfile", "--init-file"):
+            k += 2
+            continue
+        if word.startswith("--"):
+            k += 1
+            continue
+        if word[:1] in ("-", "+") and len(word) > 1:
+            flags = word[1:]
+            if word[0] == "-" and "c" in flags:
+                return (rest[k + 1] if k + 1 < len(rest) else None), False
+            from_stdin = from_stdin or (word[0] == "-" and "s" in flags)
+            k += 2 if ("o" in flags or "O" in flags) else 1
+            continue
+        # 첫 위치 인자 — 스크립트 파일(글자 훅 밖)이거나 `-s` 뒤의 위치 매개변수
+        # the first positional: a script file (beyond a text hook) or positional parameters after -s
+        return None, from_stdin or word in ("-", "/dev/stdin")
+    return None, True
+
+
+def _prod_unwrap(head, rest):
+    """알려진 래퍼 안쪽의 명령 글자 — 셸 `-c` · `cmd /c` · PowerShell `-Command` · `env`. 없으면 None.
+    The command text inside a known wrapper (shell -c, cmd /c, PowerShell -Command, env), or None."""
+    if head in _PROD_SHELL_WRAPPERS:
+        return _prod_shell_scan(rest)[0]
+    if head == "cmd":
+        for k, word in enumerate(rest):
+            if word.lower() in ("/c", "/k", "/r"):
+                return " ".join(rest[k + 1:])
+        return None
+    if head in _PROD_PS_WRAPPERS:
+        for k, word in enumerate(rest):
+            if word.lower() in ("-command", "-c", "-commandwithargs", "-cwa"):
+                return " ".join(rest[k + 1:])
+        return None
+    if head == "env":
+        k = 0
+        while k < len(rest) and (rest[k].startswith("-") or _ASSIGNMENT.fullmatch(rest[k])):
+            word = rest[k]
+            # `-S` · `--split-string` 의 값은 실행할 명령 한 줄이다 / the value of -S is the command line itself
+            if word in ("-S", "--split-string"):
+                return rest[k + 1] if k + 1 < len(rest) else None
+            if word.startswith("--split-string="):
+                return word.split("=", 1)[1]
+            if word.startswith("-S") and len(word) > 2:
+                return word[2:]
+            k += 2 if word in ("-u", "--unset", "-C", "--chdir") else 1
+        return " ".join(shlex.quote(word) for word in rest[k:]) if k < len(rest) else None
+    if head in ("invoke-expression", "iex"):
+        return " ".join(rest) or None
+    return None
+
+
+# heredoc 연산자 — 구분자가 따옴표로 싸였는지(본문이 글자인지)를 1번 묶음이 담는다
+# A heredoc operator; group 1 holds the quote that makes the body literal.
+_PROD_HEREDOC = re.compile(r"<<-?[ \t]*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
+_PROD_PS_HERESTRING = re.compile(r"@(['\"])[ \t]*$")
+
+
+def _prod_receiver(prefix):
+    """heredoc 을 받는 명령의 첫 낱말 / the head of the command that receives a heredoc."""
+    segments = _split_segments(prefix) or [""]
+    stages = _split_stages(segments[-1]) or [""]
+    return _prod_head(_command_words(stages[-1])[0])
+
+
+def _prod_runs_text(head):
+    """그 명령이 받은 글자를 명령으로 실행하는가(셸 · PowerShell · cmd · iex · railway) / does it execute its text?"""
+    return (head in _PROD_SHELL_WRAPPERS or head in _PROD_PS_WRAPPERS or head == "cmd"
+            or head in ("invoke-expression", "iex") or _is_railway(head))
+
+
+def _prod_pipes_into_runner(text):
+    """뒤 파이프 단계가 글자를 실행하는 명령인가 — `cat <<'EOF' | bash` · `'@ | iex` 는 글자 heredoc 이라도 돈다
+    (Grok 3차 반례 · Claude 확인). Does a later pipeline stage execute the text?"""
+    return any(_prod_runs_text(_prod_head(_command_words(stage)[0])) for stage in _split_stages(text)[1:])
+
+
+def _prod_reads_stdin(head, rest):
+    """파이프 뒤에서 stdin 을 명령으로 읽는가 — `bash` · `sh -s` · `powershell -` · 인자 없는 `iex` · `cmd`.
+    스크립트 파일을 받거나 `-c` · `-Command` 로 명령을 받으면 stdin 이 아니다(그쪽은 unwrap 이 본다).
+    Does this stage read its commands from stdin? A script file or an inline -c/-Command is not stdin."""
+    if head in _PROD_SHELL_WRAPPERS:
+        inner, from_stdin = _prod_shell_scan(rest)
+        return inner is None and from_stdin
+    if head in _PROD_PS_WRAPPERS:
+        lowered = [word.lower() for word in rest]
+        for k, word in enumerate(lowered):
+            if word in ("-file", "-f"):
+                return k + 1 < len(lowered) and lowered[k + 1] == "-"  # `-File -` 는 stdin / -File - reads stdin
+        for k, word in enumerate(lowered):
+            if word in ("-command", "-c"):
+                return k + 1 < len(lowered) and lowered[k + 1] == "-"
+        return True
+    if head in ("invoke-expression", "iex"):
+        return not rest
+    if head == "cmd":
+        return not any(word.lower() in ("/c", "/k", "/r") for word in rest)
+    return False
+
+
+def _prod_find_heredoc(line):
+    """따옴표 밖의 heredoc 연산자 — 따옴표 안의 `<<'EOF'` 는 글자다(자동 보안 리뷰 11-11: 그것을 heredoc 으로 읽으면
+    다음 줄의 실제 명령이 «본문» 으로 빠진다). `<<<` 는 heredoc 이 아니다.
+    The heredoc operator outside quotes (a quoted one would swallow the real commands that follow)."""
+    quote, i = None, 0
+    while i < len(line):
+        ch = line[i]
+        if quote:
+            if ch == quote:
+                quote = None
+            elif ch == "\\" and quote == '"':
+                i += 1
+        elif ch in "'\"":
+            quote = ch
+        elif ch == "\\":
+            i += 1
+        elif line.startswith("<<<", i):
+            i += 3
+            continue
+        elif line.startswith("<<", i):
+            match = _PROD_HEREDOC.match(line, i)
+            if match:
+                return match
+        i += 1
+    return None
+
+
+def _prod_substitutions(text):
+    """실제로 도는 명령 · 프로세스 치환의 몸 — Bash 는 홑따옴표 안이 글자라 빼고 백슬래시 뒤 글자를 건너뛴다.
+    PowerShell 은 `$(…)` · `@(…)` 만(백틱은 이스케이프).
+    Bodies of substitutions that actually run: Bash single quotes are literal and a backslash escapes the
+    next character; PowerShell only has $() and @() (its backtick is an escape)."""
+    powershell = _CONTEXT["shell"] == "powershell"
+    openers = ("$(", "@(") if powershell else ("$(", "<(", ">(")
+    bodies, i, quote = [], 0, None
+    while i < len(text):
+        ch = text[i]
+        if quote == "'":
+            quote = None if ch == "'" else quote
+            i += 1
+        elif ch == "'" and quote is None:
+            quote = "'"
+            i += 1
+        elif ch == '"':
+            quote = None if quote == '"' else '"'
+            i += 1
+        elif ch == "\\" and not powershell:
+            i += 2
+        elif text.startswith(openers, i):
+            depth, j = 1, i + 2
+            while j < len(text) and depth:
+                depth += {"(": 1, ")": -1}.get(text[j], 0)
+                j += 1
+            bodies.append(text[i + 2: j - 1 if depth == 0 else j])
+            i = j
+        elif ch == "`" and not powershell:
+            end = text.find("`", i + 1)
+            end = len(text) if end < 0 else end
+            bodies.append(text[i + 1:end])
+            i = end + 1
+        else:
+            i += 1
+    return bodies
+
+
+def _prod_without_heredoc_data(text):
+    """heredoc 본문 중 «데이터» 를 뺀다 — 따옴표 구분자(`<<'EOF'`)면 본문 전체가 글자, 따옴표 없는 구분자면 치환만
+    돈다(그 몸만 남긴다). 셸 · PowerShell · cmd · railway 에 먹이는 heredoc 은 본문이 실행되므로 그대로 둔다.
+    Drop heredoc data: a quoted delimiter makes the body literal; an unquoted one still runs substitutions
+    (only those stay). A heredoc fed to a shell, PowerShell, cmd or railway runs, so it stays whole."""
+    powershell = _CONTEXT["shell"] == "powershell"
+    lines = text.split("\n")
+    kept, i = [], 0
+    while i < len(lines):
+        line = lines[i]
+        kept.append(line)
+        i += 1
+        # PowerShell here-string(`@'…'@` 글자 · `@"…"@` 는 `$(…)` 가 돈다) — 닫는 줄은 `'@` · `"@` 로 시작한다
+        # PowerShell here-strings: @'…'@ is literal, @"…"@ still runs $(…); the closing line starts with '@ or "@
+        here = _PROD_PS_HERESTRING.search(line) if powershell else None
+        match = None if here else _prod_find_heredoc(line)
+        if not here and not match:
+            continue
+        runs = (_prod_runs_text(_prod_receiver(line[:(here or match).start()]))
+                or (match is not None and _prod_pipes_into_runner(line[match.end():])))
+        body = []
+        while i < len(lines) and not (lines[i].startswith(here.group(1) + "@") if here
+                                      else lines[i].strip() == match.group(2)):
+            body.append(lines[i])
+            i += 1
+        if here and i < len(lines):
+            closing_rest = lines[i][2:]
+            kept.append(closing_rest)  # 닫는 `'@` 뒤(파이프 등)는 명령이다 / what follows the closing '@ is a command
+            runs = runs or _prod_pipes_into_runner(closing_rest)
+        i += 1  # 구분자 줄 / the delimiter line
+        literal = here.group(1) == "'" if here else bool(match.group(1))
+        if runs:
+            kept.extend(body)
+        elif not literal:
+            kept.extend(_prod_substitutions("\n".join(body)))
+    return "\n".join(kept)
+
+
+def _prod_decide_text(text, depth):
+    """세그먼트 · 실제로 도는 치환 · 래퍼 안까지 railway 호출을 찾아 판정한다. heredoc 데이터와 홑따옴표 글자는
+    실행이 아니라서 보지 않는다 — 처음 판은 `<<'EOF'` 본문의 백틱을 치환으로 읽어 PR 본문을 막았다(원장 R-5 부류).
+    Judge every railway call in segments, substitutions that run and known wrappers; heredoc data and
+    single-quoted text are not invocations (the first version blocked a PR-body heredoc)."""
+    if depth > _PROD_MAX_DEPTH or not text.strip():
+        return None
+    text = _prod_without_heredoc_data(text)
+    for body in _prod_substitutions(text):
+        reason = _prod_decide_text(body, depth + 1)
+        if reason:
+            return reason
+    for segment in _split_segments(text):
+        stages = _split_stages(segment)
+        for index, stage in enumerate(stages):
+            head, rest = _command_words(stage)
+            head = _prod_head(head)
+            if not head:
+                continue
+            if index and _prod_reads_stdin(head, rest):
+                # 앞 단계가 내보내는 글자가 이 명령의 입력이라 실행된다 — 앞 단계의 낱말을 명령으로 본다(자동 보안 리뷰
+                # 11-11: `echo "railway up" | bash`). 파일을 내보내는 앞 단계(`cat x.sh | bash`)는 스크립트 파일 부류다.
+                # Text from earlier stages is executed here, so judge their words as commands.
+                # 낱말 하나씩과 이어 붙인 인자 전체 — `echo railway up | bash` 는 따옴표 없이 두 낱말로 넘긴다
+                # each word and the joined arguments (`echo railway up | bash` passes two unquoted words)
+                for earlier in stages[:index]:
+                    first, more = _command_words(earlier)
+                    for piece in [first, *more, " ".join(more)]:
+                        reason = _prod_decide_text(piece, depth + 1)
+                        if reason:
+                            return reason
+            args = _prod_railway_args(head, rest)
+            if args is None and head in _PROD_SCAN_HEADS:
+                first = next((k for k, word in enumerate(rest) if _is_railway(word)), None)
+                args = rest[first + 1:] if first is not None else None
+            if args is not None:
+                reason = _prod_classify(args)
+                if reason:
+                    return reason
+                continue
+            inner = _prod_unwrap(head, rest)
+            reason = _prod_decide_text(inner, depth + 1) if inner else None
+            if reason:
+                return reason
+    return None
+
+
+def decide_production_access(command, shell=None):
+    """명령이 운영에 닿는가 — 사유 또는 None. 세그먼트 · 명령 치환 · 알려진 래퍼 안까지 본다.
+    railway 를 «언급» 만 하는 명령(`grep "railway ssh"`)은 명령 자리가 아니라 통과한다.
+    🔴 위협 모형은 credential 판정과 같다 — 정직한 세션이 칠 만한 꼴을 막는다. 스크립트 파일 안의 호출 ·
+    인코딩된 명령 같은 의도적 우회는 글자 훅 밖이다(원장 R-3 부류).
+    Does the command touch production? Mentions are not invocations. Same threat model as the credential
+    verdict: honest shapes are covered; calls inside script files or encoded commands are out of reach."""
+    if shell is not None:
+        _CONTEXT["shell"] = shell
+    return _prod_decide_text(command or "", 0)
+
+
+def decide_mcp_production_access(tool_name):
+    """운영 MCP 도구의 운영 접근 사유 — 읽기 도구 · 무관한 서버면 None.
+    Production-access reason for a Railway/Supabase MCP tool; None for reads and unrelated servers."""
+    if not tool_name.startswith("mcp__") or "__" not in tool_name[5:]:
+        return None
+    server, tool = tool_name[5:].rsplit("__", 1)
+    server = server.lower()
+    if "railway" in server:
+        return None if tool in _PROD_RAILWAY_MCP_READS else f"Railway MCP `{tool}` — 운영 실행 · 변경"
+    if "supabase" in server:
+        return None if tool in _PROD_SUPABASE_MCP_READS else f"Supabase MCP `{tool}` — DB SQL · 변경"
+    return None
+
+
+def _emit_production_deny(tool, reason):
+    """운영 접근 차단 출력 — 대안(사용자의 `!` 실행 · 자율 읽기)을 늘 함께 알린다.
+    Emit the production-access denial, always with the alternative."""
+    output = {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": (
+                f"[운영 접근] {tool} 실행 차단 — 운영은 행위로 가른다 (CLAUDE.md · 회고 원장 L02)\n\n"
+                f"사유: {reason}\n\n"
+                "운영 컨테이너 코드 실행 · 운영 변수를 넣은 실행 · 배포 · 변수 · 환경 변경 · 운영 DB SQL 은\n"
+                "사용자가 직접 실행한다. 2026-10-25 에 에이전트 측정 코드가 운영 워커 쓰기를 25시간 막았다.\n\n"
+                "→ 사용자에게 이 명령과 목적을 보여 주고 `! <명령>` 으로 실행해 달라고 요청하세요.\n"
+                f"자율로 되는 읽기: {_PROD_SAFE_READS}"
+            ),
+        }
+    }
+    print(json.dumps(output, ensure_ascii=True))
+    return 0
+
+
 def _make_stdout_safe():
     """Windows cp949 stdout 에서 이모지/한글 출력 크래시 방지 — UTF-8 재구성(errors=replace).
     Guard against the cp949 emoji/Korean print crash on Windows (UTF-8, replace on miss).
@@ -1145,8 +1634,14 @@ def main():
         command = (payload.get("tool_input") or {}).get("command") or ""
         found = decide_with_hint(command, payload.get("cwd"),
                                  "powershell" if tool == "PowerShell" else "bash")
+        # credential 판정이 먼저(값 노출엔 더 구체적인 안내가 있다) — 통과한 명령만 운영 접근을 본다
+        # The credential verdict first (more specific guidance for value leaks); then production access.
+        production = None if found else decide_production_access(command)
+        if production:
+            return _emit_production_deny(tool, production)
     else:
-        return 0
+        production = decide_mcp_production_access(tool)
+        return _emit_production_deny(tool, production) if production else 0
     if found is None:
         return 0
     reason, hint = found
