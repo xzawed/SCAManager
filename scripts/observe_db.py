@@ -45,6 +45,11 @@ _XML_NAME_ESCAPE = re.compile(r"_x([0-9A-Fa-f]{8}|[0-9A-Fa-f]{4})_")
 ENV_KEY = "OBSERVER_DATABASE_URL"
 LOCK_PORT = 47613  # 한 번에 하나 — 이 PC 의 다른 실행이 쥐고 있으면 거부 / single-instance lock
 DEFAULT_ROWS, MAX_ROWS, CELL_LIMIT = 50, 500, 300
+# 비밀번호 꼴 — 영숫자 8자 이상만. 짧으면 출력에서 지우기가 출력을 망가뜨리고, 특수 문자는 파이썬과 libpq 의
+# 주소 해석을 갈라 놓는다. Alphanumerics only, at least 8: shorter secrets cannot be scrubbed safely and special
+# characters let Python's and libpq's URL parsing disagree.
+_PASSWORD_SHAPE = re.compile(r"[A-Za-z0-9]{8,}")
+_SCRUB_ROUNDS = 64  # scrub 고정점 상한 / fixed-point bound for scrub()
 STATEMENT_TIMEOUT = "5s"
 _INSUFFICIENT_PRIVILEGE = "42501"
 
@@ -83,7 +88,7 @@ class Refused(Exception):
 
 
 def _env_key(line: str) -> str | None:
-    stripped = line.lstrip("﻿").strip()
+    stripped = line.lstrip("\ufeff").strip()
     if not stripped or stripped.startswith("#") or "=" not in stripped:
         return None
     if stripped.startswith("export "):
@@ -99,7 +104,8 @@ def load_url(environ, env_file: Path) -> str | None:
         return value
     if not env_file.is_file():
         return None
-    for line in env_file.read_text(encoding="utf-8-sig").splitlines():
+    for piece in env_file.read_text(encoding="utf-8-sig").split("\n"):
+        line = piece[:-1] if piece.endswith("\r") else piece  # splitlines() 는 줄 안의 CR 에서도 끊는다 / splitlines() also breaks on a bare CR
         if _env_key(line) == ENV_KEY:
             value = line.split("=", 1)[1].strip()
             if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
@@ -112,12 +118,24 @@ def url_role(url: str) -> str:
     """드라이버가 실제로 쓸 사용자의 역할 부분(Supavisor 꼴 `역할.ref` 의 앞) — 주소 글자가 아니라 libpq 가
     읽은 값이다. 쿼리의 `user=` 처럼 주소의 사용자를 덮는 꼴까지 반영한다. 못 읽거나 `service=` 로 바깥 설정을
     부르면 빈 값(= 거부).
+    🔴 주소 꼴(`postgres[ql]://`)만 받고 비밀번호는 `user:password@` 자리에만 둔다 — 쿼리의 `password=` · key-value
+    꼴은 거부한다. 그래야 출력에서 지울 «주소에 적힌 꼴» 이 하나로 정해진다(Grok 반례 7dc252ab).
     The role part of the user libpq will actually use (parsed by psycopg2, so `?user=` overrides count);
-    unparsable input or an external `service=` yields empty, i.e. refusal."""
+    unparsable input, an external `service=`, a non-URL DSN or a `password=` parameter yields empty, i.e. refusal."""
     from psycopg2 import ProgrammingError  # pylint: disable=import-outside-toplevel
     from psycopg2.extensions import parse_dsn  # pylint: disable=import-outside-toplevel
+    dsn = _connect_kwargs(url)[0]
+    if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in dsn):
+        # 제어 문자는 거부 — urlsplit 이 탭 · 줄바꿈을 지워 «주소에 적힌 꼴» 이 달라진다(Grok 반례 a72b0fab)
+        # Control characters are refused: urlsplit drops tabs/newlines, so the written form would differ.
+        return ""
+    parts = urlsplit(dsn)
+    if parts.scheme not in ("postgres", "postgresql"):
+        return ""
+    if "password" in parse_qs(parts.query, keep_blank_values=True):
+        return ""
     try:
-        params = parse_dsn(_connect_kwargs(url)[0])
+        params = parse_dsn(dsn)
     except ProgrammingError:
         return ""
     if "service" in params:
@@ -147,18 +165,71 @@ def _connect_kwargs(url: str) -> tuple[str, dict]:
     return dsn, kwargs
 
 
-def cell(value) -> str:
-    """셀 하나 — 비밀 꼴을 가리고, 한 줄로 펴고, 자른다 / mask secret shapes, flatten, cut."""
+def url_password(url: str) -> str | None:
+    """주소의 비밀번호 — `user:password@` 자리에 영숫자 8자 이상으로 적혀 있고 libpq 가 같은 값으로 읽을 때만 돌려준다.
+    그 밖의 꼴(특수 문자 · 퍼센트 인코딩 · 쿼리 매개변수 · 없음)은 None 이다 — 파이썬과 libpq 의 주소 해석이 갈리면
+    출력에서 지울 «적힌 꼴» 을 놓친다(Grok 반례 7dc252ab · a72b0fab · 261e7385: `?password=` · 탭 · `#`).
+    `observer_setup.py` 는 16진 48자를 쓴다. 첫 `@` 앞이 userinfo 다 — 사용자 이름에 날 `@` · `:` 가 있으면 꼴이 어긋나 None.
+    The password only when it sits in `user:password@` as 8+ alphanumerics and libpq reads the same value;
+    any other shape yields None, so Python's and libpq's URL parsing can never disagree on what to scrub."""
+    from psycopg2 import ProgrammingError  # pylint: disable=import-outside-toplevel
+    from psycopg2.extensions import parse_dsn  # pylint: disable=import-outside-toplevel
+    dsn = _connect_kwargs(url)[0]
+    if "://" not in dsn:
+        return None
+    authority = dsn.split("://", 1)[1]
+    if "@" not in authority:
+        return None
+    userinfo = authority.split("@", 1)[0]
+    if ":" not in userinfo:
+        return None
+    written = userinfo.split(":", 1)[1]
+    if not _PASSWORD_SHAPE.fullmatch(written):
+        return None
+    try:
+        parsed = parse_dsn(dsn).get("password")
+    except ProgrammingError:
+        return None
+    return written if parsed == written else None
+
+
+def scrub(text: str, secrets: tuple[str, ...] = ()) -> str:
+    """이 주소의 비밀번호 자체를 먼저 지우고, 그다음 비밀 꼴을 가린다 — 패턴(`_redact`)은 쉼표 같은 글자가 든
+    비밀번호를 놓친다(Grok 반례 a165c2f6). Remove the URL's own password verbatim first, then mask secret shapes:
+    the shared patterns miss passwords containing characters such as a comma."""
+    # 안 바뀔 때까지 되풀이한다 — 한 번 바꾼 결과가 비밀번호를 다시 만들 수 있다(`***abcd1` 꼴, Grok 반례 035e33f0).
+    # 8자 이상을 3자로 바꿀 때마다 줄어들어 끝나지만, 상한에 걸리면 통째로 가린다(막는 쪽).
+    # Repeat to a fixed point: one replacement can rebuild the secret. Bounded; hitting the bound masks everything.
+    for _ in range(_SCRUB_ROUNDS):
+        before = text
+        for secret in secrets:
+            while secret in text:
+                text = text.replace(secret, "***")
+        text = _redact(text)
+        if text == before:
+            return text
+    return "***"
+
+
+def cell(value, secrets: tuple[str, ...] = ()) -> str:
+    """셀 하나 — 비밀을 가리고, 한 줄로 펴고, 자른다 / mask secrets, flatten, cut."""
     text = "NULL" if value is None else str(value)
-    text = _redact(text).replace("\t", " ").replace("\r", " ").replace("\n", " ")
+    text = scrub(text, secrets).replace("\t", " ").replace("\r", " ").replace("\n", " ")
     return text if len(text) <= CELL_LIMIT else text[:CELL_LIMIT] + "..."
 
 
-def _print_rows(columns, rows, limit, out) -> None:
-    print("\t".join(columns), file=out)
+def _print_rows(columns, rows, limit, out, secrets: tuple[str, ...] = ()) -> None:
+    # 컬럼 이름도 셀처럼 가린다 — `SELECT 1 AS "<비밀번호>"` 는 이름으로 찍혔다(Grok 반례 f82754e1)
+    # Column names are scrubbed like cells: an alias carrying the password was printed verbatim.
+    print("\t".join(cell(c, secrets) for c in columns), file=out)
     for row in rows[:limit]:
-        print("\t".join(cell(v) for v in row), file=out)
-    if len(rows) > limit:
+        print("\t".join(cell(v, secrets) for v in row), file=out)
+    if len(rows) > limit + 1:
+        # 바깥 LIMIT 을 벗어났다 — 괄호를 닫고 UNION 을 붙이는 꼴(Grok 반례 8501913f). 찍는 건 상한까지다.
+        # The query escaped the outer LIMIT (closing the bracket); only `limit` rows are printed.
+        print(f"(바깥 LIMIT 을 벗어난 질의다 — 서버가 {len(rows)}행을 보냈고 앞 {limit}행만 찍었다 / "
+              f"the query escaped the row limit)", file=out)
+    elif len(rows) > limit:
         print(f"(앞 {limit}행만 — 더 있다. 조건을 좁힌다 / first {limit} rows only)", file=out)
     else:
         print(f"({len(rows)}행 / rows)", file=out)
@@ -187,9 +258,13 @@ def read_only(conn, sql: str, limit: int):
     문장을 글자로 세지 않는다 — 넘긴 글자는 SQL 리터럴 하나라 괄호를 닫을 수 없고, 서버가 트랜잭션 제어(COMMIT) ·
     SET · PREPARE · FOR UPDATE 를 거부한다. `set_config` 같은 세션 값 변경은 ROLLBACK 이 되돌린다(로컬 PG 17 실측).
     바깥 SELECT 의 LIMIT 이 서버에서 행을 자른다 — 맨 끝 `;` 는 떼고, 줄 주석이 닫는 괄호를 먹지 않게 줄을 바꾼다.
+    🔴 그 LIMIT 은 실수로 큰 결과(교차 조인 등)를 받지 않게 하는 장치이지 경계가 아니다 — 서버가 글자를 이어 붙이므로
+    괄호를 닫고 UNION 을 붙이는 SQL 은 벗어난다(Grok 반례 8501913f). 그때도 읽기 전용 · 5초 제한은 그대로이고,
+    찍는 행은 상한까지이며 벗어났다고 알린다.
     Runs through the server's read-only SPI (query_to_xml) inside BEGIN READ ONLY and always ends with ROLLBACK.
-    The text travels as one literal, so it cannot close the bracket; the server refuses COMMIT, SET, PREPARE and
-    FOR UPDATE there, and ROLLBACK reverts set_config. The outer LIMIT caps rows server-side."""
+    The text travels as one literal, so it cannot end the transaction; the server refuses COMMIT, SET, PREPARE and
+    FOR UPDATE there, and ROLLBACK reverts set_config. The outer LIMIT guards against accidental large results only:
+    SQL that closes the bracket can escape it, still read-only and time-bounded, and printing stays capped."""
     cur = conn.cursor()
     try:
         cur.execute("BEGIN READ ONLY")
@@ -213,11 +288,16 @@ def main(argv: list[str] | None = None, *, environ=None, env_file: Path | None =
     parser = argparse.ArgumentParser(description="관측 역할로 운영 DB 읽기 / read production as the observer role")
     parser.add_argument("sql", nargs="?", help="SELECT 한 문장 / one SELECT statement")
     parser.add_argument("--audit", action="store_true", help="이 역할이 읽고 할 수 있는 것 / what this role can do")
-    parser.add_argument("--max-rows", type=int, default=DEFAULT_ROWS)
+    parser.add_argument("--max-rows", type=_row_count, default=None,
+                        help=f"1~{MAX_ROWS}, 기본 {DEFAULT_ROWS} — 범위 밖이면 바꾸지 않고 거부한다 / refused outside 1..{MAX_ROWS}")
     args = parser.parse_args(argv)
     if bool(args.sql) == args.audit:
         parser.error("SQL 한 문장이나 --audit 중 하나만 / give one SQL statement or --audit")
-    limit = max(1, min(args.max_rows, MAX_ROWS))
+    if args.audit and args.max_rows is not None:
+        # --audit 은 조회마다 상한 MAX_ROWS — 조용히 무시하지 않고 거부한다(Grok 반례 9cb7716a)
+        # --audit always uses MAX_ROWS per query; refuse instead of silently ignoring --max-rows
+        parser.error("--audit 에는 --max-rows 를 주지 않는다 / --max-rows does not apply to --audit")
+    limit = args.max_rows or DEFAULT_ROWS
 
     url = load_url(environ, env_file)
     if not url:
@@ -226,17 +306,32 @@ def main(argv: list[str] | None = None, *, environ=None, env_file: Path | None =
     if url_role(url) != ROLE:
         print(f"{ENV_KEY} 의 역할이 {ROLE} 가 아니다 — 다른 자격으로는 연결하지 않는다.", file=out)
         return 1
+    password = url_password(url)
+    if password is None:
+        print(f"{ENV_KEY} 의 비밀번호는 `user:password@` 자리에 영숫자 8자 이상이어야 한다 — 그래야 출력에서 확실히 "
+              "지운다. `py -3 scripts/observer_setup.py` 로 새로 만든다.", file=out)
+        return 1
+    secrets = (password,)
     held = lock()
     if held is None:
         print("다른 조회가 돌고 있다 — 끝난 뒤 다시 / another run holds the lock.", file=out)
         return 1
     try:
-        return _run(args, url, limit, connect, out)
+        return _run(args, url, limit, connect, out, secrets)
     finally:
         held.close()
 
 
-def _run(args, url, limit, connect, out) -> int:
+def _row_count(text: str) -> int:
+    """`--max-rows` — 범위 밖 값을 조용히 바꾸면 요청보다 많은 행이 온다(Grok 반례 1d1fb88d: 0 → 1 → LIMIT 2).
+    Out-of-range values are refused, never clamped (clamping 0 to 1 fetched more rows than asked)."""
+    value = int(text)
+    if not 1 <= value <= MAX_ROWS:
+        raise argparse.ArgumentTypeError(f"1~{MAX_ROWS} 사이만 / between 1 and {MAX_ROWS}")
+    return value
+
+
+def _run(args, url, limit, connect, out, secrets: tuple[str, ...] = ()) -> int:
     if connect is None:
         import psycopg2  # pylint: disable=import-outside-toplevel
         connect = psycopg2.connect
@@ -244,7 +339,7 @@ def _run(args, url, limit, connect, out) -> int:
     try:
         conn = connect(dsn, **kwargs)
     except Exception as exc:  # pylint: disable=broad-exception-caught
-        print(f"연결 실패 / connection failed: {_redact(str(exc)).strip()}", file=out)
+        print(f"연결 실패 / connection failed: {scrub(str(exc), secrets).strip()}", file=out)
         return 3
     try:
         conn.autocommit = True  # BEGIN 은 우리가 직접 보낸다 / we send BEGIN READ ONLY ourselves
@@ -260,12 +355,12 @@ def _run(args, url, limit, connect, out) -> int:
             try:
                 columns, rows = read_only(conn, sql, limit if not args.audit else MAX_ROWS)
             except Exception as exc:  # pylint: disable=broad-exception-caught
-                print(f"조회 오류 / query error: {_redact(str(exc)).strip()}", file=out)
+                print(f"조회 오류 / query error: {scrub(str(exc), secrets).strip()}", file=out)
                 if getattr(exc, "pgcode", None) == _INSUFFICIENT_PRIVILEGE:
                     print("관측 역할은 허용 컬럼만 읽는다 — 목록 = alembic/versions/0049_observer_role.py::_ALLOWED "
                           "(새 컬럼은 GRANT 하는 revision 이 있어야 보인다)", file=out)
                 return 2
-            _print_rows(columns, rows, limit if not args.audit else MAX_ROWS, out)
+            _print_rows(columns, rows, limit if not args.audit else MAX_ROWS, out, secrets)
         return 0
     finally:
         conn.close()

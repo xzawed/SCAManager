@@ -272,6 +272,72 @@ def test_tool_bracket_cannot_be_escaped(engine):
             conn.execute(text(f"ALTER ROLE {_ROLE} NOLOGIN PASSWORD NULL"))
 
 
+def test_downgrade_tolerates_dependent_grants(engine):
+    """누가 관측 역할에 grant 권한을 손으로 줘 남에게 다시 준 상태 — 기본(RESTRICT) REVOKE 가 2BP01 로 막혀도 downgrade
+    는 멈추지 않고 아무것도 바꾸지 않는다(Grok 반례 9213858d). 마이그레이션 자신은 grant 권한을 주지 않는다.
+    Someone gave the observer a grant option and it re-granted: RESTRICT REVOKE fails with 2BP01, yet the downgrade
+    neither stops nor changes anything. The migration itself never grants a grant option."""
+    from alembic import command
+    from alembic.config import Config
+
+    from src.config import settings as app_settings
+
+    admin = create_engine(_PG_URL, isolation_level="AUTOCOMMIT")
+    try:
+        with admin.connect() as conn:
+            conn.execute(text("CREATE ROLE observer_dependent_sim NOLOGIN"))
+            conn.execute(text(f"GRANT SELECT (id) ON repositories TO {_ROLE} WITH GRANT OPTION"))
+            conn.execute(text(f"SET ROLE {_ROLE}"))
+            conn.execute(text("GRANT SELECT (id) ON repositories TO observer_dependent_sim"))
+            conn.execute(text("RESET ROLE"))
+        cfg = Config("alembic.ini")
+        cfg.set_main_option("sqlalchemy.url", _PG_URL)
+        with patch.object(app_settings, "database_url", _PG_URL):
+            command.downgrade(cfg, "0048")  # 예전에는 2BP01 로 멈췄다 / used to stop with 2BP01
+        with admin.connect() as conn:
+            kept = conn.execute(text("SELECT has_column_privilege(:r, 'repositories', 'id', 'SELECT')"),
+                                {"r": _ROLE}).scalar()
+        assert kept is True, "되돌릴 수 없는 상태에서 일부만 거뒀다 / partially revoked"
+    finally:
+        with admin.connect() as conn:
+            conn.execute(text(f"REVOKE ALL ON repositories FROM {_ROLE} CASCADE"))
+            conn.execute(text("DROP ROLE IF EXISTS observer_dependent_sim"))
+        admin.dispose()
+        _restore_shared_role()
+
+
+def test_downgrade_is_all_or_nothing_when_drop_role_is_blocked(engine):
+    """이 revision 이 거두지 않는 객체(시퀀스)에 권한이 있어 DROP ROLE 이 막히면, 표 · 스키마 권한도 그대로 둔다 —
+    반쪽 상태가 없다(Grok 반례 069811ea: 안쪽 처리기가 표 권한만 거두고 시퀀스 권한을 남겼다).
+    When DROP ROLE is blocked by a privilege this revision does not revoke (a sequence), table and schema privileges
+    stay too: no half state."""
+    from alembic import command
+    from alembic.config import Config
+
+    from src.config import settings as app_settings
+
+    admin = create_engine(_PG_URL, isolation_level="AUTOCOMMIT")
+    try:
+        with admin.connect() as conn:
+            seq = conn.execute(text("SELECT pg_get_serial_sequence('repositories', 'id')")).scalar()
+            conn.execute(text(f"GRANT USAGE ON SEQUENCE {seq} TO {_ROLE}"))
+        cfg = Config("alembic.ini")
+        cfg.set_main_option("sqlalchemy.url", _PG_URL)
+        with patch.object(app_settings, "database_url", _PG_URL):
+            command.downgrade(cfg, "0048")
+        with admin.connect() as conn:
+            state = conn.execute(text(
+                "SELECT has_column_privilege(:r, 'repositories', 'id', 'SELECT'), "
+                "has_schema_privilege(:r, 'public', 'USAGE'), has_sequence_privilege(:r, :s, 'USAGE')"),
+                {"r": _ROLE, "s": seq}).one()
+        assert tuple(state) == (True, True, True), f"반쪽 상태 / half state: {tuple(state)}"
+    finally:
+        with admin.connect() as conn:
+            conn.execute(text(f"REVOKE ALL ON SEQUENCE {seq} FROM {_ROLE}"))
+        admin.dispose()
+        _restore_shared_role()
+
+
 # --- 4. 운영과 같은 소유자 — 슈퍼유저가 아닌 CREATEROLE · BYPASSRLS ------------------------
 # 이 파일의 마지막에 둔다 — 공유 역할을 지웠다가 되살린다 / keep last: drops and restores the shared role
 
@@ -330,9 +396,64 @@ def test_migration_runs_as_a_non_superuser_owner(engine):
             conn.execute(text(f"DROP ROLE IF EXISTS {_ROLE}"))
             conn.execute(text("DROP ROLE IF EXISTS observer_owner_sim"))
         admin.dispose()
-        # 공유 DB 의 역할을 되살린다 — 뒤에 도는 시험이 head 상태를 기대한다 / restore the role in the shared DB
-        restore_cfg = Config("alembic.ini")
-        restore_cfg.set_main_option("sqlalchemy.url", _PG_URL)
-        with patch.object(app_settings, "database_url", _PG_URL):
-            command.downgrade(restore_cfg, "0048")
-            command.upgrade(restore_cfg, "head")
+        _restore_shared_role()
+
+
+def _restore_shared_role():
+    """공유 DB 의 역할을 되살린다 — 뒤에 도는 시험이 head 상태를 기대한다 / restore the role in the shared DB."""
+    from alembic import command
+    from alembic.config import Config
+
+    from src.config import settings as app_settings
+
+    restore_cfg = Config("alembic.ini")
+    restore_cfg.set_main_option("sqlalchemy.url", _PG_URL)
+    with patch.object(app_settings, "database_url", _PG_URL):
+        command.downgrade(restore_cfg, "0048")
+        command.upgrade(restore_cfg, "head")
+
+
+def test_downgrade_tolerates_a_role_it_did_not_create(engine):
+    """미리 있던 역할(슈퍼유저가 만들고 스키마 USAGE 를 준) — grant 권한 없는 소유자가 올리고 내려도 마이그레이션이
+    멈추지 않는다. 이 revision 이 만들지 않은 역할은 경고만 남기고 그대로 둔다(Grok 반례 56c18d96 — 예전 downgrade 는
+    DROP ROLE · REVOKE 의 42501 로 중단됐다).
+    A pre-existing role (created by a superuser, schema USAGE from the schema owner): upgrading and downgrading as an
+    owner without grant options never stops the migration; the role it did not create is left in place with a warning."""
+    from alembic import command
+    from alembic.config import Config
+
+    from src.config import settings as app_settings
+
+    base = make_url(_PG_URL)
+    runner_url = (f"postgresql+psycopg2://observer_runner_sim:runner-ci-only@{base.host}:{base.port or 5432}"
+                  "/observer_sim2")
+    admin = create_engine(_PG_URL, isolation_level="AUTOCOMMIT")
+    try:
+        with admin.connect() as conn:
+            conn.execute(text(f"DROP OWNED BY {_ROLE}"))
+            conn.execute(text(f"DROP ROLE {_ROLE}"))
+            conn.execute(text("CREATE ROLE observer_runner_sim LOGIN PASSWORD 'runner-ci-only' CREATEROLE BYPASSRLS"))
+            conn.execute(text("CREATE DATABASE observer_sim2"))  # 슈퍼유저 소유 / owned by the superuser
+            conn.execute(text(f"CREATE ROLE {_ROLE} NOLOGIN"))  # 이 revision 이 만들지 않은 역할 / not ours
+        sim_admin = create_engine(make_url(_PG_URL).set(database="observer_sim2"), isolation_level="AUTOCOMMIT")
+        try:
+            with sim_admin.connect() as conn:
+                conn.execute(text("GRANT CREATE, USAGE ON SCHEMA public TO observer_runner_sim"))  # grant 권한 없음
+                conn.execute(text(f"GRANT USAGE ON SCHEMA public TO {_ROLE}"))  # 스키마 소유자 쪽이 준 권한
+        finally:
+            sim_admin.dispose()
+        cfg = Config("alembic.ini")
+        cfg.set_main_option("sqlalchemy.url", runner_url)
+        with patch.object(app_settings, "database_url", runner_url):
+            command.upgrade(cfg, "head")
+            command.downgrade(cfg, "0048")  # 예전에는 여기서 42501 로 멈췄다 / used to stop here with 42501
+        with admin.connect() as conn:
+            kept = conn.execute(text("SELECT count(*) FROM pg_roles WHERE rolname = :r"), {"r": _ROLE}).scalar()
+        assert kept == 1, "만들지 않은 역할을 지웠다 / dropped a role this revision did not create"
+    finally:
+        with admin.connect() as conn:
+            conn.execute(text("DROP DATABASE IF EXISTS observer_sim2 WITH (FORCE)"))
+            conn.execute(text(f"DROP ROLE IF EXISTS {_ROLE}"))
+            conn.execute(text("DROP ROLE IF EXISTS observer_runner_sim"))
+        admin.dispose()
+        _restore_shared_role()

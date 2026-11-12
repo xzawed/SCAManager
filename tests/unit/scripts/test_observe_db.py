@@ -47,7 +47,8 @@ class _Cursor:
         assert sql == od._WRAPPED_QUERY, f"감싸지 않은 SQL 이 나갔다 / unwrapped SQL sent: {sql!r}"
         if self.conn.error is not None:
             raise self.conn.error
-        limit = params[1]  # 서버의 바깥 LIMIT 처럼 자른다 / cut like the server-side outer LIMIT
+        # 서버의 바깥 LIMIT 처럼 자른다 — ignore_limit 은 LIMIT 을 벗어난 질의 꼴 / cut like the outer LIMIT
+        limit = None if self.conn.ignore_limit else params[1]
         self._rows = [(_table_xml(self.conn.columns, list(self.conn.rows)[:limit]),)]
 
     def fetchone(self):
@@ -58,6 +59,7 @@ class _Conn:
     def __init__(self, user="scamanager_observer", columns=("id",), rows=((1,),), error=None):
         self.user, self.columns, self.rows, self.error = user, columns, rows, error
         self.sent, self.params, self.closed, self.autocommit = [], [], False, False
+        self.ignore_limit = False
 
     def cursor(self):
         return _Cursor(self)
@@ -222,6 +224,91 @@ def test_password_is_never_printed_even_when_the_driver_echoes_the_dsn():
     assert _PW not in out
 
 
+@pytest.mark.parametrize("password", [
+    "s3cret,xyz",      # 쉼표 — 공통 패턴이 놓쳤다(Grok 반례 a165c2f6) / the shared pattern missed it
+    "s3cret%2Cxyz",    # 퍼센트 인코딩 꼴 / percent-encoded form
+    "sec%72et#x9",     # `#` — urlsplit 은 끊고 libpq 는 읽는다(Grok 반례 261e7385)
+    "pa#ss?w&rd'x",    # 패턴이 제외하는 다른 글자들 / other characters the pattern excludes
+    "short1",          # 8자 미만 / under 8 characters
+])
+def test_password_shapes_that_parsers_disagree_on_are_refused(password):
+    """영숫자 8자 이상이 아닌 비밀번호는 연결 전에 거부한다 — 파이썬과 libpq 의 주소 해석이 갈리면 지울 꼴을 놓친다.
+    Passwords other than 8+ alphanumerics are refused before connecting."""
+    url = f"postgresql://scamanager_observer.abcref:{password}@host:6543/postgres"
+    code, out, calls, _lock = _run(["SELECT 1"], _Conn(), url=url)
+    assert code == 1 and calls == [], out
+    assert password not in out
+
+
+def test_password_is_scrubbed_from_errors_and_cells():
+    """허용된 꼴의 비밀번호는 오류 글 · 셀 어디에 실려도 지운다 / an accepted password is removed everywhere."""
+    url = "postgresql://scamanager_observer.abcref:Abc123Def456@host:6543/postgres"
+    error = _PgError(f"could not connect: {url} (password Abc123Def456)")
+    code, out, _calls, _lock = _run(["SELECT 1"], _Conn(), url=url, connect_error=error)
+    assert code == 3 and "Abc123Def456" not in out, out
+    code, out, _calls, _lock = _run(["SELECT a FROM t"], _Conn(columns=("a",), rows=(("x Abc123Def456 y",),)), url=url)
+    assert code == 0 and "Abc123Def456" not in out, out
+
+
+def test_column_names_are_scrubbed_like_cells():
+    """별칭에 비밀번호를 넣어도 머리줄에 찍히지 않는다(Grok 반례 f82754e1) / an alias carrying the password is scrubbed."""
+    url = "postgresql://scamanager_observer.abcref:Abc123Def456@host:6543/postgres"
+    conn = _Conn(columns=("Abc123Def456",), rows=((1,),))
+    code, out, _calls, _lock = _run(['SELECT 1 AS "Abc123Def456"'], conn, url=url)
+    assert code == 0 and "Abc123Def456" not in out and "***" in out, out
+
+
+def test_escaped_limit_is_reported_and_printing_stays_capped():
+    """서버가 상한+1 보다 많이 보내면(괄호를 닫아 LIMIT 을 벗어난 꼴, Grok 반례 8501913f) 상한까지만 찍고 알린다.
+    More than limit+1 rows (the LIMIT was escaped): print only `limit` rows and say so."""
+    rows = tuple((i,) for i in range(10))
+    conn = _Conn(rows=rows)
+    conn.ignore_limit = True
+    code, out, _calls, _lock = _run(["--max-rows", "3", "SELECT id FROM t"], conn)
+    assert code == 0
+    assert [line for line in out.splitlines() if line.isdigit()] == ["0", "1", "2"]
+    assert "바깥 LIMIT 을 벗어난" in out
+
+
+@pytest.mark.parametrize("secret", ["***abcd1", "ab***cd***", "xyzxyzxyz"])
+def test_scrub_reaches_a_fixed_point(secret):
+    """바꾼 결과가 비밀번호를 다시 만들 수 있는 꼴도 지운다(Grok 반례 035e33f0: `s + s[3:]` 를 한 번 바꾸면 `s`).
+    Replacement output that rebuilds the secret is scrubbed too."""
+    for text in (secret + secret[3:], secret * 3, "a" + secret + secret[3:] + "b"):
+        assert secret not in od.scrub(text, (secret,)), text
+
+
+def test_missing_password_is_refused_before_connecting():
+    """주소에 비밀번호가 없으면(.pgpass · 환경변수 몫) 지울 값을 몰라 연결하지 않는다 / no password in the URL: refused."""
+    code, out, calls, _lock = _run(["SELECT 1"], _Conn(),
+                                   url="postgresql://scamanager_observer.abcref@host:6543/postgres")
+    assert code == 1 and calls == []
+    assert "observer_setup.py" in out
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "501", "x"])
+def test_out_of_range_max_rows_is_refused_not_clamped(value):
+    """범위 밖 `--max-rows` 는 바꾸지 않고 거부한다 — 0 을 1 로 바꾸면 서버가 2행을 보냈다(Grok 반례 1d1fb88d).
+    Out-of-range --max-rows is refused, never clamped."""
+    with pytest.raises(SystemExit):
+        od.main(["--max-rows", value, "SELECT 1"], environ={od.ENV_KEY: _URL}, connect=lambda *a, **k: _Conn(),
+                lock=_Lock, out=io.StringIO())
+
+
+def test_max_rows_with_audit_is_refused():
+    """`--audit` 은 조회마다 상한 500 — `--max-rows` 를 함께 주면 조용히 무시하지 않고 거부한다(Grok 반례 9cb7716a).
+    --max-rows with --audit is refused rather than silently ignored."""
+    with pytest.raises(SystemExit):
+        od.main(["--audit", "--max-rows", "1"], environ={od.ENV_KEY: _URL}, connect=lambda *a, **k: _Conn(),
+                lock=_Lock, out=io.StringIO())
+
+
+def test_server_limit_is_max_rows_plus_one():
+    conn = _Conn()
+    code, _out, _calls, _lock = _run(["--max-rows", "1", "SELECT id FROM t"], conn)
+    assert code == 0 and conn.params[3][1] == 2
+
+
 # --- 4. 주소 읽기 -------------------------------------------------------------------
 
 
@@ -241,7 +328,13 @@ def test_env_file_line_is_read_without_other_lines(tmp_path):
     (_URL, "scamanager_observer"),
     ("postgresql://scamanager_observer:pw@localhost/db", "scamanager_observer"),
     ("postgresql+psycopg2://scamanager_observer.ref:pw@h/db", "scamanager_observer"),
-    ("host=h user=scamanager_observer.ref password=pw dbname=postgres", "scamanager_observer"),
+    # key-value 꼴 · 쿼리의 password= 는 거부 — 지울 «적힌 꼴» 이 하나여야 한다(Grok 반례 7dc252ab)
+    ("host=h user=scamanager_observer.ref password=pw dbname=postgres", ""),
+    ("postgresql://scamanager_observer.ref@h/db?password=p%40ssw0rd", ""),
+    ("postgresql://scamanager_observer.ref@h/db?sslmode=require&password=", ""),
+    # 제어 문자 — urlsplit 이 지워 «적힌 꼴» 을 못 잡는다(Grok 반례 a72b0fab) / control characters are refused
+    ("postgresql://scamanager_observer.ref:a%20b\tcdefgh@h/db", ""),
+    ("postgresql://scamanager_observer.ref:abcdefgh\x7f@h/db", ""),
     ("postgresql://scamanager_observer_admin.ref:pw@h/db", "scamanager_observer_admin"),
     ("postgresql://scamanager_observer.ref:pw@h/db?user=postgres", "postgres"),
     ("postgresql://scamanager_observer.ref:pw@h/db?service=prod", ""),

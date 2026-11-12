@@ -61,7 +61,7 @@ def new_password() -> str:
 
 def _env_key(line: str) -> str | None:
     """`.env` 한 줄의 키 — 주석 · 빈 줄 · `=` 없는 줄은 None / the key of one .env line."""
-    stripped = line.lstrip("﻿").strip()
+    stripped = line.lstrip("\ufeff").strip()
     if not stripped or stripped.startswith("#") or "=" not in stripped:
         return None
     if stripped.startswith("export "):
@@ -74,7 +74,7 @@ def read_env_values(env_file: Path, keys: tuple[str, ...]) -> dict[str, str]:
     if not env_file.is_file():
         return {}
     found: dict[str, str] = {}
-    for line in env_file.read_text(encoding="utf-8-sig").splitlines():
+    for line in env_lines(env_file.read_text(encoding="utf-8-sig")):
         key = _env_key(line)
         if key in keys and key not in found:
             value = line.split("=", 1)[1].strip()
@@ -103,26 +103,60 @@ def observer_url(host: str, ref: str, password: str) -> str:
     return f"postgresql://{ROLE}.{ref}:{password}@{host}:{POOLER_PORT}/postgres?sslmode=require"
 
 
+def env_lines(text: str) -> list[str]:
+    """`\n` 으로만 나눈 줄(줄 끝 CR 하나만 뗀다) — `splitlines()` 는 줄 안의 CR · 폼피드 · U+2028 에서도 끊는다.
+    Lines split on `\n` only (one trailing CR dropped); splitlines() also breaks on CR, form feed and U+2028."""
+    return [piece[:-1] if piece.endswith("\r") else piece for piece in text.split("\n")]
+
+
 def upsert_env_line(env_file: Path, key: str, value: str) -> None:
-    """`key=value` 줄을 넣거나 바꾼다 — 다른 줄 · 줄바꿈 꼴은 그대로, 같은 키의 중복 줄은 지운다.
+    """`key=value` 줄을 넣거나 바꾼다 — 다른 줄은 바이트 그대로, 바꾼 줄은 제 줄바꿈 꼴 그대로, 같은 키의 중복 줄은 지운다.
+    `\n` 으로만 나눈다 — 줄 안의 CR · 폼피드 · U+2028 에서 끊으면 건드리지 않을 줄이 바뀐다(Grok 반례 7654f199).
     임시 파일에 다 쓴 뒤 바꿔 끼워, 중간에 실패해도 원본이 반쯤 잘린 채 남지 않는다.
-    Insert or replace one line; other lines and line endings stay. Written to a temp file and swapped in,
-    so a failure never leaves a truncated .env behind."""
+    Insert or replace one line; other lines stay byte-identical and the replaced line keeps its own ending.
+    Split on `\n` only. Written to a temp file and swapped in, so a failure never leaves a truncated file."""
     raw = env_file.read_bytes().decode("utf-8") if env_file.exists() else ""
     newline = "\r\n" if "\r\n" in raw else "\n"
-    lines, replaced = [], False
-    for line in raw.splitlines():
-        if _env_key(line) == key:
+    pieces = raw.split("\n")
+    out, replaced = [], False
+    for index, piece in enumerate(pieces):
+        last = index == len(pieces) - 1
+        if last and piece == "":
+            break  # 파일이 줄바꿈으로 끝났다(또는 비었다) / the file ended with a newline (or is empty)
+        body = piece[:-1] if piece.endswith("\r") else piece
+        ending = piece[len(body):] + ("" if last else "\n")
+        if _env_key(body) == key:
             if not replaced:
-                lines.append(f"{key}={value}")
+                out.append(f"{key}={value}{ending}")
                 replaced = True
             continue
-        lines.append(line)
+        out.append(piece + ("" if last else "\n"))
     if not replaced:
-        lines.append(f"{key}={value}")
-    tmp = env_file.with_name(env_file.name + ".observer-tmp")
-    tmp.write_bytes((newline.join(lines) + newline).encode("utf-8"))
-    os.replace(tmp, env_file)
+        if out and not out[-1].endswith("\n"):
+            # 맨 CR 로 끝난 줄은 LF 만 붙여 마무리한다 — CRLF 를 붙이면 그 줄에 CR 이 하나 더 생긴다(Grok 반례 ead7adb1)
+            # A line ending in a bare CR only gets "\n"; appending CRLF would add a second CR to that line.
+            out[-1] += "\n" if out[-1].endswith("\r") else newline
+        out.append(f"{key}={value}{newline}")
+    _durable_replace(env_file, "".join(out).encode("utf-8"))
+
+
+def _durable_replace(path: Path, data: bytes) -> None:
+    """임시 파일에 쓰고 fsync 한 뒤 바꿔 끼우고, POSIX 에서는 디렉터리도 fsync 한다 — 전원이 나가도 옛 내용이나 새 내용
+    둘 중 하나만 남는다. fsync 없이 바꿔 끼우면 이름만 먼저 기록돼 새 크기의 0 바이트 파일이 남을 수 있다(Grok 반례 daa37f6c).
+    Write a temp file, fsync it, swap it in, then fsync the directory on POSIX: after a power loss the file holds the
+    old or the new content, never a zero-filled one."""
+    tmp = path.with_name(path.name + ".observer-tmp")
+    with open(tmp, "wb") as handle:
+        handle.write(data)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(tmp, path)
+    if hasattr(os, "O_DIRECTORY"):  # Windows 에는 디렉터리 fsync 가 없다 — NTFS 가 이름 바꾸기를 기록한다
+        directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
 
 
 def main(argv: list[str] | None = None, *, env_file: Path | None = None, out=None) -> int:

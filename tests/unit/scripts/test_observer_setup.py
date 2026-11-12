@@ -51,6 +51,35 @@ def test_upsert_appends_when_absent(tmp_path):
     assert env.read_bytes() == b"A=1\nOBSERVER_DATABASE_URL=new\n"
 
 
+def test_upsert_keeps_lines_with_inner_separators_byte_identical(tmp_path):
+    """줄 안의 CR · 폼피드 · U+2028 은 줄을 끊지 않는다 — 다른 줄은 바이트 그대로(Grok 반례 7654f199).
+    A bare CR, form feed or U+2028 inside a line never splits it; other lines stay byte-identical."""
+    env = tmp_path / ".env"
+    others = b"FOO=hello\rworld\nBAR=a\x0cb\nBAZ=c\xe2\x80\xa8d\n"
+    env.write_bytes(others)
+    setup.upsert_env_line(env, "OBSERVER_DATABASE_URL", "new")
+    assert env.read_bytes() == others + b"OBSERVER_DATABASE_URL=new\n"
+
+
+@pytest.mark.parametrize("before,after", [
+    # 마지막 줄에 줄바꿈이 없으면 붙인 뒤 덧붙인다 / add the missing final newline before appending
+    (b"A=1", b"A=1\nOBSERVER_DATABASE_URL=new\n"),
+    # 바꾼 줄은 제 줄바꿈 꼴을 지킨다(섞인 파일) / the replaced line keeps its own ending in a mixed file
+    (b"A=1\r\nOBSERVER_DATABASE_URL=old\nB=2\r\n", b"A=1\r\nOBSERVER_DATABASE_URL=new\nB=2\r\n"),
+    # 줄바꿈 없는 마지막 줄을 바꾸면 그대로 줄바꿈 없이 / a replaced last line without newline stays without one
+    (b"A=1\nOBSERVER_DATABASE_URL=old", b"A=1\nOBSERVER_DATABASE_URL=new"),
+    # 빈 파일 / empty file
+    (b"", b"OBSERVER_DATABASE_URL=new\n"),
+    # 맨 CR 로 끝난 마지막 줄 — LF 만 붙인다(Grok 반례 ead7adb1) / a final bare-CR line only gains "\n"
+    (b"A=1\r\nB=2\r", b"A=1\r\nB=2\r\nOBSERVER_DATABASE_URL=new\r\n"),
+])
+def test_upsert_line_endings(tmp_path, before, after):
+    env = tmp_path / ".env"
+    env.write_bytes(before)
+    setup.upsert_env_line(env, "OBSERVER_DATABASE_URL", "new")
+    assert env.read_bytes() == after
+
+
 def test_pooler_target_reads_host_and_ref_only(tmp_path):
     """.env 의 풀러 주소에서 호스트 · ref 만 가져온다 / host and project ref from a pooler URL in .env."""
     env = tmp_path / ".env"

@@ -132,8 +132,14 @@ def downgrade() -> None:
     """이 DB 의 권한을 거두고 역할을 지운다 — 다른 DB 에 권한이 남아 있으면 역할은 남긴다.
     `DROP OWNED BY` 는 쓰지 않는다 — 슈퍼유저가 아닌 소유자(Supabase `postgres`)는 그 역할의 권한을 갖지 않아
     «permission denied to drop objects» 로 막힌다(로컬 PG 16 · 17 실측). 권한을 준 쪽이 REVOKE 한다.
-    Revoke this database's privileges and drop the role; keep the role if another database still references it.
-    No DROP OWNED BY: a non-superuser owner lacks the role's privileges and is refused (measured on PG 16/17)."""
+    🔴 결과는 둘 중 하나다 — 역할을 완전히 지우거나, 아무것도 바꾸지 않고 경고한다(블록 하나). 이 revision 이 만들지
+    않은 상태 — 권한 부족(42501: 미리 있던 역할 · 남이 준 권한), 거둘 수 없는 의존 권한(2BP01: 누가 준 grant 권한을
+    관측 역할이 다시 준 경우), 이 revision 이 거두지 않는 객체(시퀀스 등)의 권한이나 다른 DB 의 참조로 막힌 DROP ROLE
+    (2BP01) — 이면 그렇다. upgrade 와 같은 원칙이다(Grok 반례 56c18d96 · 9213858d · 069811ea — 안쪽 처리기를 두면
+    표 권한만 거두고 시퀀스 권한은 남는 반쪽 상태가 생겼다).
+    Revoke this database's privileges and drop the role. No DROP OWNED BY: a non-superuser owner lacks the role's
+    privileges and is refused (measured on PG 16/17). All-or-nothing: either the role is gone, or nothing changes and
+    a warning is raised (42501, or 2BP01 from dependent grants, other objects' privileges or other databases)."""
     if not is_postgresql(op.get_bind()):
         return
     op.execute(f"""
@@ -142,12 +148,10 @@ def downgrade() -> None:
         IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{ROLE}') THEN
             REVOKE ALL ON ALL TABLES IN SCHEMA public FROM {ROLE};
             REVOKE ALL ON SCHEMA public FROM {ROLE};
-            BEGIN
-                DROP ROLE {ROLE};
-            EXCEPTION WHEN dependent_objects_still_exist THEN
-                RAISE WARNING '{ROLE} kept (still referenced by another database): %', SQLERRM;
-            END;
+            DROP ROLE {ROLE};
         END IF;
+    EXCEPTION WHEN insufficient_privilege OR dependent_objects_still_exist THEN
+        RAISE WARNING '{ROLE} kept unchanged (state this revision did not create): %', SQLERRM;
     END
     $observer$;
     """)
