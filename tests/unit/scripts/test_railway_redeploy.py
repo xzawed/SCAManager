@@ -361,11 +361,22 @@ def test_dependabot_named_check_run_outside_a_dependabot_suite_still_blocks():
     assert any("CI" in r and "Dependabot" in r for r in reasons), reasons
 
 
-@pytest.mark.parametrize("ci", ["failure", "cancelled", None])
-def test_failing_ci_next_to_a_dependabot_job_still_blocks(ci):
-    """Dependabot 작업을 빼도 나머지 CI 판정은 그대로다 / the rest of CI is still judged."""
+# witness-corpus: GitHub REST 문서가 열거한 check-run · check-suite conclusion 값 전부(검사 목록에서 뽑지 않았다)
+# The conclusion values GitHub's REST docs enumerate for check runs and check suites — not drawn from the check.
+_DOCUMENTED_CONCLUSIONS = ["action_required", "cancelled", "failure", "neutral", "success", "skipped", "stale",
+                           "timed_out", "startup_failure"]
+
+
+@pytest.mark.parametrize("ci", [*_DOCUMENTED_CONCLUSIONS, None])
+def test_ci_next_to_a_dependabot_job_is_still_judged(ci):
+    """Dependabot 작업을 빼도 나머지 CI 판정은 그대로다 — 문서의 결론 가운데 success · skipped · neutral 만 통과하고
+    나머지(결론 없음 포함)는 그 CI 검사 이름을 대며 막는다.
+    The rest of CI is still judged: only success/skipped/neutral pass; every other documented conclusion blocks."""
     reasons = rr.decide(_skipped_state(ci=ci), "redeploy")
-    assert any("pytest" in r for r in reasons), reasons
+    if ci in ("success", "skipped", "neutral"):
+        assert reasons == [], (ci, reasons)
+    else:
+        assert any("pytest" in r for r in reasons), (ci, reasons)
 
 
 def test_dependabot_jobs_alone_are_not_a_green_ci():
