@@ -113,8 +113,14 @@ def test_all_cron_jobs_registered():
     names = {j.name for j in JOBS}
     assert names == {
         "retry-pending-merges", "sweep-orphans", "trend", "retention-sweep", "weekly-reports",
-        "scan-security",
+        "scan-security", "db-heartbeat",
     }, f"등록 누락/오타: {names}"
+
+
+def test_db_heartbeat_runs_every_minute():
+    """하트비트는 1분 — 늘리면 풀 연결에 남은 READ ONLY 를 그만큼 늦게 되돌린다(회고 원장 L02).
+    The heartbeat runs every minute; a longer period delays undoing a stuck READ ONLY."""
+    assert {j.name: j for j in JOBS}["db-heartbeat"].every_seconds == 60
 
 
 def test_job_schedules_match_previous_cron_expressions():
@@ -208,6 +214,19 @@ async def test_retry_job_calls_service(monkeypatch):
     monkeypatch.setattr("src.scheduler.process_pending_retries", fake)
     await sched._retry_pending_merges()
     assert "limit" in called, "process_pending_retries 미호출"
+
+
+async def test_db_heartbeat_job_calls_service(monkeypatch):
+    """하트비트 job 이 서비스를 실제 호출한다 / the heartbeat job really calls the service."""
+    called = {}
+
+    async def fake():
+        called["hit"] = True
+        return {"web": "ok", "worker": "ok"}
+
+    monkeypatch.setattr("src.scheduler.run_db_heartbeat", fake)
+    await sched._db_heartbeat()
+    assert called.get("hit"), "run_db_heartbeat 미호출"
 
 
 async def test_sweep_orphans_job_calls_service(monkeypatch):

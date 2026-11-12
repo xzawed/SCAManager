@@ -109,9 +109,13 @@ _WEB_DB_MODULES = _WEB_API_MODULES + [
     "src/ui/routes/add_repo.py",
     "src/ui/routes/detail.py",
     "src/ui/routes/overview.py",
+    "src/services/db_heartbeat_service.py",
 ]
 
 # hybrid 모듈 — bare SessionLocal(웹 RLS 경로) + WorkerSessionLocal(시스템 컨텍스트) 둘 다 import 허용.
+#  - src/services/db_heartbeat_service.py: 두 풀(웹 · 워커)의 **연결 상태 자체**(세션 READ ONLY)를 재는 것이
+#    목적이라 둘 다 쓴다. 설정만 읽고 앱 테이블은 건드리지 않으므로 RLS 가 결과를 바꾸지 않는다 — 회고 원장 L02.
+#    It probes the connection state of BOTH pools; it reads settings only, so RLS cannot change its result.
 # 같은 모듈 안에서 일부 경로는 사용자 세션(웹 RLS), 일부는 세션 없는 cross-tenant(시스템 컨텍스트)이다.
 #  - src/auth/github.py: auth_callback(콜백 시점 session 부재 → users self-RLS 차단)만 worker,
 #    logout(세션 존재 → 본인 행)은 bare.
@@ -133,6 +137,7 @@ _HYBRID_DB_MODULES = [
     "src/auth/github.py",
     "src/api/admin.py",
     "src/ui/routes/admin.py",
+    "src/services/db_heartbeat_service.py",
 ]
 
 # WorkerSessionLocal alias(`as SessionLocal`) 경유 의무 모듈 전체 = background + 시스템 컨텍스트 API.

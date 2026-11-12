@@ -209,6 +209,26 @@ def test_crash_is_restarted_not_rebuilt(tmp_path):
     assert fake.actions() == [["railway", "restart", "-y"]]
 
 
+def test_log_errors_counts_only_and_never_acts(tmp_path, capsys):
+    """`--log-errors` 는 가장 새 배포의 오류 부류를 개수만 찍는다 — 재배포 · 재시작을 내지 않고, 줄 내용을 찍지 않는다.
+    --log-errors prints per-class counts for the newest deployment; it never acts and never prints a log line."""
+    fake = _FakeRun([[_dep("dep-9", "SUCCESS")]])
+    assert _main(fake, ["--log-errors"], tmp_path=tmp_path) == 0
+    assert fake.actions() == []
+    out = capsys.readouterr().out
+    assert "ERROR 1" in out and "SUCCESS" in out
+    assert "something" not in out, "로그 줄 내용이 찍혔다 / a log line was printed"
+    assert ["railway", "logs", "dep-9", "--deployment", "--lines", "500"] in fake.calls
+
+
+def test_log_errors_tool_failure_exits_3(tmp_path):
+    def broken(args):
+        raise rr.CommandFailed(args, 1)
+    marker = tmp_path / "rotation-in-progress"
+    assert rr.main(["--log-errors"], run=broken, sleep=lambda _s: None, now=lambda: 0.0, marker=marker,
+                   railway_exe="railway") == 3
+
+
 def test_tool_failure_is_fail_closed(tmp_path):
     """git · gh · railway 가 실패하면 막는다(exit 3) — 못 잰 것을 통과로 접지 않는다 / tool failure → exit 3."""
     def broken(args):
