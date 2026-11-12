@@ -6,6 +6,7 @@ tests/integration/test_db_heartbeat_postgres.py 가 실 PostgreSQL 로 잰다.
 A fake session measures statements and alert counts; real pool poisoning is measured on PostgreSQL.
 """
 # pylint: disable=redefined-outer-name
+import httpx
 import pytest
 from sqlalchemy.exc import OperationalError
 
@@ -86,7 +87,8 @@ def test_healthy_pool_reads_settings_only_and_rolls_back():
     Healthy: timeout, one settings read, ROLLBACK; no write, RESET or COMMIT (no application table is locked)."""
     session = _Session()
     assert hb.probe(lambda: session) == ("ok", None)
-    assert session.sent == ["SET LOCAL statement_timeout = '5s'", str(hb.PROBE)]
+    assert session.sent == ["SET LOCAL statement_timeout = '5s'",
+                            "SET LOCAL idle_in_transaction_session_timeout = '5s'", str(hb.PROBE)]
     assert "UPDATE" not in str(hb.PROBE).upper() and "repositories" not in str(hb.PROBE)
     assert not session.committed and session.rolled_back and session.closed
 
@@ -146,6 +148,14 @@ async def test_alert_once_after_three_failures_then_recovery(_fresh_state):
     assert alerts[1].startswith("✅ DB worker")
 
 
+async def test_heal_after_alert_says_it_closes_the_alert(_fresh_state):
+    """경보 뒤 되돌림으로 끝나면 되돌림 알림 하나가 사고를 닫는다(따로 회복 알림 없음, Grok 반례 e99e640d).
+    A heal after an alert is the single message that closes the incident."""
+    alerts = await _beat(["fail", "fail", "fail", "heal", "ok"], _fresh_state)
+    assert [a.split()[0] for a in alerts] == ["🚨", "🩹"]
+    assert "앞선 경보도 이것으로 끝난다" in alerts[1]
+
+
 async def test_heal_is_reported_once_per_event(_fresh_state):
     alerts = await _beat(["heal", "ok", "heal"], _fresh_state)
     assert [a.split()[0] for a in alerts] == ["🩹", "🩹"]
@@ -157,12 +167,23 @@ async def test_results_name_each_pool_and_code():
     assert results == {"web": "ok", "worker": "failed:read-only:database"}
 
 
-async def test_telegram_failure_never_raises(monkeypatch, _fresh_state):
+@pytest.mark.parametrize("error", [
+    ValueError("boom"),
+    RuntimeError("client closed"),
+    httpx.HTTPStatusError("502", request=httpx.Request("POST", "https://api.telegram.org/x"),
+                          response=httpx.Response(502)),
+])
+async def test_telegram_failure_never_stops_the_heartbeat(monkeypatch, _fresh_state, error):
+    """알림 실패는 종류와 상관없이 하트비트를 멈추지 않는다 — 같은 회차의 다른 풀도 잰다.
+    No alert failure of any kind stops the heartbeat; the other pool of the same run is still probed."""
     async def broken(token, chat, payload):
-        raise ValueError("boom")
+        raise error
 
     monkeypatch.setattr(hb, "telegram_post_message", broken)
-    await _beat(["heal"], _fresh_state)  # 예외 없이 끝난다 / completes without raising
+    worker = _Session()
+    results = await hb.run_db_heartbeat(pools={"web": lambda: _Session(row=_POISONED), "worker": lambda: worker})
+    assert results == {"web": "healed", "worker": "ok"}
+    assert worker.closed
 
 
 async def test_no_alert_without_operator_chat(monkeypatch, _fresh_state):

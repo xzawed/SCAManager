@@ -6,6 +6,7 @@ CI `pg-concurrency` job 이 `DATABASE_URL_TEST_POSTGRES` 로 돌린다(ci.yml �
 """
 # pylint: disable=redefined-outer-name
 import os
+import time
 from unittest.mock import patch
 
 import pytest
@@ -111,6 +112,50 @@ def test_role_level_read_only_is_never_reset(admin, app_role):
     eng, factory = _one_connection_pool(app_role)
     try:
         assert hb.probe(factory) == ("ok", None)
+    finally:
+        eng.dispose()
+
+
+def _xmin_and_state(admin, app_name):
+    with admin.connect() as conn:
+        return conn.execute(text("SELECT backend_xmin::text, state FROM pg_stat_activity WHERE application_name = :a"),
+                            {"a": app_name}).one()
+
+
+def test_probe_holds_no_snapshot_between_statements(admin):
+    """READ COMMITTED 에서 하트비트 문장 사이에는 스냅샷(backend_xmin)이 없다 — 멈춰도 CREATE INDEX CONCURRENTLY 가
+    기다리지 않는다(Grok 반례 38408243 의 2차 주장을 실측으로 반박). 대조군: REPEATABLE READ 는 쥔다(계기가 본다).
+    In READ COMMITTED no snapshot is held between the probe's statements; REPEATABLE READ (control) holds one."""
+    eng = create_engine(_PG_URL, connect_args={"application_name": "hb-xmin-probe"})
+    try:
+        with eng.connect() as conn:
+            with conn.begin():
+                for statement in hb.TIMEOUTS:
+                    conn.execute(statement)
+                conn.execute(hb.PROBE).one()
+                assert _xmin_and_state(admin, "hb-xmin-probe") == (None, "idle in transaction")
+        with eng.connect().execution_options(isolation_level="REPEATABLE READ") as conn:
+            with conn.begin():
+                conn.execute(text("SELECT 1")).one()
+                held = _xmin_and_state(admin, "hb-xmin-probe")
+        assert held[0] is not None, "계기가 스냅샷을 못 본다 / the instrument cannot see snapshots"
+    finally:
+        eng.dispose()
+
+
+def test_stalled_probe_transaction_is_cut_after_five_seconds():
+    """트랜잭션 안에서 멈추면 5초 뒤 서버가 그 세션을 끊는다 — 풀의 서버 연결을 오래 쥐지 않는다.
+    A stall inside the probe transaction is cut by the server after 5 s, so it cannot pin a pooled connection."""
+    eng = create_engine(_PG_URL, pool_size=1, max_overflow=0)
+    try:
+        with eng.connect() as conn:
+            conn.begin()
+            for statement in hb.TIMEOUTS:
+                conn.execute(statement)
+            conn.execute(hb.PROBE).one()
+            time.sleep(6.5)
+            with pytest.raises(DBAPIError):
+                conn.execute(text("SELECT 1"))
     finally:
         eng.dispose()
 
