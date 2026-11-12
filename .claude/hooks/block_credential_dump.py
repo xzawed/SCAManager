@@ -1180,6 +1180,7 @@ _PROD_SUPABASE_MCP_READS = frozenset({
 })
 _PROD_SAFE_READS = "railway deployment list --json · railway logs <id> · railway status · railway metrics"
 _PROD_SAFE_REDEPLOY = "py -3 scripts/railway_redeploy.py [--restart]"
+_PROD_SAFE_DB_READ = 'py -3 scripts/observe_db.py "SELECT ..."'
 
 
 def _prod_variable_writes(args):
@@ -1592,10 +1593,11 @@ def _emit_production_deny(tool, reason):
             "permissionDecisionReason": (
                 f"[운영 접근] {tool} 실행 차단 — 운영은 행위로 가른다 (CLAUDE.md · 회고 원장 L02)\n\n"
                 f"사유: {reason}\n\n"
-                "운영 컨테이너 코드 실행 · 운영 변수를 넣은 실행 · 배포 · 변수 · 환경 변경 · 운영 DB SQL 은\n"
+                "운영 컨테이너 코드 실행 · 운영 변수를 넣은 실행 · 배포 · 변수 · 환경 변경 · 운영 DB 쓰기 SQL 은\n"
                 "사용자가 직접 실행한다. 2026-10-25 에 에이전트 측정 코드가 운영 워커 쓰기를 25시간 막았다.\n\n"
                 "→ 사용자에게 이 명령과 목적을 보여 주고 `! <명령>` 으로 실행해 달라고 요청하세요.\n"
                 f"자율로 되는 읽기: {_PROD_SAFE_READS}\n"
+                f"운영 DB 읽기는 관측 역할(허용 컬럼 · 읽기 전용)로 `{_PROD_SAFE_DB_READ}` — 자율.\n"
                 "실패한 배포 재시도 · 크래시 재시작은 조건(main 최신 커밋 · CI 초록 · 교체 중 아님)을 확인하는\n"
                 f"`{_PROD_SAFE_REDEPLOY}` 로 자율 — `--check` 로 조건부터 본다."
             ),
