@@ -12,11 +12,14 @@ sast-rules (MIT · Apache-2.0 · LGPL-3.0); provenance and per-file licenses liv
 """
 from __future__ import annotations
 
+import atexit
 import json
 import logging
 import os
 import shutil
 import subprocess  # nosec B404
+import tempfile
+import threading
 from pathlib import Path
 
 from src.analyzer.pure.registry import AnalyzeContext, AnalysisIssue, Category, Severity, register
@@ -25,9 +28,70 @@ from src.constants import STATIC_ANALYSIS_TIMEOUT
 logger = logging.getLogger(__name__)
 
 _ERR_EXCERPT = 200
-# 고정한 룰 폴더 — `--config` 에 폴더를 주면 semgrep 은 그 아래 YAML 을 모두 읽는다(실측 428개)
-# The vendored rule folder; given a folder, semgrep loads every YAML under it.
+# 고정한 룰 폴더 — 리포 · 이미지에는 이 원본 YAML 만 둔다(라이선스 머리 포함)
+# The vendored rule folder; only these original YAML files ship in the repo and the image.
 RULES_DIR = Path(__file__).resolve().parents[2] / "configs" / "semgrep" / "rules"
+
+# 룰 폴더 → 이 프로세스가 만든 JSON 묶음. 묶기는 프로세스마다 한 번이다.
+# Rule folder -> the JSON bundle this process built; bundling happens once per process.
+_BUNDLES: dict[Path, Path] = {}
+_BUNDLE_LOCK = threading.Lock()
+
+
+def _write_bundle(rules_dir: Path) -> Path:
+    """고정 룰 YAML 을 JSON 한 파일로 묶어 이 프로세스만 쓰는 임시 폴더에 쓴다.
+
+    semgrep 과 같은 갈래의 파서(ruamel · YAML 1.2)로 읽는다 — semgrep 이 깔린 환경에는 늘 있다.
+    The rules are read with the parser family semgrep itself uses (ruamel, YAML 1.2), which is
+    always installed alongside semgrep.
+    """
+    # pylint: disable=import-outside-toplevel
+    from ruamel.yaml import YAML
+    from ruamel.yaml.error import YAMLError
+
+    loader = YAML(typ="safe", pure=True)
+    rules: list = []
+    for path in sorted(p for p in rules_dir.rglob("*") if p.suffix in (".yml", ".yaml")):
+        try:
+            doc = loader.load(path.read_text(encoding="utf-8"))
+        except YAMLError as exc:
+            raise ValueError(f"{path.name}: {exc}") from exc
+        found = doc.get("rules") if isinstance(doc, dict) else None
+        if not isinstance(found, list):
+            raise ValueError(f"{path.name}: no rules list")
+        rules.extend(found)
+    if not rules:
+        raise ValueError(f"no rules under {rules_dir}")
+    # 권한 0700 폴더 — 다른 사용자가 묶음을 바꿔치기할 수 없다 / private 0700 dir: nobody else can swap the bundle
+    out_dir = Path(tempfile.mkdtemp(prefix="scamanager-semgrep-"))
+    atexit.register(shutil.rmtree, out_dir, True)
+    out = out_dir / "rules.json"
+    out.write_text(json.dumps({"rules": rules}, default=str), encoding="utf-8")
+    return out
+
+
+def rules_config() -> Path:
+    """semgrep `--config` 에 줄 경로 — 고정 룰을 JSON 한 파일로 묶은 것.
+
+    semgrep 은 YAML 설정을 위치 정보와 함께 읽느라 느리다: 고정 룰 폴더를 그대로 주면 실행마다 약 10 초,
+    같은 룰을 JSON 으로 주면 약 2 초다(실측 · 결과 같음). 파일마다 semgrep 을 부르므로 이 차이가 파일 수만큼
+    곱해진다. 묶기에 실패하면 경고를 남기고 폴더를 준다 — 같은 룰이고 느릴 뿐이다.
+
+    semgrep parses YAML configs with position tracking and is slow: the vendored folder costs ~10 s per
+    run, the same rules as JSON ~2 s (measured, same results). On failure it warns and falls back to the
+    folder: the same rules, only slower.
+    """
+    with _BUNDLE_LOCK:
+        bundle = _BUNDLES.get(RULES_DIR)
+        if bundle is not None and bundle.is_file():
+            return bundle
+        try:
+            bundle = _write_bundle(RULES_DIR)
+        except (ImportError, OSError, ValueError) as exc:
+            logger.warning("semgrep rule bundle unavailable, using the rule folder (slower): %s", exc)
+            return RULES_DIR
+        _BUNDLES[RULES_DIR] = bundle
+        return bundle
 
 
 def _fail(ctx, r, data=None) -> RuntimeError:
@@ -87,13 +151,13 @@ class _SemgrepAnalyzer:
         """
         try:
             r = subprocess.run(  # nosec B603 B607
-                ["semgrep", "scan", f"--config={RULES_DIR}", "--json",
+                ["semgrep", "scan", f"--config={rules_config()}", "--json",
                  "--metrics=off", "--disable-version-check",
                  "--timeout", str(STATIC_ANALYSIS_TIMEOUT), ctx.tmp_path],
                 capture_output=True, text=True, encoding="utf-8", errors="replace",
                 timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
-                # 룰 파일에 비-ASCII 가 있어 로캘 인코딩(예: cp949)으로 읽으면 semgrep 이 죽는다(실측 Windows)
-                # The rules contain non-ASCII text; a non-UTF-8 locale encoding makes semgrep fail to read them.
+                # 폴더로 되돌아가면 비-ASCII 가 든 YAML 을 읽는다 — 로캘 인코딩(예: cp949)이면 semgrep 이 죽는다(실측 Windows)
+                # The folder fallback reads YAML with non-ASCII text; a non-UTF-8 locale encoding breaks semgrep.
                 env={**os.environ, "PYTHONUTF8": "1"},
             )
             # 🔴 stdout 이 JSON 이 아니면 semgrep 이 **분석하지 않은** 것이다.

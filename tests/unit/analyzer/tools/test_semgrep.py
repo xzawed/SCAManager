@@ -246,10 +246,11 @@ class TestSemgrepIsEnabled:
 
 class TestSemgrepRunSubprocessCall:
     def test_run_uses_vendored_rules_offline(self, make_ctx):
-        """🔴 semgrep 은 리포에 고정한 룰 폴더로만 돈다 — 레지스트리 · auto 를 부르지 않는다 (L03 P1-40).
+        """🔴 semgrep 은 리포에 고정한 룰로만 돈다 — 레지스트리 · auto 를 부르지 않는다 (L03 P1-40).
 
-        `--config` 는 실재하는 `configs/semgrep/rules` 폴더여야 하고, 지표 전송과 판 확인도 끈다.
-        The config must be the vendored rules folder; metrics and the version check are off.
+        `--config` 는 고정 룰 폴더를 JSON 한 파일로 묶은 것이어야 하고(폴더를 그대로 주면 semgrep 이 YAML 을
+        읽느라 실행마다 약 8 초를 더 쓴다 — 실측), 지표 전송과 판 확인도 끈다.
+        The config must be the JSON bundle of the vendored rules; metrics and the version check are off.
         """
         from pathlib import Path  # noqa: PLC0415
 
@@ -260,8 +261,8 @@ class TestSemgrepRunSubprocessCall:
         call_args = mock_run.call_args[0][0]
         configs = [arg.split("=", 1)[1] for arg in call_args if arg.startswith("--config=")]
         assert len(configs) == 1, f"--config 가 하나가 아니다: {call_args}"
-        rules = Path(configs[0])
-        assert rules.is_dir() and rules.as_posix().endswith("configs/semgrep/rules"), configs[0]
+        bundle = Path(configs[0])
+        assert bundle.suffix == ".json" and bundle.is_file(), configs[0]
         assert "--metrics=off" in call_args and "--disable-version-check" in call_args, call_args
 
     def test_run_includes_json_flag(self, make_ctx):

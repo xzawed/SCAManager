@@ -42,6 +42,19 @@ def _rules_dir() -> Path:
     assert rules is not None and Path(rules).is_dir(), "semgrep 어댑터에 고정 룰 폴더(RULES_DIR)가 없다"
     return Path(rules)
 
+
+def _adapter_config() -> Path:
+    """어댑터가 semgrep `--config` 에 주는 경로 — 함수가 없으면 수집 오류가 아니라 단언으로 실패한다."""
+    build = getattr(sg, "rules_config", None)
+    assert callable(build), "semgrep 어댑터에 rules_config() 가 없다"
+    return Path(build())
+
+
+@pytest.fixture
+def fresh_bundles(monkeypatch):
+    """프로세스 캐시를 비운 채로 — 앞선 시험이 만든 묶음을 물려받지 않는다."""
+    monkeypatch.setattr(sg, "_BUNDLES", {}, raising=False)
+
 # 폴더 이름 → 그 폴더의 룰이 머리에 적어야 하는 라이선스 줄
 # License folder -> the header line every rule in that folder must carry.
 _ALLOWED = {
@@ -66,6 +79,14 @@ def _license_of(text: str) -> str | None:
 
 def _rule_files() -> list[Path]:
     return sorted(p for p in _rules_dir().rglob("*") if p.suffix in (".yml", ".yaml"))
+
+
+def _vendored_rules() -> list[dict]:
+    """고정한 룰 전부 — 어댑터와 다른 파서(PyYAML)로 읽는다."""
+    rules = []
+    for path in _rule_files():
+        rules.extend((yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get("rules", []) or [])
+    return rules
 
 
 def _covered_languages(rules) -> set[str]:
@@ -147,10 +168,7 @@ def test_supported_languages_are_exactly_the_languages_the_rules_cover():
     룰이 0개인 언어를 지원한다고 하면 그 언어 파일은 «이슈 0건 · 완전» 으로 기록된다. 거꾸로 룰이 있는데
     지원 목록에 없으면 그 룰은 한 번도 돌지 않는다.
     """
-    rules = []
-    for path in _rule_files():
-        rules.extend((yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get("rules", []) or [])
-    covered = _covered_languages(rules)
+    covered = _covered_languages(_vendored_rules())
     assert covered == set(_SemgrepAnalyzer.SUPPORTED_LANGUAGES), (
         f"룰만 있음: {sorted(covered - _SemgrepAnalyzer.SUPPORTED_LANGUAGES)} · "
         f"지원만 있음: {sorted(_SemgrepAnalyzer.SUPPORTED_LANGUAGES - covered)}"
@@ -170,6 +188,67 @@ def test_an_unlisted_pseudo_language_fails_closed(token):
     assert _covered_languages([{"languages": [token, "python"]}]) == {token, "python"}
 
 
+# ─── 실행 설정 — 고정 룰의 JSON 묶음 ────────────────────────────────────────
+
+
+def test_the_adapter_hands_semgrep_a_json_bundle_of_exactly_the_vendored_rules(fresh_bundles):
+    """🔴 semgrep 에 주는 설정 = 고정 룰을 JSON 한 파일로 묶은 것 — 룰을 하나도 더하거나 빼지 않는다.
+
+    semgrep 은 YAML 설정을 위치 정보와 함께 읽느라 느리다. 고정 룰 폴더를 그대로 주면 실행마다 약 10 초,
+    같은 룰을 JSON 으로 주면 약 2 초다(실측 · 결과 같음). 파일마다 semgrep 을 부르므로 이 차이가 파일 수만큼
+    곱해지고, 실행 시간 제한(30 초)에도 걸린다. 기댓값은 어댑터와 다른 파서(PyYAML)로 읽는다 — 두 파서가
+    어떤 룰을 다르게 읽으면 여기서 빨갛게 된다(룰을 새로 고정할 때 볼 것).
+    """
+    config = _adapter_config()
+    assert config.suffix == ".json" and config.is_file(), f"설정이 JSON 묶음이 아니다: {config}"
+    bundled = json.loads(config.read_text(encoding="utf-8"))["rules"]
+    expected = _vendored_rules()
+    assert len(bundled) == len(expected) >= 400, f"묶음 {len(bundled)}개 · 고정 룰 {len(expected)}개"
+
+    def canon(rules):
+        return json.dumps(sorted(rules, key=lambda r: r["id"]), sort_keys=True, default=str)
+
+    assert canon(bundled) == canon(expected), "묶음의 룰이 고정한 YAML 과 다르다"
+
+
+def test_rule_ids_stay_unique_across_the_vendored_rules():
+    """한 묶음에 합치므로 룰 id 가 겹치면 안 된다 — 폴더로 줄 때는 파일 경로가 id 앞에 붙어 겹쳐도 갈렸다."""
+    seen, dups = set(), set()
+    for rule in _vendored_rules():
+        (dups if rule["id"] in seen else seen).add(rule["id"])
+    assert seen and not dups, f"겹치는 룰 id: {sorted(dups)[:5]}"
+
+
+def test_the_bundle_is_built_once_per_process_and_again_if_removed(fresh_bundles, monkeypatch, tmp_path):
+    """묶음은 프로세스마다 한 번 만든다 — 파일마다 다시 묶지 않는다. 임시 파일이 지워졌으면 다시 만든다."""
+    built = []
+
+    def fake_write(rules_dir):
+        built.append(rules_dir)
+        out = tmp_path / f"bundle{len(built)}.json"
+        out.write_text('{"rules": []}', encoding="utf-8")
+        return out
+
+    monkeypatch.setattr(sg, "_write_bundle", fake_write, raising=False)
+    first = _adapter_config()
+    assert _adapter_config() == first and len(built) == 1, f"두 번째 호출에서 다시 묶었다: {built}"
+    first.unlink()
+    second = _adapter_config()
+    assert len(built) == 2 and second.is_file(), "지워진 묶음을 다시 만들지 않았다"
+
+
+def test_a_failed_bundle_falls_back_to_the_rule_folder_with_a_warning(fresh_bundles, monkeypatch):
+    """묶기에 실패하면 같은 룰을 폴더로 준다 — 느릴 뿐 결과는 같다. 실패는 경고로 남기고 삼키지 않는다."""
+    def broken_write(_rules_dir):
+        raise OSError("no space left on device")
+
+    warned = []
+    monkeypatch.setattr(sg, "_write_bundle", broken_write, raising=False)
+    monkeypatch.setattr(sg.logger, "warning", lambda msg, *args: warned.append(msg % args))
+    assert _adapter_config() == _rules_dir()
+    assert any("no space left" in w for w in warned), f"실패가 경고로 남지 않았다: {warned}"
+
+
 def test_the_rules_reach_the_runtime_image():
     """`.dockerignore` 가 룰 폴더를 이미지에서 빼지 않는다 — 빠지면 운영 semgrep 이 설정 없음으로 실패한다."""
     sample = _rules_dir().relative_to(_REPO).as_posix() + "/mit/python/x.yml"
@@ -183,14 +262,14 @@ def test_the_rules_reach_the_runtime_image():
 
 @pytest.mark.skipif(shutil.which("semgrep") is None, reason="semgrep 바이너리 없음 — CI · 이미지에서 잰다")
 def test_real_semgrep_loads_the_rules_offline_and_finds_an_issue(tmp_path):
-    """실물 semgrep 이 고정한 룰을 모두 읽고(설정 오류 0) 취약 코드에서 이슈를 낸다 — 네트워크 없이."""
+    """실물 semgrep 이 어댑터의 설정(고정 룰 묶음)을 읽고(설정 오류 0) 취약 코드에서 이슈를 낸다 — 네트워크 없이."""
     # 일부러 취약하게 쓴 코드 문자열 — 파일로만 쓰고 실행하지 않는다(semgrep 이 잡아야 하는 표본).
     # A deliberately vulnerable sample written to disk for the scanner; it is never executed.
     sample = tmp_path / "vuln.py"
     sample.write_text("import subprocess\n\ndef run(cmd):\n    subprocess.call(cmd, shell=True)\n"
                       "    return eval(cmd)\n", encoding="utf-8")
     r = subprocess.run(
-        ["semgrep", "scan", f"--config={_rules_dir()}", "--json", "--metrics=off",
+        ["semgrep", "scan", f"--config={_adapter_config()}", "--json", "--metrics=off",
          "--disable-version-check", str(sample)],
         capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300, check=False,
         env={**os.environ, "PYTHONUTF8": "1"},
@@ -219,7 +298,7 @@ def test_real_semgrep_applies_at_least_one_rule_to_every_supported_language(tmp_
         (tmp_path / f"sample_{lang}.{_EXT[lang]}").write_text("x\n", encoding="utf-8")
     (tmp_path / "control.rb").write_text("puts 1\n", encoding="utf-8")
     r = subprocess.run(
-        ["semgrep", "scan", f"--config={_rules_dir()}", "--json", "--metrics=off",
+        ["semgrep", "scan", f"--config={_adapter_config()}", "--json", "--metrics=off",
          "--disable-version-check", str(tmp_path)],
         capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300, check=False,
         env={**os.environ, "PYTHONUTF8": "1"},
