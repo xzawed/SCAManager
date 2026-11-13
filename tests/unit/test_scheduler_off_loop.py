@@ -46,7 +46,7 @@ from src.models.repository import Repository
 from src.models.security_alert_log import SecurityAlertProcessLog
 from src.models.user import User
 from src.repositories import insight_narrative_cache_repo, merge_retry_repo
-from src.services import cron_service, merge_retry_service, security_scan_service
+from src.services import cron_service, db_heartbeat_service, merge_retry_service, security_scan_service
 
 # job 이 읽고 쓰는 테이블이 등록돼야 한다 — 튜플을 **읽어** import 소실을 loud-fail 한다.
 # Tables the jobs touch must be registered; reading the tuple loud-fails a lost import.
@@ -458,6 +458,25 @@ async def test_scan_security_failure_rolls_back_off_the_loop(world, monkeypatch,
     _assert_off_loop(world, expect_http=True, expect=_ROLLS_BACK)
 
 
+async def test_db_heartbeat_job_runs_its_db_work_off_the_loop(world, monkeypatch):
+    """하트비트는 두 풀의 설정 읽기 · ROLLBACK · 반납을 워커 스레드에서 하고, 3번 연속 막히면 알림만 루프에서 await 한다.
+    인메모리 SQLite 에는 `pg_settings` 가 없어 첫 문장이 실패한다 — 그래도 «DB 왕복을 어느 스레드가 하는가» 는 그대로 잰다.
+    The heartbeat's DB round trips run off the loop; after three blocked runs only the alert is awaited on it."""
+    monkeypatch.setattr(db_heartbeat_service, "SessionLocal", world.factory)
+    monkeypatch.setattr(db_heartbeat_service, "WorkerSessionLocal", world.factory)
+    monkeypatch.setattr(db_heartbeat_service, "is_postgresql", lambda _bind: True)
+    monkeypatch.setattr(db_heartbeat_service, "_STATE", {})
+    monkeypatch.setattr(db_heartbeat_service.settings, "telegram_bot_token", "123:ABC")
+    monkeypatch.setattr(db_heartbeat_service.settings, "telegram_chat_id", "-100ops")
+    monkeypatch.setattr(db_heartbeat_service, "telegram_post_message", _http(world, "telegram"))
+    world.reset_records()
+
+    for _ in range(db_heartbeat_service.ALERT_AFTER):
+        await _run("db-heartbeat")
+
+    _assert_off_loop(world, expect_http=True, expect=_ROLLS_BACK)
+
+
 # 🔴 새 job 은 여기에 시나리오를 더해야 한다 — 없으면 아래 테스트가 red 다(«루프 밖» 은 job 마다 증명한다).
 # A new job must add a scenario here; otherwise the test below goes red.
 _COVERED = {
@@ -467,6 +486,7 @@ _COVERED = {
     "weekly-reports": test_report_jobs_run_their_db_work_off_the_loop,
     "retention-sweep": test_retention_job_runs_its_db_work_off_the_loop,
     "scan-security": test_scan_security_job_runs_its_db_work_off_the_loop,
+    "db-heartbeat": test_db_heartbeat_job_runs_its_db_work_off_the_loop,
 }
 
 

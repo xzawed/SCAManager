@@ -20,6 +20,7 @@ from src.services.cron_service import (
     run_weekly_reports,
     sweep_analysis_attempts,
 )
+from src.services.db_heartbeat_service import run_db_heartbeat
 from src.services.merge_retry_service import process_pending_retries
 from src.services.security_scan_service import scan_all_repos
 
@@ -134,6 +135,19 @@ async def trigger_retry_pending_merges() -> dict:
         )
     logger.info("retry_pending_merges: counts=%s", counts)
     return {"status": "ok", "counts": counts}
+
+
+@router.post("/db-heartbeat", status_code=200)
+async def trigger_db_heartbeat() -> dict:
+    """DB 쓰기 하트비트 1회 — 웹 · 워커 풀마다 세션 READ ONLY 를 되돌리거나 쓰기 경로를 잰다(회고 원장 L02).
+    Run the DB write heartbeat once for the web and worker pools.
+
+    Returns:
+        {"status": "ok", "results": {"web": "ok", "worker": "healed", ...}}
+    """
+    results = await run_db_heartbeat()
+    logger.info("db_heartbeat: results=%s", results)
+    return {"status": "ok", "results": results}
 
 
 @router.post("/sweep-orphans", status_code=200)

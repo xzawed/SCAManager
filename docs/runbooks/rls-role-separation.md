@@ -7,6 +7,7 @@ FORCE = owner-bypass 만 차단(BYPASSRLS 무시) — 실효는 Phase 4.
 - 웹 `DATABASE_URL`=`scamanager_app`(NOBYPASSRLS·NOSUPERUSER·비-owner)
 - worker `DATABASE_URL_WORKER`=`scamanager_worker`(app+`BYPASSRLS` · 미설정 시 웹 재사용)
 - alembic `MIGRATION_DATABASE_URL`=owner `postgres`
+- 관측 `OBSERVER_DATABASE_URL`(PC `.env` 만)=`scamanager_observer`(`0049` · 컬럼 SELECT · BYPASSRLS · 읽기 전용 — `scripts/observer_setup.py` → `observe_db.py --audit`)
 
 ## 1. 프로비저닝
 

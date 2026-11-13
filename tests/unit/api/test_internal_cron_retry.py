@@ -108,6 +108,31 @@ def test_sweep_orphans_endpoint_returns_surfaced_count(monkeypatch):
     assert body["orphans_surfaced"] == 3
 
 
+# ── db-heartbeat 엔드포인트 (회고 원장 L02 3층) ─────────────────────────────────
+
+def test_db_heartbeat_endpoint_no_key_returns_401(monkeypatch):
+    """X-API-Key 없이 /db-heartbeat → 401 (router-level 인증)."""
+    monkeypatch.setattr("src.config.settings.internal_cron_api_key", _VALID_KEY)
+    resp = client.post("/api/internal/cron/db-heartbeat")
+    assert resp.status_code == 401
+
+
+def test_db_heartbeat_endpoint_returns_pool_results(monkeypatch):
+    """올바른 키로 /db-heartbeat → 풀별 결과를 그대로 돌려준다 / per-pool results are returned as-is."""
+    monkeypatch.setattr("src.config.settings.internal_cron_api_key", _VALID_KEY)
+    with patch(
+        "src.api.internal_cron.run_db_heartbeat",
+        new_callable=AsyncMock,
+        return_value={"web": "ok", "worker": "healed"},
+    ):
+        resp = client.post(
+            "/api/internal/cron/db-heartbeat",
+            headers={"X-API-Key": _VALID_KEY},
+        )
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok", "results": {"web": "ok", "worker": "healed"}}
+
+
 # ── retention-sweep 엔드포인트 (준비도 감사 #12·#20) ──────────────────────────
 
 def test_retention_sweep_endpoint_no_key_returns_401(monkeypatch):
