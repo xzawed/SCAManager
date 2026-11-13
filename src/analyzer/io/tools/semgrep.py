@@ -87,7 +87,10 @@ def rules_config() -> Path:
             return bundle
         try:
             bundle = _write_bundle(RULES_DIR)
-        except (ImportError, OSError, ValueError) as exc:
+        # 어떤 실패도 밖으로 내보내지 않는다 — 새면 그 파일의 semgrep 이 아예 돌지 않는다. 폴더는 같은 룰이다.
+        # (Grok d38a80b8 반례: JSON 이 못 받는 날짜 매핑 키의 TypeError · RecursionError · MemoryError)
+        # No failure escapes: the folder holds the same rules (a date mapping key raises TypeError, etc.).
+        except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
             logger.warning("semgrep rule bundle unavailable, using the rule folder (slower): %s", exc)
             return RULES_DIR
         _BUNDLES[RULES_DIR] = bundle

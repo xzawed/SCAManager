@@ -237,16 +237,38 @@ def test_the_bundle_is_built_once_per_process_and_again_if_removed(fresh_bundles
     assert len(built) == 2 and second.is_file(), "지워진 묶음을 다시 만들지 않았다"
 
 
-def test_a_failed_bundle_falls_back_to_the_rule_folder_with_a_warning(fresh_bundles, monkeypatch):
-    """묶기에 실패하면 같은 룰을 폴더로 준다 — 느릴 뿐 결과는 같다. 실패는 경고로 남기고 삼키지 않는다."""
+@pytest.mark.parametrize("error", [
+    OSError("no space left on device"),
+    ImportError("No module named 'ruamel'"),
+    RecursionError("maximum recursion depth exceeded"),
+    MemoryError("cannot allocate"),
+], ids=lambda e: type(e).__name__)
+def test_a_failed_bundle_falls_back_to_the_rule_folder_with_a_warning(fresh_bundles, monkeypatch, error):
+    """묶기에 실패하면 같은 룰을 폴더로 준다 — 느릴 뿐 결과는 같다. 실패는 경고로 남기고 삼키지 않는다.
+
+    어떤 실패든 `rules_config()` 밖으로 새지 않는다 — 새면 그 파일의 semgrep 이 아예 돌지 않는다(Grok d38a80b8).
+    """
     def broken_write(_rules_dir):
-        raise OSError("no space left on device")
+        raise error
 
     warned = []
     monkeypatch.setattr(sg, "_write_bundle", broken_write, raising=False)
     monkeypatch.setattr(sg.logger, "warning", lambda msg, *args: warned.append(msg % args))
     assert _adapter_config() == _rules_dir()
-    assert any("no space left" in w for w in warned), f"실패가 경고로 남지 않았다: {warned}"
+    assert any(str(error) in w for w in warned), f"실패가 경고로 남지 않았다: {warned}"
+
+
+def test_a_rule_json_cannot_hold_falls_back_instead_of_raising(fresh_bundles, monkeypatch, tmp_path):
+    """🔴 실물 경로 — YAML 은 날짜를 매핑 키로 쓸 수 있지만 JSON 은 못 쓴다(`json.dumps` 의 `default` 는 키에 안 걸린다).
+
+    그런 룰이 고정되면 묶기가 TypeError 로 실패한다 — 그래도 폴더로 돌아가야 한다(Grok d38a80b8 반례).
+    """
+    (tmp_path / "odd.yml").write_text("rules:\n- id: odd\n  ? !!timestamp 2020-01-01\n  : x\n", encoding="utf-8")
+    warned = []
+    monkeypatch.setattr(sg, "RULES_DIR", tmp_path)
+    monkeypatch.setattr(sg.logger, "warning", lambda msg, *args: warned.append(msg % args))
+    assert _adapter_config() == tmp_path
+    assert warned, "실패가 경고로 남지 않았다"
 
 
 def test_the_rules_reach_the_runtime_image():
