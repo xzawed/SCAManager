@@ -258,6 +258,26 @@ def test_a_failed_bundle_falls_back_to_the_rule_folder_with_a_warning(fresh_bund
     assert any(str(error) in w for w in warned), f"실패가 경고로 남지 않았다: {warned}"
 
 
+class _UnprobeableBundle:
+    """캐시한 묶음 경로 — 확인(`is_file()`)이 권한 오류를 낸다. 3.12 의 `Path.is_file()` 은 EACCES · EIO 를 올린다."""
+
+    def is_file(self):
+        raise PermissionError(13, "Permission denied")
+
+
+def test_a_cached_bundle_that_cannot_be_probed_is_rebuilt_instead_of_raising(fresh_bundles, monkeypatch, tmp_path):
+    """🔴 캐시한 묶음을 확인하다 난 오류도 밖으로 새지 않는다 — 없는 것으로 보고 다시 묶는다(Grok 10688fdf 반례)."""
+    rebuilt = tmp_path / "rebuilt.json"
+
+    def fake_write(_rules_dir):
+        rebuilt.write_text('{"rules": []}', encoding="utf-8")
+        return rebuilt
+
+    monkeypatch.setattr(sg, "_write_bundle", fake_write, raising=False)
+    sg._BUNDLES[sg.RULES_DIR] = _UnprobeableBundle()  # pylint: disable=protected-access
+    assert _adapter_config() == rebuilt
+
+
 def test_a_rule_json_cannot_hold_falls_back_instead_of_raising(fresh_bundles, monkeypatch, tmp_path):
     """🔴 실물 경로 — YAML 은 날짜를 매핑 키로 쓸 수 있지만 JSON 은 못 쓴다(`json.dumps` 의 `default` 는 키에 안 걸린다).
 

@@ -82,19 +82,32 @@ def rules_config() -> Path:
     folder: the same rules, only slower.
     """
     with _BUNDLE_LOCK:
-        bundle = _BUNDLES.get(RULES_DIR)
-        if bundle is not None and bundle.is_file():
-            return bundle
         try:
-            bundle = _write_bundle(RULES_DIR)
-        # 어떤 실패도 밖으로 내보내지 않는다 — 새면 그 파일의 semgrep 이 아예 돌지 않는다. 폴더는 같은 룰이다.
+            bundle = _BUNDLES.get(RULES_DIR)
+            if bundle is None or not _bundle_present(bundle):
+                bundle = _write_bundle(RULES_DIR)
+                _BUNDLES[RULES_DIR] = bundle
+            return bundle
+        # 묶기의 어떤 실패도 밖으로 내보내지 않는다 — 새면 그 파일의 semgrep 이 아예 돌지 않는다. 폴더는 같은 룰이다.
         # (Grok d38a80b8 반례: JSON 이 못 받는 날짜 매핑 키의 TypeError · RecursionError · MemoryError)
-        # No failure escapes: the folder holds the same rules (a date mapping key raises TypeError, etc.).
+        # 경고 기록 자체가 실패하면 여기서 잡지 않는다 — `static.py` 가 그 파일을 미분석(incomplete)으로 올린다.
+        # No bundling failure escapes: the folder holds the same rules. A failure inside the warning itself
+        # is left to static.py, which records the file as incomplete.
         except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
             logger.warning("semgrep rule bundle unavailable, using the rule folder (slower): %s", exc)
             return RULES_DIR
-        _BUNDLES[RULES_DIR] = bundle
-        return bundle
+
+
+def _bundle_present(path: Path) -> bool:
+    """캐시한 묶음이 아직 있는가 — 확인이 오류를 내면 없는 것으로 보고 다시 묶는다.
+
+    3.12 의 `Path.is_file()` 은 «없음» 만 False 로 바꾸고 권한 · 입출력 오류는 올린다(Grok 10688fdf 반례).
+    Path.is_file() raises on permission or I/O errors in 3.12; treat that as missing and rebuild.
+    """
+    try:
+        return path.is_file()
+    except OSError:
+        return False
 
 
 def _fail(ctx, r, data=None) -> RuntimeError:
