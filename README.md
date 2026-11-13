@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/xzawed/SCAManager/actions/workflows/ci.yml/badge.svg)](https://github.com/xzawed/SCAManager/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/xzawed/SCAManager/actions/workflows/codeql.yml/badge.svg)](https://github.com/xzawed/SCAManager/actions/workflows/codeql.yml)
-[![Tests](https://img.shields.io/badge/Tests-9874%2B_total_(9631_unit_%2B_243_integration)-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-9901%2B_total_(9658_unit_%2B_243_integration)-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
 [![E2E](https://img.shields.io/badge/E2E-554_in_CI-brightgreen?style=flat-square&logo=playwright&logoColor=white)](e2e/)
 [![pylint](https://img.shields.io/badge/pylint-9.99%2F10-brightgreen?style=flat-square&logo=python&logoColor=white)](src/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.141-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
@@ -172,9 +172,9 @@ is skipped quietly. [docs/STATE.md](docs/STATE.md) carries the current counts.
 
 Languages with static analysis:
 
-`c · clojure · cpp · csharp · css · dart · dockerfile · elixir · go · html · java · javascript ·
-kotlin · php · powershell · protobuf · python · ruby · rust · scala · shell · solidity · sql ·
-swift · terraform · typescript · yaml`
+`c · cpp · csharp · css · dart · dockerfile · go · html · java · javascript · kotlin · php ·
+powershell · protobuf · python · ruby · rust · scala · shell · solidity · sql · swift ·
+terraform · typescript · yaml`
 
 </details>
 

@@ -124,18 +124,14 @@ class StaticAnalysisResult:
     # 🔴 범용은 돌았는데 **전담 관측면이 하나도 돌지 않은** 경우 그 언어명 —
     # `uncovered_language`(실행 0개)와 `incomplete`(미분석) 사이의 빈칸.
     #
-    # 실측(2026-08-29 · `detect_language` 가 낼 수 있는 언어 × 프로덕션 `supports()` ×
-    # `PROVISIONED_ANALYZERS`): 배포 이미지에서 **9개 언어**가 여기 걸린다 —
-    #   clojure · csharp · elixir · html · java · php · rust · scala · swift
-    # 그중 clojure·csharp·elixir·java·scala 는 전담 어댑터 자체가 없고(csharp 은 #1565 로
-    # 지웠다), 나머지는 있으나 미조달이다.
-    # 거기서는 범용 semgrep 하나만 도는데 규칙 밀도가 언어마다 크게 달라
-    # (semgrep 자체 보고: elixir 0 · cpp 0 · swift 2 · rust 4) 취약 코드에도 이슈 0건이 나온다.
-    # 실측: `analyze_file("vuln.ex", <System.cmd 주입>)` → issues=0 · incomplete=False.
-    # 아래 `ran > 0` 주석이 「semgrep 이 커버한다」고 적은 것은 **선언상 참이고 실효로 거짓**이다.
+    # 배포 이미지에서 여기 걸리는 언어(semgrep 이 고정한 룰로 지원 × 전담 분석기 미조달 ·
+    # 부재): csharp · java · scala · swift. 전담 어댑터 자체가 없거나(csharp 은 #1565 로 지웠다)
+    # 있으나 미조달이다. 거기서는 범용 semgrep 하나만 도는데 규칙 밀도가 언어마다 크게 달라
+    # (고정한 룰: swift 5 · typescript 12 · scala 86) 돌았다는 사실만으로 그 언어를 봤다고 할 수 없다.
+    # 고정한 룰이 0개인 언어(elixir · clojure 등)는 semgrep 이 지원하지 않아 `uncovered_language` 쪽이다.
     #
     # 🔴 차단하지 않는다(가시화만) — 차단하면 조달 실패가 다시 벽이 된다(#1568).
-    # Supported and observed only by the generic fallback. 9 languages on the deployed image.
+    # Supported and observed only by the generic fallback (csharp · java · scala · swift on the image).
     no_dedicated_observer: str | None = None
 
 
@@ -201,8 +197,8 @@ def _run_analyzers(ctx: AnalyzeContext, result: StaticAnalysisResult) -> tuple[i
             result.incomplete = True
 
     # 🔴 **범용은 돌았는데** 전담 관측면이 하나도 돌지 않았다 — 그 결과를 「완전」으로
-    #    기록하지 않는다. 전담 어댑터가 아예 없는 언어(scala·elixir·java·clojure)도,
-    #    있지만 조달 실패로 못 돈 경우(rust·swift·php·html)도 같은 축이다.
+    #    기록하지 않는다. 전담 어댑터가 아예 없는 언어(scala · java · csharp)도,
+    #    있지만 조달 실패로 못 돈 경우(swift)도 같은 축이다.
     #    (csharp 은 전자다 — dotnet_format 은 단일 `.cs` 를 분석할 수 없어 지웠다, #1565)
     #
     # 🔴 조건이 `supported > 0` 이 아니라 **`ran > 0`** 인 이유 — 첫 판은 전자였고 틀렸다.

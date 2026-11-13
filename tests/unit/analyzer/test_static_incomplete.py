@@ -210,16 +210,19 @@ def test_operator_opt_out_suppresses_the_provisioned_regression_promotion(monkey
     """
     from src.analyzer.io.static import PROVISIONED_ANALYZERS, analyze_file
 
-    assert "shellcheck" in PROVISIONED_ANALYZERS
+    # 🔴 semgrep 이 이 언어를 지원해야 «semgrep 을 끔» 이 opted_out 으로 셈된다. semgrep 은 고정한 룰이
+    #    있는 언어만 지원하므로(L03 P1-40 — shell 은 빠졌다) 둘 다 지원하는 go 로 잰다.
+    # semgrep must support the language for its opt-out to count; it no longer covers shell, so use go.
+    assert "golangci-lint" in PROVISIONED_ANALYZERS
     assert "semgrep" in PROVISIONED_ANALYZERS
-    _force_absent(monkeypatch, {"shellcheck"})
+    _force_absent(monkeypatch, {"golangci-lint"})
 
-    # semgrep 을 운영자가 끈다 → opted_out >= 1. shellcheck 은 부재(조달 회귀 후보).
+    # semgrep 을 운영자가 끈다 → opted_out >= 1. golangci-lint 는 부재(조달 회귀 후보).
     result = analyze_file(
-        "deploy.sh", "#!/bin/sh\necho hi\n", repo_config=_OptOutConfig(["semgrep"])
+        "main.go", "package main\n\nfunc main() {}\n", repo_config=_OptOutConfig(["semgrep"])
     )
 
-    assert "shellcheck" in result.unavailable_tools, "전제 붕괴 — 부재 기록이 없다"
+    assert "golangci-lint" in result.unavailable_tools, "전제 붕괴 — 부재 기록이 없다"
     assert result.incomplete is False, (
         "운영자가 도구를 끈 상태인데 조달 회귀로 승격했다 — 자기 설정이 결함으로 보고된다"
     )

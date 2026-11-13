@@ -1,14 +1,26 @@
-"""Semgrep static analysis tool — 30+ 언어 baseline 정적분석.
+"""Semgrep static analysis tool — 리포에 고정한 룰로 돌리는 범용 정적분석.
 
 _SemgrepAnalyzer는 Analyzer Protocol을 구현하며 registry.register()로 등록된다.
 semgrep 바이너리가 없으면 is_enabled()가 False를 반환해 조용히 skip된다.
+
+룰은 레지스트리에서 받지 않는다 — `src/analyzer/configs/semgrep/rules/` 에 고정한 GitLab sast-rules 의
+허용 라이선스 부분(MIT · Apache-2.0 · LGPL-3.0)만 쓴다. 출처 · 판 · 파일별 라이선스는 같은 폴더의
+`MANIFEST.json` 이 갖는다. 레지스트리 룰(`p/default`)은 «내부 업무 목적 · 서비스 제공 금지» 라이선스라
+서비스로 쓸 수 없고, 실행마다 레지스트리에 기대면 그 장애가 분석 실패가 된다(회고 원장 L03 P1-40).
+Rules are not fetched from the registry: the analyzer runs the vendored, allowed-license subset of GitLab
+sast-rules (MIT · Apache-2.0 · LGPL-3.0); provenance and per-file licenses live in MANIFEST.json.
 """
 from __future__ import annotations
 
+import atexit
 import json
 import logging
+import os
 import shutil
 import subprocess  # nosec B404
+import tempfile
+import threading
+from pathlib import Path
 
 from src.analyzer.pure.registry import AnalyzeContext, AnalysisIssue, Category, Severity, register
 from src.constants import STATIC_ANALYSIS_TIMEOUT
@@ -16,13 +28,93 @@ from src.constants import STATIC_ANALYSIS_TIMEOUT
 logger = logging.getLogger(__name__)
 
 _ERR_EXCERPT = 200
+# 고정한 룰 폴더 — 리포 · 이미지에는 이 원본 YAML 만 둔다(라이선스 머리 포함)
+# The vendored rule folder; only these original YAML files ship in the repo and the image.
+RULES_DIR = Path(__file__).resolve().parents[2] / "configs" / "semgrep" / "rules"
+
+# 룰 폴더 → 이 프로세스가 만든 JSON 묶음. 묶기는 프로세스마다 한 번이다.
+# Rule folder -> the JSON bundle this process built; bundling happens once per process.
+_BUNDLES: dict[Path, Path] = {}
+_BUNDLE_LOCK = threading.Lock()
+
+
+def _write_bundle(rules_dir: Path) -> Path:
+    """고정 룰 YAML 을 JSON 한 파일로 묶어 이 프로세스만 쓰는 임시 폴더에 쓴다.
+
+    semgrep 과 같은 갈래의 파서(ruamel · YAML 1.2)로 읽는다 — semgrep 이 깔린 환경에는 늘 있다.
+    The rules are read with the parser family semgrep itself uses (ruamel, YAML 1.2), which is
+    always installed alongside semgrep.
+    """
+    # pylint: disable=import-outside-toplevel
+    from ruamel.yaml import YAML
+    from ruamel.yaml.error import YAMLError
+
+    loader = YAML(typ="safe", pure=True)
+    rules: list = []
+    for path in sorted(p for p in rules_dir.rglob("*") if p.suffix in (".yml", ".yaml")):
+        try:
+            doc = loader.load(path.read_text(encoding="utf-8"))
+        except YAMLError as exc:
+            raise ValueError(f"{path.name}: {exc}") from exc
+        found = doc.get("rules") if isinstance(doc, dict) else None
+        if not isinstance(found, list):
+            raise ValueError(f"{path.name}: no rules list")
+        rules.extend(found)
+    if not rules:
+        raise ValueError(f"no rules under {rules_dir}")
+    # 권한 0700 폴더 — 다른 사용자가 묶음을 바꿔치기할 수 없다 / private 0700 dir: nobody else can swap the bundle
+    out_dir = Path(tempfile.mkdtemp(prefix="scamanager-semgrep-"))
+    atexit.register(shutil.rmtree, out_dir, True)
+    out = out_dir / "rules.json"
+    out.write_text(json.dumps({"rules": rules}, default=str), encoding="utf-8")
+    return out
+
+
+def rules_config() -> Path:
+    """semgrep `--config` 에 줄 경로 — 고정 룰을 JSON 한 파일로 묶은 것.
+
+    semgrep 은 YAML 설정을 위치 정보와 함께 읽느라 느리다: 고정 룰 폴더를 그대로 주면 실행마다 약 10 초,
+    같은 룰을 JSON 으로 주면 약 2 초다(실측 · 결과 같음). 파일마다 semgrep 을 부르므로 이 차이가 파일 수만큼
+    곱해진다. 묶기에 실패하면 경고를 남기고 폴더를 준다 — 같은 룰이고 느릴 뿐이다.
+
+    semgrep parses YAML configs with position tracking and is slow: the vendored folder costs ~10 s per
+    run, the same rules as JSON ~2 s (measured, same results). On failure it warns and falls back to the
+    folder: the same rules, only slower.
+    """
+    with _BUNDLE_LOCK:
+        try:
+            bundle = _BUNDLES.get(RULES_DIR)
+            if bundle is None or not _bundle_present(bundle):
+                bundle = _write_bundle(RULES_DIR)
+                _BUNDLES[RULES_DIR] = bundle
+            return bundle
+        # 묶기의 어떤 실패도 밖으로 내보내지 않는다 — 새면 그 파일의 semgrep 이 아예 돌지 않는다. 폴더는 같은 룰이다.
+        # (Grok d38a80b8 반례: JSON 이 못 받는 날짜 매핑 키의 TypeError · RecursionError · MemoryError)
+        # 경고 기록 자체가 실패하면 여기서 잡지 않는다 — `static.py` 가 그 파일을 미분석(incomplete)으로 올린다.
+        # No bundling failure escapes: the folder holds the same rules. A failure inside the warning itself
+        # is left to static.py, which records the file as incomplete.
+        except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+            logger.warning("semgrep rule bundle unavailable, using the rule folder (slower): %s", exc)
+            return RULES_DIR
+
+
+def _bundle_present(path: Path) -> bool:
+    """캐시한 묶음이 아직 있는가 — 확인이 오류를 내면 없는 것으로 보고 다시 묶는다.
+
+    3.12 의 `Path.is_file()` 은 «없음» 만 False 로 바꾸고 권한 · 입출력 오류는 올린다(Grok 10688fdf 반례).
+    Path.is_file() raises on permission or I/O errors in 3.12; treat that as missing and rebuild.
+    """
+    try:
+        return path.is_file()
+    except OSError:
+        return False
 
 
 def _fail(ctx, r, data=None) -> RuntimeError:
     """실패를 예외로 만든다 — `static.py` 는 `run()` 이 **올릴 때만** `incomplete` 로 승격한다.
 
     🔴 `[]` 를 돌려주면 그 실패가 «이슈 0건 · 완전» 이 되어 미분석 코드가 auto-merge 된다.
-    semgrep 은 java·scala·elixir·clojure 의 **유일한** 분석기라 그 언어에서는 대체 관측면도
+    semgrep 은 java · scala · csharp · swift 의 **유일한** 분석기라 그 언어에서는 대체 관측면도
     없다(실측). 형제 `python.py::_fail` 과 같은 관용구다.
     JSON 을 찍고 실패한 실행은 stderr 가 비어 있어(실측) 원인을 JSON 의 `errors` 문장에서 가져온다.
 
@@ -45,23 +137,20 @@ def _fail(ctx, r, data=None) -> RuntimeError:
 class _SemgrepAnalyzer:
     name = "semgrep"
     category = Category.CODE_QUALITY
-    # 🔴 **범용 대체 관측면** — 한 언어의 전담 분석기가 아니라 22개 언어의 폭넓은 fallback 이다.
+    # 🔴 **범용 대체 관측면** — 한 언어의 전담 분석기가 아니라 여러 언어의 폭넓은 fallback 이다.
     #    그래서 「전담 관측면이 돌았는가」를 셀 때 이것은 세지 않는다
     #    (`static.py::no_dedicated_observer`). 규칙 밀도가 언어마다 크게 다르므로
-    #    (자체 보고: elixir 0 · cpp 0 · swift 2 · rust 4) semgrep 이 돌았다는 사실만으로
+    #    (고정한 룰: swift 5 · typescript 12 · scala 86) semgrep 이 돌았다는 사실만으로
     #    그 언어를 봤다고 말할 수 없다 — 그 판단이 이 표식의 이유다.
     # The generic multi-language fallback: running it does not mean the language was observed.
     is_generic = True
 
+    # 🔴 고정한 룰이 있는 언어만 — 룰이 0개인 언어에서 semgrep 을 돌리면 «이슈 0건 · 완전» 이 된다.
+    #    목록은 룰 파일의 `languages` 에서 나온다(`tests/unit/analyzer/test_semgrep_vendored_rules.py` 가 대조).
+    # Only languages the vendored rules cover; running semgrep with zero applicable rules reports a clean run.
     SUPPORTED_LANGUAGES: frozenset[str] = frozenset({
-        # Tier 1
-        "python", "javascript", "typescript", "java", "go", "rust",
-        "c", "cpp", "csharp", "ruby",
-        # Tier 2
-        "php", "scala", "kotlin", "swift", "elixir",
-        "clojure", "solidity", "shell", "dockerfile",
-        # Config / Markup
-        "yaml", "html", "terraform",
+        "python", "javascript", "typescript", "java", "go",
+        "csharp", "scala", "kotlin", "swift",
     })
 
     def supports(self, ctx: AnalyzeContext) -> bool:
@@ -73,15 +162,19 @@ class _SemgrepAnalyzer:
         return shutil.which("semgrep") is not None
 
     def run(self, ctx: AnalyzeContext) -> list[AnalysisIssue]:
-        """semgrep p/default 룰셋으로 분석 후 이슈 목록 반환.
-        Analyze with semgrep p/default ruleset and return issue list.
+        """고정한 룰로 분석 후 이슈 목록 반환 — 네트워크에 닿지 않는다(지표 · 판 확인 끔).
+        Analyze with the vendored rules and return issues; no network (metrics and version check off).
         """
         try:
             r = subprocess.run(  # nosec B603 B607
-                ["semgrep", "scan", "--config=p/default", "--json",
+                ["semgrep", "scan", f"--config={rules_config()}", "--json",
+                 "--metrics=off", "--disable-version-check",
                  "--timeout", str(STATIC_ANALYSIS_TIMEOUT), ctx.tmp_path],
                 capture_output=True, text=True, encoding="utf-8", errors="replace",
                 timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
+                # 폴더로 되돌아가면 비-ASCII 가 든 YAML 을 읽는다 — 로캘 인코딩(예: cp949)이면 semgrep 이 죽는다(실측 Windows)
+                # The folder fallback reads YAML with non-ASCII text; a non-UTF-8 locale encoding breaks semgrep.
+                env={**os.environ, "PYTHONUTF8": "1"},
             )
             # 🔴 stdout 이 JSON 이 아니면 semgrep 이 **분석하지 않은** 것이다.
             # `--json` 의 정상 «이슈 없음» 도 `{"results": []}` 라 `{` 로 시작한다 —

@@ -21,7 +21,7 @@ Ack 5 days, verdict 14 days, advisory after fix. No SLA/bounty (single maintaine
 - **GitHub API**, **`DATABASE_URL`** — files, diffs, scores, summaries; unavoidable, self-host the DB.
 - **Anthropic**/**OpenAI** — diff + commit message; unset `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` (OpenAI off by default).
 - **Telegram**, **Discord/Slack/n8n/webhook/SMTP** — score, grade, AI summary; unset `TELEGRAM_BOT_TOKEN`/`SMTP_*`, blank Settings URLs.
-- **Railway**/**semgrep.dev** — deploy status; rulesets + anon metrics, **not** source; blank the Railway token, `SEMGREP_SEND_METRICS=off`.
+- **Railway** — deploy status, **not** source; blank the Railway token. semgrep runs the rules vendored in `src/analyzer/configs/semgrep/` with metrics and the version check off — it does not contact semgrep.dev.
 - Other analyzers are local; `golangci-lint`/`clippy` fetch uncached deps.
 
 ## Hardening

@@ -9,7 +9,7 @@
 
     「`[]` 를 돌려주면 그 실패가 «이슈 0건 · 완전» 이 되어 미분석 코드가 auto-merge 된다.」
 
-그리고 **semgrep 은 java·scala·elixir·clojure 의 유일한 분석기**다(실측). 이 언어에서
+그리고 **semgrep 은 java · scala · csharp · swift 의 유일한 분석기**다(실측). 이 언어에서
 semgrep 이 죽으면 아무 대체 분석기가 없어 결과가 통째로 조용해진다:
 
     semgrep 크래시(java) -> issues=[] · incomplete=False · uncovered_language=None
@@ -72,7 +72,7 @@ def test_semgrep_is_the_only_analyzer_for_these_languages():
     """
     solo = []
     for lang, filename in [("java", "Foo.java"), ("scala", "Foo.scala"),
-                           ("elixir", "foo.ex"), ("clojure", "foo.clj")]:
+                           ("csharp", "Foo.cs"), ("swift", "Foo.swift")]:
         ctx = AnalyzeContext(filename=filename, content="x", language=lang, is_test=False,
                              tmp_path=filename, repo_config=None, timed_out=False)
         provisioned = [a.name for a in REGISTRY
