@@ -442,13 +442,29 @@ class TestSemgrepRunGracefulDegradation:
             with _pytest.raises(RuntimeError, match="did not analyze"):
                 _SemgrepAnalyzer().run(ctx)
 
-    def test_run_does_not_raise_on_nonzero_returncode(self, make_ctx):
-        # semgrep이 비정상 종료코드 반환 시에도 예외 없이 파싱된 이슈를 반환해야 한다
-        # Even with a non-zero exit code, semgrep must return parsed issues without raising.
+    def test_run_raises_on_nonzero_returncode_even_with_json(self, make_ctx):
+        """🔴 JSON 이 와도 종료 코드가 0 이 아니면 실패다 (회고 2026-11-06 원장 L03 P1-39).
+
+        이 시험의 옛 판은 «종료 1 + 유효한 JSON = 정상 파싱» 을 고정했다. 그 전제가 틀렸다(실측
+        semgrep 1.183.0): `--json` 은 찾은 것이 있어도 0 으로 끝나고(`--error` 를 주지 않는다),
+        레지스트리가 룰셋을 거절하면 `{"results": [], ...}` 를 찍고 7 로 끝난다 — 옛 판정은 그것을
+        «이슈 0건 · 완전» 으로 기록했다.
+        The old version pinned "exit 1 + valid JSON = clean parse"; --json exits 0 even with findings,
+        and a rejected ruleset prints empty JSON results and exits 7.
+        """
+        import pytest as _pytest  # noqa: PLC0415
+
         from src.analyzer.io.tools.semgrep import _SemgrepAnalyzer
         ctx = make_ctx(language="python", tmp_path="/tmp/test.py")
-        # returncode=1이어도 stdout에 유효한 JSON이 있으면 정상 파싱
         with patch("subprocess.run", return_value=_mock_semgrep_proc(SAMPLE_OUTPUT_SECURITY_ERROR, returncode=1)):
+            with _pytest.raises(RuntimeError, match="exit=1"):
+                _SemgrepAnalyzer().run(ctx)
+
+    def test_run_parses_issues_on_exit_zero(self, make_ctx):
+        """대조군 — 같은 JSON 이 종료 0 으로 오면(찾은 것이 있는 정상 실행) 이슈를 그대로 돌려준다."""
+        from src.analyzer.io.tools.semgrep import _SemgrepAnalyzer
+        ctx = make_ctx(language="python", tmp_path="/tmp/test.py")
+        with patch("subprocess.run", return_value=_mock_semgrep_proc(SAMPLE_OUTPUT_SECURITY_ERROR, returncode=0)):
             issues = _SemgrepAnalyzer().run(ctx)
         assert len(issues) == 1
 

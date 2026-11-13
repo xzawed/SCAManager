@@ -18,17 +18,25 @@ logger = logging.getLogger(__name__)
 _ERR_EXCERPT = 200
 
 
-def _fail(ctx, r) -> RuntimeError:
+def _fail(ctx, r, data=None) -> RuntimeError:
     """실패를 예외로 만든다 — `static.py` 는 `run()` 이 **올릴 때만** `incomplete` 로 승격한다.
 
     🔴 `[]` 를 돌려주면 그 실패가 «이슈 0건 · 완전» 이 되어 미분석 코드가 auto-merge 된다.
     semgrep 은 java·scala·elixir·clojure 의 **유일한** 분석기라 그 언어에서는 대체 관측면도
     없다(실측). 형제 `python.py::_fail` 과 같은 관용구다.
+    JSON 을 찍고 실패한 실행은 stderr 가 비어 있어(실측) 원인을 JSON 의 `errors` 문장에서 가져온다.
 
     Returning [] would record the failure as a clean, complete run; semgrep is the only
-    analyzer for four languages, so nothing else would notice.
+    analyzer for four languages, so nothing else would notice. A failed run that printed JSON has
+    an empty stderr, so the cause comes from the JSON `errors` messages.
     """
-    detail = str(getattr(r, "stderr", "") or r.stdout or "").strip()[:_ERR_EXCERPT]
+    errors = data.get("errors") if isinstance(data, dict) else None
+    # 목록이 아니면 원인 문장이 없는 것으로 본다 — 숫자 · 참거짓은 돌 수 없어 여기서 다시 터진다(Grok 반례 96c93f6d)
+    # Anything but a list carries no messages; a number or boolean is not iterable.
+    messages = [str(e.get("message", "")) for e in (errors if isinstance(errors, list) else [])
+                if isinstance(e, dict)]
+    detail = ("; ".join(m for m in messages if m)
+              or str(getattr(r, "stderr", "") or r.stdout or "")).strip()[:_ERR_EXCERPT]
     return RuntimeError(
         f"semgrep did not analyze {ctx.tmp_path} (exit={r.returncode}): {detail}"
     )
@@ -86,6 +94,15 @@ class _SemgrepAnalyzer:
                 data = json.loads(r.stdout)
             except json.JSONDecodeError as exc:
                 raise _fail(ctx, r) from exc
+            # 🔴 JSON 이어도 종료 코드가 0 이 아니면 분석하지 않은 것이다. 레지스트리가 룰셋을 거절하거나
+            # 설정이 없으면 `{"results": [], "errors": [...]}` 를 찍고 7 로 끝난다(실측 1.183.0).
+            # `--json` 은 찾은 것이 있어도 0 으로 끝나므로(`--error` 를 주지 않는다) 0 이 아닌 값은 실패뿐이다.
+            # 문법 오류로 일부만 파싱한 파일은 `warn` 오류와 함께 0 으로 끝난다 — 그 파일은 훑은 것이다.
+            # A JSON body with a non-zero exit is still a failure: a rejected registry ruleset or a missing
+            # config prints {"results": [], "errors": [...]} and exits 7, while --json exits 0 even with
+            # findings. Partial parsing exits 0 with a warn-level error: that file was still scanned.
+            if r.returncode != 0:
+                raise _fail(ctx, r, data)
             issues = []
             for item in data.get("results", []):
                 extra = item.get("extra", {})

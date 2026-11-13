@@ -31,8 +31,8 @@
 
 ## 분석기 추가 (24종)
 
-1. `src/analyzer/io/tools/<도구>.py` 작성 — `name`·`category` + `supports(ctx)`·`is_enabled(ctx)`(`shutil.which`)·`run(ctx)`. 본보기 `src/analyzer/io/tools/eslint.py::did not produce JSON`(`shellcheck.py` 는 `[]` 를 반환하는 구식이라 따르지 않는다).
-2. `run` 은 `subprocess.run(..., timeout=STATIC_ANALYSIS_TIMEOUT, check=False)`. `TimeoutExpired` 는 `ctx.timed_out = True` 후 `[]` 반환(예외 금지). 비-JSON stdout 은 `RuntimeError`.
+1. `src/analyzer/io/tools/<도구>.py` 작성 — `name`·`category` + `supports(ctx)`·`is_enabled(ctx)`(`shutil.which`)·`run(ctx)`. 본보기 `src/analyzer/io/tools/eslint.py::did not produce JSON`.
+2. `run` 은 `subprocess.run(..., timeout=STATIC_ANALYSIS_TIMEOUT, check=False)`. `TimeoutExpired` 는 `ctx.timed_out = True` 후 `[]` 반환(예외 금지). 비-JSON stdout 과 도구가 실패로 쓰는 종료 코드는 JSON 이 와도 `RuntimeError`(`src/analyzer/io/tools/semgrep.py::if r.returncode != 0:`).
 3. 모듈 하단 `register(...)` + `static.py` 상단 import 1줄(로드 시 자동 등록).
 4. 조달한 바이너리는 `src/analyzer/io/static.py::PROVISIONED_ANALYZERS:` 에 등재. 등재분 부재 = 배포 회귀 → `incomplete` 차단, 미등재분 부재 = 미제공 → 가시화만.
 5. 새 언어면 `src/analyzer/pure/language.py::_EXTENSION_MAP:` 확장자 맵 + `review_guides/tier{N}/<lang>.py` + `src/analyzer/pure/review_guides/__init__.py::_GUIDE_MAP:` 1줄.
