@@ -61,6 +61,17 @@ def _rule_files() -> list[Path]:
     return sorted(p for p in RULES_DIR.rglob("*") if p.suffix in (".yml", ".yaml"))
 
 
+def _covered_languages(rules) -> set[str]:
+    """룰들이 선언한 `languages` 를 이 앱의 언어 이름으로 — 언어가 아닌 값(generic · regex · none)은 뺀다."""
+    covered = set()
+    for rule in rules:
+        for lang in rule.get("languages", []) or []:
+            name = _LANG_ALIASES.get(str(lang).lower(), str(lang).lower())
+            if name not in _NOT_LANGUAGES:
+                covered.add(name)
+    return covered
+
+
 # ─── 계기 자기검증 ───────────────────────────────────────────────────────────
 
 
@@ -128,17 +139,27 @@ def test_supported_languages_are_exactly_the_languages_the_rules_cover():
     룰이 0개인 언어를 지원한다고 하면 그 언어 파일은 «이슈 0건 · 완전» 으로 기록된다. 거꾸로 룰이 있는데
     지원 목록에 없으면 그 룰은 한 번도 돌지 않는다.
     """
-    covered = set()
+    rules = []
     for path in _rule_files():
-        for rule in (yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get("rules", []) or []:
-            for lang in rule.get("languages", []) or []:
-                name = _LANG_ALIASES.get(str(lang).lower(), str(lang).lower())
-                if name not in _NOT_LANGUAGES:
-                    covered.add(name)
+        rules.extend((yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get("rules", []) or [])
+    covered = _covered_languages(rules)
     assert covered == set(_SemgrepAnalyzer.SUPPORTED_LANGUAGES), (
         f"룰만 있음: {sorted(covered - _SemgrepAnalyzer.SUPPORTED_LANGUAGES)} · "
         f"지원만 있음: {sorted(_SemgrepAnalyzer.SUPPORTED_LANGUAGES - covered)}"
     )
+
+
+# witness-corpus: semgrep 문서의 다른 비-언어 모드 이름 — 위 제외 목록에서 뽑지 않았다(generic 의 옛 이름 · 실험 모드)
+_OTHER_PSEUDO_LANGUAGES = ["spacegrep", "aliengrep"]
+
+
+@pytest.mark.parametrize("token", _OTHER_PSEUDO_LANGUAGES)
+def test_an_unlisted_pseudo_language_fails_closed(token):
+    """🔴 제외 목록에 없는 비-언어 값은 «언어» 로 셈된다 — 그런 룰이 들어오면 위 언어 일치 시험이 빨갛게 된다.
+
+    목록이 모자라면 조용히 초록이 되는 쪽이 아니라 막는 쪽으로 틀린다는 것을 고정한다.
+    """
+    assert _covered_languages([{"languages": [token, "python"]}]) == {token, "python"}
 
 
 def test_the_rules_reach_the_runtime_image():
@@ -170,3 +191,34 @@ def test_real_semgrep_loads_the_rules_offline_and_finds_an_issue(tmp_path):
     data = json.loads(r.stdout)
     assert not data.get("errors"), f"룰 · 대상 오류: {data['errors'][:2]}"
     assert data.get("results"), "취약 코드에서 이슈가 하나도 안 나왔다"
+
+
+# 지원 언어 → 그 언어로 읽히는 확장자. 지원 언어가 늘면 여기서 KeyError — 대응을 강제한다.
+# Supported language -> an extension semgrep reads as that language; a new language must be added here.
+_EXT = {"python": "py", "javascript": "js", "typescript": "ts", "java": "java", "go": "go",
+        "csharp": "cs", "scala": "scala", "kotlin": "kt", "swift": "swift"}
+
+
+@pytest.mark.skipif(shutil.which("semgrep") is None, reason="semgrep 바이너리 없음 — CI · 이미지에서 잰다")
+def test_real_semgrep_applies_at_least_one_rule_to_every_supported_language(tmp_path):
+    """🔴 실행 경로에서도 지원 언어마다 룰이 적어도 하나 걸린다 (Grok 1c1278f1 이 짚은 빈칸).
+
+    위 언어 일치 시험은 룰 파일의 선언만 본다. 여기서는 어댑터와 같은 설정으로 실물 semgrep 을 돌려,
+    언어마다 만든 파일이 `paths.scanned` 에 오르는지 본다 — semgrep 은 걸리는 룰이 없는 파일을 훑지 않는다
+    (실측: 같은 실행의 .rb 파일은 scanned 에 없다). 대조군 .rb 가 오르지 않는 것도 함께 본다.
+    """
+    for lang in _SemgrepAnalyzer.SUPPORTED_LANGUAGES:
+        (tmp_path / f"sample_{lang}.{_EXT[lang]}").write_text("x\n", encoding="utf-8")
+    (tmp_path / "control.rb").write_text("puts 1\n", encoding="utf-8")
+    r = subprocess.run(
+        ["semgrep", "scan", f"--config={RULES_DIR}", "--json", "--metrics=off",
+         "--disable-version-check", str(tmp_path)],
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300, check=False,
+        env={**os.environ, "PYTHONUTF8": "1"},
+    )
+    assert r.returncode == 0, f"semgrep 종료 {r.returncode}: {r.stderr[-300:]}"
+    scanned = {Path(p).name for p in (json.loads(r.stdout).get("paths") or {}).get("scanned", [])}
+    missing = sorted(lang for lang in _SemgrepAnalyzer.SUPPORTED_LANGUAGES
+                     if f"sample_{lang}.{_EXT[lang]}" not in scanned)
+    assert not missing, f"룰이 하나도 걸리지 않은 지원 언어: {missing}"
+    assert "control.rb" not in scanned, "전제 붕괴 — 룰이 없는 언어도 scanned 에 오른다면 이 판정은 무효다"
