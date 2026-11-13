@@ -30,10 +30,17 @@ os.environ.setdefault("ANTHROPIC_API_KEY", "")
 import pytest  # noqa: E402
 import yaml  # noqa: E402
 
-from src.analyzer.io.tools.semgrep import RULES_DIR, _SemgrepAnalyzer  # noqa: E402
+from src.analyzer.io.tools import semgrep as sg  # noqa: E402
 
 _REPO = Path(__file__).resolve().parents[3]
-_MANIFEST = RULES_DIR.parent / "MANIFEST.json"
+_SemgrepAnalyzer = sg._SemgrepAnalyzer  # pylint: disable=protected-access
+
+
+def _rules_dir() -> Path:
+    """어댑터가 쓰는 고정 룰 폴더 — 없으면 수집 오류가 아니라 단언으로 실패한다(역-뮤테이션 신호를 단언으로)."""
+    rules = getattr(sg, "RULES_DIR", None)
+    assert rules is not None and Path(rules).is_dir(), "semgrep 어댑터에 고정 룰 폴더(RULES_DIR)가 없다"
+    return Path(rules)
 
 # 폴더 이름 → 그 폴더의 룰이 머리에 적어야 하는 라이선스 줄
 # License folder -> the header line every rule in that folder must carry.
@@ -58,7 +65,7 @@ def _license_of(text: str) -> str | None:
 
 
 def _rule_files() -> list[Path]:
-    return sorted(p for p in RULES_DIR.rglob("*") if p.suffix in (".yml", ".yaml"))
+    return sorted(p for p in _rules_dir().rglob("*") if p.suffix in (".yml", ".yaml"))
 
 
 def _covered_languages(rules) -> set[str]:
@@ -103,17 +110,18 @@ def test_every_vendored_rule_carries_the_license_of_its_folder():
     """🔴 허용 밖 라이선스의 룰이 섞이지 않는다 — 폴더(라이선스)와 파일 머리가 일치한다."""
     wrong = []
     for path in _rule_files():
-        folder = path.relative_to(RULES_DIR).parts[0]
+        folder = path.relative_to(_rules_dir()).parts[0]
         if _license_of(path.read_text(encoding="utf-8")) != folder:
-            wrong.append(path.relative_to(RULES_DIR).as_posix())
+            wrong.append(path.relative_to(_rules_dir()).as_posix())
     assert not wrong, f"폴더와 라이선스가 다른 룰 {len(wrong)}개: {wrong[:5]}"
 
 
 def test_manifest_lists_exactly_the_vendored_files():
     """목록(MANIFEST.json)과 실제 파일이 어긋나지 않는다 — 출처 · 판 · 파일별 라이선스의 정본이다."""
-    manifest = json.loads(_MANIFEST.read_text(encoding="utf-8"))
+    manifest = json.loads((_rules_dir().parent / "MANIFEST.json").read_text(encoding="utf-8"))
     listed = {(f["path"], f["license"]) for f in manifest["files"]}
-    actual = {(p.relative_to(RULES_DIR).as_posix(), p.relative_to(RULES_DIR).parts[0]) for p in _rule_files()}
+    root = _rules_dir()
+    actual = {(p.relative_to(root).as_posix(), p.relative_to(root).parts[0]) for p in _rule_files()}
     assert listed == actual, f"목록에만: {sorted(listed - actual)[:3]} · 파일에만: {sorted(actual - listed)[:3]}"
     assert manifest["version"] == "v2.10.1" and manifest["source"].endswith("/sast-rules")
 
@@ -128,7 +136,7 @@ def test_license_texts_ship_with_the_rules(relpath, needles):
 
     LGPL-3.0 은 GPL-3.0 에 더한 허가라 두 원문이 함께 있어야 한다.
     """
-    text = (RULES_DIR / relpath).read_text(encoding="utf-8")
+    text = (_rules_dir() / relpath).read_text(encoding="utf-8")
     for needle in needles:
         assert needle in text, f"{relpath} 에 «{needle}» 가 없다"
 
@@ -164,7 +172,7 @@ def test_an_unlisted_pseudo_language_fails_closed(token):
 
 def test_the_rules_reach_the_runtime_image():
     """`.dockerignore` 가 룰 폴더를 이미지에서 빼지 않는다 — 빠지면 운영 semgrep 이 설정 없음으로 실패한다."""
-    sample = RULES_DIR.relative_to(_REPO).as_posix() + "/mit/python/x.yml"
+    sample = _rules_dir().relative_to(_REPO).as_posix() + "/mit/python/x.yml"
     patterns = [line.strip() for line in (_REPO / ".dockerignore").read_text(encoding="utf-8").splitlines()
                 if line.strip() and not line.startswith("#") and not line.startswith("!")]
     hits = [p for p in patterns
@@ -182,7 +190,7 @@ def test_real_semgrep_loads_the_rules_offline_and_finds_an_issue(tmp_path):
     sample.write_text("import subprocess\n\ndef run(cmd):\n    subprocess.call(cmd, shell=True)\n"
                       "    return eval(cmd)\n", encoding="utf-8")
     r = subprocess.run(
-        ["semgrep", "scan", f"--config={RULES_DIR}", "--json", "--metrics=off",
+        ["semgrep", "scan", f"--config={_rules_dir()}", "--json", "--metrics=off",
          "--disable-version-check", str(sample)],
         capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300, check=False,
         env={**os.environ, "PYTHONUTF8": "1"},
@@ -211,7 +219,7 @@ def test_real_semgrep_applies_at_least_one_rule_to_every_supported_language(tmp_
         (tmp_path / f"sample_{lang}.{_EXT[lang]}").write_text("x\n", encoding="utf-8")
     (tmp_path / "control.rb").write_text("puts 1\n", encoding="utf-8")
     r = subprocess.run(
-        ["semgrep", "scan", f"--config={RULES_DIR}", "--json", "--metrics=off",
+        ["semgrep", "scan", f"--config={_rules_dir()}", "--json", "--metrics=off",
          "--disable-version-check", str(tmp_path)],
         capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300, check=False,
         env={**os.environ, "PYTHONUTF8": "1"},
