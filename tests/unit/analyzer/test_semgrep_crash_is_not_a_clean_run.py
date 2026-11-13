@@ -38,6 +38,8 @@ os.environ.setdefault("ANTHROPIC_API_KEY", "")
 
 from unittest.mock import patch  # noqa: E402
 
+import pytest  # noqa: E402
+
 from src.analyzer.io.static import (  # noqa: E402
     PROVISIONED_ANALYZERS,
     REGISTRY,
@@ -164,6 +166,122 @@ def test_missing_binary_reports_the_tool_not_a_crash():
     assert crashed.unavailable_tools == [], (
         f"크래시가 «부재» 로 잘못 분류된다: {crashed.unavailable_tools}"
     )
+
+
+# ─── JSON 을 찍고도 실패한 실행 (회고 2026-11-06 원장 L03 P1-39) ───────────────────
+#
+# 🔴 실측(semgrep 1.183.0, `--json --metrics=off`): 레지스트리가 룰셋을 거절하거나 설정이 없으면
+# stdout 은 여전히 `{` 로 시작하는 JSON 이고 `results` 는 비어 있으며 종료 코드는 7 이다. 위의
+# «`{` 로 시작하면 분석됐다» 판정만으로는 이것이 «이슈 0건 · 완전» 으로 기록된다.
+# `--json` 은 찾은 것이 있어도 0 으로 끝난다(`--error` 를 주지 않는다) — 0 이 아닌 값은 실패뿐이다.
+# Measured: a rejected registry ruleset or a missing config still prints a JSON object with empty
+# results and exits 7; --json exits 0 even with findings, so any non-zero exit is a failure.
+
+_REGISTRY_404 = (
+    '{"version": "1.183.0", "results": [], "errors": ['
+    '{"code": 2, "level": "error", "type": "SemgrepError", "message": '
+    '"Failed to download configuration from https://semgrep.dev/c/p/default HTTP 404."}, '
+    '{"code": 7, "level": "error", "type": "SemgrepError", "message": '
+    '"invalid configuration file found (1 configs were invalid)"}], '
+    '"paths": {"scanned": []}, "skipped_rules": []}'
+)
+_MISSING_CONFIG = (
+    '{"version": "1.183.0", "results": [], "errors": ['
+    '{"code": 2, "level": "error", "type": "SemgrepError", "message": '
+    '"WARNING: unable to find a config; path `rules.yml` does not exist"}, '
+    '{"code": 7, "level": "error", "type": "SemgrepError", "message": '
+    '"invalid configuration file found (1 configs were invalid)"}], '
+    '"paths": {"scanned": []}, "skipped_rules": []}'
+)
+_WITH_FINDINGS = (
+    '{"version": "1.183.0", "errors": [], "results": ['
+    '{"check_id": "java.lang.security.audit.weak-hash", "start": {"line": 3}, '
+    '"extra": {"severity": "WARNING", "message": "weak hash", "metadata": {"category": "security"}}}]}'
+)
+_PARTIAL_PARSE = (
+    '{"version": "1.183.0", "results": [], "errors": ['
+    '{"code": 3, "level": "warn", "type": ["PartialParsing", []], '
+    '"message": "Syntax error at line Foo.java:1"}], "paths": {"scanned": ["Foo.java"]}}'
+)
+
+
+def _analyze(result: _Result):
+    with patch.object(sg.shutil, "which", return_value="/usr/bin/semgrep"), \
+         patch.object(sg.subprocess, "run", return_value=result):
+        return analyze_file("Foo.java", _JAVA, "java")
+
+
+def test_registry_rejection_is_not_a_clean_run(caplog):
+    """🔴 레지스트리가 룰셋을 거절한 실행(종료 7 · JSON · 결과 0)이 «완전한 분석» 으로 기록되지 않는다.
+
+    운영 로그에서 원인을 가를 수 있게 semgrep 이 JSON 에 적은 오류 문장이 경고에 남는다.
+    """
+    with caplog.at_level("WARNING"):
+        result = _analyze(_Result(7, _REGISTRY_404, ""))
+    assert result.incomplete is True, (
+        "레지스트리 거절(종료 7)이 «이슈 0건 · 완전» 으로 기록된다 — java 는 semgrep 단독이라 "
+        "아무도 그 코드를 보지 않았다"
+    )
+    # JSON 을 그대로 200자 자르면 두 번째 문장이 잘린다 — 원인 문장을 `errors` 에서 꺼내 남기는지 본다
+    # Cutting the raw JSON at 200 chars would drop the second message; the cause must come from `errors`.
+    for message in ("Failed to download configuration", "invalid configuration file found"):
+        assert message in caplog.text, f"실패 원인이 로그에 남지 않는다({message}): {caplog.text[-300:]!r}"
+
+
+def test_missing_config_is_not_a_clean_run():
+    """🔴 설정을 찾지 못한 실행(종료 7 · JSON · 결과 0)도 같은 실패다."""
+    assert _analyze(_Result(7, _MISSING_CONFIG, "")).incomplete is True
+
+
+@pytest.mark.parametrize("returncode", [1, 2, 7, 8, 13])
+def test_any_nonzero_exit_with_a_json_body_is_a_failure(returncode):
+    """🔴 계기 뒤집기 — «7 일 때만» 같은 좁은 판정이 받아들일 값을 심는다.
+
+    `--json` 은 찾은 것이 있어도 0 이므로, JSON 을 찍고 0 이 아닌 값으로 끝난 실행은 모두 실패다.
+    """
+    body = '{"version": "1.183.0", "results": [], "errors": []}'
+    assert _analyze(_Result(returncode, body, "")).incomplete is True, (
+        f"종료 {returncode} 인데 «완전한 분석» 으로 기록된다"
+    )
+
+
+@pytest.mark.parametrize("errors", [1, True, 2.5, "boom", {"message": "m"}, None])
+def test_failure_detail_survives_any_errors_shape(errors):
+    """🔴 원인 문장을 꺼내다가 다시 터지지 않는다 — `errors` 가 목록이 아닌 JSON 값이어도.
+
+    다시 터지면 실패는 여전히 incomplete 로 가지만, 로그에는 semgrep 의 원인 대신 TypeError 가 남는다.
+    (Grok 반례 96c93f6d: `{"errors": 1}` → `for e in 1` → TypeError.)
+    """
+    exc = sg._fail(  # pylint: disable=protected-access
+        AnalyzeContext(filename="Foo.java", content="x", language="java", is_test=False,
+                       tmp_path="Foo.java", repo_config=None, timed_out=False),
+        _Result(7, '{"errors": "raw"}', ""), {"results": [], "errors": errors})
+    assert isinstance(exc, RuntimeError) and "exit=7" in str(exc)
+
+
+def test_failure_detail_takes_messages_from_mixed_errors():
+    """목록 안에 dict 가 아닌 값이 섞여도 dict 의 문장만 모은다."""
+    exc = sg._fail(  # pylint: disable=protected-access
+        AnalyzeContext(filename="Foo.java", content="x", language="java", is_test=False,
+                       tmp_path="Foo.java", repo_config=None, timed_out=False),
+        _Result(7, "{}", ""), {"errors": [1, "x", {"message": "first"}, {"message": ""}, {"message": "second"}]})
+    assert str(exc).endswith("first; second")
+
+
+def test_findings_with_exit_zero_stay_a_complete_run():
+    """대조군 — 찾은 것이 있는 정상 실행(종료 0)은 이슈를 그대로 돌려주고 완전하다."""
+    result = _analyze(_Result(0, _WITH_FINDINGS, ""))
+    assert result.incomplete is False, "정상 실행이 incomplete 로 잡히면 과잉 차단이다"
+    assert [i.message for i in result.issues] == ["weak hash"]
+
+
+def test_partial_parsing_with_exit_zero_is_not_promoted_to_a_failure():
+    """대조군 — 문법 오류로 일부만 파싱한 실행(종료 0 · `warn`)은 semgrep 이 그 파일을 훑은 것이다.
+
+    실측: `paths.scanned` 에 파일이 있고 종료 코드는 0 이다. 이것까지 실패로 올리면
+    문법이 깨진 파일마다 auto-merge 가 막힌다.
+    """
+    assert _analyze(_Result(0, _PARTIAL_PARSE, "")).incomplete is False
 
 
 def test_timeout_keeps_its_own_path():

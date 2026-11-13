@@ -74,12 +74,28 @@ def test_exactly_one_generic_analyzer_is_declared():
 
 
 def test_generic_only_run_sets_the_axis():
-    """🔴 범용 하나만 돌면 그 파일은 「전담 관측면 없음」이다."""
-    from src.analyzer.io.static import _run_analyzers, StaticAnalysisResult  # noqa: PLC0415
+    """🔴 범용 하나만 돌면 그 파일은 「전담 관측면 없음」이다.
 
+    semgrep 이 **성공한** 실행을 시험 안에서 만든다. 이 시험의 옛 판은 실물 semgrep 을 없는 경로
+    (`/tmp/v.ex`)에 돌렸고, semgrep 은 «Invalid scanning root» 와 함께 종료 2 로 끝났다(실측
+    1.183.0) — 옛 어댑터가 그것을 «이슈 0건 · 완전» 으로 받아 준 덕에 초록이었다(회고 원장 L03 P1-39).
+    The old version ran the real semgrep on a missing path; it exited 2 and the old adapter
+    accepted that as a clean run. A successful generic run is now simulated explicitly.
+    """
+    import subprocess  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    from unittest.mock import patch  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    from src.analyzer.io.static import _run_analyzers, StaticAnalysisResult  # noqa: PLC0415
+    from src.analyzer.io.tools import semgrep as sg  # noqa: PLC0415
+
+    clean = subprocess.CompletedProcess(args=[], returncode=0,
+                                        stdout='{"results": [], "errors": []}', stderr="")
     ctx = _ctx("elixir", "v.ex")
     result = StaticAnalysisResult(filename="v.ex")
-    _run_analyzers(ctx, result)
+    with patch.object(sg.shutil, "which", return_value="/usr/bin/semgrep"), \
+         patch.object(sg.subprocess, "run", return_value=clean):
+        _run_analyzers(ctx, result)
+    assert result.incomplete is False, "전제 붕괴 — 범용 실행이 성공으로 잡히지 않았다"
     assert result.no_dedicated_observer == "elixir", (
         "전담 어댑터가 없는 언어인데 축이 서지 않았다"
     )
