@@ -459,14 +459,10 @@ class TestSemgrepRunGracefulDegradation:
         with patch("subprocess.run", return_value=_mock_semgrep_proc(SAMPLE_OUTPUT_SECURITY_ERROR, returncode=1)):
             with _pytest.raises(RuntimeError, match="exit=1"):
                 _SemgrepAnalyzer().run(ctx)
-
-    def test_run_parses_issues_on_exit_zero(self, make_ctx):
-        """대조군 — 같은 JSON 이 종료 0 으로 오면(찾은 것이 있는 정상 실행) 이슈를 그대로 돌려준다."""
-        from src.analyzer.io.tools.semgrep import _SemgrepAnalyzer
-        ctx = make_ctx(language="python", tmp_path="/tmp/test.py")
+        # 대조군 — 같은 JSON 이 종료 0 으로 오면(찾은 것이 있는 정상 실행) 이슈를 그대로 돌려준다.
+        # Control: the same JSON with exit 0 (a normal run with findings) returns its issues.
         with patch("subprocess.run", return_value=_mock_semgrep_proc(SAMPLE_OUTPUT_SECURITY_ERROR, returncode=0)):
-            issues = _SemgrepAnalyzer().run(ctx)
-        assert len(issues) == 1
+            assert len(_SemgrepAnalyzer().run(ctx)) == 1
 
 
 # ──────────────────────────────────────────────────────────────────────────────
