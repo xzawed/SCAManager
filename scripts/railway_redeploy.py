@@ -12,7 +12,10 @@ Retry a failed Railway deployment after mechanical checks — the only deploy pa
      Railway CLI 로는 «변수를 바꿔 배포했다» 를 GitHub 푸시 배포와 구별할 수 없어서다(배포 사유가 모두 `deploy`).
   2. 가장 새 배포가 main 최신 커밋의 것이고 끝난 상태다 — 재배포는 FAILED · SKIPPED, 재시작은 CRASHED.
   3. 그 커밋의 CI 검사(check-run)가 모두 끝났고 실패가 없다 · Railway 가 아닌 커밋 상태도 성공이다. Railway 가 남기는
-     배포 상태(`railway-app[bot]`)는 이 배포 자체의 결과라 뺀다.
+     배포 상태(`railway-app[bot]`)는 이 배포 자체의 결과라 뺀다. Dependabot 업데이트 작업도 뺀다 — 우리 코드를 재지
+     않는데, 실패하면 Railway 의 «CI 기다림» 이 그 커밋의 배포를 건너뛴다. 실행 목록에서 event · path · actor · 커밋이
+     모두 맞는 실행의 check suite 만 빼고(check-run 이름은 보지 않는다), 목록을 다 못 읽으면 아무것도 빼지 않는다.
+     빼고 남은 CI 검사가 없으면 막는다.
 건 뒤에는 배포가 끝날 때까지 상태만 찍고(값 없음), 성공하면 배포 로그의 오류 부류를 개수만 센다.
 `railway up`(이 PC 의 코드) · `down` · 옛 배포 되돌리기 · 변수 변경은 이 스크립트가 하지 않는다 — 사용자가 `!` 로.
 """
@@ -32,6 +35,10 @@ MARKER_HOURS = 48
 RETRYABLE = {"redeploy": frozenset({"FAILED", "SKIPPED"}), "restart": frozenset({"CRASHED"})}
 _GREEN = frozenset({"success", "skipped", "neutral"})
 _RAILWAY_BOT = "railway-app[bot]"
+# Dependabot 업데이트 실행을 알아보는 값 — 하나라도 다르면 CI 로 센다(check-run 이름은 보지 않는다)
+# Fields that identify a Dependabot update run; any mismatch keeps it in CI (check-run names are never used)
+_DEPENDABOT_RUN = (("event", "dynamic"), ("path", "dynamic/dependabot/dependabot-updates"))
+_DEPENDABOT_ACTOR = "dependabot[bot]"
 _TERMINAL = frozenset({"SUCCESS", "FAILED", "CRASHED", "REMOVED", "SKIPPED"})
 _WATCH_SECONDS = {"redeploy": 1800, "restart": 300}
 _POLL_SECONDS = 30
@@ -85,10 +92,51 @@ def _newest(run, railway):
             "commit": meta.get("commitHash"), "branch": meta.get("branch")}
 
 
+def _suite_id(value):
+    """check suite id 는 정수만 — 다른 꼴은 None(빼지 않는다) / only an int is a suite id; anything else is None."""
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _check_run_suite(check_run):
+    """check-run 이 속한 suite id / the suite id a check-run belongs to (None when unreadable)."""
+    suite = check_run.get("check_suite")
+    return _suite_id(suite.get("id")) if isinstance(suite, dict) else None
+
+
+def dependabot_suites(payload, main_sha):
+    """main_sha 에서 돈 Dependabot 업데이트 실행의 check suite id. 목록을 다 못 읽었거나 꼴이 어긋나면 빈 집합
+    — 아무것도 빼지 않는다(막는 쪽).
+    Check-suite ids of Dependabot update runs on main_sha; an incomplete or malformed listing excludes nothing."""
+    items = payload.get("workflow_runs") if isinstance(payload, dict) else None
+    if not main_sha or not isinstance(items, list) or payload.get("total_count") != len(items):
+        return frozenset()
+    suites = set()
+    for item in items:
+        if not isinstance(item, dict) or any(item.get(key) != value for key, value in _DEPENDABOT_RUN):
+            continue
+        actor, suite = item.get("actor"), _suite_id(item.get("check_suite_id"))
+        if (isinstance(actor, dict) and actor.get("login") == _DEPENDABOT_ACTOR
+                and item.get("head_sha") == main_sha and suite is not None):
+            suites.add(suite)
+    return frozenset(suites)
+
+
+def _split_check_runs(state):
+    """(CI 검사, 뺀 Dependabot 업데이트 작업) — suite id 로만 가른다 / split by suite id only."""
+    skip = state.get("dependabot_suites") or frozenset()
+    ci_runs, dependabot_runs = [], []
+    for check_run in state.get("check_runs") or []:
+        suite = check_run.get("suite")
+        (dependabot_runs if suite is not None and suite in skip else ci_runs).append(check_run)
+    return ci_runs, dependabot_runs
+
+
 def gather_state(run, railway, now, marker):
     """판정에 쓸 사실을 모은다 / collect the facts the decision needs."""
     main_sha = run(["git", "ls-remote", "origin", "refs/heads/main"]).split("\t", 1)[0].strip() or None
     runs = json.loads(run(["gh", "api", f"repos/{_REPO}/commits/{main_sha}/check-runs?per_page=100"])) \
+        if main_sha else {}
+    workflow_runs = json.loads(run(["gh", "api", f"repos/{_REPO}/actions/runs?head_sha={main_sha}&per_page=100"])) \
         if main_sha else {}
     raw_statuses = json.loads(run(["gh", "api", f"repos/{_REPO}/commits/{main_sha}/statuses?per_page=100"])) \
         if main_sha else []
@@ -101,9 +149,11 @@ def gather_state(run, railway, now, marker):
     return {
         "main_sha": main_sha,
         "newest": _newest(run, railway),
-        "check_runs": [{"name": c.get("name"), "status": c.get("status"), "conclusion": c.get("conclusion")}
+        "check_runs": [{"name": c.get("name"), "status": c.get("status"), "conclusion": c.get("conclusion"),
+                        "suite": _check_run_suite(c)}
                        for c in runs.get("check_runs", [])],
         "check_runs_total": runs.get("total_count"),
+        "dependabot_suites": dependabot_suites(workflow_runs, main_sha),
         "statuses": list(latest.values()),
         "marker_age_hours": age,
     }
@@ -131,7 +181,10 @@ def decide(state, action):
     # a complete read needs total == len(runs); a mismatch or a missing total fails closed
     if not runs or state.get("check_runs_total") != len(runs):
         reasons.append("CI 검사 목록을 다 읽지 못했다(막는 쪽)")
-    not_green = [c["name"] for c in runs if c.get("status") != "completed" or c.get("conclusion") not in _GREEN]
+    ci_runs, _dependabot_runs = _split_check_runs(state)
+    if runs and not ci_runs:
+        reasons.append("Dependabot 업데이트 작업 말고는 CI 검사가 없다(막는 쪽)")
+    not_green = [c["name"] for c in ci_runs if c.get("status") != "completed" or c.get("conclusion") not in _GREEN]
     if not_green:
         reasons.append(f"CI 검사 {len(not_green)}개가 초록이 아니다: {', '.join(sorted(map(str, not_green))[:5])}")
     bad = [s["context"] for s in state.get("statuses") or []
@@ -204,8 +257,10 @@ def main(argv=None, *, run=_run, sleep=time.sleep, now=time.time, marker=MARKER,
         print(f"🔴 조건을 재지 못했다 — 막는다(fail-closed): {exc}")
         return 3
     newest = state["newest"] or {}
+    ci_runs, dependabot_runs = _split_check_runs(state)
+    excluded = f" (Dependabot 작업 {len(dependabot_runs)}개 제외)" if dependabot_runs else ""
     print(f"main {str(state['main_sha'])[:8]} · 가장 새 배포 {str(newest.get('id'))[:8]} {newest.get('status')} · "
-          f"CI 검사 {len(state['check_runs'])}개 · 동작 {action}")
+          f"CI 검사 {len(ci_runs)}개{excluded} · 동작 {action}")
     reasons = decide(state, action)
     if reasons:
         print("🔴 거부 — 사용자가 `!` 로 직접 실행하거나 조건이 맞을 때 다시:")
