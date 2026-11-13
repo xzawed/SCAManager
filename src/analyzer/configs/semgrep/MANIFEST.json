@@ -1,0 +1,2148 @@
+{
+ "source": "https://gitlab.com/gitlab-org/security-products/sast-rules",
+ "version": "v2.10.1",
+ "archive_sha256": "627a73135374fdb9122eb3dcca268ea0fbb11d889d1126c6c52fd28b9df2236b",
+ "selection": "rule YAML whose header license is MIT (GitLab) · Apache 2.0 (gosec) · LGPL-3.0; GPL-2.0 · Commons Clause · LGPL-2.1 · GitLab EE files are left out",
+ "files": [
+  {
+   "path": "apache-2.0/go/blocklist/rule-blocklist-des.yml",
+   "license": "apache-2.0",
+   "origin": "go/blocklist/rule-blocklist-des.yml"
+  },
+  {
+   "path": "apache-2.0/go/blocklist/rule-blocklist-md5.yml",
+   "license": "apache-2.0",
+   "origin": "go/blocklist/rule-blocklist-md5.yml"
+  },
+  {
+   "path": "apache-2.0/go/blocklist/rule-blocklist-rc4.yml",
+   "license": "apache-2.0",
+   "origin": "go/blocklist/rule-blocklist-rc4.yml"
+  },
+  {
+   "path": "apache-2.0/go/blocklist/rule-blocklist-sha1.yml",
+   "license": "apache-2.0",
+   "origin": "go/blocklist/rule-blocklist-sha1.yml"
+  },
+  {
+   "path": "apache-2.0/go/crypto/rule-badtlssettings.yml",
+   "license": "apache-2.0",
+   "origin": "go/crypto/rule-badtlssettings.yml"
+  },
+  {
+   "path": "apache-2.0/go/crypto/rule-insecure-ignore-host-key.yml",
+   "license": "apache-2.0",
+   "origin": "go/crypto/rule-insecure-ignore-host-key.yml"
+  },
+  {
+   "path": "apache-2.0/go/crypto/rule-weakkeystrength.yml",
+   "license": "apache-2.0",
+   "origin": "go/crypto/rule-weakkeystrength.yml"
+  },
+  {
+   "path": "apache-2.0/go/crypto/rule-weakrandsource.yml",
+   "license": "apache-2.0",
+   "origin": "go/crypto/rule-weakrandsource.yml"
+  },
+  {
+   "path": "apache-2.0/go/file_permissions/rule-fileperm.yml",
+   "license": "apache-2.0",
+   "origin": "go/file_permissions/rule-fileperm.yml"
+  },
+  {
+   "path": "apache-2.0/go/file_permissions/rule-mkdir.yml",
+   "license": "apache-2.0",
+   "origin": "go/file_permissions/rule-mkdir.yml"
+  },
+  {
+   "path": "apache-2.0/go/filesystem/rule-decompression-bomb.yml",
+   "license": "apache-2.0",
+   "origin": "go/filesystem/rule-decompression-bomb.yml"
+  },
+  {
+   "path": "apache-2.0/go/filesystem/rule-fileread.yml",
+   "license": "apache-2.0",
+   "origin": "go/filesystem/rule-fileread.yml"
+  },
+  {
+   "path": "apache-2.0/go/filesystem/rule-httprootdir.yml",
+   "license": "apache-2.0",
+   "origin": "go/filesystem/rule-httprootdir.yml"
+  },
+  {
+   "path": "apache-2.0/go/filesystem/rule-poorwritepermissions.yml",
+   "license": "apache-2.0",
+   "origin": "go/filesystem/rule-poorwritepermissions.yml"
+  },
+  {
+   "path": "apache-2.0/go/filesystem/rule-tempfiles.yml",
+   "license": "apache-2.0",
+   "origin": "go/filesystem/rule-tempfiles.yml"
+  },
+  {
+   "path": "apache-2.0/go/filesystem/rule-ziparchive.yml",
+   "license": "apache-2.0",
+   "origin": "go/filesystem/rule-ziparchive.yml"
+  },
+  {
+   "path": "apache-2.0/go/http/rule-http-serve.yml",
+   "license": "apache-2.0",
+   "origin": "go/http/rule-http-serve.yml"
+  },
+  {
+   "path": "apache-2.0/go/injection/rule-ssrf.yml",
+   "license": "apache-2.0",
+   "origin": "go/injection/rule-ssrf.yml"
+  },
+  {
+   "path": "apache-2.0/go/injection/rule-template-injection.yml",
+   "license": "apache-2.0",
+   "origin": "go/injection/rule-template-injection.yml"
+  },
+  {
+   "path": "apache-2.0/go/leak/rule-pprof-endpoint.yml",
+   "license": "apache-2.0",
+   "origin": "go/leak/rule-pprof-endpoint.yml"
+  },
+  {
+   "path": "apache-2.0/go/memory/rule-integer-overflow.yml",
+   "license": "apache-2.0",
+   "origin": "go/memory/rule-integer-overflow.yml"
+  },
+  {
+   "path": "apache-2.0/go/memory/rule-memoryaliasing.yml",
+   "license": "apache-2.0",
+   "origin": "go/memory/rule-memoryaliasing.yml"
+  },
+  {
+   "path": "apache-2.0/go/network/rule-bind-to-all-interfaces.yml",
+   "license": "apache-2.0",
+   "origin": "go/network/rule-bind-to-all-interfaces.yml"
+  },
+  {
+   "path": "apache-2.0/go/sql/rule-concat-sqli.yml",
+   "license": "apache-2.0",
+   "origin": "go/sql/rule-concat-sqli.yml"
+  },
+  {
+   "path": "apache-2.0/go/subproc/rule-subproc.yml",
+   "license": "apache-2.0",
+   "origin": "go/subproc/rule-subproc.yml"
+  },
+  {
+   "path": "apache-2.0/go/unsafe/rule-unsafe.yml",
+   "license": "apache-2.0",
+   "origin": "go/unsafe/rule-unsafe.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/java/webview/rule-ignore_ssl_certificate_errors.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/java/webview/rule-ignore_ssl_certificate_errors.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/java/webview/rule-webview_debugging.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/java/webview/rule-webview_debugging.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/java/webview/rule-webview_external_storage.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/java/webview/rule-webview_external_storage.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/java/webview/rule-webview_set_allow_file_access.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/java/webview/rule-webview_set_allow_file_access.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/crypto/rule-node_aes_ecb.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/crypto/rule-node_aes_ecb.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/crypto/rule-node_aes_noiv.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/crypto/rule-node_aes_noiv.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/crypto/rule-node_insecure_random_generator.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/crypto/rule-node_insecure_random_generator.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/crypto/rule-node_md5.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/crypto/rule-node_md5.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/crypto/rule-node_sha1.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/crypto/rule-node_sha1.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/crypto/rule-node_timing_attack.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/crypto/rule-node_timing_attack.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/crypto/rule-node_tls_reject.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/crypto/rule-node_tls_reject.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/crypto/rule-node_weak_crypto.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/crypto/rule-node_weak_crypto.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/database/rule-node_knex_sqli_injection.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/database/rule-node_knex_sqli_injection.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/database/rule-node_nosqli_injection.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/database/rule-node_nosqli_injection.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/database/rule-node_nosqli_js_injection.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/database/rule-node_nosqli_js_injection.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/database/rule-node_sqli_injection.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/database/rule-node_sqli_injection.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/database/rule-sequelize_tls.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/database/rule-sequelize_tls.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/database/rule-sequelize_tls_cert_validation.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/database/rule-sequelize_tls_cert_validation.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/database/rule-sequelize_weak_tls.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/database/rule-sequelize_weak_tls.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/dos/rule-layer7_object_dos.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/dos/rule-layer7_object_dos.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/dos/rule-regex_dos.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/dos/rule-regex_dos.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/electronjs/rule-electron_allow_http.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/electronjs/rule-electron_allow_http.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/electronjs/rule-electron_blink_integration.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/electronjs/rule-electron_blink_integration.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/electronjs/rule-electron_context_isolation.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/electronjs/rule-electron_context_isolation.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/electronjs/rule-electron_disable_websecurity.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/electronjs/rule-electron_disable_websecurity.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/electronjs/rule-electron_experimental_features.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/electronjs/rule-electron_experimental_features.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/electronjs/rule-electron_nodejs_integration.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/electronjs/rule-electron_nodejs_integration.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/eval/rule-eval_nodejs.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/eval/rule-eval_nodejs.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/eval/rule-eval_require.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/eval/rule-eval_require.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/eval/rule-grpc_insecure_connection.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/eval/rule-grpc_insecure_connection.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/eval/rule-node_deserialize.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/eval/rule-node_deserialize.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/eval/rule-sandbox_code_injection.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/eval/rule-sandbox_code_injection.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/eval/rule-serializetojs_deserialize.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/eval/rule-serializetojs_deserialize.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/eval/rule-server_side_template_injection.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/eval/rule-server_side_template_injection.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/eval/rule-vm2_code_injection.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/eval/rule-vm2_code_injection.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/eval/rule-vm2_context_injection.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/eval/rule-vm2_context_injection.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/eval/rule-vm_code_injection.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/eval/rule-vm_code_injection.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/eval/rule-vm_compilefunction_injection.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/eval/rule-vm_compilefunction_injection.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/eval/rule-vm_runincontext_injection.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/eval/rule-vm_runincontext_injection.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/eval/rule-vm_runinnewcontext_injection.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/eval/rule-vm_runinnewcontext_injection.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/eval/rule-yaml_deserialize.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/eval/rule-yaml_deserialize.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/exec/rule-shelljs_os_command_exec.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/exec/rule-shelljs_os_command_exec.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/headers/rule-cookie_session_default.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/headers/rule-cookie_session_default.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/headers/rule-cookie_session_no_domain.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/headers/rule-cookie_session_no_domain.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/headers/rule-cookie_session_no_httponly.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/headers/rule-cookie_session_no_httponly.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/headers/rule-cookie_session_no_maxage.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/headers/rule-cookie_session_no_maxage.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/headers/rule-cookie_session_no_path.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/headers/rule-cookie_session_no_path.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/headers/rule-cookie_session_no_samesite.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/headers/rule-cookie_session_no_samesite.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/headers/rule-cookie_session_no_secure.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/headers/rule-cookie_session_no_secure.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/headers/rule-express_cors.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/headers/rule-express_cors.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/headers/rule-generic_cors.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/headers/rule-generic_cors.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/headers/rule-generic_header_injection.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/headers/rule-generic_header_injection.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/headers/rule-header_xss_generic.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/headers/rule-header_xss_generic.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/headers/rule-header_xss_lusca.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/headers/rule-header_xss_lusca.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/headers/rule-helmet_feature_disabled.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/headers/rule-helmet_feature_disabled.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/headers/rule-host_header_injection.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/headers/rule-host_header_injection.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/jwt/rule-hardcoded_jwt_secret.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/jwt/rule-hardcoded_jwt_secret.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/jwt/rule-jwt_exposed_credentials.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/jwt/rule-jwt_exposed_credentials.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/jwt/rule-jwt_exposed_data.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/jwt/rule-jwt_exposed_data.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/jwt/rule-jwt_express_hardcoded.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/jwt/rule-jwt_express_hardcoded.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/jwt/rule-jwt_not_revoked.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/jwt/rule-jwt_not_revoked.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/jwt/rule-node_jwt_none_algorithm.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/jwt/rule-node_jwt_none_algorithm.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/redirect/rule-express_open_redirect.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/redirect/rule-express_open_redirect.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/redirect/rule-express_open_redirect2.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/redirect/rule-express_open_redirect2.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/ssrf/rule-node_ssrf.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/ssrf/rule-node_ssrf.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/ssrf/rule-phantom_ssrf.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/ssrf/rule-phantom_ssrf.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/ssrf/rule-playwright_ssrf.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/ssrf/rule-playwright_ssrf.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/ssrf/rule-puppeteer_ssrf.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/ssrf/rule-puppeteer_ssrf.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/ssrf/rule-wkhtmltoimage_ssrf.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/ssrf/rule-wkhtmltoimage_ssrf.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/ssrf/rule-wkhtmltopdf_ssrf.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/ssrf/rule-wkhtmltopdf_ssrf.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/traversal/rule-admzip_path_overwrite.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/traversal/rule-admzip_path_overwrite.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/traversal/rule-express_lfr.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/traversal/rule-express_lfr.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/traversal/rule-express_lfr_warning.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/traversal/rule-express_lfr_warning.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/traversal/rule-generic_path_traversal.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/traversal/rule-generic_path_traversal.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/traversal/rule-join_resolve_path_traversal.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/traversal/rule-join_resolve_path_traversal.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/traversal/rule-tar_path_overwrite.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/traversal/rule-tar_path_overwrite.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/traversal/rule-zip_path_overwrite.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/traversal/rule-zip_path_overwrite.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/xml/rule-node_entity_expansion.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/xml/rule-node_entity_expansion.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/xml/rule-node_xpath_injection.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/xml/rule-node_xpath_injection.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/xml/rule-node_xxe.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/xml/rule-node_xxe.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/xml/rule-xxe_expat.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/xml/rule-xxe_expat.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/xss/rule-express_xss.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/xss/rule-express_xss.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/xss/rule-handlebars_noescape.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/xss/rule-handlebars_noescape.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/xss/rule-handlebars_safestring.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/xss/rule-handlebars_safestring.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/xss/rule-squirrelly_autoescape.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/xss/rule-squirrelly_autoescape.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/xss/rule-xss_disable_mustache_escape.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/xss/rule-xss_disable_mustache_escape.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/javascript/xss/rule-xss_serialize_javascript.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/javascript/xss/rule-xss_serialize_javascript.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/cookie/rule-CookieHTTPOnly.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/cookie/rule-CookieHTTPOnly.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/cookie/rule-CookieInsecure.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/cookie/rule-CookieInsecure.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/cookie/rule-HttpResponseSplitting.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/cookie/rule-HttpResponseSplitting.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/cookie/rule-RequestParamToHeader.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/cookie/rule-RequestParamToHeader.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/cors/rule-PermissiveCORSInjection.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/cors/rule-PermissiveCORSInjection.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/crypto/rule-BlowfishKeySize.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/crypto/rule-BlowfishKeySize.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/crypto/rule-CipherDESInsecure.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/crypto/rule-CipherDESInsecure.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/crypto/rule-CipherDESedeInsecure.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/crypto/rule-CipherDESedeInsecure.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/crypto/rule-CipherECBMode.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/crypto/rule-CipherECBMode.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/crypto/rule-CipherIntegrity.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/crypto/rule-CipherIntegrity.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/crypto/rule-CipherPaddingOracle.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/crypto/rule-CipherPaddingOracle.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/crypto/rule-CustomMessageDigest.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/crypto/rule-CustomMessageDigest.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/crypto/rule-HazelcastSymmetricEncryption.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/crypto/rule-HazelcastSymmetricEncryption.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/crypto/rule-InsufficientKeySizeRsa.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/crypto/rule-InsufficientKeySizeRsa.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/crypto/rule-NullCipher.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/crypto/rule-NullCipher.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/crypto/rule-RsaNoPadding.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/crypto/rule-RsaNoPadding.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/crypto/rule-WeakMessageDigest.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/crypto/rule-WeakMessageDigest.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/crypto/rule-WeakTLSProtocol.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/crypto/rule-WeakTLSProtocol.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/crypto/rule-WeakTLSProtocolVersion.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/crypto/rule-WeakTLSProtocolVersion.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/csrf/rule-SpringCSRFDisabled.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/csrf/rule-SpringCSRFDisabled.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/endpoint/rule-UnvalidatedRedirect.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/endpoint/rule-UnvalidatedRedirect.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/endpoint/rule-WeakHostNameVerification.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/endpoint/rule-WeakHostNameVerification.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/file/rule-FileUploadFileName.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/file/rule-FileUploadFileName.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/file/rule-FilenameUtils.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/file/rule-FilenameUtils.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/inject/rule-CommandInjection.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/inject/rule-CommandInjection.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/inject/rule-ELInjection.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/inject/rule-ELInjection.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/inject/rule-FileDisclosure.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/inject/rule-FileDisclosure.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/inject/rule-HttpParameterPollution.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/inject/rule-HttpParameterPollution.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/inject/rule-LDAPInjection.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/inject/rule-LDAPInjection.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/inject/rule-OgnlInjection.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/inject/rule-OgnlInjection.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/inject/rule-SpotbugsPathTraversalAbsolute.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/inject/rule-SpotbugsPathTraversalAbsolute.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/inject/rule-SqlInjection.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/inject/rule-SqlInjection.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/ldap/rule-AnonymousLDAP.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/ldap/rule-AnonymousLDAP.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/password/rule-ConstantDBPassword.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/password/rule-ConstantDBPassword.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/password/rule-EmptyDBPassword.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/password/rule-EmptyDBPassword.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/password/rule-HardcodePassword.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/password/rule-HardcodePassword.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/perm/rule-DangerousPermissions.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/perm/rule-DangerousPermissions.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/perm/rule-OverlyPermissiveFilePermissionInline.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/perm/rule-OverlyPermissiveFilePermissionInline.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/script/rule-ScriptInjection.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/script/rule-ScriptInjection.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/smtp/rule-InsecureSmtp.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/smtp/rule-InsecureSmtp.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/smtp/rule-SmtpClient.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/smtp/rule-SmtpClient.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/ssrf/rule-SSRF.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/ssrf/rule-SSRF.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/strings/rule-BadHexConversion.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/strings/rule-BadHexConversion.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/strings/rule-FormatStringManipulation.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/strings/rule-FormatStringManipulation.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/strings/rule-ModifyAfterValidation.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/strings/rule-ModifyAfterValidation.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/strings/rule-NormalizeAfterValidation.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/strings/rule-NormalizeAfterValidation.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/templateinjection/rule-TemplateInjection.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/templateinjection/rule-TemplateInjection.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/unsafe/rule-ExternalConfigControl.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/unsafe/rule-ExternalConfigControl.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/webview/rule-android_kotlin_webview_debug.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/webview/rule-android_kotlin_webview_debug.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/xml/rule-SAMLIgnoreComments.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/xml/rule-SAMLIgnoreComments.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/xml/rule-XmlDecoder.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/xml/rule-XmlDecoder.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/xml/rule-XsltTransform.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/xml/rule-XsltTransform.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/xpathi/rule-XpathInjection.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/xpathi/rule-XpathInjection.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/xss/rule-WicketXSS.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/xss/rule-WicketXSS.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/xss/rule-XSSReqParamToServletWriter.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/xss/rule-XSSReqParamToServletWriter.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/xxe/rule-SaxParserXXE.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/xxe/rule-SaxParserXXE.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/xxe/rule-XMLRdr.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/xxe/rule-XMLRdr.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/kotlin/xxe/rule-XMLStreamRdr.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/kotlin/xxe/rule-XMLStreamRdr.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/oc/other/rule-ios_self_signed_ssl.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/oc/other/rule-ios_self_signed_ssl.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/oc/other/rule-ios_webview_ignore_ssl.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/oc/other/rule-ios_webview_ignore_ssl.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/swift/other/rule-ios_biometric_acl.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/swift/other/rule-ios_biometric_acl.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/swift/other/rule-ios_dtls1_used.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/swift/other/rule-ios_dtls1_used.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/swift/other/rule-ios_file_no_special.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/swift/other/rule-ios_file_no_special.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/swift/other/rule-ios_keychain_weak_accessibility_value.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/swift/other/rule-ios_keychain_weak_accessibility_value.yml"
+  },
+  {
+   "path": "lgpl-3.0/rules/lgpl/swift/other/rule-ios_tls3_not_used.yml",
+   "license": "lgpl-3.0",
+   "origin": "rules/lgpl/swift/other/rule-ios_tls3_not_used.yml"
+  },
+  {
+   "path": "mit/csharp/cookies/rule-CookieWithoutHttpOnlyFlag.yml",
+   "license": "mit",
+   "origin": "csharp/cookies/rule-CookieWithoutHttpOnlyFlag.yml"
+  },
+  {
+   "path": "mit/csharp/cookies/rule-CookieWithoutSSLFlag.yml",
+   "license": "mit",
+   "origin": "csharp/cookies/rule-CookieWithoutSSLFlag.yml"
+  },
+  {
+   "path": "mit/csharp/crypto/rule-CertificateValidationDisabled.yml",
+   "license": "mit",
+   "origin": "csharp/crypto/rule-CertificateValidationDisabled.yml"
+  },
+  {
+   "path": "mit/csharp/crypto/rule-WeakCipherAlgorithm.yml",
+   "license": "mit",
+   "origin": "csharp/crypto/rule-WeakCipherAlgorithm.yml"
+  },
+  {
+   "path": "mit/csharp/crypto/rule-WeakCipherMode.yml",
+   "license": "mit",
+   "origin": "csharp/crypto/rule-WeakCipherMode.yml"
+  },
+  {
+   "path": "mit/csharp/crypto/rule-WeakHashingFunction.yml",
+   "license": "mit",
+   "origin": "csharp/crypto/rule-WeakHashingFunction.yml"
+  },
+  {
+   "path": "mit/csharp/crypto/rule-WeakRNG.yml",
+   "license": "mit",
+   "origin": "csharp/crypto/rule-WeakRNG.yml"
+  },
+  {
+   "path": "mit/csharp/csrf/rule-Csrf.yml",
+   "license": "mit",
+   "origin": "csharp/csrf/rule-Csrf.yml"
+  },
+  {
+   "path": "mit/csharp/deserialization/rule-InsecureDeserialization.yml",
+   "license": "mit",
+   "origin": "csharp/deserialization/rule-InsecureDeserialization.yml"
+  },
+  {
+   "path": "mit/csharp/endpoint/rule-UnvalidatedRedirect.yml",
+   "license": "mit",
+   "origin": "csharp/endpoint/rule-UnvalidatedRedirect.yml"
+  },
+  {
+   "path": "mit/csharp/injection/rule-CommandInjection.yml",
+   "license": "mit",
+   "origin": "csharp/injection/rule-CommandInjection.yml"
+  },
+  {
+   "path": "mit/csharp/injection/rule-LdapInjection.yml",
+   "license": "mit",
+   "origin": "csharp/injection/rule-LdapInjection.yml"
+  },
+  {
+   "path": "mit/csharp/injection/rule-SQLInjection.yml",
+   "license": "mit",
+   "origin": "csharp/injection/rule-SQLInjection.yml"
+  },
+  {
+   "path": "mit/csharp/injection/rule-XPathInjection.yml",
+   "license": "mit",
+   "origin": "csharp/injection/rule-XPathInjection.yml"
+  },
+  {
+   "path": "mit/csharp/injection/rule-XmlDocumentXXEInjection.yml",
+   "license": "mit",
+   "origin": "csharp/injection/rule-XmlDocumentXXEInjection.yml"
+  },
+  {
+   "path": "mit/csharp/injection/rule-XmlReaderXXEInjection.yml",
+   "license": "mit",
+   "origin": "csharp/injection/rule-XmlReaderXXEInjection.yml"
+  },
+  {
+   "path": "mit/csharp/other/rule-UnsafeXSLTSettingUsed.yml",
+   "license": "mit",
+   "origin": "csharp/other/rule-UnsafeXSLTSettingUsed.yml"
+  },
+  {
+   "path": "mit/csharp/password/rule-PasswordComplexity.yml",
+   "license": "mit",
+   "origin": "csharp/password/rule-PasswordComplexity.yml"
+  },
+  {
+   "path": "mit/csharp/path/rule-PathTraversal.yml",
+   "license": "mit",
+   "origin": "csharp/path/rule-PathTraversal.yml"
+  },
+  {
+   "path": "mit/csharp/validation/rule-InputValidation.yml",
+   "license": "mit",
+   "origin": "csharp/validation/rule-InputValidation.yml"
+  },
+  {
+   "path": "mit/csharp/xss/rule-HtmlElementXss.yml",
+   "license": "mit",
+   "origin": "csharp/xss/rule-HtmlElementXss.yml"
+  },
+  {
+   "path": "mit/csharp/xss/rule-ScriptXss.yml",
+   "license": "mit",
+   "origin": "csharp/xss/rule-ScriptXss.yml"
+  },
+  {
+   "path": "mit/go/crypto/rule-tlsversion.yml",
+   "license": "mit",
+   "origin": "go/crypto/rule-tlsversion.yml"
+  },
+  {
+   "path": "mit/java/cookie/rule-CookieInsecure.yml",
+   "license": "mit",
+   "origin": "java/cookie/rule-CookieInsecure.yml"
+  },
+  {
+   "path": "mit/java/cookie/rule-HttpResponseSplitting.yml",
+   "license": "mit",
+   "origin": "java/cookie/rule-HttpResponseSplitting.yml"
+  },
+  {
+   "path": "mit/java/cookie/rule-RequestParamToHeader.yml",
+   "license": "mit",
+   "origin": "java/cookie/rule-RequestParamToHeader.yml"
+  },
+  {
+   "path": "mit/java/cors/rule-PermissiveCORSInjection.yml",
+   "license": "mit",
+   "origin": "java/cors/rule-PermissiveCORSInjection.yml"
+  },
+  {
+   "path": "mit/java/crypto/rule-BlowfishKeySize.yml",
+   "license": "mit",
+   "origin": "java/crypto/rule-BlowfishKeySize.yml"
+  },
+  {
+   "path": "mit/java/crypto/rule-CipherDESInsecure.yml",
+   "license": "mit",
+   "origin": "java/crypto/rule-CipherDESInsecure.yml"
+  },
+  {
+   "path": "mit/java/crypto/rule-CipherDESedeInsecure.yml",
+   "license": "mit",
+   "origin": "java/crypto/rule-CipherDESedeInsecure.yml"
+  },
+  {
+   "path": "mit/java/crypto/rule-CipherECBMode.yml",
+   "license": "mit",
+   "origin": "java/crypto/rule-CipherECBMode.yml"
+  },
+  {
+   "path": "mit/java/crypto/rule-CipherIntegrity.yml",
+   "license": "mit",
+   "origin": "java/crypto/rule-CipherIntegrity.yml"
+  },
+  {
+   "path": "mit/java/crypto/rule-CipherPaddingOracle.yml",
+   "license": "mit",
+   "origin": "java/crypto/rule-CipherPaddingOracle.yml"
+  },
+  {
+   "path": "mit/java/crypto/rule-CustomMessageDigest.yml",
+   "license": "mit",
+   "origin": "java/crypto/rule-CustomMessageDigest.yml"
+  },
+  {
+   "path": "mit/java/crypto/rule-HazelcastSymmetricEncryption.yml",
+   "license": "mit",
+   "origin": "java/crypto/rule-HazelcastSymmetricEncryption.yml"
+  },
+  {
+   "path": "mit/java/crypto/rule-InsufficientKeySizeRsa.yml",
+   "license": "mit",
+   "origin": "java/crypto/rule-InsufficientKeySizeRsa.yml"
+  },
+  {
+   "path": "mit/java/crypto/rule-NullCipher.yml",
+   "license": "mit",
+   "origin": "java/crypto/rule-NullCipher.yml"
+  },
+  {
+   "path": "mit/java/crypto/rule-RsaNoPadding.yml",
+   "license": "mit",
+   "origin": "java/crypto/rule-RsaNoPadding.yml"
+  },
+  {
+   "path": "mit/java/crypto/rule-WeakMessageDigest.yml",
+   "license": "mit",
+   "origin": "java/crypto/rule-WeakMessageDigest.yml"
+  },
+  {
+   "path": "mit/java/crypto/rule-WeakTLSProtocolDefaultHttpClient.yml",
+   "license": "mit",
+   "origin": "java/crypto/rule-WeakTLSProtocolDefaultHttpClient.yml"
+  },
+  {
+   "path": "mit/java/crypto/rule-WeakTLSProtocolSSLContext.yml",
+   "license": "mit",
+   "origin": "java/crypto/rule-WeakTLSProtocolSSLContext.yml"
+  },
+  {
+   "path": "mit/java/crypto/rule-WeakTLSProtocolVersion.yml",
+   "license": "mit",
+   "origin": "java/crypto/rule-WeakTLSProtocolVersion.yml"
+  },
+  {
+   "path": "mit/java/endpoint/rule-HostnameVerifier.yml",
+   "license": "mit",
+   "origin": "java/endpoint/rule-HostnameVerifier.yml"
+  },
+  {
+   "path": "mit/java/endpoint/rule-UnvalidatedRedirect.yml",
+   "license": "mit",
+   "origin": "java/endpoint/rule-UnvalidatedRedirect.yml"
+  },
+  {
+   "path": "mit/java/endpoint/rule-X509TrustManager.yml",
+   "license": "mit",
+   "origin": "java/endpoint/rule-X509TrustManager.yml"
+  },
+  {
+   "path": "mit/java/file/rule-FileUploadFileName.yml",
+   "license": "mit",
+   "origin": "java/file/rule-FileUploadFileName.yml"
+  },
+  {
+   "path": "mit/java/file/rule-FilenameUtils.yml",
+   "license": "mit",
+   "origin": "java/file/rule-FilenameUtils.yml"
+  },
+  {
+   "path": "mit/java/inject/rule-CommandInjection.yml",
+   "license": "mit",
+   "origin": "java/inject/rule-CommandInjection.yml"
+  },
+  {
+   "path": "mit/java/inject/rule-ELInjection.yml",
+   "license": "mit",
+   "origin": "java/inject/rule-ELInjection.yml"
+  },
+  {
+   "path": "mit/java/inject/rule-FileDisclosureRequestDispatcher.yml",
+   "license": "mit",
+   "origin": "java/inject/rule-FileDisclosureRequestDispatcher.yml"
+  },
+  {
+   "path": "mit/java/inject/rule-FileDisclosureSpringFramework.yml",
+   "license": "mit",
+   "origin": "java/inject/rule-FileDisclosureSpringFramework.yml"
+  },
+  {
+   "path": "mit/java/inject/rule-HttpParameterPollution.yml",
+   "license": "mit",
+   "origin": "java/inject/rule-HttpParameterPollution.yml"
+  },
+  {
+   "path": "mit/java/inject/rule-LDAPInjection.yml",
+   "license": "mit",
+   "origin": "java/inject/rule-LDAPInjection.yml"
+  },
+  {
+   "path": "mit/java/inject/rule-OgnlInjection.yml",
+   "license": "mit",
+   "origin": "java/inject/rule-OgnlInjection.yml"
+  },
+  {
+   "path": "mit/java/inject/rule-SpotbugsPathTraversalAbsolute.yml",
+   "license": "mit",
+   "origin": "java/inject/rule-SpotbugsPathTraversalAbsolute.yml"
+  },
+  {
+   "path": "mit/java/ldap/rule-AnonymousLDAP.yml",
+   "license": "mit",
+   "origin": "java/ldap/rule-AnonymousLDAP.yml"
+  },
+  {
+   "path": "mit/java/password/rule-ConstantDBPassword.yml",
+   "license": "mit",
+   "origin": "java/password/rule-ConstantDBPassword.yml"
+  },
+  {
+   "path": "mit/java/password/rule-EmptyDBPassword.yml",
+   "license": "mit",
+   "origin": "java/password/rule-EmptyDBPassword.yml"
+  },
+  {
+   "path": "mit/java/password/rule-HardcodePassword.yml",
+   "license": "mit",
+   "origin": "java/password/rule-HardcodePassword.yml"
+  },
+  {
+   "path": "mit/java/perm/rule-DangerousPermissions.yml",
+   "license": "mit",
+   "origin": "java/perm/rule-DangerousPermissions.yml"
+  },
+  {
+   "path": "mit/java/perm/rule-OverlyPermissiveFilePermissionInline.yml",
+   "license": "mit",
+   "origin": "java/perm/rule-OverlyPermissiveFilePermissionInline.yml"
+  },
+  {
+   "path": "mit/java/script/rule-ScriptInjection.yml",
+   "license": "mit",
+   "origin": "java/script/rule-ScriptInjection.yml"
+  },
+  {
+   "path": "mit/java/script/rule-SpringSpelExpressionParser.yml",
+   "license": "mit",
+   "origin": "java/script/rule-SpringSpelExpressionParser.yml"
+  },
+  {
+   "path": "mit/java/smtp/rule-InsecureSmtp.yml",
+   "license": "mit",
+   "origin": "java/smtp/rule-InsecureSmtp.yml"
+  },
+  {
+   "path": "mit/java/smtp/rule-SmtpClient.yml",
+   "license": "mit",
+   "origin": "java/smtp/rule-SmtpClient.yml"
+  },
+  {
+   "path": "mit/java/ssrf/rule-SSRF.yml",
+   "license": "mit",
+   "origin": "java/ssrf/rule-SSRF.yml"
+  },
+  {
+   "path": "mit/java/strings/rule-BadHexConversion.yml",
+   "license": "mit",
+   "origin": "java/strings/rule-BadHexConversion.yml"
+  },
+  {
+   "path": "mit/java/strings/rule-FormatStringManipulation.yml",
+   "license": "mit",
+   "origin": "java/strings/rule-FormatStringManipulation.yml"
+  },
+  {
+   "path": "mit/java/strings/rule-ModifyAfterValidation.yml",
+   "license": "mit",
+   "origin": "java/strings/rule-ModifyAfterValidation.yml"
+  },
+  {
+   "path": "mit/java/strings/rule-NormalizeAfterValidation.yml",
+   "license": "mit",
+   "origin": "java/strings/rule-NormalizeAfterValidation.yml"
+  },
+  {
+   "path": "mit/java/templateinjection/rule-TemplateInjection.yml",
+   "license": "mit",
+   "origin": "java/templateinjection/rule-TemplateInjection.yml"
+  },
+  {
+   "path": "mit/java/unsafe/rule-ExternalConfigControl.yml",
+   "license": "mit",
+   "origin": "java/unsafe/rule-ExternalConfigControl.yml"
+  },
+  {
+   "path": "mit/java/xml/rule-SAMLIgnoreComments.yml",
+   "license": "mit",
+   "origin": "java/xml/rule-SAMLIgnoreComments.yml"
+  },
+  {
+   "path": "mit/java/xml/rule-XmlDecoder.yml",
+   "license": "mit",
+   "origin": "java/xml/rule-XmlDecoder.yml"
+  },
+  {
+   "path": "mit/java/xml/rule-XsltTransform.yml",
+   "license": "mit",
+   "origin": "java/xml/rule-XsltTransform.yml"
+  },
+  {
+   "path": "mit/java/xss/rule-WicketXSS.yml",
+   "license": "mit",
+   "origin": "java/xss/rule-WicketXSS.yml"
+  },
+  {
+   "path": "mit/java/xss/rule-XSSReqParamToServletWriter.yml",
+   "license": "mit",
+   "origin": "java/xss/rule-XSSReqParamToServletWriter.yml"
+  },
+  {
+   "path": "mit/java/xxe/rule-XMLRdr.yml",
+   "license": "mit",
+   "origin": "java/xxe/rule-XMLRdr.yml"
+  },
+  {
+   "path": "mit/javascript/buf/rule-buffer-noassert-read.yml",
+   "license": "mit",
+   "origin": "javascript/buf/rule-buffer-noassert-read.yml"
+  },
+  {
+   "path": "mit/javascript/buf/rule-buffer-noassert-write.yml",
+   "license": "mit",
+   "origin": "javascript/buf/rule-buffer-noassert-write.yml"
+  },
+  {
+   "path": "mit/javascript/buf/rule-detect-new-buffer.yml",
+   "license": "mit",
+   "origin": "javascript/buf/rule-detect-new-buffer.yml"
+  },
+  {
+   "path": "mit/javascript/dos/rule-non-literal-regexp.yml",
+   "license": "mit",
+   "origin": "javascript/dos/rule-non-literal-regexp.yml"
+  },
+  {
+   "path": "mit/javascript/eval/rule-eval-with-expression.yml",
+   "license": "mit",
+   "origin": "javascript/eval/rule-eval-with-expression.yml"
+  },
+  {
+   "path": "mit/javascript/pathtraversal/rule-non-literal-fs-filename.yml",
+   "license": "mit",
+   "origin": "javascript/pathtraversal/rule-non-literal-fs-filename.yml"
+  },
+  {
+   "path": "mit/javascript/random/rule-pseudo-random-bytes.yml",
+   "license": "mit",
+   "origin": "javascript/random/rule-pseudo-random-bytes.yml"
+  },
+  {
+   "path": "mit/javascript/react/rule-dangerouslysetinnerhtml.yml",
+   "license": "mit",
+   "origin": "javascript/react/rule-dangerouslysetinnerhtml.yml"
+  },
+  {
+   "path": "mit/javascript/require/rule-non-literal-require.yml",
+   "license": "mit",
+   "origin": "javascript/require/rule-non-literal-require.yml"
+  },
+  {
+   "path": "mit/javascript/timing/rule-possible-timing-attacks.yml",
+   "license": "mit",
+   "origin": "javascript/timing/rule-possible-timing-attacks.yml"
+  },
+  {
+   "path": "mit/javascript/xss/rule-mustache-escape.yml",
+   "license": "mit",
+   "origin": "javascript/xss/rule-mustache-escape.yml"
+  },
+  {
+   "path": "mit/python/assert/rule-assert-used.yml",
+   "license": "mit",
+   "origin": "python/assert/rule-assert-used.yml"
+  },
+  {
+   "path": "mit/python/bind_all_interfaces/rule-general-bindall-interfaces.yml",
+   "license": "mit",
+   "origin": "python/bind_all_interfaces/rule-general-bindall-interfaces.yml"
+  },
+  {
+   "path": "mit/python/crypto/rule-cipher-modes.yml",
+   "license": "mit",
+   "origin": "python/crypto/rule-cipher-modes.yml"
+  },
+  {
+   "path": "mit/python/crypto/rule-crypto-cipher-blowfish.yml",
+   "license": "mit",
+   "origin": "python/crypto/rule-crypto-cipher-blowfish.yml"
+  },
+  {
+   "path": "mit/python/crypto/rule-crypto-cipher-des.yml",
+   "license": "mit",
+   "origin": "python/crypto/rule-crypto-cipher-des.yml"
+  },
+  {
+   "path": "mit/python/crypto/rule-crypto-cipher-rc2.yml",
+   "license": "mit",
+   "origin": "python/crypto/rule-crypto-cipher-rc2.yml"
+  },
+  {
+   "path": "mit/python/crypto/rule-crypto-cipher-rc4.yml",
+   "license": "mit",
+   "origin": "python/crypto/rule-crypto-cipher-rc4.yml"
+  },
+  {
+   "path": "mit/python/crypto/rule-crypto-cipher-xor.yml",
+   "license": "mit",
+   "origin": "python/crypto/rule-crypto-cipher-xor.yml"
+  },
+  {
+   "path": "mit/python/crypto/rule-crypto-encrypt-dsa-rsa.yml",
+   "license": "mit",
+   "origin": "python/crypto/rule-crypto-encrypt-dsa-rsa.yml"
+  },
+  {
+   "path": "mit/python/crypto/rule-crypto-encrypt-ec.yml",
+   "license": "mit",
+   "origin": "python/crypto/rule-crypto-encrypt-ec.yml"
+  },
+  {
+   "path": "mit/python/crypto/rule-crypto-hash-md5.yml",
+   "license": "mit",
+   "origin": "python/crypto/rule-crypto-hash-md5.yml"
+  },
+  {
+   "path": "mit/python/crypto/rule-crypto-hash-sha1.yml",
+   "license": "mit",
+   "origin": "python/crypto/rule-crypto-hash-sha1.yml"
+  },
+  {
+   "path": "mit/python/crypto/rule-crypto-hazmat-cipher-arc4.yml",
+   "license": "mit",
+   "origin": "python/crypto/rule-crypto-hazmat-cipher-arc4.yml"
+  },
+  {
+   "path": "mit/python/crypto/rule-crypto-hazmat-cipher-blowfish.yml",
+   "license": "mit",
+   "origin": "python/crypto/rule-crypto-hazmat-cipher-blowfish.yml"
+  },
+  {
+   "path": "mit/python/crypto/rule-crypto-hazmat-cipher-idea.yml",
+   "license": "mit",
+   "origin": "python/crypto/rule-crypto-hazmat-cipher-idea.yml"
+  },
+  {
+   "path": "mit/python/crypto/rule-crypto-hazmat-hash-md5.yml",
+   "license": "mit",
+   "origin": "python/crypto/rule-crypto-hazmat-hash-md5.yml"
+  },
+  {
+   "path": "mit/python/crypto/rule-crypto-hazmat-hash-sha1.yml",
+   "license": "mit",
+   "origin": "python/crypto/rule-crypto-hazmat-hash-sha1.yml"
+  },
+  {
+   "path": "mit/python/crypto/rule-hash-md2.yml",
+   "license": "mit",
+   "origin": "python/crypto/rule-hash-md2.yml"
+  },
+  {
+   "path": "mit/python/crypto/rule-hash-md4.yml",
+   "license": "mit",
+   "origin": "python/crypto/rule-hash-md4.yml"
+  },
+  {
+   "path": "mit/python/crypto/rule-hash-md5.yml",
+   "license": "mit",
+   "origin": "python/crypto/rule-hash-md5.yml"
+  },
+  {
+   "path": "mit/python/crypto/rule-hash-sha1.yml",
+   "license": "mit",
+   "origin": "python/crypto/rule-hash-sha1.yml"
+  },
+  {
+   "path": "mit/python/crypto/rule-hashlib-new-insecure-functions.yml",
+   "license": "mit",
+   "origin": "python/crypto/rule-hashlib-new-insecure-functions.yml"
+  },
+  {
+   "path": "mit/python/crypto/rule-import-pycrypto.yml",
+   "license": "mit",
+   "origin": "python/crypto/rule-import-pycrypto.yml"
+  },
+  {
+   "path": "mit/python/deserialization/rule-cpickle.yml",
+   "license": "mit",
+   "origin": "python/deserialization/rule-cpickle.yml"
+  },
+  {
+   "path": "mit/python/deserialization/rule-dill.yml",
+   "license": "mit",
+   "origin": "python/deserialization/rule-dill.yml"
+  },
+  {
+   "path": "mit/python/deserialization/rule-marshal.yml",
+   "license": "mit",
+   "origin": "python/deserialization/rule-marshal.yml"
+  },
+  {
+   "path": "mit/python/deserialization/rule-pickle.yml",
+   "license": "mit",
+   "origin": "python/deserialization/rule-pickle.yml"
+  },
+  {
+   "path": "mit/python/deserialization/rule-shelve.yml",
+   "license": "mit",
+   "origin": "python/deserialization/rule-shelve.yml"
+  },
+  {
+   "path": "mit/python/deserialization/rule-yaml-load.yml",
+   "license": "mit",
+   "origin": "python/deserialization/rule-yaml-load.yml"
+  },
+  {
+   "path": "mit/python/django/rule-django-extra-used.yml",
+   "license": "mit",
+   "origin": "python/django/rule-django-extra-used.yml"
+  },
+  {
+   "path": "mit/python/escaping/rule-jinja2-autoescape-false.yml",
+   "license": "mit",
+   "origin": "python/escaping/rule-jinja2-autoescape-false.yml"
+  },
+  {
+   "path": "mit/python/escaping/rule-use-of-mako-templates.yml",
+   "license": "mit",
+   "origin": "python/escaping/rule-use-of-mako-templates.yml"
+  },
+  {
+   "path": "mit/python/eval/rule-eval.yml",
+   "license": "mit",
+   "origin": "python/eval/rule-eval.yml"
+  },
+  {
+   "path": "mit/python/exec/rule-exec-used.yml",
+   "license": "mit",
+   "origin": "python/exec/rule-exec-used.yml"
+  },
+  {
+   "path": "mit/python/exec/rule-linux-command-wildcard-injection.yml",
+   "license": "mit",
+   "origin": "python/exec/rule-linux-command-wildcard-injection.yml"
+  },
+  {
+   "path": "mit/python/exec/rule-os-path.yml",
+   "license": "mit",
+   "origin": "python/exec/rule-os-path.yml"
+  },
+  {
+   "path": "mit/python/exec/rule-os-popen2.yml",
+   "license": "mit",
+   "origin": "python/exec/rule-os-popen2.yml"
+  },
+  {
+   "path": "mit/python/exec/rule-start-process-with-no-shell.yml",
+   "license": "mit",
+   "origin": "python/exec/rule-start-process-with-no-shell.yml"
+  },
+  {
+   "path": "mit/python/exec/rule-subprocess-call.yml",
+   "license": "mit",
+   "origin": "python/exec/rule-subprocess-call.yml"
+  },
+  {
+   "path": "mit/python/exec/rule-subprocess-popen-shell-true.yml",
+   "license": "mit",
+   "origin": "python/exec/rule-subprocess-popen-shell-true.yml"
+  },
+  {
+   "path": "mit/python/exec/rule-subprocess-shell-TRUE.yml",
+   "license": "mit",
+   "origin": "python/exec/rule-subprocess-shell-TRUE.yml"
+  },
+  {
+   "path": "mit/python/file_permissions/rule-general-bad-permission.yml",
+   "license": "mit",
+   "origin": "python/file_permissions/rule-general-bad-permission.yml"
+  },
+  {
+   "path": "mit/python/files/rule-tarfile-unsafe-members.yml",
+   "license": "mit",
+   "origin": "python/files/rule-tarfile-unsafe-members.yml"
+  },
+  {
+   "path": "mit/python/flask/rule-app-debug.yml",
+   "license": "mit",
+   "origin": "python/flask/rule-app-debug.yml"
+  },
+  {
+   "path": "mit/python/ftp/rule-ftplib.yml",
+   "license": "mit",
+   "origin": "python/ftp/rule-ftplib.yml"
+  },
+  {
+   "path": "mit/python/log/rule-logging-config-insecure-listen.yml",
+   "license": "mit",
+   "origin": "python/log/rule-logging-config-insecure-listen.yml"
+  },
+  {
+   "path": "mit/python/random/rule-random.yml",
+   "license": "mit",
+   "origin": "python/random/rule-random.yml"
+  },
+  {
+   "path": "mit/python/requests/rule-request-without-timeout.yml",
+   "license": "mit",
+   "origin": "python/requests/rule-request-without-timeout.yml"
+  },
+  {
+   "path": "mit/python/snmp/rule-insecure-snmp-version.yml",
+   "license": "mit",
+   "origin": "python/snmp/rule-insecure-snmp-version.yml"
+  },
+  {
+   "path": "mit/python/snmp/rule-snmp-weak-cryptography.yml",
+   "license": "mit",
+   "origin": "python/snmp/rule-snmp-weak-cryptography.yml"
+  },
+  {
+   "path": "mit/python/sql/rule-hardcoded-sql-expression.yml",
+   "license": "mit",
+   "origin": "python/sql/rule-hardcoded-sql-expression.yml"
+  },
+  {
+   "path": "mit/python/ssh/rule-ssh-nohost-key-verification.yml",
+   "license": "mit",
+   "origin": "python/ssh/rule-ssh-nohost-key-verification.yml"
+  },
+  {
+   "path": "mit/python/ssl/rule-req-no-certvalid.yml",
+   "license": "mit",
+   "origin": "python/ssl/rule-req-no-certvalid.yml"
+  },
+  {
+   "path": "mit/python/ssl/rule-ssl-no-version.yml",
+   "license": "mit",
+   "origin": "python/ssl/rule-ssl-no-version.yml"
+  },
+  {
+   "path": "mit/python/ssl/rule-ssl-with-bad-version.yml",
+   "license": "mit",
+   "origin": "python/ssl/rule-ssl-with-bad-version.yml"
+  },
+  {
+   "path": "mit/python/ssl/rule-unverified-context.yml",
+   "license": "mit",
+   "origin": "python/ssl/rule-unverified-context.yml"
+  },
+  {
+   "path": "mit/python/telnet/rule-import-telnib.yml",
+   "license": "mit",
+   "origin": "python/telnet/rule-import-telnib.yml"
+  },
+  {
+   "path": "mit/python/tmpdir/rule-hardcodedtmp.yml",
+   "license": "mit",
+   "origin": "python/tmpdir/rule-hardcodedtmp.yml"
+  },
+  {
+   "path": "mit/python/tmpdir/rule-mktemp-q.yml",
+   "license": "mit",
+   "origin": "python/tmpdir/rule-mktemp-q.yml"
+  },
+  {
+   "path": "mit/python/urlopen/rule-urllib-urlopen.yml",
+   "license": "mit",
+   "origin": "python/urlopen/rule-urllib-urlopen.yml"
+  },
+  {
+   "path": "mit/python/xml/rule-celement.yml",
+   "license": "mit",
+   "origin": "python/xml/rule-celement.yml"
+  },
+  {
+   "path": "mit/python/xml/rule-element.yml",
+   "license": "mit",
+   "origin": "python/xml/rule-element.yml"
+  },
+  {
+   "path": "mit/python/xml/rule-etree.yml",
+   "license": "mit",
+   "origin": "python/xml/rule-etree.yml"
+  },
+  {
+   "path": "mit/python/xml/rule-expatbuilder.yml",
+   "license": "mit",
+   "origin": "python/xml/rule-expatbuilder.yml"
+  },
+  {
+   "path": "mit/python/xml/rule-expatreader.yml",
+   "license": "mit",
+   "origin": "python/xml/rule-expatreader.yml"
+  },
+  {
+   "path": "mit/python/xml/rule-minidom.yml",
+   "license": "mit",
+   "origin": "python/xml/rule-minidom.yml"
+  },
+  {
+   "path": "mit/python/xml/rule-pulldom.yml",
+   "license": "mit",
+   "origin": "python/xml/rule-pulldom.yml"
+  },
+  {
+   "path": "mit/python/xml/rule-sax.yml",
+   "license": "mit",
+   "origin": "python/xml/rule-sax.yml"
+  },
+  {
+   "path": "mit/rules/gitlab/python/exec/rule-start-process-partial-path.yml",
+   "license": "mit",
+   "origin": "rules/gitlab/python/exec/rule-start-process-partial-path.yml"
+  },
+  {
+   "path": "mit/rules/gitlab/python/exec/rule-start-process-path.yml",
+   "license": "mit",
+   "origin": "rules/gitlab/python/exec/rule-start-process-path.yml"
+  },
+  {
+   "path": "mit/rules/gitlab/python/exec/rule-subprocess-call-array.yml",
+   "license": "mit",
+   "origin": "rules/gitlab/python/exec/rule-subprocess-call-array.yml"
+  },
+  {
+   "path": "mit/rules/gitlab/scala/unsafe/rule-InformationExposureVariant2.yml",
+   "license": "mit",
+   "origin": "rules/gitlab/scala/unsafe/rule-InformationExposureVariant2.yml"
+  },
+  {
+   "path": "mit/rules/lgpl-cc/python/django/security/injection/sql/rule-django-rawsql-used.yml",
+   "license": "mit",
+   "origin": "rules/lgpl-cc/python/django/security/injection/sql/rule-django-rawsql-used.yml"
+  },
+  {
+   "path": "mit/rules/lgpl-cc/python/escaping/rule-django.yml",
+   "license": "mit",
+   "origin": "rules/lgpl-cc/python/escaping/rule-django.yml"
+  },
+  {
+   "path": "mit/scala/cookie/rule-CookieHTTPOnly.yml",
+   "license": "mit",
+   "origin": "scala/cookie/rule-CookieHTTPOnly.yml"
+  },
+  {
+   "path": "mit/scala/cookie/rule-CookieInsecure.yml",
+   "license": "mit",
+   "origin": "scala/cookie/rule-CookieInsecure.yml"
+  },
+  {
+   "path": "mit/scala/cookie/rule-CookiePersistent.yml",
+   "license": "mit",
+   "origin": "scala/cookie/rule-CookiePersistent.yml"
+  },
+  {
+   "path": "mit/scala/cookie/rule-CookieUsage.yml",
+   "license": "mit",
+   "origin": "scala/cookie/rule-CookieUsage.yml"
+  },
+  {
+   "path": "mit/scala/cookie/rule-HttpResponseSplitting.yml",
+   "license": "mit",
+   "origin": "scala/cookie/rule-HttpResponseSplitting.yml"
+  },
+  {
+   "path": "mit/scala/cookie/rule-RequestParamToCookie.yml",
+   "license": "mit",
+   "origin": "scala/cookie/rule-RequestParamToCookie.yml"
+  },
+  {
+   "path": "mit/scala/cookie/rule-RequestParamToHeader.yml",
+   "license": "mit",
+   "origin": "scala/cookie/rule-RequestParamToHeader.yml"
+  },
+  {
+   "path": "mit/scala/cookie/rule-TrustBoundaryViolation.yml",
+   "license": "mit",
+   "origin": "scala/cookie/rule-TrustBoundaryViolation.yml"
+  },
+  {
+   "path": "mit/scala/cors/rule-PermissiveCORS.yml",
+   "license": "mit",
+   "origin": "scala/cors/rule-PermissiveCORS.yml"
+  },
+  {
+   "path": "mit/scala/cors/rule-PermissiveCORSInjection.yml",
+   "license": "mit",
+   "origin": "scala/cors/rule-PermissiveCORSInjection.yml"
+  },
+  {
+   "path": "mit/scala/crypto/rule-BlowfishKeySize.yml",
+   "license": "mit",
+   "origin": "scala/crypto/rule-BlowfishKeySize.yml"
+  },
+  {
+   "path": "mit/scala/crypto/rule-CipherDESInsecure.yml",
+   "license": "mit",
+   "origin": "scala/crypto/rule-CipherDESInsecure.yml"
+  },
+  {
+   "path": "mit/scala/crypto/rule-CipherDESedeInsecure.yml",
+   "license": "mit",
+   "origin": "scala/crypto/rule-CipherDESedeInsecure.yml"
+  },
+  {
+   "path": "mit/scala/crypto/rule-CipherECBMode.yml",
+   "license": "mit",
+   "origin": "scala/crypto/rule-CipherECBMode.yml"
+  },
+  {
+   "path": "mit/scala/crypto/rule-CipherIntegrity.yml",
+   "license": "mit",
+   "origin": "scala/crypto/rule-CipherIntegrity.yml"
+  },
+  {
+   "path": "mit/scala/crypto/rule-CipherPaddingOracle.yml",
+   "license": "mit",
+   "origin": "scala/crypto/rule-CipherPaddingOracle.yml"
+  },
+  {
+   "path": "mit/scala/crypto/rule-CustomMessageDigest.yml",
+   "license": "mit",
+   "origin": "scala/crypto/rule-CustomMessageDigest.yml"
+  },
+  {
+   "path": "mit/scala/crypto/rule-DefaultHTTPClient.yml",
+   "license": "mit",
+   "origin": "scala/crypto/rule-DefaultHTTPClient.yml"
+  },
+  {
+   "path": "mit/scala/crypto/rule-HazelcastSymmetricEncryption.yml",
+   "license": "mit",
+   "origin": "scala/crypto/rule-HazelcastSymmetricEncryption.yml"
+  },
+  {
+   "path": "mit/scala/crypto/rule-InsufficientKeySizeRsa.yml",
+   "license": "mit",
+   "origin": "scala/crypto/rule-InsufficientKeySizeRsa.yml"
+  },
+  {
+   "path": "mit/scala/crypto/rule-NullCipher.yml",
+   "license": "mit",
+   "origin": "scala/crypto/rule-NullCipher.yml"
+  },
+  {
+   "path": "mit/scala/crypto/rule-RsaNoPadding.yml",
+   "license": "mit",
+   "origin": "scala/crypto/rule-RsaNoPadding.yml"
+  },
+  {
+   "path": "mit/scala/crypto/rule-WeakMessageDigest.yml",
+   "license": "mit",
+   "origin": "scala/crypto/rule-WeakMessageDigest.yml"
+  },
+  {
+   "path": "mit/scala/crypto/rule-WeakTLSProtocol.yml",
+   "license": "mit",
+   "origin": "scala/crypto/rule-WeakTLSProtocol.yml"
+  },
+  {
+   "path": "mit/scala/endpoint/rule-JaxRsEndpoint.yml",
+   "license": "mit",
+   "origin": "scala/endpoint/rule-JaxRsEndpoint.yml"
+  },
+  {
+   "path": "mit/scala/endpoint/rule-JaxWsEndpoint.yml",
+   "license": "mit",
+   "origin": "scala/endpoint/rule-JaxWsEndpoint.yml"
+  },
+  {
+   "path": "mit/scala/endpoint/rule-UnencryptedSocket.yml",
+   "license": "mit",
+   "origin": "scala/endpoint/rule-UnencryptedSocket.yml"
+  },
+  {
+   "path": "mit/scala/endpoint/rule-UnvalidatedRedirect.yml",
+   "license": "mit",
+   "origin": "scala/endpoint/rule-UnvalidatedRedirect.yml"
+  },
+  {
+   "path": "mit/scala/endpoint/rule-WeakHostNameVerification.yml",
+   "license": "mit",
+   "origin": "scala/endpoint/rule-WeakHostNameVerification.yml"
+  },
+  {
+   "path": "mit/scala/file/rule-FileUploadFileName.yml",
+   "license": "mit",
+   "origin": "scala/file/rule-FileUploadFileName.yml"
+  },
+  {
+   "path": "mit/scala/file/rule-FilenameUtils.yml",
+   "license": "mit",
+   "origin": "scala/file/rule-FilenameUtils.yml"
+  },
+  {
+   "path": "mit/scala/form/rule-FormValidate.yml",
+   "license": "mit",
+   "origin": "scala/form/rule-FormValidate.yml"
+  },
+  {
+   "path": "mit/scala/inject/rule-AWSQueryInjection.yml",
+   "license": "mit",
+   "origin": "scala/inject/rule-AWSQueryInjection.yml"
+  },
+  {
+   "path": "mit/scala/inject/rule-BeanPropertyInjection.yml",
+   "license": "mit",
+   "origin": "scala/inject/rule-BeanPropertyInjection.yml"
+  },
+  {
+   "path": "mit/scala/inject/rule-CLRFInjectionLogs.yml",
+   "license": "mit",
+   "origin": "scala/inject/rule-CLRFInjectionLogs.yml"
+  },
+  {
+   "path": "mit/scala/inject/rule-CommandInjection.yml",
+   "license": "mit",
+   "origin": "scala/inject/rule-CommandInjection.yml"
+  },
+  {
+   "path": "mit/scala/inject/rule-CustomInjection.yml",
+   "license": "mit",
+   "origin": "scala/inject/rule-CustomInjection.yml"
+  },
+  {
+   "path": "mit/scala/inject/rule-CustomInjectionSQLString.yml",
+   "license": "mit",
+   "origin": "scala/inject/rule-CustomInjectionSQLString.yml"
+  },
+  {
+   "path": "mit/scala/inject/rule-ELInjection.yml",
+   "license": "mit",
+   "origin": "scala/inject/rule-ELInjection.yml"
+  },
+  {
+   "path": "mit/scala/inject/rule-FileDisclosure.yml",
+   "license": "mit",
+   "origin": "scala/inject/rule-FileDisclosure.yml"
+  },
+  {
+   "path": "mit/scala/inject/rule-HttpParameterPollution.yml",
+   "license": "mit",
+   "origin": "scala/inject/rule-HttpParameterPollution.yml"
+  },
+  {
+   "path": "mit/scala/inject/rule-LDAPInjection.yml",
+   "license": "mit",
+   "origin": "scala/inject/rule-LDAPInjection.yml"
+  },
+  {
+   "path": "mit/scala/inject/rule-OgnlInjection.yml",
+   "license": "mit",
+   "origin": "scala/inject/rule-OgnlInjection.yml"
+  },
+  {
+   "path": "mit/scala/inject/rule-PathTraversalIn.yml",
+   "license": "mit",
+   "origin": "scala/inject/rule-PathTraversalIn.yml"
+  },
+  {
+   "path": "mit/scala/inject/rule-PathTraversalOut.yml",
+   "license": "mit",
+   "origin": "scala/inject/rule-PathTraversalOut.yml"
+  },
+  {
+   "path": "mit/scala/inject/rule-SpotbugsPathTraversalAbsolute.yml",
+   "license": "mit",
+   "origin": "scala/inject/rule-SpotbugsPathTraversalAbsolute.yml"
+  },
+  {
+   "path": "mit/scala/inject/rule-SpotbugsPathTraversalRelative.yml",
+   "license": "mit",
+   "origin": "scala/inject/rule-SpotbugsPathTraversalRelative.yml"
+  },
+  {
+   "path": "mit/scala/inject/rule-SqlInjection.yml",
+   "license": "mit",
+   "origin": "scala/inject/rule-SqlInjection.yml"
+  },
+  {
+   "path": "mit/scala/ldap/rule-AnonymousLDAP.yml",
+   "license": "mit",
+   "origin": "scala/ldap/rule-AnonymousLDAP.yml"
+  },
+  {
+   "path": "mit/scala/ldap/rule-EntryPoisoning.yml",
+   "license": "mit",
+   "origin": "scala/ldap/rule-EntryPoisoning.yml"
+  },
+  {
+   "path": "mit/scala/password/rule-ConstantDBPassword.yml",
+   "license": "mit",
+   "origin": "scala/password/rule-ConstantDBPassword.yml"
+  },
+  {
+   "path": "mit/scala/password/rule-EmptyDBPassword.yml",
+   "license": "mit",
+   "origin": "scala/password/rule-EmptyDBPassword.yml"
+  },
+  {
+   "path": "mit/scala/password/rule-HardcodePassword.yml",
+   "license": "mit",
+   "origin": "scala/password/rule-HardcodePassword.yml"
+  },
+  {
+   "path": "mit/scala/perm/rule-DangerousPermissions.yml",
+   "license": "mit",
+   "origin": "scala/perm/rule-DangerousPermissions.yml"
+  },
+  {
+   "path": "mit/scala/perm/rule-OverlyPermissiveFilePermissionInline.yml",
+   "license": "mit",
+   "origin": "scala/perm/rule-OverlyPermissiveFilePermissionInline.yml"
+  },
+  {
+   "path": "mit/scala/perm/rule-OverlyPermissiveFilePermissionObj.yml",
+   "license": "mit",
+   "origin": "scala/perm/rule-OverlyPermissiveFilePermissionObj.yml"
+  },
+  {
+   "path": "mit/scala/script/rule-ScriptInjection.yml",
+   "license": "mit",
+   "origin": "scala/script/rule-ScriptInjection.yml"
+  },
+  {
+   "path": "mit/scala/script/rule-SpelView.yml",
+   "license": "mit",
+   "origin": "scala/script/rule-SpelView.yml"
+  },
+  {
+   "path": "mit/scala/smtp/rule-InsecureSmtp.yml",
+   "license": "mit",
+   "origin": "scala/smtp/rule-InsecureSmtp.yml"
+  },
+  {
+   "path": "mit/scala/smtp/rule-SmtpClient.yml",
+   "license": "mit",
+   "origin": "scala/smtp/rule-SmtpClient.yml"
+  },
+  {
+   "path": "mit/scala/ssrf/rule-PlaySSRF.yml",
+   "license": "mit",
+   "origin": "scala/ssrf/rule-PlaySSRF.yml"
+  },
+  {
+   "path": "mit/scala/ssrf/rule-SSRF.yml",
+   "license": "mit",
+   "origin": "scala/ssrf/rule-SSRF.yml"
+  },
+  {
+   "path": "mit/scala/strings/rule-BadHexConversion.yml",
+   "license": "mit",
+   "origin": "scala/strings/rule-BadHexConversion.yml"
+  },
+  {
+   "path": "mit/scala/strings/rule-FormatStringManipulation.yml",
+   "license": "mit",
+   "origin": "scala/strings/rule-FormatStringManipulation.yml"
+  },
+  {
+   "path": "mit/scala/strings/rule-ImproperUnicode.yml",
+   "license": "mit",
+   "origin": "scala/strings/rule-ImproperUnicode.yml"
+  },
+  {
+   "path": "mit/scala/strings/rule-ModifyAfterValidation.yml",
+   "license": "mit",
+   "origin": "scala/strings/rule-ModifyAfterValidation.yml"
+  },
+  {
+   "path": "mit/scala/strings/rule-NormalizeAfterValidation.yml",
+   "license": "mit",
+   "origin": "scala/strings/rule-NormalizeAfterValidation.yml"
+  },
+  {
+   "path": "mit/scala/templateinjection/rule-TemplateInjection.yml",
+   "license": "mit",
+   "origin": "scala/templateinjection/rule-TemplateInjection.yml"
+  },
+  {
+   "path": "mit/scala/unsafe/rule-ExternalConfigControl.yml",
+   "license": "mit",
+   "origin": "scala/unsafe/rule-ExternalConfigControl.yml"
+  },
+  {
+   "path": "mit/scala/unsafe/rule-InformationExposure.yml",
+   "license": "mit",
+   "origin": "scala/unsafe/rule-InformationExposure.yml"
+  },
+  {
+   "path": "mit/scala/unsafe/rule-SensitiveDataExposure.yml",
+   "license": "mit",
+   "origin": "scala/unsafe/rule-SensitiveDataExposure.yml"
+  },
+  {
+   "path": "mit/scala/xml/rule-ApacheXmlRpc.yml",
+   "license": "mit",
+   "origin": "scala/xml/rule-ApacheXmlRpc.yml"
+  },
+  {
+   "path": "mit/scala/xml/rule-SAMLIgnoreComments.yml",
+   "license": "mit",
+   "origin": "scala/xml/rule-SAMLIgnoreComments.yml"
+  },
+  {
+   "path": "mit/scala/xml/rule-XmlDecoder.yml",
+   "license": "mit",
+   "origin": "scala/xml/rule-XmlDecoder.yml"
+  },
+  {
+   "path": "mit/scala/xml/rule-XsltTransform.yml",
+   "license": "mit",
+   "origin": "scala/xml/rule-XsltTransform.yml"
+  },
+  {
+   "path": "mit/scala/xpathi/rule-XpathInjection.yml",
+   "license": "mit",
+   "origin": "scala/xpathi/rule-XpathInjection.yml"
+  },
+  {
+   "path": "mit/scala/xss/rule-MVCApi.yml",
+   "license": "mit",
+   "origin": "scala/xss/rule-MVCApi.yml"
+  },
+  {
+   "path": "mit/scala/xss/rule-RequestWrapper.yml",
+   "license": "mit",
+   "origin": "scala/xss/rule-RequestWrapper.yml"
+  },
+  {
+   "path": "mit/scala/xss/rule-WicketXSS.yml",
+   "license": "mit",
+   "origin": "scala/xss/rule-WicketXSS.yml"
+  },
+  {
+   "path": "mit/scala/xss/rule-XSSReqParamToServletWriter.yml",
+   "license": "mit",
+   "origin": "scala/xss/rule-XSSReqParamToServletWriter.yml"
+  },
+  {
+   "path": "mit/scala/xss/rule-XSSServlet.yml",
+   "license": "mit",
+   "origin": "scala/xss/rule-XSSServlet.yml"
+  },
+  {
+   "path": "mit/scala/xxe/rule-Document.yml",
+   "license": "mit",
+   "origin": "scala/xxe/rule-Document.yml"
+  },
+  {
+   "path": "mit/scala/xxe/rule-SaxParserXXE.yml",
+   "license": "mit",
+   "origin": "scala/xxe/rule-SaxParserXXE.yml"
+  },
+  {
+   "path": "mit/scala/xxe/rule-Trans.yml",
+   "license": "mit",
+   "origin": "scala/xxe/rule-Trans.yml"
+  },
+  {
+   "path": "mit/scala/xxe/rule-XMLRdr.yml",
+   "license": "mit",
+   "origin": "scala/xxe/rule-XMLRdr.yml"
+  },
+  {
+   "path": "mit/scala/xxe/rule-XMLStreamRdr.yml",
+   "license": "mit",
+   "origin": "scala/xxe/rule-XMLStreamRdr.yml"
+  },
+  {
+   "path": "mit/scala/xxe/rule-XPathXXE.yml",
+   "license": "mit",
+   "origin": "scala/xxe/rule-XPathXXE.yml"
+  }
+ ]
+}

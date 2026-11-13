@@ -1,14 +1,23 @@
-"""Semgrep static analysis tool — 30+ 언어 baseline 정적분석.
+"""Semgrep static analysis tool — 리포에 고정한 룰로 돌리는 범용 정적분석.
 
 _SemgrepAnalyzer는 Analyzer Protocol을 구현하며 registry.register()로 등록된다.
 semgrep 바이너리가 없으면 is_enabled()가 False를 반환해 조용히 skip된다.
+
+룰은 레지스트리에서 받지 않는다 — `src/analyzer/configs/semgrep/rules/` 에 고정한 GitLab sast-rules 의
+허용 라이선스 부분(MIT · Apache-2.0 · LGPL-3.0)만 쓴다. 출처 · 판 · 파일별 라이선스는 같은 폴더의
+`MANIFEST.json` 이 갖는다. 레지스트리 룰(`p/default`)은 «내부 업무 목적 · 서비스 제공 금지» 라이선스라
+서비스로 쓸 수 없고, 실행마다 레지스트리에 기대면 그 장애가 분석 실패가 된다(회고 원장 L03 P1-40).
+Rules are not fetched from the registry: the analyzer runs the vendored, allowed-license subset of GitLab
+sast-rules (MIT · Apache-2.0 · LGPL-3.0); provenance and per-file licenses live in MANIFEST.json.
 """
 from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import subprocess  # nosec B404
+from pathlib import Path
 
 from src.analyzer.pure.registry import AnalyzeContext, AnalysisIssue, Category, Severity, register
 from src.constants import STATIC_ANALYSIS_TIMEOUT
@@ -16,13 +25,16 @@ from src.constants import STATIC_ANALYSIS_TIMEOUT
 logger = logging.getLogger(__name__)
 
 _ERR_EXCERPT = 200
+# 고정한 룰 폴더 — `--config` 에 폴더를 주면 semgrep 은 그 아래 YAML 을 모두 읽는다(실측 428개)
+# The vendored rule folder; given a folder, semgrep loads every YAML under it.
+RULES_DIR = Path(__file__).resolve().parents[2] / "configs" / "semgrep" / "rules"
 
 
 def _fail(ctx, r, data=None) -> RuntimeError:
     """실패를 예외로 만든다 — `static.py` 는 `run()` 이 **올릴 때만** `incomplete` 로 승격한다.
 
     🔴 `[]` 를 돌려주면 그 실패가 «이슈 0건 · 완전» 이 되어 미분석 코드가 auto-merge 된다.
-    semgrep 은 java·scala·elixir·clojure 의 **유일한** 분석기라 그 언어에서는 대체 관측면도
+    semgrep 은 java · scala · csharp · swift 의 **유일한** 분석기라 그 언어에서는 대체 관측면도
     없다(실측). 형제 `python.py::_fail` 과 같은 관용구다.
     JSON 을 찍고 실패한 실행은 stderr 가 비어 있어(실측) 원인을 JSON 의 `errors` 문장에서 가져온다.
 
@@ -45,23 +57,20 @@ def _fail(ctx, r, data=None) -> RuntimeError:
 class _SemgrepAnalyzer:
     name = "semgrep"
     category = Category.CODE_QUALITY
-    # 🔴 **범용 대체 관측면** — 한 언어의 전담 분석기가 아니라 22개 언어의 폭넓은 fallback 이다.
+    # 🔴 **범용 대체 관측면** — 한 언어의 전담 분석기가 아니라 여러 언어의 폭넓은 fallback 이다.
     #    그래서 「전담 관측면이 돌았는가」를 셀 때 이것은 세지 않는다
     #    (`static.py::no_dedicated_observer`). 규칙 밀도가 언어마다 크게 다르므로
-    #    (자체 보고: elixir 0 · cpp 0 · swift 2 · rust 4) semgrep 이 돌았다는 사실만으로
+    #    (고정한 룰: swift 5 · typescript 12 · scala 86) semgrep 이 돌았다는 사실만으로
     #    그 언어를 봤다고 말할 수 없다 — 그 판단이 이 표식의 이유다.
     # The generic multi-language fallback: running it does not mean the language was observed.
     is_generic = True
 
+    # 🔴 고정한 룰이 있는 언어만 — 룰이 0개인 언어에서 semgrep 을 돌리면 «이슈 0건 · 완전» 이 된다.
+    #    목록은 룰 파일의 `languages` 에서 나온다(`tests/unit/analyzer/test_semgrep_vendored_rules.py` 가 대조).
+    # Only languages the vendored rules cover; running semgrep with zero applicable rules reports a clean run.
     SUPPORTED_LANGUAGES: frozenset[str] = frozenset({
-        # Tier 1
-        "python", "javascript", "typescript", "java", "go", "rust",
-        "c", "cpp", "csharp", "ruby",
-        # Tier 2
-        "php", "scala", "kotlin", "swift", "elixir",
-        "clojure", "solidity", "shell", "dockerfile",
-        # Config / Markup
-        "yaml", "html", "terraform",
+        "python", "javascript", "typescript", "java", "go",
+        "csharp", "scala", "kotlin", "swift",
     })
 
     def supports(self, ctx: AnalyzeContext) -> bool:
@@ -73,15 +82,19 @@ class _SemgrepAnalyzer:
         return shutil.which("semgrep") is not None
 
     def run(self, ctx: AnalyzeContext) -> list[AnalysisIssue]:
-        """semgrep p/default 룰셋으로 분석 후 이슈 목록 반환.
-        Analyze with semgrep p/default ruleset and return issue list.
+        """고정한 룰로 분석 후 이슈 목록 반환 — 네트워크에 닿지 않는다(지표 · 판 확인 끔).
+        Analyze with the vendored rules and return issues; no network (metrics and version check off).
         """
         try:
             r = subprocess.run(  # nosec B603 B607
-                ["semgrep", "scan", "--config=p/default", "--json",
+                ["semgrep", "scan", f"--config={RULES_DIR}", "--json",
+                 "--metrics=off", "--disable-version-check",
                  "--timeout", str(STATIC_ANALYSIS_TIMEOUT), ctx.tmp_path],
                 capture_output=True, text=True, encoding="utf-8", errors="replace",
                 timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
+                # 룰 파일에 비-ASCII 가 있어 로캘 인코딩(예: cp949)으로 읽으면 semgrep 이 죽는다(실측 Windows)
+                # The rules contain non-ASCII text; a non-UTF-8 locale encoding makes semgrep fail to read them.
+                env={**os.environ, "PYTHONUTF8": "1"},
             )
             # 🔴 stdout 이 JSON 이 아니면 semgrep 이 **분석하지 않은** 것이다.
             # `--json` 의 정상 «이슈 없음» 도 `{"results": []}` 라 `{` 로 시작한다 —

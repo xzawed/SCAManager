@@ -160,9 +160,10 @@ class TestSemgrepAnalyzerAttributes:
         assert isinstance(_SemgrepAnalyzer.SUPPORTED_LANGUAGES, frozenset)
 
     def test_supported_languages_contains_core_languages(self):
-        # SUPPORTED_LANGUAGES에 핵심 언어들이 포함되어 있어야 한다
+        # SUPPORTED_LANGUAGES에 핵심 언어들이 포함되어 있어야 한다 — 고정한 룰이 있는 언어만이다(L03 P1-40)
+        # Core languages stay supported; the set is now limited to languages the vendored rules cover.
         from src.analyzer.io.tools.semgrep import _SemgrepAnalyzer
-        required = {"python", "javascript", "typescript", "java", "go", "rust"}
+        required = {"python", "javascript", "typescript", "java", "go"}
         assert required.issubset(_SemgrepAnalyzer.SUPPORTED_LANGUAGES)
 
 
@@ -172,33 +173,34 @@ class TestSemgrepAnalyzerAttributes:
 
 class TestSemgrepSupports:
     @pytest.mark.parametrize("language", [
-        "python", "javascript", "typescript", "java", "go", "rust",
-        "c", "cpp", "csharp", "ruby",
+        "python", "javascript", "typescript", "java", "go", "csharp",
     ])
     def test_supports_returns_true_for_tier1_languages(self, language, make_ctx):
-        # Tier1 언어(python/js/ts/java/go/rust/c/cpp/csharp/ruby)에서 supports()는 True를 반환한다
+        # 고정한 룰이 있는 Tier1 언어(python/js/ts/java/go/csharp)에서 supports()는 True를 반환한다
         from src.analyzer.io.tools.semgrep import _SemgrepAnalyzer
         ctx = make_ctx(language=language)
         assert _SemgrepAnalyzer().supports(ctx) is True
 
     @pytest.mark.parametrize("language", [
-        "php", "scala", "kotlin", "swift", "elixir",
-        "clojure", "solidity", "shell", "dockerfile",
+        "scala", "kotlin", "swift",
     ])
     def test_supports_returns_true_for_tier2_languages(self, language, make_ctx):
-        # Tier2 언어(php/scala/kotlin/swift/elixir/clojure/solidity/shell/dockerfile)에서 supports()는 True를 반환한다
+        # 고정한 룰이 있는 Tier2 언어(scala/kotlin/swift)에서 supports()는 True를 반환한다
         from src.analyzer.io.tools.semgrep import _SemgrepAnalyzer
         ctx = make_ctx(language=language)
         assert _SemgrepAnalyzer().supports(ctx) is True
 
     @pytest.mark.parametrize("language", [
-        "yaml", "html", "terraform",
+        "rust", "c", "cpp", "ruby", "php", "elixir", "clojure",
+        "solidity", "shell", "dockerfile", "yaml", "html", "terraform",
     ])
-    def test_supports_returns_true_for_config_and_markup_languages(self, language, make_ctx):
-        # YAML/HTML/Terraform 파일에서도 supports()는 True를 반환한다
+    def test_supports_returns_false_without_vendored_rules(self, language, make_ctx):
+        # 🔴 고정한 룰이 0개인 언어에서는 supports()가 False 다 — 돌리면 «이슈 0건 · 완전» 이 된다(L03 P1-40).
+        #    이 언어들은 레지스트리 룰(p/default)로만 덮였고, 그 룰은 서비스로 쓸 수 없다.
+        # With zero vendored rules for the language, semgrep must not claim it: a run would look clean.
         from src.analyzer.io.tools.semgrep import _SemgrepAnalyzer
         ctx = make_ctx(language=language)
-        assert _SemgrepAnalyzer().supports(ctx) is True
+        assert _SemgrepAnalyzer().supports(ctx) is False
 
     @pytest.mark.parametrize("language", [
         "unknown", "markdown", "binary", "text",
@@ -243,15 +245,24 @@ class TestSemgrepIsEnabled:
 # ──────────────────────────────────────────────────────────────────────────────
 
 class TestSemgrepRunSubprocessCall:
-    def test_run_includes_config_p_default_flag(self, make_ctx):
-        # semgrep 실행 시 --config=p/default 플래그가 포함되어야 한다 (네트워크 의존성 제거)
-        # semgrep must use --config=p/default flag (removes network dependency on auto).
+    def test_run_uses_vendored_rules_offline(self, make_ctx):
+        """🔴 semgrep 은 리포에 고정한 룰 폴더로만 돈다 — 레지스트리 · auto 를 부르지 않는다 (L03 P1-40).
+
+        `--config` 는 실재하는 `configs/semgrep/rules` 폴더여야 하고, 지표 전송과 판 확인도 끈다.
+        The config must be the vendored rules folder; metrics and the version check are off.
+        """
+        from pathlib import Path  # noqa: PLC0415
+
         from src.analyzer.io.tools.semgrep import _SemgrepAnalyzer
         ctx = make_ctx(language="python", tmp_path="/tmp/sample.py")
         with patch("subprocess.run", return_value=_mock_semgrep_proc(SAMPLE_OUTPUT_EMPTY)) as mock_run:
             _SemgrepAnalyzer().run(ctx)
         call_args = mock_run.call_args[0][0]
-        assert any("--config=p/default" in arg or arg == "--config=p/default" for arg in call_args)
+        configs = [arg.split("=", 1)[1] for arg in call_args if arg.startswith("--config=")]
+        assert len(configs) == 1, f"--config 가 하나가 아니다: {call_args}"
+        rules = Path(configs[0])
+        assert rules.is_dir() and rules.as_posix().endswith("configs/semgrep/rules"), configs[0]
+        assert "--metrics=off" in call_args and "--disable-version-check" in call_args, call_args
 
     def test_run_includes_json_flag(self, make_ctx):
         # semgrep 실행 시 --json 플래그가 포함되어야 한다
@@ -598,7 +609,7 @@ class TestSemgrepAnalyzeFileIntegration:
 
 class TestSemgrepConfig:
     def test_semgrep_uses_local_ruleset_not_auto(self, make_ctx):
-        """semgrep 실행 시 --config=auto 가 아닌 --config=p/default 를 사용해야 한다."""
+        """semgrep 은 레지스트리 이름(`p/…` · `r/…`) · `auto` 를 쓰지 않는다 — 고정한 룰 폴더만 쓴다."""
         from src.analyzer.io.tools.semgrep import _SemgrepAnalyzer
         ctx = make_ctx("python", "app.py")
 
@@ -608,5 +619,8 @@ class TestSemgrepConfig:
                 _SemgrepAnalyzer().run(ctx)
 
         cmd = mock_run.call_args[0][0]
-        assert "--config=p/default" in cmd, f"expected --config=p/default in {cmd}"
-        assert "--config=auto" not in cmd, f"--config=auto must not appear in {cmd}"
+        configs = [arg.split("=", 1)[1] for arg in cmd if arg.startswith("--config=")]
+        assert configs and all(not c.startswith(("p/", "r/", "auto")) for c in configs), (
+            f"레지스트리 · auto 설정이 남았다: {cmd}"
+        )
+        assert mock_run.call_args.kwargs["env"]["PYTHONUTF8"] == "1", "룰을 UTF-8 로 읽게 하지 않는다"
