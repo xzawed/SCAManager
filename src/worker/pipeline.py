@@ -128,7 +128,7 @@ def build_analysis_result_dict(
         # signal that separates an account spend limit from a malformed 400.
         "ai_review_error_derived_cause": ai_review.error_derived_cause,
         # 🔴 정적분석 미커버 언어 — **차단 마커가 아니다**(가시화 전용, 사용자 결정).
-        # 지원 분석기가 등록조차 안 된 언어(lua·perl·haskell·r 등 21종)는 정적 45/45 만점을 받는데
+        # 지원 분석기가 등록조차 안 된 언어(lua·perl·haskell·r 등)는 정적 45/45 만점을 받는데
         # 그건 "깨끗함" 이 아니라 "검사 안 함" 이다. 게이트는 건드리지 않고 사람에게만 알린다.
         # 🔴 Uncovered languages — informational only, never gates. Full static marks there mean
         # "not inspected", not "clean".
@@ -137,8 +137,8 @@ def build_analysis_result_dict(
             if (lang := getattr(r, "uncovered_language", None))
         }),
         # 🔴 지원은 되는데 **전담 관측면이 하나도 안 돈** 언어 — 범용 semgrep 하나만 봤다.
-        # 실측(2026-08-29): 배포본에 전담 분석기가 없는 언어가 6개(rust·swift·php·csharp·
-        # scala·elixir)이고, 그 언어의 취약 코드가 이슈 0건·만점으로 auto-merge 에 도달한다.
+        # 그 언어의 취약 코드가 이슈 0건·만점으로 auto-merge 에 도달한다(어떤 언어인지는
+        # `StaticAnalysisResult.no_dedicated_observer` 주석 — 여기 목록을 두면 따로 늙는다).
         # `static_uncovered_languages` 와 같은 계약이다 — **게이트를 건드리지 않고 알린다.**
         # Supported but observed only by the generic fallback. Informational, never gates.
         "static_no_dedicated_observers": _aggregate_no_dedicated_observers(analysis_results),

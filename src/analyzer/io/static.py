@@ -270,7 +270,7 @@ def analyze_file(  # pylint: disable=too-many-locals
     # 않았고** 그 사유가 바이너리 부재면 incomplete. 실행 0개는 "이슈 0건"(=정적 만점 45/45)과
     # 구별 불가라, 배포 이미지에 없는 분석기 언어(Dart·PowerShell·Protobuf·CSS 등)가 결함 유무와
     # 무관하게 만점을 받고 auto-merge 까지 도달했다(실측 재현: 총점 89/B).
-    # 🔴 `ran > 0` 이면 승격하지 않는다 — semgrep 이 커버하는 Rust·PHP·Swift 등에서 optional 도구
+    # 🔴 `ran > 0` 이면 승격하지 않는다 — semgrep 이 커버하는 Swift 에서 optional 도구(swiftlint)
     # 하나가 없다고 영구 차단하면 과차단이다(경계는 "부분 미실행" 이 아니라 "전무").
     # 🔴 Promote only when ZERO analyzers ran AND the reason was an absent binary. Zero executions is
     # indistinguishable from "no issues" (= full 45/45 static marks) and reached auto-merge.

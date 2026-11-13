@@ -159,11 +159,11 @@ is marked **incomplete**, and the gate will not auto-approve or auto-merge it. A
 not analyze what it was given should not be able to score well.
 
 <details>
-<summary><b>Language coverage</b> — 49 for the AI review, 27 with a static analyzer</summary>
+<summary><b>Language coverage</b> — 49 for the AI review, 25 with a static analyzer</summary>
 
 <br>
 
-Claude reviews **49 languages**, each against its own checklist. **27** of those also have a static
+Claude reviews **49 languages**, each against its own checklist. **25** of those also have a static
 analyzer behind them. There are **24 registered analyzers**; **16** ship in every deployment as the
 contract described above, and the rest run when their binary happens to be on `PATH`.
 
