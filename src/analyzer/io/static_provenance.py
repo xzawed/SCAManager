@@ -17,18 +17,15 @@ tool per process, off the event loop; building the record only reads memory and 
 """
 from __future__ import annotations
 
-import functools
-import json
 import os
 import re
 import shutil
 import subprocess  # nosec B404
 import threading
 from collections.abc import Iterable
-from pathlib import Path
 
 from src.analyzer.io.static import analyzer_binary
-from src.analyzer.io.tools.semgrep import RULES_DIR
+from src.analyzer.pure.registry import REGISTRY
 
 # `--version` 의 앞 두 줄 — 결과를 바꾸는 하위 판이 둘째 줄에 있다(pylint 의 astroid · tflint 의 룰셋).
 # 실물 꼴은 CI docker 잡이 운영 이미지 안에서 같은 함수로 핀과 대조한다(ci.yml «pinned versions» 스텝).
@@ -38,7 +35,6 @@ _VERSION_CHARS = 200
 # 도구 하나의 판 읽기 상한(초). 실측 가장 느린 것은 semgrep(로컬 1.9 s) — 넉넉히 둔다.
 # Per-tool probe timeout; the slowest measured probe (semgrep) took 1.9 s.
 _PROBE_TIMEOUT = 20
-_SEMGREP_MANIFEST = RULES_DIR.parent / "MANIFEST.json"
 # Railway 가 GitHub 에서 시작한 배포에 넣어 주는 커밋 — 이 꼴이 아니면 싣지 않는다.
 # The commit Railway sets for GitHub-triggered deploys; anything else is not recorded.
 _COMMIT = re.compile(r"[0-9a-f]{7,64}")
@@ -101,10 +97,9 @@ def ensure_probed(tools: Iterable[str]) -> None:
         version = read_version(tool)
         with _LOCK:
             _VERSIONS.setdefault(tool, version)
-    if "semgrep" in wanted:
-        # 룰 출처 파일도 여기서 미리 읽어 둔다 — 루프 위에서 파일을 열지 않게.
-        # Warm the ruleset cache here so the event loop never opens the file.
-        _semgrep_ruleset()
+    # 룰 출처도 여기서 한 번 읽어 둔다(선언이 캐시한다) — 루프 위에서 파일을 열지 않게.
+    # Read the declared rulesets here once (the declarations cache) so the loop never opens a file.
+    _rulesets(wanted)
 
 
 def probed_versions() -> dict[str, str | None]:
@@ -125,23 +120,31 @@ def static_provenance(analysis_results: Iterable[object]) -> dict:
     return {
         "build": _build_commit(),
         "tools": {tool: known.get(tool) for tool in tools},
-        "rulesets": {"semgrep": _semgrep_ruleset()} if "semgrep" in tools else {},
+        "rulesets": _rulesets(tools),
     }
+
+
+def _rulesets(tools: list[str]) -> dict[str, str | None]:
+    """부른 분석기 중 고정 룰을 **선언한** 것(`ruleset()`)의 출처. 도구 이름을 여기 적지 않는다 —
+    선언에서 파생하므로 고정 룰을 쓰는 분석기가 늘면 선언 한 줄로 따라온다(`is_generic` 과 같은 방식).
+
+    Rulesets of the invoked analyzers that *declare* one (`ruleset()`); derived from declarations,
+    never from a list of tool names here.
+    """
+    found: dict[str, str | None] = {}
+    for analyzer in REGISTRY:
+        declared = getattr(analyzer, "ruleset", None)
+        if analyzer.name in tools and callable(declared):
+            try:
+                found[analyzer.name] = declared()
+            except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+                # 이 기록은 루프 위에서 저장 직전에 만든다 — 선언 하나의 결함이 분석 저장을 막지 않게 None(모름)으로.
+                # Built on the loop right before the save: one faulty declaration records None, never blocks.
+                found[analyzer.name] = None
+    return dict(sorted(found.items()))
 
 
 def _build_commit() -> str | None:
     """분석한 빌드의 커밋 — Railway 는 GitHub 에서 시작한 배포에만 준다. 그 밖(로컬 · 업로드 배포)은 None."""
     value = os.environ.get("RAILWAY_GIT_COMMIT_SHA", "").strip().lower()
     return value if _COMMIT.fullmatch(value) else None
-
-
-@functools.lru_cache(maxsize=4)
-def _semgrep_ruleset(manifest: Path = _SEMGREP_MANIFEST) -> str | None:
-    """고정한 semgrep 룰의 출처 — MANIFEST.json 의 `<저장소 이름> <판>`(예: `sast-rules v2.10.1`). 못 읽으면 None."""
-    try:
-        data = json.loads(manifest.read_text(encoding="utf-8"))
-        source = str(data["source"]).rstrip("/").rsplit("/", 1)[-1]
-        version = str(data["version"])
-    except (OSError, ValueError, KeyError, TypeError):
-        return None
-    return f"{source} {version}" if source and version else None

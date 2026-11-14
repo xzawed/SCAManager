@@ -27,6 +27,7 @@ import pytest  # noqa: E402
 
 from src.analyzer.io import static_provenance as sp  # noqa: E402
 from src.analyzer.io.static import StaticAnalysisResult, _run_analyzers  # noqa: E402
+from src.analyzer.io.tools import semgrep as sg  # noqa: E402
 from src.analyzer.pure.registry import AnalyzeContext  # noqa: E402
 
 _SHA = "0123456789abcdef0123456789abcdef01234567"
@@ -226,22 +227,49 @@ def test_build_commit_comes_from_railway_and_must_look_like_a_sha(monkeypatch, v
 
 
 def test_semgrep_ruleset_is_recorded_only_when_semgrep_ran():
-    """고정 룰 출처는 그 룰을 쓰는 도구가 돈 행에만 — 두 심음(돈 행 · 안 돈 행)으로 뒤집는다."""
-    manifest = json.loads(sp._SEMGREP_MANIFEST.read_text(encoding="utf-8"))  # pylint: disable=protected-access
+    """고정 룰 출처는 그 룰을 쓰는 도구가 돈 행에만 — 두 심음(돈 행 · 안 돈 행)으로 뒤집는다.
+
+    실물 레지스트리 · 실물 MANIFEST 다 — semgrep 어댑터의 `ruleset()` 선언이 이 값을 낸다.
+    """
+    manifest = json.loads(sg.MANIFEST.read_text(encoding="utf-8"))
     expected = f"{manifest['source'].rstrip('/').rsplit('/', 1)[-1]} {manifest['version']}"
     assert expected.startswith("sast-rules v"), f"전제 붕괴 — MANIFEST 출처가 바뀌었다: {expected}"
     assert sp.static_provenance(_results(["semgrep"]))["rulesets"] == {"semgrep": expected}
     assert sp.static_provenance(_results(["pylint"]))["rulesets"] == {}
 
 
+class _Declares:  # pylint: disable=too-few-public-methods
+    """`ruleset()` 을 선언한 어댑터 더블. / An adapter double that declares a ruleset."""
+
+    def __init__(self, name: str, ruleset):
+        self.name = name
+        self.ruleset = ruleset
+
+
+def test_rulesets_come_from_declarations_not_tool_names():
+    """🔴 룰 출처는 도구 이름 목록이 아니라 어댑터의 `ruleset()` 선언에서 파생한다.
+
+    선언한 도구가 돌면 실리고, 돌지 않으면 안 실리고, 선언이 없으면 돌아도 안 실린다.
+    선언이 터지면 None 이다 — 이 기록은 루프 위에서 저장 직전에 만들어지므로 저장을 막으면 안 된다.
+    """
+    def broken():
+        raise RuntimeError("declaration bug")
+
+    registry = [_Declares("opengrep", lambda: "rules v1"), _Declares("idle", lambda: "rules v2"),
+                _Declares("flaky", broken), SimpleNamespace(name="plain")]
+    with patch.object(sp, "REGISTRY", registry):
+        prov = sp.static_provenance(_results(["opengrep", "plain", "flaky"]))
+    assert prov["rulesets"] == {"flaky": None, "opengrep": "rules v1"}
+
+
 def test_unreadable_manifest_is_none(tmp_path):
     bad = tmp_path / "MANIFEST.json"
     bad.write_text("{not json", encoding="utf-8")
-    assert sp._semgrep_ruleset(bad) is None  # pylint: disable=protected-access
+    assert sg.vendored_ruleset(bad) is None
     planted = tmp_path / "planted.json"
     planted.write_text(json.dumps({"source": "https://gitlab.com/x/sast-rules/", "version": "v9.9.9"}),
                        encoding="utf-8")
-    assert sp._semgrep_ruleset(planted) == "sast-rules v9.9.9"  # pylint: disable=protected-access
+    assert sg.vendored_ruleset(planted) == "sast-rules v9.9.9"
 
 
 # ── 분석 행 JSON ──────────────────────────────────────────────────────────

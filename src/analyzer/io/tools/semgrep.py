@@ -13,6 +13,7 @@ sast-rules (MIT · Apache-2.0 · LGPL-3.0); provenance and per-file licenses liv
 from __future__ import annotations
 
 import atexit
+import functools
 import json
 import logging
 import os
@@ -31,6 +32,8 @@ _ERR_EXCERPT = 200
 # 고정한 룰 폴더 — 리포 · 이미지에는 이 원본 YAML 만 둔다(라이선스 머리 포함)
 # The vendored rule folder; only these original YAML files ship in the repo and the image.
 RULES_DIR = Path(__file__).resolve().parents[2] / "configs" / "semgrep" / "rules"
+# 그 룰의 출처 · 판 · 파일별 라이선스 / provenance, version and per-file licenses of those rules
+MANIFEST = RULES_DIR.parent / "MANIFEST.json"
 
 # 룰 폴더 → 이 프로세스가 만든 JSON 묶음. 묶기는 프로세스마다 한 번이다.
 # Rule folder -> the JSON bundle this process built; bundling happens once per process.
@@ -98,6 +101,21 @@ def rules_config() -> Path:
             return RULES_DIR
 
 
+@functools.lru_cache(maxsize=4)
+def vendored_ruleset(manifest: Path = MANIFEST) -> str | None:
+    """고정한 룰의 출처 — MANIFEST.json 의 `<저장소 이름> <판>`(예: `sast-rules v2.10.1`). 못 읽으면 None.
+
+    The vendored rules' "<repository name> <version>" from MANIFEST.json, or None when unreadable.
+    """
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+        source = str(data["source"]).rstrip("/").rsplit("/", 1)[-1]
+        version = str(data["version"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    return f"{source} {version}" if source and version else None
+
+
 def _bundle_present(path: Path) -> bool:
     """캐시한 묶음이 아직 있는가 — 확인이 오류를 내면 없는 것으로 보고 다시 묶는다.
 
@@ -152,6 +170,13 @@ class _SemgrepAnalyzer:
         "python", "javascript", "typescript", "java", "go",
         "csharp", "scala", "kotlin", "swift",
     })
+
+    def ruleset(self) -> str | None:
+        """이 분석기가 쓰는 고정 룰의 출처 — 분석 행의 출처 기록이 이 선언을 읽는다(회고 원장 L03 P2-104).
+
+        Vendored ruleset id; the analysis-row provenance record reads this declaration.
+        """
+        return vendored_ruleset()
 
     def supports(self, ctx: AnalyzeContext) -> bool:
         """Semgrep 지원 언어 여부 확인."""
