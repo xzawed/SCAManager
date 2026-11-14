@@ -109,7 +109,7 @@
       display: flex;
       align-items: center;
       gap: var(--space-2);
-      height: 56px;
+      height: var(--nav-h);
       /* nav 는 한 줄이다 — 일본어 링크는 글자 사이에서 꺾일 수 있어, 자리가 모자라면 넘치는 대신 여러 줄로
          쌓였다(실측 769px «ダッシュボード» 7줄). Keep every nav label on one line. */
       white-space: nowrap;
@@ -531,7 +531,7 @@
         flex-direction: column;
         align-items: flex-start;
         position: fixed;
-        top: 56px;
+        top: var(--nav-h);
         left: 0;
         right: 0;
         /* 불투명 바탕 — nav 의 반투명 바탕을 쓰면, nav 의 블러 밖으로 펼친 이 패널 뒤로 페이지 제목이 비쳐 링크와
@@ -613,7 +613,7 @@
     /* ── 페이지 네비게이션 로딩 프로그레스 바 / Page navigation loading progress bar ─── */
     #page-progress {
       position: fixed;
-      top: 56px; /* nav height */
+      top: var(--nav-h);
       left: 0; right: 0;
       height: 2px;
       background: linear-gradient(90deg, var(--accent), var(--accent-2));
