@@ -176,7 +176,8 @@ class TestKtlintNeedsAJvm:
         # Patch once: the adapter's `shutil` is the global module, not a copy.
         with patch("shutil.which", _which({"ktlint", "semgrep"})), \
                 patch("src.analyzer.io.tools.semgrep.subprocess.run",
-                      return_value=_mock_proc(json.dumps({"results": [], "errors": []}), 0)):
+                      return_value=_mock_proc(json.dumps({"results": [], "errors": [],
+                                                         "paths": {"scanned": ["analyze.kt"]}}), 0)):
             result = static.analyze_file("Main.kt", "fun main() {}\n")
         assert result.unavailable_tools == ["ktlint"], (
             f"조달 축으로 가야 한다 — unavailable={result.unavailable_tools}"

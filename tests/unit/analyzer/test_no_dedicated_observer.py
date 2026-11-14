@@ -89,7 +89,7 @@ def test_generic_only_run_sets_the_axis():
     from src.analyzer.io.tools import semgrep as sg  # noqa: PLC0415
 
     clean = subprocess.CompletedProcess(args=[], returncode=0,
-                                        stdout='{"results": [], "errors": []}', stderr="")
+                                        stdout='{"results": [], "errors": [], "paths": {"scanned": ["analyze"]}}', stderr="")
     # scala — semgrep(범용)만 지원하는 언어. elixir 는 고정한 룰이 없어 semgrep 지원에서 빠졌다(L03 P1-40)
     # scala is covered by the generic analyzer only; elixir left semgrep's set with the vendored rules.
     ctx = _ctx("scala", "v.scala")

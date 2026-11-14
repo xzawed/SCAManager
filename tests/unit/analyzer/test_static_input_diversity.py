@@ -104,7 +104,7 @@ def _no_subprocess():
     clean = {
         "pylint": "[]",
         "bandit": '{"results": [], "errors": []}',
-        "semgrep": '{"results": [], "errors": []}',
+        "semgrep": '{"results": [], "errors": [], "paths": {"scanned": ["analyze"]}}',
     }
 
     def _stub(cmd, *_a, **_k):

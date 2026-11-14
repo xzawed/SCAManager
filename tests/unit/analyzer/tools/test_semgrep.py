@@ -69,7 +69,8 @@ SAMPLE_OUTPUT_SECURITY_ERROR = json.dumps({
             "path": "/tmp/test.py",
             "start": {"line": 5},
         }
-    ]
+    ],
+    "paths": {"scanned": ["/tmp/test.py"]},
 })
 
 # 정상 출력 샘플 — code_quality 태그가 없는 WARNING 이슈 (metadata 비어 있음)
@@ -85,11 +86,12 @@ SAMPLE_OUTPUT_CODE_QUALITY_WARNING = json.dumps({
             "path": "/tmp/test.py",
             "start": {"line": 12},
         }
-    ]
+    ],
+    "paths": {"scanned": ["/tmp/test.py"]},
 })
 
 # 정상 출력 샘플 — results 비어 있음
-SAMPLE_OUTPUT_EMPTY = json.dumps({"results": []})
+SAMPLE_OUTPUT_EMPTY = json.dumps({"results": [], "paths": {"scanned": ["/tmp/test.py"]}})
 
 # 정상 출력 샘플 — 복수 이슈 혼합 (security + code_quality)
 SAMPLE_OUTPUT_MIXED = json.dumps({
@@ -114,7 +116,8 @@ SAMPLE_OUTPUT_MIXED = json.dumps({
             "path": "/tmp/App.java",
             "start": {"line": 45},
         },
-    ]
+    ],
+    "paths": {"scanned": ["/tmp/App.java"]},
 })
 
 
@@ -400,7 +403,7 @@ class TestSemgrepRunOutputParsing:
         # JSON에 "results" 키가 없는 비정상 구조 → 빈 이슈 목록 반환
         from src.analyzer.io.tools.semgrep import _SemgrepAnalyzer
         ctx = make_ctx(language="python", tmp_path="/tmp/test.py")
-        malformed = json.dumps({"errors": [], "version": "1.0"})
+        malformed = json.dumps({"errors": [], "version": "1.0", "paths": {"scanned": ["/tmp/test.py"]}})
         with patch("subprocess.run", return_value=_mock_semgrep_proc(malformed)):
             issues = _SemgrepAnalyzer().run(ctx)
         assert issues == []
@@ -514,7 +517,8 @@ class TestSemgrepSecurityCategoryMapping:
                     "path": "/tmp/main.go",
                     "start": {"line": 20},
                 }
-            ]
+            ],
+            "paths": {"scanned": ["/tmp/main.go"]},
         })
         with patch("subprocess.run", return_value=_mock_semgrep_proc(output)):
             issues = _SemgrepAnalyzer().run(ctx)
