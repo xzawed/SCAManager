@@ -228,7 +228,10 @@ def _npm_fetches(text: str) -> list[tuple[str, str]]:
     text = re.sub(r"\\\s*\n\s*", " ", text)
     out = []
     for tool, _flags, rest in _NPM_CALL.findall(text):
-        words = [w for w in shlex.split(rest, comments=True) if not w.startswith("-")]
+        # 셸처럼 낱말 머리의 `#` 만 주석이다 — shlex 의 comments=True 는 낱말 가운데 `#` 에서도 줄 끝까지 버려
+        # 그 뒤 패키지를 놓친다. Only a word-initial `#` starts a comment, as in the shell.
+        rest = re.sub(r"(?:^|\s)#.*", "", rest)
+        words = [w for w in shlex.split(rest) if not w.startswith("-")]
         if tool == "npm":
             if not words or words[0] in _NPM_NON_FETCHING:
                 continue
@@ -282,6 +285,7 @@ def test_inexact_reader_on_planted_text():
     assert _inexact("npm i -g eslint\nnpm --global add prettier@^3.0.0  # 꼬리 주석\n") == [
         "eslint(버전 없음)", "prettier=^3.0.0"]
     assert _inexact("sudo /usr/bin/npm install -g eslint@latest\n") == ["eslint=latest"]
+    assert _inexact("npm i -g x@1.2.3#y eslint\n") == ["eslint(버전 없음)", "x=1.2.3#y"]
 
 
 # witness-corpus: npm CLI 문서에서 레지스트리 패키지를 받는 명령 중 install 이 아닌 것 — update · exec · npx · link · install-test
