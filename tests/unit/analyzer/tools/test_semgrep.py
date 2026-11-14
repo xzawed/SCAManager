@@ -656,29 +656,35 @@ _PARTIAL_PARSING = {"code": 3, "level": "warn", "type": ["PartialParsing", []],
 _ONE_FINDING = {"check_id": "python_exec_rule-subprocess-popen-shell-true", "start": {"line": 4},
                 "extra": {"severity": "ERROR", "message": "shell=True", "metadata": {"category": "security"}}}
 
-# 이름 → 언어(`language.py` 의 대응). semgrep 이 처음부터 대상으로 삼지 않는 파일과, 실제로 훑는 파일(실측 1.184.0).
-# name -> language. Files semgrep never targets, and files it does scan (measured on 1.184.0).
-_UNTARGETED = {"build.sc": "scala", "deploy": "python"}
-# witness-corpus: names semgrep scans for the languages routed to it (measured, 1.184.0)
-_TARGETED = {"app.py": "python", "stub.pyi": "python", "app.mjs": "javascript",
-             "build.gradle.kts": "kotlin", "Main.scala": "scala"}
+# (원래 이름, 언어). semgrep 이 받는 임시 파일은 제품 함수 `static.py::temp_suffix` 로 짓는다(실측 1.184.0).
+# (original name, language); the temp file semgrep receives is named by the product's own temp_suffix.
+_UNTARGETED = (("build.sc", "scala"), ("deploy", "javascript"), ("deploy.", "javascript"))
+# witness-corpus: (name, language) pairs whose temp file semgrep scans (measured, 1.184.0)
+_TARGETED = (("app.py", "python"), ("stub.pyi", "python"), ("app.mjs", "javascript"),
+             ("build.gradle.kts", "kotlin"), ("Main.scala", "scala"), ("deploy", "python"))
 
 
-@pytest.mark.parametrize("filename", sorted(_UNTARGETED))
-def test_supports_skips_files_semgrep_never_targets(make_ctx, filename):
-    """🔴 semgrep 이 처음부터 대상으로 삼지 않는 파일(scala 스크립트 `.sc` · 확장자 없는 shebang 스크립트)은 돌리지 않는다.
+def _routed_ctx(make_ctx, filename: str, language: str):
+    """static.py 와 같은 임시 파일 이름으로 ctx 를 만든다. / A ctx whose tmp_path is named like static.py names it."""
+    from src.analyzer.io.static import temp_suffix
+    return make_ctx(language, filename, tmp_path=f"/tmp/x/analyze{temp_suffix(filename, language)}")
 
-    실측 1.184.0: 둘 다 `paths.scanned` 가 비고 errors 도 없이 종료 0 이다 — 돌리면 «이슈 0건 · 완전» 으로 기록된다.
+
+@pytest.mark.parametrize(("filename", "language"), _UNTARGETED)
+def test_supports_skips_files_semgrep_never_targets(make_ctx, filename, language):
+    """🔴 semgrep 이 처음부터 대상으로 삼지 않는 임시 파일(scala 스크립트 `.sc` · 확장자 없는 node shebang 스크립트의 `.tmp`)은
+    돌리지 않는다. 실측 1.184.0: 둘 다 `paths.scanned` 가 비고 errors 도 없이 종료 0 — 돌리면 «이슈 0건 · 완전» 이 된다.
     """
     from src.analyzer.io.tools.semgrep import _SemgrepAnalyzer
-    assert _SemgrepAnalyzer().supports(make_ctx(_UNTARGETED[filename], filename)) is False
+    assert _SemgrepAnalyzer().supports(_routed_ctx(make_ctx, filename, language)) is False
 
 
-@pytest.mark.parametrize("filename", sorted(_TARGETED))
-def test_supports_keeps_files_semgrep_scans(make_ctx, filename):
-    """대조군 — semgrep 이 실제로 훑는 파일(실측)은 그대로 돌린다."""
+@pytest.mark.parametrize(("filename", "language"), _TARGETED)
+def test_supports_keeps_files_semgrep_scans(make_ctx, filename, language):
+    """대조군 — semgrep 이 실제로 훑는 임시 파일은 그대로 돌린다. 🔴 확장자 없는 python shebang 스크립트(`deploy`)도 임시 파일은
+    `.py` 라 훑는다 — 원래 이름으로 판정하면 이 파일에서 semgrep 을 잃는다(자동 보안 리뷰 지적)."""
     from src.analyzer.io.tools.semgrep import _SemgrepAnalyzer
-    assert _SemgrepAnalyzer().supports(make_ctx(_TARGETED[filename], filename)) is True
+    assert _SemgrepAnalyzer().supports(_routed_ctx(make_ctx, filename, language)) is True
 
 
 def test_run_raises_when_target_was_not_scanned(make_ctx):
@@ -700,24 +706,39 @@ def test_run_raises_when_scanned_paths_are_missing(make_ctx):
             _SemgrepAnalyzer().run(make_ctx("python", "app.py", tmp_path=_TARGET))
 
 
-def test_run_raises_on_a_rule_timeout(make_ctx):
-    """🔴 규칙별 시간 초과(`Timeout`)는 그 규칙이 이 파일을 끝까지 못 본 것이다 — 남은 규칙의 결과가 있어도 미분석.
+def test_rule_did_not_finish_kinds_match_semgreps_own_schema():
+    """🔴 «규칙이 끝까지 못 돎» 목록은 설치된 semgrep 의 출력 스키마가 내는 JSON 이름과 같다 — 이름이 바뀌면 여기서 red.
 
-    실측: 종료 0 · errors 에 위 꼴 · 결과는 끝난 규칙 것만. 지금 상수(규칙 30 s · 실행 상한 30 s)에서는 실행 상한이
-    먼저 끊어 `timed_out` 이 되지만, 둘 중 하나가 바뀌면 이 꼴이 그대로 닿는다.
+    The list equals the JSON names the installed semgrep's output schema emits for those kinds.
+    """
+    schema = pytest.importorskip("semgrep.semgrep_interfaces.semgrep_output_v1")
+    from src.analyzer.io.tools.semgrep import _RULE_DID_NOT_FINISH
+    kinds = (schema.Timeout, schema.OutOfMemory, schema.StackOverflow, schema.FixpointTimeout, schema.MatchingError)
+    assert _RULE_DID_NOT_FINISH == {kind.to_json() for kind in kinds}
+
+
+@pytest.mark.parametrize("kind", ["Timeout", "Out of memory", "Stack overflow", "Fixpoint timeout",
+                                  "Internal matching error"])
+def test_run_raises_when_a_rule_did_not_finish(make_ctx, kind):
+    """🔴 규칙이 이 파일에서 끝까지 못 돌았다 — 끝난 규칙의 결과가 있어도 미분석.
+
+    실측(`Timeout`, --timeout 1): 종료 0 · errors 에 위 꼴 · 결과는 끝난 규칙 것만. 지금 상수(규칙 30 s · 실행 상한 30 s)
+    에서는 실행 상한이 먼저 끊어 `timed_out` 이 되지만, 둘 중 하나가 바뀌면 이 꼴이 그대로 닿는다.
     """
     from src.analyzer.io.tools.semgrep import _SemgrepAnalyzer
-    payload = _semgrep_json(results=[_ONE_FINDING], errors=[_RULE_TIMEOUT])
+    payload = _semgrep_json(results=[_ONE_FINDING], errors=[dict(_RULE_TIMEOUT, type=kind)])
     with patch("subprocess.run", return_value=_mock_semgrep_proc(payload)):
-        with pytest.raises(RuntimeError, match="Timeout when running"):
+        with pytest.raises(RuntimeError, match="did not analyze"):
             _SemgrepAnalyzer().run(make_ctx("python", "app.py", tmp_path=_TARGET))
 
 
-def test_partial_parsing_still_counts_as_scanned(make_ctx):
-    """대조군 — 부분 파싱(`PartialParsing`)은 훑은 것이다. 실측: 유효한 Python 3.14 t-string 도 이 경고를 내지만 semgrep 은
-    나머지를 훑어 결과를 낸다 — 이것까지 미분석으로 올리면 새 문법 파일마다 auto-merge 가 막힌다."""
+@pytest.mark.parametrize("error", [_PARTIAL_PARSING, dict(_PARTIAL_PARSING, type="Syntax error")],
+                         ids=["partial-parsing", "syntax-error"])
+def test_parse_warnings_still_count_as_scanned(make_ctx, error):
+    """대조군 — 파싱 꼴(`PartialParsing` · `Syntax error`)은 훑은 것이다. 실측: 유효한 Python 3.14 t-string 도 부분 파싱
+    경고를 내지만 semgrep 은 나머지를 훑어 결과를 낸다 — 이것까지 미분석으로 올리면 새 문법 파일마다 auto-merge 가 막힌다."""
     from src.analyzer.io.tools.semgrep import _SemgrepAnalyzer
-    payload = _semgrep_json(results=[_ONE_FINDING], errors=[_PARTIAL_PARSING])
+    payload = _semgrep_json(results=[_ONE_FINDING], errors=[error])
     with patch("subprocess.run", return_value=_mock_semgrep_proc(payload)):
         issues = _SemgrepAnalyzer().run(make_ctx("python", "app.py", tmp_path=_TARGET))
     assert [i.message for i in issues] == ["shell=True"]

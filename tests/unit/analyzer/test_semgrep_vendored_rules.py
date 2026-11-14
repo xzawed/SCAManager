@@ -354,26 +354,33 @@ def test_real_semgrep_applies_at_least_one_rule_to_every_supported_language(tmp_
 
 
 def _routed_names() -> dict[str, str]:
-    """제품이 semgrep 지원 언어로 읽는 파일 이름 → 언어 — 정본 맵에서 파생한다(확장자 맵 + shebang 은 확장자 없는 이름).
+    """semgrep 이 받을 임시 파일 이름 → 언어 — 정본 맵(확장자 · shebang 은 확장자 없는 이름)에서 원래 이름을 파생하고,
+    임시 파일 이름은 제품 함수 `static.py::temp_suffix` 로 짓는다(python 은 늘 `.py`, 확장자 없는 그 밖은 `.tmp`).
 
-    Names detect_language routes to a semgrep-supported language, derived from the canonical maps.
+    Temp-file names semgrep would receive -> language: original names from the canonical maps, temp names from
+    the product's own temp_suffix.
     """
-    from src.analyzer.pure import language as _language  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    # pylint: disable=import-outside-toplevel
+    from src.analyzer.io.static import temp_suffix  # noqa: PLC0415
+    from src.analyzer.pure import language as _language  # noqa: PLC0415
 
     supported = _SemgrepAnalyzer.SUPPORTED_LANGUAGES
-    names = {f"analyze{ext}": lang for ext, lang in _language._EXTENSION_MAP.items()  # noqa: SLF001
-             if lang in supported}
-    names.update({f"script_{lang}": lang for lang in set(_language._SHEBANG_MAP.values())  # noqa: SLF001
-                  if lang in supported})
-    return names
+    originals = [(f"probe{ext}", lang) for ext, lang in _language._EXTENSION_MAP.items()  # noqa: SLF001
+                 if lang in supported]
+    # 확장자 없는 이름과 끝이 점인 이름 — shebang 으로만 언어가 정해진다(`.` 은 임시 파일 확장자가 빈 글자가 된다)
+    # Extensionless and trailing-dot names; only the shebang decides their language.
+    originals += [(name, lang) for lang in sorted(set(_language._SHEBANG_MAP.values()))  # noqa: SLF001
+                  if lang in supported for name in ("probe", "probe.")]
+    return {f"t{i}{temp_suffix(name, lang)}": lang for i, (name, lang) in enumerate(originals)}
 
 
 @pytest.mark.skipif(shutil.which("semgrep") is None, reason="semgrep 바이너리 없음 — CI · 이미지에서 잰다")
 def test_supports_agrees_with_what_real_semgrep_scans(tmp_path):
-    """🔴 제품이 semgrep 으로 보내는 이름은 실물 semgrep 이 훑는 이름과 정확히 같다 (회고 원장 R-8).
+    """🔴 제품이 semgrep 으로 보내는 임시 파일은 실물 semgrep 이 훑는 파일과 정확히 같다 (회고 원장 R-8).
 
-    `supports()` 가 참인데 semgrep 이 훑지 않으면 그 파일은 늘 «미분석» 이 되고, 거짓인데 훑는다면 semgrep 을 쓸 수 있는
-    파일을 버린다. 이름은 정본 맵에서 파생하므로 확장자가 늘면 여기서 함께 잰다. 한 번의 실행으로 `paths.scanned` 를 본다.
+    `supports()` 가 참인데 semgrep 이 훑지 않으면 그 파일은 늘 «미분석» 이 되고, 거짓인데 훑는다면 보안 대체 관측면을
+    잃는다(확장자 없는 python 스크립트 — 자동 보안 리뷰 지적). 이름은 정본 맵과 제품의 임시 파일 이름 짓기에서 파생하므로
+    확장자가 늘면 여기서 함께 잰다. 한 번의 실행으로 `paths.scanned` 를 본다.
     """
     names = _routed_names()
     assert names, "전제 붕괴 — 정본 맵에서 semgrep 지원 언어 이름을 하나도 못 얻었다"

@@ -145,6 +145,16 @@ def _error_type(error) -> str:
     return kind if isinstance(kind, str) else ""
 
 
+# 🔴 semgrep 의 규칙 엔진이 이 파일에서 끝까지 돌지 못한 꼴 — `errors[].type` 의 JSON 이름(출력 스키마 `semgrep_output_v1` 의
+#    `to_json`)이다(회고 원장 R-8). 종료 0 이라도 그 규칙의 결과가 빠졌으므로 미분석이다. 실측은 `Timeout`(--timeout 1)이고
+#    나머지는 같은 스키마의 형제 — 시험이 설치된 semgrep 의 스키마와 대조한다. 파싱 꼴(`Syntax error` · `PartialParsing`)은
+#    훑은 것이라 넣지 않는다.
+# Kinds meaning a rule did not finish on this file (JSON names from semgrep's output schema). Parse kinds are excluded.
+_RULE_DID_NOT_FINISH: frozenset[str] = frozenset({
+    "Timeout", "Out of memory", "Stack overflow", "Fixpoint timeout", "Internal matching error",
+})
+
+
 def _fail(ctx, r, data=None, reason: str = "") -> RuntimeError:
     """실패를 예외로 만든다 — `static.py` 는 `run()` 이 **올릴 때만** `incomplete` 로 승격한다.
 
@@ -193,17 +203,19 @@ class _SemgrepAnalyzer:
         """
         return vendored_ruleset()
 
-    # 🔴 semgrep 이 처음부터 대상으로 삼지 않는 파일 — 실측 1.184.0: scala 스크립트 `.sc` 와 확장자 없는 파일(shebang 으로
-    #    언어를 정한 스크립트)은 `paths.scanned` 가 비고 errors 도 없이 종료 0 이다(회고 원장 R-8). 돌리면 «이슈 0건 · 완전» 이
-    #    되므로 돌리지 않는다 — 그 파일에 다른 분석기가 없으면 `uncovered_language` 로 드러난다. 실물 semgrep 과의 대조 =
-    #    `tests/unit/analyzer/test_semgrep_vendored_rules.py`.
-    # Files semgrep never targets (measured): running it on them records a clean run, so they are not routed to it.
-    _UNTARGETED_SUFFIXES: frozenset[str] = frozenset({"", ".sc"})
+    # 🔴 semgrep 이 처음부터 대상으로 삼지 않는 임시 파일 확장자 — 실측 1.184.0: scala 스크립트 `.sc` 와, 확장자 없는 비-python
+    #    파일(node · deno · bun shebang 스크립트)에 `static.py::temp_suffix` 가 붙이는 `.tmp`, 끝이 점인 이름이 남기는 빈 확장자는
+    #    `paths.scanned` 가 비고 errors 도 없이 종료 0 이다(회고 원장 R-8). 돌리면 «이슈 0건 · 완전» 이 되므로 돌리지 않는다 — 그 파일에 다른 분석기가 없으면
+    #    `uncovered_language` 로 드러난다. 🔴 원래 이름이 아니라 **semgrep 이 받는 임시 파일**로 판정한다 — python 은 shebang
+    #    스크립트도 `.py` 로 받아 semgrep 이 훑는다(자동 보안 리뷰 지적). 실물 대조 = `test_semgrep_vendored_rules.py`.
+    # Temp-file extensions semgrep never targets (measured). Judge the path semgrep receives, not the original name:
+    # python files always get `.py`, so an extensionless python script is still scanned.
+    _UNTARGETED_SUFFIXES: frozenset[str] = frozenset({"", ".sc", ".tmp"})
 
     def supports(self, ctx: AnalyzeContext) -> bool:
-        """Semgrep 지원 언어이고 semgrep 이 그 파일을 대상으로 삼는지 확인."""
+        """Semgrep 지원 언어이고 semgrep 이 그 임시 파일을 대상으로 삼는지 확인."""
         return (ctx.language in self.SUPPORTED_LANGUAGES
-                and Path(ctx.filename).suffix.lower() not in self._UNTARGETED_SUFFIXES)
+                and Path(ctx.tmp_path).suffix.lower() not in self._UNTARGETED_SUFFIXES)
 
     def is_enabled(self, ctx: AnalyzeContext) -> bool:  # pylint: disable=unused-argument
         """semgrep 바이너리 설치 여부 확인."""
@@ -252,10 +264,10 @@ class _SemgrepAnalyzer:
             scanned = paths.get("scanned") if isinstance(paths, dict) else None
             if not isinstance(scanned, list) or not scanned:
                 raise _fail(ctx, r, data, "target not scanned")
-            # 🔴 규칙별 시간 초과는 그 규칙이 이 파일을 끝까지 못 본 것이다 — 끝난 규칙의 결과가 있어도 미분석(R-8).
+            # 🔴 규칙이 이 파일에서 끝까지 못 돌았다(시간 초과 · 메모리 · 스택 · 매칭 오류) — 끝난 규칙의 결과가 있어도 미분석(R-8).
             #   부분 파싱(`PartialParsing`)은 훑은 것이라 그대로 둔다 — 유효한 새 문법도 이 경고를 낸다(실측).
-            # A per-rule timeout means that rule never finished here; partial parsing still scanned the file.
-            if any(_error_type(e) == "Timeout" for e in _errors(data)):
+            # A rule that did not finish on this file makes the run incomplete; partial parsing still scanned it.
+            if any(_error_type(e) in _RULE_DID_NOT_FINISH for e in _errors(data)):
                 raise _fail(ctx, r, data)
             issues = []
             for item in data.get("results", []):

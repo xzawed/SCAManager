@@ -229,6 +229,20 @@ def _run_analyzers(ctx: AnalyzeContext, result: StaticAnalysisResult) -> tuple[i
     return ran, opted_out, supported
 
 
+def temp_suffix(filename: str, language: str) -> str:
+    """분석기가 읽는 임시 파일의 확장자 — 분석기가 «무엇을 받는가» 를 판정하는 곳은 이 함수를 쓴다(회고 원장 R-8).
+
+    Python 도구는 .py 확장자를 임시 파일에 써야 올바르게 작동하므로 python 은 늘 `.py` 다(shebang 으로만 python 인
+    파일도). 그 밖은 원래 확장자를 정제해 쓰고 — 최대 10자, 영숫자·점·하이픈만(경로 탐색 · 확장자 인젝션 방지) —
+    없으면 `.tmp` 다.
+    The temp file's extension: always .py for python (python tools need it), otherwise the sanitised original
+    extension (max 10 chars, alphanumerics, dot, hyphen) or `.tmp` when there is none.
+    """
+    raw_ext = os.path.splitext(filename)[1]
+    safe_ext = re.sub(r"[^a-zA-Z0-9._-]", "", raw_ext)[:10] or ".tmp"
+    return ".py" if language == "python" else safe_ext
+
+
 def analyze_file(  # pylint: disable=too-many-locals
     filename: str, content: str, repo_config: object | None = None
 ) -> StaticAnalysisResult:
@@ -247,13 +261,7 @@ def analyze_file(  # pylint: disable=too-many-locals
 
     result = StaticAnalysisResult(filename=filename)
 
-    # Python 도구는 .py 확장자를 임시 파일에 써야 올바르게 작동
-    # Python tools require the .py extension on the temp file to function correctly.
-    # 확장자 정제: 최대 10자, 영숫자·점·하이픈만 허용 — 경로 탐색/확장자 인젝션 방지
-    # Sanitise extension: max 10 chars, alphanumeric/dot/hyphen only — prevent path traversal.
-    raw_ext = os.path.splitext(filename)[1]
-    safe_ext = re.sub(r"[^a-zA-Z0-9._-]", "", raw_ext)[:10] or ".tmp"
-    suffix = ".py" if language == "python" else safe_ext
+    suffix = temp_suffix(filename, language)
 
     # TemporaryDirectory 사용 — delete=False + 수동 unlink 방식의 TOCTOU 경합 조건을 제거.
     # Use TemporaryDirectory to eliminate the TOCTOU race condition present with
