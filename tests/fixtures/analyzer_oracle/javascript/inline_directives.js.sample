@@ -8,4 +8,4 @@ let count = 0;
 /* eslint no-redeclare: "error" */
 /* eslint no-redeclare: "warn" */
 var total = count;
-module.exports = total;
+module.exports = total; // eslint-disable-line no-comma-dangle

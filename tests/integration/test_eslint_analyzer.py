@@ -149,9 +149,9 @@ def test_unknown_rule_disable_does_not_deduct_score_end_to_end():
     )
 
 
-# 출력 오라클 시료 — 지시문 주석 6꼴(쓰이지 않는 disable · 여러 줄 disable-line · 무효 · 못 읽는 인라인 설정 · 무효 global 값 ·
-# 같은 룰 두 번 설정) + 진짜 결함 2건. 오라클(운영 이미지)과 이 시험(CI 전역 eslint)이 같은 글자를 본다.
-# The oracle sample: six directive-comment shapes plus two real defects, shared with the image-level oracle.
+# 출력 오라클 시료 — 지시문 주석 7꼴(쓰이지 않는 disable · 여러 줄 disable-line · 무효 · 못 읽는 인라인 설정 · 무효 global 값 ·
+# 같은 룰 두 번 설정 · eslint 가 지운 옛 룰 이름) + 진짜 결함 2건. 오라클(운영 이미지)과 이 시험(CI 전역 eslint)이 같은 글자를 본다.
+# The oracle sample: seven directive-comment shapes plus two real defects, shared with the image-level oracle.
 _INLINE_DIRECTIVES_SAMPLE = (
     _REPO_ROOT / "tests" / "fixtures" / "analyzer_oracle" / "javascript" / "inline_directives.js.sample"
 )

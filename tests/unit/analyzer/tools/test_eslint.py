@@ -766,6 +766,11 @@ _ESLINT10_DIRECTIVE_PROBLEMS = {
         "ruleId": None, "messageId": None, "severity": 2, "fatal": None, "line": 2,
         "message": 'Rule "no-console" is already configured by another configuration comment in the preceding '
                    'code. This configuration is ignored.'},
+    # Grok `6459a817` 반례 — eslint 가 지운 옛 룰 이름(conf/replacements.json 18개)은 «not found» 대신 대체 안내로 나온다
+    # Grok counterexample: a rule eslint removed long ago is reported with its replacement instead of "not found".
+    "removed_rule_name": {
+        "ruleId": "no-comma-dangle", "messageId": None, "severity": 2, "fatal": None, "line": 1,
+        "message": "Rule 'no-comma-dangle' was removed and replaced by: comma-dangle"},
 }
 _REAL_RULE_REPORT = {"ruleId": "no-var", "messageId": "unexpectedVar", "severity": 1, "fatal": None, "line": 3,
                      "message": "Unexpected var, use let or const instead."}

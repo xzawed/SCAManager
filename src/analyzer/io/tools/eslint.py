@@ -57,6 +57,9 @@ _DIRECTIVE_META_MESSAGES: tuple[re.Pattern[str], ...] = (
     # 우리 설정에 없는 룰 이름 — `eslint-disable` · 인라인 설정 (R22, Grok `019fbaa0` 실측)
     # A rule name our config does not define, from a disable comment or an inline config.
     re.compile(r"^Definition for rule '[^']+' was not found\.?$"),
+    # 같은 경로에서 eslint 가 지운 옛 룰 이름이면 대체 안내가 나온다 (R-10, Grok `6459a817` 반례 · 실측)
+    # The same path names the replacement when the rule is one eslint removed long ago.
+    re.compile(r"^Rule '[^']+' was removed and replaced by:"),
     # 옛 eslintrc 지시문 — eslint 10 은 fatal 로 보고하고 린트는 계속한다 (R-9)
     # Legacy eslintrc directive; eslint 10 reports it as fatal yet keeps linting.
     re.compile(r"^/\* eslint-env \*/ comments are no longer supported\.?$"),
