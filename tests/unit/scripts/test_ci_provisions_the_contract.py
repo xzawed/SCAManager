@@ -28,7 +28,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from tests.unit.scripts._dockerfile import DOCKERFILE, run_steps
+from tests.unit.scripts._dockerfile import DOCKERFILE, run_steps, shell_script
 
 _ROOT = Path(__file__).resolve().parents[3]
 _CI = _ROOT / ".github" / "workflows" / "ci.yml"
@@ -212,9 +212,10 @@ def test_ci_and_image_pin_the_same_versions(tool):
 #    풀리고, 버전 없는 전역 설치는 `_pins` 가 아예 못 본다 — Dockerfile 의 «전부 버전 핀» 주석이 거짓이었다.
 # Equality passes `eslint@9` on both sides and never sees a bare package; a pin names one exact version.
 _EXACT = re.compile(r"v?\d+\.\d+\.\d+")
-# npm · npm 패키지 실행기(npx) 호출 — 경로 안의 `npm`(`/root/.npm`) · 다른 도구 이름(`pnpm`)은 뺀다.
-# npm or npx invocations; `npm` inside a path or another tool's name does not count.
-_NPM_CALL = re.compile(r"(?<![\w./-])(npm|npx)\b((?:\s+-\S+)*)([^\n&|;]*)")
+# npm · npm 패키지 실행기(npx) 호출 — 절대 경로 호출(`/usr/bin/npm`)은 읽고, 숨은 폴더(`/root/.npm`) ·
+# 다른 도구 이름(`pnpm` · `my-npm`)은 뺀다.
+# npm or npx invocations, absolute paths included; a dot-folder or another tool's name does not count.
+_NPM_CALL = re.compile(r"(?<![\w.-])(npm|npx)\b((?:\s+-\S+)*)([^\n&|;]*)")
 # 레지스트리에서 받지 않는 npm 하위 명령 — 잠금 파일 설치 · 스크립트 실행 · 캐시 정리.
 # 🔴 받아 오는 하위 명령을 나열하지 않고 이것만 면제한다: 모르는 하위 명령(update · exec · link …)과 npx 는
 #    인자가 전부 정확한 버전이어야 통과한다 — 목록 밖이 조용히 지나가지 않고 red 가 된다.
@@ -248,12 +249,14 @@ def _inexact(text: str) -> list[str]:
 
 
 def _image_run_text(dockerfile: str) -> str:
-    """Dockerfile RUN 인자를 셸 문장으로 — exec 형(`RUN ["npm", …]`)은 argv 를 셸 문장으로 되돌린다."""
+    """Dockerfile RUN 인자를 셸 문장으로 — exec 형(`RUN ["npm", …]`)은 argv 를, 셸 감싸기(`["sh", "-c", …]`)는
+    그 스크립트를 되돌린다."""
     out = []
     for args in run_steps(dockerfile):
         if args.startswith("["):
             try:
-                args = shlex.join(json.loads(args))
+                argv = json.loads(args)
+                args = shell_script(argv) or shlex.join(argv)
             except (ValueError, TypeError):
                 pass
         out.append(args)
@@ -278,6 +281,7 @@ def test_inexact_reader_on_planted_text():
         "@typescript-eslint/parser(버전 없음)", "eslint=9", "typescript=>=6.0.3 <6.1.0"]
     assert _inexact("npm i -g eslint\nnpm --global add prettier@^3.0.0  # 꼬리 주석\n") == [
         "eslint(버전 없음)", "prettier=^3.0.0"]
+    assert _inexact("sudo /usr/bin/npm install -g eslint@latest\n") == ["eslint=latest"]
 
 
 # witness-corpus: npm CLI 문서에서 레지스트리 패키지를 받는 명령 중 install 이 아닌 것 — update · exec · npx · link · install-test
@@ -298,8 +302,9 @@ def test_fetching_npm_commands_beyond_install_are_red(command):
 
 def test_install_text_readers_on_planted_files():
     """exec 형 RUN 과 접힌 YAML 블록도 셸 명령으로 읽힌다 — 접힌 블록을 날 글로 읽으면 위 판정을 비켜 간다."""
-    dockerfile = 'FROM x\nRUN ["npm", "install", "-g", "eslint"]\nRUN npm i -g prettier@3.3.3\n'
-    assert _inexact(_image_run_text(dockerfile)) == ["eslint(버전 없음)"]
+    dockerfile = ('FROM x\nRUN ["npm", "install", "-g", "eslint"]\nRUN npm i -g prettier@3.3.3\n'
+                  'RUN ["/bin/sh", "-c", "npm install -g typescript@6"]\n')
+    assert _inexact(_image_run_text(dockerfile)) == ["eslint(버전 없음)", "typescript=6"]
     workflow = "jobs:\n  a:\n    steps:\n      - run: >-\n          npm install -g\n          eslint@9\n"
     assert _inexact(_ci_run_text(workflow)) == ["eslint=9"]
     assert _inexact(workflow) == []
