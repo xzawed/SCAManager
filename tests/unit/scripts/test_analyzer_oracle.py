@@ -141,16 +141,18 @@ def test_missing_expectation_and_empty_corpus_are_two(tmp_path, capsys):
 # ── CI 배선 — 대조 모드로, 그 잡이 빌드한 운영 이미지에서 ───────────────────────
 
 
+_ORACLE_STEP = "Analyzer output oracle (fixed corpus)"
+
+
 def _oracle_step() -> tuple[dict, list[str]]:
+    """오라클 스텝이 정확히 하나 든 잡 — 없거나 둘 이상이면 red. / The job holding exactly one oracle step."""
     import yaml  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     workflow = yaml.safe_load((_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
-    for job in workflow["jobs"].values():
-        steps = job.get("steps", [])
-        names = [s.get("name") for s in steps]
-        if "Analyzer output oracle (fixed corpus)" in names:
-            return job, names
-    raise AssertionError("CI 에 «Analyzer output oracle (fixed corpus)» 스텝이 없다")
+    found = [(job, [s.get("name") for s in job.get("steps", [])]) for job in workflow["jobs"].values()]
+    found = [(job, names) for job, names in found if names.count(_ORACLE_STEP)]
+    assert len(found) == 1 and found[0][1].count(_ORACLE_STEP) == 1, f"«{_ORACLE_STEP}» 스텝이 정확히 하나가 아니다"
+    return found[0]
 
 
 def test_ci_runs_the_oracle_in_check_mode_on_the_image_it_built():
@@ -161,9 +163,9 @@ def test_ci_runs_the_oracle_in_check_mode_on_the_image_it_built():
     import shlex  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     job, names = _oracle_step()
-    step = job["steps"][names.index("Analyzer output oracle (fixed corpus)")]
+    step = job["steps"][names.index(_ORACLE_STEP)]
     build = next(s for s in job["steps"] if s.get("name") == "Build image")
-    assert names.index("Build image") < names.index("Analyzer output oracle (fixed corpus)")
+    assert names.index("Build image") < names.index(_ORACLE_STEP)
     assert "if" not in step and not step.get("continue-on-error"), "조건 · 실패 무시가 붙었다"
     tokens = shlex.split(step["run"].replace("\\\n", " "), posix=True)
     assert tokens == [
