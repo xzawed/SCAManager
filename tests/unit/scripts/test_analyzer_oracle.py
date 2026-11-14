@@ -138,6 +138,40 @@ def test_missing_expectation_and_empty_corpus_are_two(tmp_path, capsys):
     assert oracle.main(["--corpus", str(empty)], analyze=lambda *_: None, score=_score, required=set()) == 2
 
 
+# ── CI 배선 — 대조 모드로, 그 잡이 빌드한 운영 이미지에서 ───────────────────────
+
+
+def _oracle_step() -> tuple[dict, list[str]]:
+    import yaml  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    workflow = yaml.safe_load((_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+    for job in workflow["jobs"].values():
+        steps = job.get("steps", [])
+        names = [s.get("name") for s in steps]
+        if "Analyzer output oracle (fixed corpus)" in names:
+            return job, names
+    raise AssertionError("CI 에 «Analyzer output oracle (fixed corpus)» 스텝이 없다")
+
+
+def test_ci_runs_the_oracle_in_check_mode_on_the_image_it_built():
+    """🔴 CI 스텝이 `--print`(다시 만들기)로 부르면 오라클은 늘 0 이다 — 대조 모드 · 그 잡이 빌드한 이미지 ·
+    시료 읽기 전용 마운트 · 표준 입력의 이 스크립트, 그 밖의 꼴(연산자 · `|| true` · 조건 · 실패 무시)은 red.
+    Grok claim-review(2556408d)가 `--print` 는 기대값을 보지 않고 0 을 낸다고 짚었다 — 그 모드가 CI 에 오지 않게 고정한다.
+    """
+    import shlex  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    job, names = _oracle_step()
+    step = job["steps"][names.index("Analyzer output oracle (fixed corpus)")]
+    build = next(s for s in job["steps"] if s.get("name") == "Build image")
+    assert names.index("Build image") < names.index("Analyzer output oracle (fixed corpus)")
+    assert "if" not in step and not step.get("continue-on-error"), "조건 · 실패 무시가 붙었다"
+    tokens = shlex.split(step["run"].replace("\\\n", " "), posix=True)
+    assert tokens == [
+        "docker", "run", "--rm", "-i", "-v", "$PWD/tests/fixtures/analyzer_oracle:/oracle:ro",
+        build["with"]["tags"], "python", "-", "--corpus", "/oracle", "<", "scripts/analyzer_oracle.py",
+    ], tokens
+
+
 # ── 커밋된 기대값 — 시료 전부 · 분석기마다 이슈 ───────────────────────────────
 
 

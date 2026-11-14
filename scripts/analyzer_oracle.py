@@ -226,5 +226,20 @@ def _print_versions(report: dict) -> None:
     print("판 / versions: " + " · ".join(f"{t}={versions.get(t)}" for t in tools), file=sys.stderr)
 
 
+def _make_stdout_safe() -> None:
+    """한글 · 기호를 찍으므로 두 출력을 UTF-8 로 — Windows(cp949) 콘솔에서 찍는 순간 죽지 않게.
+
+    Print streams as UTF-8 so Korean text and symbols never crash a cp949 console.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            # 캡처 · 대체된 스트림에는 reconfigure 가 없다 — 그 스트림은 이미 호출자가 인코딩을 정했다.
+            # Captured or replaced streams lack reconfigure; their owner already chose the encoding.
+            continue
+
+
 if __name__ == "__main__":
+    _make_stdout_safe()
     sys.exit(main())
