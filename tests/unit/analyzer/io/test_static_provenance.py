@@ -119,7 +119,7 @@ _REAL_OUTPUTS = [
     ("shellcheck", "ShellCheck - shell script analysis tool\nversion: 0.9.0\nlicense: GNU General Public "
                    "License, version 3\nwebsite: https://www.shellcheck.net\n",
      "ShellCheck - shell script analysis tool version: 0.9.0"),
-    ("eslint", "v9.39.5\n", "v9.39.5"),
+    ("eslint", "v10.14.0\n", "v10.14.0"),
 ]
 
 

@@ -453,7 +453,7 @@ jobs:
           node-version: "20"
 
       - name: Install global eslint
-        run: npm install -g eslint@9.39.5
+        run: npm install -g eslint@10.14.0
 
       # 🔴 `npm ci` 필수 — eslint 분석기의 flat config(`src/analyzer/configs/*.mjs`)가
       # `@typescript-eslint/parser` 를 **리포 로컬**에서 import 한다. 전역 설치본은 설정 파일

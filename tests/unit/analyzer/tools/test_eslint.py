@@ -700,6 +700,48 @@ def test_fatal_parse_error_is_still_kept(tmp_path):
     assert len(issues) == 1 and "Parsing error" in issues[0].message
 
 
+# ── 지시문 메타 메시지 드롭 (회고 원장 R-9 — eslint 10 실측 payload) ─────────
+# ESLint 10 reports a legacy `/* eslint-env */` comment as a fatal message but keeps linting.
+
+# 실측 payload — 운영 이미지(eslint 10.14.0)에서 어댑터와 같은 인자 · 작업 폴더로 `/* eslint-env node */` 를 돌린 출력
+# Measured on the production image with eslint 10.14.0, same argv and cwd as the adapter.
+_ESLINT10_DIRECTIVE_META = {"ruleId": None, "severity": 2, "fatal": True, "line": 1, "column": 1,
+                            "message": "/* eslint-env */ comments are no longer supported.", "messageId": None}
+
+# witness-corpus: fatal ruleId-null eslint messages that ARE real defects — the directive drop must keep them
+_REAL_FATAL_PARSE_ERRORS = (
+    "Parsing error: Unexpected token )",
+    "Parsing error: 'import' and 'export' may appear only with 'sourceType: module'",
+    "Parsing error: Identifier 'a' has already been declared",
+)
+
+
+def test_legacy_env_directive_is_not_counted_as_issue(tmp_path):
+    """🔴 eslint 10 은 옛 `/* eslint-env */` 주석을 fatal 로 보고하고 린트는 계속한다 — 9.39.5 는 조용히 무시했다.
+
+    fatal 이라 «실제 파싱 오류» 로 집계되면, 10 으로 올린 날부터 그 주석이 있는 파일마다 ERROR(−3)가 생긴다.
+    같은 출력의 진짜 경고는 남는다.
+    """
+    from src.analyzer.io.tools.eslint import _to_issues
+
+    data = [{"messages": [
+        dict(_ESLINT10_DIRECTIVE_META),
+        {"ruleId": "no-var", "severity": 1, "line": 2, "message": "Unexpected var, use let or const instead."},
+    ]}]
+    issues = _to_issues(data, _ctx(tmp_path))
+    assert [i.message for i in issues] == ["Unexpected var, use let or const instead."]
+
+
+@pytest.mark.parametrize("message", _REAL_FATAL_PARSE_ERRORS)
+def test_directive_drop_keeps_real_fatal_parse_errors(tmp_path, message):
+    """대조군 — 드롭은 그 문구 하나뿐이다. 같은 꼴(ruleId 없음 · fatal)의 진짜 파싱 오류는 결함으로 남는다."""
+    from src.analyzer.io.tools.eslint import _to_issues
+
+    data = [{"messages": [{"ruleId": None, "fatal": True, "severity": 2, "line": 4, "message": message}]}]
+    issues = _to_issues(data, _ctx(tmp_path))
+    assert [(i.message, str(i.severity)) for i in issues] == [(message, "error")]
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # 스폰 축 fail-closed (#1557 W3)
 #
