@@ -1,0 +1,7 @@
+key: value
+enabled: yes
+list:
+- a
+-   b
+very_long_line: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+key: duplicate

@@ -1,0 +1,5 @@
+def Compute(x)
+  if x == nil then return 0 end
+  y = eval(x)
+  return y
+end

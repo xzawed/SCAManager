@@ -1,0 +1,726 @@
+{
+ "files": {
+  "c/main.c": {
+   "issues": [
+    {
+     "category": "code_quality",
+     "line": 7,
+     "message": "Buffer is accessed out of bounds: buf",
+     "severity": "error",
+     "tool": "cppcheck"
+    },
+    {
+     "category": "code_quality",
+     "line": 8,
+     "message": "Uninitialized variable: x",
+     "severity": "error",
+     "tool": "cppcheck"
+    },
+    {
+     "category": "code_quality",
+     "line": 9,
+     "message": "Array 'buf[8]' accessed at index 10, which is out of bounds.",
+     "severity": "error",
+     "tool": "cppcheck"
+    }
+   ],
+   "score": {
+    "code_quality": 16,
+    "security": 20
+   },
+   "tools": [
+    "cppcheck"
+   ]
+  },
+  "docker/Dockerfile": {
+   "issues": [
+    {
+     "category": "code_quality",
+     "line": 1,
+     "message": "DL3007: Using latest is prone to errors if the image will ever update. Pin the version explicitly to a release tag",
+     "severity": "warning",
+     "tool": "hadolint"
+    },
+    {
+     "category": "code_quality",
+     "line": 2,
+     "message": "DL3008: Pin versions in apt get install. Instead of `apt-get install <package>` use `apt-get install <package>=<version>`",
+     "severity": "warning",
+     "tool": "hadolint"
+    },
+    {
+     "category": "code_quality",
+     "line": 2,
+     "message": "DL3009: Delete the apt lists (/var/lib/apt/lists) after installing something",
+     "severity": "warning",
+     "tool": "hadolint"
+    },
+    {
+     "category": "code_quality",
+     "line": 2,
+     "message": "DL3015: Avoid additional packages by specifying `--no-install-recommends`",
+     "severity": "warning",
+     "tool": "hadolint"
+    },
+    {
+     "category": "code_quality",
+     "line": 3,
+     "message": "DL3003: Use WORKDIR to switch to a directory",
+     "severity": "warning",
+     "tool": "hadolint"
+    },
+    {
+     "category": "code_quality",
+     "line": 3,
+     "message": "DL4006: Set the SHELL option -o pipefail before RUN with a pipe in it. If you are using /bin/sh in an alpine image or if your shell is symlinked to busybox then consider explicitly setting your SHELL to /bin/ash, or disable this check",
+     "severity": "warning",
+     "tool": "hadolint"
+    },
+    {
+     "category": "code_quality",
+     "line": 4,
+     "message": "DL3000: Use absolute WORKDIR",
+     "severity": "error",
+     "tool": "hadolint"
+    },
+    {
+     "category": "code_quality",
+     "line": 5,
+     "message": "DL3025: Use arguments JSON notation for CMD and ENTRYPOINT arguments",
+     "severity": "warning",
+     "tool": "hadolint"
+    }
+   ],
+   "score": {
+    "code_quality": 15,
+    "security": 20
+   },
+   "tools": [
+    "hadolint"
+   ]
+  },
+  "go/main.go": {
+   "issues": [
+    {
+     "category": "code_quality",
+     "line": 11,
+     "message": "Error return value of `db.Query` is not checked",
+     "severity": "warning",
+     "tool": "golangci-lint"
+    },
+    {
+     "category": "security",
+     "line": 3,
+     "message": "The MD5 message-digest algorithm has been cryptographically broken and is unsuitable for\nfurther use. The MD5 hash algorithm has been found to be vulnerable to producing collisions.\nThis means that two different values, when hashed, can lead to the same hash value. It is\nrecommended that the SHA-3 or BLAKE2 family of algorithms be used for non-password based\ncryptographic hashes instead. For password based cryptographic hashes,  consider using the\nbcrypt or Argon2id family of cryptographic hashes.\n\nHashing values using [BLAKE2](https://pkg.go.dev/golang.org/x/crypto/blake2b):\n```\nfileContents := []byte(\"some file contents to create hash for\")\nblake2bHasher, err := blake2b.New512(nil)\nif err != nil {\n  log.Fatal(err)\n}\nhashedValue := blake2bHasher.Sum(fileContents)\nfmt.Printf(\"%s\\n\", hex.EncodeToString(hashedValue))\n```\n\nHashing and securely comparing passwords using\n[Argon2id](https://pkg.go.dev/golang.org/x/crypto/argon2#hdr-Argon2id):\n```\ntype argonParameters struct {\n  variant     string\n  version     int\n  memory      uint32\n  iterations  uint32\n  parallelism uint8\n  saltLength  uint32\n  keyLength   uint32\n}\n\nfunc (a argonParameters) StringFormat(salt, derivedKey []byte) string {\n  encodedSalt := base64.RawStdEncoding.EncodeToString(salt)\n  encodedKey := base64.RawStdEncoding.EncodeToString(derivedKey)\n\n  return fmt.Sprintf(\"$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s\",\n    argon2.Version,\n    a.memory,\n    a.iterations,\n    a.parallelism,\n    encodedSalt,\n    encodedKey,\n  )\n}\n\nfunc main() {\n  // Initialize Argon2id parameters\n  p := argonParameters{\n    memory:      64 * 1024,\n    iterations:  3,\n    parallelism: 2,\n    saltLength:  16,\n    keyLength:   32,\n  }\n\n  // Generate random salt (to be stored alongside derived hash key)\n  salt := make([]byte, p.saltLength)\n  if _, err := io.ReadFull(rand.Reader, salt); err != nil {\n    log.Fatal(err)\n  }\n\n  usersPassword := []byte(\"User's Very S3cur3P4ss@rd@#$%\")\n\n  var derivedKey []byte\n  // Create key hash derived from user's password\n  {\n    derivedKey = argon2.IDKey(usersPassword, salt, p.iterations, p.memory, p.parallelism,\np.keyLength)\n    // store p.StringFormat(...) result in a data store...\n    fmt.Printf(\"%s\\n\", p.StringFormat(salt, derivedKey))\n  }\n\n  // Verify a user's password against key\n  {\n    keyToCompare := argon2.IDKey(usersPassword, salt, p.iterations, p.memory, p.parallelism,\np.keyLength)\n\n    // Use subtle.ConstantTimeCompare(..., ...) to ensure no side channel leaks used in timing\nattacks\n    if subtle.ConstantTimeCompare(derivedKey, keyToCompare) == 1 {\n      fmt.Printf(\"Passwords match\\n\")\n    } else {\n      fmt.Printf(\"Passwords do not match\\n\")\n    }\n  }\n}\n```\n\nFor more information on password storage see OWASP's guide:\nhttps://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html\n",
+     "severity": "warning",
+     "tool": "semgrep"
+    },
+    {
+     "category": "security",
+     "line": 11,
+     "message": "SQL Injection is a critical vulnerability that can lead to data or system compromise. By\ndynamically generating SQL query strings, user input may be able to influence the logic of\nthe SQL statement. This could lead to an adversary accessing information they should\nnot have access to or in some circumstances, being able to execute OS functionality or code.\n\nReplace all dynamically generated SQL queries with parameterized queries. In situations where\ndynamic queries must be created, never use direct user input, but instead use a map or\ndictionary of valid values and resolve them using a user supplied key.\n\nFor example, some database drivers do not allow parameterized queries for `>` or `<` comparison\noperators. In these cases, do not use a user supplied `>` or `<` value, but rather have the\nuser\nsupply a `gt` or `lt` value. The alphabetical values are then used to look up the `>` and `<`\nvalues to be used in the construction of the dynamic query. The same goes for other queries\nwhere\ncolumn or table names are required but cannot be parameterized.\n\nExample using parameterized queries with `sql.Query`:\n```\nrows, err := db.Query(\"SELECT * FROM users WHERE userName = ?\", userName)\nif err != nil {\n    return nil, err\n}\ndefer rows.Close()\nfor rows.Next() {\n  // ... process rows\n}\n```\n\nFor more information on SQL Injection see OWASP:\nhttps://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html\n",
+     "severity": "warning",
+     "tool": "semgrep"
+    }
+   ],
+   "score": {
+    "code_quality": 24,
+    "security": 16
+   },
+   "tools": [
+    "golangci-lint",
+    "semgrep"
+   ]
+  },
+  "java/App.java": {
+   "issues": [
+    {
+     "category": "security",
+     "line": 6,
+     "message": "The application was found using an insecure or risky digest or signature algorithm. Both MD5\nand SHA1 hash algorithms have been found to be vulnerable to producing collisions.\nThis means\nthat two different values, when hashed, can lead to the same hash value. If the application is\ntrying\nto use these hash methods for storing passwords, then it is recommended to switch to a\npassword hashing\nalgorithm such as Argon2id or PBKDF2.\nstrongly recommended that a standard Digest algorithm be chosen instead as implementing\na digest by hand is error-prone.\n\nExample of creating a SHA-384 hash:\n```\n// Create a MessageDigest using the SHA-384 algorithm\nMessageDigest sha384Digest = MessageDigest.getInstance(\"SHA-384\");\n// Call update with your data\nsha384Digest.update(input);\n// Only call digest once all data has been fed into the update sha384digest instance\nbyte[] output = sha384Digest.digest();\n// output base64 encoded version of the hash\nSystem.out.println(\"hash: \" + Base64.getEncoder().encodeToString(output));\n```\n\nFor more information on secure password storage see OWASP:\nhttps://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html\n",
+     "severity": "warning",
+     "tool": "semgrep"
+    }
+   ],
+   "score": {
+    "code_quality": 25,
+    "security": 18
+   },
+   "tools": [
+    "semgrep"
+   ]
+  },
+  "javascript/App.jsx": {
+   "issues": [
+    {
+     "category": "code_quality",
+     "line": 1,
+     "message": "'React' is defined but never used.",
+     "severity": "warning",
+     "tool": "eslint"
+    },
+    {
+     "category": "code_quality",
+     "line": 2,
+     "message": "'Unused' is defined but never used.",
+     "severity": "warning",
+     "tool": "eslint"
+    }
+   ],
+   "score": {
+    "code_quality": 23,
+    "security": 20
+   },
+   "tools": [
+    "eslint",
+    "semgrep"
+   ]
+  },
+  "javascript/app.js": {
+   "issues": [
+    {
+     "category": "code_quality",
+     "line": 6,
+     "message": "eval can be harmful.",
+     "severity": "error",
+     "tool": "eslint"
+    },
+    {
+     "category": "code_quality",
+     "line": 7,
+     "message": "'unused' is assigned a value but never used.",
+     "severity": "warning",
+     "tool": "eslint"
+    },
+    {
+     "category": "code_quality",
+     "line": 7,
+     "message": "Unexpected var, use let or const instead.",
+     "severity": "warning",
+     "tool": "eslint"
+    },
+    {
+     "category": "code_quality",
+     "line": 8,
+     "message": "Expected '===' and instead saw '=='.",
+     "severity": "warning",
+     "tool": "eslint"
+    },
+    {
+     "category": "code_quality",
+     "line": 9,
+     "message": "'undefinedThing' is not defined.",
+     "severity": "warning",
+     "tool": "eslint"
+    },
+    {
+     "category": "security",
+     "line": 6,
+     "message": "The application was found calling the `eval` function OR Function()\n  constructor OR setTimeout() OR setInterval() methods. If the\n\n  variables or strings or functions passed to these methods contains user-supplied input, an adversary could attempt to execute arbitrary\n\n  JavaScript\n\n  code. This could lead to a full system compromise in Node applications or Cross-site Scripting\n\n  (XSS) in web applications.\n\n\n  To remediate this issue, remove all calls to above methods and consider alternative methods for\n\n  executing\n\n  the necessary business logic. There is almost no safe method of calling `eval` or other above stated sinks with\n\n  user-supplied input.\n\n  Instead, consider alternative methods such as using property accessors to dynamically access\n\n  values.\n\n\n  Example using property accessors to dynamically access an object's property:\n\n  ```\n\n  // Define an object\n\n  const obj = {key1: 'value1', key2: 'value2'};\n\n  // Get key dynamically from user input\n\n  const key = getUserInput();\n\n  // Check if the key exists in our object and return it, or a default empty string\n\n  const value = (obj.hasOwnProperty(key)) ? obj[key] : '';\n\n  // Work with the value\n\n  ```\n\n\n  For more information on why not to use `eval`, and alternatives see:\n\n  - https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/eval#never_use_eval!\n\n  Other References:\n\n  - https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function/Function\n\n  - https://developer.mozilla.org/en-US/docs/Web/API/setTimeout\n\n  - https://developer.mozilla.org/en-US/docs/Web/API/setInterval\n",
+     "severity": "warning",
+     "tool": "semgrep"
+    },
+    {
+     "category": "security",
+     "line": 11,
+     "message": "The application dynamically constructs file or path information. If the path\ninformation comes from user-supplied input, it could be abused to read sensitive files,\naccess other users' data, or aid in exploitation to gain further system access.\n\nUser input should never be used in constructing paths or files for interacting\nwith the filesystem. This includes filenames supplied by user uploads or downloads.\nIf possible, consider hashing user input or using unique values and\nuse `path.normalize` to resolve and validate the path information\nprior to processing any file functionality.\n\nExample using `path.normalize` and not allowing direct user input:\n```\n// User input, saved only as a reference\n// id is a randomly generated UUID to be used as the filename\nconst userData = {userFilename: userSuppliedFilename, id: crypto.randomUUID()};\n// Restrict all file processing to this directory only\nconst basePath = '/app/restricted/';\n\n// Create the full path, but only use our random generated id as the filename\nconst joinedPath = path.join(basePath, userData.id);\n// Normalize path, removing any '..'\nconst fullPath = path.normalize(joinedPath);\n// Verify the fullPath is contained within our basePath\nif (!fullPath.startsWith(basePath)) {\n    console.log(\"Invalid path specified!\");\n}\n// Process / work with file\n// ...\n```\n\nFor more information on path traversal issues see OWASP:\nhttps://owasp.org/www-community/attacks/Path_Traversal\n",
+     "severity": "warning",
+     "tool": "semgrep"
+    }
+   ],
+   "score": {
+    "code_quality": 18,
+    "security": 16
+   },
+   "tools": [
+    "eslint",
+    "semgrep"
+   ]
+  },
+  "python/app.py": {
+   "issues": [
+    {
+     "category": "security",
+     "line": 2,
+     "message": "Consider possible security implications associated with the subprocess module.",
+     "severity": "warning",
+     "tool": "bandit"
+    },
+    {
+     "category": "security",
+     "line": 3,
+     "message": "Consider possible security implications associated with pickle module.",
+     "severity": "warning",
+     "tool": "bandit"
+    },
+    {
+     "category": "security",
+     "line": 8,
+     "message": "subprocess call with shell=True identified, security issue.",
+     "severity": "error",
+     "tool": "bandit"
+    },
+    {
+     "category": "security",
+     "line": 12,
+     "message": "Pickle and modules that wrap it can be unsafe when used to deserialize untrusted data, possible security issue.",
+     "severity": "warning",
+     "tool": "bandit"
+    },
+    {
+     "category": "security",
+     "line": 16,
+     "message": "Use of weak MD5 hash for security. Consider usedforsecurity=False",
+     "severity": "error",
+     "tool": "bandit"
+    },
+    {
+     "category": "security",
+     "line": 21,
+     "message": "Use of possibly insecure function - consider using safer ast.literal_eval.",
+     "severity": "warning",
+     "tool": "bandit"
+    },
+    {
+     "category": "code_quality",
+     "line": 1,
+     "message": "'os' imported but unused",
+     "severity": "warning",
+     "tool": "flake8"
+    },
+    {
+     "category": "code_quality",
+     "line": 22,
+     "message": "do not use bare 'except'",
+     "severity": "warning",
+     "tool": "flake8"
+    },
+    {
+     "category": "code_quality",
+     "line": 27,
+     "message": "local variable 'x' is assigned to but never used",
+     "severity": "warning",
+     "tool": "flake8"
+    },
+    {
+     "category": "code_quality",
+     "line": 1,
+     "message": "Unused import os",
+     "severity": "warning",
+     "tool": "pylint"
+    },
+    {
+     "category": "code_quality",
+     "line": 21,
+     "message": "Use of eval",
+     "severity": "warning",
+     "tool": "pylint"
+    },
+    {
+     "category": "code_quality",
+     "line": 22,
+     "message": "No exception type(s) specified",
+     "severity": "warning",
+     "tool": "pylint"
+    },
+    {
+     "category": "code_quality",
+     "line": 27,
+     "message": "Unused variable 'x'",
+     "severity": "warning",
+     "tool": "pylint"
+    },
+    {
+     "category": "security",
+     "line": 8,
+     "message": "Found `subprocess` function `call` with `shell=True`. This is dangerous because this call will\nspawn the command using a shell process. Doing so propagates current shell settings and\nvariables,\nwhich makes it much easier for a malicious actor to execute commands. Use `shell=False`\ninstead.\n",
+     "severity": "error",
+     "tool": "semgrep"
+    },
+    {
+     "category": "security",
+     "line": 12,
+     "message": "The application was found using `pickle` which is vulnerable to deserialization attacks.\nDeserialization attacks exploit the process of reading serialized data and turning it back\ninto an object. By constructing malicious objects and serializing them, an adversary may\nattempt to:\n\n- Inject code that is executed upon object construction, which occurs during the\ndeserialization process.\n- Exploit mass assignment by including fields that are not normally a part of the serialized\ndata but are read in during deserialization.\n\nConsider safer alternatives such as serializing data in the JSON format. Ensure any format\nchosen allows the application to specify exactly which object types are allowed to be deserialized.\n\nTo protect against mass assignment, only allow deserialization of the specific fields that are\nrequired. If this is not easily done, consider creating an intermediary type that\ncan be serialized with only the necessary fields exposed.\n\nExample JSON deserializer using an intermediary type that is validated against a schema to ensure\nit is safe from mass assignment:\n```\nimport jsonschema\n\n# Create a schema to validate our user-supplied input against\n# an intermediary object\nintermediary_schema = {\n    \"type\" : \"object\",\n    \"properties\" :  {\n        \"name\": {\"type\" : \"string\"}\n    },\n    \"required\": [\"name\"],\n    # Protect against random properties being added to the object\n    \"additionalProperties\": False,\n}\n# If a user attempted to add \"'is_admin': True\" it would cause a validation error\nintermediary_object = {'name': 'test user'}\n\ntry:\n    # Validate the user supplied intermediary object against our schema\n    jsonschema.validate(instance=intermediary_object, schema=intermediary_schema)\n    user_object = {'user':\n        {\n            # Assign the deserialized data from intermediary object\n            'name': intermediary_object['name'],\n            # Add in protected data in object definition (or set it from a class constructor)\n            'is_admin': False,\n        }\n    }\n    # Work with the user_object\nexcept jsonschema.exceptions.ValidationError as ex:\n    # Gracefully handle validation errors\n    # ...\n```\n\nFor more details on deserialization attacks in general, see OWASP's guide:\n- https://cheatsheetseries.owasp.org/cheatsheets/Deserialization_Cheat_Sheet.html\n",
+     "severity": "warning",
+     "tool": "semgrep"
+    },
+    {
+     "category": "security",
+     "line": 16,
+     "message": "The application was found using an insecure or risky digest or signature algorithm. MD2, MD4,\n MD5  and SHA1 hash algorithms have been found to be vulnerable to producing collisions.\n\nThis means\nthat two different values, when hashed, can lead to the same hash value. If the application is\ntrying\nto use these hash methods for storing passwords, then it is recommended to switch to a\npassword hashing\nalgorithm such as Argon2id or PBKDF2.\n\nNote that the `Crypto` and `Cryptodome` Python packages are no longer recommended for\nnew applications, instead consider using the [cryptography](https://cryptography.io/) package.\n\nExample of creating a SHA-384 hash using the `cryptography` package:\n```\nfrom cryptography.hazmat.primitives import hashes\n# Create a SHA384 digest\ndigest = hashes.Hash(hashes.SHA384())\n# Update the digest with some initial data\ndigest.update(b\"some data to hash\")\n# Add more data to the digest\ndigest.update(b\"some more data\")\n# Finalize the digest as bytes\nresult = digest.finalize()\n```\n\nFor more information on secure password storage see OWASP:\n- https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html\n\nFor more information on the cryptography module see:\n- https://cryptography.io/en/latest/\n",
+     "severity": "warning",
+     "tool": "semgrep"
+    },
+    {
+     "category": "security",
+     "line": 21,
+     "message": "The application was found calling the `eval` function with non-literal data. If the variable contains\nuser-controlled data, either partially or fully, an adversary could compromise the entire system by\nexecuting arbitrary Python code.\n\nTo remediate this issue, remove all calls to `eval` and consider alternative methods for executing\nthe necessary business logic. There is almost no safe method of calling `eval` with user-supplied input.\n\nIf the application only needs to convert strings into objects, consider using `json.loads`. In\nsome cases `ast.literal_eval` is recommended, but this should be avoided as it can still suffer\nfrom other issues such as the ability for malicious code to crash the python interpreter or application.\n\nExample using `json.loads`` to load in arbitrary data to create data structures:\n```\n# User supplied data as a blob of JSON\nuser_supplied_data = \"\"\"{\"user\": \"test\", \"metadata\": [1,2,3]}\"\"\"\n# Load the JSON\nuser_object = json.loads(user_supplied_data)\n# Manually add protected properties _after_ loading, never before\nuser_object[\"is_admin\"] = False\n# Work with the object\n```\n",
+     "severity": "warning",
+     "tool": "semgrep"
+    }
+   ],
+   "score": {
+    "code_quality": 18,
+    "security": 0
+   },
+   "tools": [
+    "bandit",
+    "flake8",
+    "pylint",
+    "semgrep"
+   ]
+  },
+  "ruby/app.rb": {
+   "issues": [
+    {
+     "category": "code_quality",
+     "line": 1,
+     "message": "Method parameter must be at least 3 characters long.",
+     "severity": "warning",
+     "tool": "rubocop"
+    },
+    {
+     "category": "code_quality",
+     "line": 1,
+     "message": "Missing frozen string literal comment.",
+     "severity": "warning",
+     "tool": "rubocop"
+    },
+    {
+     "category": "code_quality",
+     "line": 1,
+     "message": "Use snake_case for method names.",
+     "severity": "warning",
+     "tool": "rubocop"
+    },
+    {
+     "category": "code_quality",
+     "line": 2,
+     "message": "Add empty line after guard clause.",
+     "severity": "warning",
+     "tool": "rubocop"
+    },
+    {
+     "category": "code_quality",
+     "line": 2,
+     "message": "Favor modifier `if` usage when having a single-line body. Another good alternative is the usage of control flow `&&`/`||`.",
+     "severity": "warning",
+     "tool": "rubocop"
+    },
+    {
+     "category": "code_quality",
+     "line": 2,
+     "message": "Prefer the use of the `nil?` predicate.",
+     "severity": "warning",
+     "tool": "rubocop"
+    },
+    {
+     "category": "security",
+     "line": 3,
+     "message": "The use of `eval` is a serious security risk.",
+     "severity": "warning",
+     "tool": "rubocop"
+    },
+    {
+     "category": "code_quality",
+     "line": 4,
+     "message": "Redundant `return` detected.",
+     "severity": "warning",
+     "tool": "rubocop"
+    }
+   ],
+   "score": {
+    "code_quality": 18,
+    "security": 18
+   },
+   "tools": [
+    "rubocop"
+   ]
+  },
+  "shell/deploy.sh": {
+   "issues": [
+    {
+     "category": "code_quality",
+     "line": 3,
+     "message": "Double quote to prevent globbing and word splitting.",
+     "severity": "warning",
+     "tool": "shellcheck"
+    },
+    {
+     "category": "code_quality",
+     "line": 3,
+     "message": "Use 'cd ... || exit' or 'cd ... || return' in case cd fails.",
+     "severity": "warning",
+     "tool": "shellcheck"
+    },
+    {
+     "category": "code_quality",
+     "line": 4,
+     "message": "Double quote to prevent globbing and word splitting.",
+     "severity": "warning",
+     "tool": "shellcheck"
+    },
+    {
+     "category": "code_quality",
+     "line": 4,
+     "message": "Use \"${var:?}\" to ensure this never expands to /* .",
+     "severity": "warning",
+     "tool": "shellcheck"
+    },
+    {
+     "category": "code_quality",
+     "line": 5,
+     "message": "Iterating over ls output is fragile. Use globs.",
+     "severity": "error",
+     "tool": "shellcheck"
+    },
+    {
+     "category": "code_quality",
+     "line": 5,
+     "message": "Use $(...) notation instead of legacy backticks `...`.",
+     "severity": "warning",
+     "tool": "shellcheck"
+    },
+    {
+     "category": "code_quality",
+     "line": 5,
+     "message": "Use ./*glob* or -- *glob* so names with dashes won't become options.",
+     "severity": "warning",
+     "tool": "shellcheck"
+    },
+    {
+     "category": "code_quality",
+     "line": 6,
+     "message": "Double quote to prevent globbing and word splitting.",
+     "severity": "warning",
+     "tool": "shellcheck"
+    }
+   ],
+   "score": {
+    "code_quality": 15,
+    "security": 20
+   },
+   "tools": [
+    "shellcheck"
+   ]
+  },
+  "solidity/Vault.sol": {
+   "issues": [
+    {
+     "category": "code_quality",
+     "line": 2,
+     "message": "Version constraint 0.8.20 contains known severe issues (https://solidity.readthedocs.io/en/latest/bugs.html)",
+     "severity": "warning",
+     "tool": "slither"
+    },
+    {
+     "category": "code_quality",
+     "line": 11,
+     "message": "Low level call in Vault.withdraw() (..<tmp>/analyze.sol#11-16):",
+     "severity": "warning",
+     "tool": "slither"
+    },
+    {
+     "category": "security",
+     "line": 11,
+     "message": "Reentrancy in Vault.withdraw() (..<tmp>/analyze.sol#11-16):",
+     "severity": "error",
+     "tool": "slither"
+    }
+   ],
+   "score": {
+    "code_quality": 23,
+    "security": 13
+   },
+   "tools": [
+    "slither"
+   ]
+  },
+  "sql/query.sql": {
+   "issues": [
+    {
+     "category": "code_quality",
+     "line": 1,
+     "message": "[AL01] Implicit/explicit aliasing of table.",
+     "severity": "warning",
+     "tool": "sqlfluff"
+    },
+    {
+     "category": "code_quality",
+     "line": 1,
+     "message": "[AL01] Implicit/explicit aliasing of table.",
+     "severity": "warning",
+     "tool": "sqlfluff"
+    },
+    {
+     "category": "code_quality",
+     "line": 1,
+     "message": "[AM05] Join clauses should be fully qualified.",
+     "severity": "warning",
+     "tool": "sqlfluff"
+    },
+    {
+     "category": "code_quality",
+     "line": 1,
+     "message": "[LT01] Expected single whitespace between comma ',' and naked identifier.",
+     "severity": "warning",
+     "tool": "sqlfluff"
+    },
+    {
+     "category": "code_quality",
+     "line": 1,
+     "message": "[LT01] Expected single whitespace between naked identifier and raw comparison operator '='.",
+     "severity": "warning",
+     "tool": "sqlfluff"
+    },
+    {
+     "category": "code_quality",
+     "line": 1,
+     "message": "[LT01] Expected single whitespace between raw comparison operator '=' and naked identifier.",
+     "severity": "warning",
+     "tool": "sqlfluff"
+    },
+    {
+     "category": "code_quality",
+     "line": 1,
+     "message": "[LT09] Select targets should be on a new line unless there is only one select target.",
+     "severity": "warning",
+     "tool": "sqlfluff"
+    },
+    {
+     "category": "code_quality",
+     "line": 1,
+     "message": "[LT14] The 'where' keyword should always start a new line.",
+     "severity": "warning",
+     "tool": "sqlfluff"
+    }
+   ],
+   "score": {
+    "code_quality": 17,
+    "security": 20
+   },
+   "tools": [
+    "sqlfluff"
+   ]
+  },
+  "terraform/main.tf": {
+   "issues": [
+    {
+     "category": "code_quality",
+     "line": 5,
+     "message": "variable \"unused\" is declared but not used",
+     "severity": "warning",
+     "tool": "tflint"
+    },
+    {
+     "category": "code_quality",
+     "line": 9,
+     "message": "Missing version constraint for provider \"aws\" in `required_providers`",
+     "severity": "warning",
+     "tool": "tflint"
+    }
+   ],
+   "score": {
+    "code_quality": 23,
+    "security": 20
+   },
+   "tools": [
+    "tflint"
+   ]
+  },
+  "typescript/app.ts": {
+   "issues": [
+    {
+     "category": "code_quality",
+     "line": 6,
+     "message": "'label' is never reassigned. Use 'const' instead.",
+     "severity": "warning",
+     "tool": "eslint"
+    },
+    {
+     "category": "code_quality",
+     "line": 5,
+     "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+     "severity": "error",
+     "tool": "tsc"
+    },
+    {
+     "category": "code_quality",
+     "line": 6,
+     "message": "Type 'number' is not assignable to type 'string'.",
+     "severity": "error",
+     "tool": "tsc"
+    },
+    {
+     "category": "code_quality",
+     "line": 9,
+     "message": "Property 'nmae' does not exist on type '{ name: string; }'.",
+     "severity": "error",
+     "tool": "tsc"
+    }
+   ],
+   "score": {
+    "code_quality": 15,
+    "security": 20
+   },
+   "tools": [
+    "eslint",
+    "semgrep",
+    "tsc"
+   ]
+  },
+  "yaml/config.yml": {
+   "issues": [
+    {
+     "category": "code_quality",
+     "line": 1,
+     "message": "[document-start] missing document start \"---\"",
+     "severity": "warning",
+     "tool": "yamllint"
+    },
+    {
+     "category": "code_quality",
+     "line": 2,
+     "message": "[truthy] truthy value should be one of [false, true]",
+     "severity": "warning",
+     "tool": "yamllint"
+    },
+    {
+     "category": "code_quality",
+     "line": 4,
+     "message": "[indentation] wrong indentation: expected at least 1",
+     "severity": "error",
+     "tool": "yamllint"
+    },
+    {
+     "category": "code_quality",
+     "line": 5,
+     "message": "[hyphens] too many spaces after hyphen",
+     "severity": "error",
+     "tool": "yamllint"
+    },
+    {
+     "category": "code_quality",
+     "line": 6,
+     "message": "[line-length] line too long (114 > 80 characters)",
+     "severity": "error",
+     "tool": "yamllint"
+    },
+    {
+     "category": "code_quality",
+     "line": 7,
+     "message": "[key-duplicates] duplication of key \"key\" in mapping",
+     "severity": "error",
+     "tool": "yamllint"
+    }
+   ],
+   "score": {
+    "code_quality": 11,
+    "security": 20
+   },
+   "tools": [
+    "yamllint"
+   ]
+  }
+ }
+}
