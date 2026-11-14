@@ -17,6 +17,7 @@ tool per process, off the event loop; building the record only reads memory and 
 """
 from __future__ import annotations
 
+import logging
 import os
 import re
 import shutil
@@ -26,6 +27,8 @@ from collections.abc import Iterable
 
 from src.analyzer.io.static import analyzer_binary
 from src.analyzer.pure.registry import REGISTRY
+
+logger = logging.getLogger(__name__)
 
 # `--version` 의 앞 두 줄 — 결과를 바꾸는 하위 판이 둘째 줄에 있다(pylint 의 astroid · tflint 의 룰셋).
 # 실물 꼴은 CI docker 잡이 운영 이미지 안에서 같은 함수로 핀과 대조한다(ci.yml «pinned versions» 스텝).
@@ -90,6 +93,7 @@ def ensure_probed(tools: Iterable[str]) -> None:
     Blocking (spawns binaries): call it off the event loop. The lock is never held while probing.
     """
     wanted = sorted(set(tools))
+    read_now: list[str] = []
     for tool in wanted:
         with _LOCK:
             if tool in _VERSIONS:
@@ -97,6 +101,12 @@ def ensure_probed(tools: Iterable[str]) -> None:
         version = read_version(tool)
         with _LOCK:
             _VERSIONS.setdefault(tool, version)
+        read_now.append(f"{tool}={version}")
+    if read_now:
+        # 새로 읽은 판만 한 줄 — 운영 로그로 «이 배포(빌드 커밋)가 어떤 판을 썼나» 를 본다
+        # (관측 역할은 `result` 를 못 읽는다). 판 · 커밋은 비밀값이 아니다(공개 리포의 Dockerfile · git).
+        # One line with the versions read just now and the build commit, visible in the deploy logs.
+        logger.info("analyzer versions read (build %s): %s", _build_commit() or "unknown", "; ".join(read_now))
     # 룰 출처도 여기서 한 번 읽어 둔다(선언이 캐시한다) — 루프 위에서 파일을 열지 않게.
     # Read the declared rulesets here once (the declarations cache) so the loop never opens a file.
     _rulesets(wanted)

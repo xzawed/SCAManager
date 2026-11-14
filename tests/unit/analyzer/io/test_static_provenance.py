@@ -189,6 +189,23 @@ def test_versions_are_read_once_per_tool_per_process():
     assert sp.probed_versions() == {"pylint": "pylint 1.0", "broken": None, "flake8": "flake8 1.0"}
 
 
+@pytest.mark.parametrize("build,shown", [(_SHA, _SHA), (None, "unknown")], ids=["github-deploy", "no-commit"])
+def test_newly_read_versions_are_logged_once(caplog, monkeypatch, build, shown):
+    """새로 읽은 판만 INFO 한 줄(빌드 커밋 포함) — 운영에서 «이 배포가 어떤 판을 썼나» 를 로그로 본다.
+    다시 읽지 않으면 줄도 없다.
+    """
+    if build:
+        monkeypatch.setenv("RAILWAY_GIT_COMMIT_SHA", build)
+    else:
+        monkeypatch.delenv("RAILWAY_GIT_COMMIT_SHA", raising=False)
+    with patch.object(sp, "read_version", side_effect=lambda t: None if t == "broken" else f"{t} 1.0"):
+        with caplog.at_level("INFO", logger=sp.__name__):
+            sp.ensure_probed(["pylint", "broken"])
+            sp.ensure_probed(["pylint", "broken"])
+    lines = [r.getMessage() for r in caplog.records if r.name == sp.__name__]
+    assert lines == [f"analyzer versions read (build {shown}): broken=None; pylint=pylint 1.0"]
+
+
 def test_probed_versions_is_a_copy():
     sp.probed_versions()["pylint"] = "planted"
     assert "pylint" not in sp.probed_versions()
