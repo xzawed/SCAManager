@@ -1,0 +1,12 @@
+import React, { useState } from 'react';
+import Unused from './Unused';
+
+export function App({ items }) {
+  const [count, setCount] = useState(0);
+  return (
+    <div onClick={() => setCount(count + 1)}>
+      {items.map((item) => <Row key={item.id} item={item} />)}
+      <Missing />
+    </div>
+  );
+}

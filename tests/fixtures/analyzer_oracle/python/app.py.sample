@@ -1,0 +1,28 @@
+import os
+import subprocess
+import pickle
+import hashlib
+
+
+def run(cmd):
+    subprocess.call(cmd, shell=True)
+
+
+def load(blob):
+    return pickle.loads(blob)
+
+
+def digest(data):
+    return hashlib.md5(data).hexdigest()
+
+
+def compute(expr):
+    try:
+        return eval(expr)
+    except:
+        return None
+
+
+def unused_args(a, b):
+    x = 1
+    return a

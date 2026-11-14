@@ -1,0 +1,1 @@
+select a.id,b.name from users a join orders b on a.id=b.user_id where a.id = 1

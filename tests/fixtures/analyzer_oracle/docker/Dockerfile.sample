@@ -1,0 +1,5 @@
+FROM ubuntu:latest
+RUN apt-get update && apt-get install -y curl
+RUN cd /tmp && curl http://example.com/install.sh | sh
+WORKDIR app
+CMD python app.py

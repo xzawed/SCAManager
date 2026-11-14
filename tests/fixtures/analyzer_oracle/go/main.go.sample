@@ -1,0 +1,19 @@
+package main
+
+import (
+	"crypto/md5"
+	"database/sql"
+	"fmt"
+	"os"
+)
+
+func lookup(db *sql.DB, name string) {
+	db.Query("SELECT * FROM users WHERE name = '" + name + "'")
+}
+
+func main() {
+	f, _ := os.Open("x")
+	fmt.Println(md5.Sum([]byte("a")))
+	lookup(nil, os.Args[1])
+	_ = f
+}

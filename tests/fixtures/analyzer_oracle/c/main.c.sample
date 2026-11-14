@@ -1,0 +1,10 @@
+#include <stdio.h>
+#include <string.h>
+
+int main(void) {
+    char buf[8];
+    int x;
+    strcpy(buf, "this string is too long");
+    printf("%d\n", x);
+    return buf[10];
+}

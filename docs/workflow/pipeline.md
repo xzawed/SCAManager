@@ -49,3 +49,4 @@ py -3 -m pytest tests/integration/test_static_analyzer.py
 ```
 
 외부 린터는 실바이너리 통합 테스트를 같은 PR 에 넣는다(`test_eslint_analyzer.py`) — mock 은 무분석을 못 잡는다.
+분석기 판 · 고정 룰 · 설정을 바꾸면 CI docker 잡의 출력 오라클이 고정 시료(`tests/fixtures/analyzer_oracle/`) 결과를 기대값과 대조한다 — 달라지면 같은 이미지에서 기대값을 다시 만들어 같은 PR 에 커밋한다(명령은 `scripts/analyzer_oracle.py` 머리 · 그 diff 가 점수 영향 증거).

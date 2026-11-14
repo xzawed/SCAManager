@@ -1,0 +1,13 @@
+import java.security.MessageDigest;
+import java.util.Random;
+
+public class App {
+    public static byte[] hash(String s) throws Exception {
+        MessageDigest md = MessageDigest.getInstance("MD5");
+        return md.digest(s.getBytes());
+    }
+
+    public static int token() {
+        return new Random().nextInt();
+    }
+}
