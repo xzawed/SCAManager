@@ -771,6 +771,11 @@ _ESLINT10_DIRECTIVE_PROBLEMS = {
     "removed_rule_name": {
         "ruleId": "no-comma-dangle", "messageId": None, "severity": 2, "fatal": None, "line": 1,
         "message": "Rule 'no-comma-dangle' was removed and replaced by: comma-dangle"},
+    # Grok `f2d396e4` 반례 — 사용자가 적은 룰 이름에는 작은따옴표도 든다
+    # Grok counterexample: a user-written rule name may contain a quote.
+    "unknown_rule_name_with_quote": {
+        "ruleId": "foo'bar", "messageId": None, "severity": 2, "fatal": None, "line": 1,
+        "message": "Definition for rule 'foo'bar' was not found."},
 }
 _REAL_RULE_REPORT = {"ruleId": "no-var", "messageId": "unexpectedVar", "severity": 1, "fatal": None, "line": 3,
                      "message": "Unexpected var, use let or const instead."}

@@ -54,9 +54,10 @@ _ERR_EXCERPT = 200
 # only when it has no messageId AND matches one of eslint 10.14.0's templates below. Oracle samples guard the
 # wording; unknown meta still fails closed (#1226).
 _DIRECTIVE_META_MESSAGES: tuple[re.Pattern[str], ...] = (
-    # 우리 설정에 없는 룰 이름 — `eslint-disable` · 인라인 설정 (R22, Grok `019fbaa0` 실측)
-    # A rule name our config does not define, from a disable comment or an inline config.
-    re.compile(r"^Definition for rule '[^']+' was not found\.?$"),
+    # 우리 설정에 없는 룰 이름 — `eslint-disable` · 인라인 설정 (R22, Grok `019fbaa0` 실측). 이름은 사용자가 적으므로
+    # 작은따옴표도 들 수 있다(Grok `f2d396e4` 반례 · 실측) — 이름 자리는 아무 글자나 받는다.
+    # A rule name our config does not define. The user writes the name, so it may contain a quote; accept any text there.
+    re.compile(r"^Definition for rule '.+' was not found\.?$"),
     # 같은 경로에서 eslint 가 지운 옛 룰 이름이면 대체 안내가 나온다 (R-10, Grok `6459a817` 반례 · 실측)
     # The same path names the replacement when the rule is one eslint removed long ago.
     re.compile(r"^Rule '[^']+' was removed and replaced by:"),
