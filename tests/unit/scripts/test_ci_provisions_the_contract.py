@@ -20,13 +20,15 @@
 Contract ⊆ CI provisioning: adding a tool to the contract without provisioning it in CI
 is exactly the state that produced this issue.
 """
+import json
 import re
 import shlex
 from pathlib import Path
 
 import pytest
+import yaml
 
-from tests.unit.scripts._dockerfile import DOCKERFILE, run_steps
+from tests.unit.scripts._dockerfile import DOCKERFILE, run_steps, shell_script
 
 _ROOT = Path(__file__).resolve().parents[3]
 _CI = _ROOT / ".github" / "workflows" / "ci.yml"
@@ -201,4 +203,190 @@ def test_ci_and_image_pin_the_same_versions(tool):
     assert ci[tool] == image[tool], (
         f"`{tool}` 버전이 갈렸다 — CI {ci[tool]} vs Dockerfile {image[tool]}. "
         "두 파일을 같은 커밋에서 고칠 것."
+    )
+
+
+# ── 핀은 정확한 버전 하나다 — 범위 · 메이저만 · 버전 없음은 핀이 아니다 ─────────
+#
+# 🔴 위 대조는 «두 파일의 표기가 같은가» 만 본다. `eslint@9` 는 둘이 같아도 빌드마다 그때의 최신 9.x 로
+#    풀리고, 버전 없는 전역 설치는 `_pins` 가 아예 못 본다 — Dockerfile 의 «전부 버전 핀» 주석이 거짓이었다.
+# Equality passes `eslint@9` on both sides and never sees a bare package; a pin names one exact version.
+_EXACT = re.compile(r"v?\d+\.\d+\.\d+")
+# npm · npm 패키지 실행기(npx) 호출 — 절대 경로 호출(`/usr/bin/npm`)은 읽고, 숨은 폴더(`/root/.npm`) ·
+# 다른 도구 이름(`pnpm` · `my-npm`)은 뺀다. 같은 명령 안에서 앞에 `xargs` 가 있으면 첫 묶음에 잡힌다.
+# npm or npx invocations, absolute paths included; a dot-folder or another tool's name does not count.
+# The first group catches a preceding `xargs` in the same command. Case-insensitive: Windows runs `NPM`.
+_NPM_CALL = re.compile(r"(\bxargs\b[^\n&|;]*?\s)?(?<![\w.-])(npm|npx)\b((?:\s+-\S+)*)([^\n&|;]*)", re.IGNORECASE)
+# 레지스트리에서 받지 않는 npm 하위 명령 — 잠금 파일 설치 · 스크립트 실행 · 캐시 정리(`cache add` 는 받으므로 뺀다).
+# 🔴 받아 오는 하위 명령을 나열하지 않고 이것만 면제한다: 모르는 하위 명령(update · exec · link …)과 npx 는
+#    인자가 전부 정확한 버전이어야 통과하고, npm 하위 명령이 패키지를 하나도 적지 않으면(`npm install` · `npm update -g` ·
+#    `xargs npm i -g`) 그 자체로 red 다 — 목록 밖이 조용히 지나가지 않는다.
+# npm subcommands that never fetch from the registry. Everything else (and npx) must pin exactly, and an
+# npm subcommand that names no package at all (bare install/update, xargs) is red by itself.
+_NPM_NON_FETCHING = frozenset({"ci", "run", "run-script", "cache"})
+
+
+def _npm_fetches(text: str) -> list[tuple[str, str]]:
+    """레지스트리에서 받는 npm · npx 호출의 (패키지, 버전 표기) — 버전 없는 패키지는 표기가 ''.
+
+    플래그와 꼬리 주석은 빼되, `--package=` · `--p=` · `-p=` 의 값은 패키지로 센다(npm exec · npx 가 받는 대상 —
+    `--pack=` 같은 다른 줄임은 npx 가 받지 않는다, 실측). 패키지를 하나도 적지 않은 npm 하위 명령은
+    (`npm <하위 명령>`, ''), 패키지를 적지 않은 npx 는 (`npx`, '') — 환경 변수(`npm_config_package`)로 받는다 —,
+    `xargs` 로 인자를 받는 호출은 (`xargs <npm|npx>`, '') 한 건으로 낸다. 무엇을 받는지 글자로 판정할 수 없다.
+    """
+    # 줄 이음 — 셸 `\` · PowerShell 백틱 · cmd `^` / line continuations: shell, PowerShell and cmd
+    text = re.sub(r"[\\`^]\s*\n\s*", " ", text)
+    out = []
+    for via_xargs, tool, flags, rest in _NPM_CALL.findall(text):
+        if via_xargs:
+            out.append((f"xargs {tool}", ""))
+        # 셸처럼 낱말 머리의 `#` 만 주석이다 — shlex 의 comments=True 는 낱말 가운데 `#` 에서도 줄 끝까지 버려
+        # 그 뒤 패키지를 놓친다. Only a word-initial `#` starts a comment, as in the shell.
+        tokens = shlex.split(flags + re.sub(r"(?:^|\s)#.*", "", rest))
+        packages = [t.split("=", 1)[1] for t in tokens if t.startswith(("--package=", "--p=", "-p="))]
+        words = [t for t in tokens if not t.startswith("-")]
+        tool = tool.lower()
+        if tool == "npx" and not words and not packages:
+            out.append(("npx", ""))
+        if tool == "npm":
+            if not words:
+                continue
+            sub, words = words[0], words[1:]
+            if sub == "cache" and words[:1] == ["add"]:
+                words = words[1:]
+            elif sub in _NPM_NON_FETCHING:
+                continue
+            # 하위 명령 이름 꼴일 때만 — 코드 속 글자(`npm\s+install…` 정규식)는 명령이 아니다
+            # Only for a subcommand-shaped word; `npm\s+install…` inside code is not a command.
+            if not words and not packages and re.fullmatch(r"[a-z][a-z-]*", sub, re.IGNORECASE):
+                out.append((f"npm {sub}", ""))
+        for word in words + packages:
+            name, _, spec = word.lstrip("@").partition("@")
+            out.append((("@" if word.startswith("@") else "") + name, spec))
+    return out
+
+
+def _inexact(text: str) -> list[str]:
+    """정확한 버전이 아닌 설치 — 범위 · 메이저만 · 버전 없음. node 는 메이저 고정이 설계라 뺀다."""
+    bad = {f"{tool}={spec}" for tool, spec in _pins(text).items()
+           if tool != "node" and not _EXACT.fullmatch(spec)}
+    bad |= {f"{name}={spec}" if spec else f"{name}(버전 없음)"
+            for name, spec in _npm_fetches(text) if not _EXACT.fullmatch(spec)}
+    return sorted(bad)
+
+
+def _image_run_text(dockerfile: str) -> str:
+    """Dockerfile RUN 인자를 셸 문장으로 — exec 형(`RUN ["npm", …]`)은 argv 를, 셸 감싸기(`["sh", "-c", …]`)는
+    그 스크립트를 되돌린다. 파서 지시문 `# escape=<문자>` 가 바꾼 줄 이음 문자도 `\\` 로 되돌려 읽는다."""
+    # 지시문은 파일 맨 위의 `# 키=값` 줄들뿐이다 — 다른 줄이 나오면 더 찾지 않는다(Docker 규칙).
+    # Parser directives are only the leading `# key=value` lines.
+    for line in dockerfile.splitlines():
+        directive = re.fullmatch(r"\s*#\s*(\w+)\s*=\s*(\S+)\s*", line)
+        if not directive:
+            break
+        if directive.group(1).lower() == "escape" and directive.group(2) != "\\":
+            dockerfile = re.sub(re.escape(directive.group(2)[0]) + r"[ \t]*\n", "\\\\\n", dockerfile)
+    out = []
+    for args in run_steps(dockerfile):
+        if args.startswith("["):
+            try:
+                argv = json.loads(args)
+                args = shell_script(argv) or shlex.join(argv)
+            except (ValueError, TypeError):
+                # JSON 배열이 아니면 Docker 도 셸 형으로 돌린다 — 날 글 그대로 읽는다.
+                # Not a JSON array: Docker runs it in shell form, so read the raw text.
+                pass
+        out.append(args)
+    return "\n".join(out)
+
+
+def _ci_run_text(workflow: str) -> str:
+    """워크플로 `run:` 스크립트를 YAML 이 푼 그대로 — 접힌 블록(`>`)에서 줄이 나뉜 명령도 한 명령이다."""
+    jobs = (yaml.safe_load(workflow) or {}).get("jobs") or {}
+    return "\n".join(step["run"] for job in jobs.values() for step in job.get("steps") or []
+                     if isinstance(step, dict) and isinstance(step.get("run"), str))
+
+
+def test_inexact_reader_on_planted_text():
+    """판정식 뒤집기 — 정확한 핀은 통과하고, 범위 · 메이저만 · 버전 없음은 표기와 별칭에 상관없이 잡힌다."""
+    assert _inexact("npm install -g eslint@9.39.5 typescript@6.0.3\n"
+                    "gem install rubocop -v 1.57.2 --no-document\n"
+                    'node-version: "20"\nnpm ci --ignore-scripts\nnpm run build\nnpm cache clean --force\n'
+                    "npm --version\nRUN --mount=type=cache,target=/root/.npm npm i -g eslint@9.39.5\n") == []
+    assert _inexact("npm install -g eslint@9 @typescript-eslint/parser\n"
+                    "npm install -g 'typescript@>=6.0.3 <6.1.0'\n") == [
+        "@typescript-eslint/parser(버전 없음)", "eslint=9", "typescript=>=6.0.3 <6.1.0"]
+    assert _inexact("npm i -g eslint\nnpm --global add prettier@^3.0.0  # 꼬리 주석\n") == [
+        "eslint(버전 없음)", "prettier=^3.0.0"]
+    assert _inexact("sudo /usr/bin/npm install -g eslint@latest\n") == ["eslint=latest"]
+    assert _inexact("npm i -g x@1.2.3#y eslint\n") == ["eslint(버전 없음)", "x=1.2.3#y"]
+
+
+# witness-corpus: npm CLI 문서에서 레지스트리 패키지를 받는 명령 중 install 이 아닌 것 — update · exec · npx · link · install-test
+_FETCHING_NPM_COMMANDS = [
+    "npm update -g eslint",
+    "npm exec --package=eslint@9 -- eslint --version",
+    "npx eslint@9 --version",
+    "npm link eslint",
+    "npm install-test eslint@9",
+]
+
+
+@pytest.mark.parametrize("command", _FETCHING_NPM_COMMANDS)
+def test_fetching_npm_commands_beyond_install_are_red(command):
+    """🔴 install 이 아닌 받아 오는 명령도 정확한 버전이 아니면 red 다 — 하위 명령을 나열하지 않으니 비켜 가지 못한다."""
+    assert _inexact(command + "\n"), f"{command!r} 가 판정을 비켜 갔다"
+
+
+# witness-corpus: Grok 적대 탐침(b1bfe50d) 1~3회차가 실제로 통과시킨 우회 — 플래그 값 속 패키지 · 패키지 없는 받기 · cache add · 줄 이음 문자 · xargs · 환경 변수 · 대문자
+_PROBE_BYPASSES = [
+    ("line", "npx --p=eslint@9 --yes --call=true"),
+    ("line", "npm_config_package=eslint@9 npx --yes --call=true"),
+    ("dockerfile", "FROM x\nENV npm_config_package=eslint@9\nRUN npx --yes --call=true\n"),
+    ("workflow", "jobs:\n  a:\n    steps:\n      - env:\n          npm_config_package: eslint@9\n        run: npx --yes --call=true\n"),
+    ("workflow", "jobs:\n  a:\n    runs-on: windows-latest\n    steps:\n      - run: NPM install eslint\n"),
+    ("line", "echo eslint | xargs npx -y"),
+    ("line", "echo eslint | xargs -P 4 npx -y"),
+    ("dockerfile", "# escape=`\nFROM x\nRUN npm `\ninstall eslint\n"),
+    ("dockerfile", "# escape=^\nFROM x\nRUN npm ^\ninstall eslint\n"),
+    ("workflow", "jobs:\n  a:\n    steps:\n      - shell: cmd\n        run: |\n          npm ^\n          install eslint\n"),
+    ("line", "npx --package=eslint@9 eslint@9.39.5"),
+    ("line", "npm exec --package=eslint@9 -- eslint@9.39.5"),
+    ("line", "echo eslint | xargs npm install"),
+    ("line", "npm cache add eslint"),
+    ("line", "npm update -g"),
+    ("line", "npx -p=eslint@9"),
+    ("dockerfile", "FROM x\nRUN echo eslint | xargs npm i -g\n"),
+    ("workflow", "jobs:\n  a:\n    steps:\n      - shell: pwsh\n        run: |\n          npm `\n          install eslint\n"),
+]
+
+
+@pytest.mark.parametrize(("kind", "text"), _PROBE_BYPASSES)
+def test_bypasses_found_by_the_adversarial_probe_are_red(kind, text):
+    """🔴 적대 탐침이 찾은 우회는 이제 전부 red 다 — 고치기 전에는 모두 `[]` 였다."""
+    judged = {"line": lambda t: _inexact(t + "\n"),
+              "dockerfile": lambda t: _inexact(_image_run_text(t)),
+              "workflow": lambda t: _inexact(_ci_run_text(t))}[kind](text)
+    assert judged, f"{kind} {text!r} 가 판정을 비켜 갔다"
+
+
+def test_install_text_readers_on_planted_files():
+    """exec 형 RUN 과 접힌 YAML 블록도 셸 명령으로 읽힌다 — 접힌 블록을 날 글로 읽으면 위 판정을 비켜 간다."""
+    dockerfile = ('FROM x\nRUN ["npm", "install", "-g", "eslint"]\nRUN npm i -g prettier@3.3.3\n'
+                  'RUN ["/bin/sh", "-c", "npm install -g typescript@6"]\n')
+    assert _inexact(_image_run_text(dockerfile)) == ["eslint(버전 없음)", "typescript=6"]
+    workflow = "jobs:\n  a:\n    steps:\n      - run: >-\n          npm\n          install -g eslint@9\n"
+    assert _inexact(_ci_run_text(workflow)) == ["eslint=9"]
+    assert _inexact(workflow) == []
+
+
+@pytest.mark.parametrize("name", ["Dockerfile", "ci.yml"])
+def test_every_analyzer_install_names_an_exact_version(name):
+    """🔴 운영 이미지와 CI 의 분석기 설치는 전부 정확한 버전이다 — Dockerfile «전부 버전 핀» 의 기계 검증."""
+    text = (_ci_run_text(_ci_text()) if name == "ci.yml"
+            else _image_run_text(DOCKERFILE.read_text(encoding="utf-8")))
+    assert _pins(text) and _npm_fetches(text), f"{name} 에서 설치를 못 읽었다 — 이 검사가 공허하다"
+    assert _inexact(text) == [], (
+        f"{name} 에 정확한 버전이 아닌 분석기 설치가 있다: {_inexact(text)} — 지금 운영이 쓰는 판"
+        "(`npm view <패키지>@<범위> version` 의 마지막 값)으로 고정하고, 두 파일을 같은 커밋에서 고칠 것."
     )

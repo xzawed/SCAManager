@@ -453,7 +453,7 @@ jobs:
           node-version: "20"
 
       - name: Install global eslint
-        run: npm install -g eslint@9 @typescript-eslint/parser @typescript-eslint/eslint-plugin
+        run: npm install -g eslint@9.39.5
 
       # 🔴 `npm ci` 필수 — eslint 분석기의 flat config(`src/analyzer/configs/*.mjs`)가
       # `@typescript-eslint/parser` 를 **리포 로컬**에서 import 한다. 전역 설치본은 설정 파일
@@ -513,7 +513,7 @@ jobs:
             -o /tmp/tflint.zip
           sudo unzip -o /tmp/tflint.zip -d /usr/bin/
           sudo chmod +x /usr/bin/tflint
-          npm install -g 'typescript@>=6.0.3 <6.1.0'
+          npm install -g typescript@6.0.3
           # slither 는 pip(requirements.txt)로 오지만 Solidity 를 실제로 분석하려면 solc 가 필요하다.
           # 🔴 `solc-select` 는 requirements.txt 에 **없다** — slither-analyzer 의 전이 의존에
           #    기대고 있다(Dockerfile 도 같은 가정). 전이가 끊기면 이 step 이 하드 실패하므로
@@ -708,6 +708,9 @@ jobs:
           pins |= dict(re.findall(r"gem\s+install\s+(rubocop)\s+-v\s+([\d.]+)", steps))
           pins |= {"golangci-lint": re.search(r"install\.sh.*?-b\s+/usr/bin\s+v([\d.]+)", steps).group(1),
                    "solc": re.search(r"solc-select\s+install\s+([\d.]+)", steps).group(1)}
+          for chunk in re.findall(r"npm\s+install\s+-g\s+([^&|\n]+)", steps):
+              pins |= {("tsc" if n == "typescript" else n): v
+                       for n, v in re.findall(r"(?<![\w/@-])(eslint|typescript)@([\d.]+)", chunk)}
           bad = []
           for tool in sorted(PROVISIONED_ANALYZERS | {"solc", "alembic", "uvicorn"}):
               if shutil.which(tool) is None:
@@ -723,7 +726,7 @@ jobs:
                   bad.append(f"{tool}: --version rc={r.returncode}")
               elif tool in pins and pins[tool] not in out:
                   bad.append(f"{tool}: 핀 {pins[tool]} 이 아니다")
-          if len(pins) < 5:
+          if len(pins) < 7:
               bad.append(f"Dockerfile 핀을 {len(pins)}개만 읽었다 — 정규식이 깨졌다: {pins}")
           print("pins:", pins)
           sys.exit("🔴 " + " · ".join(bad) if bad else 0)
