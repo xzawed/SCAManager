@@ -10,6 +10,7 @@
    - 정적: 파일별 순차, deadline(`::PIPELINE_ANALYSIS_TIMEOUT =`), 도구당(`src/constants.py::STATIC_ANALYSIS_TIMEOUT`). 초과 시 완료분 보존 + `incomplete`.
    - AI: `src/analyzer/io/ai_review.py::async def review_code`. diff 절단(`src/analyzer/pure/review_prompt.py::MAX_DIFF_CHARS =`), 모델 기본값(`src/config.py::claude_review_model:`).
 6. 채점(`::calculate_score(a`) → 저장·게이트(`::         await run_gate_check(`, PR 만 `run_gate_check`) → 알림(`::_send_notifications(notify_tasks:`).
+   저장 직전 부른 분석기의 `--version` 을 루프 밖에서 읽어(`::await _probe_static_provenance(`) 행에 출처(`static_provenance`)를 싣는다.
 
 ## 점수
 
@@ -38,7 +39,7 @@
 5. 새 언어면 `src/analyzer/pure/language.py::_EXTENSION_MAP:` 확장자 맵 + `review_guides/tier{N}/<lang>.py` + `src/analyzer/pure/review_guides/__init__.py::_GUIDE_MAP:` 1줄.
 6. `docs/architecture.md::tools/` 의 `tools/(N 어댑터)` 개수를 갱신한다.
 7. `tests/unit/scripts/test_analyzer_provenance.py::_PROVENANCE = ` 에 `(바이너리, 조달모드, optional 사유)` 를 등재한다 — 미등재는 CI FAIL. 조달하지 않으면 `optional_absent_ok` + 사유. 바이너리 이름이 도구명과 다르면
-   `src/analyzer/io/static.py::_BINARY_OVERRIDES:` 에 매핑한다 — 없으면 조달했는데 부재로 판정된다.
+   `src/analyzer/io/static.py::_BINARY_OVERRIDES:` 에 매핑한다 — 없으면 조달했는데 부재로 판정되고 행의 판도 null 이다.
 
 ## 검증
 

@@ -696,12 +696,15 @@ jobs:
 
       # 🔴 목록은 코드에서, 기대 버전은 이미지 안의 Dockerfile 에서 읽는다 — 여기에 사본을 두지 않는다.
       #    ktlint 는 JVM 이 없으면 실행하지 않는다 — 어댑터도 같은 이유로 게이트한다(#1578).
+      #    분석 행에 싣는 판(static_provenance)도 제품 함수 그대로 이미지 안에서 읽어 핀과 대조한다.
       # Tools come from the code and expected versions from the image's own Dockerfile: no copies here.
+      # The versions recorded on analysis rows are read here with the product function too.
       - name: Analyzers run as the runtime user with the pinned versions
         run: |
           docker run --rm -i scam-ci:local python - <<'PY'
-          import re, shutil, subprocess, sys
+          import re, shutil, subprocess, sys, time
           from src.analyzer.io.static import PROVISIONED_ANALYZERS
+          from src.analyzer.io.static_provenance import ensure_probed, probed_versions
           lines = open("Dockerfile", encoding="utf-8").read().splitlines()
           steps = re.sub(r"\\\s*\n\s*", " ", "\n".join(l for l in lines if not l.lstrip().startswith("#")))
           pins = dict(re.findall(r"(hadolint|tflint)/releases/download/v([\d.]+)/", steps))
@@ -726,6 +729,17 @@ jobs:
                   bad.append(f"{tool}: --version rc={r.returncode}")
               elif tool in pins and pins[tool] not in out:
                   bad.append(f"{tool}: 핀 {pins[tool]} 이 아니다")
+          probe = sorted(t for t in PROVISIONED_ANALYZERS if t != "ktlint" or shutil.which("java"))
+          started = time.monotonic()
+          ensure_probed(probe)
+          print(f"provenance: {len(probe)} tools in {time.monotonic() - started:.1f}s")
+          got = probed_versions()
+          for tool in probe:
+              print(f"{tool:14} provenance {got.get(tool)!r}")
+              if not got.get(tool):
+                  bad.append(f"{tool}: 분석 행에 실을 판을 못 읽었다")
+              elif tool in pins and pins[tool] not in got[tool]:
+                  bad.append(f"{tool}: 분석 행의 판에 핀 {pins[tool]} 이 없다")
           if len(pins) < 7:
               bad.append(f"Dockerfile 핀을 {len(pins)}개만 읽었다 — 정규식이 깨졌다: {pins}")
           print("pins:", pins)

@@ -16,6 +16,7 @@ from src.shared.log_safety import sanitize_for_log
 from src.shared.stage_metrics import stage_timer
 from src.github_client.diff import get_pr_files, get_push_files, ChangedFile
 from src.analyzer.io.static import analyze_file, StaticAnalysisResult
+from src.analyzer.io.static_provenance import ensure_probed, invoked_tools, static_provenance
 from src.analyzer.io.ai_review import review_code
 from src.scorer.calculator import calculate_score
 from src.scorer.reliability import score_is_unreliable
@@ -76,6 +77,20 @@ def _aggregate_no_dedicated_observers(analysis_results: list) -> list[str]:
         lang for r in analysis_results
         if (lang := getattr(r, "no_dedicated_observer", None))
     })
+
+
+async def _probe_static_provenance(analysis_results: list) -> None:
+    """이 분석에서 부른 분석기의 판을 루프 밖에서 읽어 둔다 — 프로세스마다 도구당 한 번.
+
+    🔴 실패는 삼킨다(경고 한 줄). 출처 기록은 관측일 뿐이라 분석 저장 · 게이트를 막지 않는다 —
+    못 읽은 판은 행에 None(모름)으로 남는다.
+    Read the invoked analyzers' versions off the event loop (once per tool per process). Failures
+    never block the save; unread versions are recorded as None.
+    """
+    try:
+        await asyncio.to_thread(ensure_probed, invoked_tools(analysis_results))
+    except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+        logger.warning("analyzer version probe failed — provenance records them as unknown", exc_info=True)
 
 
 def build_analysis_result_dict(
@@ -142,6 +157,11 @@ def build_analysis_result_dict(
         # `static_uncovered_languages` 와 같은 계약이다 — **게이트를 건드리지 않고 알린다.**
         # Supported but observed only by the generic fallback. Informational, never gates.
         "static_no_dedicated_observers": _aggregate_no_dedicated_observers(analysis_results),
+        # 🔴 출처 — 이 행을 만든 빌드 커밋 · 부른 분석기의 판 · 고정 룰(회고 원장 L03 P2-104). 이것이 있어야
+        # «분석기를 올린 배포 전후» 대조를 날짜가 아니라 판으로 가를 수 있다. 메모리만 읽는다 —
+        # 판은 저장 전에 `_probe_static_provenance` 가 루프 밖에서 읽어 둔다. 점수 · 게이트는 읽지 않는다.
+        # Provenance (build commit, invoked analyzers' versions, vendored ruleset); memory-only here.
+        "static_provenance": static_provenance(analysis_results),
         "ai_summary": ai_review.summary,
         "ai_suggestions": ai_review.suggestions,
         "commit_message_feedback": ai_review.commit_message_feedback,
@@ -1238,6 +1258,9 @@ async def _run_pipeline_body(event: str, data: dict) -> None:  # pylint: disable
             with stage_timer("score_and_save", repo=repo_log) as ctx:
                 score_result = calculate_score(analysis_results, ai_review=ai_review)
                 ctx["score"] = score_result.total
+                # 정적 분석 제한 시간 밖 · 저장 직전 — 행에 실을 판을 읽어 둔다(회고 원장 L03 P2-104)
+                # Outside the static deadline, right before the save: read the versions the row records.
+                await _probe_static_provenance(analysis_results)
                 save_params = _AnalysisSaveParams(
                     repo_name=repo_name,
                     commit_sha=commit_sha,

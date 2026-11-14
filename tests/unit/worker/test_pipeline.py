@@ -718,6 +718,62 @@ async def test_pipeline_no_incomplete_marker_when_static_ok(mock_deps):
         "정상 완료인데 static_analysis_incomplete 마커가 잘못 설정됨"
 
 
+async def test_pipeline_persists_static_provenance_read_off_the_loop(mock_deps, monkeypatch):
+    """저장된 `Analysis.result` 에 그 분석에서 부른 분석기의 판이 실린다 (회고 원장 L03 P2-104).
+
+    🔴 판 읽기(바이너리 실행)는 이벤트 루프 밖에서 돈다 — 루프 스레드에서 돌면 그동안 웹훅 · 화면이 멈춘다.
+    The saved row carries the invoked analyzers' versions; reading them runs off the event loop.
+    """
+    import threading  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    from src.analyzer.io import static_provenance as sp  # noqa: PLC0415
+    from src.analyzer.io.static import StaticAnalysisResult  # noqa: PLC0415
+    from src.worker.pipeline import run_analysis_pipeline  # noqa: PLC0415
+
+    monkeypatch.setattr(sp, "_VERSIONS", {})
+    monkeypatch.setenv("RAILWAY_GIT_COMMIT_SHA", "ab" * 20)
+    probed = []
+
+    def fake_read(tool):
+        probed.append((tool, threading.get_ident()))
+        return f"{tool} 9.9.9"
+
+    monkeypatch.setattr(sp, "read_version", fake_read)
+    ran = StaticAnalysisResult(filename="app.py")
+    ran.invoked_tools = ["semgrep", "pylint"]
+    with patch("src.worker.pipeline._run_static_with_timeout",
+               new=AsyncMock(return_value=([ran], False))), \
+         patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock):
+        await run_analysis_pipeline("pull_request", PR_DATA)
+
+    saved = mock_deps["db"].add.call_args_list[-1][0][0]
+    prov = saved.result["static_provenance"]
+    assert prov["build"] == "ab" * 20
+    assert prov["tools"] == {"pylint": "pylint 9.9.9", "semgrep": "semgrep 9.9.9"}
+    assert prov["rulesets"]["semgrep"].startswith("sast-rules v")
+    assert sorted(t for t, _ident in probed) == ["pylint", "semgrep"]
+    assert all(ident != threading.get_ident() for _t, ident in probed), "판 읽기가 이벤트 루프 스레드에서 돌았다"
+
+
+async def test_pipeline_saves_even_when_the_version_probe_fails(mock_deps, monkeypatch):
+    """판 읽기가 통째로 실패해도 분석은 저장된다 — 판은 None(모름)으로 남는다. 출처 기록이 저장을 막지 않는다."""
+    from src.analyzer.io import static_provenance as sp  # noqa: PLC0415
+    from src.analyzer.io.static import StaticAnalysisResult  # noqa: PLC0415
+    from src.worker.pipeline import run_analysis_pipeline  # noqa: PLC0415
+
+    monkeypatch.setattr(sp, "_VERSIONS", {})
+    ran = StaticAnalysisResult(filename="app.py")
+    ran.invoked_tools = ["pylint"]
+    with patch("src.worker.pipeline._run_static_with_timeout",
+               new=AsyncMock(return_value=([ran], False))), \
+         patch("src.worker.pipeline.ensure_probed", side_effect=RuntimeError("probe exploded")), \
+         patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock) as mock_gate:
+        await run_analysis_pipeline("pull_request", PR_DATA)
+
+    mock_gate.assert_called_once()
+    saved = mock_deps["db"].add.call_args_list[-1][0][0]
+    assert saved.result["static_provenance"]["tools"] == {"pylint": None}
+
+
 async def test_run_static_with_timeout_incomplete_on_tool_subprocess_timeout():
     """도구 subprocess 타임아웃으로 StaticAnalysisResult.incomplete=True 면
     _run_static_with_timeout 가 incomplete=True 를 전파해야 한다 (#7 fail-closed).
