@@ -351,3 +351,58 @@ def test_real_semgrep_applies_at_least_one_rule_to_every_supported_language(tmp_
                      if f"sample_{lang}.{_EXT[lang]}" not in scanned)
     assert not missing, f"룰이 하나도 걸리지 않은 지원 언어: {missing}"
     assert "control.rb" not in scanned, "전제 붕괴 — 룰이 없는 언어도 scanned 에 오른다면 이 판정은 무효다"
+
+
+def _routed_names() -> dict[str, str]:
+    """제품이 semgrep 지원 언어로 읽는 파일 이름 → 언어 — 정본 맵에서 파생한다(확장자 맵 + shebang 은 확장자 없는 이름).
+
+    Names detect_language routes to a semgrep-supported language, derived from the canonical maps.
+    """
+    from src.analyzer.pure import language as _language  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    supported = _SemgrepAnalyzer.SUPPORTED_LANGUAGES
+    names = {f"analyze{ext}": lang for ext, lang in _language._EXTENSION_MAP.items()  # noqa: SLF001
+             if lang in supported}
+    names.update({f"script_{lang}": lang for lang in set(_language._SHEBANG_MAP.values())  # noqa: SLF001
+                  if lang in supported})
+    return names
+
+
+@pytest.mark.skipif(shutil.which("semgrep") is None, reason="semgrep 바이너리 없음 — CI · 이미지에서 잰다")
+def test_supports_agrees_with_what_real_semgrep_scans(tmp_path):
+    """🔴 제품이 semgrep 으로 보내는 이름은 실물 semgrep 이 훑는 이름과 정확히 같다 (회고 원장 R-8).
+
+    `supports()` 가 참인데 semgrep 이 훑지 않으면 그 파일은 늘 «미분석» 이 되고, 거짓인데 훑는다면 semgrep 을 쓸 수 있는
+    파일을 버린다. 이름은 정본 맵에서 파생하므로 확장자가 늘면 여기서 함께 잰다. 한 번의 실행으로 `paths.scanned` 를 본다.
+    """
+    names = _routed_names()
+    assert names, "전제 붕괴 — 정본 맵에서 semgrep 지원 언어 이름을 하나도 못 얻었다"
+    for name in names:
+        (tmp_path / name).write_text("x\n", encoding="utf-8")
+    r = subprocess.run(
+        ["semgrep", "scan", f"--config={_adapter_config()}", "--json", "--metrics=off",
+         "--disable-version-check", str(tmp_path)],
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300, check=False,
+        env={**os.environ, "PYTHONUTF8": "1"},
+    )
+    assert r.returncode == 0, f"semgrep 종료 {r.returncode}: {r.stderr[-300:]}"
+    scanned = {Path(p).name for p in (json.loads(r.stdout).get("paths") or {}).get("scanned", [])}
+    routed = {name for name, lang in names.items()
+              if _SemgrepAnalyzer().supports(sg.AnalyzeContext(filename=name, content="", language=lang,
+                                                               is_test=False, tmp_path=name))}
+    assert routed == scanned & set(names), (
+        f"보내는데 안 훑음: {sorted(routed - scanned)} · 훑는데 안 보냄: {sorted((scanned & set(names)) - routed)}"
+    )
+
+
+@pytest.mark.skipif(shutil.which("semgrep") is None, reason="semgrep 바이너리 없음 — CI · 이미지에서 잰다")
+def test_a_run_that_scanned_nothing_is_not_a_clean_run(tmp_path):
+    """🔴 실물 semgrep 이 대상을 훑지 않고 종료 0 으로 끝난 실행은 «이슈 0건» 이 아니라 실패로 올라간다 (R-8).
+
+    semgrep 이 대상으로 삼지 않는 `.sc` 를 `supports()` 를 건너뛰고 직접 넘겨, «안 훑음» 이 실제 출력으로 오게 한다.
+    """
+    target = tmp_path / "analyze.sc"
+    target.write_text("val x = 1\n", encoding="utf-8")
+    ctx = sg.AnalyzeContext(filename="analyze.sc", content="", language="scala", is_test=False, tmp_path=str(target))
+    with pytest.raises(RuntimeError, match="target not scanned"):
+        _SemgrepAnalyzer().run(ctx)

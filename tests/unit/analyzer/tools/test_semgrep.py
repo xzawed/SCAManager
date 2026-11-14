@@ -69,7 +69,8 @@ SAMPLE_OUTPUT_SECURITY_ERROR = json.dumps({
             "path": "/tmp/test.py",
             "start": {"line": 5},
         }
-    ]
+    ],
+    "paths": {"scanned": ["/tmp/test.py"]},
 })
 
 # 정상 출력 샘플 — code_quality 태그가 없는 WARNING 이슈 (metadata 비어 있음)
@@ -85,11 +86,12 @@ SAMPLE_OUTPUT_CODE_QUALITY_WARNING = json.dumps({
             "path": "/tmp/test.py",
             "start": {"line": 12},
         }
-    ]
+    ],
+    "paths": {"scanned": ["/tmp/test.py"]},
 })
 
 # 정상 출력 샘플 — results 비어 있음
-SAMPLE_OUTPUT_EMPTY = json.dumps({"results": []})
+SAMPLE_OUTPUT_EMPTY = json.dumps({"results": [], "paths": {"scanned": ["/tmp/test.py"]}})
 
 # 정상 출력 샘플 — 복수 이슈 혼합 (security + code_quality)
 SAMPLE_OUTPUT_MIXED = json.dumps({
@@ -114,7 +116,8 @@ SAMPLE_OUTPUT_MIXED = json.dumps({
             "path": "/tmp/App.java",
             "start": {"line": 45},
         },
-    ]
+    ],
+    "paths": {"scanned": ["/tmp/App.java"]},
 })
 
 
@@ -400,7 +403,7 @@ class TestSemgrepRunOutputParsing:
         # JSON에 "results" 키가 없는 비정상 구조 → 빈 이슈 목록 반환
         from src.analyzer.io.tools.semgrep import _SemgrepAnalyzer
         ctx = make_ctx(language="python", tmp_path="/tmp/test.py")
-        malformed = json.dumps({"errors": [], "version": "1.0"})
+        malformed = json.dumps({"errors": [], "version": "1.0", "paths": {"scanned": ["/tmp/test.py"]}})
         with patch("subprocess.run", return_value=_mock_semgrep_proc(malformed)):
             issues = _SemgrepAnalyzer().run(ctx)
         assert issues == []
@@ -514,7 +517,8 @@ class TestSemgrepSecurityCategoryMapping:
                     "path": "/tmp/main.go",
                     "start": {"line": 20},
                 }
-            ]
+            ],
+            "paths": {"scanned": ["/tmp/main.go"]},
         })
         with patch("subprocess.run", return_value=_mock_semgrep_proc(output)):
             issues = _SemgrepAnalyzer().run(ctx)
@@ -625,3 +629,95 @@ class TestSemgrepConfig:
             f"레지스트리 · auto 설정이 남았다: {cmd}"
         )
         assert mock_run.call_args.kwargs["env"]["PYTHONUTF8"] == "1", "룰을 UTF-8 로 읽게 하지 않는다"
+
+
+# ── 대상을 훑지 않은 실행 · 규칙별 시간 초과 (회고 원장 R-8 — semgrep 1.184.0 실측 payload) ─────────
+# A run that did not scan the target, or in which a rule timed out, is not an analysis.
+
+_TARGET = "/tmp/test_file.py"
+
+
+def _semgrep_json(results=(), errors=(), scanned=(_TARGET,)) -> str:
+    """어댑터가 받는 `--json` 출력 — `scanned=None` 이면 `paths` 를 뺀다. / The adapter's --json input."""
+    body = {"results": list(results), "errors": list(errors)}
+    if scanned is not None:
+        body["paths"] = {"scanned": list(scanned)}
+    return json.dumps(body)
+
+
+# 실측 — 같은 이미지에서 `--timeout 1` 로 규칙 시간 초과를 일으킨 출력의 errors 한 항목(이름 · 경로만 바꿈)
+# Measured with --timeout 1 on the production image; only the rule id prefix and path are changed.
+_RULE_TIMEOUT = {"code": 2, "level": "warn", "type": "Timeout",
+                 "rule_id": "python_exec_rule-subprocess-popen-shell-true",
+                 "message": f"Timeout when running python_exec_rule-subprocess-popen-shell-true on {_TARGET}",
+                 "path": _TARGET}
+_PARTIAL_PARSING = {"code": 3, "level": "warn", "type": ["PartialParsing", []],
+                    "message": f"Syntax error at line {_TARGET}:7"}
+_ONE_FINDING = {"check_id": "python_exec_rule-subprocess-popen-shell-true", "start": {"line": 4},
+                "extra": {"severity": "ERROR", "message": "shell=True", "metadata": {"category": "security"}}}
+
+# 이름 → 언어(`language.py` 의 대응). semgrep 이 처음부터 대상으로 삼지 않는 파일과, 실제로 훑는 파일(실측 1.184.0).
+# name -> language. Files semgrep never targets, and files it does scan (measured on 1.184.0).
+_UNTARGETED = {"build.sc": "scala", "deploy": "python"}
+# witness-corpus: names semgrep scans for the languages routed to it (measured, 1.184.0)
+_TARGETED = {"app.py": "python", "stub.pyi": "python", "app.mjs": "javascript",
+             "build.gradle.kts": "kotlin", "Main.scala": "scala"}
+
+
+@pytest.mark.parametrize("filename", sorted(_UNTARGETED))
+def test_supports_skips_files_semgrep_never_targets(make_ctx, filename):
+    """🔴 semgrep 이 처음부터 대상으로 삼지 않는 파일(scala 스크립트 `.sc` · 확장자 없는 shebang 스크립트)은 돌리지 않는다.
+
+    실측 1.184.0: 둘 다 `paths.scanned` 가 비고 errors 도 없이 종료 0 이다 — 돌리면 «이슈 0건 · 완전» 으로 기록된다.
+    """
+    from src.analyzer.io.tools.semgrep import _SemgrepAnalyzer
+    assert _SemgrepAnalyzer().supports(make_ctx(_UNTARGETED[filename], filename)) is False
+
+
+@pytest.mark.parametrize("filename", sorted(_TARGETED))
+def test_supports_keeps_files_semgrep_scans(make_ctx, filename):
+    """대조군 — semgrep 이 실제로 훑는 파일(실측)은 그대로 돌린다."""
+    from src.analyzer.io.tools.semgrep import _SemgrepAnalyzer
+    assert _SemgrepAnalyzer().supports(make_ctx(_TARGETED[filename], filename)) is True
+
+
+def test_run_raises_when_target_was_not_scanned(make_ctx):
+    """🔴 종료 0 · errors 0 이어도 `paths.scanned` 가 비면 semgrep 이 대상을 훑지 않은 것이다 — 미분석(R-8).
+
+    우리는 파일 하나만 넘기므로 «비었다» = «안 훑었다» 다. 그대로 두면 «이슈 0건 · 완전» 과 구별할 수 없다.
+    """
+    from src.analyzer.io.tools.semgrep import _SemgrepAnalyzer
+    with patch("subprocess.run", return_value=_mock_semgrep_proc(_semgrep_json(scanned=()))):
+        with pytest.raises(RuntimeError, match="did not analyze"):
+            _SemgrepAnalyzer().run(make_ctx("python", "app.py", tmp_path=_TARGET))
+
+
+def test_run_raises_when_scanned_paths_are_missing(make_ctx):
+    """🔴 못 재면 red — `paths.scanned` 가 없으면 훑었는지 알 수 없다(1.184.0 은 늘 싣는다)."""
+    from src.analyzer.io.tools.semgrep import _SemgrepAnalyzer
+    with patch("subprocess.run", return_value=_mock_semgrep_proc(_semgrep_json(scanned=None))):
+        with pytest.raises(RuntimeError, match="did not analyze"):
+            _SemgrepAnalyzer().run(make_ctx("python", "app.py", tmp_path=_TARGET))
+
+
+def test_run_raises_on_a_rule_timeout(make_ctx):
+    """🔴 규칙별 시간 초과(`Timeout`)는 그 규칙이 이 파일을 끝까지 못 본 것이다 — 남은 규칙의 결과가 있어도 미분석.
+
+    실측: 종료 0 · errors 에 위 꼴 · 결과는 끝난 규칙 것만. 지금 상수(규칙 30 s · 실행 상한 30 s)에서는 실행 상한이
+    먼저 끊어 `timed_out` 이 되지만, 둘 중 하나가 바뀌면 이 꼴이 그대로 닿는다.
+    """
+    from src.analyzer.io.tools.semgrep import _SemgrepAnalyzer
+    payload = _semgrep_json(results=[_ONE_FINDING], errors=[_RULE_TIMEOUT])
+    with patch("subprocess.run", return_value=_mock_semgrep_proc(payload)):
+        with pytest.raises(RuntimeError, match="Timeout when running"):
+            _SemgrepAnalyzer().run(make_ctx("python", "app.py", tmp_path=_TARGET))
+
+
+def test_partial_parsing_still_counts_as_scanned(make_ctx):
+    """대조군 — 부분 파싱(`PartialParsing`)은 훑은 것이다. 실측: 유효한 Python 3.14 t-string 도 이 경고를 내지만 semgrep 은
+    나머지를 훑어 결과를 낸다 — 이것까지 미분석으로 올리면 새 문법 파일마다 auto-merge 가 막힌다."""
+    from src.analyzer.io.tools.semgrep import _SemgrepAnalyzer
+    payload = _semgrep_json(results=[_ONE_FINDING], errors=[_PARTIAL_PARSING])
+    with patch("subprocess.run", return_value=_mock_semgrep_proc(payload)):
+        issues = _SemgrepAnalyzer().run(make_ctx("python", "app.py", tmp_path=_TARGET))
+    assert [i.message for i in issues] == ["shell=True"]

@@ -90,7 +90,7 @@ def test_a_clean_semgrep_run_still_starts_with_a_brace():
 
     아니라면 비-`{` 를 실패로 보는 판정 자체가 틀린 것이 된다.
     """
-    clean = _Result(0, '{"results": [], "errors": []}', "")
+    clean = _Result(0, '{"results": [], "errors": [], "paths": {"scanned": ["analyze"]}}', "")
     with patch.object(sg.shutil, "which", return_value="/usr/bin/semgrep"), \
          patch.object(sg.subprocess, "run", return_value=clean):
         result = analyze_file("Foo.java", _JAVA, "java")
@@ -196,7 +196,8 @@ _MISSING_CONFIG = (
 _WITH_FINDINGS = (
     '{"version": "1.183.0", "errors": [], "results": ['
     '{"check_id": "java.lang.security.audit.weak-hash", "start": {"line": 3}, '
-    '"extra": {"severity": "WARNING", "message": "weak hash", "metadata": {"category": "security"}}}]}'
+    '"extra": {"severity": "WARNING", "message": "weak hash", "metadata": {"category": "security"}}}], '
+    '"paths": {"scanned": ["analyze"]}}'
 )
 _PARTIAL_PARSE = (
     '{"version": "1.183.0", "results": [], "errors": ['

@@ -78,10 +78,20 @@ def _detectable_languages() -> frozenset[str]:
     return from_maps | {fallback}
 
 
-def _ctx(language: str, *, is_test: bool = False) -> AnalyzeContext:
+def _ctx(language: str, *, is_test: bool = False, filename: str = "probe") -> AnalyzeContext:
     return AnalyzeContext(
-        filename="probe", content="", language=language, is_test=is_test, tmp_path="probe",
+        filename=filename, content="", language=language, is_test=is_test, tmp_path=filename,
     )
+
+
+def _filenames(language: str) -> list[str]:
+    """그 언어로 읽히는 파일 이름 — 정본 확장자 맵에서 파생하고, 확장자 없는 이름(shebang · 이름 맵)도 넣는다.
+
+    🔴 `supports()` 는 언어만 읽지 않는다 — 실측: semgrep 은 파일 이름의 확장자도 본다(회고 원장 R-8).
+    Names detect_language maps to the language, derived from the canonical extension map, plus an extensionless name.
+    """
+    return ["probe"] + [f"probe{ext}" for ext, lang in _language._EXTENSION_MAP.items()  # noqa: SLF001
+                        if lang == language]
 
 
 def test_the_range_and_the_registry_are_not_empty():
@@ -124,10 +134,11 @@ def test_every_registered_analyzer_is_reachable_by_some_language(analyzer):
     (Grok claim-review `01a055df` Q2 적발).
     """
     hit = sorted(
-        (lang, is_test)
+        (lang, is_test, name)
         for lang in _detectable_languages()
         for is_test in (False, True)
-        if analyzer.supports(_ctx(lang, is_test=is_test))
+        for name in _filenames(lang)
+        if analyzer.supports(_ctx(lang, is_test=is_test, filename=name))
     )
     assert hit, (
         f"`{analyzer.name}` 은 `detect_language()` 치역의 어떤 언어로도 "
