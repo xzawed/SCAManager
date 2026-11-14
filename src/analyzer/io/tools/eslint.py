@@ -40,33 +40,48 @@ _REACT_EXTENSIONS: frozenset[str] = frozenset({".jsx", ".tsx"})
 # Excerpt length for failure reasons — avoid dumping the whole eslint stderr into logs
 _ERR_EXCERPT = 200
 
-# 🔴 **우리 설정에 대한 메타 메시지** — 사용자 코드의 결함이 아니다 (backlog R22, 2026-08-01).
-#   우리는 `--no-config-lookup` + 10-룰 최소 설정으로 돌린다. 그래서 대상 리포가 **자기 설정에**
-#   있는 룰로 `eslint-disable` 을 달면, eslint 는 그 룰을 모르므로 다음을 보고한다:
-#       ruleId="<그 룰 이름>" · severity=2 · fatal 없음
-#       message="Definition for rule '<룰>' was not found."
-#   `ruleId` 가 **문자열**이라 미린트 판정(ruleId=None) 분기에 걸리지 않고, severity 2 라
-#   그대로 ERROR 이슈로 집계돼 **없는 결함으로 점수를 깎았다**(`score-lie` — auto-merge 까지 전파).
-#   🔴 Grok claim-review `019fbaa0` 실측(eslint 9.39.5·10.8.0 동일): eslint 소스의
-#   `createDisableDirectives` 가 미등록 룰명을 `report.addError(...)` 로 보내기 때문이며,
-#   그 경로에서는 unused-disable 도 발화하지 않는다.
-#   🔴 **드롭 대상은 이 메타 메시지뿐** — 미린트(ruleId=None) fail-closed(#1226)는 그대로 둔다.
-# Meta messages about OUR minimal config, not defects in the reviewed code. Because we run with
-# --no-config-lookup, a disable comment naming a rule from the repo's own config makes eslint emit
-# "Definition for rule 'X' was not found." with a STRING ruleId and severity 2 — previously counted
-# as a real ERROR and deducted score. Measured on eslint 9.39.5 / 10.8.0.
-_CONFIG_META_MESSAGE = re.compile(r"^Definition for rule '[^']+' was not found\.?$")
+# 🔴 **지시문 · 설정 메타 메시지** — 분석 대상 코드의 결함이 아니다 (backlog R22 · 회고 원장 R-9 · R-10).
+#   룰이 아니라 **린터 자신**이 분석 대상의 지시문 주석(`eslint-disable` · 인라인 룰 설정 · `global` · 옛 `eslint-env`)과
+#   우리 10-룰 최소 설정(`--no-config-lookup`)의 어긋남을 메시지로 낸다. 남기면 `ruleId` 가 문자열이거나 fatal 인 것은
+#   ERROR(−3)로 세고(`score-lie` — auto-merge 까지 전파), `ruleId` 없는 비치명은 아래 «미린트» 로 올라가 그 파일이
+#   통째로 미분석이 됐다. 룰 보고는 늘 `messageId` 를 싣고(우리 10개는 모두 코어 룰) 이 메시지들은 싣지 않으므로
+#   **`messageId` 없음 + 아래 문구 하나** 일 때만 드롭한다. 문구는 eslint 10.14.0 소스의 템플릿이고(운영 이미지 실측),
+#   바뀌면 드롭이 조용히 풀리므로 출력 오라클 시료(`tests/fixtures/analyzer_oracle/javascript/` 의 `legacy_directive` ·
+#   `inline_directives`)가 지킨다. 🔴 모르는 메타는 드롭하지 않는다 — 미린트 fail-closed(#1226)는 그대로다.
+# The linter itself (not a rule) reports problems with the analyzed file's directive comments and with our
+# minimal config. Kept, they deducted score (string ruleId / fatal) or marked the whole file unanalyzed
+# (null ruleId, non-fatal). Rule reports always carry a messageId and these never do, so a message is dropped
+# only when it has no messageId AND matches one of eslint 10.14.0's templates below. Oracle samples guard the
+# wording; unknown meta still fails closed (#1226).
+_DIRECTIVE_META_MESSAGES: tuple[re.Pattern[str], ...] = (
+    # 우리 설정에 없는 룰 이름 — `eslint-disable` · 인라인 설정 (R22, Grok `019fbaa0` 실측)
+    # A rule name our config does not define, from a disable comment or an inline config.
+    re.compile(r"^Definition for rule '[^']+' was not found\.?$"),
+    # 옛 eslintrc 지시문 — eslint 10 은 fatal 로 보고하고 린트는 계속한다 (R-9)
+    # Legacy eslintrc directive; eslint 10 reports it as fatal yet keeps linting.
+    re.compile(r"^/\* eslint-env \*/ comments are no longer supported\.?$"),
+    # 인라인 룰 설정 값이 그 룰 스키마에 안 맞는다 — 그 주석만 무시되고 룰은 우리 설정대로 돈다 (R-10)
+    # An inline rule config that fails the rule's schema; only that comment is ignored.
+    re.compile(r'^Inline configuration for rule "[^"]+" is invalid:'),
+    # 인라인 룰 설정 주석을 JSON 으로 못 읽었다(fatal 이지만 린트는 계속한다)
+    # An inline rule config comment that is not valid JSON (fatal, linting continues).
+    re.compile(r"^Failed to parse JSON from '"),
+    # `global` 주석의 값이 readonly · writable · off 가 아니다(fatal 이지만 린트는 계속한다)
+    # A `global` comment value other than readonly / writable / off (fatal, linting continues).
+    re.compile(r"^'.*' is not a valid configuration for a global \(use 'readonly', 'writable', or 'off'\)$"),
+    # 여러 줄에 걸친 `eslint-disable-line` 블록 주석 / A multi-line `eslint-disable-line` block comment.
+    re.compile(r"^eslint-disable-line comment should not span multiple lines\.$"),
+    # 같은 룰을 앞선 인라인 설정 주석이 이미 정했다 / An earlier inline config comment already set the rule.
+    re.compile(r'^Rule "[^"]+" is already configured by another configuration comment in the preceding code\. '
+               r"This configuration is ignored\.$"),
+)
 
-# 🔴 **지시문 메타 메시지** — 사용자 코드의 결함이 아니다 (회고 원장 R-9, eslint 9 → 10).
-#   ESLint 10 은 분석 대상의 `/* eslint-env … */` 블록 주석을 `ruleId=None · fatal=True · severity=2` 로 보고하고
-#   **린트는 계속한다**(실측 10.14.0: 같은 파일의 다른 경고가 함께 나온다). 9.39.5 는 이 주석을 조용히 무시했다.
-#   그 리포의 옛 eslintrc 지시문일 뿐이므로 위 설정 메타처럼 드롭한다 — 남기면 fatal 이라 «진짜 파싱 오류» 로
-#   집계돼, 10 으로 올린 날부터 그 주석이 있는 파일마다 ERROR(−3)가 생긴다. 문구가 바뀌면 이 드롭이 조용히
-#   풀리므로 출력 오라클 시료(`tests/fixtures/analyzer_oracle/javascript/legacy_directive.js.sample`)가 지킨다.
-# ESLint 10 reports a legacy `/* eslint-env */` block comment as fatal (ruleId None, severity 2) yet keeps
-# linting; 9.39.5 ignored it. It is the repo's old directive, not a code defect, so it is dropped like the
-# config meta above. The analyzer output oracle carries a sample so a reworded message cannot slip back in.
-_DIRECTIVE_META_MESSAGE = re.compile(r"^/\* eslint-env \*/ comments are no longer supported\.?$")
+# 쓰이지 않는 `eslint-disable` · `eslint-enable` 주석을 보고하지 않는다 (R-10). 기본값 `warn` 의 메시지는 `ruleId` 없는
+# 비치명이라 «미린트» 로 읽혀, 우리 10개 밖 코어 룰을 끄는 흔한 주석 하나로 그 파일이 미분석이 됐다(실측). 지울 수 있는
+# 주석일 뿐 코드 결함이 아니다 — 문구 드롭이 아니라 보고 자체를 끈다. 오라클 시료 `inline_directives` 가 지킨다.
+# Do not report unused disable/enable directives: the default `warn` message has a null ruleId, so a common
+# directive for a core rule outside our ten marked the whole file unanalyzed. Guarded by the oracle sample.
+_UNUSED_DIRECTIVES_OFF = "--report-unused-disable-directives-severity=off"
 
 
 def _to_issues(data: list, ctx: AnalyzeContext) -> list[AnalysisIssue]:
@@ -81,27 +96,21 @@ def _to_issues(data: list, ctx: AnalyzeContext) -> list[AnalysisIssue]:
     ignoring it reads "not analyzed" as clean — both are wrong, so fail closed. A fatal parse error
     has no ruleId either but IS a real defect in the analyzed code, so it is kept as an issue.
 
-    🔴 세 번째 부류 — **우리 설정에 대한 메타 메시지**(`Definition for rule 'X' was not found.`)는
-    `ruleId` 가 문자열이라 위 두 축 어디에도 걸리지 않고 severity 2 로 ERROR 집계됐다.
-    대상 리포가 자기 설정의 룰로 `eslint-disable` 을 달면 우리 10-룰 최소 설정에는 없으므로
-    **정상 코드가 감점**됐다(backlog R22 · Grok `019fbaa0` 실측). 이슈로도 실패로도 세지 않고 드롭한다.
-    🔴 Third kind: meta messages about OUR config carry a STRING ruleId at severity 2, so they
-    escaped both axes and deducted score for correct code. Dropped — neither raised nor counted.
+    🔴 세 번째 부류 — **지시문 · 설정 메타 메시지**(`_DIRECTIVE_META_MESSAGES`)는 린터가 분석 대상의 지시문
+    주석과 우리 최소 설정의 어긋남을 알리는 것이라 이슈로도 실패로도 세지 않고 드롭한다(R22 · R-9 · R-10).
+    🔴 Third kind: the linter's meta messages about directive comments and our config are dropped —
+    neither raised nor counted.
     """
     issues = []
     for file_result in data:
         for msg in file_result.get("messages", []):
-            # 🔴 설정 메타 메시지 드롭 — 미린트(ruleId=None) 판정보다 **먼저** 본다.
-            #   순서가 바뀌면 의미는 같지만(ruleId 가 문자열이라) 의도가 흐려진다.
-            # Drop config-meta messages before the not-linted check; they are not code defects.
-            # 지시문 메타(eslint 10 의 eslint-env)는 fatal 이라 아래 «fatal = 실제 결함» 보다도 먼저 봐야 한다.
-            # The directive meta is fatal, so it must be checked before the "fatal = real defect" rule below.
+            # 🔴 지시문 · 설정 메타 드롭 — 미린트(ruleId=None) 판정과 «fatal = 실제 결함» 보다 **먼저** 본다.
+            #   그중 몇은 ruleId 가 없거나 fatal 이라 순서가 바뀌면 미분석이나 ERROR 가 된다.
+            # Drop directive/config meta before the not-linted check and the "fatal = real defect" rule —
+            # some of them have a null ruleId or are fatal.
             text = msg.get("message", "") or ""
-            if _CONFIG_META_MESSAGE.match(text) or _DIRECTIVE_META_MESSAGE.match(text):
-                logger.debug(
-                    "eslint config-meta message dropped (not a code defect): %s",
-                    msg.get("message", "")[:_ERR_EXCERPT],
-                )
+            if msg.get("messageId") is None and any(p.match(text) for p in _DIRECTIVE_META_MESSAGES):
+                logger.debug("eslint directive-meta message dropped (not a code defect): %s", text[:_ERR_EXCERPT])
                 continue
             if msg.get("ruleId") is None and not msg.get("fatal"):
                 raise RuntimeError(
@@ -159,7 +168,7 @@ class _ESLintAnalyzer:
         _cfg = _REACT_CONFIG_PATH if pathlib.Path(ctx.filename).suffix in _REACT_EXTENSIONS else _CONFIG_PATH
         try:
             r = subprocess.run(  # nosec B603 B607
-                ["eslint", "--format=json", "--no-config-lookup",
+                ["eslint", "--format=json", "--no-config-lookup", _UNUSED_DIRECTIVES_OFF,
                  "-c", _cfg, ctx.tmp_path],
                 # 🔴 cwd 필수 — eslint 는 base path(기본값 = cwd) 밖의 파일을 린트하지 않고
                 # "File ignored because outside of base path" 로 넘긴다(9·10 공통). 분석 대상은
