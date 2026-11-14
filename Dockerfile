@@ -48,12 +48,16 @@ RUN mkdir -p /etc/apt/keyrings \
  && apt-get install -y --no-install-recommends nodejs \
  && rm -rf /var/lib/apt/lists/*
 
-# 분석기 바이너리 — 전부 버전 핀. 🔴 실패를 `|| echo` 로 삼키지 않는다: 삼킨 실패는 이
-# 레이어에 **캐시돼** 이후 빌드마다 도구 없는 이미지가 나온다. 빌드가 실패하면 Railway 는
+# 분석기 바이너리 — 전부 정확한 버전 하나로 핀(범위 · 메이저만 · 버전 없음은
+# tests/unit/scripts/test_ci_provisions_the_contract.py 가 막는다). 🔴 실패를 `|| echo` 로 삼키지 않는다:
+# 삼킨 실패는 이 레이어에 **캐시돼** 이후 빌드마다 도구 없는 이미지가 나온다. 빌드가 실패하면 Railway 는
 # 이전 배포를 그대로 서비스한다.
-# Pinned analyzers. Failures are not swallowed: a swallowed failure would be cached in this
-# layer and every later build would ship without the tool. A failed build keeps the old deploy.
-# hadolint ignore=DL3016
+# eslint 는 엔진만 여기서 온다 — 분석기 설정이 import 하는 파서(@typescript-eslint/parser)와 그 typescript 는
+# 아래 `npm ci`(package-lock)에서 온다. package.json 의 eslint 는 이 리포 템플릿 린트(`lint:js`)용이다.
+# Analyzers pinned to one exact version each (the contract test rejects ranges, bare majors and bare names).
+# Failures are not swallowed: a swallowed failure would be cached in this layer and every later
+# build would ship without the tool. A failed build keeps the old deploy. Only the eslint engine
+# comes from here; the parser its config imports comes from `npm ci` below.
 RUN gem install rubocop-ast -v 1.36.2 --no-document --bindir /usr/bin \
  && gem install rubocop -v 1.57.2 --no-document --bindir /usr/bin \
  && curl -sSfL --retry 3 https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh \
@@ -69,9 +73,7 @@ RUN gem install rubocop-ast -v 1.36.2 --no-document --bindir /usr/bin \
  && unzip -o /tmp/tflint.zip -d /usr/bin/ \
  && chmod +x /usr/bin/tflint \
  && rm /tmp/tflint.zip \
- && npm install -g eslint@9 @typescript-eslint/parser @typescript-eslint/eslint-plugin \
- && npm install -g 'typescript@>=6.0.3 <6.1.0' \
- && npm install -g eslint-plugin-react eslint-plugin-react-hooks \
+ && npm install -g eslint@9.39.5 typescript@6.0.3 \
  && npm cache clean --force
 
 WORKDIR /app
