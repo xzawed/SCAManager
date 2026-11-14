@@ -213,9 +213,10 @@ def test_ci_and_image_pin_the_same_versions(tool):
 # Equality passes `eslint@9` on both sides and never sees a bare package; a pin names one exact version.
 _EXACT = re.compile(r"v?\d+\.\d+\.\d+")
 # npm · npm 패키지 실행기(npx) 호출 — 절대 경로 호출(`/usr/bin/npm`)은 읽고, 숨은 폴더(`/root/.npm`) ·
-# 다른 도구 이름(`pnpm` · `my-npm`)은 뺀다.
+# 다른 도구 이름(`pnpm` · `my-npm`)은 뺀다. 같은 명령 안에서 앞에 `xargs` 가 있으면 첫 묶음에 잡힌다.
 # npm or npx invocations, absolute paths included; a dot-folder or another tool's name does not count.
-_NPM_CALL = re.compile(r"(?<![\w.-])(npm|npx)\b((?:\s+-\S+)*)([^\n&|;]*)")
+# The first group catches a preceding `xargs` in the same command.
+_NPM_CALL = re.compile(r"(\bxargs\b[^\n&|;]*?\s)?(?<![\w.-])(npm|npx)\b((?:\s+-\S+)*)([^\n&|;]*)")
 # 레지스트리에서 받지 않는 npm 하위 명령 — 잠금 파일 설치 · 스크립트 실행 · 캐시 정리(`cache add` 는 받으므로 뺀다).
 # 🔴 받아 오는 하위 명령을 나열하지 않고 이것만 면제한다: 모르는 하위 명령(update · exec · link …)과 npx 는
 #    인자가 전부 정확한 버전이어야 통과하고, npm 하위 명령이 패키지를 하나도 적지 않으면(`npm install` · `npm update -g` ·
@@ -229,12 +230,15 @@ def _npm_fetches(text: str) -> list[tuple[str, str]]:
     """레지스트리에서 받는 npm · npx 호출의 (패키지, 버전 표기) — 버전 없는 패키지는 표기가 ''.
 
     플래그와 꼬리 주석은 빼되, `--package=` · `-p=` 의 값은 패키지로 센다(npm exec · npx 가 받는 대상).
-    패키지를 하나도 적지 않은 npm 하위 명령은 (`npm <하위 명령>`, '') 한 건으로 낸다.
+    패키지를 하나도 적지 않은 npm 하위 명령은 (`npm <하위 명령>`, '') 한 건으로, `xargs` 로 인자를 받는 호출은
+    (`xargs <npm|npx>`, '') 한 건으로 낸다 — 무엇을 받는지 글자로 판정할 수 없다.
     """
-    # 줄 이음 — 셸 `\` 와 PowerShell 백틱 / line continuations: shell backslash and PowerShell backtick
-    text = re.sub(r"[\\`]\s*\n\s*", " ", text)
+    # 줄 이음 — 셸 `\` · PowerShell 백틱 · cmd `^` / line continuations: shell, PowerShell and cmd
+    text = re.sub(r"[\\`^]\s*\n\s*", " ", text)
     out = []
-    for tool, flags, rest in _NPM_CALL.findall(text):
+    for via_xargs, tool, flags, rest in _NPM_CALL.findall(text):
+        if via_xargs:
+            out.append((f"xargs {tool}", ""))
         # 셸처럼 낱말 머리의 `#` 만 주석이다 — shlex 의 comments=True 는 낱말 가운데 `#` 에서도 줄 끝까지 버려
         # 그 뒤 패키지를 놓친다. Only a word-initial `#` starts a comment, as in the shell.
         tokens = shlex.split(flags + re.sub(r"(?:^|\s)#.*", "", rest))
@@ -269,7 +273,15 @@ def _inexact(text: str) -> list[str]:
 
 def _image_run_text(dockerfile: str) -> str:
     """Dockerfile RUN 인자를 셸 문장으로 — exec 형(`RUN ["npm", …]`)은 argv 를, 셸 감싸기(`["sh", "-c", …]`)는
-    그 스크립트를 되돌린다."""
+    그 스크립트를 되돌린다. 파서 지시문 `# escape=<문자>` 가 바꾼 줄 이음 문자도 `\\` 로 되돌려 읽는다."""
+    # 지시문은 파일 맨 위의 `# 키=값` 줄들뿐이다 — 다른 줄이 나오면 더 찾지 않는다(Docker 규칙).
+    # Parser directives are only the leading `# key=value` lines.
+    for line in dockerfile.splitlines():
+        directive = re.fullmatch(r"\s*#\s*(\w+)\s*=\s*(\S+)\s*", line)
+        if not directive:
+            break
+        if directive.group(1).lower() == "escape" and directive.group(2) != "\\":
+            dockerfile = re.sub(re.escape(directive.group(2)[0]) + r"[ \t]*\n", "\\\\\n", dockerfile)
     out = []
     for args in run_steps(dockerfile):
         if args.startswith("["):
@@ -277,6 +289,8 @@ def _image_run_text(dockerfile: str) -> str:
                 argv = json.loads(args)
                 args = shell_script(argv) or shlex.join(argv)
             except (ValueError, TypeError):
+                # JSON 배열이 아니면 Docker 도 셸 형으로 돌린다 — 날 글 그대로 읽는다.
+                # Not a JSON array: Docker runs it in shell form, so read the raw text.
                 pass
         out.append(args)
     return "\n".join(out)
@@ -320,8 +334,13 @@ def test_fetching_npm_commands_beyond_install_are_red(command):
     assert _inexact(command + "\n"), f"{command!r} 가 판정을 비켜 갔다"
 
 
-# witness-corpus: Grok 적대 탐침(b1bfe50d)이 실제로 통과시킨 우회 — 플래그 값 속 패키지 · 패키지 없는 받기 · cache add · pwsh 줄 이음
+# witness-corpus: Grok 적대 탐침(b1bfe50d) 1 · 2회차가 실제로 통과시킨 우회 — 플래그 값 속 패키지 · 패키지 없는 받기 · cache add · 줄 이음 문자 · xargs
 _PROBE_BYPASSES = [
+    ("line", "echo eslint | xargs npx -y"),
+    ("line", "echo eslint | xargs -P 4 npx -y"),
+    ("dockerfile", "# escape=`\nFROM x\nRUN npm `\ninstall eslint\n"),
+    ("dockerfile", "# escape=^\nFROM x\nRUN npm ^\ninstall eslint\n"),
+    ("workflow", "jobs:\n  a:\n    steps:\n      - shell: cmd\n        run: |\n          npm ^\n          install eslint\n"),
     ("line", "npx --package=eslint@9 eslint@9.39.5"),
     ("line", "npm exec --package=eslint@9 -- eslint@9.39.5"),
     ("line", "echo eslint | xargs npm install"),
