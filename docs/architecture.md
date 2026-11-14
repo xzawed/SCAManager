@@ -16,7 +16,7 @@ src/
 ├── scheduler.py  # 인앱 JOBS 7 — `/api/internal/cron/*` 와 1:1
 ├── webhook/  # HMAC 검증·loop_guard · providers/{github,telegram,railway}
 ├── worker/
-├── analyzer/  # pure/ · io/(static·ai_review·tools/ 22) · configs/(eslint=`.mjs` · semgrep 고정 룰=`semgrep/`)
+├── analyzer/  # pure/ · io/(static·static_provenance·ai_review·tools/ 22) · configs/(eslint=`.mjs` · semgrep 고정 룰=`semgrep/`)
 ├── scorer/
 ├── gate/  # engine·actions/·native_automerge·merge_verifier
 ├── notifier/  # REGISTRY 8 — telegram·discord·slack·webhook·email·n8n·github_{commit_comment,issue}

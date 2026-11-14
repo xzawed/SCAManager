@@ -64,9 +64,16 @@ PROVISIONED_ANALYZERS: frozenset[str] = frozenset({
 
 # 분석기 이름 ≠ 실행 파일명인 경우의 예외 표. 현재는 비어 있다 —
 # `PROVISIONED_ANALYZERS` 16종은 전부 이름과 바이너리명이 같다(실측).
-# 새 분석기가 다른 바이너리를 쓰면 **여기 등재해야** 아래 판정이 참이 된다.
-# Override table for analyzers whose binary name differs from the analyzer name.
+# 새 분석기가 다른 바이너리를 쓰면 **여기 등재해야** 아래 판정이 참이 되고, 분석 행에 싣는 판
+# (`src/analyzer/io/static_provenance.py`)도 그 바이너리에서 읽힌다 — 없으면 판은 None(모름)이다.
+# Override table for analyzers whose binary name differs from the analyzer name; the provenance
+# record reads versions through it too.
 _BINARY_OVERRIDES: dict[str, str] = {}
+
+
+def analyzer_binary(tool: str) -> str:
+    """분석기 이름 → 실행 파일 이름. / Analyzer name -> executable name."""
+    return _BINARY_OVERRIDES.get(tool, tool)
 
 
 def _binary_is_absent(tool: str) -> bool:
@@ -96,7 +103,7 @@ def _binary_is_absent(tool: str) -> bool:
     `is_enabled()` conflates "binary absent" with "not applicable here"; `shutil.which` observes
     the binary directly, which is the only one of the two that means a deployment regression.
     """
-    return shutil.which(_BINARY_OVERRIDES.get(tool, tool)) is None
+    return shutil.which(analyzer_binary(tool)) is None
 
 
 @dataclass
@@ -133,6 +140,10 @@ class StaticAnalysisResult:
     # 🔴 차단하지 않는다(가시화만) — 차단하면 조달 실패가 다시 벽이 된다(#1568).
     # Supported and observed only by the generic fallback (csharp · java · scala · swift on the image).
     no_dedicated_observer: str | None = None
+    # 이 파일에 **실제로 부른** 분석기 이름(성공 · 크래시 모두) — 끈 것 · 바이너리 없는 것 · 지원 안 하는 것은
+    # 빠진다. 분석 행의 출처 기록(`static_provenance`)이 이 이름들의 판을 싣는다(회고 원장 L03 P2-104).
+    # Analyzers actually called on this file (success or crash); the provenance record carries their versions.
+    invoked_tools: list[str] = field(default_factory=list)
 
 
 def _run_analyzers(ctx: AnalyzeContext, result: StaticAnalysisResult) -> tuple[int, int, int]:
@@ -169,6 +180,9 @@ def _run_analyzers(ctx: AnalyzeContext, result: StaticAnalysisResult) -> tuple[i
             # 운영자가 명시적으로 끈 것 — 의도된 opt-out. "내가 껐다" 를 결함으로 되돌려주지 않는다.
             opted_out += 1
             continue
+        # 부르기 **전에** 남긴다 — 크래시한 도구의 판도 원인을 읽는 데 쓴다.
+        # Recorded before the call: a crashed tool's version still explains the failure.
+        result.invoked_tools.append(analyzer.name)
         try:
             result.issues.extend(analyzer.run(ctx))
             ran += 1
