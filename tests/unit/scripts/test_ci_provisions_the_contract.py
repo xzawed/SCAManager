@@ -215,8 +215,8 @@ _EXACT = re.compile(r"v?\d+\.\d+\.\d+")
 # npm · npm 패키지 실행기(npx) 호출 — 절대 경로 호출(`/usr/bin/npm`)은 읽고, 숨은 폴더(`/root/.npm`) ·
 # 다른 도구 이름(`pnpm` · `my-npm`)은 뺀다. 같은 명령 안에서 앞에 `xargs` 가 있으면 첫 묶음에 잡힌다.
 # npm or npx invocations, absolute paths included; a dot-folder or another tool's name does not count.
-# The first group catches a preceding `xargs` in the same command.
-_NPM_CALL = re.compile(r"(\bxargs\b[^\n&|;]*?\s)?(?<![\w.-])(npm|npx)\b((?:\s+-\S+)*)([^\n&|;]*)")
+# The first group catches a preceding `xargs` in the same command. Case-insensitive: Windows runs `NPM`.
+_NPM_CALL = re.compile(r"(\bxargs\b[^\n&|;]*?\s)?(?<![\w.-])(npm|npx)\b((?:\s+-\S+)*)([^\n&|;]*)", re.IGNORECASE)
 # 레지스트리에서 받지 않는 npm 하위 명령 — 잠금 파일 설치 · 스크립트 실행 · 캐시 정리(`cache add` 는 받으므로 뺀다).
 # 🔴 받아 오는 하위 명령을 나열하지 않고 이것만 면제한다: 모르는 하위 명령(update · exec · link …)과 npx 는
 #    인자가 전부 정확한 버전이어야 통과하고, npm 하위 명령이 패키지를 하나도 적지 않으면(`npm install` · `npm update -g` ·
@@ -229,9 +229,10 @@ _NPM_NON_FETCHING = frozenset({"ci", "run", "run-script", "cache"})
 def _npm_fetches(text: str) -> list[tuple[str, str]]:
     """레지스트리에서 받는 npm · npx 호출의 (패키지, 버전 표기) — 버전 없는 패키지는 표기가 ''.
 
-    플래그와 꼬리 주석은 빼되, `--package=` · `-p=` 의 값은 패키지로 센다(npm exec · npx 가 받는 대상).
-    패키지를 하나도 적지 않은 npm 하위 명령은 (`npm <하위 명령>`, '') 한 건으로, `xargs` 로 인자를 받는 호출은
-    (`xargs <npm|npx>`, '') 한 건으로 낸다 — 무엇을 받는지 글자로 판정할 수 없다.
+    플래그와 꼬리 주석은 빼되, `--package=` · `--p=` · `-p=` 의 값은 패키지로 센다(npm exec · npx 가 받는 대상 —
+    `--pack=` 같은 다른 줄임은 npx 가 받지 않는다, 실측). 패키지를 하나도 적지 않은 npm 하위 명령은
+    (`npm <하위 명령>`, ''), 패키지를 적지 않은 npx 는 (`npx`, '') — 환경 변수(`npm_config_package`)로 받는다 —,
+    `xargs` 로 인자를 받는 호출은 (`xargs <npm|npx>`, '') 한 건으로 낸다. 무엇을 받는지 글자로 판정할 수 없다.
     """
     # 줄 이음 — 셸 `\` · PowerShell 백틱 · cmd `^` / line continuations: shell, PowerShell and cmd
     text = re.sub(r"[\\`^]\s*\n\s*", " ", text)
@@ -242,8 +243,11 @@ def _npm_fetches(text: str) -> list[tuple[str, str]]:
         # 셸처럼 낱말 머리의 `#` 만 주석이다 — shlex 의 comments=True 는 낱말 가운데 `#` 에서도 줄 끝까지 버려
         # 그 뒤 패키지를 놓친다. Only a word-initial `#` starts a comment, as in the shell.
         tokens = shlex.split(flags + re.sub(r"(?:^|\s)#.*", "", rest))
-        packages = [t.split("=", 1)[1] for t in tokens if t.startswith(("--package=", "-p="))]
+        packages = [t.split("=", 1)[1] for t in tokens if t.startswith(("--package=", "--p=", "-p="))]
         words = [t for t in tokens if not t.startswith("-")]
+        tool = tool.lower()
+        if tool == "npx" and not words and not packages:
+            out.append(("npx", ""))
         if tool == "npm":
             if not words:
                 continue
@@ -254,7 +258,7 @@ def _npm_fetches(text: str) -> list[tuple[str, str]]:
                 continue
             # 하위 명령 이름 꼴일 때만 — 코드 속 글자(`npm\s+install…` 정규식)는 명령이 아니다
             # Only for a subcommand-shaped word; `npm\s+install…` inside code is not a command.
-            if not words and not packages and re.fullmatch(r"[a-z][a-z-]*", sub):
+            if not words and not packages and re.fullmatch(r"[a-z][a-z-]*", sub, re.IGNORECASE):
                 out.append((f"npm {sub}", ""))
         for word in words + packages:
             name, _, spec = word.lstrip("@").partition("@")
@@ -334,8 +338,13 @@ def test_fetching_npm_commands_beyond_install_are_red(command):
     assert _inexact(command + "\n"), f"{command!r} 가 판정을 비켜 갔다"
 
 
-# witness-corpus: Grok 적대 탐침(b1bfe50d) 1 · 2회차가 실제로 통과시킨 우회 — 플래그 값 속 패키지 · 패키지 없는 받기 · cache add · 줄 이음 문자 · xargs
+# witness-corpus: Grok 적대 탐침(b1bfe50d) 1~3회차가 실제로 통과시킨 우회 — 플래그 값 속 패키지 · 패키지 없는 받기 · cache add · 줄 이음 문자 · xargs · 환경 변수 · 대문자
 _PROBE_BYPASSES = [
+    ("line", "npx --p=eslint@9 --yes --call=true"),
+    ("line", "npm_config_package=eslint@9 npx --yes --call=true"),
+    ("dockerfile", "FROM x\nENV npm_config_package=eslint@9\nRUN npx --yes --call=true\n"),
+    ("workflow", "jobs:\n  a:\n    steps:\n      - env:\n          npm_config_package: eslint@9\n        run: npx --yes --call=true\n"),
+    ("workflow", "jobs:\n  a:\n    runs-on: windows-latest\n    steps:\n      - run: NPM install eslint\n"),
     ("line", "echo eslint | xargs npx -y"),
     ("line", "echo eslint | xargs -P 4 npx -y"),
     ("dockerfile", "# escape=`\nFROM x\nRUN npm `\ninstall eslint\n"),
