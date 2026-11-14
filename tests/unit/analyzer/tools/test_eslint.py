@@ -776,6 +776,14 @@ _ESLINT10_DIRECTIVE_PROBLEMS = {
     "unknown_rule_name_with_quote": {
         "ruleId": "foo'bar", "messageId": None, "severity": 2, "fatal": None, "line": 1,
         "message": "Definition for rule 'foo'bar' was not found."},
+    # 인라인 설정의 JSON 키 `""` · `"a\nb"` 로 만든 이름 — 빈 글자와 줄바꿈도 그대로 나온다(실측)
+    # Names made from inline-config JSON keys: an empty key and a key holding a newline come through verbatim.
+    "unknown_rule_name_empty": {
+        "ruleId": "", "messageId": None, "severity": 2, "fatal": None, "line": 1,
+        "message": "Definition for rule '' was not found."},
+    "unknown_rule_name_with_newline": {
+        "ruleId": "a\nb", "messageId": None, "severity": 2, "fatal": None, "line": 1,
+        "message": "Definition for rule 'a\nb' was not found."},
 }
 _REAL_RULE_REPORT = {"ruleId": "no-var", "messageId": "unexpectedVar", "severity": 1, "fatal": None, "line": 3,
                      "message": "Unexpected var, use let or const instead."}
