@@ -742,6 +742,118 @@ def test_directive_drop_keeps_real_fatal_parse_errors(tmp_path, message):
     assert [(i.message, str(i.severity)) for i in issues] == [(message, "error")]
 
 
+# ── 지시문 문제 드롭 · 쓰이지 않는 지시문 보고 끔 (회고 원장 R-10 — eslint 10.14.0 실측 payload) ─────
+# The linter's own problems about the analyzed file's directive comments are not code defects.
+
+# 실측 payload — 운영 이미지(eslint 10.14.0)에서 어댑터와 같은 인자 · 작업 폴더로 돌린 출력(필드 그대로)
+# Measured on the production image (eslint 10.14.0) with the adapter's argv and cwd, fields verbatim.
+_ESLINT10_DIRECTIVE_PROBLEMS = {
+    "invalid_inline_rule_config": {
+        "ruleId": "no-eval", "messageId": None, "severity": 2, "fatal": None, "line": 1,
+        "message": 'Inline configuration for rule "no-eval" is invalid:\n\tExpected severity of "off", 0, '
+                   '"warn", 1, "error", or 2. You passed "bogus".\n'},
+    "malformed_inline_config": {
+        "ruleId": None, "messageId": None, "severity": 2, "fatal": True, "line": 1,
+        "message": "Failed to parse JSON from '\"no-eval\": [error': Unexpected token 'e', "
+                   "\"{\"no-eval\": [error}\" is not valid JSON"},
+    "invalid_global_value": {
+        "ruleId": None, "messageId": None, "severity": 2, "fatal": True, "line": 1,
+        "message": "'bogus' is not a valid configuration for a global (use 'readonly', 'writable', or 'off')"},
+    "multiline_disable_line": {
+        "ruleId": None, "messageId": None, "severity": 2, "fatal": None, "line": 1,
+        "message": "eslint-disable-line comment should not span multiple lines."},
+    "duplicate_inline_config": {
+        "ruleId": None, "messageId": None, "severity": 2, "fatal": None, "line": 2,
+        "message": 'Rule "no-console" is already configured by another configuration comment in the preceding '
+                   'code. This configuration is ignored.'},
+    # Grok `6459a817` 반례 — eslint 가 지운 옛 룰 이름(conf/replacements.json 18개)은 «not found» 대신 대체 안내로 나온다
+    # Grok counterexample: a rule eslint removed long ago is reported with its replacement instead of "not found".
+    "removed_rule_name": {
+        "ruleId": "no-comma-dangle", "messageId": None, "severity": 2, "fatal": None, "line": 1,
+        "message": "Rule 'no-comma-dangle' was removed and replaced by: comma-dangle"},
+    # Grok `f2d396e4` 반례 — 사용자가 적은 룰 이름에는 작은따옴표도 든다
+    # Grok counterexample: a user-written rule name may contain a quote.
+    "unknown_rule_name_with_quote": {
+        "ruleId": "foo'bar", "messageId": None, "severity": 2, "fatal": None, "line": 1,
+        "message": "Definition for rule 'foo'bar' was not found."},
+    # 인라인 설정의 JSON 키 `""` · `"a\nb"` 로 만든 이름 — 빈 글자와 줄바꿈도 그대로 나온다(실측)
+    # Names made from inline-config JSON keys: an empty key and a key holding a newline come through verbatim.
+    "unknown_rule_name_empty": {
+        "ruleId": "", "messageId": None, "severity": 2, "fatal": None, "line": 1,
+        "message": "Definition for rule '' was not found."},
+    "unknown_rule_name_with_newline": {
+        "ruleId": "a\nb", "messageId": None, "severity": 2, "fatal": None, "line": 1,
+        "message": "Definition for rule 'a\nb' was not found."},
+}
+_REAL_RULE_REPORT = {"ruleId": "no-var", "messageId": "unexpectedVar", "severity": 1, "fatal": None, "line": 3,
+                     "message": "Unexpected var, use let or const instead."}
+
+
+def test_run_turns_off_unused_directive_reports(make_ctx):
+    """🔴 쓰이지 않는 disable · enable 주석은 eslint 가 보고하지 않게 한다 (R-10 ①).
+
+    eslint 9 · 10 의 기본값은 `warn` 이고, 그 메시지는 `ruleId` 없는 비치명이라 어댑터가 «미린트» 로 읽어 **그 파일을
+    미분석**으로 올렸다 — 우리 10개 밖 코어 룰(`no-plusplus` 등)을 끄는 흔한 주석 하나로 충분했다(실측).
+    정확한 낱말을 적는다 — 모듈 상수를 읽어 대조하면 그 값이 바뀌어도 초록이다.
+    Unused directives defaulted to `warn` with a null ruleId, so the adapter read them as "not linted" and
+    marked the whole file unanalyzed. The exact token is spelled out on purpose.
+    """
+    from src.analyzer.io.tools.eslint import _ESLintAnalyzer
+    ctx = make_ctx(language="javascript", tmp_path="/tmp/app.js")
+    with patch("subprocess.run", return_value=_mock_eslint_proc(SAMPLE_OUTPUT_NO_MESSAGES)) as mock_run:
+        _ESLintAnalyzer().run(ctx)
+    argv = mock_run.call_args[0][0]
+    assert argv.count("--report-unused-disable-directives-severity=off") == 1
+
+
+@pytest.mark.parametrize("kind", sorted(_ESLINT10_DIRECTIVE_PROBLEMS))
+def test_directive_problem_is_neither_issue_nor_unlinted(tmp_path, kind):
+    """🔴 린터가 분석 대상의 지시문 주석에 대해 낸 문제는 코드 결함이 아니다 (R-10 ② 와 같은 부류).
+
+    남기면 `ruleId` 가 문자열이거나 fatal 인 것은 ERROR(−3)로 세고, `ruleId` 없는 비치명은 «미린트» 로 올라가 그 파일이
+    미분석이 됐다. 같은 출력의 진짜 경고는 남는다.
+    """
+    from src.analyzer.io.tools.eslint import _to_issues
+
+    data = [{"messages": [dict(_ESLINT10_DIRECTIVE_PROBLEMS[kind]), dict(_REAL_RULE_REPORT)]}]
+    issues = _to_issues(data, _ctx(tmp_path))
+    assert [i.message for i in issues] == [_REAL_RULE_REPORT["message"]]
+
+
+@pytest.mark.parametrize("kind", sorted(_ESLINT10_DIRECTIVE_PROBLEMS))
+def test_rule_report_with_directive_like_text_is_kept(tmp_path, kind):
+    """대조군 — 드롭은 `messageId` 가 없는 **린터 문제**뿐이다. 룰 보고(`messageId` 있음)는 문구가 같아도 결함으로 남는다.
+
+    문구만 보는 드롭이면 이 시험이 red 다 — 룰 보고는 늘 `messageId` 를 싣는다(우리 10개는 모두 코어 룰).
+    """
+    from src.analyzer.io.tools.eslint import _to_issues
+
+    msg = dict(_ESLINT10_DIRECTIVE_PROBLEMS[kind], ruleId="no-console", messageId="unexpected", fatal=None, severity=1)
+    issues = _to_issues([{"messages": [msg]}], _ctx(tmp_path))
+    assert [(i.message, str(i.severity)) for i in issues] == [(msg["message"], "warning")]
+
+
+def test_invalid_inline_config_drop_keeps_that_rules_real_report(tmp_path):
+    """대조군 — 무효 인라인 설정은 그 주석만 무시되고 룰은 우리 설정대로 돈다. 같은 룰의 진짜 보고는 남는다(실측)."""
+    from src.analyzer.io.tools.eslint import _to_issues
+
+    real = {"ruleId": "no-eval", "messageId": "unexpected", "severity": 2, "fatal": None, "line": 2,
+            "message": "`eval` can be harmful."}
+    data = [{"messages": [dict(_ESLINT10_DIRECTIVE_PROBLEMS["invalid_inline_rule_config"]), real]}]
+    issues = _to_issues(data, _ctx(tmp_path))
+    assert [(i.message, str(i.severity)) for i in issues] == [("`eval` can be harmful.", "error")]
+
+
+def test_unknown_linter_problem_still_fails_closed(tmp_path):
+    """🔴 대조군 — 모르는 린터 문제는 드롭하지 않는다. `ruleId` 없는 비치명은 여전히 «미린트» 로 올라간다(#1226)."""
+    from src.analyzer.io.tools.eslint import _to_issues
+
+    data = [{"messages": [{"ruleId": None, "messageId": None, "severity": 2, "fatal": None, "line": 1,
+                           "message": "Some future linter notice about this file."}]}]
+    with pytest.raises(RuntimeError, match="did not lint"):
+        _to_issues(data, _ctx(tmp_path))
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # 스폰 축 fail-closed (#1557 W3)
 #

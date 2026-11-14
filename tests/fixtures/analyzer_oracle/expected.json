@@ -251,6 +251,32 @@
     "semgrep"
    ]
   },
+  "javascript/inline_directives.js": {
+   "issues": [
+    {
+     "category": "code_quality",
+     "line": 2,
+     "message": "'count' is never reassigned. Use 'const' instead.",
+     "severity": "warning",
+     "tool": "eslint"
+    },
+    {
+     "category": "code_quality",
+     "line": 10,
+     "message": "Unexpected var, use let or const instead.",
+     "severity": "warning",
+     "tool": "eslint"
+    }
+   ],
+   "score": {
+    "code_quality": 23,
+    "security": 20
+   },
+   "tools": [
+    "eslint",
+    "semgrep"
+   ]
+  },
   "javascript/legacy_directive.js": {
    "issues": [
     {

@@ -1,0 +1,11 @@
+// eslint-disable-next-line no-plusplus
+let count = 0;
+/* eslint-disable-line
+   no-console */
+/* eslint no-eval: "bogus" */
+/* eslint no-console: [warn */
+/* global helper: bogus */
+/* eslint no-redeclare: "error" */
+/* eslint no-redeclare: "warn" */
+var total = count;
+module.exports = total; // eslint-disable-line no-comma-dangle

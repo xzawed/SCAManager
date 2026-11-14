@@ -30,6 +30,14 @@ from src.analyzer.pure.registry import AnalyzeContext
 
 _REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 _ESLINT_JS = _REPO_ROOT / "node_modules" / "eslint" / "bin" / "eslint.js"
+# 분석기 설정(`eslint.config.mjs`)은 `@typescript-eslint/parser` 를 import 한다 — node 는 그것을 **설정 파일 기준**으로
+# 찾으므로, 리포 루트에 node_modules 가 없는 체크아웃(예: 역-뮤테이션 게이트의 임시 워크트리)에서는 전역 eslint 도 설정을
+# 못 읽고 «Cannot find package» 로 죽는다 — 그때는 잴 수 없으니 건너뛴다(CI 본 체크아웃은 `npm ci` 로 있다).
+# The analyzer config imports @typescript-eslint/parser, resolved next to the config file; without node_modules at the
+# repo root (e.g. the reverse-mutation gate's temp worktree) even the global eslint cannot load it, so skip there.
+_CONFIG_DEPS = _REPO_ROOT / "node_modules" / "@typescript-eslint" / "parser" / "package.json"
+_NEEDS_CONFIG_DEPS = pytest.mark.skipif(
+    not _CONFIG_DEPS.is_file(), reason="node_modules 의 @typescript-eslint/parser 없음 — 분석기 설정을 못 읽는다(`npm ci`)")
 
 # 확장자별 (언어, 프로브 코드) — 각 코드는 no-var + eqeqeq 를 반드시 유발한다.
 # .ts/.tsx 는 타입 주석을 포함해 @typescript-eslint/parser 가 실제로 물렸는지까지 검증한다.
@@ -87,6 +95,7 @@ def test_real_eslint_reports_issues_for_every_supported_extension(ext, tmp_path)
 
 @pytest.mark.slow
 @pytest.mark.skipif(shutil.which("eslint") is None, reason="전역 eslint 미설치")
+@_NEEDS_CONFIG_DEPS
 @pytest.mark.skipif(os.name == "nt", reason="Windows 는 .cmd 를 CreateProcess 로 실행 불가 (CI=Linux 가 담당)")
 def test_analyzer_run_end_to_end_with_global_eslint():
     """`_ESLintAnalyzer().run()` 전 경로 — 운영과 동일하게 전역 `eslint` 바이너리를 호출한다.
@@ -110,6 +119,7 @@ def test_analyzer_run_end_to_end_with_global_eslint():
 
 @pytest.mark.slow
 @pytest.mark.skipif(shutil.which("eslint") is None, reason="전역 eslint 미설치")
+@_NEEDS_CONFIG_DEPS
 @pytest.mark.skipif(os.name == "nt", reason="Windows 는 .cmd 를 CreateProcess 로 실행 불가 (CI=Linux 가 담당)")
 def test_unknown_rule_disable_does_not_deduct_score_end_to_end():
     """🔴 실바이너리 — 대상 리포가 **자기 설정의 룰**로 disable 을 달아도 감점되지 않는다 (R22).
@@ -147,3 +157,39 @@ def test_unknown_rule_disable_does_not_deduct_score_end_to_end():
     assert any("var" in m or "==" in m for m in fired), (
         f"실제 결함(no-var/eqeqeq)이 사라졌다 — 드롭이 과도하다: {sorted(fired)}"
     )
+
+
+# 출력 오라클 시료 — 지시문 주석 7꼴(쓰이지 않는 disable · 여러 줄 disable-line · 무효 · 못 읽는 인라인 설정 · 무효 global 값 ·
+# 같은 룰 두 번 설정 · eslint 가 지운 옛 룰 이름) + 진짜 결함 2건. 오라클(운영 이미지)과 이 시험(CI 전역 eslint)이 같은 글자를 본다.
+# The oracle sample: seven directive-comment shapes plus two real defects, shared with the image-level oracle.
+_INLINE_DIRECTIVES_SAMPLE = (
+    _REPO_ROOT / "tests" / "fixtures" / "analyzer_oracle" / "javascript" / "inline_directives.js.sample"
+)
+
+
+@pytest.mark.slow
+@pytest.mark.skipif(shutil.which("eslint") is None, reason="전역 eslint 미설치")
+@_NEEDS_CONFIG_DEPS
+@pytest.mark.skipif(os.name == "nt", reason="Windows 는 .cmd 를 CreateProcess 로 실행 불가 (CI=Linux 가 담당)")
+def test_directive_comments_neither_deduct_nor_unanalyze_end_to_end():
+    """🔴 실바이너리 — 분석 대상의 지시문 주석이 감점도 «미분석» 도 만들지 않는다 (회고 원장 R-10).
+
+    단위 테스트는 eslint 10.14.0 실측 payload 를 손으로 적는다 — eslint 가 그 꼴을 바꾸면 단위는 초록인 채 운영만
+    깨진다. 여기서는 실제 eslint 가 낸 출력으로 **진짜 결함 2건만** 남는지 본다(지시문 메시지가 하나라도 남거나
+    «미린트» 로 올라가면 red).
+    Real-binary counterpart of the unit tests: only the two real defects may survive.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = os.path.join(tmpdir, "analyze.js")
+        with open(tmp_path, "w", encoding="utf-8") as fh:
+            fh.write(_INLINE_DIRECTIVES_SAMPLE.read_text(encoding="utf-8"))
+        ctx = AnalyzeContext(
+            filename="analyze.js", content="", language="javascript",
+            is_test=False, tmp_path=tmp_path,
+        )
+        issues = _ESLintAnalyzer().run(ctx)
+
+    assert sorted((i.line, i.message, str(i.severity)) for i in issues) == [
+        (2, "'count' is never reassigned. Use 'const' instead.", "warning"),
+        (10, "Unexpected var, use let or const instead.", "warning"),
+    ]
