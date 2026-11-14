@@ -20,11 +20,13 @@
 Contract ⊆ CI provisioning: adding a tool to the contract without provisioning it in CI
 is exactly the state that produced this issue.
 """
+import json
 import re
 import shlex
 from pathlib import Path
 
 import pytest
+import yaml
 
 from tests.unit.scripts._dockerfile import DOCKERFILE, run_steps
 
@@ -210,21 +212,27 @@ def test_ci_and_image_pin_the_same_versions(tool):
 #    풀리고, 버전 없는 전역 설치는 `_pins` 가 아예 못 본다 — Dockerfile 의 «전부 버전 핀» 주석이 거짓이었다.
 # Equality passes `eslint@9` on both sides and never sees a bare package; a pin names one exact version.
 _EXACT = re.compile(r"v?\d+\.\d+\.\d+")
-# `npm install` 과 그 별칭(npm 문서의 aliases) — 플래그가 하위 명령 앞에 와도, 전역이든 아니든 읽는다.
-# `npm ci` 는 잠금 파일을 따르므로 대상이 아니다.
-# npm install and its documented aliases, flags in any position, global or not; `npm ci` follows the lockfile.
-_NPM_INSTALL = re.compile(
-    r"\bnpm(?:\s+-\S+)*\s+(?:install|i|add|in|ins|inst|insta|instal|isnt|isnta|isntal|isntall)\b([^\n&|;]*)")
+# npm · npm 패키지 실행기(npx) 호출 — 경로 안의 `npm`(`/root/.npm`) · 다른 도구 이름(`pnpm`)은 뺀다.
+# npm or npx invocations; `npm` inside a path or another tool's name does not count.
+_NPM_CALL = re.compile(r"(?<![\w./-])(npm|npx)\b((?:\s+-\S+)*)([^\n&|;]*)")
+# 레지스트리에서 받지 않는 npm 하위 명령 — 잠금 파일 설치 · 스크립트 실행 · 캐시 정리.
+# 🔴 받아 오는 하위 명령을 나열하지 않고 이것만 면제한다: 모르는 하위 명령(update · exec · link …)과 npx 는
+#    인자가 전부 정확한 버전이어야 통과한다 — 목록 밖이 조용히 지나가지 않고 red 가 된다.
+# npm subcommands that never fetch from the registry. Everything else (and npx) must pin exactly.
+_NPM_NON_FETCHING = frozenset({"ci", "run", "run-script", "cache"})
 
 
-def _npm_installs(text: str) -> list[tuple[str, str]]:
-    """`npm install`(별칭 포함)의 (패키지, 버전 표기) 전부 — 버전 없는 패키지는 표기가 ''. 플래그 · 꼬리 주석은 뺀다."""
+def _npm_fetches(text: str) -> list[tuple[str, str]]:
+    """레지스트리에서 받는 npm · npx 호출의 (패키지, 버전 표기) — 버전 없는 패키지는 표기가 ''. 플래그 · 꼬리 주석은 뺀다."""
     text = re.sub(r"\\\s*\n\s*", " ", text)
     out = []
-    for chunk in _NPM_INSTALL.findall(text):
-        for word in shlex.split(chunk, comments=True):
-            if word.startswith("-"):
+    for tool, _flags, rest in _NPM_CALL.findall(text):
+        words = [w for w in shlex.split(rest, comments=True) if not w.startswith("-")]
+        if tool == "npm":
+            if not words or words[0] in _NPM_NON_FETCHING:
                 continue
+            words = words[1:]
+        for word in words:
             name, _, spec = word.lstrip("@").partition("@")
             out.append((("@" if word.startswith("@") else "") + name, spec))
     return out
@@ -235,15 +243,36 @@ def _inexact(text: str) -> list[str]:
     bad = {f"{tool}={spec}" for tool, spec in _pins(text).items()
            if tool != "node" and not _EXACT.fullmatch(spec)}
     bad |= {f"{name}={spec}" if spec else f"{name}(버전 없음)"
-            for name, spec in _npm_installs(text) if not _EXACT.fullmatch(spec)}
+            for name, spec in _npm_fetches(text) if not _EXACT.fullmatch(spec)}
     return sorted(bad)
+
+
+def _image_run_text(dockerfile: str) -> str:
+    """Dockerfile RUN 인자를 셸 문장으로 — exec 형(`RUN ["npm", …]`)은 argv 를 셸 문장으로 되돌린다."""
+    out = []
+    for args in run_steps(dockerfile):
+        if args.startswith("["):
+            try:
+                args = shlex.join(json.loads(args))
+            except (ValueError, TypeError):
+                pass
+        out.append(args)
+    return "\n".join(out)
+
+
+def _ci_run_text(workflow: str) -> str:
+    """워크플로 `run:` 스크립트를 YAML 이 푼 그대로 — 접힌 블록(`>`)에서 줄이 나뉜 명령도 한 명령이다."""
+    jobs = (yaml.safe_load(workflow) or {}).get("jobs") or {}
+    return "\n".join(step["run"] for job in jobs.values() for step in job.get("steps") or []
+                     if isinstance(step, dict) and isinstance(step.get("run"), str))
 
 
 def test_inexact_reader_on_planted_text():
     """판정식 뒤집기 — 정확한 핀은 통과하고, 범위 · 메이저만 · 버전 없음은 표기와 별칭에 상관없이 잡힌다."""
     assert _inexact("npm install -g eslint@9.39.5 typescript@6.0.3\n"
                     "gem install rubocop -v 1.57.2 --no-document\n"
-                    'node-version: "20"\nnpm ci --ignore-scripts\nnpm init -y\n') == []
+                    'node-version: "20"\nnpm ci --ignore-scripts\nnpm run build\nnpm cache clean --force\n'
+                    "npm --version\nRUN --mount=type=cache,target=/root/.npm npm i -g eslint@9.39.5\n") == []
     assert _inexact("npm install -g eslint@9 @typescript-eslint/parser\n"
                     "npm install -g 'typescript@>=6.0.3 <6.1.0'\n") == [
         "@typescript-eslint/parser(버전 없음)", "eslint=9", "typescript=>=6.0.3 <6.1.0"]
@@ -251,12 +280,37 @@ def test_inexact_reader_on_planted_text():
         "eslint(버전 없음)", "prettier=^3.0.0"]
 
 
+# witness-corpus: npm CLI 문서에서 레지스트리 패키지를 받는 명령 중 install 이 아닌 것 — update · exec · npx · link · install-test
+_FETCHING_NPM_COMMANDS = [
+    "npm update -g eslint",
+    "npm exec --package=eslint@9 -- eslint --version",
+    "npx eslint@9 --version",
+    "npm link eslint",
+    "npm install-test eslint@9",
+]
+
+
+@pytest.mark.parametrize("command", _FETCHING_NPM_COMMANDS)
+def test_fetching_npm_commands_beyond_install_are_red(command):
+    """🔴 install 이 아닌 받아 오는 명령도 정확한 버전이 아니면 red 다 — 하위 명령을 나열하지 않으니 비켜 가지 못한다."""
+    assert _inexact(command + "\n"), f"{command!r} 가 판정을 비켜 갔다"
+
+
+def test_install_text_readers_on_planted_files():
+    """exec 형 RUN 과 접힌 YAML 블록도 셸 명령으로 읽힌다 — 접힌 블록을 날 글로 읽으면 위 판정을 비켜 간다."""
+    dockerfile = 'FROM x\nRUN ["npm", "install", "-g", "eslint"]\nRUN npm i -g prettier@3.3.3\n'
+    assert _inexact(_image_run_text(dockerfile)) == ["eslint(버전 없음)"]
+    workflow = "jobs:\n  a:\n    steps:\n      - run: >-\n          npm install -g\n          eslint@9\n"
+    assert _inexact(_ci_run_text(workflow)) == ["eslint=9"]
+    assert _inexact(workflow) == []
+
+
 @pytest.mark.parametrize("name", ["Dockerfile", "ci.yml"])
 def test_every_analyzer_install_names_an_exact_version(name):
     """🔴 운영 이미지와 CI 의 분석기 설치는 전부 정확한 버전이다 — Dockerfile «전부 버전 핀» 의 기계 검증."""
-    text = (_ci_text() if name == "ci.yml"
-            else "\n".join(run_steps(DOCKERFILE.read_text(encoding="utf-8"))))
-    assert _pins(text) and _npm_installs(text), f"{name} 에서 설치를 못 읽었다 — 이 검사가 공허하다"
+    text = (_ci_run_text(_ci_text()) if name == "ci.yml"
+            else _image_run_text(DOCKERFILE.read_text(encoding="utf-8")))
+    assert _pins(text) and _npm_fetches(text), f"{name} 에서 설치를 못 읽었다 — 이 검사가 공허하다"
     assert _inexact(text) == [], (
         f"{name} 에 정확한 버전이 아닌 분석기 설치가 있다: {_inexact(text)} — 지금 운영이 쓰는 판"
         "(`npm view <패키지>@<범위> version` 의 마지막 값)으로 고정하고, 두 파일을 같은 커밋에서 고칠 것."
