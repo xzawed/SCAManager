@@ -73,7 +73,7 @@ RUN gem install rubocop-ast -v 1.36.2 --no-document --bindir /usr/bin \
  && unzip -o /tmp/tflint.zip -d /usr/bin/ \
  && chmod +x /usr/bin/tflint \
  && rm /tmp/tflint.zip \
- && npm install -g eslint@9.39.5 typescript@6.0.3 \
+ && npm install -g eslint@10.14.0 typescript@6.0.3 \
  && npm cache clean --force
 
 WORKDIR /app

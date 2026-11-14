@@ -57,6 +57,17 @@ _ERR_EXCERPT = 200
 # as a real ERROR and deducted score. Measured on eslint 9.39.5 / 10.8.0.
 _CONFIG_META_MESSAGE = re.compile(r"^Definition for rule '[^']+' was not found\.?$")
 
+# 🔴 **지시문 메타 메시지** — 사용자 코드의 결함이 아니다 (회고 원장 R-9, eslint 9 → 10).
+#   ESLint 10 은 분석 대상의 `/* eslint-env … */` 블록 주석을 `ruleId=None · fatal=True · severity=2` 로 보고하고
+#   **린트는 계속한다**(실측 10.14.0: 같은 파일의 다른 경고가 함께 나온다). 9.39.5 는 이 주석을 조용히 무시했다.
+#   그 리포의 옛 eslintrc 지시문일 뿐이므로 위 설정 메타처럼 드롭한다 — 남기면 fatal 이라 «진짜 파싱 오류» 로
+#   집계돼, 10 으로 올린 날부터 그 주석이 있는 파일마다 ERROR(−3)가 생긴다. 문구가 바뀌면 이 드롭이 조용히
+#   풀리므로 출력 오라클 시료(`tests/fixtures/analyzer_oracle/javascript/legacy_directive.js.sample`)가 지킨다.
+# ESLint 10 reports a legacy `/* eslint-env */` block comment as fatal (ruleId None, severity 2) yet keeps
+# linting; 9.39.5 ignored it. It is the repo's old directive, not a code defect, so it is dropped like the
+# config meta above. The analyzer output oracle carries a sample so a reworded message cannot slip back in.
+_DIRECTIVE_META_MESSAGE = re.compile(r"^/\* eslint-env \*/ comments are no longer supported\.?$")
+
 
 def _to_issues(data: list, ctx: AnalyzeContext) -> list[AnalysisIssue]:
     """eslint JSON 결과를 AnalysisIssue 목록으로 변환한다.
@@ -83,7 +94,10 @@ def _to_issues(data: list, ctx: AnalyzeContext) -> list[AnalysisIssue]:
             # 🔴 설정 메타 메시지 드롭 — 미린트(ruleId=None) 판정보다 **먼저** 본다.
             #   순서가 바뀌면 의미는 같지만(ruleId 가 문자열이라) 의도가 흐려진다.
             # Drop config-meta messages before the not-linted check; they are not code defects.
-            if _CONFIG_META_MESSAGE.match(msg.get("message", "") or ""):
+            # 지시문 메타(eslint 10 의 eslint-env)는 fatal 이라 아래 «fatal = 실제 결함» 보다도 먼저 봐야 한다.
+            # The directive meta is fatal, so it must be checked before the "fatal = real defect" rule below.
+            text = msg.get("message", "") or ""
+            if _CONFIG_META_MESSAGE.match(text) or _DIRECTIVE_META_MESSAGE.match(text):
                 logger.debug(
                     "eslint config-meta message dropped (not a code defect): %s",
                     msg.get("message", "")[:_ERR_EXCERPT],
