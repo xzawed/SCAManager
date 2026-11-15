@@ -16,7 +16,7 @@
 
 ## 환경변수 추가
 
-1. `src/config.py::class Settings(` 에 필드 선언. 기본값 없는 필드는 필수가 된다(현재 필수 3종 = `database_url` · `telegram_bot_token` · `telegram_chat_id`).
+1. `src/config.py::class Settings(` 에 필드 선언. 기본값 없는 필드는 필수가 된다(현재 필수 3종 = `database_url` · `telegram_bot_token` · `telegram_chat_id`. `session_secret` 도 기본값 `""` 이 검증에서 막혀 사실상 필수 — 32자 이상).
 2. 제약이 있으면 `Field(ge=...)` 나 `field_validator` 를 같은 자리에 넣는다 — 잘못된 값은 기동 차단이 기본이다.
 3. `docs/reference/env-vars.md` 표에 `` | `ENV_NAME` | 설명 | 예시 | `` 행 추가. `scripts/check_env_vars_sync.py` 가 Settings 필드와 대조해 미등재면 CI red.
 4. `.env.example` 에 안전한 기본값으로 추가한다(위험 기본값 출하 금지 — `tests/unit/test_config.py::def test_env_example_does_not_ship_keyless_api_auth`).
