@@ -74,6 +74,7 @@ jobs:
     # Only when the body actually changed; title/base edits do not need this.
     if: github.event.changes.body != null
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       # 🔴 fetch-depth: 0 필수 — 정책 19 가드가 `git log base..head` 로 PR 범위 커밋 메시지를
       # 읽는다. 얕은 clone 이면 커밋 축이 조용히 빈 문자열로 degrade 된다(ci.yml 과 동일 사유).

@@ -16,6 +16,8 @@ jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
+    # 벽 = 관측 최대(약 2.4분)의 2배 이상 — CodeQL 도구 묶음을 내려받는 시간까지 둔다 / wall >= 2x observed max, plus the CodeQL bundle download
+    timeout-minutes: 15
     permissions:
       actions: read
       contents: read

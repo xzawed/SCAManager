@@ -25,11 +25,16 @@ permissions:
   pull-requests: read
 
 jobs:
+  # 🔴 모든 잡에 벽(timeout-minutes)이 있다 — 없으면 설치 단계 하나가 멈춰도 required 검사가 GitHub 기본 6시간 동안
+  #    끝나지 않는다. 벽 = 그 잡의 관측 최대의 2배 이상 · 최소 10분(관측값의 원천은 CI 실행 기록).
+  #    벽 없는 잡은 `tests/unit/scripts/test_ci_time_walls.py` 가 red 로 잡는다.
+  # Every job has a wall (GitHub's default is 6 hours): >= 2x the job's observed max, at least 10 minutes.
   # Layer 2: CI 시크릿 스캔 — 커밋 메시지 + 코드 diff 동시 탐지
   # Layer 2: CI secret scan — detects secrets in both commit messages and code diffs
   secret-scan:
     name: TruffleHog secret scan
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout (full history for commit message scan)
         uses: actions/checkout@v7
@@ -97,6 +102,7 @@ jobs:
     name: Lint changed test files (F401/F841 — C1)
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout (full history for diff)
         uses: actions/checkout@v7
@@ -156,6 +162,7 @@ jobs:
   repo-integrity:
     name: Repo integrity guards (stdlib backstop)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       # 🔴 fetch-depth: 0 필수 — 정책 19 가드가 `git log base..head` 로 PR 범위 커밋 메시지를
       # 읽는다. 얕은 clone 이면 base 커밋이 없어 명령이 실패하고, 가드는 커밋 축을 **조용히
@@ -267,6 +274,7 @@ jobs:
   lint-src:
     name: Static analysis gate (pylint + bandit on src/)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -317,6 +325,7 @@ jobs:
   lint-js-nonvacuous:
     name: lint-js 공허화 차단 (검사 범위 비면 fail)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -350,6 +359,7 @@ jobs:
   dependency-audit:
     name: pip-audit (SCA — 의존성 취약점 게이트)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -428,6 +438,7 @@ jobs:
     name: pytest + Codecov + SonarCloud
     runs-on: ubuntu-latest
     needs: secret-scan
+    timeout-minutes: 25
     steps:
       - name: Checkout (with full history for SonarCloud)
         uses: actions/checkout@v7
@@ -785,6 +796,7 @@ jobs:
     name: PG-only tests (SKIP LOCKED + migration round-trip)
     runs-on: ubuntu-latest
     needs: secret-scan
+    timeout-minutes: 10
     services:
       postgres:
         # minor 핀 — `postgres:16` 은 패치 릴리스마다 silently 변경됨. 이 job 은 FOR UPDATE
@@ -870,23 +882,26 @@ jobs:
     name: E2E (Playwright)
     runs-on: ubuntu-latest
     needs: secret-scan
-    # 벽 = 스위트 + 준비 단계(pip·npm·apt·브라우저 내려받기). 미러가 막히면 준비 단계만 10분을
-    #    넘긴다 — 벽이 스위트에 바짝 붙어 있으면 그 정체가 결과를 «취소» 로 지운다(아티팩트도 없다).
-    #    기다리다 멈춘 시험 하나는 아래 `--timeout=120` 이 끊는다. 스위트 시간은 CI 실행 기록이 원천이다.
-    # Wall = suite + setup downloads (a stalled mirror alone can pass 10 min); a test stuck
-    # waiting is cut by --timeout=120 below. Suite time lives in the CI run history, not here.
-    timeout-minutes: 45
+    # 벽은 두 층이다. 내려받는 준비 스텝마다 벽이 있어 미러가 멈추면 그 스텝이 실패로 끝나고(잡 취소가 아니라
+    #    아래 실패 아티팩트가 남는다), 스위트 스텝의 벽이 시간 예산이다 — 스위트가 그 85% 를 넘으면
+    #    `e2e_budget.py` 가 red 를 낸다(벽에 닿아 결과가 지워지기 전에 스위트를 나누거나 벽을 다시 잰다).
+    #    잡 벽은 준비 + 스위트 벽을 덮는 마지막 방어선이다. 기다리다 멈춘 시험 하나는 `--timeout=120` 이 끊는다.
+    # Two layers: each download step has its own wall (a stalled mirror fails that step instead of cancelling
+    # the job), and the suite step's wall is the time budget — e2e_budget.py goes red above 85% of it.
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v7
+        timeout-minutes: 10
         with:
           python-version: "3.12"
           cache: pip
 
       - name: Install dependencies
+        timeout-minutes: 10
         run: pip install --retries 5 --timeout 60 -r requirements-dev.txt
 
       # 🔴 CSS 빌드 산출물이 없으면 **운영에 존재할 수 없는 형태**를 검증하게 된다.
@@ -898,15 +913,18 @@ jobs:
       # Without the CSS build the job tests a shape that cannot exist in production.
       - name: Set up Node
         uses: actions/setup-node@v7
+        timeout-minutes: 10
         with:
           node-version: "20"
           cache: npm
 
       - name: Build CSS (운영과 동일 산출물)
+        timeout-minutes: 10
         run: npm ci --ignore-scripts && npm run build
 
       # `--with-deps` 로 브라우저 + OS 라이브러리를 함께 설치 (ubuntu 러너 필수).
       - name: Install Playwright chromium
+        timeout-minutes: 20
         run: python -m playwright install --with-deps chromium
 
       # 🔴 `--timeout` 의무 — 이 잡에만 없었다. 셀렉터가 죽으면 Playwright 가 건당
@@ -917,6 +935,7 @@ jobs:
       # 여전히 조용히 통과한다. 커밋된 기대값(`e2e/EXPECTED_COUNT`)과 대조해 그 축을 닫는다.
       # Guards against silent scope shrink: a smaller collection is a failure, not a pass.
       - name: E2E 검사 범위 확인 (수집 건수 ↔ baseline)
+        timeout-minutes: 5
         run: python scripts/check_e2e_scope.py
 
       # 🔴 `-p no:randomly` 가 아니라 **최소 통과 건수** 가 핵심이다 (backlog R58 · Grok 71bd2d6c).
@@ -924,8 +943,24 @@ jobs:
       # `pytest.mark.skip`·`skipif`·픽스처 skip 어느 경로든 같은 결말이다.
       # `--strict-markers` 는 이 축을 못 본다. 통과 건수 하한이 유일한 관측면이다.
       # A collection-count baseline does not stop mass-skip: pytest exits 0 when all skip.
+      # 스위트 시작 시각 — 아래 시간 예산 스텝이 «지금 − 이 값» 으로 스위트 시간을 잰다(스위트 스텝은 한 줄 그대로).
+      # The suite's start time; the budget step below measures the suite as now minus this value.
+      - name: E2E 스위트 시작 시각
+        id: suite_start
+        timeout-minutes: 1
+        run: echo "at=$(date +%s)" >> "$GITHUB_OUTPUT"
+
       - name: Run E2E suite
+        timeout-minutes: 40
         run: python -m pytest e2e/ -q -rs -p no:asyncio --timeout=120 --e2e-strict-skips
+
+      # 시간 예산 — 벽은 위 스텝의 timeout-minutes 한 곳에서 읽는다(숫자를 복사하지 않는다). 75% 부터 경고.
+      # Time budget: the wall is read from the suite step above (no copied number); a warning from 75%.
+      - name: E2E 시간 예산 (스위트 ↔ 스텝 벽)
+        timeout-minutes: 5
+        env:
+          SUITE_STARTED_AT: ${{ steps.suite_start.outputs.at }}
+        run: python scripts/e2e_budget.py --started-at "$SUITE_STARTED_AT"
 
       # 🔴 실패 시 trace/스크린샷을 남긴다 — 이게 없어서 R52 진단이 **로그 고고학**이
       #    됐다(요약이 잘린 텍스트 로그만으로 30건을 역추적). 다음 회귀는 그러지 않도록.
@@ -933,6 +968,7 @@ jobs:
       #    truncated text log. Keep evidence for the next regression.
       - name: Upload Playwright artifacts
         if: failure()
+        timeout-minutes: 10
         uses: actions/upload-artifact@v7
         with:
           name: e2e-failure-artifacts
