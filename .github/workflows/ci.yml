@@ -24,6 +24,13 @@ permissions:
   # Needed to fetch the live PR body; absence surfaces as a red check, not a silent pass.
   pull-requests: read
 
+# 같은 PR 에 새 커밋이 오면 앞 커밋의 실행을 끊는다 — 덧쓰인 푸시의 E2E 가 끝까지 돌지 않게. main push 는 커밋마다
+# 그룹이 따로라(그룹 = SHA) 끊지 않는다 — 배포가 커밋마다 그 커밋의 CI 를 기다린다.
+# A new push to the same PR cancels its previous run; main pushes are grouped per commit and never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # 🔴 모든 잡에 벽(timeout-minutes)이 있다 — 없으면 설치 단계 하나가 멈춰도 required 검사가 GitHub 기본 6시간 동안
   #    끝나지 않는다. 벽 = 그 잡의 관측 최대의 2배 이상 · 최소 10분(관측값의 원천은 CI 실행 기록).
@@ -938,11 +945,6 @@ jobs:
         timeout-minutes: 5
         run: python scripts/check_e2e_scope.py
 
-      # 🔴 `-p no:randomly` 가 아니라 **최소 통과 건수** 가 핵심이다 (backlog R58 · Grok 71bd2d6c).
-      # 수집 건수 baseline 을 통과해도 **전부 skip 되면** pytest 는 exit 0 을 낸다 —
-      # `pytest.mark.skip`·`skipif`·픽스처 skip 어느 경로든 같은 결말이다.
-      # `--strict-markers` 는 이 축을 못 본다. 통과 건수 하한이 유일한 관측면이다.
-      # A collection-count baseline does not stop mass-skip: pytest exits 0 when all skip.
       # 스위트 시작 시각 — 아래 시간 예산 스텝이 «지금 − 이 값» 으로 스위트 시간을 잰다(스위트 스텝은 한 줄 그대로).
       # The suite's start time; the budget step below measures the suite as now minus this value.
       - name: E2E 스위트 시작 시각
@@ -950,9 +952,15 @@ jobs:
         timeout-minutes: 1
         run: echo "at=$(date +%s)" >> "$GITHUB_OUTPUT"
 
+      # 🔴 수집 건수 baseline 을 통과해도 **전부 skip 되면** pytest 는 exit 0 을 낸다(`skip`·`skipif`·픽스처 skip 모두).
+      #    그 축은 `--e2e-strict-skips` 가 닫는다 — skip 집합을 `e2e/SKIP_ALLOWLIST` 와 양방향으로 대조해, 허용 밖 skip 과
+      #    이제 안 나는 허용 skip 이 둘 다 red 다(`e2e/conftest.py`). `--durations=15` 는 시간 예산이 닿았을 때 무엇을
+      #    나눌지 보이게 가장 느린 15건을 찍는다.
+      # Mass-skip passes the collection baseline (pytest exits 0); --e2e-strict-skips closes it by matching the skip
+      # set against e2e/SKIP_ALLOWLIST both ways. --durations=15 shows what to split when the budget is reached.
       - name: Run E2E suite
         timeout-minutes: 40
-        run: python -m pytest e2e/ -q -rs -p no:asyncio --timeout=120 --e2e-strict-skips
+        run: python -m pytest e2e/ -q -rs -p no:asyncio --timeout=120 --e2e-strict-skips --durations=15
 
       # 시간 예산 — 벽은 위 스텝의 timeout-minutes 한 곳에서 읽는다(숫자를 복사하지 않는다). 75% 부터 경고.
       # Time budget: the wall is read from the suite step above (no copied number); a warning from 75%.
