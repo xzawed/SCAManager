@@ -723,3 +723,38 @@ def test_declared_states_stay_distinct_in_forced_colors(seeded_page, base_url):
     finally:
         decoder.close()
         page.emulate_media(forced_colors="none")
+
+
+# 모달이 열린 채 nav 가운데의 맨 위가 모달 배경(또는 그 안)인가 — 배경이 화면 전체를 덮어야 모달이 떠 있는 동안 nav 를
+# 못 누른다(회고 원장 R-11). 이슈 모달은 실제 화면이 여는 길(_STATE_OPENERS)로 연다.
+# With the issue modal open, the topmost element at the nav's centre must be the modal backdrop.
+_NAV_COVERED_JS = """async () => {
+    const frame = () => new Promise(r => requestAnimationFrame(() => r()));
+    await frame(); await frame();
+    for (const a of document.querySelector('.container').getAnimations()) { try { a.finish(); } catch (e) { /* 무시 */ } }
+    await frame();
+    const overlay = document.getElementById('issueModalOverlay');
+    if (!overlay || !overlay.checkVisibility()) return {error: '모달이 안 열렸다'};
+    const nav = document.querySelector('nav').getBoundingClientRect();
+    const hit = document.elementFromPoint(nav.left + nav.width / 2, nav.top + nav.height / 2);
+    return {covered: !!(hit && overlay.contains(hit)), hit: hit ? (hit.id ? '#' + hit.id : hit.tagName.toLowerCase()) : null};
+}"""
+
+
+@pytest.mark.e2e
+@pytest.mark.parametrize("viewport", [(1280, 800), (390, 844)], ids=["desktop", "mobile"])
+def test_issue_modal_backdrop_covers_the_nav(seeded_page, base_url, seeded_analysis, viewport):
+    """🔴 이슈 등록 모달이 떠 있으면 배경이 sticky nav 까지 덮는다 (회고 원장 R-11).
+
+    모달은 본문(`.container`, z-index 1)의 쌓임 맥락 안에 있어 z-index 9000 이어도 nav(100) 아래에 칠해졌다 — 모달이 떠
+    있어도 nav 링크를 누를 수 있었다. The issue modal backdrop must paint over the sticky nav.
+    """
+    from e2e.test_theme_mobile_guards import _STATE_OPENERS  # noqa: PLC0415
+
+    path, opener = _STATE_OPENERS["#issueModalOverlay"]
+    seeded_page.set_viewport_size({"width": viewport[0], "height": viewport[1]})
+    seeded_page.goto(f"{base_url}{path.replace('__ID__', str(seeded_analysis))}")
+    seeded_page.evaluate(opener)
+    got = seeded_page.evaluate(_NAV_COVERED_JS)
+    assert not got.get("error"), got["error"]
+    assert got["covered"], f"모달이 떠 있는데 nav 가운데의 맨 위가 {got['hit']} 다 — 배경이 nav 를 못 덮는다"

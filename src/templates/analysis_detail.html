@@ -475,6 +475,15 @@
     </div>
   </section>
 
+  <!-- 성공 토스트 / Success toast -->
+  <div class="issue-toast hidden" id="issueToast"></div>
+
+</div>{# end .analysis-wrap #}
+{% endblock %}
+
+{% block overlay %}
+  {# 🔴 모달은 본문(.container) 밖 층에 둔다 — 본문 안이면 배경이 sticky nav 를 못 덮었다(회고 원장 R-11).
+     The modal lives outside the body content so its backdrop covers the sticky nav. #}
   <!-- 편집 모달 / Edit modal -->
   <div class="issue-modal-overlay hidden" id="issueModalOverlay" role="dialog" aria-modal="true">
     <div class="issue-modal">
@@ -504,11 +513,6 @@
       <p class="issue-modal-error hidden" id="issueModalError"></p>
     </div>
   </div>
-
-  <!-- 성공 토스트 / Success toast -->
-  <div class="issue-toast hidden" id="issueToast"></div>
-
-</div>{# end .analysis-wrap #}
 {% endblock %}
 
 {% block scripts %}
