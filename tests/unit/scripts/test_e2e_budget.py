@@ -50,6 +50,21 @@ def test_parse_seconds_accepts_only_finite_positive_numbers(raw, want):
     assert eb.parse_seconds(raw) == want
 
 
+_START = 1_763_190_000
+
+
+@pytest.mark.parametrize("started_at,now,want", [
+    (str(_START), _START + 1450, 1450.0),
+    (str(_START), _START, None),            # 0초 — 스위트가 돌았다고 볼 수 없다
+    (str(_START + 60), _START, None),       # 미래의 시작 시각
+    ("", _START, None),                     # 앞 스텝이 값을 안 남겼다
+    ("abc", _START, None),
+    ("nan", _START, None),
+])
+def test_elapsed_is_now_minus_a_readable_past_start(started_at, now, want):
+    assert eb.elapsed_seconds(started_at, now) == want
+
+
 # --- 2. 벽 읽기 — ci.yml 한 곳에서 ---------------------------------------------------------
 
 
@@ -91,17 +106,18 @@ def test_missing_file_or_job_is_none(tmp_path):
 # --- 3. main — 종료 코드 · 주석 · 잡 요약 ----------------------------------------------------
 
 
-@pytest.mark.parametrize("seconds,code,annotation", [
-    ("1000", 0, None),
-    (str(int(0.8 * _WALL * 60)), 0, "::warning"),
-    (str(int(0.9 * _WALL * 60)), 1, "::error"),
-    ("", 1, "::error"),
+@pytest.mark.parametrize("started_at,elapsed,code,annotation", [
+    (str(_START), 1000, 0, None),
+    (str(_START), int(0.8 * _WALL * 60), 0, "::warning"),
+    (str(_START), int(0.9 * _WALL * 60), 1, "::error"),
+    ("", 1000, 1, "::error"),
 ])
-def test_main_exit_code_annotation_and_summary(tmp_path, monkeypatch, seconds, code, annotation):
+def test_main_exit_code_annotation_and_summary(tmp_path, monkeypatch, started_at, elapsed, code, annotation):
     summary = tmp_path / "summary.md"
     monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
     lines = []
-    got = eb.main(["--seconds", seconds], ci_path=_ci(tmp_path, _SUITE.format(wall=_WALL)), out=lines.append)
+    got = eb.main(["--started-at", started_at], ci_path=_ci(tmp_path, _SUITE.format(wall=_WALL)),
+                  out=lines.append, now=lambda: _START + elapsed)
     assert got == code, lines
     annotations = [line.split(" ", 1)[0] for line in lines if line.startswith("::")]
     assert annotations == ([annotation] if annotation else []), lines

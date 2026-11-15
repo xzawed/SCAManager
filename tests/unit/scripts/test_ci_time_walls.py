@@ -61,15 +61,14 @@ def test_e2e_steps_have_walls_and_the_suite_wall_fits_under_the_job_wall():
     assert job_wall is not None and suite_wall is not None and job_wall >= suite_wall + 15, (job_wall, suite_wall)
 
 
-def test_budget_step_runs_right_after_the_suite_with_its_measured_seconds():
-    """시간 예산 스텝의 배선 — 스위트 스텝이 초를 출력으로 내고, 바로 다음 스텝이 그 값으로 예산 스크립트를 부른다."""
+def test_budget_steps_bracket_the_suite():
+    """시간 예산 배선 — 스위트 바로 앞 스텝이 시작 시각을 출력으로 내고, 바로 뒤 스텝이 그 값으로 예산 스크립트를
+    부른다. 그 사이에는 스위트 스텝 하나뿐이라 «지금 − 시작» 이 스위트 시간이다."""
     steps = _e2e()["steps"]
     names = [step.get("name") for step in steps]
     index = names.index(_SUITE)
-    suite, budget = steps[index], steps[index + 1]
-    assert suite.get("id") == "suite"
-    suite_lines = [line.strip() for line in suite["run"].splitlines()]
-    assert suite_lines[0] == "start=$(date +%s)"
-    assert suite_lines[-1] == 'echo "seconds=$(( $(date +%s) - start ))" >> "$GITHUB_OUTPUT"'
-    assert (budget.get("env") or {}).get("SUITE_SECONDS") == "${{ steps.suite.outputs.seconds }}"
-    assert budget["run"].split() == ["python", "scripts/e2e_budget.py", "--seconds", '"$SUITE_SECONDS"']
+    start, budget = steps[index - 1], steps[index + 1]
+    assert start.get("id") == "suite_start"
+    assert start["run"].strip() == 'echo "at=$(date +%s)" >> "$GITHUB_OUTPUT"'
+    assert (budget.get("env") or {}).get("SUITE_STARTED_AT") == "${{ steps.suite_start.outputs.at }}"
+    assert budget["run"].split() == ["python", "scripts/e2e_budget.py", "--started-at", '"$SUITE_STARTED_AT"']

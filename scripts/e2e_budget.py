@@ -1,16 +1,18 @@
 """E2E 시간 예산 — 스위트가 그 스텝 벽(ci.yml)의 85% 를 넘으면 red, 75% 부터 경고(회고 원장 L08).
 E2E time budget: red above 85% of the suite step's wall in ci.yml, a warning from 75%.
 
-    python scripts/e2e_budget.py --seconds 1450      # CI E2E 잡 — 스위트 스텝이 잰 초
+    python scripts/e2e_budget.py --started-at 1763190000   # CI E2E 잡 — 스위트 바로 앞 스텝이 적은 시작 시각(epoch 초)
 
-벽은 ci.yml 의 E2E 잡 «Run E2E suite» 스텝 `timeout-minutes` 한 곳에서 읽는다(숫자를 복사하지 않는다). 스위트가 그
-벽에 닿으면 스텝이 시간 초과로 끝나 시험 결과가 남지 않으므로, 그 전에 이 검사가 red 를 내 «스위트를 나누거나 벽을
-다시 잰다» 를 먼저 하게 한다. 초를 못 읽거나 벽을 못 찾으면 red 다(못 재면 red).
+스위트 시간 = 지금 − 시작 시각(스위트 스텝은 한 줄 그대로 둔다). 벽은 ci.yml 의 E2E 잡 «Run E2E suite» 스텝
+`timeout-minutes` 한 곳에서 읽는다(숫자를 복사하지 않는다). 스위트가 그 벽에 닿으면 스텝이 시간 초과로 끝나 시험 결과가
+남지 않으므로, 그 전에 이 검사가 red 를 내 «스위트를 나누거나 벽을 다시 잰다» 를 먼저 하게 한다. 시작 시각을 못 읽거나
+(빈 값 · 숫자 아님 · 미래) 벽을 못 찾으면 red 다(못 재면 red).
 """
 import argparse
 import math
 import os
 import sys
+import time
 from pathlib import Path
 
 import yaml
@@ -36,12 +38,21 @@ def suite_wall_minutes(ci_path: Path = _CI) -> int | None:
 
 
 def parse_seconds(raw: str | None) -> float | None:
-    """스텝이 넘긴 초 — 유한한 양수만 / finite positive seconds only."""
+    """스텝이 넘긴 초(epoch 포함) — 유한한 양수만 / finite positive seconds only."""
     try:
         value = float(raw)
     except (TypeError, ValueError):
         return None
     return value if math.isfinite(value) and value > 0 else None
+
+
+def elapsed_seconds(started_at: str | None, now: float) -> float | None:
+    """지금 − 시작 시각 — 시작 시각을 못 읽거나 미래면 None / now minus the start, or None."""
+    start = parse_seconds(started_at)
+    if start is None:
+        return None
+    elapsed = now - start
+    return elapsed if elapsed > 0 else None
 
 
 def judge(seconds: float | None, wall_minutes: int | None) -> tuple[int, str]:
@@ -59,11 +70,11 @@ def judge(seconds: float | None, wall_minutes: int | None) -> tuple[int, str]:
     return 0, f"✅ {line}"
 
 
-def main(argv=None, *, ci_path: Path = _CI, out=print) -> int:
+def main(argv=None, *, ci_path: Path = _CI, out=print, now=time.time) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--seconds", required=True, help="스위트 스텝이 잰 초")
+    parser.add_argument("--started-at", required=True, help="스위트 바로 앞 스텝이 적은 시작 시각(epoch 초)")
     args = parser.parse_args(argv)
-    code, line = judge(parse_seconds(args.seconds), suite_wall_minutes(ci_path))
+    code, line = judge(elapsed_seconds(args.started_at, now()), suite_wall_minutes(ci_path))
     out(line)
     if code:
         out(f"::error title=E2E 시간 예산::{line}")

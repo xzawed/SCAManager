@@ -943,21 +943,24 @@ jobs:
       # `pytest.mark.skip`·`skipif`·픽스처 skip 어느 경로든 같은 결말이다.
       # `--strict-markers` 는 이 축을 못 본다. 통과 건수 하한이 유일한 관측면이다.
       # A collection-count baseline does not stop mass-skip: pytest exits 0 when all skip.
+      # 스위트 시작 시각 — 아래 시간 예산 스텝이 «지금 − 이 값» 으로 스위트 시간을 잰다(스위트 스텝은 한 줄 그대로).
+      # The suite's start time; the budget step below measures the suite as now minus this value.
+      - name: E2E 스위트 시작 시각
+        id: suite_start
+        timeout-minutes: 1
+        run: echo "at=$(date +%s)" >> "$GITHUB_OUTPUT"
+
       - name: Run E2E suite
-        id: suite
         timeout-minutes: 40
-        run: |
-          start=$(date +%s)
-          python -m pytest e2e/ -q -rs -p no:asyncio --timeout=120 --e2e-strict-skips
-          echo "seconds=$(( $(date +%s) - start ))" >> "$GITHUB_OUTPUT"
+        run: python -m pytest e2e/ -q -rs -p no:asyncio --timeout=120 --e2e-strict-skips
 
       # 시간 예산 — 벽은 위 스텝의 timeout-minutes 한 곳에서 읽는다(숫자를 복사하지 않는다). 75% 부터 경고.
       # Time budget: the wall is read from the suite step above (no copied number); a warning from 75%.
       - name: E2E 시간 예산 (스위트 ↔ 스텝 벽)
         timeout-minutes: 5
         env:
-          SUITE_SECONDS: ${{ steps.suite.outputs.seconds }}
-        run: python scripts/e2e_budget.py --seconds "$SUITE_SECONDS"
+          SUITE_STARTED_AT: ${{ steps.suite_start.outputs.at }}
+        run: python scripts/e2e_budget.py --started-at "$SUITE_STARTED_AT"
 
       # 🔴 실패 시 trace/스크린샷을 남긴다 — 이게 없어서 R52 진단이 **로그 고고학**이
       #    됐다(요약이 잘린 텍스트 로그만으로 30건을 역추적). 다음 회귀는 그러지 않도록.
