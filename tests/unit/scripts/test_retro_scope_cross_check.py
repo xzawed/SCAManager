@@ -75,11 +75,15 @@ def test_cross_check_axis_reports_unmeasured_when_gh_is_absent(monkeypatch, tmp_
 
 
 def test_gap_axis_uses_recorded_head_when_the_report_has_one(monkeypatch, tmp_path):
-    """리포트가 분석 종료 HEAD 를 적어 뒀으면 경계가 아니라 «그 HEAD» 부터 센다."""
+    """리포트가 분석 종료 HEAD 를 적어 뒀으면 경계가 아니라 «그 HEAD» 부터 센다.
+
+    그 HEAD 가 main 위에 있다는 전제다 — main 밖 HEAD 는 `test_retro_scope_head_on_main.py` 가 잰다.
+    """
     monkeypatch.setattr(rs, "_REPORTS", tmp_path)
     (tmp_path / "2026-01-01-retrospective.md").write_text("x", encoding="utf-8")
     monkeypatch.setattr(rs, "boundary_commit", lambda _f: "c" * 40)
     monkeypatch.setattr(rs, "report_head", lambda _f: "deadbee")
+    monkeypatch.setattr(rs, "on_main", lambda _sha, _upper: True)
     monkeypatch.setattr(rs, "_gh_json", lambda _a: [])
     seen = {}
 

@@ -259,6 +259,47 @@ def resolve_ref(ref: str) -> str | None:
     return sha or None
 
 
+def on_main(sha: str, upper: str) -> bool:
+    """`sha` 가 `upper`(main) 의 조상인가.
+
+    🔴 «해석된다» 는 «main 위에 있다» 가 아니다. squash 로 접힌 PR 브랜치 끝은 그 브랜치를 받았던
+    클론에서는 해석되지만 main 의 조상이 아니다 — 거기서 세면 `git log sha..main` 이 갈라진 지점부터
+    main 을 다시 세어 그 PR 을 두 회고에 넣는다(11-06 회고가 #1684 를 그렇게 겹쳤다).
+    A resolvable SHA is not necessarily on main: a squashed branch tip resolves in the clone that
+    fetched it, yet counting from it re-counts main from the fork point.
+    """
+    try:
+        r = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", sha, upper], cwd=_ROOT, capture_output=True,
+            text=True, encoding="utf-8", errors="replace", check=False,
+        )
+    except OSError:
+        return False
+    return r.returncode == 0
+
+
+def merge_commit_of_branch_tip(sha: str) -> str | None:
+    """main 밖 SHA 가 어느 PR 의 «마지막» head 였으면 그 PR 의 머지 커밋 — 못 찾으면 None.
+
+    직전 회고는 그 PR 의 브랜치 끝까지 읽었으므로 그 PR 은 이미 봤다. main 에서는 그 PR 의 squash
+    커밋이 같은 자리다 — 거기서부터 세면 그 PR 은 빠지고 그 뒤 머지분은 들어온다. PR 의 마지막 head 가
+    그 SHA 가 아니면(회고 뒤에 커밋이 더 붙었다) 옮기지 않는다 — 그 뒤 커밋을 «봤다» 로 셀 수는 없다.
+    Map a squashed branch tip to its PR's merge commit, only when it was the PR's final head.
+    """
+    full = resolve_ref(sha)
+    rows = _gh_json(["api", f"repos/{{owner}}/{{repo}}/commits/{full or sha}/pulls"])
+    if not isinstance(rows, list):
+        return None
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        head = (row.get("head") or {}).get("sha") if isinstance(row.get("head"), dict) else None
+        merged = row.get("merge_commit_sha")
+        if row.get("merged_at") and isinstance(merged, str) and head and full and head == full:
+            return merged
+    return None
+
+
 def compute(since: str | None = None, fetched: bool = False) -> dict:
     """범위 산출 결과 dict — 실패도 사유와 함께 담는다.
 
@@ -327,9 +368,16 @@ def compute(since: str | None = None, fetched: bool = False) -> dict:
     # 🔴 경계 갭 축 — 리포트가 «분석 종료 HEAD» 를 적어 뒀으면 거기서부터 센다.
     #    경계 커밋은 리포트가 머지된 시점이라 그 사이 머지분이 어느 창에도 없었다(P1).
     #    적혀 있지 않으면 근사하지 않고 「안 쟀다」로 넘긴다.
-    scan_from = boundary
+    # 🔴 그 HEAD 가 main 위가 아니면(squash 된 브랜치 끝) 그대로 쓰지 않는다 — 그 PR 의 머지 커밋으로
+    #    옮기거나, 못 옮기면 경계에서 세고 두 축을 «안 쟀다» 로 넘긴다.
+    scan_from, scan_from_kind = boundary, "boundary"
     if newest and (rh := report_head(newest)):
-        scan_from = rh
+        if on_main(rh, upper):
+            scan_from, scan_from_kind = rh, "report-head"
+        elif (merged := merge_commit_of_branch_tip(rh)) and on_main(merged, upper):
+            scan_from, scan_from_kind = merged, "report-head-pr-merge"
+        else:
+            unmeasured += ["report-head-not-on-main", "report-merge-gap"]
     elif anchor == "report":
         unmeasured.append("report-merge-gap")
 
@@ -356,6 +404,10 @@ def compute(since: str | None = None, fetched: bool = False) -> dict:
         "anchor": anchor,
         "prev_retro": newest,
         "boundary": boundary[:7],
+        # 🔴 PR 목록을 센 실제 기점 — `boundary..head` 로 diff 를 재면 기점과 경계 사이 머지분이 빠진다.
+        # The commit the PR list was counted from; diffing from `boundary` drops what lies between.
+        "scan_from": scan_from[:8],
+        "scan_from_kind": scan_from_kind,
         "head": head,
         "main_head": main_sha[:8] if main_sha else None,
         "pr_count": len(prs),
@@ -400,6 +452,7 @@ def main() -> int:
         # 🔴 어떤 앵커였는지 숨기지 않는다 — 명시 경계는 사람이 준 값이라 신뢰 등급이 다르다.
         print("  직전 정식 회고 : (없음) — `--since` 로 준 명시 경계를 썼다")
     print(f"  경계 커밋      : {r['boundary']}  → origin/main {r['main_head'] or '(없음)'}")
+    print(f"  스캔 기점      : {r['scan_from']} ({r['scan_from_kind']}) — diff 는 여기서부터 잰다")
     print(f"  작업 트리 HEAD : {r['head']}")
     print(f"  머지 PR        : {r['pr_count']}건  {r['range']}")
     print(f"  전체           : {', '.join('#' + str(n) for n in r['prs'])}")
