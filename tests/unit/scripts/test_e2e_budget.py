@@ -77,6 +77,12 @@ def test_unreadable_wall_is_none(tmp_path, steps_yaml):
 
 def test_missing_file_or_job_is_none(tmp_path):
     assert eb.suite_wall_minutes(tmp_path / "absent.yml") is None
+    garbled = tmp_path / "garbled.yml"
+    garbled.write_bytes(b"jobs:\n  e2e: \xff\xfe\n")  # UTF-8 이 아니다 — 읽다 터지지 않고 None
+    assert eb.suite_wall_minutes(garbled) is None
+    empty = tmp_path / "empty.yml"
+    empty.write_text("", encoding="utf-8")
+    assert eb.suite_wall_minutes(empty) is None
     other = tmp_path / "ci.yml"
     other.write_text("jobs:\n  lint:\n    steps: []\n", encoding="utf-8")
     assert eb.suite_wall_minutes(other) is None

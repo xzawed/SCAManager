@@ -27,7 +27,7 @@ def suite_wall_minutes(ci_path: Path = _CI) -> int | None:
     try:
         steps = yaml.safe_load(ci_path.read_text(encoding="utf-8"))["jobs"][_JOB]["steps"]
         matches = [s for s in steps if isinstance(s, dict) and s.get("name") == _STEP]
-    except (OSError, yaml.YAMLError, KeyError, TypeError):
+    except (OSError, ValueError, yaml.YAMLError, KeyError, TypeError):  # ValueError ⊃ UnicodeDecodeError
         return None
     if len(matches) != 1:
         return None
