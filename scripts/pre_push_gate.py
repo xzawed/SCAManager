@@ -50,6 +50,12 @@ from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[1]
 
+# PR 본문 env 이름은 유일한 리더가 갖는다 — 넣는 쪽도 그 상수를 쓴다(이름을 두 곳에 두지 않는다).
+# standalone 실행이라 형제 스크립트를 경로로 가져온다(`check_witness_set_predicates.py` 와 같은 관용구).
+# The body env name is owned by the sole reader; imported by path because this runs standalone.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from check_claim_review_trace import PR_BODY_ENV  # noqa: E402  # pylint: disable=wrong-import-position
+
 # CI 워크플로의 `python-version: "X.Y"` 지점 — 로컬↔CI 인터프리터 이원 관측용 (backlog R30).
 # 🔴 기지 한계 (Grok `019fbe61` F2·F3 — 정직 명시): 원시 텍스트 정규식이라 **주석 안의 핀도
 #    집합에 들어간다**(현 ci.yml 은 주석 핀 0). ci.yml 외 워크플로(body-edit 등)와 micro
@@ -222,7 +228,7 @@ def pr_env(body_file: str | None, title: str, base: str) -> dict | None:
     ).stdout.strip()
     if not head:
         raise SystemExit("❌ HEAD 를 읽지 못했다 — PR 맥락을 만들 수 없다")
-    return {"PR_BODY": body, "PR_TITLE": title, "PR_BASE_SHA": base, "PR_HEAD_SHA": head}
+    return {PR_BODY_ENV: body, "PR_TITLE": title, "PR_BASE_SHA": base, "PR_HEAD_SHA": head}
 
 
 def run_integrity(py: str, env: dict | None = None) -> list[str]:
@@ -247,7 +253,7 @@ def run_diff_scoped(py: str, base: str, env: dict | None = None) -> list[str]:
     if not changed:
         print("  --   flake8 F401/F841 (변경된 test 파일 없음)")
     elif not _run(f"flake8 F401/F841 ({len(changed)} 파일)",
-                  [py, "-m", "flake8", "--isolated", "--select=F401,F841", *changed]):
+                  [py, "-m", "flake8", "--isolated", "--select=F401,F841", *changed], env=env):
         failures.append("flake8-changed-tests")
     failures += [s for s in _DIFF_SCOPED if not _run(s, [py, f"scripts/{s}", base, "HEAD"], env=env)]
     return failures

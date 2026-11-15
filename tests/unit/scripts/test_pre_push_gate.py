@@ -291,7 +291,10 @@ def test_pr_context_guards_are_unmeasured_without_a_body(monkeypatch):
 def test_a_body_makes_every_guard_measure_like_ci(monkeypatch):
     seen = _record_runs(monkeypatch)
     context = {"PR_BODY": "b", "PR_TITLE": "t", "PR_BASE_SHA": "a" * 40, "PR_HEAD_SHA": "b" * 40}
+    monkeypatch.setattr(gate, "_changed_test_files", lambda _base: ["tests/unit/test_x.py"])
     gate.run_integrity(sys.executable, context)
+    gate.run_diff_scoped(sys.executable, "a" * 40, context)
+    assert "-m" in seen, "flake8 호출을 못 잡았다 — 이 단언이 공허하다"
     assert not any(call.get("unmeasured") for call in seen.values())
     assert all(call.get("env") == context for call in seen.values())
     assert "--advisory-drift" not in seen["check_test_count_sync.py"]["argv"], "CI 의 PR 모드는 advisory 가 아니다"

@@ -195,6 +195,12 @@ def strip_html_comments(text: str) -> str:  # pylint: disable=too-many-branches
     return "\n".join(out)
 
 
+# PR 본문 env 이름 — 이 모듈이 유일한 리더라 이름도 여기에만 둔다. 본문을 **넣는** 쪽(`pre_push_gate --pr-body`)은
+# 이 상수를 가져다 쓴다(`test_pr_body_single_reader.py` 는 이 이름의 글자를 가진 스크립트를 리더로 센다).
+# The PR body env name lives only in the sole reader; the writer (pre_push_gate --pr-body) imports it.
+PR_BODY_ENV = "PR_BODY"
+
+
 def read_pr_body() -> str:
     """🔴 **PR 본문을 읽는 유일한 지점** — 리뷰어 비가시 영역을 제거한 뒤 돌려준다.
 
@@ -215,7 +221,7 @@ def read_pr_body() -> str:
     The single place any gate reads the PR body; strips reviewer-invisible regions so a
     marker hidden in an HTML comment can never satisfy a gate.
     """
-    return strip_html_comments(os.environ.get("PR_BODY", "") or "")
+    return strip_html_comments(os.environ.get(PR_BODY_ENV, "") or "")
 
 
 def find_seal_claims(text: str) -> list[tuple[int, str, str]]:
