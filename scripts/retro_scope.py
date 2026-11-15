@@ -126,8 +126,9 @@ def merged_prs(boundary: str, upper: str = _MAIN_REF) -> list[int]:
 
 
 # squash 머지 제목 끝의 `(#N)` — 정확히 그 꼴만. 종전 판정은 `(#4))` · `(# 4)` 도 4 로 읽었다(Grok 반증).
-# The exact trailing `(#N)` of a squash subject; the old parse also read `(#4))` and `(# 4)` as 4.
-_PR_SUFFIX = re.compile(r"\(#(\d+)\)$")
+# `\d` 는 유니코드 숫자(`٤`)도 받고 `int()` 가 그것을 4 로 읽는다 — ASCII 숫자만 쓴다.
+# The exact trailing `(#N)` of a squash subject, ASCII digits only (`\d` also takes `٤`, which int() reads as 4).
+_PR_SUFFIX = re.compile(r"\(#([0-9]+)\)$")
 
 
 def pr_of_subject(subject: str) -> int | None:

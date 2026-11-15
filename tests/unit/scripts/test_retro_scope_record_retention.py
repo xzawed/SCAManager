@@ -101,6 +101,7 @@ def test_a_window_inside_the_retention_period_reports_nothing(aged_repo, monkeyp
     ("wip (# 4)", None),
     ("wip (#4) more", None),
     ("chore: no number", None),
+    ("wip (#٤)", None),
 ])
 def test_only_an_exact_trailing_pr_suffix_is_a_pr_number(subject, expected):
     """squash 제목 끝의 `(#N)` 만 PR 번호다 — 괄호가 더 붙거나 띄어 쓴 꼴은 아니다(Grok claim-review 반증)."""
