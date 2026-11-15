@@ -72,7 +72,7 @@ def _gh(args: list[str], timeout: int = 60) -> str | None:
 def fetch_runs() -> list[dict] | None:
     raw = _gh(["run", "list", "--repo", _REPO, "--branch", "main",
                "--workflow=ci.yml", "--limit", str(_LIMIT),
-               "--json", "conclusion,status,createdAt,databaseId,url"])
+               "--json", "conclusion,status,createdAt,databaseId,url,attempt"])
     if raw is None:
         return None
     try:
@@ -120,6 +120,60 @@ def red_span(runs: list[dict], now: datetime | None = None) -> tuple[bool, float
     ref = now or datetime.now(timezone.utc)
     hours = ((ref - started).total_seconds() / 3600) if started else 0.0
     return True, max(hours, 0.0), latest
+
+
+# 재실행 축이 부를 수 있는 API 수 — SessionStart 훅이라 무한히 부르지 않는다. 넘으면 판정 불가.
+# A cap on attempt lookups (this runs at session start); exceeding it means "cannot judge".
+_MAX_ATTEMPT_CALLS = 10
+
+
+def _attempt_conclusion(run_id: int, attempt: int) -> str | None:
+    """그 run 의 n 번째 시도 결론 — 못 읽으면 None / the conclusion of one earlier attempt."""
+    raw = _gh(["api", f"repos/{_REPO}/actions/runs/{run_id}/attempts/{attempt}", "--jq", ".conclusion"])
+    return raw.strip() if raw and raw.strip() else None
+
+
+def masked_reds(runs: list[dict], *, attempt_conclusion=None,
+                max_calls: int = _MAX_ATTEMPT_CALLS) -> list[dict] | None:
+    """재실행으로 가려진 red — 마지막 시도는 red 가 아닌데 앞 시도 중 red 가 있던 run. 못 재면 None.
+
+    `gh run list` 의 결론은 **마지막 시도**의 것이라, 실패한 main 을 재실행해 초록으로 만들면 그 red 는 목록에서
+    사라진다(회고 원장 L13 P1-37 — 창 안 비초록 5건 중 2건). 시도 번호를 못 읽거나 앞 시도를 못 읽으면 «없음» 이
+    아니라 None 이다.
+    Reds hidden by a rerun: the last attempt is not red but an earlier one was. None when unmeasurable.
+    """
+    lookup = attempt_conclusion or _attempt_conclusion  # 부를 때 찾는다 — 시험이 모듈 속성을 바꿀 수 있게
+    masked: list[dict] = []
+    calls = 0
+    for run in runs:
+        if run.get("status") != "completed" or run.get("conclusion") in _RED_CONCLUSIONS:
+            continue
+        attempt = run.get("attempt")
+        if type(attempt) is not int or attempt < 1:
+            return None
+        for number in range(1, attempt):
+            calls += 1
+            if calls > max_calls:
+                return None
+            conclusion = lookup(run.get("databaseId", 0), number)
+            if conclusion is None:
+                return None
+            if conclusion in _RED_CONCLUSIONS:
+                masked.append(run)
+                break
+    return masked
+
+
+def window_line(runs: list[dict], masked: list[dict] | None) -> str:
+    """최근 창 요약 한 줄 — 지금 초록이어도 창 안의 red 를 보이게 / one line on the recent window."""
+    finished = [r for r in runs if r.get("status") == "completed"]
+    red = sum(1 for r in finished if r.get("conclusion") in _RED_CONCLUSIONS)
+    cancelled = sum(1 for r in finished if r.get("conclusion") in _SPAN_CONTINUE)
+    hidden = "판정 불가" if masked is None else f"{len(masked)}"
+    line = f"   최근 {len(finished)} run(main · ci.yml): red {red} · 취소 {cancelled} · 재실행으로 가려진 red {hidden}"
+    if masked:
+        line += f"\n   가려진 red(최신): {masked[0].get('url', '?')} — 시도 {masked[0].get('attempt')} 에서 초록"
+    return line
 
 
 def failing_jobs(run_id: int) -> list[str]:
@@ -176,6 +230,9 @@ def main() -> int:
             )
         else:
             print("main CI — 완료된 run 이 없다 (초록이라는 뜻이 아니다).")
+        # 🔴 지금 초록이어도 창 안의 red · 재실행이 가린 red 를 함께 찍는다(회고 원장 L13 P1-37).
+        # Even when green now, print the window's reds and the reds a rerun hid.
+        print(window_line(runs, masked_reds(runs)))
         return 0
 
     jobs = failing_jobs(latest.get("databaseId", 0)) if latest else []
@@ -188,6 +245,7 @@ def main() -> int:
         "      배너가 없어서가 아니라 **배너가 조치로 변환되지 않아서**다(R56 과 같은 기전).\n"
         "   ⚠️ 이 검사는 advisory(비차단)다 — 관측면일 뿐 보호가 아니다."
     )
+    print(window_line(runs, masked_reds(runs)))
     return 0
 
 

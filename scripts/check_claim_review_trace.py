@@ -585,6 +585,13 @@ def main() -> int:
                 "   '변경 없음' 이 아니라 '모른다' 다. base/head SHA 와 저장소 히스토리를 확인할 것."
             )
             print("✅ seal 주장 없음 — 이 축에서는 요구 대상 아님")
+        elif surfaces is None:
+            # 🔴 PR 맥락이 없으면(로컬) 코드 표면 축은 **안 쟀다** — «변경 없음» 이 아니다(회고 원장 L13 P2-75).
+            # Without the PR context (local) the code-surface axis was not measured — not "nothing changed".
+            print(
+                "⏭️ PR 맥락(PR_BASE_SHA · PR_HEAD_SHA)이 없다 — 코드 표면 축을 **안 쟀다**(seal 축은 본문 "
+                f"{len(body)}자 · 제목만 봤다). `pre_push_gate.py --pr-body <파일>` 이면 CI 처럼 잰다."
+            )
         else:
             print("✅ seal 주장 없음 · 코드 표면 변경 없음 — claim-review 요구 대상 아님")
         return 0
