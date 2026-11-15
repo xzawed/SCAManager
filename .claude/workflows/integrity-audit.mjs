@@ -61,10 +61,40 @@ function resolveDomains(scope, changedFiles) {
   throw new Error(`unknown scope: ${scope}`)
 }
 
-// finding 정규화 키 — 중복 제거용 (대소문자·공백 정규화)
-// Normalized finding key for dedup (case + whitespace normalized)
+// 🔴 key · priorList 는 정본(_lib/loop-until-dry.template.mjs)과 글자 그대로 같아야 한다 —
+//    tests/unit/scripts/test_workflow_loop_sync.py 가 소스를 비교한다.
+// key · priorList must match the canonical template verbatim (the guard test compares source).
+
+// finding 정규화 키 — 중복 제거용 (위치 + 제목, 대소문자·공백 정규화). 관점(domain)은 넣지 않는다 —
+// 같은 위치 · 같은 제목을 두 관점이 따로 내면 같은 결함이고, domain 은 에이전트가 쓴 자유 문자열이다.
+// 위치가 없는 프로세스 항목은 제목만으로 가른다.
+// Dedup key: location + normalized title. Domain is left out (free-form, per lens) — the same
+// defect reported by two lenses is one finding.
 function key(f) {
-  return `${String(f.file).toLowerCase().trim()}:${f.line}:${String(f.title).toLowerCase().trim().replace(/\s+/g, ' ')}`
+  const loc = f.file ? `${String(f.file).toLowerCase().trim()}:${f.line ?? ''}` : ''
+  return `${loc}|${String(f.title).toLowerCase().trim().replace(/\s+/g, ' ')}`
+}
+
+// 이번 라운드의 신규 — 이전 라운드에 나온 것(seen)과 이번 라운드 안의 중복을 함께 거른다. 1라운드는 모든
+// 관점이 동시에 돌아, 두 관점이 같은 결함을 내면 seen 만으로는 둘 다 남았다(Grok claim-review 반증).
+// This round's new findings: drop keys seen in earlier rounds AND repeats within this round.
+function freshOf(found, seen) {
+  const local = new Set()
+  return found.filter((f) => {
+    if (seen.has(key(f)) || local.has(key(f))) return false
+    local.add(key(f))
+    return true
+  })
+}
+
+// 2라운드부터 finder 와 완전성 비평가에 넘길 «이미 다룬 항목» 목록. 지시만 하고 목록을 안 주면 같은
+// 결함을 라운드마다 다시 센다(loop-until-dry 가 마르지 않는다). 상한에서 자르고 뺀 건수를 말한다.
+// The already-covered list for round-2+ finders and the critic; capped, stating how many were left out.
+function priorList(items, cap = 150) {
+  const lines = items.slice(0, cap).map((f) =>
+    `- [${f.severity ?? '?'}] ${String(f.title).slice(0, 120)}` + (f.file ? ` @ ${f.file}:${f.line ?? ''}` : ''))
+  if (items.length > cap) lines.push(`- … 외 ${items.length - cap}건 (같은 결함은 다른 말로도 다시 보고하지 말 것)`)
+  return lines.join('\n')
 }
 
 function dedupe(findings) {
@@ -149,7 +179,7 @@ const GAPS_SCHEMA = {
 
 // ── 프롬프트 빌더 ────────────────────────────────────────
 // Prompt builders
-function auditPrompt(domain, changedFiles, round) {
+function auditPrompt(domain, changedFiles, round, prior = []) {
   const scopeNote = changedFiles
     ? `변경 파일에 한정: ${changedFiles.filter((f) => domain.paths.some((p) => f.includes(p))).join(', ') || '(이 도메인 직접 변경 없음 — 인접 영향만 점검)'}`
     : `도메인 전체 경로: ${domain.paths.join(', ')}`
@@ -157,7 +187,9 @@ function auditPrompt(domain, changedFiles, round) {
     `당신은 SCAManager 정합성 감사관입니다. 도메인 "${domain.id}" 를 감사합니다.`,
     `감사 초점: ${domain.focus}`,
     scopeNote,
-    round > 1 ? '이전 라운드에서 이미 보고된 결함은 제외하고, 더 깊은/놓친 결함만 보고하세요.' : '',
+    round > 1
+      ? `이전 라운드에서 이미 보고된 결함 ${prior.length}건(모든 도메인, 기각 포함) — 다시 보고하지 마세요(같은 결함을 다른 말로 적는 것도). 더 깊은/놓친 결함만:\n${priorList(prior)}`
+      : '',
     '각 결함은 P0(운영 사고/보안)/P1(정합성 결함)/P2(품질) 으로 분류.',
     '🔴 정책 6 강제: 모든 file:line 은 `grep -n` 실측 후 작성. 추정 line 금지. evidence 필드에 실측 근거 인용.',
     'false-positive 회피: 단순 스타일·취향 차이는 보고 금지. 동작/보안/정합 영향이 있는 것만.',
@@ -182,11 +214,11 @@ function verifyPrompt(f, lens) {
 
 // completeness 비평가 프롬프트 — 5+1 의 +1 cross-verify 역할 (미검증 영역 식별)
 // Completeness critic prompt — the +1 cross-verify of the 5+1 pattern (surface uncovered areas)
-function completenessPrompt(domains, confirmed, scope) {
+function completenessPrompt(domains, covered, scope) {
   return [
     '당신은 완전성 비평가입니다 (5+1 의 +1 cross-verify 역할).',
     `감사 scope: ${scope}. 커버된 도메인: ${domains.map((d) => d.id).join(', ')}.`,
-    `현재까지 confirmed 결함 ${confirmed.length}건.`,
+    `현재까지 다룬 결함 ${covered.length}건(확정 · 기각 포함) — 아래 주제는 gap 으로 다시 고르지 마세요:\n${priorList(covered)}`,
     '다음 미검증 영역을 식별하라:',
     '(a) 깊이 점검 안 된 도메인',
     '(b) 미검증 modality — 마이그레이션 ORM drift, 신규 env-var 의 docs/reference/env-vars.md 등재, .claude/rules path-scoped sync, 테스트 수 배지 동기화 등',
@@ -274,6 +306,8 @@ const BUDGET_FLOOR = 60_000        // 잔여 budget 하한 / remaining-budget fl
 // seen = 이미 발견된 모든 결함 키 (verify reject/unverified 포함) — 재등장·무한루프 차단.
 // seen = every finding key ever surfaced (incl. verify-rejected/unverified) — blocks re-emergence/infinite loop.
 const seen = new Set()
+// surfaced = 지금까지 나온 결함 전부(기각 포함) — 2라운드 finder · 비평가가 받는 «이미 다룬 목록» / every finding so far
+const surfaced = []
 const confirmed = []
 const unverifiedAll = []
 let dry = 0
@@ -284,13 +318,14 @@ phase('Discover')
 while (dry < DRY_THRESHOLD && round < MAX_ROUNDS && (!budget.total || budget.remaining() > BUDGET_FLOOR)) {
   round++
   const found = (await parallel(domains.map((d) => () =>
-    agent(auditPrompt(d, changedFiles, round), { label: `audit:${d.id}:r${round}`, phase: 'Discover', schema: FINDINGS_SCHEMA })
+    agent(auditPrompt(d, changedFiles, round, surfaced), { label: `audit:${d.id}:r${round}`, phase: 'Discover', schema: FINDINGS_SCHEMA })
   ))).filter(Boolean).flatMap((r) => r.findings ?? [])
 
-  const fresh = found.filter((f) => !seen.has(key(f)))
+  const fresh = freshOf(found, seen)
   if (!fresh.length) { dry++; log(`라운드 ${round}: 신규 0 (dry ${dry}/${DRY_THRESHOLD})`); continue }
   dry = 0
   fresh.forEach((f) => seen.add(key(f)))
+  surfaced.push(...fresh)
   log(`라운드 ${round}: 신규 ${fresh.length}건 → 검증`)
 
   const judged = await verifyFresh(fresh)
@@ -305,12 +340,12 @@ while (dry < DRY_THRESHOLD && round < MAX_ROUNDS && (!budget.total || budget.rem
 // can't void the already-confirmed findings or the Report phase (C10 — same pattern as retrospective.mjs).
 phase('Completeness')
 try {
-  const gaps = await agent(completenessPrompt(domains, confirmed, scope), { label: 'completeness', phase: 'Completeness', schema: GAPS_SCHEMA })
+  const gaps = await agent(completenessPrompt(domains, surfaced, scope), { label: 'completeness', phase: 'Completeness', schema: GAPS_SCHEMA })
   if (gaps?.items?.length) {
     log(`completeness: gap ${gaps.items.length}건 → 표적 라운드`)
-    const gapFound = (await parallel(gaps.items.map((g) => () =>
+    const gapFound = freshOf((await parallel(gaps.items.map((g) => () =>
       agent(gapAuditPrompt(g), { label: `gap:${g.domain}`, phase: 'Discover', schema: FINDINGS_SCHEMA })
-    ))).filter(Boolean).flatMap((r) => r.findings ?? []).filter((f) => !seen.has(key(f)))
+    ))).filter(Boolean).flatMap((r) => r.findings ?? []), seen)
     gapFound.forEach((f) => seen.add(key(f)))
     if (gapFound.length) {
       const gapJudged = await verifyFresh(gapFound)

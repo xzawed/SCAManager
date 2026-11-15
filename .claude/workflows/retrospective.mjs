@@ -60,12 +60,40 @@ function prNumbersIn(text) {
   return new Set(Array.from(String(text ?? '').matchAll(/\b\d+\b/g), (m) => Number(m[0])))
 }
 
-// finding 정규화 키 — 중복 제거용 (관점 + 위치 + 제목, 대소문자·공백 정규화).
-// 프로세스/의사결정 finding 은 file:line 이 없을 수 있어 위치는 선택적.
-// Normalized finding key for dedup (domain + location + title; location optional for process findings).
+// 🔴 key · priorList 는 정본(_lib/loop-until-dry.template.mjs)과 글자 그대로 같아야 한다 —
+//    tests/unit/scripts/test_workflow_loop_sync.py 가 소스를 비교한다.
+// key · priorList must match the canonical template verbatim (the guard test compares source).
+
+// finding 정규화 키 — 중복 제거용 (위치 + 제목, 대소문자·공백 정규화). 관점(domain)은 넣지 않는다 —
+// 같은 위치 · 같은 제목을 두 관점이 따로 내면 같은 결함이고, domain 은 에이전트가 쓴 자유 문자열이다.
+// 위치가 없는 프로세스 항목은 제목만으로 가른다.
+// Dedup key: location + normalized title. Domain is left out (free-form, per lens) — the same
+// defect reported by two lenses is one finding.
 function key(f) {
   const loc = f.file ? `${String(f.file).toLowerCase().trim()}:${f.line ?? ''}` : ''
-  return `${String(f.domain).toLowerCase().trim()}|${loc}|${String(f.title).toLowerCase().trim().replace(/\s+/g, ' ')}`
+  return `${loc}|${String(f.title).toLowerCase().trim().replace(/\s+/g, ' ')}`
+}
+
+// 이번 라운드의 신규 — 이전 라운드에 나온 것(seen)과 이번 라운드 안의 중복을 함께 거른다. 1라운드는 모든
+// 관점이 동시에 돌아, 두 관점이 같은 결함을 내면 seen 만으로는 둘 다 남았다(Grok claim-review 반증).
+// This round's new findings: drop keys seen in earlier rounds AND repeats within this round.
+function freshOf(found, seen) {
+  const local = new Set()
+  return found.filter((f) => {
+    if (seen.has(key(f)) || local.has(key(f))) return false
+    local.add(key(f))
+    return true
+  })
+}
+
+// 2라운드부터 finder 와 완전성 비평가에 넘길 «이미 다룬 항목» 목록. 지시만 하고 목록을 안 주면 같은
+// 결함을 라운드마다 다시 센다(loop-until-dry 가 마르지 않는다). 상한에서 자르고 뺀 건수를 말한다.
+// The already-covered list for round-2+ finders and the critic; capped, stating how many were left out.
+function priorList(items, cap = 150) {
+  const lines = items.slice(0, cap).map((f) =>
+    `- [${f.severity ?? '?'}] ${String(f.title).slice(0, 120)}` + (f.file ? ` @ ${f.file}:${f.line ?? ''}` : ''))
+  if (items.length > cap) lines.push(`- … 외 ${items.length - cap}건 (같은 결함은 다른 말로도 다시 보고하지 말 것)`)
+  return lines.join('\n')
 }
 
 function dedupe(findings) {
@@ -148,12 +176,14 @@ const GAPS_SCHEMA = {
 // ── 프롬프트 빌더 ────────────────────────────────────────
 // Prompt builders
 
-function finderPrompt(domain, context, round) {
+function finderPrompt(domain, context, round, prior = []) {
   return [
     `당신은 SCAManager 회고 분석관입니다. 관점 "${domain.id}" 로 직전 작업/사이클을 회고합니다.`,
     `회고 초점: ${domain.focus}`,
     context ? `세션 컨텍스트: ${context}` : '',
-    round > 1 ? '이전 라운드에서 이미 보고된 항목은 제외하고, 더 깊은/놓친 항목만 보고하세요.' : '',
+    round > 1
+      ? `이전 라운드에서 이미 보고된 항목 ${prior.length}건(모든 관점) — 다시 보고하지 마세요(같은 결함을 다른 말로 적는 것도). 더 깊은/놓친 항목만:\n${priorList(prior)}`
+      : '',
     '각 항목은 P0(운영 사고/정책 위반)/P1(정합성·프로세스 결함)/P2(개선 기회) 로 분류.',
     '🔴 정책 6: 코드/문서 인용 시 file:line 을 `grep -n` 실측 후 작성(추정 금지). 프로세스 항목은 사용자 발화·커밋·PR 을 인용.',
     'self-contained: 다른 에이전트 결과에 의존하지 말 것 (병렬성 보호).',
@@ -179,7 +209,7 @@ function completenessPrompt(domains, verified, scope) {
   return [
     '당신은 회고 완전성 비평가입니다 (5+1 의 +1 역할).',
     `회고 scope: ${scope}. 커버된 관점: ${domains.map((d) => d.id).join(', ')}.`,
-    `현재까지 검증된 항목 ${verified.length}건.`,
+    `현재까지 검증된 항목 ${verified.length}건 — 아래 주제는 이미 다뤘으니 gap 으로 다시 고르지 마세요:\n${priorList(verified)}`,
     '다음 미검증 영역을 식별하라:',
     '(a) 깊이 점검 안 된 관점',
     '(b) 미검증 양식 — 정책 cross-reference 누락, 시간차 누적 결함, 메모리/docs drift, 회귀 가드 부재 등',
@@ -333,6 +363,8 @@ const BUDGET_FLOOR = 60_000        // 잔여 budget 하한 / remaining-budget fl
 
 // seen = 발견된 모든 finding 키 (재출현·무한루프 차단) / every surfaced finding key (blocks re-emergence/infinite loop)
 const seen = new Set()
+// surfaced = 지금까지 나온 finding 전부 — 2라운드부터 finder 가 받는 «다시 보고하지 말 목록» / every finding so far
+const surfaced = []
 // verified = verdict 를 받은 모든 finding (CONFIRMED/FP/SEVERITY_ADJUST/UNVERIFIED) / all findings that got a verdict
 const verified = []
 let dry = 0
@@ -343,13 +375,14 @@ phase('Discover')
 while (dry < DRY_THRESHOLD && round < MAX_ROUNDS && (!budget.total || budget.remaining() > BUDGET_FLOOR)) {
   round++
   const found = (await parallel(domains.map((d) => () =>
-    agent(finderPrompt(d, scopedContext, round), { label: `retro:${d.id}:r${round}`, phase: 'Discover', schema: FINDINGS_SCHEMA })
+    agent(finderPrompt(d, scopedContext, round, surfaced), { label: `retro:${d.id}:r${round}`, phase: 'Discover', schema: FINDINGS_SCHEMA })
   ))).filter(Boolean).flatMap((r) => r.findings ?? [])
 
-  const fresh = found.filter((f) => !seen.has(key(f)))
+  const fresh = freshOf(found, seen)
   if (!fresh.length) { dry++; log(`라운드 ${round}: 신규 0 (dry ${dry}/${DRY_THRESHOLD})`); continue }
   dry = 0
   fresh.forEach((f) => seen.add(key(f)))
+  surfaced.push(...fresh)
   log(`라운드 ${round}: 신규 ${fresh.length}건 → cross-verify`)
 
   verified.push(...(await verifyAll(fresh, scopedContext)))
@@ -366,9 +399,9 @@ try {
   const gaps = await agent(completenessPrompt(domains, verified, scope), { label: 'completeness', phase: 'Completeness', schema: GAPS_SCHEMA })
   if (gaps?.items?.length) {
     log(`completeness: gap ${gaps.items.length}건 → 표적 라운드`)
-    const gapFound = (await parallel(gaps.items.map((g) => () =>
+    const gapFound = freshOf((await parallel(gaps.items.map((g) => () =>
       agent(gapFinderPrompt(g, scopedContext), { label: `gap:${g.domain}`, phase: 'Discover', schema: FINDINGS_SCHEMA })
-    ))).filter(Boolean).flatMap((r) => r.findings ?? []).filter((f) => !seen.has(key(f)))
+    ))).filter(Boolean).flatMap((r) => r.findings ?? []), seen)
     gapFound.forEach((f) => seen.add(key(f)))
     if (gapFound.length) verified.push(...(await verifyAll(gapFound, scopedContext)))
   }
