@@ -44,9 +44,10 @@ _BUNDLE_LOCK = threading.Lock()
 def _write_bundle(rules_dir: Path) -> Path:
     """고정 룰 YAML 을 JSON 한 파일로 묶어 이 프로세스만 쓰는 임시 폴더에 쓴다.
 
-    semgrep 과 같은 갈래의 파서(ruamel · YAML 1.2)로 읽는다 — semgrep 이 깔린 환경에는 늘 있다.
-    The rules are read with the parser family semgrep itself uses (ruamel, YAML 1.2), which is
-    always installed alongside semgrep.
+    semgrep 과 같은 갈래의 파서(ruamel · YAML 1.2)로 읽는다 — 앱의 직접 의존이다(`requirements.txt`).
+    semgrep 은 자기 venv 에 있어 그 전이 의존으로는 앱에 들어오지 않는다.
+    The rules are read with the parser family semgrep itself uses (ruamel, YAML 1.2), a direct app
+    dependency — semgrep lives in its own venv, so it no longer brings ruamel along.
     """
     # pylint: disable=import-outside-toplevel
     from ruamel.yaml import YAML
