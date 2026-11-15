@@ -299,6 +299,53 @@ def test_a_missing_page_opened_in_the_browser_is_an_error_page(seeded_page, base
     assert seeded_page.locator(".error-page a[href='/']").count() == 1, "개요로 돌아가는 길이 없다"
 
 
+
+def test_overview_link_on_an_error_page_opens_the_landing_with_its_own_styles(anonymous_page, base_url):
+    """🔴 로그인 안 한 방문자가 오류 화면의 «개요로 가기» 를 누르면 랜딩이 «자기 문서» 로 열린다 (회고 원장 L04 P2-60).
+
+    랜딩은 자기 `<head>`(CSS)를 가진 독립 페이지라, hx-boost 가 body 만 끼우면 오류 화면의 head 아래에서 CSS 없이 그려졌다.
+    전체 이동이면 새 문서가 읽혀 이동 전 창에 심은 표식이 사라진다 — 그것으로 «body 만 끼웠는가» 를 가른다.
+    The landing is a standalone page: a boosted body-only swap rendered it without its own styles.
+    """
+    page = anonymous_page
+    resp = page.goto(f"{base_url}/no-such-page-for-e2e")
+    assert resp.status == 404 and page.locator(".error-page a[href='/']").count() == 1, (
+        f"오류 화면이 아니다(상태 {resp.status}) — 재지 못했다")
+    page.evaluate("() => { window.__beforeNav = 1; }")
+    page.locator(".error-page a[href='/']").click()
+    page.wait_for_load_state("load")
+    page.wait_for_timeout(800)
+    got = page.evaluate("""() => ({marker: window.__beforeNav === 1, path: location.pathname,
+                                  boostBody: document.body.getAttribute('hx-boost')})""")
+    assert got["path"] == "/", f"개요로 가지 않았다: {got}"
+    assert not got["marker"], f"랜딩을 body 만 끼워 그렸다(이동 전 창 그대로): {got}"
+    assert got["boostBody"] is None, f"랜딩 문서가 아니다(body 가 앱 화면의 것): {got}"
+
+
+def test_boosted_link_to_a_missing_page_shows_the_error_page_and_ends_the_progress_bar(seeded_page, base_url):
+    """🔴 앱 안 boost 링크가 404 를 받으면 오류 화면이 보이고 진행 막대가 끝난다 (회고 원장 L04 P2-60).
+
+    htmx 는 `Accept: text/html` 을 보내지 않아 서버가 JSON 404 를 주고, htmx 기본값은 오류 응답을 바꿔 넣지 않는다 —
+    화면은 그대로인 채 진행 막대가 끝없이 돌았다(막대는 `htmx:afterSettle` 에서만 끝난다).
+    A boosted link that gets a 404 must show the error page and stop the progress bar.
+    """
+    page = seeded_page
+    page.goto(f"{base_url}/dashboard")
+    page.wait_for_timeout(500)
+    page.evaluate("""() => { const a = document.createElement('a'); a.id = 'e2eMissing';
+        a.href = '/repos/' + encodeURIComponent('owner/no-such-repo-e2e'); a.textContent = 'missing';
+        document.querySelector('.container').appendChild(a); htmx.process(a); }""")
+    # 실제 화면의 링크처럼 hx-boost 가 걸렸는지 — 안 걸리면 평범한 이동이라 공허한 초록이다(첫 판 실측).
+    # The link must really be boosted like the app's own links; otherwise this is a plain navigation.
+    boosted = page.evaluate("() => { const d = document.getElementById('e2eMissing')['htmx-internal-data']; return !!(d && d.boosted); }")
+    assert boosted, "심은 링크에 hx-boost 가 안 걸렸다 — 재지 못했다"
+    page.locator("#e2eMissing").click()
+    page.wait_for_timeout(2500)
+    got = page.evaluate("""() => ({errorPage: !!document.querySelector('.error-page h1'),
+        loading: !!document.querySelector('#page-progress.is-loading'), path: location.pathname})""")
+    assert got["errorPage"], f"404 를 받았는데 오류 화면이 안 보인다: {got}"
+    assert not got["loading"], f"진행 막대가 끝나지 않았다: {got}"
+
 # 개요 카드 한 장에서 등급 칩·막대·점수·표식을 잰다.
 # Measures the grade chip, the bar, the score and the markers of one overview card.
 _RECORDED_CARD_JS = r"""c => {
