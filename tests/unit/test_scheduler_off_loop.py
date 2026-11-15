@@ -587,7 +587,12 @@ async def test_cancel_mid_claim_closes_the_session_only_after_the_claim_thread_e
     world.reset_records()
 
     task = asyncio.create_task(_run("retry-pending-merges"))
-    await asyncio.sleep(0.05)
+    # 🔴 취소는 claim 이 **시작된 뒤에** 보낸다 — 고정 0.05 s 는 느린 러너에서 claim 을 띄우기 전에 닿아, claim 이 아예
+    #    안 돌고 «claim 스레드가 끝나지 않았다» 로 red 였다(main CI 실측). / Cancel only after the claim started.
+    deadline = time.perf_counter() + 5
+    while "start" not in claim and not task.done() and time.perf_counter() < deadline:
+        await asyncio.sleep(0.005)
+    assert "start" in claim, "claim 이 5 s 안에 시작하지 않았다 — 시나리오가 그 경로를 안 탔다"
     task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         _ = await task
