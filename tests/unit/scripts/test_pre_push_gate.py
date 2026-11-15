@@ -228,3 +228,105 @@ def test_blind_spots_always_prints_interpreter_axis(capsys):
     gate.print_blind_spots(True)
     out_full = capsys.readouterr().out
     assert local in out_full, f"--full 경로에서 인터프리터 축이 사라졌다: {out_full!r}"
+
+
+# ── 회고 원장 L13 — 잡 등재 · PR 맥락 가드의 «안 잼» ──────────────────────────────
+
+
+def _ci_job_ids() -> set[str]:
+    import yaml
+
+    return set(yaml.safe_load(_CI.read_text(encoding="utf-8"))["jobs"])
+
+
+def test_every_ci_job_is_accounted_for():
+    """P2-24 — 새 required 잡(Dockerfile build)이 «보지 못하는 축» 에서 빠져 있었다. 잡은 «여기서 돈다» 와
+    «안 돈다(이유)» 중 정확히 한쪽에 있어야 한다."""
+    jobs = _ci_job_ids()
+    assert len(jobs) >= 8, f"ci.yml 잡을 {len(jobs)}개밖에 못 읽었다 — 이 시험이 공허하다"
+    not_covered = set(gate._NOT_COVERED_JOBS)
+    assert not gate._COVERED_JOBS & not_covered, gate._COVERED_JOBS & not_covered
+    assert jobs == gate._COVERED_JOBS | not_covered, (
+        f"등재 안 된 잡 {sorted(jobs - gate._COVERED_JOBS - not_covered)} · "
+        f"없는 잡 {sorted((gate._COVERED_JOBS | not_covered) - jobs)}")
+
+
+# witness-corpus: P2-24 가 짚은 «보지 못하는 축» 누락 잡 — #1722 · #1724 가 required 로 더한 운영 이미지 잡과 그 형제
+_JOBS_THE_GATE_CANNOT_RUN = ["docker-image", "pg-concurrency"]
+
+
+@pytest.mark.parametrize("job", _JOBS_THE_GATE_CANNOT_RUN)
+def test_jobs_the_gate_cannot_run_are_printed_as_blind_spots(job, capsys):
+    assert job not in gate._COVERED_JOBS
+    gate.print_blind_spots(full=True)
+    printed = [line.strip().removeprefix("· ") for line in capsys.readouterr().out.splitlines()]
+    assert gate._NOT_COVERED_JOBS[job] in printed
+
+
+def test_unmeasured_exit_zero_prints_skip_but_a_failure_is_never_hidden(capsys):
+    assert gate._run("probe", [sys.executable, "-c", "pass"], unmeasured=True) is True
+    assert capsys.readouterr().out.split()[0] == "SKIP"
+    assert gate._run("probe", [sys.executable, "-c", "raise SystemExit(1)"], unmeasured=True) is False
+    assert capsys.readouterr().out.split()[0] == "FAIL"
+
+
+def _record_runs(monkeypatch):
+    seen = {}
+
+    def fake_run(label, argv, **kwargs):
+        seen[argv[1].removeprefix("scripts/")] = {"argv": argv, **kwargs}
+        return True
+
+    monkeypatch.setattr(gate, "_run", fake_run)
+    return seen
+
+
+def test_pr_context_guards_are_unmeasured_without_a_body(monkeypatch):
+    seen = _record_runs(monkeypatch)
+    gate.run_integrity(sys.executable, None)
+    assert {name for name, call in seen.items() if call.get("unmeasured")} == set(gate._NEEDS_PR_CONTEXT)
+    assert "--advisory-drift" in seen["check_test_count_sync.py"]["argv"]
+
+
+def test_a_body_makes_every_guard_measure_like_ci(monkeypatch):
+    seen = _record_runs(monkeypatch)
+    context = {"PR_BODY": "b", "PR_TITLE": "t", "PR_BASE_SHA": "a" * 40, "PR_HEAD_SHA": "b" * 40}
+    monkeypatch.setattr(gate, "_changed_test_files", lambda _base: ["tests/unit/test_x.py"])
+    gate.run_integrity(sys.executable, context)
+    gate.run_diff_scoped(sys.executable, "a" * 40, context)
+    assert "-m" in seen, "flake8 호출을 못 잡았다 — 이 단언이 공허하다"
+    assert not any(call.get("unmeasured") for call in seen.values())
+    assert all(call.get("env") == context for call in seen.values())
+    assert "--advisory-drift" not in seen["check_test_count_sync.py"]["argv"], "CI 의 PR 모드는 advisory 가 아니다"
+
+
+# witness-corpus: PR 본문을 읽지만 본문 없이도 제 축(수집 수 · 변경 diff)을 재는 가드 — «안 잼» 으로 찍으면 안 된다
+_BODY_READERS_THAT_STILL_MEASURE = ["check_test_count_sync.py", "check_witness_set_predicates.py"]
+
+
+@pytest.mark.parametrize("guard", _BODY_READERS_THAT_STILL_MEASURE)
+def test_body_readers_that_still_measure_are_not_marked_unmeasured(guard, monkeypatch):
+    seen = _record_runs(monkeypatch)
+    gate.run_integrity(sys.executable, None)
+    gate.run_diff_scoped(sys.executable, "a" * 40, None)
+    assert not seen[guard].get("unmeasured"), guard
+
+
+def test_pr_context_has_the_ci_shape(tmp_path):
+    body = tmp_path / "body.md"
+    body.write_text("pytest tests/unit → 1 passed / 0 skipped\n", encoding="utf-8")
+    context = gate.pr_env(str(body), "제목", "c" * 40)
+    assert set(context) == {"PR_BODY", "PR_TITLE", "PR_BASE_SHA", "PR_HEAD_SHA"}
+    assert context["PR_BODY"].startswith("pytest tests/unit") and context["PR_TITLE"] == "제목"
+    assert context["PR_BASE_SHA"] == "c" * 40
+    assert len(context["PR_HEAD_SHA"]) == 40 and all(ch in "0123456789abcdef" for ch in context["PR_HEAD_SHA"])
+    assert gate.pr_env(None, "", "c" * 40) is None
+
+
+def test_blind_spots_name_the_jobs_the_gate_covers(capsys):
+    """여기 초록이 덮는 CI 잡을 그대로 찍는다 — 그 밖의 잡은 위 «보지 못하는 축» 이다."""
+    gate.print_blind_spots(full=True)
+    lines = [line.strip() for line in capsys.readouterr().out.splitlines()]
+    covered = [line for line in lines if line.startswith("· 여기서 도는 ci.yml 잡: ")]
+    assert len(covered) == 1, lines
+    assert set(covered[0].split(": ", 1)[1].split(" · ")) == gate._COVERED_JOBS

@@ -195,6 +195,12 @@ def strip_html_comments(text: str) -> str:  # pylint: disable=too-many-branches
     return "\n".join(out)
 
 
+# PR 본문 env 이름 — 이 모듈이 유일한 리더라 이름도 여기에만 둔다. 본문을 **넣는** 쪽(`pre_push_gate --pr-body`)은
+# 이 상수를 가져다 쓴다(`test_pr_body_single_reader.py` 는 이 이름의 글자를 가진 스크립트를 리더로 센다).
+# The PR body env name lives only in the sole reader; the writer (pre_push_gate --pr-body) imports it.
+PR_BODY_ENV = "PR_BODY"
+
+
 def read_pr_body() -> str:
     """🔴 **PR 본문을 읽는 유일한 지점** — 리뷰어 비가시 영역을 제거한 뒤 돌려준다.
 
@@ -215,7 +221,7 @@ def read_pr_body() -> str:
     The single place any gate reads the PR body; strips reviewer-invisible regions so a
     marker hidden in an HTML comment can never satisfy a gate.
     """
-    return strip_html_comments(os.environ.get("PR_BODY", "") or "")
+    return strip_html_comments(os.environ.get(PR_BODY_ENV, "") or "")
 
 
 def find_seal_claims(text: str) -> list[tuple[int, str, str]]:
@@ -585,6 +591,13 @@ def main() -> int:
                 "   '변경 없음' 이 아니라 '모른다' 다. base/head SHA 와 저장소 히스토리를 확인할 것."
             )
             print("✅ seal 주장 없음 — 이 축에서는 요구 대상 아님")
+        elif surfaces is None:
+            # 🔴 PR 맥락이 없으면(로컬) 코드 표면 축은 **안 쟀다** — «변경 없음» 이 아니다(회고 원장 L13 P2-75).
+            # Without the PR context (local) the code-surface axis was not measured — not "nothing changed".
+            print(
+                "⏭️ PR 맥락(PR_BASE_SHA · PR_HEAD_SHA)이 없다 — 코드 표면 축을 **안 쟀다**(seal 축은 본문 "
+                f"{len(body)}자 · 제목만 봤다). `pre_push_gate.py --pr-body <파일>` 이면 CI 처럼 잰다."
+            )
         else:
             print("✅ seal 주장 없음 · 코드 표면 변경 없음 — claim-review 요구 대상 아님")
         return 0

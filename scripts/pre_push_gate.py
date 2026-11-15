@@ -42,12 +42,19 @@
 exit 0 = 덮는 범위 전건 통과 / exit 1 = 하나 이상 실패(어느 것인지 인쇄).
 """
 import argparse
+import os
 import re
 import subprocess  # nosec B404 — 리포 자신의 가드 스크립트만 실행한다
 import sys
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[1]
+
+# PR 본문 env 이름은 유일한 리더가 갖는다 — 넣는 쪽도 그 상수를 쓴다(이름을 두 곳에 두지 않는다).
+# standalone 실행이라 형제 스크립트를 경로로 가져온다(`check_witness_set_predicates.py` 와 같은 관용구).
+# The body env name is owned by the sole reader; imported by path because this runs standalone.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from check_claim_review_trace import PR_BODY_ENV  # noqa: E402  # pylint: disable=wrong-import-position
 
 # CI 워크플로의 `python-version: "X.Y"` 지점 — 로컬↔CI 인터프리터 이원 관측용 (backlog R30).
 # 🔴 기지 한계 (Grok `019fbe61` F2·F3 — 정직 명시): 원시 텍스트 정규식이라 **주석 안의 핀도
@@ -120,20 +127,31 @@ _DIFF_SCOPED = (
     "check_dead_code.py",
 )
 
-# 여기서 초록이어도 CI 가 red 일 수 있는 축 — 항상 인쇄한다.
-# Axes this runner cannot see; printed every run so green here is never read as green in CI.
-_NOT_COVERED = (
-    "CodeQL · SonarCloud · Codecov(patch coverage) — 서비스 의존",
-    "TruffleHog · pip-audit — 서비스/네트워크 의존",
-    "lint-js — node + eslint 필요",
-    "PG-only job — PostgreSQL 서비스 필요",
-    "tests/integration — 이 스크립트는 --full 에서도 단위만 돈다",
+# ci.yml 잡을 이 스크립트가 어떻게 다루나 — 잡이 늘면 `test_pre_push_gate.py` 가 둘 중 한쪽 등재를 요구한다
+# (회고 원장 L13 P2-24 — 새 required 잡이 «보지 못하는 축» 에서 빠져 있었다).
+# How this runner treats each ci.yml job; a new job must be listed on one side (the test enforces it).
+_COVERED_JOBS = frozenset({"repo-integrity", "lint-changed-tests", "lint-src"})
+_NOT_COVERED_JOBS = {
+    "secret-scan": "TruffleHog — 서비스/네트워크 의존",
+    "dependency-audit": "pip-audit — 서비스/네트워크 의존",
+    "lint-js-nonvacuous": "lint-js — node + eslint 필요(여기선 검사 범위만)",
+    "pg-concurrency": "PG-only job — PostgreSQL 서비스 필요",
+    "test-and-analyze": "tests/integration · 커버리지 — 이 스크립트는 --full 에서도 단위만 돈다",
+    "docker-image": "Dockerfile build + analyzer contract — Docker 필요(운영 이미지 빌드 · 분석기 계약 · 출력 오라클)",
     # 🔴 required check 인데 여기선 수집 건수(check_e2e_scope)만 본다 — 템플릿 변경이 4테마
     #    AA 대비 e2e 를 깨뜨린 채 이 게이트가 전건 초록이었다.
     # A required CI check; only its collection count is compared here, never a run.
-    "E2E (Playwright) — 브라우저 필요, 여기선 수집 건수만 대조. "
-    "로컬: `py -3 -m pytest e2e/ -p no:asyncio` (한 파일·`-k` 로 좁힐 수 있다)",
-)
+    "e2e": "E2E (Playwright) — 브라우저 필요, 여기선 수집 건수만 대조. "
+           "로컬: `py -3 -m pytest e2e/ -p no:asyncio` (한 파일·`-k` 로 좁힐 수 있다)",
+}
+# 여기서 초록이어도 CI 가 red 일 수 있는 축 — 항상 인쇄한다.
+# Axes this runner cannot see; printed every run so green here is never read as green in CI.
+_NOT_COVERED = ("CodeQL · SonarCloud · Codecov(patch coverage) — 서비스 의존", *_NOT_COVERED_JOBS.values())
+
+# PR 맥락(본문 · base/head)이 있어야 재는 가드 — 맥락 없이 낸 exit 0 은 «OK» 가 아니라 «안 잼» 이다
+# (회고 원장 L13 P2-75 — 비봇 PR 빨강의 거의 절반이 바로 이 두 스텝이었다). `--pr-body` 를 주면 CI 처럼 잰다.
+# Guards that need the PR context: their exit 0 without it is "not measured", not "OK".
+_NEEDS_PR_CONTEXT = frozenset({"check_claim_review_trace.py", "check_reverse_mutation.py"})
 
 
 def _make_stdout_safe():
@@ -150,19 +168,26 @@ def _make_stdout_safe():
         pass  # 재구성 불가한 스트림(파이프·구버전) — 출력 인코딩은 최선 노력 / best-effort only
 
 
-def _run(label: str, argv: list[str], show_always: bool = False) -> bool:
+def _run(label: str, argv: list[str], show_always: bool = False, env: dict | None = None,
+         unmeasured: bool = False) -> bool:
     """한 가드를 돌리고 통과 여부를 반환한다.
 
     🔴 `show_always` — advisory 가드는 **exit 0 이면서 경고를 낸다**. 실패 시에만 출력하면
     그 경고가 삼켜져 "OK" 만 보인다(경고가 존재 이유인데 안 보이는 것 = 이 저장소의
     지배적 결함 재생산). advisory 축은 항상 인쇄한다.
     Advisory guards exit 0 while warning; hiding their output would defeat their purpose.
+    🔴 `unmeasured` — 재료(PR 맥락)가 없어 아무것도 못 잰 exit 0 은 «OK» 가 아니라 «SKIP» 으로 찍는다.
+    An exit 0 that measured nothing (no PR context) prints SKIP, not OK.
     """
     proc = subprocess.run(  # nosec B603 — argv 는 이 파일의 상수 + base sha
         argv, cwd=str(_ROOT), capture_output=True, text=True,
         encoding="utf-8", errors="replace", check=False,
+        env={**os.environ, **env} if env else None,
     )
     ok = proc.returncode == 0
+    if ok and unmeasured:
+        print(f"  SKIP {label} — PR 맥락(본문 · base/head)이 없어 안 쟀다 · `--pr-body <파일>` 을 주면 CI 처럼 잰다")
+        return ok
     print(f"  {'OK  ' if ok else 'FAIL'} {label}")
     if not ok or show_always:
         body = (proc.stdout or "") + (proc.stderr or "")
@@ -191,17 +216,35 @@ def _changed_test_files(base: str) -> list[str]:
     return [p for p in proc.stdout.split() if p.endswith(".py")]
 
 
-def run_integrity(py: str) -> list[str]:
+def pr_env(body_file: str | None, title: str, base: str) -> dict | None:
+    """`--pr-body` 가 있으면 CI 가 PR 가드에 넘기는 env 를 같은 꼴로 만든다 — 없으면 None.
+    The env CI hands the PR guards, built locally from a body file; None without one."""
+    if not body_file:
+        return None
+    body = Path(body_file).read_text(encoding="utf-8")
+    head = subprocess.run(  # nosec B603
+        ["git", "rev-parse", "HEAD"], cwd=str(_ROOT), capture_output=True, text=True,
+        encoding="utf-8", errors="replace", check=False,
+    ).stdout.strip()
+    if not head:
+        raise SystemExit("❌ HEAD 를 읽지 못했다 — PR 맥락을 만들 수 없다")
+    return {PR_BODY_ENV: body, "PR_TITLE": title, "PR_BASE_SHA": base, "PR_HEAD_SHA": head}
+
+
+def run_integrity(py: str, env: dict | None = None) -> list[str]:
     """whole-repo 상태 가드 — 실패한 것들의 이름. / Names of failed whole-repo guards."""
     print("== repo-integrity (whole-repo 상태) ==")
-    failed = [s for s in _INTEGRITY if not _run(s, [py, f"scripts/{s}"])]
-    failed += [s for s, extra in _INTEGRITY_WITH_ARGS
-               if not _run(f"{s} {' '.join(extra)}", [py, f"scripts/{s}", *extra],
-                           show_always=True)]
+    failed = [s for s in _INTEGRITY
+              if not _run(s, [py, f"scripts/{s}"], env=env, unmeasured=env is None and s in _NEEDS_PR_CONTEXT)]
+    for s, extra in _INTEGRITY_WITH_ARGS:
+        # PR 본문이 있으면 CI 의 PR 모드처럼 advisory 없이 잰다 / with a body, mirror CI's PR mode
+        args = [] if env else extra
+        if not _run(f"{s} {' '.join(args)}".strip(), [py, f"scripts/{s}", *args], show_always=True, env=env):
+            failed.append(s)
     return failed
 
 
-def run_diff_scoped(py: str, base: str) -> list[str]:
+def run_diff_scoped(py: str, base: str, env: dict | None = None) -> list[str]:
     """PR-diff 한정 가드 — CI `lint-changed-tests` job 과 같은 4종.
     Diff-scoped guards mirroring the CI lint-changed-tests job."""
     print(f"\n== PR-diff 한정 (base {base[:12]}) ==")
@@ -210,9 +253,9 @@ def run_diff_scoped(py: str, base: str) -> list[str]:
     if not changed:
         print("  --   flake8 F401/F841 (변경된 test 파일 없음)")
     elif not _run(f"flake8 F401/F841 ({len(changed)} 파일)",
-                  [py, "-m", "flake8", "--isolated", "--select=F401,F841", *changed]):
+                  [py, "-m", "flake8", "--isolated", "--select=F401,F841", *changed], env=env):
         failures.append("flake8-changed-tests")
-    failures += [s for s in _DIFF_SCOPED if not _run(s, [py, f"scripts/{s}", base, "HEAD"])]
+    failures += [s for s in _DIFF_SCOPED if not _run(s, [py, f"scripts/{s}", base, "HEAD"], env=env)]
     return failures
 
 
@@ -283,6 +326,8 @@ def print_blind_spots(full: bool) -> None:
         print(f"  · {item}")
     if not full:
         print("  · pylint · bandit · pytest — `--full` 을 붙여야 실행된다")
+    # 여기 초록이 덮는 CI 잡은 이것뿐이다 / the only CI jobs a green run here covers
+    print(f"  · 여기서 도는 ci.yml 잡: {' · '.join(sorted(_COVERED_JOBS))}")
     # 🔴 인터프리터 이원은 --full 여부와 무관하게 항상 보인다 (backlog R30).
     # The interpreter drift line is always visible, regardless of --full.
     local = f"{sys.version_info.major}.{sys.version_info.minor}"
@@ -295,12 +340,16 @@ def main() -> int:
     parser.add_argument("--full", action="store_true",
                         help="pylint + bandit + pytest tests/unit 도 실행 (느림)")
     parser.add_argument("--base", default=None, help="diff 기준 sha (기본: origin/main merge-base)")
+    parser.add_argument("--pr-body", default=None,
+                        help="올릴 PR 본문 파일 — 주면 본문 · base/head 를 읽는 가드가 CI 처럼 잰다")
+    parser.add_argument("--pr-title", default="", help="올릴 PR 제목(--pr-body 와 함께)")
     args = parser.parse_args()
 
     py = sys.executable
     base = _base_sha(args.base)
+    env = pr_env(args.pr_body, args.pr_title, base)
 
-    failures = run_integrity(py) + run_diff_scoped(py, base)
+    failures = run_integrity(py, env) + run_diff_scoped(py, base, env)
     if args.full:
         failures += run_slow(py)
 
@@ -308,7 +357,8 @@ def main() -> int:
     if failures:
         print(f"\n🔴 실패 {len(failures)}건: {', '.join(failures)}")
         return 1
-    print("\n✅ 덮는 범위 전건 통과 (위 미포함 축은 CI 에서 확인)")
+    skipped = "" if env else f" · PR 맥락 가드 {len(_NEEDS_PR_CONTEXT)}개는 안 쟀다(--pr-body)"
+    print(f"\n✅ 덮는 범위 전건 통과 (위 미포함 축은 CI 에서 확인{skipped})")
     return 0
 
 

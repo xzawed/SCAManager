@@ -10,7 +10,8 @@
 ### push 전 절차
 
 1. `py -3 -m pytest tests/unit -q` **전체**. 파이프(`| tail`) 금지 — 종료코드 소실.
-2. `py -3 scripts/pre_push_gate.py`(`--full` = pylint·bandit·unit 추가)
+2. `py -3 scripts/pre_push_gate.py --full --pr-body <본문 파일>`(`--full` = pylint·bandit·unit 추가). 본문 없이는
+   본문 · base/head 를 읽는 두 가드가 `SKIP` 이다 — 비봇 PR 빨강이 가장 자주 나던 자리다.
 3. 출력 끝 "보지 못하는 축"·인터프리터 줄 확인(로컬 초록 ≠ CI).
 4. `git push` → `gh pr create` → **도달 확인**. `git push` 의 exit 만으로는 부족하다:
 

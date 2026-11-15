@@ -309,3 +309,88 @@ def test_wired_into_session_start():
     assert any_invokes(commands, "scripts/check_main_red.py"), (
         f"SessionStart 미배선 — 매 세션 관측이 일어나지 않는다.\n현재 배선: {commands}"
     )
+
+
+# ── ⑥ 재실행이 가린 red (회고 원장 L13 P1-37) ───────────────────────────────
+
+
+def _attempted(created: str, conclusion: str, rid: int, attempt) -> dict:
+    return dict(_run(created, conclusion, rid), attempt=attempt)
+
+
+def _attempts(table: dict):
+    """{(run id, 시도): 결론} 으로 답하는 가짜 조회기 — 부른 순서를 적는다 / a fake attempt lookup."""
+    calls = []
+
+    def lookup(run_id, attempt):
+        calls.append((run_id, attempt))
+        return table.get((run_id, attempt))
+
+    lookup.calls = calls
+    return lookup
+
+
+def test_rerun_that_turned_a_red_green_is_caught():
+    """두 심음의 «잡혀야» 쪽 — 첫 시도가 실패하고 재실행이 초록인 run. 첫 시도뿐인 run 은 묻지도 않는다."""
+    runs = [_attempted("2026-08-08T11:00:00Z", "success", 9, 2),
+            _attempted("2026-08-08T10:00:00Z", "success", 8, 1)]
+    lookup = _attempts({(9, 1): "failure"})
+    assert mod.masked_reds(runs, attempt_conclusion=lookup) == [runs[0]]
+    assert lookup.calls == [(9, 1)]
+
+
+# witness-corpus: GitHub Actions run 결론 중 red 가 아닌 것(REST 문서의 결론 값) — 앞 시도가 이것이면 «가려진 red» 가 아니다
+_NOT_RED_ATTEMPTS = ["success", "cancelled", "neutral", "skipped", "stale", "action_required"]
+
+
+@pytest.mark.parametrize("earlier", _NOT_RED_ATTEMPTS)
+def test_rerun_of_a_non_red_attempt_is_not_a_hidden_red(earlier):
+    """두 심음의 «무시돼야» 쪽 — 재실행이 있었다는 것만으로는 가려진 red 가 아니다."""
+    runs = [_attempted("2026-08-08T11:00:00Z", "success", 9, 2)]
+    assert mod.masked_reds(runs, attempt_conclusion=_attempts({(9, 1): earlier})) == []
+
+
+def test_every_earlier_attempt_is_checked():
+    runs = [_attempted("2026-08-08T11:00:00Z", "success", 9, 3)]
+    lookup = _attempts({(9, 1): "success", (9, 2): "timed_out"})
+    assert mod.masked_reds(runs, attempt_conclusion=lookup) == runs
+    assert lookup.calls == [(9, 1), (9, 2)]
+
+
+def test_a_red_latest_is_not_counted_as_hidden():
+    """마지막 시도가 red 면 그 red 는 가려지지 않았다 — 위의 지속 시간 축이 이미 본다."""
+    runs = [_attempted("2026-08-08T11:00:00Z", "failure", 9, 2)]
+    lookup = _attempts({(9, 1): "failure"})
+    assert mod.masked_reds(runs, attempt_conclusion=lookup) == []
+    assert lookup.calls == []
+
+
+@pytest.mark.parametrize("runs,table,max_calls", [
+    ([_run("2026-08-08T11:00:00Z", "success", 9)], {}, 10),                                      # 시도 번호 없음
+    ([_attempted("2026-08-08T11:00:00Z", "success", 9, "2")], {}, 10),                            # 문자열 시도 번호
+    ([_attempted("2026-08-08T11:00:00Z", "success", 9, 2)], {}, 10),                              # 앞 시도를 못 읽음
+    ([_attempted("2026-08-08T11:00:00Z", "success", 9, 3)], {(9, 1): "success", (9, 2): "success"}, 1),  # 상한 초과
+])
+def test_unmeasurable_hidden_reds_are_none_not_empty(runs, table, max_calls):
+    """못 잰 것은 «없음» 이 아니다 — None 이면 요약 줄이 «판정 불가» 를 찍는다."""
+    assert mod.masked_reds(runs, attempt_conclusion=_attempts(table), max_calls=max_calls) is None
+
+
+def test_window_line_counts_reds_cancels_and_hidden_reds():
+    runs = [_attempted("2026-08-08T11:00:00Z", "success", 9, 2), _run("2026-08-08T10:00:00Z", "failure", 8),
+            _run("2026-08-08T09:00:00Z", "cancelled", 7), _run("2026-08-08T08:00:00Z", "success", 6)]
+    lines = mod.window_line(runs, [runs[0]]).splitlines()
+    assert lines[0].split("): ", 1)[1] == "red 1 · 취소 1 · 재실행으로 가려진 red 1"
+    assert lines[1].split(": ", 1)[1] == "https://example/9 — 시도 2 에서 초록"
+    assert mod.window_line(runs, None).split("): ", 1)[1] == "red 1 · 취소 1 · 재실행으로 가려진 red 판정 불가"
+
+
+def test_main_prints_the_window_line_even_when_green(monkeypatch, capsys):
+    """지금 초록이어도 창 안에서 재실행이 가린 red 가 보여야 한다 — 그것이 이 축의 전부다."""
+    runs = [_attempted("2026-08-08T11:00:00Z", "success", 9, 2)]
+    monkeypatch.setattr(f"{_MOD}.fetch_runs", lambda: runs)
+    monkeypatch.setattr(f"{_MOD}._attempt_conclusion", lambda _rid, _n: "failure")
+    assert mod.main() == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out[0] == "main CI — 최신 run 초록."
+    assert out[1].split("): ", 1)[1] == "red 0 · 취소 0 · 재실행으로 가려진 red 1"

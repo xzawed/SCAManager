@@ -791,7 +791,20 @@ def test_empty_surface_list_still_says_no_change(monkeypatch, capsys):
     assert "코드 표면 변경 없음" in capsys.readouterr().out
 
 
-_LEGAL_VERDICTS = ("SURVIVES", "WEAKENED", "BROKEN", "CONFIRMED", "REFUTED", "HOLDS")
+def test_missing_pr_context_says_not_measured(monkeypatch, capsys):
+    """🔴 로컬(PR 맥락 없음)에서는 코드 표면 축을 **안 쟀다** — «변경 없음» 이라고 말하면 거짓이다(회고 원장 L13 P2-75).
+    Locally (no PR context) the code-surface axis was not measured; saying "nothing changed" would be a lie."""
+    for name in ("PR_TITLE", "PR_BODY", "PR_BASE_SHA", "PR_HEAD_SHA"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(f"{_MOD}.changed_code_surfaces",
+                        lambda _b, _h: (_ for _ in ()).throw(AssertionError("맥락 없이 경로를 구했다")))
+    assert main() == 0
+    out = capsys.readouterr().out
+    assert "안 쟀다" in out, out
+    assert "코드 표면 변경 없음" not in out, out
+
+
+_LEGAL_VERDICTS =("SURVIVES", "WEAKENED", "BROKEN", "CONFIRMED", "REFUTED", "HOLDS")
 
 
 @pytest.mark.parametrize("verdict", _LEGAL_VERDICTS)
