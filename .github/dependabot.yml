@@ -54,18 +54,9 @@ updates:
         update-types:
           - "minor"
           - "patch"
-    # fastapi 0.141.x 보류 — fastapi 0.142.0+ 는 opentelemetry-api>=1.44 를 요구하는데 semgrep 이
-    # ~=1.37 을 강제해 ResolutionImpossible. 핀의 단일 출처는 requirements.txt 의 semgrep 주석이고,
-    # 여기 규칙은 매주 설치 불가 PR 이 red 로 올라오는 노이즈만 없앤다.
-    # 🔴 ignore 는 재제안을 **영구히** 막는다 — 조건이 충족돼도 아무도 알려 주지 않는다.
-    #    해제 조건·확인 명령의 추적처 = #1733 (보류를 추가하거나 풀면 그 표도 고친다).
-    #
-    # fastapi held at 0.141.x: 0.142.0+ needs opentelemetry-api>=1.44 but semgrep forces ~=1.37.
-    # The pin itself is owned by the requirements.txt semgrep comment; this only stops weekly red PRs.
-    # 🔴 An ignore suppresses re-proposals forever, so its release condition is tracked in #1733.
-    ignore:
-      - dependency-name: "fastapi"
-        versions: [">=0.142.0"]
+    # 🔴 ignore 는 재제안을 **영구히** 막는다 — 조건이 충족돼도 아무도 알려 주지 않는다. 보류를 더하면
+    #    해제 조건 · 확인 명령을 #1733 에 적는다. (fastapi 0.142+ 보류는 semgrep 이 자기 venv 로 가며 풀렸다.)
+    # 🔴 An ignore suppresses re-proposals forever — track any hold's release condition in #1733.
 
   # npm 의존성 (package.json + package-lock.json — Tailwind 빌드 + 런타임 eslint 분석기)
   # npm dependencies (Tailwind build + the runtime eslint analyzer)

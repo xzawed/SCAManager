@@ -1,0 +1,7 @@
+# semgrep — 앱과 **다른 venv** 에 설치한다(이미지 `/opt/semgrep` · CI 단위 잡 `$RUNNER_TEMP/semgrep-venv`).
+#   앱은 semgrep 을 subprocess CLI 로만 부른다(src/analyzer/io/tools/semgrep.py). 같은 venv 에 두면 그 정확 전이 핀
+#   (`mcp==1.29.0` · `opentelemetry-api~=1.37` · pyjwt · click)이 앱 의존성 해석 · pip-audit · Dependabot 을 묶었다
+#   (fastapi 0.142+ 설치 불가 · 무관한 PR 의 감사 red). 감사 예외(CVE 번호)와 제거 조건은 ci.yml 의 semgrep 감사 스텝에만 둔다.
+# semgrep lives in its own venv (image /opt/semgrep · CI $RUNNER_TEMP/semgrep-venv): the app only runs its CLI, and its
+#   exact transitive pins used to constrain app resolution, pip-audit and Dependabot. Audit exceptions live in ci.yml.
+semgrep==1.184.0

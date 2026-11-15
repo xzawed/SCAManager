@@ -2,8 +2,6 @@
 #   이전 CVE-2024-47874 / CVE-2025-54121(starlette) 패치는 아래 starlette>=1.3.1 로 승계.
 # fastapi>=0.138.1 — first release supporting starlette 1.0 (include_router → lazy _IncludedRouter).
 #   Prior CVE-2024-47874 / CVE-2025-54121 (starlette) fixes are carried by starlette>=1.3.1 below.
-# 🔴 0.142.0+ 는 semgrep 과 함께 설치되지 않는다 — 아래 semgrep 주석 · #1733.
-# 🔴 0.142.0+ cannot be installed alongside semgrep — see the semgrep comment below · #1733.
 fastapi==0.141.1
 slowapi==0.1.10
 uvicorn[standard]==0.54.0
@@ -31,17 +29,11 @@ aiosmtplib==5.1.3
 pylint==4.1.3
 flake8==7.5.0
 bandit==1.9.4
-# 🔴 semgrep 핀이 전이 의존 넷을 좁게 정한다 — pyjwt · mcp · click · opentelemetry-api.
-#   1.170.x 는 pyjwt~=2.13.0 을 강제해 pyjwt 권고가 pip-audit 를 막았고, 1.180.0 은 예외 없이 감사 0건이다.
-#   opentelemetry-api~=1.37 을 강제해 fastapi 0.142.0+(>=1.44)와 공존할 수 없다 → fastapi 보류(#1733).
-#   `mcp==1.29.0` 정확 핀과 `opentelemetry-api~=1.37` 이 pip-audit 권고를 막는다
-#   — 감사 예외(CVE 번호)와 제거 조건은 ci.yml pip-audit 스텝에만 둔다.
-# 🔴 The semgrep pin narrowly fixes four transitives — pyjwt · mcp · click · opentelemetry-api.
-#   1.170.x forced pyjwt~=2.13.0 and failed pip-audit; 1.180.0 audits clean with no ignores.
-#   It forces opentelemetry-api~=1.37, which fastapi 0.142.0+ (>=1.44) cannot share → fastapi hold (#1733).
-#   Its exact `mcp==1.29.0` pin and `opentelemetry-api~=1.37` trip pip-audit advisories —
-#   the exceptions (CVE IDs) and removal terms live only in ci.yml (pip-audit).
-semgrep==1.184.0
+# semgrep 은 여기 두지 않는다 — 자기 venv(`requirements-semgrep.txt`). / semgrep has its own venv (requirements-semgrep.txt).
+# ruamel.yaml — 앱이 semgrep 고정 룰을 JSON 한 묶음으로 미리 읽는다(src/analyzer/io/tools/semgrep.py, 순수 파이썬 로더).
+#   semgrep 이 같은 venv 에 있을 때는 그 전이 의존으로만 들어와 있었다. 판 = semgrep 1.184.0 과 함께 깔리던 판.
+# ruamel.yaml — the app pre-reads semgrep's vendored rules into one JSON bundle; it used to arrive only via semgrep.
+ruamel.yaml==0.19.1
 slither-analyzer==0.11.6
 sqlfluff==4.5.0
 jinja2==3.1.6
