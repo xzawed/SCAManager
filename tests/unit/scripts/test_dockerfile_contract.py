@@ -91,15 +91,31 @@ def test_image_has_no_entrypoint():
     assert all(keyword != "ENTRYPOINT" for keyword, _ in instructions(_dockerfile()))
 
 
+def _venv_of_run(run: str) -> tuple[str, list[str]] | None:
+    """RUN 하나가 만드는 venv 경로와 그 RUN 의 토큰 — venv 를 안 만들면 None."""
+    tokens = shlex.split(run.replace("&&", " && "))
+    hits = [tokens[i + 1] for i in range(1, len(tokens) - 1) if tokens[i] == "venv" and tokens[i - 1] == "-m"]
+    return (hits[0], tokens) if hits else None
+
+
 def test_image_puts_the_venv_on_path():
-    """🔴 pre-deploy `alembic upgrade head` 는 exec 형이다 — venv bin 이 PATH 에 있어야 풀린다."""
+    """🔴 pre-deploy `alembic upgrade head` 는 exec 형이다 — **앱** venv bin 이 PATH 앞에 있어야 풀린다.
+
+    venv 는 둘이다 — 앱(`-r requirements.txt`) · semgrep(자기 venv · CLI 만 링크, 회고 원장 L09). 앱이 아닌
+    venv 의 bin 은 PATH 에 오르면 안 된다(그 python 이 앱 python 을 가린다).
+    """
     text = _dockerfile()
-    venvs = re.findall(r"-m venv (\S+)", " ".join(a for k, a in instructions(text) if k == "RUN"))
-    assert len(venvs) == 1, f"venv 생성 단계가 정확히 하나여야 한다: {venvs}"
+    made = [v for a in (a for k, a in instructions(text) if k == "RUN") if (v := _venv_of_run(a))]
+    app = [path for path, tokens in made
+           if any(tokens[i:i + 2] == ["-r", "requirements.txt"] for i in range(len(tokens) - 1))]
+    assert len(app) == 1, f"앱 venv(`-r requirements.txt` 를 까는 venv) 생성 단계가 정확히 하나여야 한다: {made}"
     path_env = " ".join(a for k, a in instructions(text) if k == "ENV")
-    assert f"PATH={venvs[0]}/bin:" in path_env, (
-        f"ENV PATH 가 venv bin({venvs[0]}/bin)을 앞에 두지 않는다 — alembic·uvicorn 이 안 풀린다"
+    assert f"PATH={app[0]}/bin:" in path_env, (
+        f"ENV PATH 가 앱 venv bin({app[0]}/bin)을 앞에 두지 않는다 — alembic·uvicorn 이 안 풀린다"
     )
+    others = [path for path, _ in made if path != app[0]]
+    leaked = [path for path in others if f"{path}/bin" in path_env]
+    assert not leaked, f"앱 밖 venv 의 bin 이 PATH 에 있다 — 그 python 이 앱을 가린다: {leaked}"
 
 
 def test_image_does_not_run_as_root():

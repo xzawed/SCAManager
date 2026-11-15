@@ -36,6 +36,7 @@ _BASE = "base-image"       # ubuntu 이미지 기본 제공 (coreutils · dash �
 _APT = "apt"               # Dockerfile `apt-get install`
 _VENV = "venv"             # `python3.12 -m venv` 가 만든 venv bin
 _PIP = "pip"               # requirements.txt → venv bin (PATH 등재됨)
+_OWN_VENV = "own-venv"     # 절대 경로 `<V>/bin/<cmd>` — **바로 그** venv `<V>` 가 앞에서 만들어져야 한다(semgrep — 회고 원장 L09)
 
 # 🔴 RUN 이 호출하는 명령 → 조달 출처. 신규 명령 추가 시 여기 등재 의무.
 # Registry of commands invoked by the image build → where each comes from.
@@ -43,6 +44,7 @@ _COMMAND_PROVENANCE = {
     "apt-get": _BASE,
     "chmod": _BASE,
     "echo": _BASE,
+    "ln": _BASE,
     "mkdir": _BASE,
     "rm": _BASE,
     "sh": _BASE,
@@ -81,12 +83,16 @@ def _violations(text: str, requirements: str) -> list[str]:
     """빌드 순서대로 걸으며 「출처가 앞에서 설치됐는가」를 판정한다. 위반 문장 목록."""
     problems: list[str] = []
     installed: set[str] = set()
+    venvs: set[str] = set()
     venv = pip_installed = False
     for argv in all_invocations(text):
         cmd = _command(argv)
-        source = _COMMAND_PROVENANCE.get(cmd)
+        own = re.fullmatch(r"(/\S+)/bin/[A-Za-z0-9_.-]+", cmd)
+        source = _OWN_VENV if own else _COMMAND_PROVENANCE.get(cmd)
         if source is None:
             problems.append(f"조달 출처 미등재 명령: {cmd}")
+        elif source == _OWN_VENV and own.group(1) not in venvs:
+            problems.append(f"{cmd}: {own.group(1)} venv 생성 전에 호출된다")
         elif source == _APT and not _APT_PACKAGE[cmd] <= installed:
             problems.append(f"{cmd}: {sorted(_APT_PACKAGE[cmd] - installed)} 설치 전에 호출된다")
         elif source == _VENV and not venv:
@@ -95,6 +101,8 @@ def _violations(text: str, requirements: str) -> list[str]:
             problems.append(f"{cmd}: requirements 설치 전이거나 {_PIP_DISTRIBUTION[cmd]} 이 없다")
         installed |= apt_installs(argv)
         venv = venv or argv[1:3] == ["-m", "venv"]
+        if argv[1:3] == ["-m", "venv"] and len(argv) > 3:
+            venvs.add(argv[3])
         pip_installed = pip_installed or (cmd == "pip" and "requirements.txt" in argv)
     return problems
 
@@ -128,6 +136,17 @@ def test_every_invoked_command_is_provisioned_before_use():
     ('RUN python3.12 -m venv /v && python -c "import a; unzip"',
      ["python3.12: ['python3.12', 'python3.12-venv'] 설치 전에 호출된다"]),
     ("RUN brand-new-tool --x", ["조달 출처 미등재 명령: brand-new-tool"]),
+    # 자기 venv 의 절대 경로 명령 — 바로 그 venv 가 앞에서 만들어졌으면 위반 없음
+    ("RUN apt-get install -y python3.12 python3.12-venv\n"
+     "RUN python3.12 -m venv /opt/x && /opt/x/bin/pip install a", []),
+    # 🔴 그 venv 를 만들기 전에 부른다
+    ("RUN apt-get install -y python3.12 python3.12-venv\n"
+     "RUN /opt/x/bin/pip install a\nRUN python3.12 -m venv /opt/x",
+     ["/opt/x/bin/pip: /opt/x venv 생성 전에 호출된다"]),
+    # 🔴 다른 venv 가 있다고 그 venv 가 생기지는 않는다
+    ("RUN apt-get install -y python3.12 python3.12-venv\n"
+     "RUN python3.12 -m venv /opt/y && /opt/x/bin/pip install a",
+     ["/opt/x/bin/pip: /opt/x venv 생성 전에 호출된다"]),
 ])
 def test_judgement_on_planted_dockerfiles(dockerfile, expected):
     """판정식 뒤집기 — 심은 입력마다 잡혀야 할 것만 잡는다."""

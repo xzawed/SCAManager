@@ -57,18 +57,25 @@ def ci_provisioned() -> set[str]:
     | `npm install -g <pkg>` | 전역 node 도구 |
     | `gem install <name>` | ruby 도구 |
     | `-o /usr/bin/<name>` · `-b /usr/bin <name>` · `<name>_linux_amd64.zip` | 바이너리 직접 설치 |
+    | `<V>/bin/pip install … -r <파일>` | 자기 venv — 그 파일의 핀(semgrep · 회고 원장 L09) |
 
     별칭이 필요한 것만 표로 둔다 — 배포판 이름 ≠ 분석기 이름인 경우.
     """
     ci = _ci_text()
-    reqs = _REQS.read_text(encoding="utf-8")
     names: set[str] = set()
 
-    # pip — requirements.txt 핀. 배포판 이름이 분석기 이름과 다르면 별칭으로 매핑한다.
-    for line in reqs.splitlines():
-        if (m := re.match(r"^([A-Za-z0-9_.-]+)\s*==", line.strip())):
-            dist = m.group(1)
-            names.add(_PIP_ALIAS.get(dist, dist))
+    def pinned(path: Path) -> None:
+        # pip 핀. 배포판 이름이 분석기 이름과 다르면 별칭으로 매핑한다.
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if (m := re.match(r"^([A-Za-z0-9_.-]+)\s*==", line.strip())):
+                dist = m.group(1)
+                names.add(_PIP_ALIAS.get(dist, dist))
+
+    # pip — requirements.txt 핀(CI 가 requirements-dev.txt → requirements 를 깐다).
+    pinned(_REQS)
+    # 자기 venv — `<V>/bin/pip install … -r <파일>` 설치 명령에서 파일을 읽고 그 핀을 센다.
+    for req in re.findall(r"/bin/pip\"?\s+install\b[^\n]*?\s-r\s+([A-Za-z0-9_.-]+\.txt)", ci):
+        pinned(_ROOT / req)
 
     # apt-get install -y a b c
     for chunk in re.findall(r"apt-get install -y ([^\n]+)", ci):
