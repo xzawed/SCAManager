@@ -89,7 +89,7 @@ repos:
       # Must be `python`, not `system`: `system` leaves PATH alone, so `entry: python …`
       # resolves to the Windows Store stub here (exit 9009). Measured both ways.
       - id: check-docs-sync
-        name: "📊 docs 수치 정합 (STATE↔README 배지 + 의존성 핀)"
+        name: "📊 docs 값 정합 (README 배지 ↔ 의존성 핀 · pylint)"
         language: python
         entry: python scripts/check_docs_sync.py
         # 🔴 files 는 스크립트가 **읽는 모든 파일**을 덮어야 한다 — 좁으면 그 파일만 바꾼 커밋에서
@@ -99,7 +99,7 @@ repos:
         files: "^(docs/STATE\\.md|README\\.md|README\\.ko\\.md|requirements\\.txt)$"
         pass_filenames: false
         stages: [pre-commit]
-        description: STATE 종합·추적셀 ↔ README/README.ko Tests 배지 카운트 일치 + requirements.txt 실핀 ↔ FastAPI 배지 일치 검사.
+        description: requirements.txt 실핀 ↔ README/README.ko FastAPI 배지 · pylint 값 4지점(README 2 · STATE pylint 행 · ci.yml 주석) 일치 검사.
 
 
       - id: check-memory-refs

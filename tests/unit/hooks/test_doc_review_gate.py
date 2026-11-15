@@ -1528,9 +1528,9 @@ def test_state_context_budget_reaches_the_aggregate_numbers():
         state_section = state_section[:nxt]
 
     # 🔴 예산 축을 실제로 지는 지문은 `pylint` 뿐이다 (Grok `019fc878` GROK-3 실측):
-    #    `종합 수치`@offset 236 은 4000 **안**이라 예산을 되돌려도 green 이다.
+    #    머리 지문(`현재 수치`)은 4000 **안**이라 예산을 되돌려도 green 이다.
     #    그래서 아래 두 단언의 역할이 다르다 — 앞은 원천 존재, 뒤가 예산 축이다.
-    assert "종합 수치" in state_section, "STATE 구간이 비었다 (예산 축 아님 — 원천 존재 확인)"
+    assert "현재 수치" in state_section, "STATE 구간이 비었다 (예산 축 아님 — 원천 존재 확인)"
 
     # 🔴 **`"pylint" in …` 은 거짓 집행자였다** (2026-08-14 문서감사 PR-5).
     #    그 단언은 *"STATE 앞 16,000자 안에 `pylint` 라는 낱말이 있는가"* 만 봤다.
@@ -1546,12 +1546,12 @@ def test_state_context_budget_reaches_the_aggregate_numbers():
     #    역사 서술이다(`이전 리터럴 9.90 은 9.99 도 …`). 실제로 STATE 의 **현행 점수
     #    2곳을 8.88 로 바꿔도** 그 단언은 green 이었다 — 심의자가 대조해야 하는 것은
     #    현행 값인데, 역사 문장이 그 자리를 대신 채워 준다.
-    #    그래서 **현행 점수 표기 형태**(`pylint **9.99/10**`)를 찾는다.
+    #    그래서 **현행 점수 표기 형태**(지표 표의 `| pylint | **9.99/10** |` 행)를 찾는다.
     #    A bare value matched historical prose; assert the *current-score* rendering.
     badge = (_ROOT / "README.md").read_text(encoding="utf-8")
     m = re.search(r"pylint-(\d+\.\d+)%2F10", badge)
     assert m, "README 배지에서 pylint 값을 파싱하지 못했다 — 이 축의 기대값 원천이 사라졌다"
-    current = f"pylint **{m.group(1)}/10**"
+    current = f"| pylint | **{m.group(1)}/10** |"
     assert current in state_section, (
         f"현행 점수 표기 `{current}` 가 STATE 예산 구간에 없다 — 심의자가 대조할 수 없다. "
         "(역사 서술의 같은 숫자는 대조 대상이 아니다)"
@@ -1885,46 +1885,6 @@ def test_consistency_prompt_strips_frontmatter_via_the_gate_loader():
     )
     assert prompt.startswith("당신은 SCAManager"), (
         "본문 시작이 사라졌다 — 로더가 잘못된 파일을 읽거나 본문을 잘랐다"
-    )
-
-
-def test_consistency_prompt_teaches_tail_to_derived_shape():
-    """🔴 파생 계약 본문이 로더 출력에 실재해야 한다 (R80 A).
-
-    헤딩만 남기고 본문을 비우면 이 단언이 red 여야 한다 — 헤딩 존재 검사는
-    공허한 섹션을 통과시킨다 (traps A4 · '비운 섹션이 green').
-    Distinctive body pins, not just the section heading.
-    """
-    prompt = _consistency_prompt()
-    assert "check_docs_sync.py --fix" in prompt, (
-        "파생 명령 `check_docs_sync.py --fix` 가 로더 출력에 없다 — 섹션이 비었거나 빠졌다"
-    )
-    assert "테스트 수 추적 이력" in prompt, (
-        "SSOT 위치(`테스트 수 추적 이력`)가 로더 출력에 없다"
-    )
-    assert "정상 중간 상태" in prompt, (
-        "꼬리=새·파생=옛 을 '정상 중간 상태' 로 부르는 문장이 없다"
-    )
-    assert "종합 수치·배지는 옛 수인데 이력 꼬리만 새 수다" in prompt, (
-        "❌ 예시(옛 종합/배지 + 새 꼬리를 block)가 없다 — 심의자가 그 모양을 모른다"
-    )
-
-
-def test_consistency_prompt_keeps_the_scope_fence():
-    """🔴 면제만 남기고 울타리를 지우면 red — 진짜 불일치를 눈감게 된다.
-
-    면제(꼬리→파생 중간 상태)를 둔 채 '그래도 block 할 때' 절을 지우면
-    리뷰어가 STATE 수치 일반을 무시한다. 그 회귀가 이 단언의 대상이다.
-    """
-    prompt = _consistency_prompt()
-    assert "면제 범위는 꼬리→파생 방향만이다" in prompt, (
-        "범위 울타리 문장이 없다 — 면제가 STATE 수치 일반으로 넓어질 수 있다"
-    )
-    assert "비-파생" in prompt, (
-        "'비-파생 문서가 제3의 수를 단언하면 여전히 block' 절이 없다"
-    )
-    assert "파생 4지점이 **서로** 어긋남" in prompt, (
-        "'파생 지점이 서로 어긋나면 여전히 block' 절이 없다"
     )
 
 

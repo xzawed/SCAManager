@@ -12,7 +12,6 @@
 | 게이트 | 마커 | 은닉 면제(수정 전) |
 |---|---|---|
 | `check_reverse_mutation` | `reverse-mutation-not-applicable:` | 🔴 통과 |
-| `check_test_count_sync` | `STATE-sync-deferred:` | 🔴 통과 |
 
 🔴 **교훈은 "복제하지 말라" 가 아니다** — 관용구는 앞으로도 복제된다. 교훈은
 **"읽는 지점을 하나로 두라"** 다. 그래야 다음 하드닝도 자동으로 따라간다.
@@ -20,7 +19,7 @@
 ## 이 파일이 강제하는 것
 
 1. `scripts/*.py` 중 환경에서 `PR_BODY` 를 **직접** 읽는 모듈은 정확히 하나다 (AST 판정).
-2. 마커 게이트 3종은 `read_pr_body()` 를 **실제로 호출**한다 (배선 — 불변식 3).
+2. 마커 게이트는 `read_pr_body()` 를 **실제로 호출**한다 (배선 — 불변식 3).
 3. 은닉 마커는 매치되지 않고, **가시 마커는 여전히 매치된다** (과교정 대조군).
 4. 🔴 대조군 — 원문에서는 은닉 마커가 매치된다. 이게 거짓이면 위 단언들은
    리더를 지워도 통과한다(가드 자살).
@@ -49,7 +48,6 @@ _SOLE_READER = "check_claim_review_trace.py"
 # 면제/이월 마커로 PR 본문을 판정하는 게이트 — 전부 단일 리더를 거쳐야 한다.
 _MARKER_GATES = {
     "check_reverse_mutation": ("_EXEMPT", "reverse-mutation-not-applicable"),
-    "check_test_count_sync": ("_DEFERRED", "STATE-sync-deferred"),
     # 이 면제는 도입 시점부터 CI 에서 **도달 불가**였다(스텝에 GH_TOKEN 이 없어 본문이 늘 빈
     # 문자열). 도달 가능해지는 순간 은닉 마커 축이 처음으로 실재하므로 같은 변경에서 등재한다.
     # Unreachable in CI until the body was handed in; hardening lands with reachability.

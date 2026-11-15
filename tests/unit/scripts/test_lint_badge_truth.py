@@ -34,17 +34,20 @@ def _load_sync():
 
 
 def test_lint_badge_sites_agree():
-    """🔴 본 회귀 가드 — 5지점이 같은 값을 말하는가."""
+    """🔴 본 회귀 가드 — 4지점(README 2 · STATE pylint 행 · ci.yml 주석)이 같은 값을 말하는가."""
     sync = _load_sync()
     ok, msgs = sync.check_lint_badge(_REPO_ROOT)
     assert ok, "pylint 값 불일치:\n" + "\n".join(f"  {m}" for m in msgs)
 
 
 def test_scan_is_not_vacuous():
-    """anti-vacuity — 5지점을 실제로 뽑았는가. 정규식이 하나도 못 뽑으면 '초록' 이 아니다."""
+    """anti-vacuity — 4지점을 실제로 뽑았는가. 정규식이 하나도 못 뽑으면 '초록' 이 아니다.
+
+    STATE 종합 수치 줄은 테스트 수와 함께 걷었다 — 그 줄의 pylint 값은 같은 문서 표 행의 사본이었다.
+    """
     sync = _load_sync()
     sites = sync.lint_badge_sites(_REPO_ROOT)
-    assert len(sites) == 5, f"지점 {len(sites)}개만 수집 — 5개여야 한다: {sites}"
+    assert len(sites) == 4, f"지점 {len(sites)}개 수집 — 4개여야 한다: {sites}"
     for name, value in sites:
         assert value is not None, f"{name} 에서 pylint 값을 못 읽었다"
 

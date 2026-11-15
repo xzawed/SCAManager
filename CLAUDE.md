@@ -80,7 +80,7 @@ py -3 -m pytest e2e/ -p no:asyncio  # E2E (tests/ 와 같이 돌리지 않는다
 - 새 문서 전에 기존 문서에 자리가 없는지 본다.
 - 문서 개수·문장 존재를 강제하는 테스트를 만들지 않는다(`len(docs) >= N`, 「이 문장이 살아 있을 것」).
   공허화 방어는 「집합이 비었는가」로 충분하다.
-- 테스트 수가 바뀌면 `docs/STATE.md` SSOT 불릿 **한 줄만** 고치고 `py -3 scripts/check_docs_sync.py --fix`.
+- 테스트 수는 문서에 적지 않는다 — PR 본문 첫 줄이 유일한 자리다(CI 가 junit 과 대조). E2E 기준은 `e2e/EXPECTED_COUNT`.
 - `src/` 에 파일을 추가·삭제하면 `docs/architecture.md` 트리를 갱신한다.
 
 ## 진행 중인 일

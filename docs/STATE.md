@@ -1,31 +1,15 @@
 # SCAManager 프로젝트 상태
 
 현재 수치와 재측정 명령만 둔다. 서사는 git, 열린 일감은 GitHub Issues 가 갖는다.
+테스트 수는 적지 않는다 — 원천은 실행 결과다(PR 본문 첫 줄 ↔ CI junit · E2E 기준 `e2e/EXPECTED_COUNT`).
 
 ## 현재 수치
 
-**최신 (현재 코드 기준)**
-- 손으로 고치는 곳: 단위 · 통합 = 끝 SSOT 불릿 한 줄(4지점은 `--fix`) · E2E = `e2e/EXPECTED_COUNT` + 이 문서 두 지점.
-
-**종합 수치**: 전체 **10148** 수집 (단위 **9901** + 통합 247) / E2E **555** / pylint **9.99/10** (`src/`).
-
 | 지표 | 값 | 재측정 |
 |---|---|---|
-| 전체 테스트 | **10148 수집** | `py -3 -m pytest --collect-only -q tests/unit` + `tests/integration` — 단위 9901 + 통합 247 (현재) |
-| E2E 테스트 | **555개** | `py -3 -m pytest e2e/ -p no:asyncio` — = 555 collected (544 표준 + 11 perf). 대조 `scripts/check_e2e_scope.py` |
+| 단위 · 통합 테스트 | 실행 결과 | `py -3 -m pytest --collect-only -q tests/unit` · `tests/integration` |
+| E2E 테스트 | `e2e/EXPECTED_COUNT`(바닥) | `py -3 -m pytest e2e/ -p no:asyncio --collect-only -q`. 대조 `scripts/check_e2e_scope.py` |
 | pylint | **9.99/10** | `py -3 -m pylint src/`. CI `--fail-under` 는 README 배지에서 파생 |
 | 커버리지 | Python 97% | `py -3 -m pytest tests/unit --cov=src` |
 | bandit HIGH | 0 | `py -3 -m bandit -r src/` |
 | 지원 언어 | AI 49 / 정적 25 | `src/analyzer/pure/language.py` · 등록 분석기 24종 |
-
-## 수치 갱신 절차
-
-1) `py -3 -m pytest --collect-only -q tests/unit` 과 `tests/integration` 으로 실측한다.
-2) 아래 §테스트 수 추적 이력의 **마지막 불릿 한 줄**만 그 값으로 고친다.
-3) `py -3 scripts/check_docs_sync.py --fix` — 종합 수치·추적셀·README 2배지가 파생된다.
-4) `py -3 scripts/check_test_count_sync.py` 로 실측과 대조한다.
-5) 2) 외의 지점은 직접 편집하지 않는다. E2E 가 바뀌면 `e2e/EXPECTED_COUNT` 를 같은 PR 에서 맞춘다.
-
-## 테스트 수 추적 이력
-
-- **현재** (7242→**9901** 단위; 통합 247 = **10148** 수집)

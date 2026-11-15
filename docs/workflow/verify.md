@@ -55,7 +55,7 @@
 ### CI (`.github/workflows/ci.yml` — push:main · PR:base 무관)
 
 - `test-and-analyze` — `pytest tests/` 전량 + coverage.xml → Codecov·SonarCloud. PR 은
-  역-뮤테이션(되돌리면 red?) + 본문 수치 ↔ `--collect-only` 대조 추가.
+  역-뮤테이션(되돌리면 red?) + 본문 수치 ↔ 그 잡의 junit 대조 추가.
 - `pg-concurrency` — SKIP LOCKED + 마이그레이션 round-trip.
   **node-id 핀 목록** — 새 PG 테스트를 등재 안 하면 단위 스위트가 red 로 잡는다.
 - `e2e` — CSS 빌드 후 `--e2e-strict-skips`(skip 집합 ↔ `e2e/SKIP_ALLOWLIST`, 양방향 red),
@@ -72,12 +72,10 @@
 
 ### 건수를 바꿀 때
 
-- e2e 증감 → 같은 PR 에서 `e2e/EXPECTED_COUNT` · STATE E2E 두 지점(손) · README 배지(`--fix`). 감소도 필수.
+- e2e 증감 → 같은 PR 에서 `e2e/EXPECTED_COUNT` 를 수집 수로 맞춘다. 가드는 바닥(미만 red)이라 늘린 뒤 안 올리면 그만큼 지워도 조용하다.
 - 추적 `.md` 하나 = 단위 +2(`tests/unit/scripts/test_gate_claim_consistency.py` 가 문서마다 돈다).
-- 단위 증감 → `docs/STATE.md` SSOT 불릿 한 줄만 고치고 `py -3 scripts/check_docs_sync.py --fix`.
-  미룰 때만 **커밋 메시지** 열 0 `STATE-sync-deferred: <사유 16자 이상>`.
-- 되돌림 판정 불가 → PR 본문 `reverse-mutation-not-applicable: <사유 16자 이상>`.
-  두 마커 다 통과하되 계수된다.
+- 단위 수는 문서에 적지 않는다 — PR 본문 첫 줄(`pytest tests/unit → N passed / M skipped`)만 고친다.
+- 되돌림 판정 불가 → PR 본문 `reverse-mutation-not-applicable: <사유 16자 이상>`. 통과하되 계수된다.
 
 ### side-effect-only ORM import
 
@@ -96,7 +94,7 @@ if any(m.__tablename__ not in Base.metadata.tables for m in _FK_TARGET_MODELS):
 ### 판정식을 쓸 때 — 3~5 는 **모든 파일**에 적용(1~2 는 새 `scripts/check_*.py` 한정)
 
 1. 진입에 `_make_stdout_safe()` — 없으면 `test_stdout_encoding_guard.py` 가 red(면제 없음).
-2. `pre_push_gate.py` 의 `_INTEGRITY`·`_INTEGRITY_WITH_ARGS`·`_DIFF_SCOPED` 중 하나에 등재하고,
+2. `pre_push_gate.py` 의 `_INTEGRITY`·`_DIFF_SCOPED` 중 하나에 등재하고,
    `ci.yml` **과** `claim-review-on-body-edit.yml` 양쪽에 스텝을 넣는다 — 같은 check 이름을
    쓰므로 한쪽만 넣으면 `test_claim_review_body_edit_workflow.py` 가 red.
 3. 판정식은 **부분문자열이 상태를 대신하지 않게** — 개수·구조를 읽는다. `" failed" in out` 은

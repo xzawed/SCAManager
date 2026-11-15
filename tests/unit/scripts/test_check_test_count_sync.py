@@ -1,12 +1,13 @@
-"""`check_test_count_sync.py` — ground-truth 축의 계약 (회고 P0-D · R25 · Grok 019fb930).
+"""`check_test_count_sync.py` — 본문 수치 축의 계약 (회고 P0-D · R48 · #1442 · Grok 019fb930).
 
 🔴 이 파일의 본체는 **fail-closed 부정 통제**다. "일치하면 통과"(양성)보다 **"도구가 죽거나
-형식이 바뀌었을 때 조용히 초록이 되지 않는가"**(음성)가 이 축의 존재 이유다 — check_docs_sync
-가 5지점 동시 오류에 GREEN 이던 것이 이 가드가 태어난 이유이므로, 이 가드 자신이 같은 방식으로
-죽으면 안 된다.
+형식이 바뀌었을 때 조용히 초록이 되지 않는가"**(음성)가 이 축의 존재 이유다.
 
-Contract tests for the ground-truth axis. The negative controls are the point: the guard must not
-go silently green when the tool dies or the format drifts — that failure shape is why it exists.
+테스트 수는 문서(STATE · README)에 적지 않는다 — 이 가드가 대조하는 것은 PR 본문의 수치 줄과
+그 PR 의 실행 결과(CI junit), junit 이 없는 로컬에서는 수집값이다.
+
+Contract tests for the PR-body count axis. The negative controls are the point: the guard must not
+go silently green when the tool dies or the format drifts.
 """
 import subprocess
 from pathlib import Path
@@ -14,7 +15,6 @@ from pathlib import Path
 import pytest
 
 import scripts.check_test_count_sync as mod
-from scripts.check_docs_sync import _STATE_TOTAL as _DOCS_SYNC_STATE_TOTAL
 from tests.unit.scripts._wiring_shape import invokes
 
 _ROOT = Path(__file__).resolve().parents[3]
@@ -43,50 +43,21 @@ def test_parse_no_tests_collected_is_not_a_number():
     assert mod.parse_collected("no tests collected in 0.02s") is None
 
 
-# ── STATE 정규식 (PARITY + fail-closed) ──────────────────────────────────
-
-
-def test_state_regex_parity_with_docs_sync():
-    """🔴 PARITY GUARD — `check_docs_sync._STATE_TOTAL` 과 동일 패턴 의무.
-
-    runtime import 결합 대신 사본 + 이 동등성 단언으로 drift 를 막는다(testing.md 패턴).
-    한쪽만 바뀌면 두 가드가 서로 다른 STATE 형식을 요구하는 모순이 된다.
-    """
-    assert mod._STATE_TOTAL.pattern == _DOCS_SYNC_STATE_TOTAL.pattern
-
-
-def test_state_counts_reads_the_live_file():
-    """양성 통제 — 실제 STATE.md 에서 (전체, 단위)를 읽는다."""
-    got = mod.state_counts((_ROOT / "docs" / "STATE.md").read_text(encoding="utf-8"))
-    assert got is not None
-    total, unit = got
-    assert total > unit > 0
-
-
-def test_state_counts_none_on_format_drift():
-    """🔴 형식이 바뀌면 None — 조용히 0 이나 옛값을 돌려주면 축이 소멸한 채 초록이 된다."""
-    assert mod.state_counts("전체 6205 수집 (볼드 없음)") is None
-
-
-# ── main — 모드별 판정 (fail-closed 는 모드 무관) ────────────────────────
+# ── main — 무엇을 언제 재는가 ──────────────────────────────────────────
 
 
 @pytest.fixture(autouse=True)
-def _no_ambient_pr_body(monkeypatch):
-    """🔴 CI 는 `PR_BODY` 를 **실제로** 넘긴다 — 테스트를 그 환경에서 격리한다.
+def _no_ambient_pr_context(monkeypatch, tmp_path):
+    """🔴 CI 는 `PR_BODY` · SHA · 저자 변수를 **실제로** 넘긴다 — 테스트를 그 환경에서 격리한다.
 
-    본문 수치 축(R48)을 붙이자 기존 테스트 2건이 **CI 에서만** 깨졌다: 테스트는
-    `collect_count` 를 90 같은 합성값으로 패치하는데, `deferral_carriers()` 는 패치되지
-    않아 **진짜 PR 본문**(7000 passed / 9 skipped)을 읽어 왔다 → 불일치 → `main` 이 1.
-    🔴 로컬은 `PR_BODY` 미설정이라 축이 '미실행' 이었고 **전건 초록이었다** — `pre_push_gate`
-    가 매번 인쇄하는 로컬↔CI 이원(backlog R30)이 실제로 발현한 사례다.
-
-    기본값을 비워 두고, 본문을 보는 테스트만 `_patch_body` 로 **명시 주입**한다.
-    🔴 저자·SHA env 도 지운다 — CI PR job 은 `PR_HEAD_SHA` 를 실제로 심고, 남기면
-    `main()` 이 PR 컨텍스트로 오판해 수치 부재 테스트가 CI 에서만 red 가 된다.
-    CI really sets PR_BODY; default it empty so tests opt in explicitly.
+    본문 수치 축을 붙이자 기존 테스트 2건이 **CI 에서만** 깨졌다: 테스트는 `collect_count` 를
+    합성값으로 패치하는데 본문 리더는 패치되지 않아 **진짜 PR 본문**을 읽어 왔다.
+    🔴 SHA 변수를 남기면 `main()` 이 PR 맥락으로 오판해 수치 부재 테스트가 CI 에서만 red 가 된다.
+    junit 산출물도 없는 경로로 돌린다 — 리포 루트에 남은 이전 실행 파일이 판정을 바꾸면 안 된다.
+    CI really sets these; default them empty so tests opt in explicitly.
     """
-    monkeypatch.setattr(mod, "deferral_carriers", lambda: ("", ""))
+    monkeypatch.setattr(mod, "read_pr_body", lambda: "")
+    monkeypatch.setattr(mod, "_JUNIT", tmp_path / "absent-junit.xml")
     for key in (
         "PR_BODY", "PR_BASE_SHA", "PR_HEAD_SHA",
         "PR_AUTHOR_LOGIN", "PR_AUTHOR_TYPE",
@@ -94,72 +65,83 @@ def _no_ambient_pr_body(monkeypatch):
         monkeypatch.delenv(key, raising=False)
 
 
-def _patch_counts(monkeypatch, unit: int, integration: int):
-    counts = {"tests/unit": unit, "tests/integration": integration}
-    monkeypatch.setattr(mod, "collect_count", lambda p: counts[p])
+def _patch_body(monkeypatch, body: str):
+    monkeypatch.setattr(mod, "read_pr_body", lambda: body)
 
 
-def _patch_state(monkeypatch, tmp_path, total: int, unit: int):
-    docs = tmp_path / "docs"
-    docs.mkdir(exist_ok=True)
-    # 🔴 통합 수는 **파생**한다 — 구판은 리터럴 `통합 x` 를 썼다. 숫자가 아닌 것을 두면
-    #    fixture 로 통합 축을 검사할 수 없고, `_STATE_TOTAL` 이 그 그룹을 캡처하게 되자
-    #    이 fixture 를 쓰는 7건이 통째로 미매치로 떨어졌다. fixture 는 모델과 따로 늙는다.
-    # Derive it: a non-numeric stand-in makes the axis untestable and breaks on capture.
-    headline = (
-        f"**종합 수치**: 전체 **{total}** 수집 "
-        f"(단위 **{unit}** + 통합 {total - unit})"
-    )
-    (docs / "STATE.md").write_text(headline + "\n", encoding="utf-8")
-    monkeypatch.setattr(mod, "_ROOT", tmp_path)
+def _patch_collect(monkeypatch, unit: int) -> list[str]:
+    calls: list[str] = []
+
+    def _fake(path):
+        calls.append(path)
+        return unit
+    monkeypatch.setattr(mod, "collect_count", _fake)
+    return calls
 
 
-def test_match_exits_zero(monkeypatch, tmp_path):
-    _patch_state(monkeypatch, tmp_path, 100, 90)
-    _patch_counts(monkeypatch, 90, 10)
-    assert mod.main([]) == 0
+def test_main_needs_no_documented_count(monkeypatch):
+    """🔴 테스트 수는 문서에 없다 — 본문 수치가 실측과 맞으면 STATE 없이 통과한다.
 
-
-def test_drift_fails_in_enforce_mode(monkeypatch, tmp_path):
-    """🔴 main push(기본 모드): drift = exit 1 — 이게 배치 이월의 종결 신호다."""
-    _patch_state(monkeypatch, tmp_path, 100, 90)
-    _patch_counts(monkeypatch, 95, 10)
-    assert mod.main([]) == 1
-
-
-def test_drift_passes_in_advisory_mode(monkeypatch, tmp_path, capsys):
-    """PR: drift 는 loud 경고 + exit 0 — 병렬 PR 의 STATE 충돌을 강제하지 않는다."""
-    _patch_state(monkeypatch, tmp_path, 100, 90)
-    _patch_counts(monkeypatch, 95, 10)
-    assert mod.main(["--advisory-drift"]) == 0
-    assert "drift" in capsys.readouterr().out
-
-
-def test_tool_failure_fails_even_in_advisory_mode(monkeypatch, tmp_path):
-    """🔴 도구 실패는 advisory 에서도 exit 1 — 이것이 `|| true` 와의 경계다 (Grok 계약).
-
-    여기가 뚫리면 "PR 에서는 collect 가 죽어도 초록" = 가드가 아무것도 안 보는데 통과.
+    문서 사본(STATE 종합 수치)과 대조하던 판은 그 줄이 없으면 fail-closed 로 red 였다.
     """
-    _patch_state(monkeypatch, tmp_path, 100, 90)
+    _patch_collect(monkeypatch, 6851)
+    _patch_body(monkeypatch, "pytest tests/unit  →  6842 passed / 9 skipped / EXIT=0")
+    assert mod.main() == 0
 
+
+def test_main_body_mismatch_is_red(monkeypatch):
+    """본문 숫자가 실측과 다르면 red — #1310 이 이 형태였다(본문만 −1)."""
+    _patch_collect(monkeypatch, 6851)
+    _patch_body(monkeypatch, _REAL_MISMATCH)          # 6841 + 9 = 6850 != 6851
+    assert mod.main() == 1
+
+
+def test_main_collection_failure_is_red(monkeypatch):
+    """🔴 수집이 죽으면 red — 본문 수치를 아무것과도 대조하지 못했다 (`|| true` 와의 경계)."""
     def _boom(_path):
         raise RuntimeError("pytest collect 실패 (exit 2)")
     monkeypatch.setattr(mod, "collect_count", _boom)
-    assert mod.main(["--advisory-drift"]) == 1
+    _patch_body(monkeypatch, "pytest tests/unit  →  6842 passed / 9 skipped")
+    assert mod.main() == 1
 
 
-def test_state_regex_miss_fails_even_in_advisory_mode(monkeypatch, tmp_path):
-    """🔴 STATE 형식 drift 도 모드 무관 exit 1 — 축 소멸을 조용히 넘기지 않는다."""
-    docs = tmp_path / "docs"
-    docs.mkdir()
-    (docs / "STATE.md").write_text("형식이 완전히 바뀐 STATE\n", encoding="utf-8")
-    monkeypatch.setattr(mod, "_ROOT", tmp_path)
-    assert mod.main(["--advisory-drift"]) == 1
+def test_main_with_junit_compares_the_run_and_skips_collection(monkeypatch, tmp_path):
+    """CI — junit 이 있으면 수집(≈11초)하지 않고 실행 결과와 대조한다."""
+    calls = _patch_collect(monkeypatch, 999)
+    monkeypatch.setattr(mod, "_JUNIT", _junit(tmp_path, [("tests.unit.a.test_x", "pass")] * 3))
+    _patch_body(monkeypatch, _claim(3, 0))
+    assert mod.main() == 0
+    assert calls == [], "junit 이 있는데 수집을 돌렸다 — 쓰이지 않는 11초다"
 
 
-def test_missing_state_file_fails(monkeypatch, tmp_path):
-    monkeypatch.setattr(mod, "_ROOT", tmp_path)
-    assert mod.main([]) == 1
+def test_absent_claim_outside_a_pr_is_unmeasured_not_green(monkeypatch, capsys):
+    """PR 맥락이 없으면(로컬 · push) 미검출은 '안 쟀음' + 0 — 수집도 돌리지 않는다.
+
+    비봇 PR 의 수치 부재 red 는 `test_non_bot_missing_claim_is_red` 가 잰다.
+    """
+    calls = _patch_collect(monkeypatch, 6851)
+    _patch_body(monkeypatch, "수치 라인이 없는 본문")
+    assert mod.main() == 0
+    assert "미실행" in capsys.readouterr().out, "미검출이 조용히 통과하면 이 축은 관측되지 않는다"
+    assert calls == []
+
+
+def test_main_requires_claim_in_pr_context_when_author_missing(monkeypatch):
+    """배선: PR SHA 가 있으면 저자 변수 부재도 비봇 → 수치 부재 red."""
+    _patch_body(monkeypatch, "수치 라인이 없는 본문")
+    monkeypatch.setenv("PR_HEAD_SHA", "deadbeef")
+    assert mod.main() == 1
+
+
+def test_body_claim_axis_reads_the_single_hardened_reader(monkeypatch):
+    """배선(불변식 3) — 본문은 단일 리더(`read_pr_body`)로만 온다. 끊으면 축이 죽어야 한다.
+
+    죽지 않으면 어딘가에서 본문을 따로 읽고 있다는 뜻이고, 그건 `test_pr_body_single_reader` 가 막는 결함이다.
+    """
+    _patch_collect(monkeypatch, 6851)
+    assert mod.main() == 0          # 본문 없음 → 미실행
+    _patch_body(monkeypatch, _REAL_MISMATCH)
+    assert mod.main() == 1          # 같은 리더로 본문이 오면 red
 
 
 # ── collect_count — 실행 실패의 fail-closed (subprocess 경계) ────────────
@@ -182,7 +164,7 @@ def test_collect_count_raises_when_line_missing(monkeypatch):
         mod.collect_count("tests/unit")
 
 
-# ── CI 배선 — PR advisory / main enforce 2스텝 (호출 형태 관측) ──────────
+# ── CI 배선 (호출 형태 관측) ─────────────────────────────────────────────
 
 
 def _ci_steps():
@@ -191,57 +173,19 @@ def _ci_steps():
     return [s for job in ci["jobs"].values() for s in job.get("steps", [])]
 
 
-def test_ci_wires_blocking_step_for_pull_requests():
-    """🔴 PR 스텝은 **차단**이어야 한다 — `--advisory-drift` 금지 (2026-08-07 계약 변경).
+def test_ci_wires_the_claim_step_for_pull_requests():
+    """🔴 PR 스텝이 본문 · SHA · 저자 변수를 넘긴다 — 저자 신원은 이벤트에서만(본문 마커는 자기인증).
 
-    ## 왜 계약이 바뀌었나
-
-    이 테스트의 초판은 정반대를 못박고 있었다 — *"PR 스텝은 `--advisory-drift` 를 쓴다"*.
-    그 계약이 실제 사고를 냈다: 오판독한 정수 하나가 `check_docs_sync --fix` 로 **4지점에
-    자동 전파**돼 문서 사본은 완벽히 일치했고(그 가드는 ✅), ground-truth 가드는 정확히
-    잡았지만 **PR 에서 exit 0** 이라 통과·머지됐다. 그리고 막을 수 없는 곳(main push)에서만
-    빨개져 **main CI 가 2연속 red** 였다.
-
-    advisory 를 정당화하던 근거는 *"브랜치 보호 부재라 red 가 머지를 막지 못한다"* 는
-    주석이었는데 그것은 이미 거짓이었다(required 10종 + `enforce_admins: true` 실측).
-
-    배치-PR 이월은 사라지지 않았다 — `STATE-sync-deferred:` **명시 마커**로 승격했고
-    그 사용은 job summary 에 계수된다. 조용한 통과 → 보이는 결정.
+    push 에는 PR 본문이 없어 이 축이 잴 것이 없다 — 스텝은 PR 에서만 돈다.
     """
-    hits = [
-        s for s in _ci_steps()
-        if invokes(s.get("run", ""), "scripts/check_test_count_sync.py")
-        and "pull_request" in str(s.get("if", ""))
-    ]
-    assert hits, "PR 스텝이 없다 — 이 축이 PR 에서 아예 돌지 않는다"
-    for step in hits:
-        assert "--advisory-drift" not in step.get("run", ""), (
-            "PR 스텝이 `--advisory-drift` 를 쓴다 — 드리프트가 PR 을 통과해 "
-            "**막을 수 없는 곳(main push)에서만** 빨개진다(2026-08-07 실사고)."
-        )
-    assert any("PR_BODY" in str(s.get("env", {})) for s in hits), (
-        "PR 스텝이 `PR_BODY` 를 넘기지 않는다 — 이월 마커가 원리적으로 동작하지 않는다"
+    hits = [s for s in _ci_steps() if invokes(s.get("run", ""), "scripts/check_test_count_sync.py")]
+    assert hits, "수치 스텝이 없다 — 이 축이 CI 에서 아예 돌지 않는다"
+    assert all("pull_request" in str(s.get("if", "")) for s in hits), (
+        "PR 밖에서 도는 수치 스텝이 있다 — 본문이 없는 이벤트에서는 «미실행» 만 찍는다"
     )
-    env_blob = " ".join(str(s.get("env", {})) for s in hits)
-    assert "PR_AUTHOR_LOGIN" in env_blob, (
-        "PR 스텝이 `PR_AUTHOR_LOGIN` 을 넘기지 않는다 — 봇 판정이 본문 자기인증이 된다"
-    )
-    assert "PR_AUTHOR_TYPE" in env_blob, (
-        "PR 스텝이 `PR_AUTHOR_TYPE` 을 넘기지 않는다 — 봇 판정이 본문 자기인증이 된다"
-    )
-
-
-def test_ci_wires_enforce_step_for_main_push():
-    """🔴 main push 스텝 — advisory 플래그 **없이** + `if: push` (drift 시 red)."""
-    hits = [
-        s for s in _ci_steps()
-        if invokes(s.get("run", ""), "scripts/check_test_count_sync.py")
-        and "--advisory-drift" not in s.get("run", "")
-    ]
-    assert hits, "enforce 스텝이 없다 — main 에서 drift 가 영영 초록이다"
-    assert any("push" in str(s.get("if", "")) for s in hits), (
-        "enforce 스텝에 push 조건이 없다"
-    )
+    passed = " ".join(str(s.get("env", {})) for s in hits)
+    for key in ("PR_BODY", "PR_HEAD_SHA", "PR_AUTHOR_LOGIN", "PR_AUTHOR_TYPE"):
+        assert key in passed, f"PR 스텝이 `{key}` 를 넘기지 않는다"
 
 
 # ── 본문 수치 축 (R48 — "돌렸는가" 대신 "본문 숫자가 기계값에서 파생됐는가") ──────
@@ -253,8 +197,8 @@ def test_ci_wires_enforce_step_for_main_push():
 #   #1312 6860+9=6869 vs 6885(−16). 🔴 **base drift 가설은 배제됐다**: 브랜치 tip 에서
 #   재측정해도 수집값이 머지 커밋과 같았다(6819·6851·6885) — 저자 수치가 실제로 틀렸다.
 #
-# 🔴 2026-08-15: 비봇 PR 의 수치 라인 부재는 red. 봇 PR · `--advisory-drift` · CI push
-#   는 기존 *"미실행"* 문구 + 0. 이 축은 여전히 *신선도* 만 잰다 (R76).
+# 🔴 2026-08-15: 비봇 PR 의 수치 라인 부재는 red. 봇 PR · PR 맥락이 없는 실행(로컬 · push)
+#   은 *"미실행"* 문구 + 0. junit 이 있으면 실행 결과와, 없으면 수집값과 대조한다.
 
 # 실제 PR 본문에서 그대로 가져온 형식 2종 (합성 문자열 아님 — 불변식 2)
 _REAL_ARROW = "pytest tests/unit  →  6800 passed / 9 skipped / EXIT=0  (+16)"      # #1305
@@ -317,65 +261,6 @@ def test_thousands_separator_is_not_truncated():
     assert mod.parse_body_claim("| `pytest tests/unit` | **6,995 passed / 9 skipped** |") == (6995, 9)
 
 
-def _patch_body(monkeypatch, body: str):
-    monkeypatch.setattr(mod, "deferral_carriers", lambda: ("", body))
-
-
-def test_body_claim_mismatch_fails_even_when_state_matches(monkeypatch, tmp_path):
-    """🔴 이 축의 존재 이유 — STATE 가 맞아도 본문 숫자가 틀리면 red.
-
-    #1310 이 정확히 이 형태였다: STATE·사본은 전부 일치했고 본문만 −1 이었다.
-    """
-    _patch_state(monkeypatch, tmp_path, 7022, 6851)
-    _patch_counts(monkeypatch, 6851, 171)
-    _patch_body(monkeypatch, _REAL_MISMATCH)          # 6841 + 9 = 6850 != 6851
-    assert mod.main([]) == 1
-
-
-def test_body_claim_match_passes(monkeypatch, tmp_path):
-    """대조군 — 같은 경로에서 본문이 맞으면 초록이어야 한다(과교정 방지)."""
-    _patch_state(monkeypatch, tmp_path, 7022, 6851)
-    _patch_counts(monkeypatch, 6851, 171)
-    _patch_body(monkeypatch, "pytest tests/unit  →  6842 passed / 9 skipped / EXIT=0")
-    assert mod.main([]) == 0
-
-
-def test_body_claim_mismatch_fails_in_advisory_mode_too(monkeypatch, tmp_path):
-    """`--advisory-drift` 가 완화하는 것은 **STATE 드리프트**뿐이다 — 본문 거짓 수치는 아니다.
-
-    🔴 **초판은 공허했다** (적대 감사 `wf_9a4878aa-eab` 적발): STATE 를 *일치*시켜 놓아
-    `main` 이 STATE-일치 분기에서 먼저 반환했고, advisory 분기에는 **도달조차 못 했다**.
-    그래서 그 분기가 `claim_rc` 를 버리고 있는데도 이 테스트가 초록이었다.
-    이제 STATE 를 **드리프트**시켜 advisory 분기를 실제로 통과시킨다.
-    """
-    _patch_state(monkeypatch, tmp_path, 7022, 6851)
-    _patch_counts(monkeypatch, 6900, 171)          # STATE 와 어긋나야 advisory 분기로 간다
-    _patch_body(monkeypatch, "pytest tests/unit  →  6800 passed / 9 skipped")
-    assert mod.main(["--advisory-drift"]) == 1
-
-
-def test_advisory_branch_is_actually_reached_by_that_test(monkeypatch, tmp_path, capsys):
-    """대조군 — 위 테스트가 정말 advisory 분기를 지나는지 배너로 확인한다(도달 증명)."""
-    _patch_state(monkeypatch, tmp_path, 7022, 6851)
-    _patch_counts(monkeypatch, 6900, 171)
-    _patch_body(monkeypatch, "pytest tests/unit  →  6900 passed / 0 skipped")
-    assert mod.main(["--advisory-drift"]) == 0     # 본문은 맞고 STATE 만 드리프트
-    assert "(advisory)" in capsys.readouterr().out, "advisory 분기에 도달하지 못했다 — 단언이 공허하다"
-
-
-def test_absent_claim_is_reported_not_silently_green(monkeypatch, tmp_path, capsys):
-    """PR 컨텍스트가 없으면(로컬·push) 미검출은 '안 쟀음' + 0 — 매번 red 가 되면 안 된다.
-
-    비봇 PR 의 수치 부재 red 는 `test_non_bot_missing_claim_is_red` 가 잰다.
-    """
-    _patch_state(monkeypatch, tmp_path, 7022, 6851)
-    _patch_counts(monkeypatch, 6851, 171)
-    _patch_body(monkeypatch, "수치 라인이 없는 본문")
-    assert mod.main([]) == 0
-    out = capsys.readouterr().out
-    assert "미실행" in out, "미검출이 조용히 통과하면 이 축은 관측되지 않는다"
-
-
 def test_non_bot_missing_claim_is_red(monkeypatch, capsys):
     """비봇 저자 + 수치 라인 없음 → red (R48 잔여 — 공허 통과 차단)."""
     monkeypatch.setenv("PR_AUTHOR_LOGIN", "xzawed")
@@ -431,8 +316,8 @@ def test_mismatched_claim_still_fails_without_author_env(monkeypatch):
     assert mod.check_body_claim(_REAL_MISMATCH, 6851) == 1
 
 
-def test_advisory_flag_does_not_fail_on_missing_claim(monkeypatch, capsys):
-    """`--advisory-drift` / 로컬 pre-push — 수치 부재를 hard-fail 하지 않는다."""
+def test_advisory_does_not_fail_on_missing_claim(monkeypatch, capsys):
+    """PR 맥락이 없는 실행(로컬 · push) — 수치 부재를 hard-fail 하지 않는다."""
     monkeypatch.setenv("PR_AUTHOR_LOGIN", "xzawed")
     monkeypatch.setenv("PR_AUTHOR_TYPE", "User")
     assert mod.check_body_claim(
@@ -441,42 +326,18 @@ def test_advisory_flag_does_not_fail_on_missing_claim(monkeypatch, capsys):
     assert "미실행" in capsys.readouterr().out
 
 
-def test_main_requires_claim_in_pr_context_when_author_missing(
-    monkeypatch, tmp_path,
-):
-    """배선: PR SHA 가 있으면 저자 env 부재도 비봇 → 수치 부재 red."""
-    _patch_state(monkeypatch, tmp_path, 7022, 6851)
-    _patch_counts(monkeypatch, 6851, 171)
-    _patch_body(monkeypatch, "수치 라인이 없는 본문")
-    monkeypatch.setenv("PR_HEAD_SHA", "deadbeef")
-    assert mod.main([]) == 1
+def test_body_mismatch_is_recorded_in_the_job_summary(monkeypatch, tmp_path):
+    """🔴 불일치는 사람이 여는 자리(job summary)에 남는다 — 로그 안쪽만으로는 아무도 안 본다."""
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    assert mod.check_body_claim(_REAL_MISMATCH, 6851) == 1
+    assert "본문 수치 불일치" in summary.read_text(encoding="utf-8")
 
 
-def test_advisory_drift_via_main_does_not_fail_on_missing_claim(
-    monkeypatch, tmp_path, capsys,
-):
-    """로컬 `pre_push_gate --advisory-drift` 는 PR SHA 가 있어도 수치 부재를 막지 않는다."""
-    _patch_state(monkeypatch, tmp_path, 7022, 6851)
-    _patch_counts(monkeypatch, 6851, 171)
-    _patch_body(monkeypatch, "수치 라인이 없는 본문")
-    monkeypatch.setenv("PR_HEAD_SHA", "deadbeef")
-    monkeypatch.setenv("PR_AUTHOR_TYPE", "User")
-    assert mod.main(["--advisory-drift"]) == 0
-    assert "미실행" in capsys.readouterr().out
-
-
-def test_body_claim_axis_reads_the_single_hardened_reader(monkeypatch, tmp_path):
-    """배선(불변식 3) — 새 축이 별도 env 리더를 만들지 않고 기존 단일 리더를 탄다.
-
-    `deferral_carriers()` 를 끊으면 축이 죽어야 한다. 죽지 않으면 어딘가에서 본문을
-    따로 읽고 있다는 뜻이고, 그건 `test_pr_body_single_reader` 가 막는 결함이다.
-    """
-    _patch_state(monkeypatch, tmp_path, 7022, 6851)
-    _patch_counts(monkeypatch, 6851, 171)
-    monkeypatch.setattr(mod, "deferral_carriers", lambda: ("", ""))
-    assert mod.main([]) == 0          # PR 컨텍스트 없음 → 미실행
-    _patch_body(monkeypatch, _REAL_MISMATCH)
-    assert mod.main([]) == 1          # 같은 리더로 본문이 오면 red
+def test_summary_write_failure_never_changes_the_verdict(monkeypatch):
+    """기록 실패가 판정을 바꾸면 안 된다 — 로깅이 게이트를 흔들면 그 자체가 결함이다."""
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", "/nonexistent-dir/summary.md")
+    mod._append_step_summary("x")  # 예외가 나면 이 테스트가 실패한다
 
 
 # ── 실행 증거 축: junit XML 대조 (#1442 b) ────────────────────────────────────
@@ -597,3 +458,9 @@ def test_without_junit_it_falls_back_to_collection_and_says_so(tmp_path, monkeyp
     assert mod.check_body_claim(_claim(6, 0), unit=6) == 0
     out = capsys.readouterr().out
     assert "수집" in out and "실행 증거 아님" in out
+
+
+def test_fallback_without_a_collected_count_is_red(capsys):
+    """🔴 junit 도 수집값도 없으면 대조할 실측이 없다 — 초록이 아니라 red."""
+    assert mod.check_body_claim(_claim(6, 0), unit=None) == 1
+    assert "실측" in capsys.readouterr().err

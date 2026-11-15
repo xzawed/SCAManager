@@ -8,7 +8,7 @@
 2. 🔴 `make gate` 는 있었어도 부족하다 — 그 타깃은 pytest·pylint·bandit 뿐이라
    CI 의 repo-integrity 가드와 PR-diff 한정 가드를 **하나도** 돌리지 않는다.
    (2026-08-17 정정 — 여기 «7종 · 4종» 이라 적혀 있었으나 실측은 13 · 4 였다.
-   개수는 `pre_push_gate` 의 `_INTEGRITY` · `_INTEGRITY_WITH_ARGS` · `_DIFF_SCOPED` 가 정본이고
+   개수는 `pre_push_gate` 의 `_INTEGRITY` · `_DIFF_SCOPED` 가 정본이고
    손유지 숫자는 목록이 늘 때마다 조용히 거짓이 된다.)
 
 실제로 한 세션에서 `Block new dual-import` 에 **두 번** 걸렸고 두 번 다 로컬은 초록이었다.
@@ -58,8 +58,7 @@ def test_runner_covers_every_ci_guard_script():
     CI 에 가드가 추가됐는데 러너가 모르면, 로컬 초록이 CI 초록을 의미하지 않게 된다 —
     이 러너 자체가 새 observer-lie 가 되는 경로다.
     """
-    covered = (set(gate._INTEGRITY) | set(gate._DIFF_SCOPED)
-               | {name for name, _args in gate._INTEGRITY_WITH_ARGS})
+    covered = set(gate._INTEGRITY) | set(gate._DIFF_SCOPED)
     missing = ci_guard_scripts() - covered
     assert not missing, (
         f"CI 는 부르는데 러너가 안 부르는 가드: {sorted(missing)}\n"
@@ -69,8 +68,7 @@ def test_runner_covers_every_ci_guard_script():
 
 def test_runner_does_not_list_scripts_that_do_not_exist():
     """목록에 죽은 경로가 있으면 그 항목은 영원히 FAIL 이거나 무의미하다."""
-    listed = (*gate._INTEGRITY, *gate._DIFF_SCOPED,
-              *(name for name, _args in gate._INTEGRITY_WITH_ARGS))
+    listed = (*gate._INTEGRITY, *gate._DIFF_SCOPED)
     for name in listed:
         assert (_ROOT / "scripts" / name).exists(), f"러너 목록에 없는 파일: {name}"
 
@@ -285,7 +283,19 @@ def test_pr_context_guards_are_unmeasured_without_a_body(monkeypatch):
     seen = _record_runs(monkeypatch)
     gate.run_integrity(sys.executable, None)
     assert {name for name, call in seen.items() if call.get("unmeasured")} == set(gate._NEEDS_PR_CONTEXT)
-    assert "--advisory-drift" in seen["check_test_count_sync.py"]["argv"]
+
+
+def test_the_count_claim_guard_is_unmeasured_without_a_body(monkeypatch):
+    """🔴 본문 수치 가드는 본문이 없으면 잴 것이 없다 — exit 0 을 «OK» 가 아니라 «SKIP» 으로 찍는다.
+
+    테스트 수를 문서에 적던 때는 본문 없이도 STATE 를 실측과 대조했다. 그 축이 없어진 지금
+    본문 없는 실행이 낸 초록은 아무것도 재지 않은 초록이다.
+    """
+    seen = _record_runs(monkeypatch)
+    gate.run_integrity(sys.executable, None)
+    call = seen["check_test_count_sync.py"]
+    assert call.get("unmeasured") is True, call
+    assert call["argv"][2:] == [], f"수치 가드에 남은 인자: {call['argv'][2:]}"
 
 
 def test_a_body_makes_every_guard_measure_like_ci(monkeypatch):
@@ -297,11 +307,10 @@ def test_a_body_makes_every_guard_measure_like_ci(monkeypatch):
     assert "-m" in seen, "flake8 호출을 못 잡았다 — 이 단언이 공허하다"
     assert not any(call.get("unmeasured") for call in seen.values())
     assert all(call.get("env") == context for call in seen.values())
-    assert "--advisory-drift" not in seen["check_test_count_sync.py"]["argv"], "CI 의 PR 모드는 advisory 가 아니다"
 
 
-# witness-corpus: PR 본문을 읽지만 본문 없이도 제 축(수집 수 · 변경 diff)을 재는 가드 — «안 잼» 으로 찍으면 안 된다
-_BODY_READERS_THAT_STILL_MEASURE = ["check_test_count_sync.py", "check_witness_set_predicates.py"]
+# witness-corpus: PR 본문을 읽지만 본문 없이도 제 축(변경 diff)을 재는 가드 — «안 잼» 으로 찍으면 안 된다
+_BODY_READERS_THAT_STILL_MEASURE = ["check_witness_set_predicates.py"]
 
 
 @pytest.mark.parametrize("guard", _BODY_READERS_THAT_STILL_MEASURE)
