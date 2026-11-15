@@ -1189,22 +1189,32 @@
     // KPI 카운트업 (data-count 속성 기반)
     // KPI count-up (data-count attribute based)
     function countUp(el, duration) {
-      var raw = el.dataset.count || el.textContent.replace(/[^0-9.]/g, '');
+      // 🔴 끝값은 서버가 쓴 글자 원문이다 — `toLocaleString()` 은 브라우저 로케일로 자릿수를 묶어 1000 이상을
+      //    «1,234» · «1.234» 로 끝냈다(회고 원장 L04 P2-63). 도중 값도 서버 글자에 쉼표 구분이 있을 때만 묶는다.
+      // The final text is the server's original; mid-animation grouping follows it, not the browser locale.
+      var finalText = el.textContent;
+      // 🔴 «동작 줄이기» 면 서버 글자를 그대로 둔다 — effects.js `reduced()` 와 같은 기준(P2-62).
+      // Under reduced motion the server's text is left as is (same test as effects.js `reduced()`).
+      if (document.documentElement.getAttribute('data-motion') === 'still'
+          || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      var raw = el.dataset.count || finalText.replace(/[^0-9.]/g, '');
       var target = parseFloat(raw);
       if (isNaN(target)) return;
       var suffix = el.dataset.suffix || '';
       // 서버가 쓴 소수 자릿수 그대로 — `String(50.0)` 은 "50" 이라 «50.0%» 가 «50%» 로 끝났다.
       // Keep the server's decimal places: String(50.0) is "50", so "50.0%" used to end as "50%".
       var dec = (String(raw).split('.')[1] || '').length;
+      var grouped = /\d,\d{3}/.test(finalText);
       var start = performance.now();
       function tick(now) {
         // 하한 0 — rAF 시각(프레임 시작)이 start 보다 이를 수 있다. 음수면 음수가 한 프레임 그려진다.
         // Clamp at 0: the rAF timestamp can precede `start`.
         var p = Math.min(Math.max((now - start) / (duration || 1200), 0), 1);
-        var ease = 1 - Math.pow(1 - p, 3);
-        var val = dec > 0 ? (ease * target).toFixed(dec) : Math.round(ease * target).toLocaleString();
+        if (p >= 1) { el.textContent = finalText; return; }
+        var n = (1 - Math.pow(1 - p, 3)) * target;
+        var val = dec > 0 ? n.toFixed(dec) : (grouped ? Math.round(n).toLocaleString('en-US') : String(Math.round(n)));
         el.textContent = val + suffix;
-        if (p < 1) requestAnimationFrame(tick);
+        requestAnimationFrame(tick);
       }
       requestAnimationFrame(tick);
     }
