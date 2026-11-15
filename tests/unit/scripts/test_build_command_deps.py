@@ -100,9 +100,12 @@ def _violations(text: str, requirements: str) -> list[str]:
         elif source == _PIP and not (pip_installed and _PIP_DISTRIBUTION[cmd] in requirements):
             problems.append(f"{cmd}: requirements 설치 전이거나 {_PIP_DISTRIBUTION[cmd]} 이 없다")
         installed |= apt_installs(argv)
-        venv = venv or argv[1:3] == ["-m", "venv"]
-        if argv[1:3] == ["-m", "venv"] and len(argv) > 3:
-            venvs.add(argv[3])
+        # 명령 자리부터 읽는다 — 앞에 `VAR=값` 이 붙으면 argv[1:3] 이 밀려 venv 를 놓친다(Grok claim-review 반증).
+        # Read from the command's position; a leading `VAR=value` shifts argv[1:3].
+        args = argv[argv.index(cmd):]
+        venv = venv or args[1:3] == ["-m", "venv"]
+        if args[1:3] == ["-m", "venv"] and len(args) > 3:
+            venvs.add(args[3])
         pip_installed = pip_installed or (cmd == "pip" and "requirements.txt" in argv)
     return problems
 
@@ -139,6 +142,9 @@ def test_every_invoked_command_is_provisioned_before_use():
     # 자기 venv 의 절대 경로 명령 — 바로 그 venv 가 앞에서 만들어졌으면 위반 없음
     ("RUN apt-get install -y python3.12 python3.12-venv\n"
      "RUN python3.12 -m venv /opt/x && /opt/x/bin/pip install a", []),
+    # 앞에 `VAR=값` 이 붙은 venv 생성도 venv 생성이다(Grok 반증 — 종전엔 위반으로 잘못 셌다)
+    ("RUN apt-get install -y python3.12 python3.12-venv\n"
+     "RUN FOO=bar python3.12 -m venv /opt/x && /opt/x/bin/pip install a", []),
     # 🔴 그 venv 를 만들기 전에 부른다
     ("RUN apt-get install -y python3.12 python3.12-venv\n"
      "RUN /opt/x/bin/pip install a\nRUN python3.12 -m venv /opt/x",
