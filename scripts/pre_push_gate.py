@@ -10,7 +10,7 @@
    **호출 명령이 존재하지 않는다**(backlog R29).
 2. 🔴 **`make gate` 는 있었어도 부족하다.** 그 타깃은 `pytest` + `pylint` + `bandit` 뿐이라
    CI 의 **repo-integrity 가드와 PR-diff 한정 가드**를 하나도 돌리지 않는다(목록 정본은
-   아래 `_INTEGRITY` · `_INTEGRITY_WITH_ARGS` · `_DIFF_SCOPED`). 실제로 이 세션은
+   아래 `_INTEGRITY` · `_DIFF_SCOPED`). 실제로 이 세션은
    `Block new dual-import` 에 **두 번** 걸렸고, 두 번 다 로컬에서는 초록이었다.
    ⚠️ 2026-08-17 정정 — 이 자리에 «repo-integrity 7종 · PR-diff 한정 4종» 이라 적혀 있었다.
    :24 가 «개수를 여기 적지 않는다» 고 기록한 바로 그 docstring 이 두 문단 위에서 그것을
@@ -22,7 +22,7 @@
 ## 이 스크립트가 덮는 것 / 덮지 못하는 것 (정직 기준)
 
 덮는다 — CI 가 강제하고 로컬에서 네트워크 없이 재현 가능한 것:
-  · repo-integrity stdlib 가드 (whole-repo 상태) — 목록 정본은 `_INTEGRITY` + `_INTEGRITY_WITH_ARGS`
+  · repo-integrity stdlib 가드 (whole-repo 상태) — 목록 정본은 `_INTEGRITY`
   · PR-diff 한정 — 목록 정본은 `_DIFF_SCOPED` + flake8 F401/F841
   · `--full` 시 pylint(임계는 README 배지에서 파생) + bandit + `pytest tests/unit`
 
@@ -69,9 +69,9 @@ _PY_VERSION_RE = re.compile(r"python-version:\s*[\"']?(3\.\d+)")
 # Whole-repo state guards, mirroring the CI repo-integrity job.
 _INTEGRITY = (
     # 커밋된 병합 충돌 마커 (2026-08-12 실사고 — README 2종이 `#1328` 이래 깨진 채 main 에 있었다).
-    # 🔴 `check_docs_sync.py` **앞**에 둔다 — 그쪽 `--fix` 가 충돌 블록 안쪽을 고쳐 쓰므로,
-    #    마커를 먼저 잡지 않으면 "정합 ✅" 가 깨진 파일 위에서 인쇄된다.
-    # Runs first: the badge autofixer can rewrite a line inside a conflict block.
+    # 🔴 문서 가드들 **앞**에 둔다 — 마커를 먼저 잡지 않으면 충돌 블록 안의 줄을 읽은 가드가
+    #    깨진 파일 위에서 "정합 ✅" 를 인쇄한다.
+    # Runs first, so no doc guard prints agreement on top of a conflicted file.
     "check_conflict_markers.py",
     "check_docs_sync.py",
     "check_architecture_tree_sync.py",
@@ -98,15 +98,10 @@ _INTEGRITY = (
     # `--pr-body` 를 주면 CI(`test-and-analyze` job)와 같은 env 로 실제로 돈다.
     # Without the PR env it exits 0 and this runner prints SKIP; with --pr-body it runs like CI.
     "check_reverse_mutation.py",
-)
-
-# 인자가 필요한 whole-repo 가드 — CI 와 같은 형태로 부른다.
-# 🔴 `check_test_count_sync` 는 PR 에서 advisory(`--advisory-drift`), main push 에서 enforce 다.
-#    로컬은 push 전이므로 PR 모드를 쓴다 — drift 는 경고하되 게이트를 막지 않는다
-#    (막으면 trailing sync 전 모든 PR 이 red 가 되어 정책 17 위반).
-# Local runs mirror the PR (advisory) mode; enforcing here would red-flag every pre-sync PR.
-_INTEGRITY_WITH_ARGS = (
-    ("check_test_count_sync.py", ["--advisory-drift"]),
+    # 본문 수치 줄 ↔ 실측 — 본문이 없으면 잴 것이 없어 `SKIP`. `--pr-body` 면 수집값과 대조한다
+    # (로컬엔 junit 이 없어 「돌렸는가」가 아니라 「수가 신선한가」만 잰다).
+    # The PR-body count claim; without a body there is nothing to compare (SKIP).
+    "check_test_count_sync.py",
 )
 
 # PR-diff 한정 가드 — base sha 를 인자로 받는다.
@@ -146,7 +141,8 @@ _NOT_COVERED = ("CodeQL · SonarCloud · Codecov(patch coverage) — 서비스 �
 # PR 맥락(본문 · base/head)이 있어야 재는 가드 — 맥락 없이 낸 exit 0 은 «OK» 가 아니라 «안 잼» 이다
 # (회고 원장 L13 P2-75 — 비봇 PR 빨강의 거의 절반이 바로 이 두 스텝이었다). `--pr-body` 를 주면 CI 처럼 잰다.
 # Guards that need the PR context: their exit 0 without it is "not measured", not "OK".
-_NEEDS_PR_CONTEXT = frozenset({"check_claim_review_trace.py", "check_reverse_mutation.py"})
+_NEEDS_PR_CONTEXT = frozenset({"check_claim_review_trace.py", "check_reverse_mutation.py",
+                               "check_test_count_sync.py"})
 
 
 def _make_stdout_safe():
@@ -163,14 +159,9 @@ def _make_stdout_safe():
         pass  # 재구성 불가한 스트림(파이프·구버전) — 출력 인코딩은 최선 노력 / best-effort only
 
 
-def _run(label: str, argv: list[str], show_always: bool = False, env: dict | None = None,
-         unmeasured: bool = False) -> bool:
+def _run(label: str, argv: list[str], env: dict | None = None, unmeasured: bool = False) -> bool:
     """한 가드를 돌리고 통과 여부를 반환한다.
 
-    🔴 `show_always` — advisory 가드는 **exit 0 이면서 경고를 낸다**. 실패 시에만 출력하면
-    그 경고가 삼켜져 "OK" 만 보인다(경고가 존재 이유인데 안 보이는 것 = 이 저장소의
-    지배적 결함 재생산). advisory 축은 항상 인쇄한다.
-    Advisory guards exit 0 while warning; hiding their output would defeat their purpose.
     🔴 `unmeasured` — 재료(PR 맥락)가 없어 아무것도 못 잰 exit 0 은 «OK» 가 아니라 «SKIP» 으로 찍는다.
     An exit 0 that measured nothing (no PR context) prints SKIP, not OK.
     """
@@ -184,7 +175,7 @@ def _run(label: str, argv: list[str], show_always: bool = False, env: dict | Non
         print(f"  SKIP {label} — PR 맥락(본문 · base/head)이 없어 안 쟀다 · `--pr-body <파일>` 을 주면 CI 처럼 잰다")
         return ok
     print(f"  {'OK  ' if ok else 'FAIL'} {label}")
-    if not ok or show_always:
+    if not ok:
         body = (proc.stdout or "") + (proc.stderr or "")
         for line in body.strip().splitlines()[:12]:
             print(f"       {line}")
@@ -229,14 +220,8 @@ def pr_env(body_file: str | None, title: str, base: str) -> dict | None:
 def run_integrity(py: str, env: dict | None = None) -> list[str]:
     """whole-repo 상태 가드 — 실패한 것들의 이름. / Names of failed whole-repo guards."""
     print("== repo-integrity (whole-repo 상태) ==")
-    failed = [s for s in _INTEGRITY
-              if not _run(s, [py, f"scripts/{s}"], env=env, unmeasured=env is None and s in _NEEDS_PR_CONTEXT)]
-    for s, extra in _INTEGRITY_WITH_ARGS:
-        # PR 본문이 있으면 CI 의 PR 모드처럼 advisory 없이 잰다 / with a body, mirror CI's PR mode
-        args = [] if env else extra
-        if not _run(f"{s} {' '.join(args)}".strip(), [py, f"scripts/{s}", *args], show_always=True, env=env):
-            failed.append(s)
-    return failed
+    return [s for s in _INTEGRITY
+            if not _run(s, [py, f"scripts/{s}"], env=env, unmeasured=env is None and s in _NEEDS_PR_CONTEXT)]
 
 
 def run_diff_scoped(py: str, base: str, env: dict | None = None) -> list[str]:

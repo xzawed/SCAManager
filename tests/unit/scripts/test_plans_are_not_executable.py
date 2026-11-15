@@ -25,7 +25,7 @@ _UNCHECKED_THRESHOLD = 5
 
 # 🔴 인용 면제 — 실행 지시 어휘를 **서술로** 쓰는 문서(사이클 서사 등)를 위한 유일한 출구.
 # 사유 없는 빈 마커는 자기발급이므로 **10자 이상**을 요구한다
-# (`check_claim_review_trace._EXEMPT` · `check_test_count_sync._DEFERRED` 와 같은 관용구).
+# (`check_claim_review_trace._EXEMPT` 와 같은 관용구).
 #
 # 🔴 **정직 기준 — 이것은 길이만 잰다** (Grok claim-review `019ff074` 적발):
 # `xxxxxxxxxxxx` 같은 무의미한 10자도 통과한다. 즉 이 요구가 막는 것은 **빈 마커 자기발급**

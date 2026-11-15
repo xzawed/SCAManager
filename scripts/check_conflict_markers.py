@@ -111,8 +111,7 @@ def main() -> int:
         for rel, no, line in hits:
             print(f"   {rel}:{no}  {line[:70]}")
         print("\n   해결: 해당 블록을 올바른 한쪽으로 정리하고 마커 3줄을 제거한다.")
-        print("   🔴 파생 도구(`check_docs_sync.py --fix`)는 블록 **안쪽**을 고칠 수 있으므로,")
-        print("      값이 맞아 보여도 파일은 깨진 상태일 수 있다.")
+        print("   🔴 블록 안쪽 줄의 값이 맞아 보여도 파일은 깨진 상태다 — 다른 문서 가드의 ✅ 를 믿지 않는다.")
         return 1
     print(f"✅ 충돌 마커 0건 — 추적 파일 {len(files)}건 스캔")
     return 0

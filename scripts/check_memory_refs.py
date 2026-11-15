@@ -125,7 +125,7 @@ def normalize(slug: str) -> str:
 #      (`path::글자`)는 그 글자가 파일에 있어야 하고, `path:줄` · `path#조각` · 끝 `/` 는 경로만 본다.
 #      백틱 = 살아 있는 좌표다 — 죽은 파일을 역사로 말할 때는 백틱을 뺀다. 루트 파일을 못 봐 «삭제 금지»
 #      라 적힌 죽은 루트 파일 위에서 초록이었다.
-#    · 테스트 수의 흔한 꼴(E2E N · 단위 N · N 수집 · N passed) — 원천(`docs/STATE.md` ·
+#    · 테스트 수의 흔한 꼴(E2E N · 단위 N · N 수집 · N passed) — 원천(실행 결과 ·
 #      `e2e/EXPECTED_COUNT`)이 말한다. 처방 줄에 복사한 수치가 main 보다 6 PR 뒤처졌고, 그 수치를 무효로
 #      만든 커밋들에서 이 훅은 돌고도 초록이었다.
 #    · 머지 기록(«#번호 (머지) `sha`») 의 커밋 — 리포에 있어야 한다. 다른 꼴의 hex 는 배포 · 세션 ID 와
@@ -254,7 +254,7 @@ def reverse_dangling(memory_dir: Path, project_root: Path) -> list[str]:
                         out.append(f"{path.name}:{lineno}  {ref} — 그 파일에 앵커 «{anchor}» 가 없다")
             for m in _TEST_COUNT.finditer(line):
                 out.append(f"{path.name}:{lineno}  «{m.group(0).replace('*', '')}» — 처방 줄의 테스트 수는 썩는다"
-                           "(원천 = `docs/STATE.md` · `e2e/EXPECTED_COUNT` — 수치 대신 그쪽을 가리킨다)")
+                           "(원천 = 실행 결과 · `e2e/EXPECTED_COUNT` — 수치 대신 그쪽을 가리킨다)")
             merges += [(path.name, lineno, m.group(1)) for m in _MERGE_SHA.finditer(line)]
     missing = _missing_commits(project_root, [sha for *_, sha in merges])
     if missing is None:

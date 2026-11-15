@@ -70,12 +70,12 @@ jobs:
         with:
           python-version: "3.12"
 
-      # 🔴 충돌 마커는 배지 정합보다 **먼저** — check_docs_sync --fix 가 충돌 블록 안쪽을
-      #    고쳐 쓰므로 순서가 뒤바뀌면 깨진 파일 위에서 초록이 난다(ci.yml 과 동일 순서).
+      # 🔴 충돌 마커는 문서 가드보다 **먼저** — 충돌 블록 안의 줄을 읽은 가드가 깨진 파일 위에서
+      #    초록을 내지 않게(ci.yml 과 동일 순서).
       - name: 병합 충돌 마커 차단 (check_conflict_markers)
         run: python scripts/check_conflict_markers.py
 
-      - name: STATE↔README 배지 수치 정합 (check_docs_sync)
+      - name: README 배지 ↔ 원천 정합 — 핀 · pylint (check_docs_sync)
         run: python scripts/check_docs_sync.py
 
       - name: architecture 트리 싱크 (check_architecture_tree_sync)

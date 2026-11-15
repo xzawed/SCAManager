@@ -652,7 +652,7 @@ def test_new_value_kinds_apply_in_session_notes_too(tmp_path):
 
 
 def test_reverse_flags_test_counts_copied_onto_prescriptive_lines(tmp_path):
-    """🔴 테스트 수는 원천(`docs/STATE.md` · `e2e/EXPECTED_COUNT`)이 말한다 — 처방 줄에 복사하면 썩는다.
+    """🔴 테스트 수는 원천(실행 결과 · `e2e/EXPECTED_COUNT`)이 말한다 — 처방 줄에 복사하면 썩는다.
 
     실측: 인덱스 진입점의 수치가 main 보다 6 PR 뒤처졌고(P2-3), 그 수치를 무효로 만든 커밋 5개에서
     훅은 매번 돌고도 초록이었다 — 두 수치를 잇는 규칙이 없었다(P2-73 · P2-75).

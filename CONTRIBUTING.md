@@ -40,5 +40,6 @@ hand** — visual and deploy-dependent behaviour is outside the suite; UI change
 (dark/light/pastel/catppuccin) × desktop/mobile.
 
 Pre-commit enforces: new `src/` file → `docs/architecture.md`, new env var → env-vars.md.
-Test and lint numbers → `docs/STATE.md` + README badges are checked in CI and by
-`py -3 scripts/pre_push_gate.py`, not at commit time.
+Pin and pylint values in `docs/STATE.md` + README badges are checked in CI and by
+`py -3 scripts/pre_push_gate.py`, not at commit time. Test counts are not written in docs —
+the PR body's first line is checked against the CI run.
