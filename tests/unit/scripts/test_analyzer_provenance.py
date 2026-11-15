@@ -60,7 +60,8 @@ _PROVENANCE = {
     "psscriptanalyzer": ("pwsh", OPTIONAL, "PowerShell 미탑재"),
     "python": ("pylint", PIP, ""),
     "rubocop": ("rubocop", BUILD, ""),
-    "semgrep": ("semgrep", PIP, ""),
+    # semgrep 은 앱 requirements 가 아니라 이미지 빌드의 자기 venv(`/opt/semgrep`)에서 온다(회고 원장 L09).
+    "semgrep": ("semgrep", BUILD, ""),
     "shellcheck": ("shellcheck", APT, ""),
     "slither": ("slither", BUILD, ""),
     "sqlfluff": ("sqlfluff", PIP, ""),

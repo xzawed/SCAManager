@@ -149,11 +149,11 @@ def test_txt_targets_are_parsed_and_checked():
     `txt` anchors were not even parsed; they must be parsed, pass when present, and be dead when absent.
     """
     mod = _load()
-    m = mod._ANCHOR.search("핀 근거는 `requirements.txt::semgrep==` 주석이다")
-    assert m and m.group(1) == "requirements.txt", "txt 대상이 앵커로 안 잡힌다"
+    m = mod._ANCHOR.search("핀 근거는 `requirements-semgrep.txt::semgrep==` 주석이다")
+    assert m and m.group(1) == "requirements-semgrep.txt", "txt 대상이 앵커로 안 잡힌다"
     tracked = mod.tracked_files()
-    assert mod._check_anchor("x.md", 1, "requirements.txt", "semgrep==", tracked, "`x`") is None
-    dead = mod._check_anchor("x.md", 1, "requirements.txt", "semgrep==0.0.0-no-such-pin", tracked, "`x`")
+    assert mod._check_anchor("x.md", 1, "requirements-semgrep.txt", "semgrep==", tracked, "`x`") is None
+    dead = mod._check_anchor("x.md", 1, "requirements-semgrep.txt", "semgrep==0.0.0-no-such-pin", tracked, "`x`")
     assert dead, "실재하지 않는 txt 앵커를 통과시켰다"
 
 

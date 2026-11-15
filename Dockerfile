@@ -84,6 +84,14 @@ COPY requirements.txt ./
 RUN python3.12 -m venv /opt/venv \
  && pip install --retries 5 --timeout 60 -r requirements.txt
 
+# semgrep — 앱과 **다른 venv**. 앱은 CLI 로만 부르므로 `semgrep` 하나만 PATH 에 링크한다(venv 의 bin 을 PATH 에
+# 올리면 그 venv 의 python 이 앱 python 을 가린다). 그 정확 전이 핀이 앱 의존성과 섞이지 않는다(requirements-semgrep.txt).
+# semgrep in its own venv; only its CLI is linked onto PATH so the app's python and pins stay its own.
+COPY requirements-semgrep.txt ./
+RUN python3.12 -m venv /opt/semgrep \
+ && /opt/semgrep/bin/pip install --retries 5 --timeout 60 -r requirements-semgrep.txt \
+ && ln -s /opt/semgrep/bin/semgrep /usr/local/bin/semgrep
+
 # slither 가 Solidity 를 컴파일할 solc — solc-select 는 slither-analyzer 의 전이 의존이다.
 # The solc compiler slither needs; solc-select arrives transitively with slither-analyzer.
 RUN solc-select install 0.8.20 \

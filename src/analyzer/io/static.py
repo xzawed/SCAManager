@@ -326,7 +326,7 @@ def analyze_file(  # pylint: disable=too-many-locals
     # deployment regression (block)" 이라 적는데 코드가 그 계약을 이행하지 않았다.
     #
     # 실측 연쇄: `railway.toml` 이 조달 실패를 `|| echo WARNING` 으로 삼킴 → rubocop·
-    # golangci-lint·slither 부재 → 그러나 semgrep 은 `requirements.txt` 상시 설치이고
+    # golangci-lint·slither 부재 → 그러나 semgrep 은 이미지에 상시 설치(자기 venv)이고
     # `SUPPORTED_LANGUAGES` 에 ruby·go·solidity 가 있어 `ran >= 1` → incomplete 미설정 →
     # `score_is_unreliable()` False → `auto_merge.py` 의 incomplete 차단 미발동.
     # 결과: 그 세 언어 PR 이 **전용 분석기 0회 실행**으로 정적 만점을 받고 auto-merge 에 도달.
