@@ -326,6 +326,8 @@ def print_blind_spots(full: bool) -> None:
         print(f"  · {item}")
     if not full:
         print("  · pylint · bandit · pytest — `--full` 을 붙여야 실행된다")
+    # 여기 초록이 덮는 CI 잡은 이것뿐이다 / the only CI jobs a green run here covers
+    print(f"  · 여기서 도는 ci.yml 잡: {' · '.join(sorted(_COVERED_JOBS))}")
     # 🔴 인터프리터 이원은 --full 여부와 무관하게 항상 보인다 (backlog R30).
     # The interpreter drift line is always visible, regardless of --full.
     local = f"{sys.version_info.major}.{sys.version_info.minor}"

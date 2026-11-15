@@ -321,3 +321,12 @@ def test_pr_context_has_the_ci_shape(tmp_path):
     assert context["PR_BASE_SHA"] == "c" * 40
     assert len(context["PR_HEAD_SHA"]) == 40 and all(ch in "0123456789abcdef" for ch in context["PR_HEAD_SHA"])
     assert gate.pr_env(None, "", "c" * 40) is None
+
+
+def test_blind_spots_name_the_jobs_the_gate_covers(capsys):
+    """여기 초록이 덮는 CI 잡을 그대로 찍는다 — 그 밖의 잡은 위 «보지 못하는 축» 이다."""
+    gate.print_blind_spots(full=True)
+    lines = [line.strip() for line in capsys.readouterr().out.splitlines()]
+    covered = [line for line in lines if line.startswith("· 여기서 도는 ci.yml 잡: ")]
+    assert len(covered) == 1, lines
+    assert set(covered[0].split(": ", 1)[1].split(" · ")) == gate._COVERED_JOBS
