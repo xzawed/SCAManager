@@ -1680,6 +1680,39 @@ def _recent_in_this_month():
     return max(now - timedelta(days=1), now.replace(day=1, hour=0, minute=0, second=0, microsecond=0))
 
 
+def keep_fresh_analysis_in_this_month(db_path: str) -> bool:
+    """«이번 달 비용» 팔의 전제를 요청 직전에 다시 세운다 — 첫 분석이 지난달로 밀렸으면 이번 달로 옮긴다.
+
+    `fresh_user` 는 세션 시작 때 한 번 «시드 시각의 이번 달» 에 심고, 리포 상세는 «요청 시각의 이번 달»
+    (UTC 1일 0시부터)을 센다. 세션이 UTC 달 경계를 넘으면 그 행은 지난달이라 팔이 닫힌다. 옮겼으면 True.
+    The session seed lands in the seed-time month; the page counts the request-time month. If the
+    session crossed a UTC month boundary, move the fresh analysis into this month. True if moved.
+    """
+    from datetime import datetime, timezone  # noqa: PLC0415
+
+    from sqlalchemy import create_engine  # noqa: PLC0415
+    from sqlalchemy.orm import Session  # noqa: PLC0415
+
+    from src.models.analysis import Analysis  # noqa: PLC0415
+    from src.models.repository import Repository  # noqa: PLC0415
+
+    month_start = datetime.now(timezone.utc).replace(
+        tzinfo=None, day=1, hour=0, minute=0, second=0, microsecond=0)
+    engine = create_engine(f"sqlite:///{db_path}")
+    try:
+        with Session(engine) as db:
+            # 첫 리포의 분석은 하나다(`_seed_fresh_user` 가 단언한다) — 둘이면 `.one()` 이 멈춘다.
+            row = db.query(Analysis).join(Repository).filter(
+                Repository.full_name == FRESH_FIRST_REPO).one()
+            if row.created_at >= month_start:
+                return False
+            row.created_at = _recent_in_this_month()
+            db.commit()
+            return True
+    finally:
+        engine.dispose()
+
+
 def _seed_fresh_user(db_path: str) -> dict:
     """막 시작한 사용자 + 리포 둘(AI 리뷰 성공 분석 1 · 점수 없는 분석 1) → 좌표 dict."""
     from datetime import timedelta  # noqa: PLC0415
