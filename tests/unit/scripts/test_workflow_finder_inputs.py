@@ -111,6 +111,32 @@ def test_the_completeness_critic_sees_what_was_already_covered(wf):
     assert "COVERED-TOPIC-91c2" in prompt, "비평가가 이미 검증된 주제를 모른다 — 같은 주제를 gap 으로 다시 고른다"
 
 
+def _const_source(text: str, name: str, closer: str) -> str:
+    """최상위 `const NAME = …` 부터 열 0 의 닫는 괄호까지 — 없으면 red."""
+    m = re.search(rf"^const {name} = .*?^\{closer}", text, re.S | re.M)
+    assert m, f"`const {name}` 을 찾지 못했다 — 워크플로 구조가 바뀌었다"
+    return m.group(0)
+
+
+@pytest.mark.parametrize("changed", [".github/workflows/ci.yml", "requirements-dev.txt"])
+def test_a_diff_audit_touching_supply_chain_files_gets_the_security_lens(changed):
+    """🔴 공급망 예외(ci.yml 의 pip-audit 무시 · 의존성 핀)를 바꾼 diff 감사는 보안 렌즈를 받는다.
+
+    다른 도메인과 함께 바뀌면 매칭 0 폴백(전체)이 안 타므로, 보안 경로가 없으면 보안 렌즈가 빠진다(P2-88).
+    """
+    node = shutil.which("node")
+    assert node, "node 가 없다 — 최초 설정(`npm install`)을 할 것"
+    text = (_WF / "integrity-audit.mjs").read_text(encoding="utf-8")
+    src = "\n".join([_const_source(text, "DOMAINS", "]"), _const_source(text, "ADJACENCY", "}"),
+                     _function_source(text, "resolveDomains")])
+    expr = f"resolveDomains('diff', {json.dumps([changed, 'src/gate/x.py'])}).map((d) => d.id)"
+    out = subprocess.run([node, "-e", f"{src}\nconsole.log(JSON.stringify({expr}))"],
+                         capture_output=True, text=True, encoding="utf-8", check=False, timeout=60)
+    assert out.returncode == 0, out.stderr[-800:]
+    ids = json.loads(out.stdout)
+    assert "gate" in ids and "security" in ids, f"공급망 파일을 바꾼 diff 감사에 보안 렌즈가 없다: {ids}"
+
+
 def test_the_prior_list_is_capped_and_says_how_many_it_left_out():
     """목록은 상한에서 자르고 몇 건을 뺐는지 말한다 — 프롬프트가 무한히 자라지 않는다."""
     items = [{"severity": "P2", "title": f"T{i}", "file": "x.py", "line": i} for i in range(400)]

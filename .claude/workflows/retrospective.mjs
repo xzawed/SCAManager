@@ -29,7 +29,7 @@ const DEFAULT_DOMAINS = [
   { id: 'code', focus: '코드 품질·회귀·테스트 커버리지·시간차 결함·UX/시각/템플릿 회귀(form= 미제출·hx-boost 클로저 오염·i18n 키 drift·CSS :has 종속) / code quality, regressions, coverage, time-lag defects, UX/visual/template regressions (form= non-submit, hx-boost closure corruption, i18n key drift, CSS :has dependencies)' },
   { id: 'docs', focus: '문서 정합·drift·STATE/README 동기화 / doc consistency, drift, STATE/README sync' },
   { id: 'decision', focus: '의사결정 추적성·위임 경계·자율 판단 보고 / decision traceability, delegation, autonomy reporting' },
-  { id: 'tooling', focus: '도구·자동화·워크플로우·훅 ROI / tooling, automation, workflows, hook ROI' },
+  { id: 'tooling', focus: '도구·자동화·워크플로우·훅 ROI·공급망 예외(pip-audit 무시 근거·재검토 조건)·보안 기능 서비스(CodeQL·Dependabot·비밀 스캔) 상태 / tooling, automation, workflows, hook ROI, supply-chain exceptions, security-feature service state' },
 ]
 
 // ── 순수 헬퍼 ────────────────────────────────────────────
