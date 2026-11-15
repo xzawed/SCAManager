@@ -176,3 +176,42 @@ def test_shared_backtick_after_a_txt_anchor_reads_the_first_code_span():
     mod = _load()
     found = [(m.group(1), m.group(2)) for m in mod._ANCHOR.finditer("`a.txt::bb`c.ts::dddd`")]
     assert found == [("a.txt", "bb")], found
+
+
+# ── 회고 원장 L18 P2-12 · P2-93 — 백틱 밖 줄번호 ─────────────────────────────────────────
+
+
+def test_unquoted_line_refs_are_caught_but_lookalikes_are_not():
+    """코드 펜스 안 트리 그림의 `scorer/calculator.py:30` 처럼 백틱 밖 줄번호도 잡는다 — 포트 · 시각 · 콜론 뒤 공백은 아니다.
+    Bare `path.ext:12` outside backticks is caught; ports, times and a colon followed by a space are not."""
+    mod = _load()
+    caught = ["배점 = scorer/calculator.py:30 · 등급", "등급 = constants.py:38 →", "see docs/STATE.md:12"]
+    ignored = ["localhost:8000", "https://host.example:443/x", "docs/STATE.md: 단위", "12:30 에 배포", "a/b.py"]
+    assert [text for text in caught if not mod._UNQUOTED_LINE_REF.search(text)] == []
+    assert [text for text in ignored if mod._UNQUOTED_LINE_REF.search(text)] == []
+
+
+def _scan_docs(mod, monkeypatch, docs: dict) -> list:
+    """가짜 문서 묶음으로 `scan` 을 돌려 줄번호 참조만 돌려준다 / run scan over synthetic docs."""
+    monkeypatch.setattr(mod, "file_text", lambda path: docs[path])
+    _dead, line_refs, _checked = mod.scan(set(docs))
+    return line_refs
+
+
+# witness-corpus: 이력 절을 품었지만 활성 문서라 줄번호를 고쳐야 하는 곳 — STATE «테스트 수 추적 이력» · verify «판정식» 사례
+_ACTIVE_DOCS_WITH_HISTORY = ["docs/STATE.md", "docs/workflow/verify.md"]
+
+
+def test_bare_line_refs_in_active_docs_are_reported(monkeypatch):
+    """활성 문서의 백틱 밖 줄번호는 보고된다 — 이력 같은 내용이 든 문서도 면제가 아니다."""
+    mod = _load()
+    docs = {path: "트리: scorer/calculator.py:30\n" for path in _ACTIVE_DOCS_WITH_HISTORY}
+    refs = _scan_docs(mod, monkeypatch, docs)
+    assert sorted(ref.split(":", 1)[0] for ref in refs if "백틱 밖 줄번호" in ref) == sorted(_ACTIVE_DOCS_WITH_HISTORY)
+
+
+def test_history_reports_keep_their_quoted_coordinates(monkeypatch):
+    """회고 · 감사 보고서는 그때의 좌표를 인용한 이력이다 — 백틱 밖 줄번호로 red 를 내지 않는다(대조군)."""
+    mod = _load()
+    refs = _scan_docs(mod, monkeypatch, {"docs/reports/2026-11-06-retrospective.md": "CLAUDE.md:19 «머지는»\n"})
+    assert [ref for ref in refs if "백틱 밖 줄번호" in ref] == []

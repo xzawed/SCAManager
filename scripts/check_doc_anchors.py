@@ -84,6 +84,14 @@ _BARE_REF = re.compile(r"`\s*:\d")           # `:377`  ·  `x` :5
 _PAREN_REF = re.compile(r"\(\s*:\d")         # (:48) · (:48-49)
 # `path.py:symbol` — 단일 콜론 + 식별자. 앵커가 되려면 콜론이 둘이어야 한다.
 _SINGLE_COLON = re.compile(r"`([A-Za-z0-9_./+-]+\.(?:" + _EXTS + r")):(?!:)[A-Za-z_]")
+# 백틱 **밖**의 `path.ext:12` — 코드 펜스 안의 트리 그림 같은 데서 줄번호가 검사 밖에 썩었다(회고 원장 L18 P2-12 ·
+# P2-93). 백틱 구간은 위 검출기 몫이라 지운 뒤 본다. 앞 글자 제약으로 `a/b.py` 의 꼬리 조각은 따로 세지 않는다.
+# Bare `path.ext:12` outside backticks (e.g. inside a code-fence diagram); backtick spans are left to the rules above.
+_UNQUOTED_LINE_REF = re.compile(r"(?<![`\w/.+-])([A-Za-z0-9_./+-]+\.(?:" + _EXTS + r")):\d")
+_BACKTICK_SPAN = re.compile(r"`[^`]*`")
+# 시점 기록 — 회고 · 감사 보고서는 «그때의» 좌표를 인용한 이력이라 줄번호를 고치지 않는다.
+# Point-in-time records quote the coordinates of their day; they are history, not live coordinates.
+_HISTORY_DIR = "docs/reports/"
 
 
 def tracked_files() -> set[str]:
@@ -160,6 +168,9 @@ def scan(tracked: set[str]) -> tuple[list[str], list[str], int]:
                               (_PAREN_REF, "괄호 줄번호"), (_SINGLE_COLON, "단일 콜론")):
                 for m in rx.finditer(line):
                     line_refs.append(f"{doc}:{i}  {label}: {m.group(0)!r}")
+            if not doc.startswith(_HISTORY_DIR):
+                for m in _UNQUOTED_LINE_REF.finditer(_BACKTICK_SPAN.sub("", line)):
+                    line_refs.append(f"{doc}:{i}  백틱 밖 줄번호: {m.group(0)!r}")
 
     return dead, line_refs, checked
 
