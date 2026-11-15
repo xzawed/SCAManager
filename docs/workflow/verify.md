@@ -72,7 +72,8 @@
 
 ### 건수를 바꿀 때
 
-- e2e 증감 → 같은 PR 에서 `e2e/EXPECTED_COUNT` 갱신(감소도 필수).
+- e2e 증감 → 같은 PR 에서 `e2e/EXPECTED_COUNT` · STATE E2E 두 지점(손) · README 배지(`--fix`). 감소도 필수.
+- 추적 `.md` 하나 = 단위 +2(`tests/unit/scripts/test_gate_claim_consistency.py` 가 문서마다 돈다).
 - 단위 증감 → `docs/STATE.md` SSOT 불릿 한 줄만 고치고 `py -3 scripts/check_docs_sync.py --fix`.
   미룰 때만 **커밋 메시지** 열 0 `STATE-sync-deferred: <사유 16자 이상>`.
 - 되돌림 판정 불가 → PR 본문 `reverse-mutation-not-applicable: <사유 16자 이상>`.

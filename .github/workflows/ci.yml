@@ -879,7 +879,7 @@ jobs:
   # E2E suite was never executed anywhere in CI (R7). This job ends that.
   #
   # 🔴 자족적이라 서비스 컨테이너가 필요 없다 — `e2e/conftest.py` 가 SQLite 임시 DB +
-  #    더미 시크릿을 스스로 넣고 uvicorn 을 별도 스레드로 띄운다(`:103-111`, `:135-159`).
+  #    더미 시크릿을 스스로 넣고 uvicorn 을 별도 스레드로 띄운다(`_setup_e2e_db` · `_start_uvicorn` · `live_server`).
   # 🔴 `-p no:asyncio` 의무 — `e2e/pytest.ini` 는 `asyncio_mode` 를 의도적으로 생략한다.
   #    단위 스위트와 같은 프로세스에서 섞이면 이벤트 루프가 충돌한다(testing.md §E2E 격리).
   # 🔴 required check 로 **승격됐다** (실측 2026-08-17: `gh api …/required_status_checks` 의

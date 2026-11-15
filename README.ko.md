@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/xzawed/SCAManager/actions/workflows/ci.yml/badge.svg)](https://github.com/xzawed/SCAManager/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/xzawed/SCAManager/actions/workflows/codeql.yml/badge.svg)](https://github.com/xzawed/SCAManager/actions/workflows/codeql.yml)
-[![Tests](https://img.shields.io/badge/Tests-10092%2B_total_(9845_unit_%2B_247_integration)-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-10093%2B_total_(9846_unit_%2B_247_integration)-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
 [![E2E](https://img.shields.io/badge/E2E-554_in_CI-brightgreen?style=flat-square&logo=playwright&logoColor=white)](e2e/)
 [![pylint](https://img.shields.io/badge/pylint-9.99%2F10-brightgreen?style=flat-square&logo=python&logoColor=white)](src/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.141-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
@@ -191,8 +191,10 @@ CI 가 아직 돌고 있어 GitHub 이 거절한 머지는 버리지 않고 큐�
 ## 배포
 
 **Railway** — 저장소를 연결하고 PostgreSQL 데이터베이스를 추가한 뒤, 위의 변수들과 함께
-`ANTHROPIC_API_KEY` · `APP_BASE_URL` 을 설정합니다. 이 URL 은 반드시 `https://` 여야 합니다.
-`http://` 로 두면 OAuth 리다이렉트와 GitHub 웹훅 전달이 둘 다 실패합니다. 자세한 절차는
+`TELEGRAM_BOT_TOKEN` · `TELEGRAM_CHAT_ID`(필수 — 없으면 앱이 뜨지 않습니다), `ANTHROPIC_API_KEY` ·
+`APP_BASE_URL` 을 설정합니다. 이 URL 은 반드시 `https://` 여야 합니다. `http://` 로 두면 OAuth
+리다이렉트와 GitHub 웹훅 전달이 둘 다 실패합니다. 두 설정은 저장소가 아니라 Railway 대시보드에
+있습니다 — pre-deploy 명령 `alembic upgrade head` 와 헬스체크 경로 `/health`. 자세한 절차는
 [런북](docs/runbooks/railway.md)에 있습니다.
 
 **그 밖의 환경** — 평범한 ASGI 애플리케이션입니다.

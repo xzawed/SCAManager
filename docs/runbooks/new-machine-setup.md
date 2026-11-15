@@ -1,6 +1,6 @@
 # 새 PC 셋업 — 리포 밖 자산
 
-리포 안 절차 = [README §Quick start](../../README.md#quick-start). 아래는 clone 밖 자산만.
+리포 안 절차 = [README §Running the server](../../README.md#running-the-server). 아래는 clone 밖 자산만.
 
 1. **`.env`** — `cp .env.example .env`, 의미 = [env-vars.md](../reference/env-vars.md).
    값은 비-AI 채널로만(AI 세션·Issue·PR 붙여넣기 금지).

@@ -39,5 +39,6 @@ ID (`<REDACTED>`). Comments: Korean first, English next line (`# TODO`-style tag
 hand** — visual and deploy-dependent behaviour is outside the suite; UI changes list 4 themes
 (dark/light/pastel/catppuccin) × desktop/mobile.
 
-Pre-commit enforces: new `src/` file → `docs/architecture.md`, new env var → env-vars.md,
-test/lint numbers → `docs/STATE.md` + README badges.
+Pre-commit enforces: new `src/` file → `docs/architecture.md`, new env var → env-vars.md.
+Test and lint numbers → `docs/STATE.md` + README badges are checked in CI and by
+`py -3 scripts/pre_push_gate.py`, not at commit time.

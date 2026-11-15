@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/xzawed/SCAManager/actions/workflows/ci.yml/badge.svg)](https://github.com/xzawed/SCAManager/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/xzawed/SCAManager/actions/workflows/codeql.yml/badge.svg)](https://github.com/xzawed/SCAManager/actions/workflows/codeql.yml)
-[![Tests](https://img.shields.io/badge/Tests-10092%2B_total_(9845_unit_%2B_247_integration)-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-10093%2B_total_(9846_unit_%2B_247_integration)-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
 [![E2E](https://img.shields.io/badge/E2E-554_in_CI-brightgreen?style=flat-square&logo=playwright&logoColor=white)](e2e/)
 [![pylint](https://img.shields.io/badge/pylint-9.99%2F10-brightgreen?style=flat-square&logo=python&logoColor=white)](src/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.141-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
@@ -195,9 +195,11 @@ stop the rest from being delivered.
 ## Deploying
 
 **Railway** — connect the repository, add a PostgreSQL database, and set the variables above plus
+`TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` (required — the app does not start without them),
 `ANTHROPIC_API_KEY` and an `APP_BASE_URL`. That URL has to be `https://`; over plain `http://` both
-the OAuth redirect and GitHub's webhook delivery fail. The
-[runbook](docs/runbooks/railway.md) has the specifics.
+the OAuth redirect and GitHub's webhook delivery fail. Two settings live in the Railway dashboard,
+not in the repository: the pre-deploy command `alembic upgrade head` and the healthcheck path
+`/health`. The [runbook](docs/runbooks/railway.md) has the specifics.
 
 **Anywhere else** — it is an ordinary ASGI application:
 
