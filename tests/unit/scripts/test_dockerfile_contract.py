@@ -94,8 +94,13 @@ def test_image_has_no_entrypoint():
 def _venv_of_run(run: str) -> tuple[str, list[str]] | None:
     """RUN 하나가 만드는 venv 경로와 그 RUN 의 토큰 — venv 를 안 만들면 None."""
     tokens = shlex.split(run.replace("&&", " && "))
-    hits = [tokens[i + 1] for i in range(1, len(tokens) - 1) if tokens[i] == "venv" and tokens[i - 1] == "-m"]
-    return (hits[0], tokens) if hits else None
+    for i in range(1, len(tokens) - 1):
+        if tokens[i] == "venv" and tokens[i - 1] == "-m":
+            # 경로 = 뒤의 첫 «옵션 아닌» 토큰 / the first non-option token after `-m venv`
+            paths = [t for t in tokens[i + 1:] if not t.startswith("-")]
+            if paths:
+                return paths[0], tokens
+    return None
 
 
 def test_image_puts_the_venv_on_path():

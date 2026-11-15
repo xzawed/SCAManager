@@ -104,8 +104,12 @@ def _violations(text: str, requirements: str) -> list[str]:
         # Read from the command's position; a leading `VAR=value` shifts argv[1:3].
         args = argv[argv.index(cmd):]
         venv = venv or args[1:3] == ["-m", "venv"]
-        if args[1:3] == ["-m", "venv"] and len(args) > 3:
-            venvs.add(args[3])
+        if args[1:3] == ["-m", "venv"]:
+            # 경로 = `-m venv` 뒤 첫 «옵션 아닌» 토큰(`--without-pip /opt/x` — Grok 반증)
+            # The path is the first non-option token after `-m venv`.
+            paths = [a for a in args[3:] if not a.startswith("-")]
+            if paths:
+                venvs.add(paths[0])
         pip_installed = pip_installed or (cmd == "pip" and "requirements.txt" in argv)
     return problems
 
@@ -145,6 +149,9 @@ def test_every_invoked_command_is_provisioned_before_use():
     # 앞에 `VAR=값` 이 붙은 venv 생성도 venv 생성이다(Grok 반증 — 종전엔 위반으로 잘못 셌다)
     ("RUN apt-get install -y python3.12 python3.12-venv\n"
      "RUN FOO=bar python3.12 -m venv /opt/x && /opt/x/bin/pip install a", []),
+    # 옵션이 붙은 venv 생성도 그 경로의 venv 생성이다(Grok 반증 — 옵션을 경로로 읽었다)
+    ("RUN apt-get install -y python3.12 python3.12-venv\n"
+     "RUN python3.12 -m venv --without-pip /opt/x\nRUN /opt/x/bin/python -V", []),
     # 🔴 그 venv 를 만들기 전에 부른다
     ("RUN apt-get install -y python3.12 python3.12-venv\n"
      "RUN /opt/x/bin/pip install a\nRUN python3.12 -m venv /opt/x",

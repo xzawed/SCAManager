@@ -61,7 +61,9 @@ def _venv_install_of_semgrep(command: str) -> tuple[str, str] | None:
     `-m venv V` · `V/bin/pip … -r requirements-semgrep.txt` · `ln … V/bin/semgrep TARGET`.
     """
     tokens = shlex.split(command.replace("&&", " && ").replace(";", " ; "))
-    venvs = [tokens[i + 1] for i in range(1, len(tokens) - 1) if tokens[i] == "venv" and tokens[i - 1] == "-m"]
+    # 경로 = `-m venv` 뒤 첫 «옵션 아닌» 토큰 / the first non-option token after `-m venv`
+    venvs = [next((t for t in tokens[i + 1:] if not t.startswith("-")), "") for i in range(1, len(tokens) - 1)
+             if tokens[i] == "venv" and tokens[i - 1] == "-m"]
     for venv in venvs:
         pip, cli = f"{venv}/bin/pip", f"{venv}/bin/semgrep"
         if pip not in tokens or _SEMGREP_REQS not in tokens[tokens.index(pip):]:
