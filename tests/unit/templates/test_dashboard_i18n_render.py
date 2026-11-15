@@ -7,7 +7,7 @@ Phase 2 PR-6 regression guards — dashboard.html multilingual rendering.
 2. KPI 5 카드 (avg_score / analysis_count / high_security / active_repos / auto_merge_success)
 3. mode=overview branch (KPI + trend + frequent_issues + feedback CTA)
 4. mode=insight branch (✨/🔍/📊/💬 4 카드 + refresh + status fallback)
-5. mode=security branch (kill-switch / empty / processed/pending/classification/recent_pending / load_failed)
+5. mode=security branch (kill-switch / empty / closed/pending/recent_pending / load_failed)
 6. mode=usage branch (empty / 4 cards / SaaS info / load_failed)
 7. Chart.js trend label (i18n + tojson 안전)
 8. locale 미주입 default 'ko' fallback
@@ -325,7 +325,10 @@ def test_dashboard_security_empty_renders_english():
 
 
 def test_dashboard_security_cards_render_japanese():
-    """security 4 카드 (pending + processed + classification + recent_pending) — 일본어."""
+    """security 3 카드 (GitHub 에서 닫힘 + 열린 alert + recent_pending) — 일본어.
+
+    AI 분류 · «처리됨(사용자 confirm)» 은 쓰는 곳이 없어 지웠다(회고 원장 L05 P2-87) — 그 제목이 다시 나오면 red.
+    """
     out = _render(
         "dashboard.html",
         locale="ja",
@@ -336,18 +339,17 @@ def test_dashboard_security_cards_render_japanese():
         security={
             "kill_switch_active": False,
             "total_alerts": 5,
-            "processed_count": 2,
+            "closed_count": 2,
             "pending_count": 3,
-            "classification": {"true_positive": 2, "false_positive": 1},
             "recent_pending": [
-                {"alert_number": 1, "severity": "HIGH", "alert_type": "code", "rule_id": "py/test", "ai_classification": "true"}
+                {"alert_number": 1, "severity": "HIGH", "alert_type": "code", "rule_id": "py/test"}
             ],
         },
     )
-    assert "✨ 処理済み" in out
-    assert "🔍 新規 pending" in out
-    assert "📊 分類分布" in out
-    assert "💬 最近 pending (Top 5)" in out
+    assert out.count("✅ GitHub でクローズ") == 1
+    assert out.count("🔍 オープンの alert") == 1
+    assert out.count("💬 最近のオープン alert (Top 5)") == 1
+    assert out.count("📊 分類分布") == 0 and out.count("✨ 処理済み") == 0, "지운 카드 제목이 남았다"
 
 
 # ── usage mode ─────────────────────────────────────────────────────────────

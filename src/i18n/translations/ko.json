@@ -104,14 +104,13 @@
       "empty_hint_part2": "도 가능합니다.",
       "load_failed": "⚠️ Security 데이터 로딩 실패 — 잠시 후 다시 시도해주세요.",
       "card_aria": "Security audit 4 카드",
-      "processed_title": "✨ 처리됨",
-      "processed_label": "사용자 confirm 완료",
+      "closed_title": "✅ GitHub 에서 닫힘",
+      "closed_label": "해결 · 무시로 닫힌 alert",
       "total_label": "전체 alert 누적",
-      "pending_title": "🔍 신규 pending",
-      "pending_label": "사용자 결정 대기",
-      "classification_title": "📊 분류 분포",
-      "recent_pending_title": "💬 최근 pending (Top 5)",
-      "recent_pending_empty": "pending alert 없음."
+      "pending_title": "🔍 열린 alert",
+      "pending_label": "GitHub 에서 아직 열려 있음",
+      "recent_pending_title": "💬 최근 열린 alert (Top 5)",
+      "recent_pending_empty": "열린 alert 없음."
     },
     "usage": {
       "empty_title": "📭 등록된 리포지토리가 없습니다.",

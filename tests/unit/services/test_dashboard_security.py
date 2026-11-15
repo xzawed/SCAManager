@@ -40,15 +40,13 @@ def repo(db: Session) -> Repository:
 
 
 def test_dashboard_security_empty_db(db):
-    """빈 DB → 0 카운트 + 빈 recent_pending + 분류 dict 5 키 모두 0."""
+    """빈 DB → 0 카운트 + 빈 recent_pending. AI 분류 · «처리됨» 은 쓰는 곳이 없어 내보내지 않는다(회고 원장 L05 P2-87)."""
     result = dashboard_service.dashboard_security(db)
     assert result["total_alerts"] == 0
     assert result["pending_count"] == 0
-    assert result["processed_count"] == 0
+    assert result["closed_count"] == 0
     assert result["recent_pending"] == []
-    assert set(result["classification"].keys()) == {
-        "false_positive", "used_in_tests", "actual_violation", "deferred", "unclassified",
-    }
+    assert not {"classification", "processed_count"} & set(result), "쓰는 곳이 없는 칸이 남았다"
 
 
 def test_dashboard_security_with_pending(db, repo):
@@ -56,7 +54,6 @@ def test_dashboard_security_with_pending(db, repo):
     security_alert_log_repo.upsert_alert_log(
         db, repo_id=repo.id, alert_type="code_scanning", alert_number=1,
         severity="note", rule_id="py/unused-import",
-        ai_classification="false_positive", ai_confidence=0.95,
     )
     result = dashboard_service.dashboard_security(db)
     assert result["total_alerts"] == 1
@@ -65,13 +62,23 @@ def test_dashboard_security_with_pending(db, repo):
     row = result["recent_pending"][0]
     assert row["alert_number"] == 1
     assert row["severity"] == "note"
-    assert row["ai_classification"] == "false_positive"
+    assert "ai_classification" not in row, "늘 «pending» 이던 AI 분류 꼬리가 남았다"
+
+
+def test_dashboard_security_counts_alerts_closed_on_github(db, repo):
+    """🔴 GitHub 에서 닫힌 alert 은 «열린 alert» 에서 빠지고 «GitHub 에서 닫힘» 으로 센다 (회고 원장 L05 P1-35)."""
+    for number in (1, 2):
+        security_alert_log_repo.upsert_alert_log(db, repo_id=repo.id, alert_type="code_scanning", alert_number=number)
+    security_alert_log_repo.close_missing_alerts(db, repo_id=repo.id, alert_type="code_scanning", open_numbers={2})
+    result = dashboard_service.dashboard_security(db)
+    assert (result["total_alerts"], result["pending_count"], result["closed_count"]) == (2, 1, 1)
+    assert [r["alert_number"] for r in result["recent_pending"]] == [2]
 
 
 def test_dashboard_security_isolates_by_repo_owner(db):
     """🔴 U0 cross-tenant 격리: user_id 명시 시 본인 소유 repo 알림만 노출 (타 테넌트 차단).
 
-    이전 결함: dashboard_security 가 user_id 를 무시하고 list_pending/count_by_classification
+    이전 결함: dashboard_security 가 user_id 를 무시하고 list_pending/count_alerts
     을 전체 조회 → 모든 로그인 사용자가 타 테넌트 보안 알림 노출 (1차 앱 필터 부재).
     """
     repo_a = Repository(full_name="alice/repo", user_id=1)
@@ -83,12 +90,10 @@ def test_dashboard_security_isolates_by_repo_owner(db):
     security_alert_log_repo.upsert_alert_log(
         db, repo_id=repo_a.id, alert_type="code_scanning", alert_number=1,
         severity="high", rule_id="alice-rule",
-        ai_classification="actual_violation", ai_confidence=0.9,
     )
     security_alert_log_repo.upsert_alert_log(
         db, repo_id=repo_b.id, alert_type="code_scanning", alert_number=2,
         severity="high", rule_id="bob-secret",
-        ai_classification="actual_violation", ai_confidence=0.9,
     )
 
     # user 1(alice) 관점 — 본인 repo 알림 1건만, bob 알림 미노출

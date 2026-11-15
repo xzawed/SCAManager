@@ -705,9 +705,7 @@ def test_dashboard_mode_security_calls_dashboard_security():
     mock_db = MagicMock()
     captured: dict = {}
     fake_security = {
-        "total_alerts": 3, "pending_count": 2, "processed_count": 1,
-        "classification": {"false_positive": 1, "used_in_tests": 1, "actual_violation": 0,
-                           "deferred": 0, "unclassified": 1},
+        "total_alerts": 3, "pending_count": 2, "closed_count": 1,
         "recent_pending": [], "kill_switch_active": False,
     }
 

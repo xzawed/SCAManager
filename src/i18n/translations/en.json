@@ -104,14 +104,13 @@
       "empty_hint_part2": " is also available.",
       "load_failed": "⚠️ Failed to load Security data — please try again later.",
       "card_aria": "Security audit 4 cards",
-      "processed_title": "✨ Processed",
-      "processed_label": "User confirmed",
+      "closed_title": "✅ Closed on GitHub",
+      "closed_label": "Alerts fixed or dismissed",
       "total_label": "Total alerts (cumulative)",
-      "pending_title": "🔍 New pending",
-      "pending_label": "Awaiting user decision",
-      "classification_title": "📊 Classification distribution",
-      "recent_pending_title": "💬 Recent pending (Top 5)",
-      "recent_pending_empty": "No pending alerts."
+      "pending_title": "🔍 Open alerts",
+      "pending_label": "Still open on GitHub",
+      "recent_pending_title": "💬 Recent open alerts (Top 5)",
+      "recent_pending_empty": "No open alerts."
     },
     "usage": {
       "empty_title": "📭 No repositories registered.",

@@ -92,7 +92,7 @@ async def test_fetch_alerts_ghas_inactive_silent_skip():
         result = await security_scan_service._fetch_alerts(  # noqa: SLF001
             "tok", "owner/test", "code-scanning",
         )
-    assert result is None
+    assert result == (None, False)
 
 
 @pytest.mark.asyncio
@@ -108,7 +108,7 @@ async def test_fetch_alerts_403_rate_limit_logs_warning_not_ghas_skip(caplog):
             result = await security_scan_service._fetch_alerts(  # noqa: SLF001
                 "tok", "owner/test", "code-scanning",
             )
-    assert result is None
+    assert result == (None, False)
     logged = "\n".join(r.message for r in caplog.records)
     assert "rate-limit" in logged.lower(), f"rate-limit 경고 미표면화: {logged!r}"
     assert "비활성" not in logged, "rate-limit 을 GHAS 비활성으로 오분류"
@@ -125,7 +125,7 @@ async def test_fetch_alerts_403_without_ratelimit_is_ghas_skip(caplog):
             result = await security_scan_service._fetch_alerts(  # noqa: SLF001
                 "tok", "owner/test", "code-scanning",
             )
-    assert result is None
+    assert result == (None, False)
     # WARNING 레벨엔 rate-limit 경고 없어야(=info skip)
     assert not any("rate-limit" in r.message.lower() for r in caplog.records)
 
@@ -139,7 +139,7 @@ async def test_fetch_alerts_success_returns_list():
         result = await security_scan_service._fetch_alerts(  # noqa: SLF001
             "tok", "owner/test", "code-scanning",
         )
-    assert result == [{"number": 1}, {"number": 2}]
+    assert result == ([{"number": 1}, {"number": 2}], True)  # 마지막 페이지(< 100) = 완전한 목록
 
 
 @pytest.mark.asyncio
@@ -152,7 +152,7 @@ async def test_fetch_alerts_http_error_returns_none():
         result = await security_scan_service._fetch_alerts(  # noqa: SLF001
             "tok", "owner/test", "code-scanning",
         )
-    assert result is None
+    assert result == (None, False)
 
 
 @pytest.mark.asyncio
@@ -291,7 +291,7 @@ async def test_scan_repo_alerts_counts_and_logs_metadata():
     with patch.object(security_scan_service, "is_kill_switch_active", return_value=False), \
          patch.object(security_scan_service, "_resolve_token", return_value="tok"), \
          patch.object(security_scan_service, "_fetch_alerts",
-                      new=AsyncMock(side_effect=[[alert], []])), \
+                      new=AsyncMock(side_effect=[([alert], False), ([], False)])), \
          patch.object(security_scan_service.security_alert_log_repo, "upsert_alert_log") as mock_upsert:
         counts = await security_scan_service.scan_repo_alerts(db, repo)
     assert counts["code_scanning"] == 1
@@ -314,7 +314,7 @@ async def test_scan_repo_alerts_rollback_on_db_error():
     with patch.object(security_scan_service, "is_kill_switch_active", return_value=False), \
          patch.object(security_scan_service, "_resolve_token", return_value="tok"), \
          patch.object(security_scan_service, "_fetch_alerts",
-                      new=AsyncMock(side_effect=[[alert], []])), \
+                      new=AsyncMock(side_effect=[([alert], False), ([], False)])), \
          patch.object(security_scan_service.security_alert_log_repo, "upsert_alert_log",
                       side_effect=SQLAlchemyError("boom")):
         counts = await security_scan_service.scan_repo_alerts(db, repo)
@@ -339,7 +339,7 @@ async def test_scan_repo_alerts_rollback_does_not_abort_secret_scanning():
     with patch.object(security_scan_service, "is_kill_switch_active", return_value=False), \
          patch.object(security_scan_service, "_resolve_token", return_value="tok"), \
          patch.object(security_scan_service, "_fetch_alerts",
-                      new=AsyncMock(side_effect=[[code_alert], [secret_alert]])), \
+                      new=AsyncMock(side_effect=[([code_alert], False), ([secret_alert], False)])), \
          patch.object(security_scan_service.security_alert_log_repo, "upsert_alert_log",
                       side_effect=[SQLAlchemyError("boom"), None]):
         counts = await security_scan_service.scan_repo_alerts(db, repo)
@@ -370,7 +370,7 @@ async def test_scan_repo_alerts_fetches_kinds_concurrently():
         concurrency["max"] = max(concurrency["max"], concurrency["cur"])
         await asyncio.sleep(0.02)  # 다른 코루틴이 동시 진입할 윈도우 / window for concurrent entry
         concurrency["cur"] -= 1
-        return []
+        return [], False
 
     with patch.object(security_scan_service, "is_kill_switch_active", return_value=False), \
          patch.object(security_scan_service, "_resolve_token", return_value="tok"), \
@@ -391,7 +391,9 @@ async def test_fetch_alerts_paginates_beyond_100():
     fake_client.get = AsyncMock(side_effect=[page1, page2])
     with patch("src.services.security_scan_service.get_http_client", return_value=fake_client):
         result = await security_scan_service._fetch_alerts("tok", "o/r", "code-scanning")  # noqa: SLF001
-    assert len(result) == 102, "100 초과분 미수집(silent truncation)"
+    alerts, complete = result
+    assert len(alerts) == 102, "100 초과분 미수집(silent truncation)"
+    assert complete is True, "마지막 페이지까지 받았는데 완전한 목록이 아니라고 한다"
     assert fake_client.get.call_count == 2
 
 
@@ -406,5 +408,75 @@ async def test_fetch_alerts_page_cap_warns_not_silent(caplog, monkeypatch):
     with patch("src.services.security_scan_service.get_http_client", return_value=fake_client):
         with caplog.at_level(_logging.WARNING, logger="src.services.security_scan_service"):
             result = await security_scan_service._fetch_alerts("tok", "o/r", "code-scanning")  # noqa: SLF001
-    assert len(result) == 200  # 2 페이지 × 100
+    alerts, complete = result
+    assert len(alerts) == 200  # 2 페이지 × 100
+    assert complete is False, "🔴 상한에서 끊긴 목록을 완전하다고 하면 닫힘 대조가 열린 alert 을 닫는다"
     assert any("초과" in r.message for r in caplog.records), "상한 도달 미표면화"
+
+
+# ── 닫힘 대조는 «끝까지 받은» 목록에서만 (회고 원장 L05 P1-35) ──────────────────────────────
+# Closed-state reconciliation runs only on a complete open-alert list.
+
+@pytest.mark.asyncio
+async def test_fetch_alerts_mid_way_failure_is_not_complete():
+    """🔴 둘째 페이지에서 끊기면 받은 데까지의 부분 목록과 «완전하지 않음» — 부분 목록으로 닫으면 열린 alert 을 닫는다."""
+    import httpx
+    fake_client = MagicMock()
+    page1 = _FakeResp(200, payload=[{"number": i} for i in range(100)])
+    fake_client.get = AsyncMock(side_effect=[page1, httpx.ConnectError("fail")])
+    with patch("src.services.security_scan_service.get_http_client", return_value=fake_client):
+        alerts, complete = await security_scan_service._fetch_alerts("tok", "o/r", "code-scanning")  # noqa: SLF001
+    assert len(alerts) == 100 and complete is False
+
+
+@pytest.fixture
+def sqlite_db():
+    """in-memory SQLite — 닫힘 대조를 진짜 쿼리로 잰다. / a real session for the reconciliation queries."""
+    from sqlalchemy import create_engine  # noqa: PLC0415
+    from sqlalchemy.orm import sessionmaker  # noqa: PLC0415
+    from sqlalchemy.pool import StaticPool  # noqa: PLC0415
+
+    from src.database import Base  # noqa: PLC0415
+
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+    try:
+        yield session
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def _states_after_recording(db, fetched):
+    """열린 #1 · #2 · #3 을 심고, 한 종류의 가져오기 결과로 `_record_alerts` 를 돌린 뒤 번호별 GitHub 상태를 돌려준다."""
+    from src.models.repository import Repository  # noqa: PLC0415
+    from src.models.security_alert_log import SecurityAlertProcessLog  # noqa: PLC0415
+
+    repo = Repository(full_name="owner/test", user_id=None)
+    db.add(repo)
+    db.commit()
+    for number in (1, 2, 3):
+        security_scan_service.security_alert_log_repo.upsert_alert_log(
+            db, repo_id=repo.id, alert_type="code_scanning", alert_number=number)
+    counts = {"code_scanning": 0, "secret_scanning": 0, "skipped": 0}
+    security_scan_service._record_alerts(  # noqa: SLF001
+        db, repo.id, repo.full_name, [(("code-scanning", "code_scanning"), fetched)], counts)
+    return {row.alert_number: row.github_state for row in db.query(SecurityAlertProcessLog).all()}
+
+
+def test_a_complete_open_list_closes_the_alerts_it_no_longer_has(sqlite_db):
+    """🔴 끝까지 받은 열린 목록에 #2 만 있으면 #1 · #3 은 GitHub 에서 닫힌 것이다 — 이전엔 영원히 «신규 pending» 이었다."""
+    alert = {"number": 2, "rule": {"id": "py/x", "severity": "error"}}
+    assert _states_after_recording(sqlite_db, ([alert], True)) == {1: "closed", 2: "open", 3: "closed"}
+
+
+def test_a_partial_open_list_closes_nothing(sqlite_db):
+    """🔴 대조군 — 중간에 끊긴 목록(완전하지 않음)으로는 아무것도 닫지 않는다."""
+    alert = {"number": 2, "rule": {"id": "py/x", "severity": "error"}}
+    assert _states_after_recording(sqlite_db, ([alert], False)) == {1: "open", 2: "open", 3: "open"}
+
+
+def test_an_unscanned_kind_closes_nothing(sqlite_db):
+    """🔴 대조군 — 스캔 안 됨(GHAS 비활성 · rate-limit · 첫 페이지 실패)이면 아무것도 닫지 않는다."""
+    assert _states_after_recording(sqlite_db, (None, False)) == {1: "open", 2: "open", 3: "open"}
