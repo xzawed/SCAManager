@@ -73,6 +73,9 @@ _MAIN_REF = "origin/main"
 # GitHub 대조가 한 번에 받는 머지 PR 상한 — 여기에 닿으면 목록이 잘렸다고 본다.
 # Cap on merged PRs fetched for the cross-check; reaching it means the list may be truncated.
 _GH_LIMIT = 500
+# 대화 기록 보존 기본값(Claude Code `cleanupPeriodDays`) — 설정 파일에 값이 없을 때.
+# Default transcript retention (Claude Code `cleanupPeriodDays`) when the settings file has none.
+_DEFAULT_RETENTION_DAYS = 30
 
 
 def _make_stdout_safe():
@@ -119,14 +122,19 @@ def merged_prs(boundary: str, upper: str = _MAIN_REF) -> list[int]:
     merged to main and counts Issue numbers in branch commit subjects as PRs.
     """
     out = _git(["log", "--format=%s", f"{boundary}..{upper}"])
-    nums = []
-    for line in out.splitlines():
-        # squash 머지 제목 끝의 (#NNNN)
-        if (i := line.rfind("(#")) != -1 and line.rstrip().endswith(")"):
-            tail = line[i + 2:].rstrip(")").strip()
-            if tail.isdigit():
-                nums.append(int(tail))
-    return sorted(set(nums))
+    return sorted({n for line in out.splitlines() if (n := pr_of_subject(line)) is not None})
+
+
+# squash 머지 제목 끝의 `(#N)` — 정확히 그 꼴만. 종전 판정은 `(#4))` · `(# 4)` 도 4 로 읽었다(Grok 반증).
+# `\d` 는 유니코드 숫자(`٤`)도 받고 `int()` 가 그것을 4 로 읽는다 — ASCII 숫자만 쓴다.
+# The exact trailing `(#N)` of a squash subject, ASCII digits only (`\d` also takes `٤`, which int() reads as 4).
+_PR_SUFFIX = re.compile(r"\(#([0-9]+)\)$")
+
+
+def pr_of_subject(subject: str) -> int | None:
+    """커밋 제목 끝의 `(#N)` → N, 그 꼴이 아니면 None (끝 공백은 무시)."""
+    m = _PR_SUFFIX.search(subject.rstrip())
+    return int(m.group(1)) if m else None
 
 
 def _gh_json(args: list[str]) -> object | None:
@@ -259,6 +267,39 @@ def resolve_ref(ref: str) -> str | None:
     return sha or None
 
 
+def transcript_retention_days() -> int:
+    """대화 기록 보존 일수 — `~/.claude/settings.json` 의 `cleanupPeriodDays`, 없거나 이상하면 기본 30.
+
+    Transcript retention in days: `cleanupPeriodDays` from the Claude settings file, else 30.
+    """
+    try:
+        data = json.loads((Path.home() / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return _DEFAULT_RETENTION_DAYS
+    days = data.get("cleanupPeriodDays") if isinstance(data, dict) else None
+    # bool 은 int 의 하위형이라 따로 막는다 / bool is an int subtype — reject it explicitly.
+    if isinstance(days, int) and not isinstance(days, bool) and days > 0:
+        return days
+    return _DEFAULT_RETENTION_DAYS
+
+
+def prs_merged_before(scan_from: str, upper: str, cutoff: dt.datetime) -> list[int]:
+    """창 안 squash 머지 중 커밋 시각이 `cutoff` 보다 앞선 PR 번호 — 오름차순.
+
+    그 세션 기록은 보존 기간 밖이라 지워졌을 수 있다(긴 세션이 뒤에도 이어졌으면 남는다 — 그래서
+    «지워졌다» 가 아니라 «안 쟀다» 로 넘긴다). 제목 끝 `(#N)` 만 PR 번호다(`merged_prs` 와 같다).
+    PRs in the window merged before the cutoff — their session records may be gone.
+    """
+    out = _git(["log", "--format=%cI%x09%s", f"{scan_from}..{upper}"])
+    nums = set()
+    for row in out.splitlines():
+        stamp, _, subject = row.partition("\t")
+        when = _parse_iso(stamp)
+        if when is not None and when < cutoff and (n := pr_of_subject(subject)) is not None:
+            nums.add(n)
+    return sorted(nums)
+
+
 def on_main(sha: str, upper: str) -> bool:
     """`sha` 가 `upper`(main) 의 조상인가.
 
@@ -383,6 +424,14 @@ def compute(since: str | None = None, fetched: bool = False) -> dict:
 
     prs_git = merged_prs(scan_from, upper)
 
+    # 🔴 기록 보존 축 — 창 안에서 대화 기록 보존 기간보다 먼저 머지된 PR 은 그 세션의 사용자 발화 · 승인 ·
+    #    운영 행위를 원본으로 대조할 수 없다. 11-06 회고는 109 PR 중 34건이 그랬는데 `unmeasured: []` 였다.
+    #    Records axis: PRs merged before the retention cutoff can't be checked against their transcripts.
+    cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=transcript_retention_days())
+    records_expired = prs_merged_before(scan_from, upper, cutoff)
+    if records_expired:
+        unmeasured.append("records-older-than-retention")
+
     # 🔴 GitHub 대조 축 — 스캔 기점 커밋 시각 뒤에 머지된 PR 전체와 git log 산출의 차집합.
     #    stacked PR 도 base=main 탈출도 이 식 하나에 걸린다.
     since_iso = commit_time(scan_from)
@@ -418,6 +467,9 @@ def compute(since: str | None = None, fetched: bool = False) -> dict:
         "gh_checked": gh_checked,
         "gh_only": gh_only,
         "unmeasured": unmeasured,
+        # 세션 기록 보존 기간보다 먼저 머지된 창 안 PR — 원본 대조를 «안 쟀다».
+        # PRs in the window merged before the transcript-retention cutoff.
+        "records_expired_prs": records_expired,
     }
 
 
@@ -467,6 +519,9 @@ def main() -> int:
         print("     (stacked PR 과 리포트 머지 전 갭은 git log 로 원리적으로 안 보인다)")
     if r["unmeasured"]:
         print(f"  🔴 안 잰 축     : {', '.join(r['unmeasured'])} — 「없다」가 아니라 「안 쟀다」")
+    if r["records_expired_prs"]:
+        print(f"  🔴 기록 보존 밖  : {', '.join('#' + str(n) for n in r['records_expired_prs'])}"
+              " — 그 세션의 발화 · 승인을 원본으로 대조할 수 없다")
     print()
     print("🔴 회고 착수 **직전에** 다시 실행할 것 — 그 사이 머지분이 빠지는 것이 P0 의 기전이었다.")
     if r["anchor"] == "explicit":
