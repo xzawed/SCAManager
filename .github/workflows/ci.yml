@@ -777,10 +777,14 @@ jobs:
       # 🔴 Railway 는 `$PORT` 를 주입한다. 이미지 CMD 가 그것을 확장하지 못하면 여기서 red 다.
       # Railway injects $PORT; if the image CMD cannot expand it, this step is red.
       - name: Image serves /health on the injected $PORT
+        # SESSION_SECRET 은 모든 환경에서 필수다(없거나 32자 미만이면 import 에서 기동 실패) — 시크릿이 아닌 자리 값.
+        # SESSION_SECRET is required everywhere; a non-secret placeholder, passed through by name.
+        env:
+          SESSION_SECRET: "ci-smoke-placeholder-not-a-secret-32"
         run: |
           docker run -d --name smoke -p 8123:8123 -e PORT=8123 \
             -e DATABASE_URL=sqlite:////tmp/smoke.db -e TELEGRAM_BOT_TOKEN=123:ABC \
-            -e TELEGRAM_CHAT_ID=-100123 scam-ci:local
+            -e TELEGRAM_CHAT_ID=-100123 -e SESSION_SECRET scam-ci:local
           for _ in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:8123/health; then docker rm -f smoke >/dev/null; exit 0; fi
             sleep 2

@@ -20,7 +20,7 @@
 |`DB_MAX_OVERFLOW`|10|-1=무제한|
 |`DB_POOL_TIMEOUT`|30|
 |`DB_POOL_RECYCLE`|1800|-1=비활성|
-|`SESSION_SECRET`|dev-secret-change-in-production|커스텀 <32자=기동 차단 · 기본값=경고만|
+|`SESSION_SECRET`|(없음 — 필수)|없음 · 빈 값 · 32자 미만 = 모든 환경에서 기동 차단|
 |`ENVIRONMENT`||production 또는 https APP_BASE_URL=prod 하드닝(security.md)|
 |`APP_BASE_URL`||OAuth redirect_uri + CORS origin|
 |`GITHUB_CLIENT_ID`|

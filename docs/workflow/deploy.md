@@ -26,7 +26,7 @@
 
 ## 운영 판정
 
-`src/config.py::def is_production` = `ENVIRONMENT=production` 이거나 `APP_BASE_URL` 이 `https` 로 시작. 켜지면 `/docs`·`/redoc` 비노출 + 기본 `SESSION_SECRET` 기동 차단 + 스케줄러 기동이 함께 걸린다. 둘 다 없으면 공개된 기본 시크릿으로 뜬다.
+`src/config.py::def is_production` = `ENVIRONMENT=production` 이거나 `APP_BASE_URL` 이 `https` 로 시작. 켜지면 `/docs`·`/redoc` 비노출 + HSTS + 스케줄러 기동이 함께 걸린다. `SESSION_SECRET` 은 이 판정과 무관하게 필수다(없거나 32자 미만이면 기동 실패).
 
 ## 의존성
 

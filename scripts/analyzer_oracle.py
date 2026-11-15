@@ -49,7 +49,9 @@ from pathlib import Path
 # The scorer imports the app settings, which require three values; this script never uses DB or
 # notifications, so non-secret placeholders are set unless real values are already present.
 for _key, _value in (("DATABASE_URL", "sqlite:///:memory:"), ("TELEGRAM_BOT_TOKEN", "123:ABC"),
-                     ("TELEGRAM_CHAT_ID", "-100123")):
+                     ("TELEGRAM_CHAT_ID", "-100123"),
+                     # 모든 환경에서 필수(32자 이상) — 시크릿이 아닌 자리 값 / required everywhere; a placeholder
+                     ("SESSION_SECRET", "oracle-placeholder-not-a-secret-32")):
     os.environ.setdefault(_key, _value)
 # 파일로 돌리면(리포에서 `py -3 scripts/analyzer_oracle.py`) 리포 뿌리를 import 경로에 넣는다. 표준 입력으로 돌리면
 # (이미지 안 `python -`) 작업 폴더(/app)가 이미 경로에 있고 `__file__` 은 `"<stdin>"` 이다(실측) — 그때는 넣지 않는다.
