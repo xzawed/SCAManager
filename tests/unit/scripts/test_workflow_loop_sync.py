@@ -37,6 +37,22 @@ _INVARIANTS = [
 ]
 
 
+# 정본 공유 함수 — 사용처가 글자 그대로 인라인해야 한다(주석 · 공백을 접고 소스를 비교).
+# 토큰 존재만 보면 두 사용처의 `key` 가 갈라져도 초록이었다(11-06 회고: 키가 합친 건 121건 중 0).
+# Canonical shared functions every consumer inlines verbatim; token presence alone stayed green while
+# the two consumers' `key` diverged.
+_SHARED_FUNCS = ["key", "freshOf", "priorList"]
+
+
+def _function_source(code: str, name: str) -> str | None:
+    """최상위 `function NAME(` 부터 열 0 의 `}` 까지 — 공백을 접은 비교용 소스. 없으면 None.
+    Top-level `function NAME(` up to the column-0 `}`, whitespace-folded; None when absent."""
+    m = re.search(rf"^(?:export\s+)?function {name}\(.*?^\}}", code, re.S | re.M)
+    if not m:
+        return None
+    return re.sub(r"\s+", " ", re.sub(r"^export\s+", "", m.group(0))).strip()
+
+
 def _strip_num(raw: str) -> int:
     """JS 숫자 구분자(_) 제거 후 정수 변환 / drop JS numeric separators then int."""
     return int(raw.replace("_", ""))
@@ -83,10 +99,18 @@ def _check_loop_sync(root: Path):
     if not template.exists():
         return False, [f"정본 템플릿 없음 / template missing: {template}"]
 
-    canon = _parse_template_params(template.read_text(encoding="utf-8"))
+    template_text = template.read_text(encoding="utf-8")
+    canon = _parse_template_params(template_text)
     for name in _PARAMS:
         if name not in canon:
             msgs.append(f"템플릿 파라미터 누락 / template missing param: {name}")
+    # 🔴 공유 함수는 주석을 지우지 않은 **원문**으로 비교한다 — `_strip_comments` 는 문자열 안의 `//` 뒤도
+    #    지워 `"http://a"` 와 `"http://b"` 를 같게 읽는다(Grok claim-review 반증). 글자 그대로가 계약이다.
+    # Compare shared functions on raw text: comment stripping also eats `//` inside string literals.
+    canon_funcs = {name: _function_source(template_text, name) for name in _SHARED_FUNCS}
+    for name, src in canon_funcs.items():
+        if src is None:
+            msgs.append(f"템플릿 공유 함수 누락 / template missing shared function: {name}")
 
     for wf_name in _WORKFLOWS:
         wf = wf_dir / wf_name
@@ -95,7 +119,8 @@ def _check_loop_sync(root: Path):
             continue
         # 주석 제외 실코드 기준 — 선언·불변식이 주석에만 존재하는 false-pass 차단 (#936)
         # Match against comment-stripped code so declarations/invariants in comments don't false-pass (#936)
-        code = _strip_comments(wf.read_text(encoding="utf-8"))
+        raw = wf.read_text(encoding="utf-8")
+        code = _strip_comments(raw)
         params = _parse_workflow_params(code)
         for name in _PARAMS:
             if name not in params:
@@ -105,6 +130,13 @@ def _check_loop_sync(root: Path):
         for token in _INVARIANTS:
             if token not in code:
                 msgs.append(f"{wf_name}: 불변식 토큰 누락 / invariant token missing: {token!r}")
+        for name in _SHARED_FUNCS:
+            got = _function_source(raw, name)
+            if got is None:
+                msgs.append(f"{wf_name}: 공유 함수 없음 / shared function missing: {name}")
+            elif canon_funcs[name] is not None and got != canon_funcs[name]:
+                msgs.append(f"{wf_name}: {name} 소스 drift — 정본 템플릿과 다르다 / "
+                            "shared function differs from the canonical template")
     return (not msgs), msgs
 
 
@@ -127,9 +159,15 @@ def _seed(tmp_path: Path, template_text: str, wf_text: str):
     return tmp_path
 
 
+_SHARED_SRC = (
+    "function key(f) {\n  return `${f.file}|${f.title}`\n}\n"
+    "function freshOf(found, seen) {\n  return found.filter((f) => !seen.has(key(f)))\n}\n"
+    "function priorList(items, cap = 150) {\n  return items.slice(0, cap).join('\\n')\n}\n"
+)
 _GOOD_TEMPLATE = (
     "export const LOOP_PARAMS = { DRY_THRESHOLD: 2, MAX_ROUNDS_WITH_BUDGET: 5, "
     "MAX_ROUNDS_NO_BUDGET: 3, BUDGET_FLOOR: 60_000 }\n"
+    + _SHARED_SRC.replace("function ", "export function ")
 )
 _GOOD_WF = (
     "const DRY_THRESHOLD = 2\nconst MAX_ROUNDS_WITH_BUDGET = 5\n"
@@ -139,7 +177,41 @@ _GOOD_WF = (
     "  if (!seen.has(key(f))) { dry++; continue }\n"
     "  dry = 0\n  seen.add(key(f))\n"
     "  if (budget.remaining() > BUDGET_FLOOR) {}\n}\n"
+    + _SHARED_SRC
 )
+
+
+def test_loop_sync_seed_is_clean(tmp_path):
+    """대조군 — 아래 위반 시험들의 씨앗은 그 자체로 통과한다(위반이 심은 것에서만 나온다)."""
+    root = _seed(tmp_path, _GOOD_TEMPLATE, _GOOD_WF)
+    ok, msgs = _check_loop_sync(root)
+    assert ok, msgs
+
+
+def test_loop_sync_flags_shared_function_drift(tmp_path):
+    """🔴 사용처의 `key` 가 정본과 달라지면 적발 — 토큰(`seen.has(key(`)은 그대로여도."""
+    drifted = _GOOD_WF.replace("`${f.file}|${f.title}`", "`${f.domain}|${f.file}|${f.title}`")
+    root = _seed(tmp_path, _GOOD_TEMPLATE, drifted)
+    ok, msgs = _check_loop_sync(root)
+    assert not ok
+    assert any("key 소스 drift" in m for m in msgs), msgs
+
+
+def test_loop_sync_flags_drift_after_a_double_slash_inside_a_string(tmp_path):
+    """🔴 문자열 안 `//` 뒤의 어긋남도 잡는다 — 주석 제거를 거치면 `"http://a"` · `"http://b"` 가 같아진다."""
+    template = _GOOD_TEMPLATE.replace("`${f.file}|${f.title}`", "'http://a' + f.title")
+    drifted = _GOOD_WF.replace("`${f.file}|${f.title}`", "'http://b' + f.title")
+    root = _seed(tmp_path, template, drifted)
+    ok, msgs = _check_loop_sync(root)
+    assert not ok
+    assert any("key 소스 drift" in m for m in msgs), msgs
+
+
+def test_loop_sync_flags_shared_function_missing_from_the_template(tmp_path):
+    root = _seed(tmp_path, _GOOD_TEMPLATE.replace("export function priorList", "export function other"), _GOOD_WF)
+    ok, msgs = _check_loop_sync(root)
+    assert not ok
+    assert any("template missing shared function: priorList" in m for m in msgs), msgs
 
 
 def test_loop_sync_flags_param_drift(tmp_path):
