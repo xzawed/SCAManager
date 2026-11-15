@@ -34,6 +34,7 @@ os.environ.setdefault("GITHUB_WEBHOOK_SECRET", "bench")
 os.environ.setdefault("GITHUB_TOKEN", "ghp_bench")
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "123:BENCH")
 os.environ.setdefault("TELEGRAM_CHAT_ID", "-100000")
+os.environ.setdefault("SESSION_SECRET", "bench-placeholder-not-a-secret-32c")  # 모든 환경에서 필수(32자 이상)
 
 import psutil  # noqa: E402 — 환경변수 주입 이후
 

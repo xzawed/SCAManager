@@ -43,7 +43,8 @@ py -3 -m pytest e2e/ -p no:asyncio  # E2E (tests/ 와 같이 돌리지 않는다
 
 이 PC 엔 `make` 이 없다 — `make X` 실패는 환경 문제다(정본 `Makefile`).
 
-최초 설정: `cp .env.example .env` → `py -3 -m pip install -r requirements.txt -r requirements-dev.txt`
+최초 설정: `cp .env.example .env` → `.env` 의 `SESSION_SECRET` 에 `openssl rand -hex 32` 값(없거나 32자 미만이면 import 에서 멈춘다)
+→ `py -3 -m pip install -r requirements.txt -r requirements-dev.txt`
 → `npm install && npm run build` → `py -3 -m pre_commit install` → `py -3 -m uvicorn src.main:app --reload`
 
 ## 협업 규칙

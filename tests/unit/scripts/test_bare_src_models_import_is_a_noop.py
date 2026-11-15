@@ -139,6 +139,7 @@ def test_subprocess_confirms_the_bare_import_registers_nothing():
     env.setdefault("GITHUB_TOKEN", "ghp_test")
     env.setdefault("TELEGRAM_BOT_TOKEN", "123:ABC")
     env.setdefault("TELEGRAM_CHAT_ID", "-100123")
+    env.setdefault("SESSION_SECRET", "x" * 32)  # 모든 환경에서 필수(32자 이상) — 자식은 conftest 를 안 거친다
     env.setdefault("ANTHROPIC_API_KEY", "")
     env["PYTHONIOENCODING"] = "utf-8"
     # coverage 가 자식에 붙지 않게 한다 — 이 테스트는 커버리지 대상이 아니다.

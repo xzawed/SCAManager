@@ -105,7 +105,13 @@ class Settings(BaseSettings):
     # Internal cron endpoint key — separate from admin api_key
     github_client_id: str = ""
     github_client_secret: str = ""
-    session_secret: str = "dev-secret-change-in-production"
+    # 🔴 쓸 수 있는 기본값이 없다 — 없거나(기본 "") 비었거나 32자 미만이면 어느 환경에서도 기동하지 않는다.
+    #    공개된 기본 문자열로 세션 쿠키에 서명한 채 뜨는 경로를 닫는다(회고 원장 L18 P2-38 · 사용자 결정 11-15).
+    #    `BaseSettings` 는 기본값도 검증한다(`validate_default` 기본 True) — 그 설정이 바뀌어도 «없음» 이 빈 시크릿으로
+    #    뜨지 않게 필드에 명시한다. 생성: openssl rand -hex 32
+    # No usable default: missing (""), empty or < 32 chars refuses to start everywhere. BaseSettings already
+    # validates defaults; the field states it so a model_config change cannot let a missing value boot empty.
+    session_secret: str = Field(default="", validate_default=True)
     app_base_url: str = ""  # Railway 등 리버스 프록시 환경에서 HTTPS redirect_uri 강제 지정
     # 명시 환경 신호 — "production" 이면 APP_BASE_URL 과 무관하게 프로덕션 하드닝 강제.
     # 미설정 시 기존 HTTPS 휴리스틱으로 판정(하위 호환). is_production 프로퍼티 참조.
@@ -294,19 +300,10 @@ class Settings(BaseSettings):
     @field_validator("session_secret")
     @classmethod
     def validate_session_secret(cls, v: str) -> str:
-        """SESSION_SECRET 유효성 검사.
+        """SESSION_SECRET 유효성 검사 — 모든 환경에서 32자 이상이어야 한다.
 
-        - 기본값 사용 시: 보안 경고 로그만 출력 (개발 환경 호환)
-        - 커스텀 값이지만 32자 미만: ValueError 발생 (배포 전 실수 방지)
+        Every environment needs 32+ characters; missing (""), empty or short values raise.
         """
-        _default = "dev-secret-change-in-production"
-        if v == _default:
-            logger.warning(
-                "SECURITY: SESSION_SECRET is using the default value. "
-                "Set a strong random secret (>= %d chars) in production!",
-                _SESSION_SECRET_MIN_LEN,
-            )
-            return v
         if len(v) < _SESSION_SECRET_MIN_LEN:
             raise ValueError(
                 f"SESSION_SECRET must be at least {_SESSION_SECRET_MIN_LEN} characters long "

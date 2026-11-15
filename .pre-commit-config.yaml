@@ -63,18 +63,17 @@ repos:
           환경변수에 실제 값이 하드코딩된 경우 차단.
           os.getenv() 또는 os.environ 참조 방식만 허용.
           README/docs 는 문서 예시값 허용을 위해 제외.
-          .env.example 제외 사유: placeholder 문서 파일 (README 동일 사유 — 2026-06-10,
-          기존 placeholder 줄 your-telegram-bot-token/dev-secret-change-in-production 오탐.
-          placeholder 를 빈 값/${...} 로 바꾸는 대안은 SESSION_SECRET 32자 validator 가
-          `cp .env.example .env` dev flow 를 깨뜨려 기각. 실제 .env 는 Layer 1-B
+          .env.example 제외 사유: placeholder 문서 파일 (README 동일 사유 — placeholder 줄
+          your-telegram-bot-token 등이 오탐한다. SESSION_SECRET 은 빈 값으로 출하한다 — config.py 가
+          모든 환경에서 32자 미만을 막아 복사만으로는 뜨지 않는다. 실제 .env 는 Layer 1-B
           check-env-not-staged 훅이 staged 자체를 차단하고, gitleaks(Layer 1-A)와
           CI TruffleHog 는 .env.example 도 계속 스캔한다).
           tests/e2e 제외 사유: Python os.environ["KEY"] = "value" 형식은 값 앞뒤 따옴표로 인해
           패턴 [^${'"\s]{10,} 이 매칭되지 않아 실질적 탐지 불필요.
           단, .env 스타일 KEY=value (따옴표 없음) 형식은 매칭되므로 forward-looking 보호로 제외 유지.
           word-boundary 음수 lookbehind `(?<![A-Za-z0-9_])`: 상수 이름이 env 키를 접미사로 포함하는
-          오탐 차단 (예: src/main.py `_DEFAULT_SESSION_SECRET = "dev-secret-change-in-production"` 의
-          부분문자열 `SESSION_SECRET = "..."`). 실제 `SESSION_SECRET = "값"` 등 standalone 할당은 계속 탐지
+          오탐 차단 (예: `_DEFAULT_SESSION_SECRET = "..."` 같은 상수 이름의 접미사
+          `SESSION_SECRET = "..."`). 실제 `SESSION_SECRET = "값"` 등 standalone 할당은 계속 탐지
           (2026-06-18 — 정규식 정밀도 향상, 탐지 약화 아님).
 
       # Layer 1-D: docs/repo 정합 가드 (stdlib 스크립트 — 회고 WF-2/3/5, 2026-06-23)

@@ -628,76 +628,30 @@ def test_static_404_no_long_cache(client):
     assert "31536000" not in cc, f"404 응답에 1년 캐시가 붙으면 안 됨: {cc!r}"
 
 
-# --- S2: SESSION_SECRET 프로덕션 강제 (Phase B) ---
-
-def test_lifespan_raises_when_default_session_secret_in_prod():
-    """S2: prod 환경(https)에서 기본 SESSION_SECRET 사용 시 RuntimeError로 기동 차단.
-    S2: Startup must raise RuntimeError when default SESSION_SECRET is used in production.
-    """
-    import pytest as _pytest  # pylint: disable=import-outside-toplevel
-    with patch("src.main._run_migrations"), \
-         patch("src.main.settings") as mock_settings:
-        mock_settings.session_secret = "dev-secret-change-in-production"
-        mock_settings.anthropic_api_key = "sk-ant-test"
-        mock_settings.app_base_url = "https://scamanager.example.com"
-        mock_settings.is_production = True  # is_production 프로퍼티는 MagicMock 미계산 — 명시 설정
-        mock_settings.token_encryption_key = "valid-key"
-        mock_settings.strict_token_encryption = False
-        mock_settings.telegram_webhook_secret = "some-secret"
-        with _pytest.raises(RuntimeError, match="SESSION_SECRET must be changed in production"):
-            with TestClient(app):
-                pass
+# --- 시작 검증의 운영 판정 배선 — SESSION_SECRET 은 config.py 가 모든 환경에서 막는다(test_config) ---
 
 
-def test_lifespan_consults_is_production_not_the_https_heuristic():
-    """🔴 **배선 축** — `main` 이 판정에 `settings.is_production` 을 쓰는가(https 단독이 아니라).
+def test_startup_validation_consults_is_production_not_the_https_heuristic(caplog):
+    """🔴 **배선 축** — `main` 이 운영 판정에 `settings.is_production` 을 쓰는가(https 단독이 아니라).
 
-    위아래 두 S2 테스트는 `mock_settings.is_production` 을 **손으로 심어** 이 축을 보지 못한다.
-    그래서 `main.py:129` 를 `app_base_url.startswith("https")` 단독으로 되돌려도 둘 다 green 이다
-    (Grok claim-review `019ff0c3` H8 적발 — 정의는 맞는데 배선이 안 잡히는 AGENTS.md 불변식 3).
-    여기서는 **실 `Settings`** 를 주입해 프로퍼티를 실제로 계산시킨다: 명시 신호만 있고 URL 은
-    http 인 배포도 차단되어야 한다.
-    Wiring axis: main must consult settings.is_production; mocks hand-set it and hide a revert.
-    """
-    from src.config import build_settings  # pylint: disable=import-outside-toplevel
-
-    # 🔴 픽스처가 뮤테이션을 결정한다 — `app_base_url` 을 **빈 값**으로 둔다.
-    #    `http://box.internal` 로 두면 `if settings.app_base_url:` · `startswith("http")` 같은
-    #    되돌림이 URL 만으로 참이 되어 **ENVIRONMENT 축을 지워도 green** 이다(Grok `019ff145`).
-    #    `environment` 는 공백+대문자로 둬 `strip().lower()` 정규화까지 핀으로 고정한다.
-    # An empty URL is what forces the predicate to come from ENVIRONMENT alone.
-    real_settings = build_settings(
-        environment="  Production  ",
-        app_base_url="",
-        session_secret="dev-secret-change-in-production",
-    )
-    # 전제가 깨지면 이 테스트는 아무것도 재지 않는다 — 명시 단언으로 고정.
-    assert real_settings.is_production is True
-    with patch("src.main._run_migrations"), \
-         patch("src.main.settings", real_settings):
-        with pytest.raises(RuntimeError, match="SESSION_SECRET must be changed in production"):
-            with TestClient(app):
-                pass
-
-
-def test_lifespan_warns_default_session_secret_in_dev(caplog):
-    """S2: dev 환경(http)에서는 기본 SESSION_SECRET 사용 시 경고만 출력 — 기동 허용.
-    S2: Dev (http) environment should warn but not raise for default SESSION_SECRET.
+    **실 `Settings`** 를 주입해 프로퍼티를 실제로 계산시킨다 — 명시 신호(`ENVIRONMENT`)만 있고 URL 이 빈
+    배포도 «production hardening = ON» 이어야 한다. `app_base_url` 을 빈 값으로 둬야 `startswith("http")` 같은
+    되돌림이 URL 만으로 참이 되지 않는다(Grok `019ff145`). `environment` 는 공백+대문자로 둬 정규화까지 고정한다.
+    Wiring axis: main must consult settings.is_production; an empty URL forces the signal to come from ENVIRONMENT.
     """
     import logging as _logging  # pylint: disable=import-outside-toplevel
-    with patch("src.main._run_migrations"), \
-         patch("src.main.settings") as mock_settings:
-        mock_settings.session_secret = "dev-secret-change-in-production"
-        mock_settings.anthropic_api_key = "sk-ant-test"
-        mock_settings.app_base_url = "http://localhost:8000"
-        mock_settings.is_production = False  # is_production 프로퍼티는 MagicMock 미계산 — 명시 설정
-        mock_settings.token_encryption_key = ""
-        mock_settings.strict_token_encryption = False
-        mock_settings.telegram_webhook_secret = ""
-        with caplog.at_level(_logging.WARNING, logger="src.main"):
-            with TestClient(app):
-                pass
-    assert any("SESSION_SECRET" in rec.message for rec in caplog.records)
+
+    from src.config import build_settings  # pylint: disable=import-outside-toplevel
+    from src.main import _validate_startup_config  # pylint: disable=import-outside-toplevel
+
+    real_settings = build_settings(environment="  Production  ", app_base_url="", session_secret="s" * 32)
+    # 전제가 깨지면 이 테스트는 아무것도 재지 않는다 — 명시 단언으로 고정.
+    assert real_settings.is_production is True
+    with patch("src.main.settings", real_settings), caplog.at_level(_logging.INFO, logger="src.main"):
+        _validate_startup_config()
+    modes = [rec.getMessage().split(" (", 1)[0] for rec in caplog.records
+             if rec.getMessage().startswith("startup: production hardening = ")]
+    assert modes == ["startup: production hardening = ON"], modes
 
 
 # --- S4: Content-Security-Policy 헤더 (Phase B) ---

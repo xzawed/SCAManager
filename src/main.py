@@ -50,10 +50,6 @@ configure_logging()
 
 logger = logging.getLogger(__name__)
 
-# `.env.example` / `config.py` 기본값과 동일한 개발용 세션 시크릿 — 운영에서 이 값이면 기동 차단.
-# The dev-only session secret; if production still carries it, startup aborts.
-_DEFAULT_SESSION_SECRET = "dev-secret-change-in-production"  # nosec B105
-
 
 class _BodyTooLarge(Exception):
     """수신 중 한도를 넘었다 — 미들웨어가 잡아 413 으로 바꾼다."""
@@ -194,19 +190,8 @@ def _validate_startup_config() -> None:
         settings.environment or "(unset)",
         settings.app_base_url or "(unset)",
     )
-    if settings.session_secret == _DEFAULT_SESSION_SECRET:  # nosec B105
-        if is_prod_like:
-            # S2: 프로덕션(HTTPS)에서 공개 기본값 사용 금지 — 세션 위조 가능
-            # S2: Refuse to start in production with a publicly-known session secret
-            raise RuntimeError(
-                "SESSION_SECRET must be changed in production — "
-                "the default value is publicly known and allows session forgery. "
-                "Set SESSION_SECRET to a random string of 32+ characters."
-            )
-        logger.warning(
-            "SESSION_SECRET is using the default insecure value — "
-            "set SESSION_SECRET environment variable in production!"
-        )
+    # SESSION_SECRET 은 여기까지 오기 전에 `config.py` 가 막는다 — 없거나 32자 미만이면 import 에서 기동 실패(모든 환경).
+    # SESSION_SECRET is enforced earlier by config.py: missing or < 32 chars fails at import in every environment.
     if not (settings.anthropic_api_key or "").strip():
         logger.warning(
             "ANTHROPIC_API_KEY is empty — AI 리뷰가 비활성화됩니다. "
