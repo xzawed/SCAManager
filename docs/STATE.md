@@ -7,11 +7,11 @@
 **최신 (현재 코드 기준)**
 - 손으로 고치는 곳: 단위 · 통합 = 끝 SSOT 불릿 한 줄(4지점은 `--fix`) · E2E = `e2e/EXPECTED_COUNT` + 이 문서 두 지점.
 
-**종합 수치**: 전체 **10115** 수집 (단위 **9868** + 통합 247) / E2E **555** / pylint **9.99/10** (`src/`).
+**종합 수치**: 전체 **10124** 수집 (단위 **9877** + 통합 247) / E2E **555** / pylint **9.99/10** (`src/`).
 
 | 지표 | 값 | 재측정 |
 |---|---|---|
-| 전체 테스트 | **10115 수집** | `py -3 -m pytest --collect-only -q tests/unit` + `tests/integration` — 단위 9868 + 통합 247 (현재) |
+| 전체 테스트 | **10124 수집** | `py -3 -m pytest --collect-only -q tests/unit` + `tests/integration` — 단위 9877 + 통합 247 (현재) |
 | E2E 테스트 | **555개** | `py -3 -m pytest e2e/ -p no:asyncio` — = 555 collected (544 표준 + 11 perf). 대조 `scripts/check_e2e_scope.py` |
 | pylint | **9.99/10** | `py -3 -m pylint src/`. CI `--fail-under` 는 README 배지에서 파생 |
 | 커버리지 | Python 97% | `py -3 -m pytest tests/unit --cov=src` |
@@ -28,4 +28,4 @@
 
 ## 테스트 수 추적 이력
 
-- **현재** (7242→**9868** 단위; 통합 247 = **10115** 수집)
+- **현재** (7242→**9877** 단위; 통합 247 = **10124** 수집)
