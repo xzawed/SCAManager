@@ -36,7 +36,8 @@ from e2e.conftest import (CONFIG_MODEL_ID, CONFIG_USER_ID, DELTA_DAYS,
                           rls_catalog_double, repo_narrative_state,
                           stale_webhook_listing, unverified_trend_day,
                           expected_avg_delta, expected_cost_delta,
-                          expected_score_delta, insight_key_window)
+                          expected_score_delta, insight_key_window,
+                          keep_fresh_analysis_in_this_month)
 
 
 # ── A. catppuccin 토큰 회귀 가드 (cleanup PR #169 사고 차단) ─────────────────
@@ -5639,6 +5640,15 @@ _HISTORY_ARMS = {
 }
 
 
+# 요청 직전에 전제를 다시 세우는 팔 — 세션 시드는 한 번뿐이라 시간이 지나면 어긋나는 것만 둔다.
+# Arms whose precondition is re-established right before the request (session seeds age).
+_ARM_PREPARE = {"repo-detail-monthly-cost": keep_fresh_analysis_in_this_month}
+
+
+def _e2e_db_path() -> str:
+    return os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+
+
 @pytest.mark.parametrize("arm", sorted(_HISTORY_ARMS))
 @pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
 def test_all_text_meets_aa_in_arms_after_history_builds_up(
@@ -5650,10 +5660,62 @@ def test_all_text_meets_aa_in_arms_after_history_builds_up(
     """
     path, user, opened = _HISTORY_ARMS[arm]
     url = f"{base_url}{path.format(unclaimed_repo=unclaimed_repo.replace('/', '%2F'))}"
+    if arm in _ARM_PREPARE:
+        _ARM_PREPARE[arm](_e2e_db_path())
     with contextlib.ExitStack() as stack:
         if user is not None:
             stack.enter_context(acting_as(user[0], login=user[1]))
         _assert_arm_text_meets_aa(admin_page, url, opened, theme, arm)
+
+
+def test_monthly_cost_arm_opens_after_the_session_crosses_a_utc_month(admin_page, base_url, fresh_user):
+    """🔴 세션이 UTC 달 경계를 넘어도 «이번 달 비용» 팔이 열린다.
+
+    `fresh_user` 는 시드 시각의 달에 첫 분석을 심고, 리포 상세는 요청 시각의 달을 센다 — 경계를 넘은 세션은
+    그 행이 «지난달» 에 있는 상태다. 그 상태를 만들어 같은 화면을 두 번 연다: 그대로 연 화면은 팔이 **닫혀야**
+    하고(계기가 그 상태를 본다는 대조군), `keep_fresh_analysis_in_this_month` 를 거친 화면은 **열려야** 한다.
+    행의 원래 시각은 끝에 되돌린다.
+    A session that crossed a UTC month leaves the fresh analysis in last month: the page must show the
+    arm closed as-is (control) and open after the re-anchor. The original timestamp is restored.
+    """
+    from datetime import datetime, timedelta, timezone  # noqa: PLC0415
+
+    from sqlalchemy import create_engine  # noqa: PLC0415
+    from sqlalchemy.orm import Session  # noqa: PLC0415
+
+    from src.models.analysis import Analysis  # noqa: PLC0415
+    from src.models.repository import Repository  # noqa: PLC0415
+
+    path, (user_id, login), opened = _HISTORY_ARMS["repo-detail-monthly-cost"]
+    db_path = _e2e_db_path()
+    engine = create_engine(f"sqlite:///{db_path}")
+
+    def set_created_at(value):
+        with Session(engine) as db:
+            row = db.query(Analysis).join(Repository).filter(
+                Repository.full_name == FRESH_FIRST_REPO).one()
+            before = row.created_at
+            row.created_at = value
+            db.commit()
+            return before
+
+    month_start = datetime.now(timezone.utc).replace(
+        tzinfo=None, day=1, hour=0, minute=0, second=0, microsecond=0)
+    original = set_created_at(month_start - timedelta(hours=1))  # 지난달 마지막 날 23시 — 경계를 넘은 세션
+    try:
+        with acting_as(user_id, login=login):
+            admin_page.goto(f"{base_url}{path}")
+            closed_as_seeded = admin_page.evaluate(opened)
+            moved = keep_fresh_analysis_in_this_month(db_path)
+            admin_page.goto(f"{base_url}{path}")
+            open_after_move = admin_page.evaluate(opened)
+    finally:
+        set_created_at(original)
+        engine.dispose()
+
+    assert not closed_as_seeded, "지난달로 밀린 분석인데 팔이 열렸다 — 계기가 달 경계를 못 본다"
+    assert moved, "지난달 분석을 옮기지 않았다"
+    assert open_after_move, "이번 달로 옮긴 뒤에도 «이번 달 비용» 팔이 닫혀 있다"
 
 
 # ── E-25. 드물게 보는 팔 (#1639 W12 «낮음» · 분기 프로브 main `25ad2665`) ──────────
