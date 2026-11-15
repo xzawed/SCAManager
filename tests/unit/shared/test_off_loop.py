@@ -11,6 +11,7 @@ scenario is run through bare run_in_threadpool as the control that the instrumen
 from __future__ import annotations
 
 import asyncio
+import gc
 import threading
 import time
 
@@ -92,32 +93,52 @@ async def test_anyio_scope_cancellation_waits_without_spinning_the_loop():
     재대기가 그 취소를 또 받으면 스레드가 끝날 때까지 루프 CPU 를 태운다(리뷰 실측: 0.5 s 남은
     스레드에 루프 CPU ≈0.45 s, 취소 7만여 회). 재대기는 막혀야 하고, 취소는 여전히 스레드 뒤에 올라온다.
     anyio cancel scopes re-cancel the waiter on every loop pass; the re-wait must be shielded so the
-    loop idles while the thread finishes, and the cancellation still surfaces after the thread."""
+    loop idles while the thread finishes, and the cancellation still surfaces after the thread.
+
+    계기 — 주 판정은 스레드가 도는 동안 대기 태스크가 받은 취소 수다(워커가 끝나기 직전에
+    `Task.cancelling()` 을 읽는다). 루프 CPU 는 자동 GC 를 끈 창에서만 잰다 — 시험 후반의 큰 힙에서
+    세대 2 수집 한 번이 메인 스레드 CPU ≈0.4 s 라, 창에 걸리면 헛돌기 없이도 상한을 넘는다.
+    Primary: cancellations the waiter received while the thread ran (read by the worker). Loop CPU is
+    measured with automatic GC off: one full collection late in the suite costs ~0.4 s on its own."""
     marks: dict = {}
+    waiter = asyncio.current_task()
+    cancels_before = waiter.cancelling()
 
     def work():
         time.sleep(0.4)
+        marks["cancels"] = waiter.cancelling() - cancels_before
         marks["end"] = time.perf_counter()
 
-    cpu0 = time.thread_time()
-    with anyio.CancelScope() as scope:
-        async def cancel_soon():
-            await anyio.sleep(0.05)
-            scope.cancel()
+    gc_was_enabled = gc.isenabled()
+    gc.disable()
+    try:
+        cpu0 = time.thread_time()
+        with anyio.CancelScope() as scope:
+            async def cancel_soon():
+                await anyio.sleep(0.05)
+                scope.cancel()
 
-        async with anyio.create_task_group() as tg:
-            tg.start_soon(cancel_soon)
-            try:
-                await run_blocking(work)
-            finally:
-                marks["raised"] = time.perf_counter()
-    loop_cpu = time.thread_time() - cpu0
+            async with anyio.create_task_group() as tg:
+                tg.start_soon(cancel_soon)
+                try:
+                    await run_blocking(work)
+                finally:
+                    marks["raised"] = time.perf_counter()
+        loop_cpu = time.thread_time() - cpu0
+    finally:
+        if gc_was_enabled:
+            gc.enable()
 
     assert scope.cancelled_caught, "범위가 취소를 받지 않았다 — 취소를 삼켰다"
     assert marks["raised"] >= marks["end"], "스레드가 끝나기 전에 취소가 올라왔다"
+    # 막힌 재대기는 범위의 첫 취소 한 번만 받는다. 막지 않으면 루프마다 다시 받아 0.35 s 에 수만 번이다.
+    # A shielded re-wait sees only the scope's first cancel; unshielded, tens of thousands in 0.35 s.
+    assert marks["cancels"] < 10, (
+        f"스레드가 도는 동안 대기 태스크가 취소를 {marks['cancels']}번 받았다 — 재대기가 안 막혔다")
     # 스레드는 0.35 s 더 잔다 — 헛돌면 루프 CPU 가 그만큼 탄다. 막힌 재대기는 거의 0.
     # The thread sleeps ~0.35 s more; a spinning re-wait burns that on the loop thread.
-    assert loop_cpu < 0.15, f"취소 뒤 재대기가 루프 CPU {loop_cpu:.3f}s 를 태웠다 — 헛돈다"
+    assert loop_cpu < 0.15, (
+        f"취소 뒤 재대기가 루프 CPU {loop_cpu:.3f}s 를 태웠다(받은 취소 {marks['cancels']}번) — 헛돈다")
 
 
 async def test_control_bare_run_in_threadpool_raises_before_the_thread_ends():
