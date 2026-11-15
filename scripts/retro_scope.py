@@ -76,6 +76,10 @@ _GH_LIMIT = 500
 # 대화 기록 보존 기본값(Claude Code `cleanupPeriodDays`) — 설정 파일에 값이 없을 때.
 # Default transcript retention (Claude Code `cleanupPeriodDays`) when the settings file has none.
 _DEFAULT_RETENTION_DAYS = 30
+# 회고 착수 임계 — 직전 정식 회고 뒤 머지가 이 수 이상이면 회고를 시작할 때다(09-07 회고 리포트의 «임계 15»).
+# 이 값의 정본은 여기 한 곳이다 — 세션 시작 훅(`--signal`)이 이것으로 알린다(회고 원장 L15 · 사용자 11-15 결정).
+# Retro-start threshold: start a retro once this many PRs merged since the last formal one (single source).
+RETRO_THRESHOLD = 15
 
 
 def _make_stdout_safe():
@@ -341,7 +345,7 @@ def merge_commit_of_branch_tip(sha: str) -> str | None:
     return None
 
 
-def compute(since: str | None = None, fetched: bool = False) -> dict:
+def compute(since: str | None = None, fetched: bool = False, offline: bool = False) -> dict:
     """범위 산출 결과 dict — 실패도 사유와 함께 담는다.
 
     `fetched` 는 호출자가 직전에 `origin/main` 을 받았는지다. 받지 않았으면 원격 ref 가
@@ -415,7 +419,7 @@ def compute(since: str | None = None, fetched: bool = False) -> dict:
     if newest and (rh := report_head(newest)):
         if on_main(rh, upper):
             scan_from, scan_from_kind = rh, "report-head"
-        elif (merged := merge_commit_of_branch_tip(rh)) and on_main(merged, upper):
+        elif not offline and (merged := merge_commit_of_branch_tip(rh)) and on_main(merged, upper):
             scan_from, scan_from_kind = merged, "report-head-pr-merge"
         else:
             unmeasured += ["report-head-not-on-main", "report-merge-gap"]
@@ -435,7 +439,9 @@ def compute(since: str | None = None, fetched: bool = False) -> dict:
     # 🔴 GitHub 대조 축 — 스캔 기점 커밋 시각 뒤에 머지된 PR 전체와 git log 산출의 차집합.
     #    stacked PR 도 base=main 탈출도 이 식 하나에 걸린다.
     since_iso = commit_time(scan_from)
-    gh_nums = github_merged_prs(since_iso) if since_iso else None
+    # `offline` 이면 GitHub 을 부르지 않는다 — 세션 시작 신호가 네트워크로 세션을 막지 않게.
+    # Offline skips GitHub so the session-start signal never waits on the network.
+    gh_nums = github_merged_prs(since_iso) if since_iso and not offline else None
 
     if gh_nums is None:
         prs, gh_only = prs_git, []
@@ -473,6 +479,29 @@ def compute(since: str | None = None, fetched: bool = False) -> dict:
     }
 
 
+def _signal() -> int:
+    """회고 착수 신호 — 창이 `RETRO_THRESHOLD` 이상이면 한 줄, 미만이면 아무것도 내지 않는다.
+
+    세션 시작 훅이라 늘 0 으로 끝난다(막으면 세션 자체가 막힌다). 네트워크(fetch · gh)는 쓰지 않는다 —
+    마지막으로 받은 `origin/main` 기준이다. 못 재면 조용히 넘기지 않고 «못 쟀다» 한 줄 — 0줄은 «창이
+    작다» 와 구별되지 않는다.
+    Session-start signal: one line at or above the threshold, nothing below; always exit 0, no network.
+    """
+    try:
+        r = compute(fetched=False, offline=True)
+    except Exception as exc:  # pylint: disable=broad-exception-caught  # 훅은 세션을 막지 않는다
+        print(f"⚠️ 회고 착수 신호를 못 쟀다 — {type(exc).__name__}: {exc}")
+        return 0
+    if not r.get("ok"):
+        print(f"⚠️ 회고 착수 신호를 못 쟀다 — {r.get('reason')}")
+        return 0
+    if r["pr_count"] >= RETRO_THRESHOLD:
+        print(f"🔔 회고 착수 신호: 직전 정식 회고({r['prev_retro'] or '명시 경계'}) 뒤 머지 {r['pr_count']} PR"
+              f" ≥ 임계 {RETRO_THRESHOLD} PR — `py -3 scripts/retro_scope.py` 로 범위를 다시 잰 뒤 회고 스킬을 띄울 때다"
+              " (사용자에게 알린다)")
+    return 0
+
+
 def main() -> int:
     """CLI 진입점 — 사람이 읽는 요약 또는 `--json` 출력."""
     _make_stdout_safe()
@@ -486,7 +515,14 @@ def main() -> int:
         "--no-fetch", action="store_true",
         help="`git fetch origin main` 을 건너뛴다(오프라인·테스트). 결과에 그 사실이 남는다.",
     )
+    ap.add_argument(
+        "--signal", action="store_true",
+        help="세션 시작 훅용 — 네트워크 없이 재고, 창이 임계 이상일 때만 한 줄. 늘 종료 0.",
+    )
     args = ap.parse_args()
+
+    if args.signal:
+        return _signal()
 
     # 🔴 범위 상한이 origin/main 이므로 먼저 받는다 — 낡은 ref 는 막 머지된 PR 을 놓친다.
     r = compute(since=args.since, fetched=False if args.no_fetch else fetch_main())

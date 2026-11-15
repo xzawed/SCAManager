@@ -24,6 +24,8 @@ _SETTINGS = _ROOT / ".claude" / "settings.json"
 _REQUIRED = (
     "scripts/check_main_red.py",
     "scripts/check_precommit_installed.py",
+    # 회고 착수 신호(`--signal`) — 회고 원장 L15 · 사용자 11-15 결정
+    "scripts/retro_scope.py",
 )
 
 
