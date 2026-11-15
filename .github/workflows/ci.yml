@@ -810,11 +810,11 @@ jobs:
     timeout-minutes: 10
     services:
       postgres:
-        # minor 핀 — `postgres:16` 은 패치 릴리스마다 silently 변경됨. 이 job 은 FOR UPDATE
-        # SKIP LOCKED + alembic ALTER constraint 등 PG 버전 민감 동작을 검증하므로 재현성을
-        # 위해 minor 고정 (사이클 159 — 158 회고 P2). 주기적으로 최신 16.x 로 bump 권장.
-        # Minor pin for reproducibility — `postgres:16` drifts on each patch release.
-        image: postgres:16.4
+        # 운영과 같은 판으로 minor 까지 고정 — 이 job 은 FOR UPDATE SKIP LOCKED + alembic ALTER constraint 등
+        # PG 버전 민감 동작을 잰다. 운영 판은 관측 역할로 읽는다: `scripts/observe_db.py "SELECT
+        # current_setting('server_version')"`. 운영이 올라가면 같은 PR 에서 맞춘다.
+        # Pinned to production's exact version (read via the observer role); move together with production.
+        image: postgres:17.6
         env:
           POSTGRES_USER: scatest
           POSTGRES_PASSWORD: scatest
