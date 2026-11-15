@@ -15,7 +15,6 @@ commands never expand `$PORT`, and a cleared dashboard start command falls back 
 """
 import ast
 import fnmatch
-import re
 import shlex
 
 import pytest
