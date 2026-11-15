@@ -122,14 +122,18 @@ def merged_prs(boundary: str, upper: str = _MAIN_REF) -> list[int]:
     merged to main and counts Issue numbers in branch commit subjects as PRs.
     """
     out = _git(["log", "--format=%s", f"{boundary}..{upper}"])
-    nums = []
-    for line in out.splitlines():
-        # squash 머지 제목 끝의 (#NNNN)
-        if (i := line.rfind("(#")) != -1 and line.rstrip().endswith(")"):
-            tail = line[i + 2:].rstrip(")").strip()
-            if tail.isdigit():
-                nums.append(int(tail))
-    return sorted(set(nums))
+    return sorted({n for line in out.splitlines() if (n := pr_of_subject(line)) is not None})
+
+
+# squash 머지 제목 끝의 `(#N)` — 정확히 그 꼴만. 종전 판정은 `(#4))` · `(# 4)` 도 4 로 읽었다(Grok 반증).
+# The exact trailing `(#N)` of a squash subject; the old parse also read `(#4))` and `(# 4)` as 4.
+_PR_SUFFIX = re.compile(r"\(#(\d+)\)$")
+
+
+def pr_of_subject(subject: str) -> int | None:
+    """커밋 제목 끝의 `(#N)` → N, 그 꼴이 아니면 None (끝 공백은 무시)."""
+    m = _PR_SUFFIX.search(subject.rstrip())
+    return int(m.group(1)) if m else None
 
 
 def _gh_json(args: list[str]) -> object | None:
@@ -286,17 +290,13 @@ def prs_merged_before(scan_from: str, upper: str, cutoff: dt.datetime) -> list[i
     PRs in the window merged before the cutoff — their session records may be gone.
     """
     out = _git(["log", "--format=%cI%x09%s", f"{scan_from}..{upper}"])
-    nums = []
+    nums = set()
     for row in out.splitlines():
         stamp, _, subject = row.partition("\t")
         when = _parse_iso(stamp)
-        if when is None or when >= cutoff:
-            continue
-        if (i := subject.rfind("(#")) != -1 and subject.rstrip().endswith(")"):
-            tail = subject[i + 2:].rstrip(")").strip()
-            if tail.isdigit():
-                nums.append(int(tail))
-    return sorted(set(nums))
+        if when is not None and when < cutoff and (n := pr_of_subject(subject)) is not None:
+            nums.add(n)
+    return sorted(nums)
 
 
 def on_main(sha: str, upper: str) -> bool:

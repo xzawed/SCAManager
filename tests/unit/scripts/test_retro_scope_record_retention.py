@@ -93,6 +93,20 @@ def test_a_window_inside_the_retention_period_reports_nothing(aged_repo, monkeyp
     assert "records-older-than-retention" not in out["unmeasured"], out["unmeasured"]
 
 
+@pytest.mark.parametrize(("subject", "expected"), [
+    ("fix: a (#11)", 11),
+    ('Revert "x (#12)" (#13)', 13),
+    ("fix: a (#11)   ", 11),
+    ("wip (#4))", None),
+    ("wip (# 4)", None),
+    ("wip (#4) more", None),
+    ("chore: no number", None),
+])
+def test_only_an_exact_trailing_pr_suffix_is_a_pr_number(subject, expected):
+    """squash 제목 끝의 `(#N)` 만 PR 번호다 — 괄호가 더 붙거나 띄어 쓴 꼴은 아니다(Grok claim-review 반증)."""
+    assert rs.pr_of_subject(subject) == expected
+
+
 @pytest.mark.parametrize(("settings", "expected"), [
     ({"cleanupPeriodDays": 7}, 7),
     ({}, 30),
