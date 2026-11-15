@@ -94,15 +94,10 @@ _INTEGRITY = (
     # e2e job — 수집 건수 baseline (backlog R58). 검사 **범위 축소**가 조용히 통과하던 축.
     # E2E scope: a shrinking collection is a failure, not a pass.
     "check_e2e_scope.py",
-    # P1 역-뮤테이션 (2026-08-07). 🔴 **로컬에서는 쉰다** — PR env(base/head SHA)가 없으면
-    # 즉시 exit 0 이다. 그래야 로컬 push 가 영구 red 가 되지 않는다(정책 17).
-    # 등재하는 이유는 `test_pre_push_gate.py` 가 **ci.yml 전체**의 가드 집합과 이 목록의
-    # 동기화를 강제하기 때문이다 — 실제 판정은 CI(`test-and-analyze` job) 몫이다.
-    # Sleeps locally (no PR env); listed to keep the runner in sync with ci.yml.
+    # P1 역-뮤테이션 — PR env(base/head SHA)가 없으면 즉시 exit 0 이라 이 러너는 `SKIP` 으로 찍는다.
+    # `--pr-body` 를 주면 CI(`test-and-analyze` job)와 같은 env 로 실제로 돈다.
+    # Without the PR env it exits 0 and this runner prints SKIP; with --pr-body it runs like CI.
     "check_reverse_mutation.py",
-    # P4 🔴-예산제 (2026-08-08). 로컬에서는 PR env 가 없어 **현황만 인쇄**하고 쉰다 —
-    # 무집행 🔴 이 지금 몇 건인지 매 push 마다 눈에 들어오는 부수 효과가 있다.
-    # Prints the current unenforced-🔴 count locally; the delta verdict is CI's job.
 )
 
 # 인자가 필요한 whole-repo 가드 — CI 와 같은 형태로 부른다.

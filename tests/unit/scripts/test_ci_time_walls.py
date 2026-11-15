@@ -72,3 +72,19 @@ def test_budget_steps_bracket_the_suite():
     assert start["run"].strip() == 'echo "at=$(date +%s)" >> "$GITHUB_OUTPUT"'
     assert (budget.get("env") or {}).get("SUITE_STARTED_AT") == "${{ steps.suite_start.outputs.at }}"
     assert budget["run"].split() == ["python", "scripts/e2e_budget.py", "--started-at", '"$SUITE_STARTED_AT"']
+
+
+def test_superseded_pr_runs_are_cancelled_but_main_runs_are_not():
+    """덧쓰인 PR 푸시의 실행은 끊고(#1746 K20 P2-49), main 은 커밋마다 그룹이 따로라 끊지 않는다 — 배포가 커밋마다
+    그 커밋의 CI 를 기다린다. / Superseded PR runs are cancelled; main runs are grouped per commit and kept."""
+    concurrency = _load(_ROOT / ".github" / "workflows" / "ci.yml").get("concurrency") or {}
+    assert concurrency.get("group") == "${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}"
+    assert concurrency.get("cancel-in-progress") == "${{ github.event_name == 'pull_request' }}"
+
+
+def test_suite_prints_its_slowest_tests():
+    """예산이 닿았을 때 무엇을 나눌지 보이게 스위트가 가장 느린 시험을 찍는다(#1746 K20 P2-62)."""
+    suites = [step for step in _e2e()["steps"] if step.get("name") == _SUITE]
+    flags = [token for token in suites[0]["run"].split() if token.startswith("--durations=")]
+    assert len(flags) == 1, suites[0]["run"]
+    assert int(flags[0].split("=", 1)[1]) > 0, flags
