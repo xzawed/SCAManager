@@ -329,8 +329,6 @@ def test_an_unverified_repo_card_shows_its_recorded_grade(browser_instance, live
     데스크톱·모바일에서 등급 칩(색 있음) · 평균만큼 찬 막대 · 점수 · «미검증 포함 · AI 리뷰 꺼짐» 이
     카드 안에 보이는지 잰다. 시드 = 70점 분석 2회.
     """
-    import re  # noqa: PLC0415
-
     from playwright.sync_api import expect  # noqa: PLC0415
 
     from src.i18n.loader import get_text  # noqa: PLC0415
