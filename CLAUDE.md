@@ -28,7 +28,8 @@ GitHub Push/PR → 정적 분석 + AI 리뷰 → 점수·등급 → 알림(Teleg
 | `Dockerfile` · Railway 대시보드 설정 · `src/config.py` · `.env.example` | [deploy.md](docs/workflow/deploy.md) |
 | `tests/**` · `e2e/**` · `scripts/**` · `.github/workflows/**` | [verify.md](docs/workflow/verify.md) |
 | `src/templates/**` · `src/static/**` · `src/ui/**` · `src/i18n/**` | [ui-i18n.md](docs/workflow/ui-i18n.md) |
-| `src/auth/**` · `src/crypto.py` · `src/shared/**` · `.pre-commit-config.yaml` | [security.md](docs/workflow/security.md) |
+| `src/auth/**` · `src/crypto.py` · `.pre-commit-config.yaml` | [security.md](docs/workflow/security.md) |
+| `src/shared/**` | [security.md](docs/workflow/security.md) + [deploy.md](docs/workflow/deploy.md) |
 | `src/api/**` · `src/config_manager/**` · `src/services/**` | [gate-notify.md](docs/workflow/gate-notify.md) + [db.md](docs/workflow/db.md) |
 | `src/main.py` · `src/config.py` · `src/constants.py` · `src/database.py` · `src/scheduler.py` · `src/logging_config.py` · `src/middleware/**` | [deploy.md](docs/workflow/deploy.md) |
 | `src/github_client/**` · `src/railway_client/**` · `src/verifier/**` · `src/mcp/**` · `src/cli/**` | [gate-notify.md](docs/workflow/gate-notify.md) |
@@ -41,7 +42,7 @@ py -3 scripts/pre_push_gate.py      # CI 가드를 로컬에서 (--full: pylint�
 py -3 -m pytest e2e/ -p no:asyncio  # E2E (tests/ 와 같이 돌리지 않는다)
 ```
 
-이 PC 엔 `make` 이 없다 — `make X` 실패는 환경 문제다(정본 `Makefile`).
+`make` 이 없는 환경(Windows 등)에서는 `Makefile` 의 그 타깃 명령을 그대로 친다 — `make X` 실패는 환경 문제다.
 
 최초 설정: `cp .env.example .env` → `.env` 의 `SESSION_SECRET` 에 `openssl rand -hex 32` 값(없거나 32자 미만이면 import 에서 멈춘다)
 → `py -3 -m pip install -r requirements.txt -r requirements-dev.txt`

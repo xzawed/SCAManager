@@ -126,7 +126,9 @@ repos:
         name: "🌲 architecture 트리 싱크 (src/ ↔ architecture.md)"
         language: python
         entry: python scripts/check_architecture_tree_sync.py
-        files: "^(src/[^/]+/|src/[^/]+\\.py|docs/architecture\\.md)$"
+        # src/ 아래 어느 깊이의 .py 든 — 옛 첫 가지 `src/[^/]+/` 는 `/` 로 끝나는 경로라 파일 경로에 맞은 적이 없다.
+        # Any .py under src/ at any depth; the old `src/[^/]+/` branch ended in `/` and never matched a file path.
+        files: "^(src/.+\\.py|docs/architecture\\.md)$"
         pass_filenames: false
         stages: [pre-commit]
         description: src/ 패키지·최상위 모듈 ↔ architecture.md 트리 등재 정합 (신규 파일 미등재 3회 재발 차단, 진단 P1).

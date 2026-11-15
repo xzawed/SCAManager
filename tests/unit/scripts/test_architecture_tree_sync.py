@@ -93,3 +93,27 @@ def test_guard_is_wired():
     ref = "scripts/check_architecture_tree_sync.py"
     assert surface_invokes(pc, ref), "pre-commit 에서 실행되지 않음 (이름 언급은 배선 아님)"
     assert surface_invokes(ci, ref), "CI 에서 실행되지 않음 (이름 언급은 배선 아님)"
+
+
+def _architecture_hook_files_pattern():
+    """pre-commit 의 트리 싱크 훅 `files` 정규식 — 설정 파일에서 그대로 읽는다 / the hook's files regex, read from config."""
+    import re  # noqa: PLC0415
+
+    import yaml  # noqa: PLC0415
+
+    config = yaml.safe_load((_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8"))
+    hooks = [hook for repo in config["repos"] for hook in repo.get("hooks", [])
+             if hook.get("id") == "check-architecture-tree-sync"]
+    assert len(hooks) == 1, hooks
+    return re.compile(hooks[0]["files"])
+
+
+def test_pre_commit_hook_fires_for_a_new_file_in_a_subpackage():
+    """회고 원장 L18 P2-14 — 옛 첫 가지 `src/[^/]+/` 는 `/` 로 끝나 파일 경로에 맞은 적이 없어, 하위 패키지에 새 파일을
+    만들어도 훅이 발화하지 않았다. 잡혀야 하는 경로와 무시돼야 하는 경로를 함께 심는다.
+    The old first branch ended in `/` and never matched a file; plant both must-fire and must-ignore paths."""
+    pattern = _architecture_hook_files_pattern()
+    fires = ["src/newpkg/module.py", "src/analyzer/io/tools/new_tool.py", "src/config.py", "docs/architecture.md"]
+    ignored = ["tests/unit/test_x.py", "src/static/css/tokens.css", "src/templates/base.html", "docs/STATE.md"]
+    assert [path for path in fires if not pattern.search(path)] == []
+    assert [path for path in ignored if pattern.search(path)] == []

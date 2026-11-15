@@ -55,7 +55,8 @@ def test_baseline_is_sane():
 @pytest.mark.parametrize(
     ("doc", "pattern", "what"),
     [
-        ("docs/STATE.md", r"E2E \*\*(\d+)\*\* \(`#1291`", "STATE 종합 수치"),
+        # 종합 수치 줄의 «/ E2E **N** /» — 예전엔 «(`#1291` 기준)» 꼬리표를 붙잡아 지울 수 없었다(121건 시절 표지)
+        ("docs/STATE.md", r"/ E2E \*\*(\d+)\*\* /", "STATE 종합 수치"),
         ("docs/STATE.md", r"\| E2E 테스트 \| \*\*(\d+)개\*\* \|", "STATE 테스트 유형 표"),
         # 🔴 두 README 는 **같은 배지 마크업**을 쓴다 — 그래서 패턴도 같다. 예전에는
         #    `_in_CI` / `_CI` 로 갈려 있었고, 그 표기 차이가 곧 두 문서가 따로 늙는다는 신호였다.
