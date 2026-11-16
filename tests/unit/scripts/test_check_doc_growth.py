@@ -113,6 +113,14 @@ def test_reports_and_agent_prompts_are_outside_the_total(repo):
     assert _run(root, base, "본문 — 사유 없음").returncode == 0
 
 
+def test_an_empty_head_scope_is_a_collapse_not_a_shrink(repo):
+    """🔴 총량에 드는 문서가 HEAD 에 하나도 없으면 «줄었다» 가 아니라 범위 붕괴다 — 사유가 있어도 red."""
+    root, base = repo
+    _git(root, "rm", "-q", "README.md", "docs/workflow/verify.md")
+    _git(root, "commit", "-q", "-m", "rm")
+    assert _run(root, base, f"doc-growth: {_REASON}\n").returncode == 1
+
+
 def test_without_a_pr_context_it_measures_and_passes(repo, capsys):
     """로컬 · push — 본문이 없어 사유를 못 잰다. 늘었다는 사실만 찍고 0(로컬 게이트가 «안 잼» 으로 찍는다)."""
     root, base = repo
