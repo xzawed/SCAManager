@@ -30,6 +30,7 @@ import pytest
 from scripts.check_dead_code import _git as dead_code_git
 from scripts.check_dual_import import _git as dual_import_git
 from scripts.check_noqa_sideeffect import _git as noqa_git
+from scripts.check_raw_text_asserts import _git as raw_text_git
 from scripts.check_witness_set_predicates import _git as witness_git
 
 _ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -44,6 +45,7 @@ _GIT_HELPERS = [
     ("check_noqa_sideeffect", noqa_git),
     ("check_dual_import", lambda args: dual_import_git(*args)),
     ("check_witness_set_predicates", lambda args: witness_git(*args)),
+    ("check_raw_text_asserts", lambda args: raw_text_git(*args)),
 ]
 
 

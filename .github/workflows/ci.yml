@@ -161,6 +161,12 @@ jobs:
         # Diff-scoped: new public repo/service funcs with 0 in-src AST callers are blocked (find_orphaned pattern).
         run: python scripts/check_dead_code.py "${{ github.event.pull_request.base.sha }}" HEAD
 
+      - name: Block new raw-text substring asserts in PR-changed tests (B8 래칫 — 회고 원장 L12 P2-52)
+        # 🔴 신규 diff 한정 — 이 PR 이 더하거나 고친 줄의 `assert "글자" in 원문` 만 막는다(이미 있던 것은 그 줄을 고칠 때).
+        # B8 floor 는 파일 단위라 구조 도구를 한 번 부른 파일의 맨 글자 판정이 전부 지나간다 — 주석 · 산문이 통과시킨다.
+        # Diff-scoped ratchet: only asserts this PR wrote that search raw file text for a literal are blocked.
+        run: python scripts/check_raw_text_asserts.py "${{ github.event.pull_request.base.sha }}" HEAD
+
   # repo 무결성 stdlib 가드 CI 백스톱 (회고 2026-07-18 P2#36) — pre-commit 우회(--no-verify)·미설치 시에도 서버측 강제.
   # 4 whole-repo 상태 가드(docs↔README 배지·cycle-history TOC 앵커·config↔env-vars·RepoConfig 3-layer)는
   # pre-commit-only 라 우회 가능했다 → 의존성 0(stdlib)·초 단위 완료라 push+PR 양쪽 서버측 백스톱으로 승격.
