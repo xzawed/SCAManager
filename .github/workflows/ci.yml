@@ -858,10 +858,14 @@ jobs:
     #    잡 벽은 준비 + 스위트 벽을 덮는 마지막 방어선이다. 기다리다 멈춘 시험 하나는 `--timeout=120` 이 끊는다.
     # Two layers: each download step has its own wall (a stalled mirror fails that step instead of cancelling
     # the job), and the suite step's wall is the time budget — e2e_budget.py goes red above 85% of it.
-    timeout-minutes: 60
+    # 잡 벽 75 = 준비 + 스위트 벽 + 마지막 역-뮤테이션 스텝 벽(15)을 덮는다 / covers the reverse-mutation step too.
+    timeout-minutes: 75
     steps:
+      # 전체 이력 — 마지막 역-뮤테이션 스텝이 PR base 의 파일로 되돌린다 / the last step reverts to the PR base
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v7
@@ -949,3 +953,34 @@ jobs:
             e2e/**/*.zip
           if-no-files-found: ignore
           retention-days: 7
+
+      # 면제 표지(`reverse-mutation-not-applicable:`)를 읽을 본문 — 살아 있는 값(고정 페이로드 아님).
+      # The live PR body for the exemption marker (not the frozen event payload).
+      - name: PR 본문 조회 (살아 있는 값 — 고정 페이로드 아님)
+        id: prbody
+        if: github.event_name == 'pull_request'
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          body="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" -q '.body // ""')"
+          {
+            echo "body<<__PR_BODY_EOF__"
+            printf '%s\n' "$body"
+            echo "__PR_BODY_EOF__"
+          } >> "$GITHUB_OUTPUT"
+
+      # 🔴 역-뮤테이션 — e2e 시험까지(회고 원장 L12 P2-23 · P2-53). 단위 잡의 게이트는 e2e 시험이 바뀐 PR 을 이리로 넘긴다.
+      #    스위트가 초록이었으므로 e2e 기준선은 섰다. 생산 변경을 **제자리에서** 되돌리고 CSS 를 다시 빌드한 뒤, 이 PR 이
+      #    바꾼 단위 · e2e 시험을 다시 돌린다 — 하나라도 red 면 관측됨이다. 제자리라 **마지막 스텝**이어야 한다.
+      # Reverse-mutation including e2e: revert in place, rebuild CSS, re-run this PR's unit and e2e tests. Must be last.
+      - name: 역-뮤테이션 — e2e 시험까지 (PR)
+        if: github.event_name == 'pull_request'
+        timeout-minutes: 15
+        env:
+          PR_BODY: ${{ steps.prbody.outputs.body }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python scripts/check_reverse_mutation.py --with-e2e --rebuild "npm run build"

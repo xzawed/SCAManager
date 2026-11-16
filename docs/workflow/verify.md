@@ -55,11 +55,11 @@
 ### CI (`.github/workflows/ci.yml` — push:main · PR:base 무관)
 
 - `test-and-analyze` — `pytest tests/` 전량 + coverage.xml → Codecov·SonarCloud. PR 은
-  역-뮤테이션(되돌리면 red?) + 본문 수치 ↔ 그 잡의 junit 대조 추가.
+  역-뮤테이션(되돌리면 red? · e2e 시험이 바뀐 PR 은 `e2e` 잡이 함께) + 본문 수치 ↔ junit.
 - `pg-concurrency` — SKIP LOCKED + 마이그레이션 round-trip.
   **node-id 핀 목록** — 새 PG 테스트를 등재 안 하면 단위 스위트가 red 로 잡는다.
-- `e2e` — CSS 빌드 후 `--e2e-strict-skips`(skip 집합 ↔ `e2e/SKIP_ALLOWLIST`, 양방향 red),
-  수집 건수 ↔ `e2e/EXPECTED_COUNT` 대조 · 스위트 시간 ↔ 스텝 벽(85% 초과 red, `scripts/e2e_budget.py`).
+- `e2e` — CSS 빌드 후 `--e2e-strict-skips`(skip ↔ `e2e/SKIP_ALLOWLIST`, 양방향 red) · 수집 건수 ↔
+  `e2e/EXPECTED_COUNT` · 스위트 시간 ↔ 스텝 벽(85% 초과 red, `scripts/e2e_budget.py`). PR 은 끝에 단위 · e2e 역-뮤테이션(제자리).
 - `lint-changed-tests` — 변경 test: `flake8 --isolated --select=F401,F841` +
   dual-import · noqa 은닉 import · 미배선 dead code · 이 PR 이 쓴 «원문 글자 포함» 단언.
 - `repo-integrity` — stdlib 가드 전량(정본 = `pre_push_gate.py` `_INTEGRITY`).

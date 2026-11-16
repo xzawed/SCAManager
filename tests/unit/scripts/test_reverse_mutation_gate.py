@@ -574,3 +574,162 @@ def test_stderr_is_still_used_when_stdout_has_no_summary():
     proc = subprocess.CompletedProcess(
         args=[], returncode=1, stdout="", stderr="===== 1 failed in 0.17s =====\n")
     assert gate._grade(proc) == "assertion"
+
+
+# ─── e2e 시험까지 — E2E 잡에서 되돌려 잰다 (회고 원장 L12 P2-23 · P2-53 · 사용자 11-16 결정) ─────────
+#
+# 🔴 단위 잡의 게이트는 `tests/` 만 되돌려 돌렸다. e2e 로만 관측되는 PR 은 «대상 아님» 으로 지나가거나,
+#    무관한 단위 시험이 섞이면 거짓 빨강이었다 — 그래서 게이트를 통과하려고 텍스트 대리 단위 시험이 붙었다.
+#    이제 e2e 시험이 바뀐 PR 은 단위 잡이 E2E 잡으로 넘기고, E2E 잡이 단위 · e2e 시험을 함께 되돌려 잰다.
+
+
+def _e2e_repo(repo: Path) -> Path:
+    """기준 리포에 e2e 시험 하나를 더한 기준 커밋 — e2e 시험도 생산 모듈을 관측한다."""
+    (repo / "e2e").mkdir()
+    (repo / "e2e" / "test_flow.py").write_text(
+        "import sys, pathlib\n"
+        "sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))\n"
+        "from src.thing import value\n\n\n"
+        "def test_flow():\n    assert value() == 1\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "e2e base")
+    return repo
+
+
+def _e2e_observing(expected: int) -> str:
+    return ("import sys, pathlib\n"
+            "sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))\n"
+            "from src.thing import value\n\n\n"
+            f"def test_flow():\n    assert value() == {expected}\n")
+
+
+def test_the_unit_job_hands_e2e_prs_to_the_e2e_job(repo: Path):
+    """🔴 e2e 시험이 바뀐 PR — 단위 잡은 판정하지 않고 넘긴다(무관한 단위 시험만으로 거짓 빨강을 내지 않는다)."""
+    _e2e_repo(repo)
+    (repo / "src" / "thing.py").write_text("def value():\n    return 2\n", encoding="utf-8")
+    (repo / "e2e" / "test_flow.py").write_text(_e2e_observing(2), encoding="utf-8")
+    (repo / "tests" / "test_unrelated.py").write_text("def test_x():\n    assert True\n", encoding="utf-8")
+    base, head = _commit(repo, "e2e observes")
+    code, lines = gate.evaluate(base, head, repo=repo)
+    assert code == 0, "\n".join(lines)
+    assert any("E2E 잡" in line for line in lines), lines
+
+
+def test_e2e_mode_passes_when_the_e2e_test_observes(repo: Path):
+    _e2e_repo(repo)
+    (repo / "src" / "thing.py").write_text("def value():\n    return 2\n", encoding="utf-8")
+    (repo / "e2e" / "test_flow.py").write_text(_e2e_observing(2), encoding="utf-8")
+    base, head = _commit(repo, "e2e observes")
+    code, lines = gate.evaluate_with_e2e(base, head, repo=repo)
+    assert code == 0, "\n".join(lines)
+    assert any("e2e" in line and "assertion" in line for line in lines), lines
+
+
+def test_e2e_mode_blocks_when_nothing_observes(repo: Path):
+    """🔴 본체 — 생산을 바꿨는데 바뀐 e2e 시험도 단위 시험도 그것을 보지 않으면 red."""
+    _e2e_repo(repo)
+    (repo / "src" / "thing.py").write_text("def value():\n    return 2\n", encoding="utf-8")
+    (repo / "e2e" / "test_new.py").write_text("def test_nothing():\n    assert 1 + 1 == 2\n", encoding="utf-8")
+    base, head = _commit(repo, "vacuous e2e")
+    code, lines = gate.evaluate_with_e2e(base, head, repo=repo)
+    assert code == 1, "\n".join(lines)
+
+
+def test_e2e_mode_counts_a_unit_observer_too(repo: Path):
+    """단위 잡이 넘겼으므로 E2E 잡이 단위 시험도 잰다 — 단위가 관측하면 e2e 가 안 봐도 관측됨이다."""
+    _e2e_repo(repo)
+    (repo / "src" / "thing.py").write_text("def value():\n    return 2\n", encoding="utf-8")
+    (repo / "tests" / "test_thing.py").write_text(
+        "import sys, pathlib\n"
+        "sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))\n"
+        "from src.thing import value\n\n\n"
+        "def test_value():\n    assert value() == 2\n", encoding="utf-8")
+    (repo / "e2e" / "test_new.py").write_text("def test_nothing():\n    assert True\n", encoding="utf-8")
+    base, head = _commit(repo, "unit observes")
+    code, lines = gate.evaluate_with_e2e(base, head, repo=repo)
+    assert code == 0, "\n".join(lines)
+
+
+def test_e2e_mode_leaves_the_working_tree_as_it_found_it(repo: Path):
+    """제자리에서 되돌리므로 끝나면 복원한다 — 되돌린 파일 · 지운 새 파일 모두."""
+    _e2e_repo(repo)
+    (repo / "src" / "thing.py").write_text("def value():\n    return 2\n", encoding="utf-8")
+    (repo / "src" / "added.py").write_text("NEW = 1\n", encoding="utf-8")
+    (repo / "e2e" / "test_flow.py").write_text(_e2e_observing(2), encoding="utf-8")
+    base, head = _commit(repo, "with a new module")
+    gate.evaluate_with_e2e(base, head, repo=repo)
+    status = subprocess.run(["git", "status", "--porcelain"], cwd=str(repo), capture_output=True,
+                            text=True, check=True).stdout
+    assert status == "", status
+    assert (repo / "src" / "added.py").exists()
+    assert (repo / "src" / "thing.py").read_text(encoding="utf-8") == "def value():\n    return 2\n"
+
+
+def test_e2e_mode_restores_a_production_file_the_pr_deleted(repo: Path):
+    """🔴 PR 이 지운 생산 파일은 되돌릴 때 살아난다 — 복원 뒤에는 다시 지워져 있어야 한다(트리가 HEAD 그대로)."""
+    _e2e_repo(repo)
+    (repo / "src" / "old.py").write_text("OLD = 1\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "old module")
+    (repo / "src" / "old.py").unlink()
+    (repo / "src" / "thing.py").write_text("def value():\n    return 2\n", encoding="utf-8")
+    (repo / "e2e" / "test_flow.py").write_text(_e2e_observing(2), encoding="utf-8")
+    base, head = _commit(repo, "delete a module")
+    gate.evaluate_with_e2e(base, head, repo=repo)
+    status = subprocess.run(["git", "status", "--porcelain"], cwd=str(repo), capture_output=True,
+                            text=True, check=True).stdout
+    assert status == "", status
+    assert not (repo / "src" / "old.py").exists()
+
+
+def test_e2e_mode_refuses_a_dirty_tree(repo: Path):
+    """🔴 제자리 되돌림은 깨끗한 트리에서만 — 미커밋 수정을 덮거나 잃으면 안 된다(판정 불가)."""
+    _e2e_repo(repo)
+    (repo / "src" / "thing.py").write_text("def value():\n    return 2\n", encoding="utf-8")
+    (repo / "e2e" / "test_flow.py").write_text(_e2e_observing(2), encoding="utf-8")
+    base, head = _commit(repo, "e2e observes")
+    (repo / "src" / "thing.py").write_text("def value():\n    return 3\n", encoding="utf-8")   # 미커밋
+    code, lines = gate.evaluate_with_e2e(base, head, repo=repo)
+    assert code == 1, "\n".join(lines)
+    assert (repo / "src" / "thing.py").read_text(encoding="utf-8") == "def value():\n    return 3\n"
+
+
+def test_e2e_mode_skips_a_pr_without_e2e_tests(repo: Path):
+    """e2e 시험이 안 바뀐 PR 은 단위 잡이 잰다 — E2E 잡은 쉰다."""
+    (repo / "src" / "thing.py").write_text("def value():\n    return 2\n", encoding="utf-8")
+    base, head = _commit(repo, "prod only")
+    code, lines = gate.evaluate_with_e2e(base, head, repo=repo)
+    assert code == 0
+    assert any("단위 잡" in line for line in lines), lines
+
+
+def test_e2e_conftest_is_production_not_a_test():
+    """`e2e/conftest.py` 는 생산 표면이다(되돌린다) — e2e 시험으로 세지 않는다."""
+    assert gate.e2e_tests_of(["e2e/conftest.py", "e2e/test_a.py", "e2e/_helpers.py", "src/x.py"]) == [
+        "e2e/test_a.py", "e2e/_helpers.py"]
+
+
+def _e2e_job_steps() -> list[dict]:
+    import yaml  # noqa: PLC0415
+
+    ci = yaml.safe_load((_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+    return ci["jobs"]["e2e"]["steps"]
+
+
+def test_the_e2e_job_runs_the_gate_last_with_the_live_body():
+    from tests.unit.scripts._wiring_shape import invokes  # noqa: PLC0415
+
+    steps = _e2e_job_steps()
+    hits = [i for i, s in enumerate(steps) if invokes(s.get("run", ""), "scripts/check_reverse_mutation.py")]
+    assert len(hits) == 1, [s.get("name") for s in steps]
+    step = steps[hits[0]]
+    assert hits[0] == len(steps) - 1, "제자리 되돌림 — 마지막 스텝이어야 뒤 스텝이 되돌린 트리를 보지 않는다"
+    assert "pull_request" in str(step.get("if", ""))
+    passed = step.get("env", {})
+    assert "steps.prbody.outputs.body" in str(passed.get("PR_BODY")), passed
+    for key in ("PR_BASE_SHA", "PR_HEAD_SHA"):
+        assert key in passed, key
+    checkout = next(s for s in steps if str(s.get("uses", "")).startswith("actions/checkout"))
+    assert checkout.get("with", {}).get("fetch-depth") == 0, "기점 커밋이 없으면 되돌릴 수 없다"
