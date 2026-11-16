@@ -2,8 +2,8 @@ name: semgrep venv 감사 (주간)
 
 # requirements-semgrep.txt 를 바꾸지 않은 PR · main push 에서는 semgrep 감사가 경고만 남긴다(scripts/semgrep_audit.py).
 # 그 사이에 뜬 새 권고를 이 예약 실행이 이슈로 알린다(회고 원장 L09 P2-54 · 사용자 11-16 결정 — 알림 = 이슈).
-# 🔴 실행은 늘 초록으로 끝낸다 — 실패하면 main 최신 커밋에 ❌ 가 붙고, Railway 가 CI 를 기다리는 배포와 겹치면
-#    그 배포를 SKIP 한다. 알림 자체를 못 했을 때(이슈 목록 · 작성 실패)만 red 다.
+# 🔴 감사 결과로는 red 가 되지 않는다 — 실패하면 main 최신 커밋에 ❌ 가 붙고, Railway 가 CI 를 기다리는 배포와 겹치면
+#    그 배포를 SKIP 한다. 준비 단계(체크아웃 · 설치)가 실패했거나 알리지 못했을 때(이슈 목록 · 작성 실패)만 red 다.
 # Weekly audit of semgrep's own venv; findings are reported through an issue and the run itself stays green.
 on:
   schedule:
@@ -40,9 +40,12 @@ jobs:
           python scripts/semgrep_audit.py --always-block --report "$RUNNER_TEMP/semgrep-audit.txt"
           echo "rc=$?" >> "$GITHUB_OUTPUT"
 
-      # rc 가 비어 있어도(감사 스텝 중단) 알린다 — 그때 본문은 «감사 출력이 없다» / an empty rc also notifies
+      # rc 가 비어 있어도(앞 단계 실패로 감사를 못 돌림) 알린다 — 그때 본문은 «감사 출력이 없다».
+      # 🔴 `!cancelled()` 필수 — 상태 함수가 없는 `if:` 에는 `success() &&` 가 암묵으로 붙어, 앞 단계가 실패하면
+      #    이 스텝이 건너뛰어진다(Grok claim-review 0f913383 BROKEN).
+      # An empty rc also notifies; without a status function the step would be skipped after a failure.
       - name: 이슈로 알림 — 예외 밖 권고 · 감사 실패
-        if: steps.audit.outputs.rc != '0'
+        if: ${{ !cancelled() && steps.audit.outputs.rc != '0' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: python scripts/semgrep_audit.py --notify "$RUNNER_TEMP/semgrep-audit.txt"

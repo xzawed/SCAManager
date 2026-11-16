@@ -309,8 +309,48 @@ def test_the_weekly_workflow_audits_and_notifies_without_turning_red():
     assert audit_step.get("id"), "알림 스텝이 결과를 읽을 id 가 없다"
     notify = [s for s in steps if any(args[:1] == ["--notify"] for args in _script_args(s.get("run", "")))]
     assert len(notify) == 1, "알림 스텝이 하나여야 한다"
-    assert f"steps.{audit_step['id']}.outputs.rc" in str(notify[0].get("if", "")), notify[0].get("if")
+    # 🔴 상태 함수가 없으면 `success() &&` 가 암묵으로 붙어, 앞 단계가 실패해 rc 가 빈 때 알림이 건너뛰어진다.
+    want = "${{ !cancelled() && steps.%s.outputs.rc != '0' }}" % audit_step["id"]
+    assert notify[0].get("if") == want, notify[0].get("if")
     assert "GH_TOKEN" in notify[0].get("env", {}), "gh 가 쓸 토큰이 없다"
+
+
+# witness-corpus: 예외로 둔 권고의 다른 이름(GHSA 별칭) — 목록이 글자로는 알아보지 못하는 같은 권고(pip-audit JSON 실측 11-16)
+_ALIASES_OF_THE_EXCEPTIONS = {
+    "CVE-2026-59951": "GHSA-84m7-p3x7-pcfv",
+    "CVE-2026-114603": "GHSA-xcq7-p3pf-p88h",
+    "CVE-2026-126360": "GHSA-mf5v-w3w3-f6cg",
+    "CVE-2026-116684": "GHSA-w4fh-qvv9-3v23",
+    "CVE-2026-116685": "GHSA-5h93-6whr-6q8j",
+    "CVE-2026-116686": "GHSA-rwrf-2pqf-9j8j",
+}
+
+
+def test_each_exception_is_listed_once_by_the_reported_id():
+    """🔴 같은 권고를 별칭으로 또 적으면, 제거 조건이 와서 CVE 를 지워도 별칭이 그 예외를 살려 둔다.
+
+    pip-audit 의 `--ignore-vuln` 은 별칭으로도 대조한다(11-16 실측 — GHSA 하나만 넘겨도 그 CVE 가 무시됐다).
+    그래서 예외는 pip-audit 가 보고하는 ID(지금은 CVE) 하나로만 적는다 — 같은 사실의 사본은 하나만 고쳐진다(P2-89).
+    """
+    listed = list(mod.IGNORED_VULNS)
+    assert len(set(listed)) == len(listed), f"같은 ID 를 두 번 적었다: {listed}"
+    doubled = [f"{cve} ↔ {alias}" for cve, alias in _ALIASES_OF_THE_EXCEPTIONS.items()
+               if cve in listed and alias in listed]
+    aliased = [alias for cve, alias in _ALIASES_OF_THE_EXCEPTIONS.items() if alias in listed and cve not in listed]
+    assert doubled == [] and aliased == [], (doubled, aliased)
+
+
+def test_the_alias_check_sees_both_shapes():
+    """두 심음 — 같은 권고를 두 이름으로 적은 목록 · 별칭만 적은 목록은 잡히고, CVE 만 적은 목록은 조용하다."""
+    cve, alias = next(iter(_ALIASES_OF_THE_EXCEPTIONS.items()))
+
+    def _flags(listed):
+        doubled = [c for c, a in _ALIASES_OF_THE_EXCEPTIONS.items() if c in listed and a in listed]
+        aliased = [a for c, a in _ALIASES_OF_THE_EXCEPTIONS.items() if a in listed and c not in listed]
+        return doubled, aliased
+    assert _flags([cve, alias]) == ([cve], [])
+    assert _flags([alias]) == ([], [alias])
+    assert _flags([cve]) == ([], [])
 
 
 def test_the_exception_list_lives_only_in_the_script():

@@ -160,7 +160,7 @@ def _append_step_summary(markdown: str) -> None:
         with open(path, "a", encoding="utf-8") as fh:
             fh.write(markdown)
     except OSError:
-        pass
+        pass  # 기록 실패가 판정을 바꾸면 안 된다 / logging must never change the verdict
 
 
 def _block_reason(*, always: bool, changed: bool | None) -> str:
