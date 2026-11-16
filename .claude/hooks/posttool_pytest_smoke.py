@@ -82,7 +82,9 @@ def tests_naming(path, repo):
     Test files holding a string literal that is the file's name or ends with `/<name>`.
     """
     name = Path(_norm(path)).name
-    literal = re.compile(r"""(["'])(?:[^"'\n]*/)?""" + re.escape(name) + r"\1")
+    # 경로 앞부분은 «여는 따옴표와 같은 문자» 와 줄바꿈만 피한다 — 다른 따옴표는 글자다(`"o'reilly/x.html"` · Grok 반례).
+    # The path prefix only avoids the opening quote and newlines; the other quote is an ordinary character.
+    literal = re.compile(r"""(["'])(?:(?:(?!\1).)*/)?""" + re.escape(name) + r"\1")
     out = []
     for test in sorted((Path(repo) / "tests" / "unit").rglob("test_*.py")):
         try:

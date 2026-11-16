@@ -48,12 +48,14 @@ _NAMING = {
     "test_single_quote.py": "P = 'base.html'\n",
     "test_path.py": 'P = "src/templates/base.html"\n',
     "test_fstring.py": 'ROOT = "x"\nP = f"{ROOT}/base.html"\n',
+    "test_other_quote_in_path.py": 'P = "o\'reilly/base.html"\n',
 }
 _NOT_NAMING = {
     "test_database.py": 'P = "database.html"\n',
     "test_backup.py": 'P = "base.html.bak"\n',
     "test_prefix.py": 'P = "mybase.html"\n',
     "test_prose.py": '"""이 시험은 base.html 을 읽지 않는다."""\n',
+    "test_prose_with_quote.py": 'P = "it\'s base.html"\n',
 }
 
 
