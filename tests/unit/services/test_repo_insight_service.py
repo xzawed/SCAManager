@@ -293,7 +293,7 @@ class TestRepoInsightNarrative:
         from src.services.repo_insight_service import repo_insight_narrative
         with patch("src.services.repo_insight_service.settings") as s:
             s.anthropic_api_key = "sk-ant-test"
-            s.claude_insight_model = "claude-haiku-4-5-20251001"
+            s.claude_insight_model = "claude-haiku-4-5"
             result = await repo_insight_narrative(
                 db, repo.id, kpi={"analysis_count": 0}, recurring=[],
             )
@@ -311,7 +311,7 @@ class TestRepoInsightNarrative:
         )
         with patch("src.services.repo_insight_service.settings") as s:
             s.anthropic_api_key = "sk-ant-test"
-            s.claude_insight_model = "claude-haiku-4-5-20251001"
+            s.claude_insight_model = "claude-haiku-4-5"
             result = await repo_insight_narrative(
                 db, repo.id, user_id=user.id,
                 kpi={"analysis_count": 5, "avg_score": 80, "grade": "B",
@@ -337,7 +337,7 @@ class TestRepoInsightNarrative:
         with patch("src.services.repo_insight_service.settings") as s, \
              patch("src.services.repo_insight_service.anthropic.AsyncAnthropic", return_value=mock_client):
             s.anthropic_api_key = "sk-ant-test"
-            s.claude_insight_model = "claude-haiku-4-5-20251001"
+            s.claude_insight_model = "claude-haiku-4-5"
             result = await repo_insight_narrative(
                 db, repo.id, user_id=user.id,
                 kpi={"analysis_count": 3, "avg_score": 75, "grade": "C",
@@ -372,7 +372,7 @@ class TestRepoInsightNarrative:
         with patch("src.services.repo_insight_service.settings") as s, \
              patch("src.services.repo_insight_service.anthropic.AsyncAnthropic", return_value=mock_client):
             s.anthropic_api_key = "sk-ant-test"
-            s.claude_insight_model = "claude-haiku-4-5-20251001"
+            s.claude_insight_model = "claude-haiku-4-5"
             result = await repo_insight_narrative(
                 db, repo.id,
                 kpi={"analysis_count": 2, "avg_score": 60, "grade": "D",
@@ -397,7 +397,7 @@ class TestRepoInsightNarrative:
         with patch("src.services.repo_insight_service.settings") as s, \
              patch("src.services.repo_insight_service.anthropic.AsyncAnthropic", return_value=mock_client):
             s.anthropic_api_key = "sk-ant-test"
-            s.claude_insight_model = "claude-haiku-4-5-20251001"
+            s.claude_insight_model = "claude-haiku-4-5"
             result = await repo_insight_narrative(
                 db, repo.id, user_id=None,
                 kpi={"analysis_count": 1, "avg_score": 80, "grade": "B",
@@ -425,7 +425,7 @@ class TestRepoInsightNarrative:
              patch("src.services.repo_insight_service.anthropic.AsyncAnthropic", return_value=mock_client), \
              patch("src.services.repo_insight_service.log_claude_api_call") as mock_log:
             s.anthropic_api_key = "sk-ant-test"
-            s.claude_insight_model = "claude-haiku-4-5-20251001"
+            s.claude_insight_model = "claude-haiku-4-5"
             await repo_insight_narrative(
                 db, repo.id, user_id=user.id,
                 kpi={"analysis_count": 3, "avg_score": 75, "grade": "C",
@@ -452,7 +452,7 @@ class TestRepoInsightNarrative:
              patch("src.services.repo_insight_service.anthropic.AsyncAnthropic", return_value=mock_client), \
              patch("src.services.repo_insight_service.log_claude_api_call") as mock_log:
             s.anthropic_api_key = "sk-ant-test"
-            s.claude_insight_model = "claude-haiku-4-5-20251001"
+            s.claude_insight_model = "claude-haiku-4-5"
             await repo_insight_narrative(
                 db, repo.id, user_id=user.id,
                 kpi={"analysis_count": 2, "avg_score": 60, "grade": "D",
@@ -492,7 +492,7 @@ class TestApiLogExactlyOnce:
              patch("src.services.repo_insight_service.log_claude_api_call",
                    side_effect=lambda **kw: calls.append(kw.get("status"))):
             s.anthropic_api_key = "sk-ant-test"
-            s.claude_insight_model = "claude-haiku-4-5-20251001"
+            s.claude_insight_model = "claude-haiku-4-5"
             await repo_insight_narrative(
                 db, repo.id, user_id=user.id,
                 kpi={"analysis_count": 3, "avg_score": 75, "grade": "C",
@@ -544,7 +544,7 @@ class TestErrorPathTokens:
         with patch("src.services.repo_insight_service.settings") as s,              patch("src.services.repo_insight_service.anthropic.AsyncAnthropic", return_value=mock_client),              patch("src.services.repo_insight_service.log_claude_api_call",
                    side_effect=lambda **kw: rows.append(kw)):
             s.anthropic_api_key = "sk-ant-test"
-            s.claude_insight_model = "claude-haiku-4-5-20251001"
+            s.claude_insight_model = "claude-haiku-4-5"
             await repo_insight_narrative(
                 db, repo.id, user_id=user.id,
                 kpi={"analysis_count": 3, "avg_score": 75, "grade": "C",
