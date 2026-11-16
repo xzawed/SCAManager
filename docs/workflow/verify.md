@@ -44,7 +44,7 @@
    - verdict: SURVIVES | WEAKENED | BROKEN | CONFIRMED | REFUTED | HOLDS
    ```
 
-   볼드(`**WEAKENED**`)는 미매칭.
+   볼드(`**WEAKENED**`)는 미매칭. 라운드마다 한 묶음 — BROKEN 으로 고친 라운드도 지우지 않는다.
    왜 그 분기로 갔는지는 `py -3 scripts/check_claim_review_trace.py --explain <base> <head>`.
 
 7. **게이트 분기를 완화했으면** — 조건 제거 · 범위 확대 · `except` 통합 · 면제 추가.
