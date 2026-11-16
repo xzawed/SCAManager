@@ -58,7 +58,8 @@ RUN mkdir -p /etc/apt/keyrings \
 # Failures are not swallowed: a swallowed failure would be cached in this layer and every later
 # build would ship without the tool. A failed build keeps the old deploy. Only the eslint engine
 # comes from here; the parser its config imports comes from `npm ci` below.
-# GitHub 릴리스 내려받기는 몇 분 흔들려도 버티게 재시도하고(모든 오류 · 15 초 간격 · 파일당 300 초 상한) 받은 파일마다
+# GitHub 릴리스 내려받기는 몇 분 흔들려도 버티게 재시도하고(모든 오류 · 연결 20 초 · 한 번 180 초 · 15 초 간격 20번 —
+# 빠른 실패면 약 5 분 · 새 시도는 300 초까지) 받은 파일마다
 # sha256 을 대조한다 — 11-09 GitHub 504 동안 배포 빌드 3건이 이 단계에서 실패했다(회고 원장 R-7). 체크섬 = 각 릴리스의
 # 공식 체크섬 파일(ktlint 는 서명만 있어 공식 주소에서 받은 파일의 값). 버전을 올리면 체크섬도 같은 커밋에서 바꾼다 —
 # `.github/workflows/ci.yml` 조달 step 과 같은 값이어야 한다(`tests/unit/scripts/test_ci_provisions_the_contract.py`).
@@ -66,24 +67,24 @@ RUN mkdir -p /etc/apt/keyrings \
 # Release downloads retry for minutes and are sha256-checked; bump the checksum with the version.
 RUN gem install rubocop-ast -v 1.36.2 --no-document --bindir /usr/bin \
  && gem install rubocop -v 1.57.2 --no-document --bindir /usr/bin \
- && curl -sSfL --retry 10 --retry-all-errors --retry-delay 15 --retry-max-time 300 \
+ && curl -sSfL --connect-timeout 20 --max-time 180 --retry 20 --retry-all-errors --retry-delay 15 --retry-max-time 300 \
     https://github.com/golangci/golangci-lint/releases/download/v1.55.2/golangci-lint-1.55.2-linux-amd64.tar.gz \
     -o /tmp/golangci-lint.tar.gz \
  && echo "ca21c961a33be3bc15e4292dc40c98c8dcc5463a7b6768a3afc123761630c09c  /tmp/golangci-lint.tar.gz" | sha256sum -c - \
  && tar -xzf /tmp/golangci-lint.tar.gz -C /tmp \
  && install -m 0755 /tmp/golangci-lint-1.55.2-linux-amd64/golangci-lint /usr/bin/golangci-lint \
  && rm -rf /tmp/golangci-lint.tar.gz /tmp/golangci-lint-1.55.2-linux-amd64 \
- && curl -sSfL --retry 10 --retry-all-errors --retry-delay 15 --retry-max-time 300 \
+ && curl -sSfL --connect-timeout 20 --max-time 180 --retry 20 --retry-all-errors --retry-delay 15 --retry-max-time 300 \
     https://github.com/hadolint/hadolint/releases/download/v2.15.1/hadolint-linux-x86_64 \
     -o /usr/bin/hadolint \
  && echo "c7187db94eeeeca956519a6af171adc31453941a1e777961f6e680f697c8c507  /usr/bin/hadolint" | sha256sum -c - \
  && chmod +x /usr/bin/hadolint \
- && curl -sSfL --retry 10 --retry-all-errors --retry-delay 15 --retry-max-time 300 \
+ && curl -sSfL --connect-timeout 20 --max-time 180 --retry 20 --retry-all-errors --retry-delay 15 --retry-max-time 300 \
     https://github.com/pinterest/ktlint/releases/download/1.8.0/ktlint \
     -o /usr/bin/ktlint \
  && echo "a3fd620207d5c40da6ca789b95e7f823c54e854b7fade7f613e91096a3706d75  /usr/bin/ktlint" | sha256sum -c - \
  && chmod +x /usr/bin/ktlint \
- && curl -sSfL --retry 10 --retry-all-errors --retry-delay 15 --retry-max-time 300 \
+ && curl -sSfL --connect-timeout 20 --max-time 180 --retry 20 --retry-all-errors --retry-delay 15 --retry-max-time 300 \
     https://github.com/terraform-linters/tflint/releases/download/v0.64.0/tflint_linux_amd64.zip \
     -o /tmp/tflint.zip \
  && echo "cca9d13e2e1d7a2c627af60ff899a3c9b74212899416aeb96ec764d2ef954537  /tmp/tflint.zip" | sha256sum -c - \

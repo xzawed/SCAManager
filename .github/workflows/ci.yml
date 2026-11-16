@@ -495,7 +495,7 @@ jobs:
           sudo gem install rubocop -v 1.57.2 --no-document --bindir /usr/bin
           # 릴리스 내려받기 = 운영 이미지(`Dockerfile`)와 같은 재시도 · 같은 sha256 — 값이 갈리면 단위 시험이 red.
           # Same retry flags and sha256 values as the Dockerfile; the contract test compares them.
-          curl -sSfL --retry 10 --retry-all-errors --retry-delay 15 --retry-max-time 300 \
+          curl -sSfL --connect-timeout 20 --max-time 180 --retry 20 --retry-all-errors --retry-delay 15 --retry-max-time 300 \
             https://github.com/golangci/golangci-lint/releases/download/v1.55.2/golangci-lint-1.55.2-linux-amd64.tar.gz \
             -o /tmp/golangci-lint.tar.gz
           echo "ca21c961a33be3bc15e4292dc40c98c8dcc5463a7b6768a3afc123761630c09c  /tmp/golangci-lint.tar.gz" | sha256sum -c -
@@ -506,17 +506,17 @@ jobs:
           #    시점에** 해석해 조용히 갈렸다. 버전을 올릴 때는
           #    `tests/integration/test_contracted_analyzers_real_binary.py` 가 새 바이너리의
           #    출력으로 파서 계약을 다시 잰다 — 핀만 바꾸고 그 테스트를 안 돌리면 의미가 없다.
-          sudo curl -sSfL --retry 10 --retry-all-errors --retry-delay 15 --retry-max-time 300 \
+          sudo curl -sSfL --connect-timeout 20 --max-time 180 --retry 20 --retry-all-errors --retry-delay 15 --retry-max-time 300 \
             https://github.com/hadolint/hadolint/releases/download/v2.15.1/hadolint-linux-x86_64 \
             -o /usr/bin/hadolint
           echo "c7187db94eeeeca956519a6af171adc31453941a1e777961f6e680f697c8c507  /usr/bin/hadolint" | sha256sum -c -
           sudo chmod +x /usr/bin/hadolint
-          sudo curl -sSfL --retry 10 --retry-all-errors --retry-delay 15 --retry-max-time 300 \
+          sudo curl -sSfL --connect-timeout 20 --max-time 180 --retry 20 --retry-all-errors --retry-delay 15 --retry-max-time 300 \
             https://github.com/pinterest/ktlint/releases/download/1.8.0/ktlint \
             -o /usr/bin/ktlint
           echo "a3fd620207d5c40da6ca789b95e7f823c54e854b7fade7f613e91096a3706d75  /usr/bin/ktlint" | sha256sum -c -
           sudo chmod +x /usr/bin/ktlint
-          curl -sSfL --retry 10 --retry-all-errors --retry-delay 15 --retry-max-time 300 \
+          curl -sSfL --connect-timeout 20 --max-time 180 --retry 20 --retry-all-errors --retry-delay 15 --retry-max-time 300 \
             https://github.com/terraform-linters/tflint/releases/download/v0.64.0/tflint_linux_amd64.zip \
             -o /tmp/tflint.zip
           echo "cca9d13e2e1d7a2c627af60ff899a3c9b74212899416aeb96ec764d2ef954537  /tmp/tflint.zip" | sha256sum -c -

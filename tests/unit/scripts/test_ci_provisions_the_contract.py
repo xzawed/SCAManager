@@ -223,7 +223,8 @@ def test_ci_and_image_pin_the_same_versions(tool):
 # Release downloads retry for minutes and are sha256-checked with the same values in CI and the image.
 _RELEASE_DOWNLOAD = re.compile(r"https://github\.com/\S+/releases/download/\S+")
 _SHA256_CHECK = re.compile(r'echo "([0-9a-f]{64})  (\S+)" \| sha256sum -c -')
-_RETRY_FLAGS = "--retry 10 --retry-all-errors --retry-delay 15 --retry-max-time 300"
+_RETRY_FLAGS = ("--connect-timeout 20 --max-time 180 --retry 20 --retry-all-errors --retry-delay 15 "
+                "--retry-max-time 300")
 
 
 def _release_downloads(text: str) -> list[str]:
