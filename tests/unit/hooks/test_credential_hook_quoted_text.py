@@ -117,6 +117,19 @@ def test_the_mark_rule_flips_on_each_axis(monkeypatch, command, marked):
     assert (_MOD._mark_quoted_literals(command) != command) is marked, command
 
 
+# witness-corpus: 인자를 펼치지도 실행하지도 않지만 허용 목록에 없는 글자 처리 명령(coreutils) — 목록 밖은 예전 판정이어야 한다
+_UNLISTED_TEXT_TOOLS = ("nl", "fold", "rev", "paste", "column")
+
+
+@pytest.mark.parametrize("tool", _UNLISTED_TEXT_TOOLS)
+def test_a_text_tool_outside_the_list_keeps_the_old_verdict(monkeypatch, tool):
+    """목록은 닫힌 허용 목록이다 — 빠진 명령은 표지하지 않아 예전처럼 막는 쪽으로 간다.
+    The list is a closed allowlist: an unlisted tool is not marked and keeps the old, fail-closed verdict."""
+    monkeypatch.setitem(_MOD._CONTEXT, "shell", "bash")
+    command = f"{tool} 'a*' f"
+    assert _MOD._mark_quoted_literals(command) == command
+
+
 def test_only_quoted_glob_characters_are_marked(monkeypatch):
     """따옴표 밖 글롭과 따옴표 밖 이스케이프는 예전처럼 글롭이다 — 따옴표 안 글자만 표지된다."""
     monkeypatch.setitem(_MOD._CONTEXT, "shell", "bash")
