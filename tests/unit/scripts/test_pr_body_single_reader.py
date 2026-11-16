@@ -48,6 +48,7 @@ _SOLE_READER = "check_claim_review_trace.py"
 # 면제/이월 마커로 PR 본문을 판정하는 게이트 — 전부 단일 리더를 거쳐야 한다.
 _MARKER_GATES = {
     "check_reverse_mutation": ("_EXEMPT", "reverse-mutation-not-applicable"),
+    "check_doc_growth": ("MARKER", "doc-growth"),
     # 이 면제는 도입 시점부터 CI 에서 **도달 불가**였다(스텝에 GH_TOKEN 이 없어 본문이 늘 빈
     # 문자열). 도달 가능해지는 순간 은닉 마커 축이 처음으로 실재하므로 같은 변경에서 등재한다.
     # Unreachable in CI until the body was handed in; hardening lands with reachability.

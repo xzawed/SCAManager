@@ -268,6 +268,16 @@ jobs:
           PR_AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
         run: python scripts/check_claim_review_trace.py
 
+      # 문서 총량 — 늘었으면 본문 줄 `doc-growth: <사유>` (회고 원장 L18 P2-4 · P2-16). 본문 조회 **뒤**여야 한다.
+      # The documentation total; growth needs a `doc-growth:` reason line in the PR body.
+      - name: 문서 총량 — 늘었으면 본문 사유 (check_doc_growth)
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BODY: ${{ steps.prbody.outputs.body }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python scripts/check_doc_growth.py
+
 
   # 🔴 src/ 정적 분석 게이트 — 이전엔 **어떤 자동면에도 없었다** (회고 2026-07-03 D13).
   # `make lint` 은 pylint·flake8·bandit 를 전부 `|| true` 로 삼켜 **실패할 수 없고**(지금도 그렇다 —

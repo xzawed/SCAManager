@@ -88,6 +88,8 @@ _INTEGRITY = (
     # The hold list had no enforcer; 10 of 14 strong-primitive files were outside it.
     "check_sensitive_path_drift.py",
     "check_claim_review_trace.py",
+    # 문서 총량 — 늘었으면 본문 `doc-growth:` 사유. 본문이 없으면 «안 잼» / growth needs a body reason
+    "check_doc_growth.py",
     # lint-js job — 가드 자체는 순수 파이썬(eslint 검사 **범위**가 비었는지만 본다).
     # The guard itself is pure Python: it only checks the eslint scope is non-empty.
     "check_lint_js_nonvacuous.py",
@@ -144,7 +146,7 @@ _NOT_COVERED = ("CodeQL · SonarCloud · Codecov(patch coverage) — 서비스 �
 # PR 맥락(본문 · base/head)이 있어야 재는 가드 — 맥락 없이 낸 exit 0 은 «OK» 가 아니라 «안 잼» 이다
 # (회고 원장 L13 P2-75 — 비봇 PR 빨강의 거의 절반이 바로 이 두 스텝이었다). `--pr-body` 를 주면 CI 처럼 잰다.
 # Guards that need the PR context: their exit 0 without it is "not measured", not "OK".
-_NEEDS_PR_CONTEXT = frozenset({"check_claim_review_trace.py", "check_reverse_mutation.py",
+_NEEDS_PR_CONTEXT = frozenset({"check_claim_review_trace.py", "check_reverse_mutation.py", "check_doc_growth.py",
                                "check_test_count_sync.py"})
 
 
