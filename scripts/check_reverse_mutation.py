@@ -53,7 +53,6 @@ from __future__ import annotations
 import argparse
 import ast
 import os
-import shlex
 import subprocess  # nosec B404
 import sys
 import tempfile
@@ -214,9 +213,14 @@ def _pytest(paths: list[str], cwd: Path, extra: list[str] | None = None,
     return proc
 
 
-# e2e 는 루트와 다른 프로세스 설정으로 돈다(`e2e/pytest.ini` · asyncio 끔 · 시험마다 벽) — CI 스위트 스텝과 같은 꼴.
-# e2e runs with its own settings, like the CI suite step.
-_E2E_FLAGS = ["-p", "no:asyncio", "--timeout=120"]
+def _pytest_e2e(targets: list[str], cwd: Path, cache: str, *extra: str) -> subprocess.CompletedProcess:
+    """e2e 실행 — 루트와 다른 프로세스 설정(`e2e/pytest.ini` · asyncio 끔 · 시험마다 벽)으로, CI 스위트 스텝과 같은 꼴.
+
+    실패 기록은 `cache` 에 남겨 다음 실행의 `--lf` 가 같은 시험을 고른다.
+    e2e runs with its own settings, like the CI suite step; the last-failed record goes to `cache`.
+    """
+    return _pytest(targets, cwd, ["-p", "no:asyncio", "--timeout=120", *extra], cache_dir=cache)
+
 
 # `git diff -U0` 의 hunk 머리 — 새 쪽 시작 줄 · 줄 수(생략 = 1, 0 = 그 자리에서 지움).
 # A `git diff -U0` hunk header: the new side's start line and count (omitted = 1, 0 = a deletion there).
@@ -461,7 +465,7 @@ def _report_run(label: str, proc: subprocess.CompletedProcess | None) -> str:
 
 
 def evaluate_with_e2e(base_sha: str, head_sha: str, repo: Path | None = None,
-                      rebuild: str | None = None) -> tuple[int, list[str]]:
+                      rebuild: list[str] | None = None) -> tuple[int, list[str]]:
     """E2E 잡의 판정 — 생산 변경을 **제자리에서** 되돌리고 이 PR 이 바꾼 단위 · e2e 시험을 함께 다시 돌린다.
 
     🔴 제자리인 이유: e2e 는 빌드한 CSS · node_modules · 브라우저가 있는 그 잡의 체크아웃에서만 돈다. 끝나면 복원한다.
@@ -498,7 +502,7 @@ def evaluate_with_e2e(base_sha: str, head_sha: str, repo: Path | None = None,
 
 
 def _mutate_and_run(root: Path, base_sha: str, prod: list[str], unit: list[str], targets: list[str],
-                    rebuild: str | None, cache: str):
+                    rebuild: list[str] | None, cache: str):
     """되돌리고 → 빌드 → 단위 → (단위가 관측 못 했으면) e2e. 판정 불가면 (판정, None, None), 아니면 (None, 단위, e2e)."""
     existing = [f for f in prod if _blob_exists(base_sha, f, root)]
     created = [f for f in prod if f not in existing]
@@ -512,7 +516,7 @@ def _mutate_and_run(root: Path, base_sha: str, prod: list[str], unit: list[str],
         return (1, ["🔴 되돌림이 **no-op** — 뮤테이션이 무효라 아무것도 증명하지 못한다."]), None, None
     if rebuild:
         try:
-            built = _run(shlex.split(rebuild), root, timeout=900)
+            built = _run(rebuild, root, timeout=900)
         except (OSError, subprocess.SubprocessError) as exc:
             return (1, [f"🔴 되돌린 뒤 빌드를 못 돌렸다 — 판정 불가: {exc}"]), None, None
         if built.returncode != 0:
@@ -523,11 +527,11 @@ def _mutate_and_run(root: Path, base_sha: str, prod: list[str], unit: list[str],
     if unit_after is None or unit_after.returncode == 0:
         # 단위가 관측하지 않았을 때만 e2e 를 돈다 — 첫 실패에서 멈추고, 그 시험을 복원한 뒤 다시 돌린다.
         # e2e only when the unit side did not observe; stop at the first failure and re-check it after the restore.
-        e2e_after = _pytest(targets, root, [*_E2E_FLAGS, "--maxfail=1"], cache_dir=cache)
+        e2e_after = _pytest_e2e(targets, root, cache, "--maxfail=1")
     return None, unit_after, e2e_after
 
 
-def _restore(root: Path, prod: list[str], rebuild: str | None) -> bool:
+def _restore(root: Path, prod: list[str], rebuild: list[str] | None) -> bool:
     """되돌린 생산 파일을 HEAD 로 · 빌드를 다시. 둘 다 됐는가(되돌린 파일이 HEAD 와 같고 빌드가 0).
 
     🔴 나눠 복원한다 — PR 이 지운 생산 파일은 HEAD 에 없어, 한 번에 `checkout HEAD -- …` 하면 경로 하나 때문에
@@ -543,14 +547,14 @@ def _restore(root: Path, prod: list[str], rebuild: str | None) -> bool:
     built = True
     if rebuild:
         try:
-            built = _run(shlex.split(rebuild), root, timeout=900).returncode == 0
+            built = _run(rebuild, root, timeout=900).returncode == 0
         except (OSError, subprocess.SubprocessError):
             built = False
     return built and _clean(root, prod) is True
 
 
 def _revert_and_run(root: Path, base_sha: str, prod: list[str], unit: list[str], targets: list[str],
-                    rebuild: str | None, cache: str) -> tuple[int, list[str]]:
+                    rebuild: list[str] | None, cache: str) -> tuple[int, list[str]]:
     """제자리에서 되돌리고 → 단위(관측하면 끝) → e2e(첫 실패에서 멈춤) → 복원 → 빨간 e2e 시험을 복원한 트리에서 다시."""
     try:
         early, unit_after, e2e_after = _mutate_and_run(root, base_sha, prod, unit, targets, rebuild, cache)
@@ -572,7 +576,7 @@ def _revert_and_run(root: Path, base_sha: str, prod: list[str], unit: list[str],
     if e2e_after is not None and e2e_after.returncode != 0:
         # 🔴 되돌려서 빨간 그 시험이 **되돌리지 않은 트리**에서 초록이어야 관측이다 — 아니면 순서 의존 · 불안정 · 환경이다.
         # The test that went red after the revert must pass on the restored tree; otherwise the red proves nothing.
-        confirm = _pytest(targets, root, [*_E2E_FLAGS, "--lf", "--last-failed-no-failures", "none"], cache_dir=cache)
+        confirm = _pytest_e2e(targets, root, cache, "--lf", "--last-failed-no-failures", "none")
         report.append(_report_run("e2e 복원 뒤 그 시험", confirm))
         if confirm.returncode == 0:
             return 0, ["✅ 역-뮤테이션(e2e 잡) red — 이 PR 의 e2e 시험이 변경을 관측한다(복원 뒤 그 시험 초록)", *report]
@@ -589,7 +593,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="역-뮤테이션 게이트")
     parser.add_argument("--with-e2e", action="store_true",
                         help="E2E 잡 — 제자리에서 되돌리고 단위 · e2e 시험을 함께 잰다")
-    parser.add_argument("--rebuild", default="", help="되돌린 뒤 · 복원한 뒤 돌릴 빌드 명령(예: npm run build)")
+    parser.add_argument("--rebuild", nargs="+", default=None,
+                        help="되돌린 뒤 · 복원한 뒤 돌릴 빌드 명령의 낱말들(예: --rebuild npm run build) — 맨 끝에 둔다")
     args = parser.parse_args([] if argv is None else argv)
     print("=== 역-뮤테이션 게이트 / Reverse-Mutation Gate ===\n")
     base_sha = os.environ.get("PR_BASE_SHA", "")
@@ -607,7 +612,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.with_e2e:
-        code, lines = evaluate_with_e2e(base_sha, head_sha, rebuild=args.rebuild or None)
+        code, lines = evaluate_with_e2e(base_sha, head_sha, rebuild=args.rebuild)
     else:
         code, lines = evaluate(base_sha, head_sha)
     stream = sys.stdout if code == 0 else sys.stderr

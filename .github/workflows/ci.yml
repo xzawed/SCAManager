@@ -985,4 +985,4 @@ jobs:
           PR_BODY: ${{ steps.prbody.outputs.body }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: python scripts/check_reverse_mutation.py --with-e2e --rebuild "npm run build"
+        run: python scripts/check_reverse_mutation.py --with-e2e --rebuild npm run build

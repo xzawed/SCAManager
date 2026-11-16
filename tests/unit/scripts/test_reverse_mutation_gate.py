@@ -728,28 +728,42 @@ def test_only_e2e_test_modules_count_as_e2e_tests():
         "e2e/test_a.py", "e2e/sub/test_b.py"]
 
 
-def _shape(repo: Path, kind: str) -> tuple[str, str]:
-    """한 PR 모양을 커밋한다 — 생산 변경은 늘 있고, 시험 쪽만 `kind` 로 갈린다."""
+def _marking(label: str, marks: Path) -> str:
+    """돌면 `marks/<label>` 을 남기고 `value() == 2` 를 보는 시험 모듈 — «그 잡이 이 시험을 돌렸는가» 를 파일로 본다."""
+    return ("import sys, pathlib\n"
+            "sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))\n"
+            "from src.thing import value\n\n\n"
+            "def test_it():\n"
+            f"    pathlib.Path({marks.as_posix()!r}, {label!r}).write_text('ran', encoding='utf-8')\n"
+            "    assert value() == 2\n")
+
+
+def _shape(repo: Path, kind: str, marks: Path) -> tuple[str, str]:
+    """한 PR 모양을 커밋한다 — 생산 변경은 늘 있고, 시험 쪽만 `kind` 로 갈린다. 바뀐 시험은 돌면 표지를 남긴다."""
     _e2e_repo(repo)
     (repo / "src" / "thing.py").write_text("def value():\n    return 2\n", encoding="utf-8")
-    observing_unit = ("import sys, pathlib\n"
-                      "sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))\n"
-                      "from src.thing import value\n\n\n"
-                      "def test_value():\n    assert value() == 2\n")
     if kind == "e2e module":
-        (repo / "e2e" / "test_flow.py").write_text(_e2e_observing(2), encoding="utf-8")
+        (repo / "e2e" / "test_flow.py").write_text(_marking("e2e", marks), encoding="utf-8")
     elif kind == "e2e helper only":
-        (repo / "tests" / "test_thing.py").write_text(observing_unit, encoding="utf-8")
+        (repo / "tests" / "test_thing.py").write_text(_marking("unit", marks), encoding="utf-8")
         (repo / "e2e" / "_helpers.py").write_text("HELP = 1\n", encoding="utf-8")
     elif kind == "e2e module deleted":
-        (repo / "tests" / "test_thing.py").write_text(observing_unit, encoding="utf-8")
+        (repo / "tests" / "test_thing.py").write_text(_marking("unit", marks), encoding="utf-8")
         (repo / "e2e" / "test_flow.py").unlink()
     elif kind == "unit helper + e2e module":
         (repo / "tests" / "_helpers.py").write_text("HELP = 1\n", encoding="utf-8")
-        (repo / "e2e" / "test_flow.py").write_text(_e2e_observing(2), encoding="utf-8")
+        (repo / "e2e" / "test_flow.py").write_text(_marking("e2e", marks), encoding="utf-8")
     else:
         raise AssertionError(kind)
     return _commit(repo, kind)
+
+
+def _ran(marks: Path) -> list[str]:
+    """표지를 읽고 비운다 — 다음 잡의 실행과 섞이지 않게."""
+    names = sorted(path.name for path in marks.iterdir())
+    for path in marks.iterdir():
+        path.unlink()
+    return names
 
 
 @pytest.mark.parametrize("kind, e2e_job_measures", [
@@ -762,17 +776,19 @@ def test_exactly_one_job_judges_each_pr(repo: Path, kind: str, e2e_job_measures:
     """🔴 단위 잡이 넘기면 E2E 잡이 재고, 단위 잡이 재면 E2E 잡은 쉰다 — 어느 쪽도 안 재는 PR 이 없다.
 
     도우미만 · 지운 e2e 시험은 넘기지 않는다(E2E 잡이 돌릴 모듈이 없어 «안 쟀음» 으로 지나가게 된다).
+    «쟀다» 는 출력 글자가 아니라 **그 잡이 이 PR 의 시험을 실제로 돌렸는가**(시험이 남긴 표지)로 본다.
     """
-    base, head = _shape(repo, kind)
+    marks = repo.parent / f"{repo.name}-marks"
+    marks.mkdir()
+    base, head = _shape(repo, kind, marks)
     unit_code, unit_lines = gate.evaluate(base, head, repo=repo)
+    unit_ran = _ran(marks)
     e2e_code, e2e_lines = gate.evaluate_with_e2e(base, head, repo=repo)
-    handed_off = any("E2E 잡" in line for line in unit_lines)
-    skipped = any("단위 잡의 몫" in line for line in e2e_lines)
-    assert handed_off == e2e_job_measures, unit_lines
-    assert skipped != e2e_job_measures, e2e_lines
-    judged = e2e_lines if e2e_job_measures else unit_lines
-    assert (e2e_code if e2e_job_measures else unit_code) == 0, judged
-    assert any(line.startswith("✅") for line in judged), judged
+    e2e_ran = _ran(marks)
+    assert (unit_ran == []) == e2e_job_measures, (unit_ran, unit_lines)
+    assert (e2e_ran == []) != e2e_job_measures, (e2e_ran, e2e_lines)
+    judged = (e2e_code, e2e_lines) if e2e_job_measures else (unit_code, unit_lines)
+    assert judged[0] == 0, judged[1]
 
 
 def test_a_vacuous_unit_test_no_longer_blocks_an_e2e_observed_pr(repo: Path):
@@ -932,8 +948,7 @@ def test_a_failed_restore_build_is_red_before_any_verdict(repo: Path):
         "import pathlib, sys\n"
         "sys.exit(1 if 'return 2' in pathlib.Path('src/thing.py').read_text(encoding='utf-8') else 0)\n",
         encoding="utf-8")
-    python = sys.executable.replace("\\", "/")
-    code, lines = gate.evaluate_with_e2e(base, head, repo=repo, rebuild=f'"{python}" build_stub.py')
+    code, lines = gate.evaluate_with_e2e(base, head, repo=repo, rebuild=[sys.executable, "build_stub.py"])
     assert code == 1, "\n".join(lines)
     assert lines[0].startswith("🔴 복원 실패"), lines
     assert (repo / "src" / "thing.py").read_text(encoding="utf-8") == "def value():\n    return 2\n"
