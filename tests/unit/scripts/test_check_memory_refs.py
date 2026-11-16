@@ -734,19 +734,21 @@ def test_reverse_fails_closed_when_git_cannot_run(exc, tmp_path, monkeypatch):
 
 
 def test_anchor_line_and_directory_coordinates_are_judged(tmp_path):
-    """🔴 앵커 · 줄 · 디렉토리 좌표는 경로 부분으로 잰다 — 예전엔 통째로 건너뛰어 파일이 사라져도 조용했다.
+    """🔴 앵커 · 디렉토리 좌표는 경로 부분으로 잰다 — 예전엔 통째로 건너뛰어 파일이 사라져도 조용했다.
 
-    앵커(`path::글자`)는 그 글자가 파일에 있어야 산 좌표다(CLAUDE.md 의 앵커 규약). `path#조각` 은 경로만 본다 —
-    예전엔 조각까지 경로로 읽어 산 파일을 red 로 만들었다. 계기 뒤집기 — 산 좌표 셋은 조용, 죽은 좌표 넷은 red.
+    앵커(`path::글자`)는 그 글자가 파일에 **정확히 한 번** 있어야 산 좌표다 — 문서 앵커 가드와 같은 술어다(원장 L10
+    P2-94: 메모리 축만 «있기만 하면 통과» 였다). `path#조각` 은 경로만 본다 — 예전엔 조각까지 경로로 읽어 산 파일을
+    red 로 만들었다. 계기 뒤집기 — 산 좌표 셋은 조용, 죽은 · 여러 곳 · 줄번호 좌표 다섯은 red.
     """
     root = Path(__file__).resolve().parents[3]
-    line = ("- 진입점 · `scripts/check_memory_refs.py::reverse_dangling` · `scripts/check_memory_refs.py::_NO_ANCHOR_"
-            "HERE_` · `src/gone_module.py::run` · `e2e/test_gone.py:42-43` · `docs/runbooks-gone/` · "
-            "`docs/STATE.md#종합-수치` · `docs/workflow/`\n")
+    line = ("- 진입점 · `scripts/check_memory_refs.py::def reverse_dangling(` · `scripts/check_memory_refs.py::_NO_ANCHOR_"
+            "HERE_` · `scripts/check_memory_refs.py::reverse_dangling` · `src/gone_module.py::run` · "
+            "`e2e/test_gone.py:42-43` · `docs/runbooks-gone/` · `docs/STATE.md#종합-수치` · `docs/workflow/`\n")
     text = " ".join(mod.reverse_dangling(_mem(tmp_path, {"MEMORY.md": line}), root))
-    for dead in ("_NO_ANCHOR_HERE_", "src/gone_module.py::run", "e2e/test_gone.py:42-43", "docs/runbooks-gone/"):
+    for dead in ("_NO_ANCHOR_HERE_", "«reverse_dangling» 가", "src/gone_module.py::run", "e2e/test_gone.py:42-43",
+                 "docs/runbooks-gone/"):
         assert dead in text, (dead, text)
-    for alive in ("::reverse_dangling", "docs/STATE.md#", "docs/workflow/ "):
+    for alive in ("::def reverse_dangling(", "docs/STATE.md#", "docs/workflow/ "):
         assert alive not in text, (alive, text)
 
 
@@ -757,11 +759,11 @@ def test_markdown_links_inside_code_are_not_coordinates(tmp_path):
     assert out == [], out
 
 
-# 🔴 판정 범위 — 이 축이 처방 줄에서 보는 «값» 은 셋뿐이다: 백틱 좌표(접두사 경로 · 맨 파일 이름 · 앵커) ·
-#    테스트 수의 흔한 꼴(E2E N · 단위 N · N 수집 · N passed) · 머지 기록 꼴(«#번호 (머지) `sha`»)의 커밋.
-#    다른 값은 보지 않는다 — 아래가 그 부류이고, 처방 줄에 있어도 조용하다. 줄 번호의 유효성 · CommonMark 의
-#    setext 제목 · 들여 쓴 제목도 보지 않는다. 여기서 «잡힌다» 를 단언하면 다음 사람은 이 축이 값 전부를 본다고
-#    읽는다(P2-76).
+# 🔴 판정 범위 — 이 축이 처방 줄에서 보는 «값» 은 넷뿐이다: 백틱 좌표(접두사 경로 · 맨 파일 이름 · 유일한 앵커 ·
+#    줄번호는 거절) · 테스트 수의 흔한 꼴(E2E N · 단위 N · N 수집 · N passed) · 진입점 표지 줄 · 절의 SHA(거절) ·
+#    그 밖의 머지 기록 꼴(«#번호 (머지) `sha`»)의 커밋(실재). 다른 값은 보지 않는다 — 아래가 그 부류이고, 처방
+#    줄에 있어도 조용하다(낱말 «진입점» 뒤에 표지(= · : · —)가 없는 줄은 SHA 금지 밖이다). CommonMark 의 setext
+#    제목 · 들여 쓴 제목도 보지 않는다. 여기서 «잡힌다» 를 단언하면 다음 사람은 이 축이 값 전부를 본다고 읽는다(P2-76).
 # witness-corpus: 역방향 축이 판정하지 않는 값의 부류 — 처방 줄에 있어도 조용하다
 _VALUES_THE_SCAN_DOES_NOT_JUDGE = (
     "배포 `0badc0de`",          # 머지 기록 꼴이 아닌 hex — 배포 · 세션 ID 와 글자로 못 가른다
@@ -778,3 +780,124 @@ def test_values_outside_the_three_kinds_are_not_judged(text, tmp_path):
     mem = _mem(tmp_path, {"MEMORY.md": "- 진입점 " + text + "\n"})
     assert mod.reverse_dangling(mem, tmp_path / "repo") == [], (
         "이 부류가 잡히기 시작했다면 판정 범위가 넓어진 것이다 — 이 시험과 위 주석을 함께 갱신할 것")
+
+
+# ─── 원장 L10 — 규칙 ↔ 집행자 · 워크트리 · 세션 시작 ───────────────────────────
+
+
+def _head_short(root: Path) -> str:
+    return subprocess.run(["git", "-C", str(root), "rev-parse", "--short=8", "HEAD"],
+                          capture_output=True, text=True, check=True).stdout.strip()
+
+
+# witness-corpus: 진입점 낱말을 표지(= · : · — · 줄 끝)로 쓴 줄과 다른 뜻으로 쓴 줄 — SHA 금지는 표지 줄에만
+_ENTRY_LABEL_CORPUS = (
+    ("- 🔖 다음 세션 진입점 — 원장 · #1 `{sha}` 머지", True),
+    ("- ▶️ 진입점 = #1 `{sha}`", True),
+    ("- ▶️ 진입점: `{sha}` 부터 본다", True),
+    ("- 크롬 blur() 자리 = Tab 시작점 · #1 `{sha}`", False),
+    ("- 시작점을 옮겼다 · #1 `{sha}`", False),
+    ("- ✅ #1 `{sha}`", False),
+)
+
+
+@pytest.mark.parametrize(("line", "is_entry"), _ENTRY_LABEL_CORPUS)
+def test_entry_point_lines_refuse_shas_even_when_the_commit_exists(line, is_entry, tmp_path):
+    """🔴 CLAUDE.md «진입점은 Issue 를 가리키고 SHA 를 적지 않는다» — 이 가드가 그 규칙의 집행자다(원장 L10).
+
+    예전엔 «리포에 있는가» 만 봐서, 규칙을 적은 다음 날 진입점 줄에 실재 SHA 10개가 쌓여도 초록이었다. 그래서
+    실재 커밋(HEAD)을 심는다 — 존재만 보는 계기는 표지 줄에서도 조용하다. 낱말을 다른 뜻으로 쓴 줄(«Tab 시작점 ·») ·
+    인덱스의 다른 줄은 SHA 금지 밖이다 — 존재만 본다(실재 커밋이라 조용하다).
+    """
+    root = Path(__file__).resolve().parents[3]
+    sha = _head_short(root)
+    out = mod.reverse_dangling(_mem(tmp_path, {"MEMORY.md": line.format(sha=sha) + "\n"}), root)
+    refused = [o for o in out if "진입점에 SHA" in o]
+    assert bool(refused) is is_entry, (line, out)
+    if not is_entry:
+        assert out == [], f"표지 아닌 줄의 실재 커밋을 잡았다: {out}"
+
+
+def test_entry_point_sections_refuse_any_hex_but_history_stays_quiet(tmp_path):
+    """🔴 진입점 제목 아래 절은 표지가 없어도 진입점이다 — 머지 꼴이 아닌 hex(배포 ID 꼴)도 거절한다.
+
+    같은 hex 가 그 절 밖(역사)에서는 조용하다 — 옛 메모의 산문은 append-only 역사다.
+    """
+    note = "## 🔖 다음 세션 진입점\n1. 배포 `0badc0de` 를 확인한다\n## 역사\n- 그때 배포 `0badc0de`\n"
+    out = mod.reverse_dangling(_mem(tmp_path, {"MEMORY.md": "- 인덱스\n", "project_now.md": note}),
+                               tmp_path / "repo")
+    assert [o.split("  ")[0] for o in out] == ["project_now.md:2"], out
+
+
+def test_line_number_coordinates_are_refused_even_when_the_path_lives(tmp_path):
+    """🔴 좌표는 줄번호가 아니라 앵커다(CLAUDE.md) — 예전엔 `path:줄` 을 경로만 봐서 줄이 썩어도 초록이었다(P2-90).
+
+    맨 파일 이름의 `:줄` 꼬리도 같다 — 예전 정규식은 꼬리 붙은 맨 이름을 아예 못 읽어 판정 밖이었다(P2-92).
+    계기 뒤집기 — 산 경로 · 산 맨 이름에 줄을 붙이면 red, 같은 파일의 (공백 든) 유일한 앵커는 조용, 역사 줄은 조용.
+    """
+    root = Path(__file__).resolve().parents[3]
+    index = ("- 진입점 · `scripts/check_memory_refs.py:12` · `README.md:3` · "
+             "`scripts/check_memory_refs.py::def reverse_dangling(`\n")
+    note = "옛 기록 — `scripts/check_memory_refs.py:12` 를 고쳤다\n"
+    out = mod.reverse_dangling(_mem(tmp_path, {"MEMORY.md": index, "project_old.md": note}), root)
+    refused = [o for o in out if "줄번호 좌표" in o]
+    assert len(refused) == 2 and all(o.startswith("MEMORY.md:1") for o in refused), out
+    assert len(out) == 2, f"앵커 좌표 · 역사 줄까지 잡았다: {out}"
+
+
+def test_anchors_with_spaces_are_read_and_must_be_unique(tmp_path):
+    """🔴 공백 든 앵커(`path::def foo(`)도 읽는다 — 예전 정규식은 그 좌표를 통째로 못 읽어 죽어도 조용했다(P2-94).
+
+    문서 앵커 가드와 같은 술어 — 없으면 red, 두 곳 이상이면 red, 한 곳이면 조용.
+    """
+    root = Path(__file__).resolve().parents[3]
+    index = ("- 진입점 · `scripts/check_memory_refs.py::def no_such_function(` · "
+             "`scripts/check_memory_refs.py::def reverse_dangling(` · `scripts/check_memory_refs.py::re.compile(`\n")
+    out = mod.reverse_dangling(_mem(tmp_path, {"MEMORY.md": index}), root)
+    text = " ".join(out)
+    assert "«def no_such_function(» 가 없다" in text, out
+    assert "«re.compile(» 가" in text and "곳이라" in text, out
+    assert "«def reverse_dangling(»" not in text, out
+    assert len(out) == 2, out
+
+
+def test_a_worktree_resolves_the_memory_of_its_main_checkout(tmp_path, monkeypatch, capsys):
+    """🔴 워크트리 경로로 슬러그를 만들면 메모리가 없다고 «경로 drift» 로 막았다 — 워크트리 커밋마다 거짓 red(P2-76).
+
+    슬러그는 주 체크아웃(git 공통 디렉토리의 부모)에서 나온다. 대조군 — 워크트리 경로 그대로는 찾지 못한다.
+    """
+    main_repo = tmp_path / "Main"
+    main_repo.mkdir()
+
+    def git(*args):
+        return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=main_repo,
+                              capture_output=True, text=True, check=True)
+
+    git("init", "-q")
+    (main_repo / "CLAUDE.md").write_text("x\n", encoding="utf-8")
+    git("add", "CLAUDE.md")
+    git("commit", "-q", "-m", "init")
+    worktree = tmp_path / "Main-wt-x"
+    git("worktree", "add", "-q", str(worktree))
+    projects = tmp_path / "projects"
+    memory = projects / mod.repo_slug(main_repo.resolve()) / "memory"
+    memory.mkdir(parents=True)
+    monkeypatch.setattr(mod, "PROJECTS_ROOT", projects)
+    monkeypatch.delenv("CLAUDE_PROJECT_MEMORY_DIR", raising=False)
+    monkeypatch.setattr(mod, "DOC_FILES", ["CLAUDE.md"])
+
+    assert mod.resolve_memory_dir(worktree) is None, "대조군 — 워크트리 경로 슬러그로 찾았다면 시험이 공허하다"
+    assert mod.resolve_memory_dir(mod.main_checkout(worktree)) == memory
+    assert mod.main(project_root=worktree) == 0, capsys.readouterr()
+
+
+def test_session_start_reports_unreferenced_memory_as_a_count_not_an_inventory(capsys):
+    """🔴 메모리 파일은 리포 문서가 아니라 인덱스가 부른다 — «미참조» 는 정상이라 이름을 다 찍으면 잡음이다.
+
+    세션 시작 주입 115줄 중 102줄이 할 일 없는 재고였다(P2-27). 개수 한 줄만 남는다.
+    """
+    names = {f"note-{i}.md" for i in range(3)}
+    mod.print_report({"a.md": ["CLAUDE.md"]}, names | {"a.md"}, [])
+    out = capsys.readouterr().out
+    assert "메모리 3개" in out, out
+    assert not any(n in out for n in names), f"재고 이름을 찍었다:\n{out}"
