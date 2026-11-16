@@ -202,6 +202,47 @@ def _compare_hits(node: ast.Compare, consts: dict[str, int],
     return out
 
 
+def _alternation_branches(pattern: str) -> list[str]:
+    """정규식의 `|` 교대 가지 — 이스케이프된 `\\|` 와 문자 집합 `[...]` 안의 `|` 는 교대가 아니고, 빈 가지는 버린다.
+
+    🔴 예전엔 `|` 를 글자로 세고 쪼갰다 — `\\|\\|` 같은 패턴이 빈 조각을 needle 로 남겨, 빈 문자열은 모든 값에 들어
+       있으니 어떤 코퍼스도 «바깥» 이 될 수 없는 거짓 빨강이었다(원장 R-2 — 그 PR 은 `[|]{2}` 로 비켜 갔다). 그룹 안의
+       교대는 예전처럼 쪼갠다(잡는 범위를 줄이지 않는다).
+    Alternation branches: escaped pipes and pipes inside a character class are not alternatives; empty branches drop.
+    """
+    branches: list[str] = []
+    buf: list[str] = []
+    i, in_class, class_start, caret_ok = 0, False, False, False
+    while i < len(pattern):
+        ch = pattern[i]
+        if ch == "\\" and i + 1 < len(pattern):
+            buf.append(pattern[i:i + 2])
+            i += 2
+            class_start = False
+            continue
+        if in_class:
+            # 집합 첫 자리의 `]` 는 닫는 괄호가 아니라 글자다. 부정 `^` 는 `[` 바로 뒤 한 번만 — 그 뒤도 첫 자리다
+            # (`[^]|]`). 두 번째 `^` 는 글자라 첫 자리를 끝낸다(`[^^]|a` 의 `]` 는 닫는다 — Grok 반례).
+            # A `]` in the first slot is a literal; only one negating `^` right after `[` keeps the first slot open.
+            if ch == "^" and class_start and caret_ok:
+                caret_ok = False
+            elif ch == "]" and not class_start:
+                in_class = False
+            else:
+                class_start = False
+        elif ch == "[":
+            in_class, class_start, caret_ok = True, True, True
+        elif ch == "|":
+            branches.append("".join(buf))
+            buf = []
+            i += 1
+            continue
+        buf.append(ch)
+        i += 1
+    branches.append("".join(buf))
+    return [b for b in branches if b]
+
+
 def _call_hits(node: ast.Call) -> list[Hit]:
     """호출 형태의 증거집합 — `isinstance` 타입 열거 · 접두/접미 튜플 · 정규식 교대."""
     out: list[Hit] = []
@@ -220,11 +261,11 @@ def _call_hits(node: ast.Call) -> list[Hit]:
                 out.append((node.lineno, f"{node.func.attr} 튜플", size,
                             _literal_values(node.args[0])))
         elif node.func.attr == "compile":
-            out += [(node.lineno, "정규식 교대", a.value.count("|") + 1,
-                     frozenset(a.value.split("|")))
-                    for a in node.args
-                    if isinstance(a, ast.Constant) and isinstance(a.value, str)
-                    and a.value.count("|") + 1 >= MIN_INLINE_SIZE]
+            for a in node.args:
+                if isinstance(a, ast.Constant) and isinstance(a.value, str):
+                    branches = _alternation_branches(a.value)
+                    if len(branches) >= MIN_INLINE_SIZE:
+                        out.append((node.lineno, "정규식 교대", len(branches), frozenset(branches)))
     return out
 
 
@@ -330,7 +371,10 @@ def outside_witness(values: list[str], *, needles: set[str]) -> list[str]:
     🔴 이것이 요구의 본체다. `"e" in raw` 때 내 테스트는 `1e-400`·`0e0` 를 썼는데
     둘 다 검사가 잡는 값이라, 초록이 「부류를 덮었다」를 전혀 뜻하지 않았다.
     """
-    return [v for v in values if not any(n in v for n in needles)]
+    # 빈 needle 은 아무것도 가르지 못한다 — 빈 문자열은 모든 값에 들어 있어 «바깥» 을 통째로 지운다(원장 R-2).
+    # An empty needle separates nothing: it is contained in every value and would erase every outside value.
+    real = [n for n in needles if n]
+    return [v for v in values if not any(n in v for n in real)]
 
 
 def _git(*args: str) -> str:
