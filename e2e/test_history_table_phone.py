@@ -7,12 +7,15 @@
 
 🔴 가장 긴 값으로 잰다 — 점수 100 · 다섯 자리 PR · 영어 머리글(대문자). 짧은 값이나 한국어로만
    재면 «다 보임» 이 거짓 초록이다.
-🔴 글꼴은 환경마다 다르다 — 앱은 웹 글꼴 없이 설치된 글꼴로 그린다. 같은 규칙도 CI 의 Linux 글꼴(DejaVu Sans ·
-   WenQuanYi)은 Windows 글꼴보다 넓게 그려, 여백 8px 만 줄인 첫 판은 Windows 에서 초록 · CI 에서 red 였다
-   (영어 360px 14px 가려짐). 폭 목록은 넓은 쪽 글꼴에서도 여유가 남는 곳까지만 둔다 — 날짜 한 줄은
-   375px 부터 시험한다.
+🔴 글꼴은 환경마다 다르다 — 앱은 웹 글꼴 없이 `system-ui` 로 그린다. 같은 규칙도 CI 글꼴(라틴 DejaVu Sans)은
+   한국어 Windows 글꼴(렌더러가 말한 것 = 영어도 맑은 고딕 — Segoe UI 가 아니다)보다 넓게 그려, 여백 8px 만 줄인
+   첫 판은 Windows 에서 초록 · CI 에서 red 였다(영어 360px 14px 가려짐). 폭 목록은 CI 글꼴에서도 여유가 남는
+   곳까지만 둔다 — 날짜 한 줄은 375px 부터 시험한다. 글꼴은 CSS 스택에서 짐작하지 않고 렌더러에서 읽는다
+   (`_rendered_fonts`) — CI 에서 판정 글꼴이 아니면 폭 목록의 전제가 깨진 것이라 red 다. 폰 글꼴은 안드로이드 꼴만
+   쟀고(성립) iOS 는 못 잰다.
 
-Fonts differ per environment (no web font); the widths here hold with margin under CI's wider Linux fonts.
+Fonts differ per environment (no web font). The widths keep a margin under CI's judging font, which the test reads
+from the renderer and requires on CI; phone fonts were checked for Android-like faces only, not iOS.
 
 The repo-detail history table fits inside its card at phone widths, measured with the widest values.
 """
@@ -34,6 +37,10 @@ _ONE_LINE_DATE_WIDTHS = (375, 390, 414, 480)
 # 480px 규칙 밖 — 점수 막대가 그대로 보여야 하는 폭(규칙이 폰 폭에만 걸렸는가).
 # Outside the 480px rule: the score bar must still show here.
 _BAR_WIDTHS = (481, 1440)
+# 판정 글꼴 — 폭 목록은 CI 가 라틴 글자를 이 글꼴로 그릴 때 여유가 남게 맞췄다(CI 가 조달한다 — ci.yml «judging font»).
+# The judging font: the width lists keep a margin when CI draws Latin text with it (CI provisions it).
+_JUDGING_LATIN_FONT = "DejaVu Sans"
+_GRADE_TH = ".history-card .tbl thead th:nth-child(5)"
 
 # 🔴 0.5px 이하의 넘침은 세지 않는다 — `scrollWidth` 는 정수로 반올림되고 `cutCols` 는 0.5px 여유를 둔다.
 #    반 픽셀 미만은 칠할 때 반올림돼 글자를 자르지 않는다(Grok claim-review H1 이 짚은 허용 폭).
@@ -125,6 +132,31 @@ def _open_history(page, base_url: str, language: str, width: int) -> None:
     page.wait_for_selector("#analysisTable tr.analysis-row", state="attached")
 
 
+def _rendered_fonts(page, selector: str) -> list[str]:
+    """그 요소의 글자를 실제로 그린 글꼴 — 렌더러(CDP)가 말한 것, 많이 그린 순. CSS 스택에서 짐작하지 않는다.
+
+    🔴 렌더러는 마지막 레이아웃의 결과를 말한다 — 스타일을 바꾼 직후에 물으면 한 단계 전 글꼴이 나온다(실측: 스택을
+       바꿔도 직전 변형의 글꼴이 보고됐다). 레이아웃을 강제하고 두 프레임을 기다린 뒤 묻는다.
+    The fonts the renderer actually used for the element's text, most glyphs first (not guessed from the CSS stack).
+    The report reflects the last layout, so force one and wait two frames first.
+    """
+    page.evaluate("""s => new Promise(done => {
+      document.querySelector(s)?.getBoundingClientRect();
+      requestAnimationFrame(() => requestAnimationFrame(done));
+    })""", selector)
+    cdp = page.context.new_cdp_session(page)
+    try:
+        cdp.send("DOM.enable")
+        cdp.send("CSS.enable")
+        root = cdp.send("DOM.getDocument")["root"]["nodeId"]
+        node = cdp.send("DOM.querySelector", {"nodeId": root, "selector": selector})["nodeId"]
+        assert node, f"{selector} 가 없다 — 글꼴을 잴 대상이 없다"
+        fonts = cdp.send("CSS.getPlatformFontsForNode", {"nodeId": node})["fonts"]
+    finally:
+        cdp.detach()
+    return [f["familyName"] for f in sorted(fonts, key=lambda f: -f["glyphCount"])]
+
+
 def _measure(page) -> dict:
     """표를 잰다 — 못 재면(표 · 행 · 가장 넓은 행이 없으면) 초록이 아니라 red."""
     m = page.evaluate(_MEASURE_JS, f"#{_WIDEST_PR}")
@@ -143,10 +175,12 @@ def test_history_table_fits_inside_the_card_at_phone_widths(seeded_page, base_ur
     375px 부터는 날짜도 한 줄이다(하이픈에서 접히지 않는다).
     All four columns fit at five phone widths; the score shows as a number without its bar.
     """
-    failures, measured = [], 0
+    failures, measured, fonts = [], 0, []
     with _widest_history_rows():
         for width in _FIT_WIDTHS:
             _open_history(seeded_page, base_url, language, width)
+            if not fonts:
+                fonts = _rendered_fonts(seeded_page, _GRADE_TH)
             m = _measure(seeded_page)
             measured += 1
             if m["hiddenPx"] > 0 or m["cutCols"]:
@@ -162,7 +196,33 @@ def test_history_table_fits_inside_the_card_at_phone_widths(seeded_page, base_ur
             if not m["widest"]["scoreShown"]:
                 failures.append(f"{width}px: 점수 숫자가 보이지 않는다")
     assert measured == len(_FIT_WIDTHS)
-    assert not failures, f"이력 표({language}):\n  " + "\n  ".join(failures)
+    assert not failures, f"이력 표({language} · 머리글 글꼴 {fonts}):\n  " + "\n  ".join(failures)
+
+
+def test_the_width_judging_font_is_read_from_the_renderer(seeded_page, base_url):
+    """🔴 폭 목록의 전제 — CI 는 라틴 머리글을 판정 글꼴로 그린다. 러너 이미지가 더 좁은 글꼴로 바뀌면 폭 시험은
+    초록인 채 «넓은 글꼴로 쟀다» 가 거짓이 된다 — 그래서 렌더러가 말한 글꼴을 CI 에서 단언한다.
+
+    계기 뒤집기: 머리글 스택을 «없는 글꼴, monospace» 로 바꾸면 보고가 바뀌고(상수를 돌려주는 계기를 잡는다),
+    그 없는 이름이 아니어야 한다(CSS 스택 첫 이름을 읽는 계기를 잡는다).
+    The width lists assume CI draws Latin headers with the judging font. The flip sets the stack to an absent font
+    then monospace: the report must change, and must not be the absent name (it reads the renderer, not the stack).
+    """
+    absent = "No Such Font SCAM"
+    with _widest_history_rows():
+        _open_history(seeded_page, base_url, "en", 375)
+        fonts = _rendered_fonts(seeded_page, _GRADE_TH)
+        mono = seeded_page.add_style_tag(
+            content=f'{_GRADE_TH} {{ font-family: "{absent}", monospace !important; }}')
+        flipped = _rendered_fonts(seeded_page, _GRADE_TH)
+        mono.evaluate("el => el.remove()")
+    assert fonts, "영어 머리글을 그린 글꼴을 못 읽었다 — 못 재면 red"
+    assert flipped and flipped[0] != fonts[0] and flipped[0] != absent, (
+        f"스택을 «{absent}, monospace» 로 바꾼 보고가 {flipped}(전 {fonts}) — 렌더러가 아니라 스택이나 상수를 읽는다")
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        assert fonts[0] == _JUDGING_LATIN_FONT, (
+            f"CI 의 영어 머리글 글꼴이 {fonts} 다 — 폭 목록은 {_JUDGING_LATIN_FONT} 에서 맞췄다. "
+            "러너 글꼴이 바뀌었으면 폭을 다시 재고 목록과 이 상수를 함께 고친다")
 
 
 def test_history_table_keeps_the_score_bar_above_the_phone_breakpoint(seeded_page, base_url):
