@@ -277,7 +277,7 @@ def _call_claude_api(items: list[dict], client: anthropic.Anthropic) -> dict[int
     for attempt in range(max_retries):
         try:
             response = client.messages.create(
-                model="claude-haiku-4-5-20251001",
+                model="claude-haiku-4-5",
                 max_tokens=4096,
                 system=SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": user_content}],
