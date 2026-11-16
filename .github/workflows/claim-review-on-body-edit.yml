@@ -126,3 +126,12 @@ jobs:
           PR_AUTHOR_LOGIN: ${{ github.event.pull_request.user.login }}
           PR_AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
         run: python scripts/check_claim_review_trace.py
+
+      # 문서 총량 — ci.yml 의 같은 이름 step 과 같다(본문을 고쳐 사유를 적으면 여기서 다시 잰다).
+      # Same as the ci.yml step; adding the reason by editing the body is re-judged here.
+      - name: 문서 총량 — 늘었으면 본문 사유 (check_doc_growth)
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python scripts/check_doc_growth.py

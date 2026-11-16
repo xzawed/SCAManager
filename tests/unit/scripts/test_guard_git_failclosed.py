@@ -28,6 +28,7 @@ import pathlib
 import pytest
 
 from scripts.check_dead_code import _git as dead_code_git
+from scripts.check_doc_growth import _git as doc_growth_git
 from scripts.check_dual_import import _git as dual_import_git
 from scripts.check_noqa_sideeffect import _git as noqa_git
 from scripts.check_raw_text_asserts import _git as raw_text_git
@@ -46,6 +47,7 @@ _GIT_HELPERS = [
     ("check_dual_import", lambda args: dual_import_git(*args)),
     ("check_witness_set_predicates", lambda args: witness_git(*args)),
     ("check_raw_text_asserts", lambda args: raw_text_git(*args)),
+    ("check_doc_growth", lambda args: doc_growth_git(*args)),
 ]
 
 
