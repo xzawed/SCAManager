@@ -44,6 +44,10 @@ _BODY_MIXED = (
     "- verdict: PASS\n"
     "그때 verdict: REFUTED 라고 적었다\n"
     "<!-- - verdict: REFUTED -->\n"
+    "- verdict\n"
+    ": BROKEN 은 다음 줄이라 판정 줄이 아니다\n"
+    "- verdict:\n"
+    "  REFUTED 도 마찬가지다\n"
 )
 _BODY_CONFIRMED = "- verdict: CONFIRMED\n- verdict: REFUTED\n"
 _BODY_NONE = "본문에 판정 줄이 없다\n"

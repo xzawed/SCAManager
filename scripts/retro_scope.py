@@ -89,7 +89,9 @@ from check_claim_review_trace import (  # noqa: E402  # pylint: disable=wrong-im
     strip_html_comments,
 )
 
-_VERDICT = re.compile(VERDICT_LINE, re.IGNORECASE | re.MULTILINE)
+# 줄마다 맞춘다 — 패턴의 `\s` 가 줄바꿈을 건너 다음 줄의 판정까지 집지 않게(Grok 반례 `verdict\n: BROKEN`).
+# Matched per line so the pattern's `\s` never reaches across a newline into the next line.
+_VERDICT = re.compile(VERDICT_LINE, re.IGNORECASE)
 # 반박 쪽 판정 — 반증률의 분자 / the refuting verdicts, numerator of the refutation share
 _REFUTING = ("BROKEN", "WEAKENED", "REFUTED")
 
@@ -286,7 +288,8 @@ def tally_verdicts(bodies: list[str]) -> dict:
     counts: dict[str, int] = {}
     with_verdict = 0
     for body in bodies:
-        found = [m.group(1).upper() for m in _VERDICT.finditer(strip_html_comments(body or ""))]
+        found = [m.group(1).upper() for line in strip_html_comments(body or "").splitlines()
+                 if (m := _VERDICT.match(line))]
         with_verdict += bool(found)
         for verdict in found:
             counts[verdict] = counts.get(verdict, 0) + 1
