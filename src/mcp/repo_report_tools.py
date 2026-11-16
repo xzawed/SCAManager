@@ -7,6 +7,10 @@ MCP tool로 노출한다. 비즈니스 로직 없음 — API 레이어 래퍼.
 This module exposes the repo report API endpoints as MCP tools.
 No business logic — pure API wrappers.
 """
+from src.constants import ISSUE_AGGREGATE_MAX_ANALYSES as _CAP
+
+# 이슈 계열이 읽는 «기간 안 최근 N건» 의 N — 설명 글자는 상수에서 만든다(사본을 두지 않는다).
+# The N in "latest N analyses" is built from the constant, never copied into the text.
 
 # MCP tool 선언 목록 (Anthropic tool use 스키마 준수)
 # MCP tool declaration list (follows Anthropic tool use schema)
@@ -17,12 +21,12 @@ tools: list[dict] = [
             "연결된 모든 Repo의 분석 요약을 반환합니다. "
             "각 Repo의 평균 점수·등급·점수 변화·경고 여부와 "
             "전체 포트폴리오 요약(등급 분포·경고 수)을 포함합니다. "
-            "점수·분석 수는 기간 전체, 경고의 보안 HIGH 는 기간 안 최근 분석 30건 기준입니다.\n\n"
+            f"점수·분석 수는 기간 전체, 경고의 보안 HIGH 는 기간 안 최근 분석 {_CAP}건 기준입니다.\n\n"
             "Returns analysis summary for all connected repositories. "
             "Includes avg_score, grade, score_delta, warning flag per repo "
             "and portfolio-level summary (grade_distribution, warning_count). "
             "Scores and analysis_count cover the whole window; the HIGH security part of warning "
-            "uses the latest 30 analyses in it."
+            f"uses the latest {_CAP} analyses in it."
         ),
         "input_schema": {
             "type": "object",
@@ -41,11 +45,11 @@ tools: list[dict] = [
             "특정 Repo의 상세 분석 레포트를 반환합니다. "
             "점수 트렌드·이슈 카테고리 분포·AI 코드리뷰 제안·반복 발생 이슈를 포함합니다. "
             "kpi 의 점수·분석 수와 트렌드는 기간 전체, 이슈 계열(반복 이슈·카테고리·AI 제안·보안 HIGH)은 "
-            "기간 안 최근 분석 30건 기준입니다.\n\n"
+            f"기간 안 최근 분석 {_CAP}건 기준입니다.\n\n"
             "Returns detailed analysis report for a specific repository. "
             "Includes score trend, category breakdown, AI suggestions, and recurring issues. "
             "kpi scores, analysis_count and the trend cover the whole window; the issue figures "
-            "(recurring issues, categories, AI suggestions, HIGH security) use the latest 30 analyses in it."
+            f"(recurring issues, categories, AI suggestions, HIGH security) use the latest {_CAP} analyses in it."
         ),
         "input_schema": {
             "type": "object",

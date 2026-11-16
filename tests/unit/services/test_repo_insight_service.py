@@ -383,37 +383,6 @@ class TestRepoInsightNarrative:
         assert result == {"text": "", "status": "api_error"}
 
     @pytest.mark.asyncio
-    async def test_refresh_invalidates_cache_and_calls_api(self, db, repo, user):
-        """refresh=True → 기존 캐시 삭제 + API 재호출."""
-        from src.repositories import insight_narrative_cache_repo
-        from src.services.repo_insight_service import repo_insight_narrative
-
-        # Seed stale cache
-        insight_narrative_cache_repo.upsert_repo(
-            db, user_id=user.id, repo_id=repo.id, days=30, response={"text": "old", "status": "success"}
-        )
-
-        mock_msg = MagicMock()
-        mock_msg.content = [MagicMock(text='{"text": "refreshed narrative"}')]
-        mock_msg.usage = MagicMock(input_tokens=10, output_tokens=20)
-        mock_client = AsyncMock()
-        mock_client.messages.create = AsyncMock(return_value=mock_msg)
-
-        with patch("src.services.repo_insight_service.settings") as s, \
-             patch("src.services.repo_insight_service.anthropic.AsyncAnthropic", return_value=mock_client):
-            s.anthropic_api_key = "sk-ant-test"
-            s.claude_insight_model = "claude-haiku-4-5-20251001"
-            result = await repo_insight_narrative(
-                db, repo.id, user_id=user.id, refresh=True,
-                kpi={"analysis_count": 2, "avg_score": 70, "grade": "C",
-                     "score_delta": 5, "high_security_count": 0,
-                     "top_recurring_issue": None, "top_recurring_count": 0},
-                recurring=[],
-            )
-        assert result["text"] == "refreshed narrative"
-        mock_client.messages.create.assert_awaited_once()
-
-    @pytest.mark.asyncio
     async def test_no_user_id_does_not_cache(self, db, repo):
         """user_id=None → 캐시 저장 X."""
         from src.models.insight_narrative_cache import InsightNarrativeCache

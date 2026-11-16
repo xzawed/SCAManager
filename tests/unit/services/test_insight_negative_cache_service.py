@@ -137,9 +137,9 @@ _DASH_FAILURES = {
 }
 
 
-async def _dash(db, user_id, *, now, refresh=False):
+async def _dash(db, user_id, *, now):
     return await dashboard_service.insight_narrative(
-        db, days=7, now=now, api_key="sk-test", user_id=user_id, refresh=refresh, language="en",
+        db, days=7, now=now, api_key="sk-test", user_id=user_id, language="en",
     )
 
 
@@ -165,17 +165,6 @@ async def test_dashboard_reload_inside_ttl_makes_no_client(db, owner, t0, status
     assert rec.call_count == 1, "단락이 실패를 또 기록했다"
     assert db.query(InsightNarrativeCache).one().error_count == 1
     assert second["positive_highlights"] == [] and second["days"] == 7
-
-
-@pytest.mark.asyncio
-async def test_dashboard_refresh_bypasses_the_negative_cache(db, owner, t0):
-    user_id, repo_id = owner
-    _seed_analyses(db, repo_id, t0)
-    with _Sdk(dashboard_service, _DASH_FAILURES["api_error"]()) as sdk:
-        await _dash(db, user_id, now=t0)
-        again = await _dash(db, user_id, now=t0 + timedelta(seconds=10), refresh=True)
-    assert again["status"] == "api_error"
-    assert sdk.factory.call_count == 2
 
 
 @pytest.mark.asyncio
@@ -223,14 +212,14 @@ _REPO_FAILURES = {
 }
 
 
-async def _repo(db, owner, *, now, refresh=False, kpi=None):
+async def _repo(db, owner, *, now, kpi=None):
     user_id, repo_id = owner
     with patch.object(repo_insight_service, "settings") as s:
         s.anthropic_api_key = "sk-ant-test"
         s.claude_insight_model = "claude-haiku-4-5"
         return await repo_insight_service.repo_insight_narrative(
             db, repo_id, 30, repo_full_name="negcache/r", kpi=kpi or _KPI, recurring=[],
-            now=now, refresh=refresh, user_id=user_id, language="en",
+            now=now, user_id=user_id, language="en",
         )
 
 
@@ -250,14 +239,6 @@ async def test_repo_reload_inside_ttl_makes_no_client(db, owner, t0, status):
     assert sdk.factory.call_count == 1, "창 안의 재조회가 Anthropic 클라이언트를 또 만들었다"
     assert sdk.log.call_count == 1, "호출하지 않았는데 비용 행을 남겼다"
     assert rec.call_count == 1, "단락이 실패를 또 기록했다"
-
-
-@pytest.mark.asyncio
-async def test_repo_refresh_bypasses_the_negative_cache(db, owner, t0):
-    with _Sdk(repo_insight_service, _REPO_FAILURES["api_error"]()) as sdk:
-        await _repo(db, owner, now=t0)
-        await _repo(db, owner, now=t0 + timedelta(seconds=10), refresh=True)
-    assert sdk.factory.call_count == 2
 
 
 @pytest.mark.asyncio

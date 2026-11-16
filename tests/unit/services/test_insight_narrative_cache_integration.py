@@ -60,29 +60,6 @@ async def test_cache_hit_skips_claude_api_call(db):
 
 
 @pytest.mark.asyncio
-async def test_refresh_invalidates_cache_and_calls_api(db):
-    """refresh=True 시 cache 무효화 + Claude API 재호출."""
-    _seed_cache(db, user_id=1, days=7)
-    fake_response = '{"positive_highlights":["fresh"],"focus_areas":["a","b","c"],"key_metrics":[{"label":"x","value":"1","delta":"+0"},{"label":"y","value":"2","delta":"0"},{"label":"z","value":"3","delta":"0"},{"label":"w","value":"4","delta":"0"}],"next_actions":["n1","n2"]}'
-
-    with patch("src.services.dashboard_service.dashboard_kpi", return_value={"analysis_count": {"value": 5}}), \
-         patch("src.services.dashboard_service.dashboard_trend", return_value=[]), \
-         patch("src.services.dashboard_service.frequent_issues_v2", return_value=[]), \
-         patch("src.services.dashboard_service.auto_merge_kpi", return_value={}), \
-         patch("src.services.dashboard_service.anthropic.AsyncAnthropic"), \
-         patch.object(
-             dashboard_service, "_call_insight_claude_api",
-             new=AsyncMock(return_value=fake_response),
-         ) as mock_api:
-        result = await dashboard_service.insight_narrative(
-            db, days=7, user_id=1, api_key="sk-ant-test", refresh=True,
-        )
-    mock_api.assert_awaited_once()
-    assert result["status"] == "success"
-    assert result["positive_highlights"] == ["fresh"]
-
-
-@pytest.mark.asyncio
 async def test_user_id_none_bypasses_cache(db):
     """user_id=None (admin/legacy) 시 캐싱 X (호출 매번 발생)."""
     fake_response = '{"positive_highlights":["a"],"focus_areas":["a","b","c"],"key_metrics":[{"label":"x","value":"1","delta":"0"},{"label":"y","value":"2","delta":"0"},{"label":"z","value":"3","delta":"0"},{"label":"w","value":"4","delta":"0"}],"next_actions":["n1","n2"]}'

@@ -85,6 +85,15 @@ GATE_DEFAULT_APPROVE_THRESHOLD = 75   # approve_threshold 기본값
 GATE_DEFAULT_REJECT_THRESHOLD = 50    # reject_threshold 기본값
 GATE_DEFAULT_MERGE_THRESHOLD = 75     # merge_threshold 기본값
 
+# ── 이슈 집계 상한 (단일 출처 — 리포 인사이트 · 대시보드 카드 · MCP 도구 설명) ─────────
+# ── Issue-aggregate cap (single source — repo insights, dashboard cards, MCP tool text) ──
+# 이슈 집계(반복 이슈 · 보안 HIGH · 카테고리 · 문제 파일 · AI 제안)가 읽는 기간 안 최근 분석 수 — 결과 JSON 을 읽는
+# Python 루프 O(N×이슈수) 상한. 점수 지표에는 걸지 않는다. 쓰는 쪽은 `constants.X` 로 **부를 때** 읽는다 — 시험이
+# 이 한 곳만 바꿔 세 곳이 따라오는지 잰다(`tests/unit/services/test_issue_aggregate_cap_single_source.py`).
+# Latest analyses in the window the issue aggregates read (caps the JSON loop); score metrics are not
+# capped. Consumers read `constants.X` at call time so one patch here moves all three.
+ISSUE_AGGREGATE_MAX_ANALYSES = 30
+
 # ── 언어 가이드 임계값 (review_prompt._select_guide_modes) ─────────────────
 LANG_GUIDE_ALL_FULL_MAX = 3    # N<=3: 모든 언어 full 모드
 LANG_GUIDE_TIER1_FULL_MAX = 6  # 4<=N<=6: Tier1 full, 나머지 compact

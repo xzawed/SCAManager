@@ -4,9 +4,10 @@ Repository-level code insight service — aggregation functions + AI narrative.
 
 점수 지표(분석 수 · 평균 · 등급 · 변화)는 고른 기간 전체를 저장된 열(`score` · `score_unreliable`)로 SQL 집계하고,
 추세는 기간 안 점수 열을 전부 읽어 날짜로 묶는다. 이슈 계열은 Analysis.result JSON 을 Python 루프로 읽어서
-기간 안 최근 30건으로 자른다.
+기간 안 최근 `constants.ISSUE_AGGREGATE_MAX_ANALYSES` 건으로 자른다.
 Score metrics (count, average, grade, delta) aggregate the whole window in SQL from stored columns and the
-trend bins every score column in it; issue figures read the result JSON in Python and keep the latest 30.
+trend bins every score column in it; issue figures read the result JSON in Python and keep the latest
+`constants.ISSUE_AGGREGATE_MAX_ANALYSES`.
 """
 from __future__ import annotations
 
@@ -23,6 +24,7 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
+from src import constants
 from src.shared.anthropic_caching import first_text_block
 from src.config import settings
 from src.models.analysis import Analysis
@@ -36,10 +38,6 @@ from src.shared.lang_names import LANG_NAMES
 from src.shared.time_utils import to_naive_utc
 
 logger = logging.getLogger(__name__)
-
-# 이슈 집계가 읽는 최대 분석 건수 — 결과 JSON 을 읽는 Python 루프 O(N×이슈수) 상한. 점수 지표에는 걸지 않는다.
-# Max analyses the issue aggregates read (caps the JSON loop); score metrics are not capped.
-_MAX_ANALYSES = 30
 
 # 서술 출력 상한 — 600 은 운영 6건 중 5건이 정확히 닿았다(#1700). 대시보드 서술과 같은 1500:
 #   잘리지 않은 유일한 실측이 589 토큰이라 약 2.5배 여유, Haiku p10 처리율 ~54 tok/s 로도 ~28s 라 45s 기한 안이다.
@@ -57,9 +55,10 @@ class _NarrativeTruncated(Exception):
 def _fetch_analyses(
     db: Session, repo_id: int, days: int, now: datetime
 ) -> list[Analysis]:
-    """최근 days 내 분석 최대 _MAX_ANALYSES 건 조회 (created_at 내림차순) — 이슈 집계용.
+    """최근 days 내 분석 최대 `constants.ISSUE_AGGREGATE_MAX_ANALYSES` 건 조회 (created_at 내림차순) — 이슈 집계용.
 
-    Fetch up to _MAX_ANALYSES analyses within `days` window, newest first, for the issue aggregates.
+    Fetch up to `constants.ISSUE_AGGREGATE_MAX_ANALYSES` analyses in the window, newest first, for the issue
+    aggregates.
     """
     since = now - timedelta(days=days)
     return list(
@@ -70,7 +69,7 @@ def _fetch_analyses(
             .where(Analysis.created_at <= now)
             .where(Analysis.result.isnot(None))
             .order_by(Analysis.created_at.desc())
-            .limit(_MAX_ANALYSES)
+            .limit(constants.ISSUE_AGGREGATE_MAX_ANALYSES)
         ).all()
     )
 
@@ -170,11 +169,11 @@ def _count_issues_and_high_security(analyses: list) -> tuple[dict[str, int], int
 
 
 def issue_basis(analysis_count: int) -> int:
-    """이슈 수치(반복 이슈 · 보안 HIGH · 카테고리 · 문제 파일 · AI 제안)가 읽는 분석 수 — 기간 안 최근 `_MAX_ANALYSES` 건까지.
+    """이슈 수치(반복 이슈 · 보안 HIGH · 카테고리 · 문제 파일 · AI 제안)가 읽는 분석 수 — 기간 안 최근 `constants.ISSUE_AGGREGATE_MAX_ANALYSES` 건까지.
     화면은 이 값이 `analysis_count` 보다 작을 때만 «최근 N건 기준» 을 적는다.
     How many analyses the issue figures read; screens say so only when it is below analysis_count.
     """
-    return min(analysis_count, _MAX_ANALYSES)
+    return min(analysis_count, constants.ISSUE_AGGREGATE_MAX_ANALYSES)
 
 
 def repo_kpi(  # pylint: disable=too-many-locals
@@ -182,7 +181,7 @@ def repo_kpi(  # pylint: disable=too-many-locals
 ) -> dict[str, Any]:
     """KPI 4종 — 평균 점수/등급/분석수/최다 반복 이슈/보안 HIGH/점수 delta.
 
-    분석 수 · 평균 · 등급 · delta 는 기간 전체, 최다 반복 이슈 · 보안 HIGH 는 기간 안 최근 `_MAX_ANALYSES` 건이다.
+    분석 수 · 평균 · 등급 · delta 는 기간 전체, 최다 반복 이슈 · 보안 HIGH 는 기간 안 최근 `constants.ISSUE_AGGREGATE_MAX_ANALYSES` 건이다.
     Returns KPI dict with avg_score, grade, analysis_count, top_recurring_issue,
     top_recurring_count, high_security_count, score_delta. Count, average, grade and delta cover the
     whole window; the recurring issue and HIGH security count come from its latest analyses.
@@ -547,9 +546,9 @@ def _record_narrative_error(
 
 def invalidate_repo_insight_narrative(db: Session, *, user_id: int, repo_id: int, days: int) -> None:
     """새로 고침 — (user_id, repo_id, days) 리포 서술 캐시를 언어 무관하게 지운다(성공·실패 행 모두).
-    `refresh=True` 호출과 라우트의 PRG 가 같은 정의를 쓴다. 지우기만 하고 Claude 는 부르지 않는다.
+    라우트의 PRG(새로 고침)만 부른다 — 지우기만 하고 Claude 는 부르지 않는다. 재생성은 그 뒤 GET 의 캐시 miss 다.
     Refresh: drop the (user_id, repo_id, days) narrative rows in every language, success and
-    failure alike. Shared by `refresh=True` and the route's PRG; deletes only, never calls Claude.
+    failure alike. Called only by the route's PRG; deletes only, never calls Claude.
     """
     # pylint: disable=import-outside-toplevel
     from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415
@@ -565,13 +564,12 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
     kpi: dict[str, Any],
     recurring: list[dict[str, Any]],
     now: datetime | None = None,
-    refresh: bool = False,
     user_id: int | None = None,
     language: str = "en",
 ) -> dict[str, Any]:
-    """리포별 Claude AI 진단 내러티브 — 1h TTL 캐시 + refresh 지원.
+    """리포별 Claude AI 진단 내러티브 — 1h TTL 캐시(새로 고침은 라우트의 PRG 가 지운 뒤 다시 부른다).
 
-    Repo-level Claude AI narrative — 1h TTL cache + refresh support.
+    Repo-level Claude AI narrative — 1h TTL cache (Refresh = the route's PRG deleting it first).
     Returns: {"text": str, "status": "success"|"no_api_key"|"no_data"|"api_error"
                                 |"internal_error"|"disabled"}
       🔴 `api_error` = 벤더(`anthropic.APIError` · 페이지 기한 초과), `internal_error` = 우리 코드.
@@ -599,7 +597,7 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
     #   trip stalled the whole process. The session is handed over sequentially, one thread at a time.
     prepared = await run_in_threadpool(
         _prepare_repo_narrative, db, repo_id, days, repo_full_name=repo_full_name, kpi=kpi,
-        recurring=recurring, now=_now, refresh=refresh, user_id=user_id, language=language,
+        recurring=recurring, now=_now, user_id=user_id, language=language,
     )
     if isinstance(prepared, dict):
         return prepared
@@ -741,7 +739,7 @@ def _issue_scope_line(analysis_count: int) -> str:
 
 def _prepare_repo_narrative(  # pylint: disable=too-many-arguments
     db: Session, repo_id: int, days: int, *, repo_full_name: str, kpi: dict[str, Any],
-    recurring: list[dict[str, Any]], now: datetime, refresh: bool, user_id: int | None,
+    recurring: list[dict[str, Any]], now: datetime, user_id: int | None,
     language: str,
 ) -> dict[str, Any] | str:
     """Claude 호출 앞의 동기 단계 — 끝낼 응답(dict)이나 보낼 프롬프트(str)를 돌려준다(워커 스레드에서).
@@ -755,23 +753,22 @@ def _prepare_repo_narrative(  # pylint: disable=too-many-arguments
         # pylint: disable=import-outside-toplevel
         from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415
 
-        if refresh:
-            invalidate_repo_insight_narrative(db, user_id=user_id, repo_id=repo_id, days=days)
-        else:
-            cached = insight_narrative_cache_repo.get_fresh_repo(
-                db, user_id=user_id, repo_id=repo_id, days=days, language=language, now=now,
-            )
-            if cached:
-                return cached
-            # 부정 캐시 — 창 안의 최근 실패면 Claude 를 부르지 않고 같은 실패를 돌려준다.
-            #   부르지 않았으니 실패를 다시 기록하지도 비용 행을 남기지도 않는다. 새로 고침은 위에서 행을 지워 넘는다.
-            # Negative cache: a recent failure is returned without calling Claude.
-            #   No call was made, so nothing is recorded or logged; Refresh gets past it by deleting the row.
-            recorded = insight_narrative_cache_repo.recent_error_repo(
-                db, user_id=user_id, repo_id=repo_id, days=days, language=language, now=now,
-            )
-            if recorded is not None:
-                return {"text": "", "status": _status_for_recorded_error(recorded)}
+        # 새로 고침은 라우트의 PRG 가 행을 지운 뒤 다시 부른다 — 여기에 «캐시를 건너뛰는» 길은 두지 않는다(유료 호출).
+        # Refresh is the route's PRG deleting the rows first; no cache-skipping path here (a paid call).
+        cached = insight_narrative_cache_repo.get_fresh_repo(
+            db, user_id=user_id, repo_id=repo_id, days=days, language=language, now=now,
+        )
+        if cached:
+            return cached
+        # 부정 캐시 — 창 안의 최근 실패면 Claude 를 부르지 않고 같은 실패를 돌려준다.
+        #   부르지 않았으니 실패를 다시 기록하지도 비용 행을 남기지도 않는다. 새로 고침(PRG)은 행을 지워 넘는다.
+        # Negative cache: a recent failure is returned without calling Claude.
+        #   No call was made, so nothing is recorded or logged; Refresh (PRG) gets past it by deleting the row.
+        recorded = insight_narrative_cache_repo.recent_error_repo(
+            db, user_id=user_id, repo_id=repo_id, days=days, language=language, now=now,
+        )
+        if recorded is not None:
+            return {"text": "", "status": _status_for_recorded_error(recorded)}
 
     if not kpi.get("analysis_count"):
         _record_narrative_error(
