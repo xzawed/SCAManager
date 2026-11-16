@@ -51,13 +51,11 @@ _EXEMPT = {
 
 def _python_prose(text: str) -> list[tuple[int, str]]:
     """파이썬 소스의 문장 — 주석과 모듈 · 클래스 · 함수 독스트링(코드의 문자열 값은 시험 입력이라 뺀다)."""
-    out: list[tuple[int, str]] = []
     try:
-        for tok in tokenize.generate_tokens(io.StringIO(text).readline):
-            if tok.type == tokenize.COMMENT:
-                out.append((tok.start[0], tok.string))
+        tokens = list(tokenize.generate_tokens(io.StringIO(text).readline))
     except (tokenize.TokenError, IndentationError, SyntaxError):
-        pass
+        tokens = []  # 토큰화가 깨진 파일은 주석을 건너뛴다 — 독스트링은 아래 AST 가 본다
+    out = [(tok.start[0], tok.string) for tok in tokens if tok.type == tokenize.COMMENT]
     try:
         tree = ast.parse(text)
     except SyntaxError:
