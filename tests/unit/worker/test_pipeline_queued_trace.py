@@ -181,3 +181,53 @@ async def test_the_queued_log_names_the_commit(world, caplog):
                 await waiter
     queued = [r for r in caplog.records if r.getMessage().startswith("pipeline queued")]
     assert [r.args[2] for r in queued] == [_SHA[:8]]
+
+
+def _slow_note_for(world, monkeypatch, slow_sha: str, seconds: float) -> None:
+    """한 SHA 의 대기 전 흔적 쓰기만 느리게 — 워커 스레드에서 잠든 뒤 진짜 쓰기를 한다."""
+    real = pipeline._begin_queued_attempt  # pylint: disable=protected-access
+
+    def slow(repo_name, commit_sha, pr_number, event):
+        if commit_sha == slow_sha:
+            time.sleep(seconds)
+        return real(repo_name, commit_sha, pr_number, event)
+
+    monkeypatch.setattr(pipeline, "_begin_queued_attempt", slow)
+
+
+async def test_a_slow_queued_note_does_not_reorder_the_queue(world, monkeypatch):
+    """🔴 먼저 온 B 의 흔적 쓰기가 느려도 B 가 C 보다 먼저 들어간다 — 쓰기를 기다렸다 줄을 서면 C 가 앞선다."""
+    sha_b, sha_c = "b" * 40, "c" * 40
+    _slow_note_for(world, monkeypatch, sha_b, 0.4)
+    entered: list[str] = []
+
+    async def body(_event, data):
+        entered.append(data["after"])
+
+    with patch(_LIMIT, 1, create=True), patch.object(pipeline, "_run_pipeline_body", body):
+        async with _Holder() as holder:
+            b = asyncio.create_task(pipeline.run_analysis_pipeline("push", _push(_KNOWN, sha_b)))
+            await _until(lambda: pipeline._current_slots().waiting == 1)  # pylint: disable=protected-access
+            c = asyncio.create_task(pipeline.run_analysis_pipeline("push", _push(_KNOWN, sha_c)))
+            await _until(lambda: (world.repo_id, sha_c) in world.attempts())  # C 의 쓰기만 끝났다
+            assert (world.repo_id, sha_b) not in world.attempts()
+            holder.release.set()
+        await asyncio.wait_for(asyncio.gather(b, c), timeout=5)
+    assert entered == [sha_b, sha_c]
+
+
+async def test_the_body_starts_only_after_its_queued_note_is_written(world, monkeypatch):
+    """슬롯을 먼저 잡아도 본문은 대기 전 흔적 쓰기가 끝난 뒤 — 늦게 끝난 흔적이 정상 종료 뒤 고아로 남지 않게."""
+    _slow_note_for(world, monkeypatch, _SHA, 0.3)
+    seen_at_body_start: list[list[tuple[int, str]]] = []
+
+    async def body(_event, _data):
+        seen_at_body_start.append(world.attempts())
+
+    with patch(_LIMIT, 1, create=True), patch.object(pipeline, "_run_pipeline_body", body):
+        async with _Holder() as holder:
+            waiter = asyncio.create_task(pipeline.run_analysis_pipeline("push", _push(_KNOWN)))
+            await _until(lambda: pipeline._current_slots().waiting == 1)  # pylint: disable=protected-access
+            holder.release.set()  # 흔적 쓰기(0.3 s)가 끝나기 전에 슬롯이 빈다
+        await asyncio.wait_for(waiter, timeout=5)
+    assert seen_at_body_start == [[(world.repo_id, _SHA)]]

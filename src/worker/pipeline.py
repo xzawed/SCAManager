@@ -1043,6 +1043,19 @@ def _current_slots() -> _SlotGeneration:
     return slots
 
 
+# 따로 띄운 대기 전 흔적 쓰기 — 참조를 쥐어 끝나기 전에 수거되지 않게 한다(끝나면 스스로 빠진다).
+# Spawned before-wait breadcrumb writes; held here so none is garbage-collected mid-flight.
+_queued_notes: set[asyncio.Task] = set()
+
+
+def _spawn_queued_note(note: Awaitable[None]) -> asyncio.Task:
+    """대기 전 흔적 쓰기를 따로 띄운다 — 줄은 곧바로 서고, 대기 중 취소에도 쓰기는 끝까지 간다."""
+    task = asyncio.ensure_future(note)
+    _queued_notes.add(task)
+    task.add_done_callback(_queued_notes.discard)
+    return task
+
+
 @asynccontextmanager
 async def _pipeline_slot(*, sha: str = "", on_wait: Callable[[], Awaitable[None]] | None = None):
     """분석 파이프라인 슬롯 하나를 쥔다 — 비었으면 바로, 아니면 도착 순서대로 기다린다.
@@ -1050,8 +1063,12 @@ async def _pipeline_slot(*, sha: str = "", on_wait: Callable[[], Awaitable[None]
 
     기다려야 할 때만 INFO 두 줄(대기 시작·대기 끝)을 남겨 운영 로그에서 버스트가 보이게 한다.
     Logs two INFO lines (queued / dequeued) only when it has to wait, so bursts show in the logs.
-    기다려야 할 때만 `on_wait` 를 기다리기 직전에 부른다(대기 전 흔적) — 바로 들어가면 본문이 흔적을 남긴다.
-    `on_wait` runs right before waiting, and only then; an immediate entry leaves it to the body.
+    기다려야 할 때만 `on_wait`(대기 전 흔적)를 **따로 띄우고 곧바로 줄을 선다** — 그 쓰기를 기다렸다 줄을 서면 쓰기가
+    끝나는 순서대로 줄이 서 도착 순서가 깨진다. 슬롯을 잡은 뒤 본문 전에 그 쓰기를 기다려, 늦게 끝난 흔적이 정상
+    종료 뒤에 생겨 고아로 남지 않게 한다. 대기 중 취소돼도 그 쓰기는 따로 끝난다. 바로 들어가면 본문이 흔적을 남긴다.
+    `on_wait` is spawned and the pipeline queues at once (awaiting it first would order the queue by write
+    completion, not arrival); it is awaited after the slot is taken and before the body. Cancellation while
+    waiting leaves it running. An immediate entry leaves the breadcrumb to the body.
 
     🔴 이미 슬롯을 쥔 태스크가 또 잡으면 기다리지 않고 바로 RuntimeError — 상한 2 에서는 남는 자리가
     교착을 가려 테스트는 초록이다가 파이프라인 2 개가 겹치는 운영에서 멈춘다.
@@ -1063,6 +1080,7 @@ async def _pipeline_slot(*, sha: str = "", on_wait: Callable[[], Awaitable[None]
         raise RuntimeError("this task already holds a pipeline slot — a nested acquire would deadlock")
     slots = _current_slots()
     queued_at: float | None = None
+    queued_note: asyncio.Task | None = None
     if slots.semaphore.locked():
         queued_at = time.monotonic()
         # 대기 수 증가와 대기 로그도 try 안 — 로그가 예외를 내도 finally 가 수를 되돌린다.
@@ -1071,7 +1089,7 @@ async def _pipeline_slot(*, sha: str = "", on_wait: Callable[[], Awaitable[None]
             slots.waiting += 1
             logger.info("pipeline queued: waiting=%d limit=%d sha=%s", slots.waiting, slots.limit, sha[:8])
             if on_wait is not None:
-                await on_wait()
+                queued_note = _spawn_queued_note(on_wait())
             await slots.semaphore.acquire()
         finally:
             slots.waiting -= 1
@@ -1089,6 +1107,10 @@ async def _pipeline_slot(*, sha: str = "", on_wait: Callable[[], Awaitable[None]
                 "pipeline dequeued: waited_ms=%d waiting=%d sha=%s",
                 int((time.monotonic() - queued_at) * 1000), slots.waiting, sha[:8],
             )
+        if queued_note is not None:
+            # 본문의 시작 흔적보다 먼저 끝나게 — shield: 이 파이프라인이 취소돼도 쓰기는 끝까지 간다.
+            # Finish before the body's own breadcrumb; shielded so cancelling the pipeline leaves it running.
+            await asyncio.shield(queued_note)
         yield
     finally:
         # 반환이 먼저 — 표시 해제가 (다른 문맥에서 닫혀) 예외를 내도 슬롯은 이미 돌아갔다.
