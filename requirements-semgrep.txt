@@ -6,4 +6,4 @@
 # semgrep lives in its own venv (image /opt/semgrep · CI $RUNNER_TEMP/semgrep-venv): the app only runs its CLI, and its
 #   exact transitive pins used to constrain app resolution, pip-audit and Dependabot. Audit exceptions live in
 #   scripts/semgrep_audit.py, which blocks only the PR that changes this file.
-semgrep==1.184.0
+semgrep==1.185.0
