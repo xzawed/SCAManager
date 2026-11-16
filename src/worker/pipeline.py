@@ -3,6 +3,7 @@ import asyncio
 import contextvars
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
@@ -29,6 +30,7 @@ import src.notifier  # noqa: F401 — 자동 등록 트리거  # pylint: disable
 from src.notifier.registry import NotifyContext, REGISTRY
 from src.repositories import repository_repo, analysis_repo, analysis_attempt_repo
 from src.shared.http_client import HTTPX_SEND_ERRORS
+from src.shared.off_loop import run_blocking
 
 logger = logging.getLogger(__name__)
 
@@ -516,11 +518,34 @@ def _begin_attempt(repo_id: int, commit_sha: str, pr_number: int | None, event: 
     """
     try:
         with SessionLocal() as db:
-            analysis_attempt_repo.begin_attempt(
+            started = analysis_attempt_repo.begin_attempt(
                 db, repo_id=repo_id, commit_sha=commit_sha, pr_number=pr_number, event=event,
             )
+            if not started:
+                # 슬롯 대기 전에 남긴 흔적이면 시작 시각을 지금으로 — 긴 대기가 고아 판정 기준을 먹지 않게.
+                # A breadcrumb written before the slot wait restarts its clock, so a long wait
+                # does not count toward the orphan threshold.
+                analysis_attempt_repo.restart_attempt(db, repo_id=repo_id, commit_sha=commit_sha)
     except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
         logger.warning("analysis_attempt 시작 흔적 기록 실패 (sha=%s): %s", commit_sha[:8], exc)
+
+
+def _begin_queued_attempt(repo_name: str, commit_sha: str, pr_number: int | None, event: str) -> None:
+    """슬롯 대기 전 흔적 — 리포 행이 이미 있으면 시작 흔적을 남긴다(워커 스레드 · 자체 세션 · fail-safe).
+
+    Breadcrumb before the slot wait: when the repo row already exists (worker thread, own session,
+    fail-safe). A first-seen repo has no row yet; the body registers it and writes the breadcrumb then.
+    """
+    try:
+        with SessionLocal() as db:
+            repo = repository_repo.find_by_full_name(db, repo_name)
+            if repo is None:
+                return
+            analysis_attempt_repo.begin_attempt(
+                db, repo_id=repo.id, commit_sha=commit_sha, pr_number=pr_number, event=event,
+            )
+    except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+        logger.warning("analysis_attempt 대기 흔적 기록 실패 (sha=%s): %s", commit_sha[:8], exc)
 
 
 def _is_cli_only(analysis: Analysis) -> bool:
@@ -1019,12 +1044,14 @@ def _current_slots() -> _SlotGeneration:
 
 
 @asynccontextmanager
-async def _pipeline_slot():
+async def _pipeline_slot(*, sha: str = "", on_wait: Callable[[], Awaitable[None]] | None = None):
     """분석 파이프라인 슬롯 하나를 쥔다 — 비었으면 바로, 아니면 도착 순서대로 기다린다.
     Hold one analysis-pipeline slot — immediately if free, otherwise wait FIFO.
 
     기다려야 할 때만 INFO 두 줄(대기 시작·대기 끝)을 남겨 운영 로그에서 버스트가 보이게 한다.
     Logs two INFO lines (queued / dequeued) only when it has to wait, so bursts show in the logs.
+    기다려야 할 때만 `on_wait` 를 기다리기 직전에 부른다(대기 전 흔적) — 바로 들어가면 본문이 흔적을 남긴다.
+    `on_wait` runs right before waiting, and only then; an immediate entry leaves it to the body.
 
     🔴 이미 슬롯을 쥔 태스크가 또 잡으면 기다리지 않고 바로 RuntimeError — 상한 2 에서는 남는 자리가
     교착을 가려 테스트는 초록이다가 파이프라인 2 개가 겹치는 운영에서 멈춘다.
@@ -1042,7 +1069,9 @@ async def _pipeline_slot():
         # The increment and the queued log sit inside the try so a raising log cannot drift the count.
         try:
             slots.waiting += 1
-            logger.info("pipeline queued: waiting=%d limit=%d", slots.waiting, slots.limit)
+            logger.info("pipeline queued: waiting=%d limit=%d sha=%s", slots.waiting, slots.limit, sha[:8])
+            if on_wait is not None:
+                await on_wait()
             await slots.semaphore.acquire()
         finally:
             slots.waiting -= 1
@@ -1057,8 +1086,8 @@ async def _pipeline_slot():
         holder_token = _slot_holder.set(me)
         if queued_at is not None:
             logger.info(
-                "pipeline dequeued: waited_ms=%d waiting=%d",
-                int((time.monotonic() - queued_at) * 1000), slots.waiting,
+                "pipeline dequeued: waited_ms=%d waiting=%d sha=%s",
+                int((time.monotonic() - queued_at) * 1000), slots.waiting, sha[:8],
             )
         yield
     finally:
@@ -1101,7 +1130,22 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
         # The body makes the same check and returns before any DB work — same behaviour, no queueing.
         await _run_pipeline_body(event, data)
         return
-    async with _pipeline_slot():
+    try:
+        repo_name, commit_sha, _message, pr_number = _extract_event_metadata(event, data)
+    except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+        # 메타를 못 읽는 페이로드 — 흔적 없이 줄 서고, 본문의 터미널 except 가 다룬다.
+        # Unreadable payload: queue without a breadcrumb; the body's terminal except handles it.
+        async with _pipeline_slot():
+            await _run_pipeline_body(event, data)
+        return
+
+    async def _note_queued() -> None:
+        # 🔴 기다리는 동안 배포 · 재시작에 사라지면 흔적이 없어 고아 정리도 못 찾았다(회고 원장 L17 P2-32).
+        #   기다리기 **전에** 남긴다 — 루프 밖(대기분 수만큼 겹칠 수 있다).
+        # A pipeline lost while waiting used to leave no breadcrumb; write it before waiting, off the loop.
+        await run_blocking(_begin_queued_attempt, repo_name, commit_sha, pr_number, event)
+
+    async with _pipeline_slot(sha=commit_sha, on_wait=_note_queued):
         await _run_pipeline_body(event, data)
 
 

@@ -64,6 +64,24 @@ def begin_attempt(
         return False
 
 
+def restart_attempt(db: Session, *, repo_id: int, commit_sha: str) -> int:
+    """이미 있는 흔적의 시작 시각을 지금으로 — 고친 행 수.
+
+    Restart an existing breadcrumb's clock; returns the number of rows updated.
+
+    슬롯 대기 전에 남긴 흔적은 대기 시간까지 «시작 뒤 경과» 로 센다 — 본문이 시작할 때 다시 잡아야 긴 대기 뒤
+    정상 분석이 고아 판정 기준(`find_orphaned`)을 넘지 않는다.
+    A breadcrumb written before the slot wait would count the wait itself toward the orphan threshold.
+    """
+    updated = (
+        db.query(AnalysisAttempt)
+        .filter(AnalysisAttempt.repo_id == repo_id, AnalysisAttempt.commit_sha == commit_sha)
+        .update({AnalysisAttempt.started_at: _now_naive()}, synchronize_session=False)
+    )
+    db.commit()
+    return updated
+
+
 def finish_attempt(db: Session, *, repo_id: int, commit_sha: str) -> None:
     """분석 흔적을 지운다 — 정상 종료 신호. 행이 없으면 no-op (멱등).
 
