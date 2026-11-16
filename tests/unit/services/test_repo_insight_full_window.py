@@ -197,6 +197,6 @@ def test_narrative_prompt_states_the_issue_basis(db, repo_id):
     kpi = {"avg_score": 80.0, "grade": "B", "score_delta": 1.0, "analysis_count": 45,
            "high_security_count": 0, "top_recurring_issue": "x", "top_recurring_count": 3}
     prompt = _prepare_repo_narrative(db, repo_id, 30, repo_full_name="o/r", kpi=kpi, recurring=[],
-                                     now=NOW, refresh=False, user_id=None, language="en")
+                                     now=NOW, user_id=None, language="en")
     assert "Analyses: 45\n" in prompt
     assert "latest 30 of these analyses" in prompt
