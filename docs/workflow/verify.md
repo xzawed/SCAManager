@@ -7,6 +7,9 @@
 
 `e2e/pytest.ini` 는 루트와 달리 `asyncio_mode` 가 없어 `tests/` 와 **다른 프로세스**에서 돌린다.
 
+화면 폭 · 줄바꿈 e2e 는 Windows 초록이 CI 초록이 아니다(웹 글꼴이 없어 CI 는 Linux 글꼴로 그린다). 재현 =
+`mcr.microsoft.com/playwright/python:v<playwright 핀>-noble` 에 `fonts-dejavu-core` 를 더한 컨테이너 — 빼면 `system-ui` 가 WenQuanYi 라 CI(DejaVu Sans)와 다르다.
+
 ### push 전 절차
 
 1. `py -3 -m pytest tests/unit -q` **전체**. 파이프(`| tail`) 금지 — 종료코드 소실.

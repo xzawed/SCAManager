@@ -35,5 +35,6 @@
 ## 배포 실패 시
 
 1. `railway deployment list --json` 으로 상태부터(`SKIPPED` 면 `meta.skippedReason`). 빌드 실패면 로그 앞뒤 30줄로 원인을 특정한다 — 추측 수정 금지. 로컬 재현 `docker build -t scam-local .`.
-2. 서비스를 먼저 되돌린다 — Railway 에서 **이전 배포 재배포**. 그다음 원인을 고친다.
+2. 서비스를 먼저 되돌린다 — Railway 에서 **이전 배포 재배포**. 지금 DB 의 alembic 리비전을 아는 배포만(모르는 코드의
+   `alembic upgrade head` 는 `Can't locate revision` 으로 실패한다), 운영 DB 를 옮긴 뒤의 배포만 고른다(Rollback 은 그 배포 당시 변수까지 되돌린다). 그다음 원인을 고친다.
 3. 마이그레이션 단계 실패면 [db.md](db.md) §롤백.
