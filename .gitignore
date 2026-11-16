@@ -77,7 +77,7 @@ Thumbs.db
 # Claude Code 런타임 상태 파일
 .claude/scheduled_tasks.lock
 
-# doc_review_gate 로컬 판정 원장 (문서 본문 없음 — 경로·판정·회계만)
+# 퇴역한 문서 심의 훅(doc_review_gate · 원장 L11)의 로컬 판정 원장 — 디스크에 남은 파일이 커밋에 딸려 들어가지 않게 둔다
 # Local doc-review verdict ledger (paths/verdicts/usage only — never document bodies)
 .claude/hooks/.doc_review_ledger.jsonl
 

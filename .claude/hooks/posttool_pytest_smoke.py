@@ -119,8 +119,12 @@ def derive_test_target(path, repo=None):
         return None
 
     if root == "scripts":
+        # 🔴 디렉토리 폴백을 두지 않는다 — 아래 훅 쪽과 같은 이유다. 시험 이름이 규칙과 어긋난 스크립트가
+        #    `tests/unit/scripts` 전체로 떨어져, 그 스크립트를 검증하지 않는 남의 시험 수백 건이 75 초 벽에 걸렸다
+        #    (원장 L11 P2-83 — 신호 없는 «미완»). None 이면 수집 스모크 + «단언 0건» 배너가 정직하게 나간다.
+        # No directory fallback: it ran hundreds of unrelated tests into the 75 s wall.
         exact = f"tests/unit/scripts/test_{stem}.py"
-        return exact if (repo / exact).is_file() else "tests/unit/scripts"
+        return exact if (repo / exact).is_file() else None
 
     if root == ".claude/hooks":
         # 🔴 디렉토리 폴백을 **두지 않는다** (Grok claim-review `01a0121f` 적발).
@@ -138,6 +142,25 @@ def derive_test_target(path, repo=None):
         return f"tests/unit/{parts[0]}"
     exact = f"tests/unit/test_{stem}.py"
     return exact if (repo / exact).is_file() else None
+
+
+def checkout_of(path, fallback):
+    """편집한 파일이 든 체크아웃(git 최상위) — 못 찾으면 fallback.
+
+    🔴 예전엔 이 훅 파일이 든 체크아웃에서 시험을 돌렸다 — 워크트리에서 고친 파일을 주 체크아웃의 옛 코드로 재고
+       ✅ 를 찍었다(원장 L11 P1-30 · P2-47). 편집한 파일의 체크아웃에서 잰다. 상대 경로 · git 실패면 예전 동작.
+    The checkout holding the edited file; the hook's own checkout measured stale code for worktree edits.
+    """
+    p = Path(_norm(path))
+    if not p.is_absolute() or not p.parent.is_dir():
+        return fallback
+    try:
+        r = subprocess.run(["git", "-C", str(p.parent), "rev-parse", "--show-toplevel"],
+                           capture_output=True, text=True, timeout=10, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return fallback
+    top = (r.stdout or "").strip()
+    return Path(top) if r.returncode == 0 and top else fallback
 
 
 def _banner(rc, asserted):
@@ -192,7 +215,7 @@ def main():
     if not is_watched_file(path):
         return 0  # 감시 대상 편집만 / only watched-root edits
 
-    repo = Path(__file__).resolve().parents[2]
+    repo = checkout_of(path, Path(__file__).resolve().parents[2])
     target = derive_test_target(path, repo)
     base = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"]
     asserted = bool(target) and (repo / target).exists()

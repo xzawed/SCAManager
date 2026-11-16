@@ -2,7 +2,7 @@
 
 ## 왜 필요한가 (2026-08-06 5+1 회고 P1 · backlog R61)
 
-`src/` 3곳 + `.claude/hooks/doc_review_gate.py` 1곳이 Anthropic 응답을 **`content[0].text`**
+`src/` 3곳 + 당시의 문서 심의 훅 1곳(원장 L11 로 지움)이 Anthropic 응답을 **`content[0].text`**
 로 인덱싱하고 있었다. 그 관용구는 **첫 블록이 항상 text 라고 가정**한다. 그러나 `content` 는
 블록 **배열**이고 thinking(확장 사고)·tool_use 가 앞설 수 있다.
 
@@ -152,7 +152,6 @@ _CALL_SITES = (
     "src/analyzer/io/ai_review.py",
     "src/services/dashboard_service.py",
     "src/services/repo_insight_service.py",
-    ".claude/hooks/doc_review_gate.py",
     "scripts/i18n_comments/translate_comments.py",
 )
 
@@ -179,15 +178,16 @@ def test_call_site_actually_uses_the_helper(rel: str):
     assert "first_text_block(" in src, f"{rel} 이 헬퍼를 쓰지 않는다"
 
 
-def test_hook_duplicate_matches_the_src_helper_behaviour():
-    """🔴 훅은 standalone 이라 `src` 를 import 할 수 없어 헬퍼가 **중복**이다.
+def test_script_duplicate_matches_the_src_helper_behaviour():
+    """🔴 번역 스크립트는 standalone 이라 `src` 를 import 할 수 없어 헬퍼가 **중복**이다.
 
-    중복은 갈라진다 — 두 구현이 같은 입력에 같은 답을 내는지 여기서 고정한다.
+    중복은 갈라진다 — 두 구현이 같은 입력에 같은 답을 내는지 여기서 고정한다(예전 대상이던 문서 심의 훅은
+    원장 L11 결정으로 지웠다 — 남은 복제본은 이 스크립트다).
     """
     import importlib.util
 
     spec = importlib.util.spec_from_file_location(
-        "_gate_probe", _ROOT / ".claude" / "hooks" / "doc_review_gate.py")
+        "_translate_probe", _ROOT / "scripts" / "i18n_comments" / "translate_comments.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
 

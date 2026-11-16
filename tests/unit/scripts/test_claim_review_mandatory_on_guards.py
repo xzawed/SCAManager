@@ -82,12 +82,12 @@ def _rev(ref: str) -> str:
     "path",
     [
         "scripts/check_reverse_mutation.py",
-        ".claude/hooks/doc_review_gate.py",
+        ".claude/hooks/check_edit_allowed.py",
         ".claude/workflows/retrospective.mjs",
         ".claude/settings.json",
         ".github/workflows/ci.yml",
         ".pre-commit-config.yaml",
-        "tests/unit/hooks/test_doc_review_gate.py",
+        "tests/unit/hooks/test_check_edit_allowed.py",
     ],
 )
 def test_guard_surface_is_recognised(mod, path: str):

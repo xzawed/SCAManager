@@ -28,10 +28,10 @@ tense correction rather than a deletion so the drift itself stays visible.
 
 ## 로드 전략
 ## Load strategy
-- `importlib.util.spec_from_file_location` 으로 직접 로드 (패키지 아님 — test_doc_review_gate.py 의
+- `importlib.util.spec_from_file_location` 으로 직접 로드 (패키지 아님 — 훅 디렉토리를 더하는
   sys.path 패턴은 모듈 레벨 실행 스크립트에는 collection 자체를 죽이므로 쓸 수 없다).
-- Load directly via spec_from_file_location (not a package — the sys.path pattern used by
-  test_doc_review_gate.py would kill collection for a module-level-executing script).
+- Load directly via spec_from_file_location (not a package — the sys.path pattern (adding the
+  hooks directory) would kill collection for a module-level-executing script).
 - **리팩터 이전**(2026-08 초)에는 모듈 레벨 코드가 stdin 을 읽고 `sys.exit(0)` 했으므로, stdin 을
   `io.StringIO("{}")` 로 방어하고 SystemExit 를 삼켜 **부분 로드**를 돌려준다 —
   함수 부재(AttributeError)로 각 테스트가 개별 RED 가 된다 (collection 전멸 방지).

@@ -50,11 +50,6 @@
             "type": "command",
             "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY ${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/check_edit_allowed.py",
             "timeout": 10
-          },
-          {
-            "type": "command",
-            "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY ${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/doc_review_gate.py",
-            "timeout": 60
           }
         ]
       }
