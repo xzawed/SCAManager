@@ -50,6 +50,7 @@ py -3 -m pytest e2e/ -p no:asyncio  # E2E (tests/ 와 같이 돌리지 않는다
 
 ## 협업 규칙
 
+- 사용자에게 쓰는 말은 한국어다(코드 · 명령 · 고유명사는 원문 그대로).
 - 옵션 제시는 장단점 표 + 권장안 1개.
 - PR 본문에 사람이 눈으로 확인할 항목 1~3개 — "테스트 통과" 만 적지 않는다.
 - 위임 작업 중 스스로 판단한 것은 PR 본문이나 응답 끝에 명시한다.
@@ -86,4 +87,4 @@ py -3 -m pytest e2e/ -p no:asyncio  # E2E (tests/ 와 같이 돌리지 않는다
 ## 진행 중인 일
 
 GitHub Issues — 여러 세션 작업은 `[WBS]` Issue 가 진입점이다(`gh issue list --search "WBS in:title"`).
-메모리 진입점 절은 그 Issue 를 가리키고 수치·SHA 는 적지 않는다(`scripts/check_memory_refs.py`).
+메모리 진입점 절은 그 Issue 를 가리키고 수치·SHA 는 적지 않는다 — `scripts/check_memory_refs.py` 는 그 절의 SHA · 복사한 테스트 수 · 줄번호 좌표만 잡는다(다른 수치는 사람이 지킨다).

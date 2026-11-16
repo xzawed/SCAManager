@@ -120,31 +120,49 @@ def normalize(slug: str) -> str:
 # 🔴 처방 표면 = 인덱스(`MEMORY.md`) 전체 · 「시작점」·「진입점」 이 든 줄 · 그 낱말이 든 제목 아래 절 전체
 #    (같은 수준 이상의 다음 제목까지, 코드 펜스 안의 `#` 줄은 제목이 아니다). 진입점 절은 번호 목록으로
 #    할 일 · 좌표를 적고 줄마다 그 낱말을 쓰지 않는다 — 줄 단위로만 보면 그 절이 통째로 판정 밖이었다.
-# 🔴 처방 줄 위에서 보는 값은 셋뿐이다(그 밖의 값은 판정하지 않는다 — 시험이 그 부류를 고정한다):
+# 🔴 처방 줄 위에서 보는 값은 넷뿐이다(그 밖의 값은 판정하지 않는다 — 시험이 그 부류를 고정한다):
 #    · 백틱 좌표 — 접두사 경로와 맨 파일 이름(리포 루트 · 메모리 디렉토리에 있어야 한다). 앵커
-#      (`path::글자`)는 그 글자가 파일에 있어야 하고, `path:줄` · `path#조각` · 끝 `/` 는 경로만 본다.
-#      백틱 = 살아 있는 좌표다 — 죽은 파일을 역사로 말할 때는 백틱을 뺀다. 루트 파일을 못 봐 «삭제 금지»
-#      라 적힌 죽은 루트 파일 위에서 초록이었다.
+#      (`path::글자`)는 그 글자가 파일에 **정확히 한 번** 있어야 한다(문서 앵커 가드와 같은 술어 — 두 곳에
+#      있으면 어디인지 모른다). `path:줄` 은 red 다 — 좌표는 줄번호가 아니라 앵커다(CLAUDE.md). `path#조각` ·
+#      끝 `/` 는 경로만 본다. 백틱 = 살아 있는 좌표다 — 죽은 파일을 역사로 말할 때는 백틱을 뺀다.
 #    · 테스트 수의 흔한 꼴(E2E N · 단위 N · N 수집 · N passed) — 원천(실행 결과 ·
 #      `e2e/EXPECTED_COUNT`)이 말한다. 처방 줄에 복사한 수치가 main 보다 6 PR 뒤처졌고, 그 수치를 무효로
 #      만든 커밋들에서 이 훅은 돌고도 초록이었다.
-#    · 머지 기록(«#번호 (머지) `sha`») 의 커밋 — 리포에 있어야 한다. 다른 꼴의 hex 는 배포 · 세션 ID 와
-#      글자로 못 가르므로 보지 않는다. git 으로 확인하지 못하면(실패 · 실행 불가) 못 쟀다고 red 다.
+#    · 진입점 줄 · 절의 SHA(백틱 안이 통째로 소문자 hex 7~40자) — red. 진입점은 Issue 를 가리키고 SHA 를
+#      적지 않는다(CLAUDE.md «진행 중인 일»). 그 규칙을 적은 다음 날 진입점 줄에 SHA 10개가 쌓였는데, 이 가드는
+#      «리포에 있는가» 만 봐서 초록이었다(원장 L10).
+#    · 진입점 밖 머지 기록(«#번호 (머지) `sha`») 의 커밋 — 리포에 있어야 한다. 다른 꼴의 hex 는 배포 · 세션
+#      ID 와 글자로 못 가르므로 보지 않는다. git 으로 확인하지 못하면(실패 · 실행 불가) 못 쟀다고 red 다.
 #
 # Reverse axis: only prescriptive surfaces are judged; old narrative is append-only history.
 # Wiki links resolve by frontmatter `name:` as well as by filename. Prescriptive lines are judged for
-# three kinds of value only: backticked coordinates, copied test counts and merge-record commits.
+# four kinds of value: backticked coordinates (anchors must be unique, line numbers are refused), copied
+# test counts, SHAs on entry-point lines (refused) and, elsewhere, merge-record commits (must exist).
 
 _PRESCRIPTIVE_FILE = "MEMORY.md"
 _PRESCRIPTIVE_LINE = re.compile(r"시작점|진입점")
 _HEADING = re.compile(r"^(#{1,6})\s+(.*)")
 _FENCE = re.compile(r"^\s*(?:```|~~~)")
 _MD_LINK = re.compile(r"\[[^\]]*\]\((?!https?://|mailto:)([^)#]+)\)")
+# 앵커(`::` 뒤)는 공백을 품는다 — `path::def foo(` 를 못 읽으면 문서 앵커 가드가 다루는 앵커가 판정 밖이다(P2-94).
+# The anchor part may hold spaces; without that, `path::def foo(` escaped the check entirely.
 _REPO_PATH = re.compile(
-    r"`((?:docs|src|tests|scripts|e2e|alembic|\.claude|\.github)/[^`\s]+)`")
+    r"`((?:docs|src|tests|scripts|e2e|alembic|\.claude|\.github)/[^`\s]*?(?:::[^`]+)?)`")
+# `:줄` 꼬리를 함께 받는다 — 빼면 `name.py:12` 가 맨 이름으로도 줄번호로도 안 잡혀 판정 밖이었다(원장 L10 P2-92).
+# Accept a `:line` tail too: without it `name.py:12` escaped both the bare-name and line-number checks.
 _BARE_FILE = re.compile(
     r"`(\.?[A-Za-z0-9_-][A-Za-z0-9_.-]*\.(?:md|py|ya?ml|toml|json|ini|cfg|txt|html|js|mjs|css|sh|lock)"
-    r"|Makefile|Dockerfile)`")
+    r"(?::\d+(?:[-,]\d+)*)?|Makefile|Dockerfile)`")
+# 줄번호 꼬리 — 좌표의 경로 부분 끝 `:줄`(범위 · 목록 포함).
+# The line-number tail at the end of a coordinate's path part.
+_LINE_TAIL = re.compile(r":\d+(?:[-,]\d+)*$")
+# 진입점의 SHA — 백틱 안이 통째로 소문자 hex 7~40자.
+# A SHA on an entry-point line: a backtick span that is entirely lowercase hex, 7-40 long.
+_ENTRY_SHA = re.compile(r"`([0-9a-f]{7,40})`")
+# 진입점을 «말하는» 줄 — 낱말 뒤에 = · : · — 가 오거나 줄이 끝난다. 처방 분류(`_PRESCRIPTIVE_LINE`)는 낱말만
+# 보므로 «Tab 시작점 ·» 같은 다른 뜻도 처방이 된다 — 좌표에는 해가 없지만 SHA 금지에 쓰면 거짓 red 였다(실측).
+# An entry-point label: the word followed by = : — or the line end; the bare word also matches other senses.
+_ENTRY_LABEL = re.compile(r"(?:진입점|시작점)\s*(?:[=:—]|$)")
 _BACKTICK_SPAN = re.compile(r"`[^`\n]*`")
 # 테스트 수의 흔한 꼴 — E2E/e2e N · 단위(테스트)(는) N · N(개) 수집 · N passed. 날짜(2026-11-05) · 시간(3000ms) ·
 # 「단위 500건씩」 같은 다른 뜻은 뒤따르는 글자로 거른다. 그 밖의 꼴은 판정하지 않는다(시험이 고정).
@@ -188,7 +206,11 @@ def _coordinate(ref: str) -> tuple[str, str | None] | None:
 
 
 def _lines_with_surface(path: Path):
-    """(줄 번호, 줄, 처방인가) — 인덱스 전체 · 처방 낱말이 든 줄 · 그 낱말이 든 제목 아래 절."""
+    """(줄 번호, 줄, 처방인가, 진입점인가) — 처방 = 인덱스 전체 · 처방 낱말이 든 줄 · 그 낱말이 든 제목 아래 절.
+
+    진입점 = 그 제목 아래 절 · 낱말을 표지 꼴(`_ENTRY_LABEL`)로 쓴 줄 — 인덱스의 다른 줄과 낱말을 다른 뜻으로 쓴
+    줄은 아니다. (lineno, line, prescriptive, entry_point).
+    """
     entry_level, fenced = None, False
     for lineno, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
         if _FENCE.match(line):
@@ -203,7 +225,7 @@ def _lines_with_surface(path: Path):
                 entry_level = level
         prescriptive = (path.name == _PRESCRIPTIVE_FILE or entry_level is not None
                         or bool(_PRESCRIPTIVE_LINE.search(line)))
-        yield lineno, line, prescriptive
+        yield lineno, line, prescriptive, entry_level is not None or bool(_ENTRY_LABEL.search(line))
 
 
 def _missing_commits(project_root: Path, shas: list[str]) -> set[str] | None:
@@ -231,7 +253,7 @@ def reverse_dangling(memory_dir: Path, project_root: Path) -> list[str]:
     out: list[str] = []
     merges: list[tuple[str, int, str]] = []
     for path in sorted(memory_dir.glob("*.md")):
-        for lineno, line, prescriptive in _lines_with_surface(path):
+        for lineno, line, prescriptive, entry_point in _lines_with_surface(path):
             for m in _ANY_WIKI.finditer(line):
                 if normalize(m.group(1)) not in ids:
                     out.append(f"{path.name}:{lineno}  [[{m.group(1)}]] — 그 이름의 메모리가 없다")
@@ -245,17 +267,28 @@ def reverse_dangling(memory_dir: Path, project_root: Path) -> list[str]:
                     coord = _coordinate(ref)
                     if coord is None:
                         continue
+                    if _LINE_TAIL.search(ref.partition("::")[0].split("#", 1)[0]):
+                        out.append(f"{path.name}:{lineno}  {ref} — 줄번호 좌표는 썩는다 — 앵커(`경로::글자`)로 적는다")
+                        continue
                     rel, anchor = coord
                     found = next((b / rel for b in (memory_dir, project_root) if (b / rel).exists()), None)
                     if found is None:
                         out.append(f"{path.name}:{lineno}  {ref} — 처방인데 그 자리가 없다")
-                    elif anchor and (not found.is_file()
-                                     or anchor not in found.read_text(encoding="utf-8", errors="replace")):
-                        out.append(f"{path.name}:{lineno}  {ref} — 그 파일에 앵커 «{anchor}» 가 없다")
+                    elif anchor:
+                        hits = (found.read_text(encoding="utf-8", errors="replace").count(anchor)
+                                if found.is_file() else 0)
+                        if hits == 0:
+                            out.append(f"{path.name}:{lineno}  {ref} — 그 파일에 앵커 «{anchor}» 가 없다")
+                        elif hits > 1:
+                            out.append(f"{path.name}:{lineno}  {ref} — 앵커 «{anchor}» 가 {hits}곳이라 어디인지 모른다")
             for m in _TEST_COUNT.finditer(line):
                 out.append(f"{path.name}:{lineno}  «{m.group(0).replace('*', '')}» — 처방 줄의 테스트 수는 썩는다"
                            "(원천 = 실행 결과 · `e2e/EXPECTED_COUNT` — 수치 대신 그쪽을 가리킨다)")
-            merges += [(path.name, lineno, m.group(1)) for m in _MERGE_SHA.finditer(line)]
+            if entry_point:
+                out += [f"{path.name}:{lineno}  `{m.group(1)}` — 진입점에 SHA 를 적지 않는다(이력은 git 이 갖는다 — "
+                        "진입점은 Issue 를 가리킨다)" for m in _ENTRY_SHA.finditer(line)]
+            else:
+                merges += [(path.name, lineno, m.group(1)) for m in _MERGE_SHA.finditer(line)]
     missing = _missing_commits(project_root, [sha for *_, sha in merges])
     if missing is None:
         out.append(f"머지 기록 커밋 {len(merges)}건을 git 으로 확인하지 못했다 — {project_root} (못 쟀다)")
@@ -273,6 +306,26 @@ def repo_slug(project_root: Path) -> str:
     Maps the absolute repo path to the slug Claude Code uses for its project directory.
     """
     return re.sub(r"[\\/:]", "-", str(project_root))
+
+
+def main_checkout(project_root: Path) -> Path:
+    """워크트리면 주 체크아웃 경로 — 메모리 디렉토리 슬러그는 주 체크아웃 경로에서 나온다.
+
+    🔴 워크트리 경로(`…-wt-x`)로 슬러그를 만들면 메모리가 없다고 «경로 drift» 로 막는다 — 워크트리 커밋마다
+       거짓 red 였다(원장 L10 P2-76). git 공통 디렉토리(`--git-common-dir`)의 부모가 주 체크아웃이다.
+       git 이 답하지 않으면 받은 경로를 그대로 쓴다(지금까지의 동작).
+    A worktree's memory lives under its main checkout's slug: the parent of the git common dir.
+    """
+    try:
+        res = subprocess.run(["git", "-C", str(project_root), "rev-parse", "--path-format=absolute",
+                              "--git-common-dir"], capture_output=True, text=True, timeout=30, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return project_root
+    common = res.stdout.strip()
+    if res.returncode != 0 or not common:
+        return project_root
+    common_dir = Path(common)
+    return common_dir.parent if common_dir.name == ".git" else project_root
 
 
 def resolve_memory_dir(project_root: Path) -> Path | None:
@@ -396,10 +449,11 @@ def print_report(
     else:
         print("✅ 스테일 '(현재 미생성)' 어노테이션 없음")
 
+    # 개수만 — 메모리 파일은 리포 문서가 아니라 인덱스(`MEMORY.md`)가 부르므로 «미참조» 는 정상이다. 이름을
+    # 다 찍으면 세션 시작 주입의 대부분(115줄 중 102줄)이 할 일 없는 재고였다(원장 L10 P2-27).
+    # Count only: memory files are referenced by the index, not by repo docs, so listing them was noise.
     if extra:
-        print(f"\nℹ️  미참조 파일 ({len(extra)}개 — 문서 참조 X, 파일 O):")
-        for slug in sorted(extra):
-            print(f"  {slug}")
+        print(f"\nℹ️  리포 문서가 부르지 않는 메모리 {len(extra)}개(인덱스가 부른다 — 목록은 생략)")
 
     return ok
 
@@ -423,13 +477,16 @@ def main(project_root: Path | None = None, advisory: bool = False) -> int:
         print(f"⏭️  Claude 프로젝트 루트 없음 — 점검 skip (CI/타 환경 정상): {PROJECTS_ROOT}")
         return 0
 
-    memory_dir = resolve_memory_dir(project_root)
+    # 슬러그는 주 체크아웃에서 — 워크트리 경로로 만들면 거짓 drift 다. 좌표는 이 체크아웃(project_root)에서 잰다.
+    # The slug comes from the main checkout; coordinates are still judged against this checkout.
+    checkout = main_checkout(project_root)
+    memory_dir = resolve_memory_dir(checkout)
     if memory_dir is None or not memory_dir.is_dir():
-        hints = near_miss_slugs(project_root)
+        hints = near_miss_slugs(checkout)
         print(
             "🔴 메모리 디렉토리를 찾지 못했습니다 — 이 머신에 프로젝트 루트는 있는데 대응 후보가 없습니다.\n"
             "   Memory dir unresolved though the Claude projects root exists (slug drift).\n"
-            f"   기대 슬러그 / expected slug : {repo_slug(project_root)}\n"
+            f"   기대 슬러그 / expected slug : {repo_slug(checkout)}\n"
             f"   탐색 위치 / searched        : {PROJECTS_ROOT}\n"
             + (f"   🔎 이름은 비슷한 후보 / near-miss: {', '.join(hints)}\n"
                "      (자동 채택하지 않습니다 — 드라이브·상위 경로가 바뀐 drift 일 수 있어 사람이 확인해야 합니다)\n"
