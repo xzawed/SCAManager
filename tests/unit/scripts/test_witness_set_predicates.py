@@ -693,3 +693,51 @@ def test_a_corpus_moved_out_of_a_deleted_file_is_not_new(tmp_path):
     subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "x"],
                    cwd=tmp_path, check=True)
     assert _gate(tmp_path, base).returncode == 1
+
+
+# ─── 원장 R-2 — 정규식 교대의 이스케이프 · 문자 집합 · 빈 가지 ─────────────────────
+
+# witness-corpus: 정규식 교대로 읽으면 안 되는 `|` 의 꼴 — 이스케이프 · 문자 집합 · 집합 첫 글자 `]`(`^` 뒤 포함) ·
+# 집합 안 이스케이프 · 연속(빈 가지) — 그리고 교대가 **맞는** 꼴(이스케이프된 역슬래시 뒤의 `|`)
+_ALTERNATION_CASES = (
+    (r"alpha|beta|gamma", ["alpha", "beta", "gamma"]),
+    (r"a\|b|c|d", ["a\\|b", "c", "d"]),
+    (r"[|]{2}|x|y", ["[|]{2}", "x", "y"]),
+    (r"[]|]|x|y", ["[]|]", "x", "y"]),
+    (r"[^]|]|x|y", ["[^]|]", "x", "y"]),
+    (r"[\]|]|x|y", ["[\\]|]", "x", "y"]),
+    (r"a\\|b|c", ["a\\\\", "b", "c"]),
+    (r"a||b|c", ["a", "b", "c"]),
+    (r"x|y|z|\|\|", ["x", "y", "z", "\\|\\|"]),
+)
+
+
+@pytest.mark.parametrize(("pattern", "branches"), _ALTERNATION_CASES)
+def test_escaped_and_class_pipes_are_not_alternatives(pattern, branches):
+    """🔴 `\\|` · `[...]` 안의 `|` 는 교대가 아니고, 빈 가지는 버린다(원장 R-2)."""
+    from scripts.check_witness_set_predicates import _alternation_branches  # noqa: PLC0415
+
+    assert _alternation_branches(pattern) == branches
+
+
+def test_an_escaped_pipe_pattern_leaves_room_for_an_outside_value(tmp_path):
+    """🔴 예전엔 `x|y|z|\\|\\|` 가 빈 needle 을 남겨 어떤 코퍼스도 «바깥» 이 될 수 없었다 — 거짓 빨강(원장 R-2).
+
+    계기 뒤집기 — 증거집합 값에 빈 문자열이 없고, 그 값들이 알아보지 못하는 «w» 는 바깥으로 세진다.
+    """
+    from scripts.check_witness_set_predicates import find_predicates, outside_witness  # noqa: PLC0415
+
+    sample = tmp_path / "p.py"
+    sample.write_text('import re\n_P = re.compile(r"x|y|z|\\|\\|")\n', encoding="utf-8")
+    hits = find_predicates(sample)
+    assert hits, "정규식 교대를 못 잡았다 — 잡는 범위가 줄었다"
+    values = set().union(*(h[3] for h in hits))
+    assert "" not in values, f"빈 needle 이 남았다: {values}"
+    assert outside_witness(["w", "x1"], needles=values) == ["w"]
+
+
+def test_an_empty_needle_does_not_erase_the_outside():
+    """방어 — 다른 꼴에서 빈 문자열이 needle 로 와도 «바깥» 을 통째로 지우지 않는다(원장 R-2)."""
+    from scripts.check_witness_set_predicates import outside_witness  # noqa: PLC0415
+
+    assert outside_witness(["w", "ab"], needles={"", "a"}) == ["w"]
