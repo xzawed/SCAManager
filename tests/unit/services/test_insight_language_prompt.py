@@ -85,7 +85,7 @@ class TestRepoInsightLanguagePrompt:
              patch("src.services.repo_insight_service.anthropic.AsyncAnthropic",
                    return_value=mock_client):
             s.anthropic_api_key = "sk-ant-test"
-            s.claude_insight_model = "claude-haiku-4-5-20251001"
+            s.claude_insight_model = "claude-haiku-4-5"
             await repo_insight_narrative(
                 db, repo.id,
                 kpi={"analysis_count": 3, "avg_score": 80, "grade": "B",
@@ -111,7 +111,7 @@ class TestRepoInsightLanguagePrompt:
              patch("src.services.repo_insight_service.anthropic.AsyncAnthropic",
                    return_value=mock_client):
             s.anthropic_api_key = "sk-ant-test"
-            s.claude_insight_model = "claude-haiku-4-5-20251001"
+            s.claude_insight_model = "claude-haiku-4-5"
             await repo_insight_narrative(
                 db, repo.id,
                 kpi={"analysis_count": 3, "avg_score": 80, "grade": "B",
@@ -136,7 +136,7 @@ class TestRepoInsightLanguagePrompt:
              patch("src.services.repo_insight_service.anthropic.AsyncAnthropic",
                    return_value=mock_client):
             s.anthropic_api_key = "sk-ant-test"
-            s.claude_insight_model = "claude-haiku-4-5-20251001"
+            s.claude_insight_model = "claude-haiku-4-5"
             await repo_insight_narrative(
                 db, repo.id,
                 kpi={"analysis_count": 3, "avg_score": 80, "grade": "B",
@@ -210,7 +210,7 @@ class TestDashboardInsightLanguagePrompt:
                    return_value=None) as mock_get_fresh, \
              patch("src.repositories.insight_narrative_cache_repo.upsert") as mock_upsert:
             s.anthropic_api_key = "sk-ant-test"
-            s.claude_insight_model = "claude-haiku-4-5-20251001"
+            s.claude_insight_model = "claude-haiku-4-5"
 
             # dashboard_kpi 등 4 헬퍼도 mock
             # Mock the 4 dashboard helpers so no DB queries are needed.

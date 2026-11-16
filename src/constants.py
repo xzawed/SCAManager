@@ -202,16 +202,20 @@ BREAKDOWN_KEY_TEST_COVERAGE = "test_coverage"
 # 출처: platform.claude.com 모델 개요표 (2026-09 재확인 — 실제 청구와 다를 수 있음)
 # Source: platform.claude.com models overview (reconfirmed 2026-09 — actual billing may differ)
 # 2026-09 갱신: Claude 5 세대로 교체 — Sonnet 4.6 → Sonnet 5 ($3/$15 → **$2/$10**),
-#   Opus 4.7 → Opus 5 ($5/$25 유지), Fable 5.1 신설 ($10/$50). Haiku 4.5 는 최신이라 그대로.
+#   Opus 4.7 → Opus 5 ($5/$25 유지), Fable 5.1 신설 ($10/$50).
 #   🔴 Sonnet 은 세대가 오르며 값이 «내렸다» — ID 만 올리면 추정이 50% 과대가 된다.
 # 2026-09 update: moved to the Claude 5 generation; Sonnet's rate DROPPED with the generation.
+# id 는 별칭으로 쓴다 — 날짜 스냅샷 id 와 섞으면 같은 모델이 두 이름이 된다(Haiku 4.5 = `claude-haiku-4-5`, 전체 id
+# `claude-haiku-4-5-20251001` 과 같은 모델 · 저장값은 0050 이 옮겼다 · 사용자 11-17 결정). 더 새 세대로 바꾸는 것은
+# 비용 · 품질 결정이라 여기서 하지 않는다. `tests/unit/test_claude_model_catalogue_ids.py` 가 날짜 id 를 막는다.
+# Ids are aliases, never dated snapshots (one model, one name); the stored values were moved by 0050.
 # 🔴 PARITY GUARD: 가격 SSOT = claude_metrics._PRICING_USD_PER_MTOK. 여기 input/output_price 변경 시
 #   SSOT + i18n model_hint(en/ko/ja) 3곳 동시 수정 의무 (test_pricing_parity.py 가 CI 차단 — 정책 4).
 # 🔴 PARITY GUARD: pricing SSOT = claude_metrics._PRICING_USD_PER_MTOK. Changing input/output_price here
 #   requires updating the SSOT + i18n model_hint (en/ko/ja) too; test_pricing_parity.py blocks drift (policy 4).
 CLAUDE_MODELS: list[dict] = [
     {
-        "id": "claude-haiku-4-5-20251001",
+        "id": "claude-haiku-4-5",
         "label": "Claude Haiku 4.5 (빠름/저렴 · Fast/Cheap)",
         "input_price": 1.00,
         "output_price": 5.00,

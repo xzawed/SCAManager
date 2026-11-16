@@ -328,7 +328,7 @@ sys.stdout.write(prompt)
   rm -f "${TMPFILE}"
   exit 0
 }
-REVIEW_MODEL="${SCAMANAGER_REVIEW_MODEL:-claude-haiku-4-5-20251001}"
+REVIEW_MODEL="${SCAMANAGER_REVIEW_MODEL:-claude-haiku-4-5}"
 RESULT=$(python3 -c "
 import json, sys, os, urllib.request
 key = os.environ.get('ANTHROPIC_API_KEY', '')

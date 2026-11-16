@@ -29,10 +29,10 @@ def _row(model, input_tokens, output_tokens):
 
 
 @pytest.mark.parametrize("model", [
-    "claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5-20251001", "claude-fable-5-1",
+    "claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5", "claude-fable-5-1",
     "claude-sonnet-4-6",  # 내린 모델 — 요율표에 있다(세대 요율이 계열과 다르다)
     "claude-opus-4-7",    # 내린 모델 — 요율표에 없다(계열 요율과 같다)
-    "claude-haiku-4-5",   # 날짜 없는 별칭 — 카탈로그 id 와 다르다
+    "claude-haiku-4-5-20251001",  # 날짜 스냅샷 id — 옛 기록의 이름 · 카탈로그 밖(계열 요율과 같다)
     "some-future-model",  # 모르는 id
     None, "",
 ])

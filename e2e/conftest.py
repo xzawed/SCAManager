@@ -2382,7 +2382,7 @@ def calibration_feedback(live_server, graded_analyses, empty_user):
 CONFIG_USER_ID = 9104
 CONFIG_REPO_ON = "owner/e2econf-on"
 CONFIG_REPO_OFF = "owner/e2econf-off"
-CONFIG_MODEL_ID = "claude-haiku-4-5-20251001"   # `src.constants.CLAUDE_MODELS` 의 실재 id
+CONFIG_MODEL_ID = "claude-haiku-4-5"   # `src.constants.CLAUDE_MODELS` 의 실재 id(별칭)
 CONFIG_ON_VALUES = {
     "ai_review_enabled": True,      # 켜야 그 아래 두 필드가 화면에 그려진다
     "pr_review_comment": False,     # 기본이 True — 꺼야 «미체크» 팔이 열린다
