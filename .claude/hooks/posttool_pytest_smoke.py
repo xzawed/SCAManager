@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
-"""PostToolUse pytest 스모크 훅 — src 편집 후 대응 tests/unit 서브영역만 빠르게 실행.
-PostToolUse pytest smoke hook — after a src edit, quickly run only the matching tests/unit subarea.
+"""PostToolUse pytest 스모크 훅 — 편집 후 대응 tests/unit 만 빠르게 실행.
+PostToolUse pytest smoke hook — after an edit, quickly run only the matching tests/unit.
+
+파이썬(src · alembic · scripts · 훅)은 경로 규칙으로 대응 시험을 정하고, 템플릿 · CSS 는 그 파일을 경로 문자열로 적은
+시험들을 돌린다. 워크플로는 YAML 파싱만 본다(읽는 시험이 75 초 벽을 넘는다).
+Python files map by path rule; templates and stylesheets run the tests naming them; workflows are parse-checked only.
 
 회고 2026-07-18 P1 테마 C: 기존 훅은 `pytest tests/`(전체 5566)를 60s 타임아웃에 돌려 완주 불가 →
 SIGTERM → `|| true` 로 삼켜져 **false-green**. 'Hook 신뢰' 필수 원칙의 토대가 붕괴했다. 편집된 src
@@ -16,6 +20,7 @@ Non-blocking (always exit 0); the result is shown via a ✅/❌ banner.
 사용법 / Usage: PostToolUse 훅 (stdin 으로 tool_input JSON 수신).
 """
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -41,6 +46,68 @@ def _norm(path):
 #      바로 위 문단이 alembic·scripts 를 넣은 것과 같은 논리다 — 훅만 빠져 있었다.
 #      Hooks themselves were unwatched, though a broken hook affects every edit in the session.
 _WATCHED_ROOTS = ("src", "alembic", "scripts", ".claude/hooks")
+
+# 템플릿 · 스타일 — 파일 이름으로 대응 시험이 정해지지 않는다. 그 파일을 경로 문자열로 적은 시험 파일들을 돌린다
+# (원장 이관 K22 P2-31 — 주 편집면에 조기탐지 0). 실측: base.html 14개 5.9 s · settings.html 22개 11.6 s.
+# Templates and stylesheets: run the test files that name the edited file in a string literal.
+_NAMED_ROOTS = (("src/templates", ".html"), ("src/static/css", ".css"))
+# 워크플로 — 그 파일을 읽는 시험이 75 초 벽을 넘는다(ci.yml 35개 · 110 s 실측) → YAML 파싱만 보고 그렇게 말한다.
+# Workflows: the tests that read them exceed the 75 s wall, so only the YAML parse is checked — and said so.
+_WORKFLOW_ROOT = ".github/workflows"
+
+
+def _under(path, root):
+    """정규화된 경로가 루트(여러 마디 가능) 아래인가."""
+    return f"/{root}/" in path or path.startswith(f"{root}/")
+
+
+def is_named_file(path):
+    """템플릿 · 스타일 파일인가 — 그 파일을 경로 문자열로 적은 시험이 대상이다.
+    Whether the edit is a template or stylesheet, whose targets are the tests naming it."""
+    p = _norm(path)
+    return any(p.endswith(suffix) and _under(p, root) for root, suffix in _NAMED_ROOTS)
+
+
+def is_workflow_file(path):
+    """GitHub 워크플로 파일인가 / whether the edit is a GitHub workflow."""
+    p = _norm(path)
+    return p.endswith((".yml", ".yaml")) and _under(p, _WORKFLOW_ROOT)
+
+
+def tests_naming(path, repo):
+    """`tests/unit` 에서 그 파일 이름 자체이거나 `/이름` 으로 끝나는 문자열을 적은 시험 파일(정렬된 상대 경로).
+
+    이름만 닮은 값(`database.html` · `base.html.bak`)과 문장 속 언급은 고르지 않는다 — 따옴표가 이름(또는 `/` 로 끝나는
+    경로 앞부분)에 바로 붙어야 한다.
+    Test files holding a string literal that is the file's name or ends with `/<name>`.
+    """
+    name = Path(_norm(path)).name
+    literal = re.compile(r"""(["'])(?:[^"'\n]*/)?""" + re.escape(name) + r"\1")
+    out = []
+    for test in sorted((Path(repo) / "tests" / "unit").rglob("test_*.py")):
+        try:
+            text = test.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if literal.search(text):
+            out.append(test.relative_to(repo).as_posix())
+    return out
+
+
+def _workflow_banner(path):
+    """워크플로 편집 배너 — YAML 파싱만 본다. 깨지면 ❌, 성하면 «단언 0건» 을 밝힌다(거짓 ✅ 금지).
+    Workflow banner: parse only; ❌ on a broken file, otherwise say no assertions ran."""
+    try:
+        from ruamel.yaml import YAML  # pylint: disable=import-outside-toplevel  # 워크플로 편집 때만 / only on workflow edits
+        from ruamel.yaml.error import YAMLError  # pylint: disable=import-outside-toplevel
+    except ImportError:
+        return "ℹ️ 워크플로는 스모크 밖 (단언 0건 — YAML 파서가 없다 · push 게이트가 돈다)"
+    try:
+        YAML(typ="safe", pure=True).load(Path(_norm(path)).read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, YAMLError) as exc:
+        first = (str(exc).splitlines() or [type(exc).__name__])[0]
+        return f"❌ 워크플로 YAML 파싱 실패 — {first[:160]}"
+    return "ℹ️ YAML 파싱만 확인 (단언 0건 — 이 워크플로를 읽는 시험은 75 초 벽을 넘어 push 게이트가 돈다)"
 
 
 def is_watched_file(path):
@@ -212,15 +279,25 @@ def main():
     #   이 훅이 없애려던 바로 그 결함을 봉인 선언과 함께 재생산했다.
     # Entry point must gate on is_watched_file (src+alembic+scripts), NOT is_src_file; the D11
     # extension was dead in the runtime path because main() still short-circuited on is_src_file.
-    if not is_watched_file(path):
+    if is_workflow_file(path):
+        print(f"{_workflow_banner(path)} — best-effort 조기탐지 (전체 게이트=push-time 6-step ②)")
+        return 0
+    named = is_named_file(path)
+    if not (is_watched_file(path) or named):
         return 0  # 감시 대상 편집만 / only watched-root edits
 
     repo = checkout_of(path, Path(__file__).resolve().parents[2])
-    target = derive_test_target(path, repo)
     base = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"]
-    asserted = bool(target) and (repo / target).exists()
+    if named:
+        targets = tests_naming(path, repo)
+        label = f"{len(targets)} files naming {Path(_norm(path)).name}"
+    else:
+        target = derive_test_target(path, repo)
+        targets = [target] if target and (repo / target).exists() else []
+        label = target
+    asserted = bool(targets)
     if asserted:
-        scope, cmd = target, [*base, target, "-x", "--timeout=15"]
+        scope, cmd = label, [*base, *targets, "-x", "--timeout=15"]
     else:
         # 대응 테스트 없음 → collection 스모크(import/parametrize 파손 = #1041 클래스 조기 탐지).
         # No matching test → collection smoke (catches import/parametrize breakage).

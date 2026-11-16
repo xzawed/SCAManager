@@ -132,9 +132,12 @@ def test_script_edits_route_to_their_exact_test_when_one_exists():
 
 
 def test_non_python_and_unwatched_paths_are_ignored():
-    """오발동 방지 — docs 편집마다 pytest 가 돌면 훅이 소음이 된다."""
+    """오발동 방지 — docs 편집마다 pytest 가 돌면 훅이 소음이 된다.
+
+    템플릿 · CSS · 워크플로는 이 파이썬 감시 밖이지만 따로 본다 — `test_posttool_smoke_markup.py`.
+    """
     for path in ("docs/STATE.md", "README.md", "src/templates/base.html"):
-        assert not is_watched_file(path), f"{path} 가 감시 대상으로 잡혔다"
+        assert not is_watched_file(path), f"{path} 가 파이썬 감시 대상으로 잡혔다"
 
 
 def test_windows_backslash_paths_are_normalized():
