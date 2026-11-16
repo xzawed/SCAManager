@@ -32,23 +32,22 @@ def _load():
 
 rs = _load()
 
-# witness-corpus: 판정 줄의 꼴 — 반박 쪽 · 성립 쪽 · 어휘 밖 값 · 줄 중간 · HTML 주석 안 · 소문자
-_BODY_MIXED = (
-    "## Grok claim-review\n\n"
-    "- session: 0d51302a-b70d-4c18-b1f7-141ac6c1ab91\n"
-    "- claim: 첫 판은 이스케이프된 파이프를 교대로 쪼개지 않는다\n"
-    "- verdict: BROKEN — 반례가 나왔다\n"
-    "- verdict: weakened\n"
-    "- verdict: SURVIVES\n"
-    "| verdict | HOLDS |\n"
-    "- verdict: PASS\n"
-    "그때 verdict: REFUTED 라고 적었다\n"
-    "<!-- - verdict: REFUTED -->\n"
-    "- verdict\n"
-    ": BROKEN 은 다음 줄이라 판정 줄이 아니다\n"
-    "- verdict:\n"
-    "  REFUTED 도 마찬가지다\n"
+# witness-corpus: 판정 줄의 꼴 — 반박 쪽 · 성립 쪽 · 어휘 밖 값 · 줄 중간 · HTML 주석 안 · 소문자 · 판정이 다음 줄
+_MIXED_LINES = (
+    "- verdict: BROKEN — 반례가 나왔다",
+    "- verdict: weakened",
+    "- verdict: SURVIVES",
+    "| verdict | HOLDS |",
+    "- verdict: PASS",
+    "그때 verdict: REFUTED 라고 적었다",
+    "<!-- - verdict: REFUTED -->",
+    "- verdict",
+    ": BROKEN 은 다음 줄이라 판정 줄이 아니다",
+    "- verdict:",
+    "  REFUTED 도 마찬가지다",
 )
+_BODY_MIXED = ("## Grok claim-review\n\n- session: 0d51302a-b70d-4c18-b1f7-141ac6c1ab91\n"
+               "- claim: 첫 판은 이스케이프된 파이프를 교대로 쪼개지 않는다\n" + "\n".join(_MIXED_LINES) + "\n")
 _BODY_CONFIRMED = "- verdict: CONFIRMED\n- verdict: REFUTED\n"
 _BODY_NONE = "본문에 판정 줄이 없다\n"
 
