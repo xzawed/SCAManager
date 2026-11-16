@@ -212,7 +212,7 @@ def _alternation_branches(pattern: str) -> list[str]:
     """
     branches: list[str] = []
     buf: list[str] = []
-    i, in_class, class_start = 0, False, False
+    i, in_class, class_start, caret_ok = 0, False, False, False
     while i < len(pattern):
         ch = pattern[i]
         if ch == "\\" and i + 1 < len(pattern):
@@ -221,12 +221,17 @@ def _alternation_branches(pattern: str) -> list[str]:
             class_start = False
             continue
         if in_class:
-            # 집합 첫 글자의 `]`(또는 `^` 뒤의 `]`)는 닫는 괄호가 아니라 글자다.
-            if ch == "]" and not class_start:
+            # 집합 첫 자리의 `]` 는 닫는 괄호가 아니라 글자다. 부정 `^` 는 `[` 바로 뒤 한 번만 — 그 뒤도 첫 자리다
+            # (`[^]|]`). 두 번째 `^` 는 글자라 첫 자리를 끝낸다(`[^^]|a` 의 `]` 는 닫는다 — Grok 반례).
+            # A `]` in the first slot is a literal; only one negating `^` right after `[` keeps the first slot open.
+            if ch == "^" and class_start and caret_ok:
+                caret_ok = False
+            elif ch == "]" and not class_start:
                 in_class = False
-            class_start = class_start and ch == "^"
+            else:
+                class_start = False
         elif ch == "[":
-            in_class, class_start = True, True
+            in_class, class_start, caret_ok = True, True, True
         elif ch == "|":
             branches.append("".join(buf))
             buf = []
