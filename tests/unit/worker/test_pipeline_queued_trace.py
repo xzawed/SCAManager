@@ -112,7 +112,7 @@ async def test_a_pipeline_lost_while_waiting_leaves_a_trace(world):
             assert pipeline._current_slots().waiting == 1  # pylint: disable=protected-access
             waiter.cancel()
             with pytest.raises(asyncio.CancelledError):
-                await waiter
+                _ = await waiter
     assert world.attempts() == [(world.repo_id, _SHA)], "기다리다 사라진 파이프라인의 흔적이 없다"
 
 
@@ -127,7 +127,7 @@ async def test_a_first_seen_repo_waits_without_a_trace_and_without_error(world):
             assert pipeline._current_slots().waiting == 1  # pylint: disable=protected-access
             waiter.cancel()
             with pytest.raises(asyncio.CancelledError):
-                await waiter
+                _ = await waiter
 
 
 async def test_the_queued_trace_is_written_off_the_event_loop(world):
@@ -138,7 +138,7 @@ async def test_the_queued_trace_is_written_off_the_event_loop(world):
             await _until(lambda: world.attempts() == [(world.repo_id, _SHA)])
             waiter.cancel()
             with pytest.raises(asyncio.CancelledError):
-                await waiter
+                _ = await waiter
     assert world.queued_calls and all(t is not world.loop_thread for t in world.queued_calls), world.queued_calls
 
 
@@ -178,7 +178,7 @@ async def test_the_queued_log_names_the_commit(world, caplog):
             await _until(lambda: world.attempts() == [(world.repo_id, _SHA)])
             waiter.cancel()
             with pytest.raises(asyncio.CancelledError):
-                await waiter
+                _ = await waiter
     queued = [r for r in caplog.records if r.getMessage().startswith("pipeline queued")]
     assert [r.args[2] for r in queued] == [_SHA[:8]]
 
