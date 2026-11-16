@@ -51,7 +51,7 @@ gh pr list --state merged --limit 100 --json number,baseRefName \
 | 1 | process | 회고 경계 갭 — 직전 회고의 «처방 PR» 이 모든 회고 범위에서 구조적으로 빠진다 | `scripts/retro_scope.py` |
 | 2 | process | 충돌 해소의 `git checkout origin/main -- <경로들>` 이 이미 머지된 자기 수정을 조용히 되돌렸다 — 전 가드 초록 상태로 15시간 | `docs/workflow/pipeline.md` |
 | 3 | process | 회고 착수 신호가 «항상 로드되는 어떤 표면에도» 없다 — 카덴스 집행은 삭제됐고 대체가 없다 | `CLAUDE.md` |
-| 4 | code | 이슈 심각도 칩이 밝은 테마에서 1.51~2.46 — #1614 가드가 같은 파일을 읽으면서 `[abcdf]` 로 좁혀 지나쳤다 | `src/templates/analysis_detail.html` |
+| 4 | code | 이슈 심각도 칩이 밝은 테마에서 1.51~2.46 — #1614 가드가 같은 파일을 읽으면서 `[abcdf]` 로 좁혀 지나쳤다 — ⚠️ 정정(09-16 회고 P1-34): 이 수치는 브라우저에서 그려진 적 없는 CSS 의 정적 계산이었고 같은 사이클이 그 전제를 반증했다 — 근거로 쓰지 않는다 | `src/templates/analysis_detail.html` |
 | 5 | docs | 직전 회고 리포트의 범위 헤더가 거짓이고, 적힌 재현 명령이 그 값을 재현하지 못한다 | `docs/reports/2026-08-29-retrospective.md` |
 | 6 | docs | CLAUDE.md 가 「강제한다」고 적은 앵커 가드가 architecture.md 의 줄번호 좌표 2건을 보지 못한다 | `docs/architecture.md` |
 | 7 | decision | 회고 범위 기계가 커밋 «제목» 만 읽어 스택 PR 3건이 원리적으로 회고를 빠져나간다 | `scripts/retro_scope.py` |
@@ -60,7 +60,7 @@ gh pr list --state merged --limit 100 --json number,baseRefName \
 | 10 | tooling | 정책 8-(5) 집행부가 «부분문자열 포함» 으로 범위 소속을 판정한다 — 그리고 그 판정식 가드는 `.claude/**` 를 아예 안 본다 | `.claude/workflows/retrospective.mjs` |
 | 11 | process | 회고 후속의 종결률이 «Issue 등재 여부» 하나로 100% 대 0% 로 갈렸다 | `docs/reports/2026-08-29-retrospective.md` |
 | 12 | process | 스택 PR 3건이 main 커밋 제목에 남지 않아 회고 범위에서 통째로 사라졌다 — retro_scope 가 존재 이유로 삼은 시나리오 | `scripts/retro_scope.py` |
-| 13 | code | 심각도 뱃지 6종이 light·pastel 에서 AA 1.51~2.46 — 가드가 `[abcdf]` 로 좁혀 «심각도» 를 못 본다 | `src/templates/analysis_detail.html` |
+| 13 | code | 심각도 뱃지 6종이 light·pastel 에서 AA 1.51~2.46 — 가드가 `[abcdf]` 로 좁혀 «심각도» 를 못 본다 — ⚠️ 정정(09-16 회고 P1-34): 4행과 같다 — 정적 계산이었고 같은 사이클이 전제를 반증했다 | `src/templates/analysis_detail.html` |
 | 14 | code | `--danger/--warning/--success` 를 «글자» 로 쓰는 45곳에 짝 토큰이 없다 — 12조합 중 8건 AA 미달 | `src/templates/analysis_detail.html` |
 | 15 | code | E2E 대량-skip 하한이 래칫되지 않았다 — 수집 122→200(+64%) 인데 `--e2e-min-passed=100` 그대로(관측 범위 82%→50%) | `.github/workflows/ci.yml` |
 | 16 | code | #1626 이 닫은 「열거 가드」 형태를 38분 뒤 #1627 이 그대로 다시 만들었다 — range 슬라이더 템플릿 목록·테마 목록에 폐쇄 가드 없음 | `tests/unit/ui/test_focus_indicator.py` |

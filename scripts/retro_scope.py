@@ -81,6 +81,18 @@ _DEFAULT_RETENTION_DAYS = 30
 # Retro-start threshold: start a retro once this many PRs merged since the last formal one (single source).
 RETRO_THRESHOLD = 15
 
+# claim-review 판정 어휘는 가드 한 곳이 갖는다 — 여기서 다시 적지 않는다(회고 원장 이관 K07 P2-25).
+# The verdict vocabulary is owned by the claim-review guard; it is imported, never restated here.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from check_claim_review_trace import (  # noqa: E402  # pylint: disable=wrong-import-position
+    VERDICT_LINE,
+    strip_html_comments,
+)
+
+_VERDICT = re.compile(VERDICT_LINE, re.IGNORECASE | re.MULTILINE)
+# 반박 쪽 판정 — 반증률의 분자 / the refuting verdicts, numerator of the refutation share
+_REFUTING = ("BROKEN", "WEAKENED", "REFUTED")
+
 
 def _make_stdout_safe():
     """Windows cp949 stdout 에서 이모지/한글 출력 크래시 방지 — UTF-8 재구성(errors=replace).
@@ -263,6 +275,50 @@ def github_merged_prs(since_iso: str) -> list[int] | None:
         if t > start:
             out.append(number)
     return sorted(set(out))
+
+
+def tally_verdicts(bodies: list[str]) -> dict:
+    """PR 본문들의 claim-review 판정 줄을 센다 — 반증률 = 반박 쪽 / 전체 판정(판정 줄이 없으면 None).
+
+    가드와 같은 하드닝: HTML 주석 안의 줄은 렌더에서 안 보이므로 세지 않는다.
+    Count claim-review verdict lines; comment-hidden lines are skipped like the guard does.
+    """
+    counts: dict[str, int] = {}
+    with_verdict = 0
+    for body in bodies:
+        found = [m.group(1).upper() for m in _VERDICT.finditer(strip_html_comments(body or ""))]
+        with_verdict += bool(found)
+        for verdict in found:
+            counts[verdict] = counts.get(verdict, 0) + 1
+    total = sum(counts.values())
+    refuted = sum(counts.get(v, 0) for v in _REFUTING)
+    return {
+        "prs": len(bodies),
+        "prs_with_verdict": with_verdict,
+        "verdicts": dict(sorted(counts.items())),
+        "refuted_share": round(refuted / total, 3) if total else None,
+    }
+
+
+def claim_review_tally(since_iso: str, prs: list[int]) -> dict | None:
+    """창 안 PR 본문의 claim-review 판정 집계 — gh 를 못 쓰거나 목록이 상한에 닿으면 None(«안 쟀다»).
+
+    🔴 범위 축이 아니다 — None 이어도 PR 목록을 가리지 않으므로 `unmeasured` 에 싣지 않는다.
+    Verdict tally for the window's PR bodies; None when GitHub is unreadable or the list may be truncated.
+    """
+    start = _parse_iso(since_iso)
+    if start is None:
+        return None
+    day = (start.astimezone(dt.timezone.utc).date() - dt.timedelta(days=1)).isoformat()
+    rows = _gh_json([
+        "pr", "list", "--state", "merged", "--limit", str(_GH_LIMIT),
+        "--search", f"merged:>={day}", "--json", "number,body",
+    ])
+    if not isinstance(rows, list) or len(rows) >= _GH_LIMIT:
+        return None
+    window = set(prs)
+    return tally_verdicts([str(row.get("body") or "") for row in rows
+                           if isinstance(row, dict) and row.get("number") in window])
 
 
 def resolve_ref(ref: str) -> str | None:
@@ -476,6 +532,9 @@ def compute(since: str | None = None, fetched: bool = False, offline: bool = Fal
         # 세션 기록 보존 기간보다 먼저 머지된 창 안 PR — 원본 대조를 «안 쟀다».
         # PRs in the window merged before the transcript-retention cutoff.
         "records_expired_prs": records_expired,
+        # 창의 claim-review 반증률 — 리포트 ROI 표가 옮긴다. None = 안 쟀다(범위 축 아님).
+        # The window's claim-review refutation share for the report's ROI table; None = not measured.
+        "claim_review": claim_review_tally(since_iso, prs) if since_iso and not offline else None,
     }
 
 
@@ -558,6 +617,13 @@ def main() -> int:
     if r["records_expired_prs"]:
         print(f"  🔴 기록 보존 밖  : {', '.join('#' + str(n) for n in r['records_expired_prs'])}"
               " — 그 세션의 발화 · 승인을 원본으로 대조할 수 없다")
+    tally = r["claim_review"]
+    if tally is None:
+        print("  claim-review   : 안 쟀다 — `gh` 를 쓸 수 없거나 목록이 상한에 닿았다")
+    else:
+        share = "판정 줄 없음" if tally["refuted_share"] is None else f"반증률 {tally['refuted_share']:.0%}"
+        print(f"  claim-review   : {share} — {tally['verdicts']} (판정이 있는 PR {tally['prs_with_verdict']}"
+              f" / {tally['prs']})")
     print()
     print("🔴 회고 착수 **직전에** 다시 실행할 것 — 그 사이 머지분이 빠지는 것이 P0 의 기전이었다.")
     if r["anchor"] == "explicit":

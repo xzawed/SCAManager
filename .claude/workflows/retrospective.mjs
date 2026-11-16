@@ -198,6 +198,7 @@ function verifyPrompt(f, context) {
     `근거: ${f.claim}` + (f.evidence ? ` / 증거: ${f.evidence}` : ''),
     context ? `세션 컨텍스트: ${context}` : '',
     '판정 의무: CONFIRMED(실제 결함/개선) / FALSE_POSITIVE(근거 부족·추측·이미 해소) / SEVERITY_ADJUST(실제이나 심각도 조정 — adjusted_severity 명시).',
+    'FALSE_POSITIVE 는 주장 그 자체를 반증할 때만 낸다 — 인용과 결함이 실재하는데 인접한 다른 질문(누구 탓인가 · 창 안에서 생겼나)에 답해 기각하지 않는다. 그럴 땐 CONFIRMED 나 SEVERITY_ADJUST 다.',
     '인용된 file:line 이 있으면 grep 으로 존재 재확인 후 citation_verified 에 반영.',
     '반드시 verdict 1건 반환 — 모든 finding 은 검증받아야 함 (verdict=finding 강제).',
   ].filter(Boolean).join('\n')

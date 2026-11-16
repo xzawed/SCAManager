@@ -79,6 +79,9 @@ _TRACE_HEADING = re.compile(r"^#{1,4}[^\n]*claim-?review", re.IGNORECASE | re.MU
 #    '부분적으로 성립' 을 표현할 수단이 없으면 저자는 SURVIVES 로 반올림하게 된다 —
 #    즉 어휘 부족이 **판정을 낙관 쪽으로 왜곡**한다.
 # Grok really emits WEAKENED; without it authors round up to SURVIVES.
+# 판정 어휘의 원천은 이 한 줄이다 — 회고 범위(`retro_scope.py`)가 창의 반증률을 셀 때도 이것을 쓴다.
+# The verdict vocabulary lives here only; retro_scope.py counts a window's refutation rate with it.
+VERDICT_LINE = r"^[-*|\s]*verdict\s*[:|]\s*(SURVIVES|WEAKENED|BROKEN|CONFIRMED|REFUTED|HOLDS)\b"
 _REQUIRED_FIELDS: tuple[tuple[str, str], ...] = (
     # 🔴 백틱/따옴표 허용 (2026-07-31) — 아래 안내문 예시가 백틱 형태(`019fadf6-...`)인데
     #    정규식은 백틱을 거부해, **가드가 자기 안내대로 적은 본문을 차단**했다. 실측: 이 가드를
@@ -96,7 +99,7 @@ _REQUIRED_FIELDS: tuple[tuple[str, str], ...] = (
     # which point at a transcript someone can reopen. A free-form string would be self-certification.
     (r"^[-*|\s]*session\s*[:|]\s*[`'\"]?(?:[0-9a-f]{8}-[0-9a-f]{4}|wf_[a-z0-9-]{6,})",
      "session — Grok sessionId (`019fadf6-523e-...`) 또는 워크플로 run id (`wf_a3ad73e1-eca`)"),
-    (r"^[-*|\s]*verdict\s*[:|]\s*(SURVIVES|WEAKENED|BROKEN|CONFIRMED|REFUTED|HOLDS)\b",
+    (VERDICT_LINE,
      "verdict — SURVIVES | WEAKENED | BROKEN | CONFIRMED | REFUTED | HOLDS 중 하나"),
     (r"^[-*|\s]*claim\s*[:|]\s*\S.{15,}",
      "claim — 검증한 주장 (16자 이상)"),

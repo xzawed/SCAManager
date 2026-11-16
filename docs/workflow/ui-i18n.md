@@ -42,6 +42,7 @@ CSS 순서 = `src/templates/base.html::css/tokens.css">` 부터의 `<link>` 순�
 11. CSS 중첩(규칙 안 규칙)은 쓰지 않는다 — `tests/unit/ui/test_css_structure.py` 가 결함으로 본다. Chromium 이 원문 규칙을 다 갖는지는 `e2e/test_stylesheet_integrity.py`.
 12. 화면 폭 · 줄바꿈 판정은 CI 글꼴로 한다 — 웹 글꼴 없이 `system-ui` 로 그려 기기마다 글꼴이 다르다. 폭 시험은 렌더러가 말한 글꼴을 읽어 CI 에서 판정 글꼴(`e2e/test_history_table_phone.py::_JUDGING_LATIN_FONT =`)인지 확인한다. 폰 글꼴은 안드로이드 꼴만 쟀고 iOS 는 못 잰다 — 폭 목록은 여유를 남긴다.
 13. 대비 · 크기 계약 — 글자 대비 AA(4.5 : 1 · 큰 글자 3 : 1) · 누르는 것 24 px 이상(`e2e/test_theme_mobile_guards.py::def test_every_control_meets_the_24px_target_on_mobile(`) · 칠한 면의 바탕 · 테두리 · 글자 토큰은 «잠긴 3종 세트» 로 함께 고르고 면을 만든 토큰을 글자로 쓰지 않는다(`tests/unit/ui/test_self_tint_text_idiom.py`) · 쓰지 않는 토큰을 남기지 않는다(`tests/unit/ui/test_no_dead_design_tokens.py`). 대비는 `tests/unit/ui/_contrast.py` 로 재는 시험들이 지킨다.
+14. CSS 를 고치기 전에 그 규칙이 렌더된 요소에 실제로 적용되는지(계산된 스타일)부터 잰다 — 닿지 않는 규칙은 고치지도 핀으로 잡지도 않는다.
 
 ## 검증
 
