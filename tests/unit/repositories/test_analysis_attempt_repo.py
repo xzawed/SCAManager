@@ -178,6 +178,24 @@ def test_begin_attempt_allows_same_sha_across_different_repos(db_session):
 # ── finish_attempt ───────────────────────────────────────────────────────────
 
 
+def test_restart_attempt_moves_only_the_matching_clock(db_session):
+    """대기 전 흔적의 시작 시각을 본문 시작에 다시 잡는다 — 그 행만, 고친 수를 돌려준다(회고 원장 L17 P2-32)."""
+    # Restart the clock of the matching breadcrumb only, and report how many rows changed.
+    repo = _seed_repo(db_session)
+    old = _now_naive() - timedelta(hours=2)
+    db_session.add_all([AnalysisAttempt(repo_id=repo.id, commit_sha="queued", started_at=old),
+                        AnalysisAttempt(repo_id=repo.id, commit_sha="other", started_at=old)])
+    db_session.commit()
+
+    assert analysis_attempt_repo.restart_attempt(db_session, repo_id=repo.id, commit_sha="queued") == 1
+    assert analysis_attempt_repo.restart_attempt(db_session, repo_id=repo.id, commit_sha="absent") == 0
+
+    db_session.expire_all()
+    started = {row.commit_sha: row.started_at for row in db_session.query(AnalysisAttempt).all()}
+    assert started["other"] == old
+    assert started["queued"] > _now_naive() - timedelta(minutes=1)
+
+
 def test_finish_attempt_deletes_row(db_session):
     """계약 3 — 정상 종료 시 행을 삭제해 orphan 오탐을 막는다."""
     # Contract 3 — normal completion deletes the row so it is not reported as an orphan.

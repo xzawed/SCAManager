@@ -121,13 +121,13 @@ STATIC_ANALYSIS_TIMEOUT = 30    # 도구 1개당 subprocess 타임아웃 (초)
 # 겹쳐 202 가 10~48s 늦었고 GitHub 10s 타임아웃이 7일에 256건 났다. 2 면 웹훅은 많아야 파이프라인 2 개의 동기
 # 블록 뒤에 선다. DB 이전 뒤(왕복 ≈2ms) 그 블록은 작아졌지만 상한은 그대로 둔다 — 분석기 subprocess 의 CPU 도
 # 이 상한이 묶는다(큰 번들 하나에 semgrep 이 2분을 넘긴다 — #1735). 나머지는 메모리에서 도착 순서대로 기다린다
-# — 재배포 때 소실되고, 흔적(analysis_attempts)도 없다.
+# — 재배포 때 소실되지만, 리포 행이 있으면 기다리기 전에 흔적(analysis_attempts)을 남겨 고아 정리가 찾는다.
 # Max analysis pipelines running at once in this process. Pipelines are BackgroundTasks on the event
 # loop, so their sync DB blocks hold back new webhooks' 202: before the DB move (~0.21 s per round trip,
 # `_save_and_gate` ~2.3 s) a burst of ~15 delayed it 10-48 s (256 GitHub 10 s timeouts in 7 days). With 2,
 # a webhook waits behind at most two pipelines' sync blocks. After the move (~2 ms) those blocks shrank,
 # but the cap stays: it also bounds analyzer subprocess CPU (#1735). The rest wait in memory, FIFO —
-# lost on redeploy, and before their analysis_attempts breadcrumb is written.
+# lost on redeploy, but with a breadcrumb written before waiting (when the repo row exists) for the sweep.
 PIPELINE_MAX_CONCURRENCY = 2
 
 # ── Webhook 시크릿 캐시 설정 ─────────────────────────────────────────────────
