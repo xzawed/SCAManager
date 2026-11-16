@@ -11,7 +11,7 @@
 
 1. `py -3 -m pytest tests/unit -q` **전체**. 파이프(`| tail`) 금지 — 종료코드 소실.
 2. `py -3 scripts/pre_push_gate.py --full --pr-body <본문 파일>`(`--full` = pylint·bandit·unit 추가). 본문 없이는
-   본문 · base/head 를 읽는 두 가드가 `SKIP` 이다 — 비봇 PR 빨강이 가장 자주 나던 자리다.
+   본문 · base/head 를 읽는 가드가 `SKIP` 이다 — 비봇 PR 빨강이 가장 자주 나던 자리다.
 3. 출력 끝 "보지 못하는 축"·인터프리터 줄 확인(로컬 초록 ≠ CI).
 4. `git push` → `gh pr create` → **도달 확인**. `git push` 의 exit 만으로는 부족하다:
 
@@ -24,9 +24,9 @@
    그 커밋을 집지 않으면 CI 는 **옛 커밋**을 초록으로 통과시킨다. 그래서
    `head.sha == git rev-parse HEAD` 를 **머지를 누르기 직전에** 다시 본다.
    ⚠️ `mergeStateStatus=UNKNOWN` 이 지속되면 「계산 중」이 아니라 이 상태를 의심한다.
+   🔴 보완 커밋을 더했으면 머지 직전 PR 제목(= squash 커밋 제목)이 최종 diff 를 말하는지도 본다 — 아니면 `gh pr edit --title`.
    🔴 본문 수치가 틀렸으면 본문을 고치고 `gh run rerun --failed` 한다. 본문을 읽는 세 스텝은
-   `gh api /pulls/N` 으로 **살아 있는 값**을 조회한다(고정 페이로드 아님). 조회가 실패하면
-   fail-closed 로 red 다 — 빈 본문으로 흘러가 조용히 초록이 되지 않는다.
+   `gh api /pulls/N` 으로 **살아 있는 값**을 조회한다(고정 페이로드 아님).
 
 5. PR 본문 **첫 매치 줄**에 `pytest tests/unit → N passed / M skipped`. 없으면 CI 차단.
 6. 아래 표면은 본문에 claim-review 흔적 필수 — 없으면 `repo-integrity` 차단.
@@ -41,7 +41,7 @@
    - verdict: SURVIVES | WEAKENED | BROKEN | CONFIRMED | REFUTED | HOLDS
    ```
 
-   볼드(`**WEAKENED**`)는 미매칭. `pre_push_gate.py` 는 PR 환경변수가 없어 이 축을 건너뛴다.
+   볼드(`**WEAKENED**`)는 미매칭.
    왜 그 분기로 갔는지는 `py -3 scripts/check_claim_review_trace.py --explain <base> <head>`.
 
 7. **게이트 분기를 완화했으면** — 조건 제거 · 범위 확대 · `except` 통합 · 면제 추가.
