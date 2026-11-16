@@ -11,7 +11,7 @@
 
 1. `py -3 -m pytest tests/unit -q` **전체**. 파이프(`| tail`) 금지 — 종료코드 소실.
 2. `py -3 scripts/pre_push_gate.py --full --pr-body <본문 파일>`(`--full` = pylint·bandit·unit 추가). 본문 없이는
-   본문 · base/head 를 읽는 가드가 `SKIP` 이다 — 비봇 PR 빨강이 가장 자주 나던 자리다.
+   본문 · base/head 를 읽는 가드가 `SKIP` 이다.
 3. 출력 끝 "보지 못하는 축"·인터프리터 줄 확인(로컬 초록 ≠ CI).
 4. `git push` → `gh pr create` → **도달 확인**. `git push` 의 exit 만으로는 부족하다:
 
@@ -25,7 +25,7 @@
    `head.sha == git rev-parse HEAD` 를 **머지를 누르기 직전에** 다시 본다.
    ⚠️ `mergeStateStatus=UNKNOWN` 이 지속되면 「계산 중」이 아니라 이 상태를 의심한다.
    🔴 보완 커밋을 더했으면 머지 직전 PR 제목(= squash 커밋 제목)이 최종 diff 를 말하는지도 본다 — 아니면 `gh pr edit --title`.
-   🔴 본문 수치가 틀렸으면 본문을 고치고 `gh run rerun --failed` 한다. 본문을 읽는 세 스텝은
+   🔴 본문 수치가 틀렸으면 본문을 고치고 `gh run rerun --failed` 한다. 본문을 읽는 스텝은
    `gh api /pulls/N` 으로 **살아 있는 값**을 조회한다(고정 페이로드 아님).
 
 5. PR 본문 **첫 매치 줄**에 `pytest tests/unit → N passed / M skipped`. 없으면 CI 차단.
@@ -55,7 +55,7 @@
 ### CI (`.github/workflows/ci.yml` — push:main · PR:base 무관)
 
 - `test-and-analyze` — `pytest tests/` 전량 + coverage.xml → Codecov·SonarCloud. PR 은
-  역-뮤테이션(되돌리면 red?) + 본문 수치 ↔ 그 잡의 junit 대조 추가.
+  역-뮤테이션(되돌리면 red? · e2e 시험이 바뀐 PR 은 `e2e` 잡 끝에서) + 본문 수치 ↔ junit.
 - `pg-concurrency` — SKIP LOCKED + 마이그레이션 round-trip.
   **node-id 핀 목록** — 새 PG 테스트를 등재 안 하면 단위 스위트가 red 로 잡는다.
 - `e2e` — CSS 빌드 후 `--e2e-strict-skips`(skip 집합 ↔ `e2e/SKIP_ALLOWLIST`, 양방향 red),

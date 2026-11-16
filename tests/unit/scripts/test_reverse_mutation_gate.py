@@ -24,6 +24,7 @@ pytest 재실행 → 판정)를 돌린다. 스파이로 대체하고 kwargs 만 
 from __future__ import annotations
 
 import subprocess  # nosec B404
+import sys
 from pathlib import Path
 
 import pytest
@@ -574,3 +575,401 @@ def test_stderr_is_still_used_when_stdout_has_no_summary():
     proc = subprocess.CompletedProcess(
         args=[], returncode=1, stdout="", stderr="===== 1 failed in 0.17s =====\n")
     assert gate._grade(proc) == "assertion"
+
+
+# ─── e2e 시험까지 — E2E 잡에서 되돌려 잰다 (회고 원장 L12 P2-23 · P2-53 · 사용자 11-16 결정) ─────────
+#
+# 🔴 단위 잡의 게이트는 `tests/` 만 되돌려 돌렸다. e2e 로만 관측되는 PR 은 «대상 아님» 으로 지나가거나,
+#    무관한 단위 시험이 섞이면 거짓 빨강이었다 — 그래서 게이트를 통과하려고 텍스트 대리 단위 시험이 붙었다.
+#    이제 e2e 시험이 바뀐 PR 은 단위 잡이 E2E 잡으로 넘기고, E2E 잡이 단위 · e2e 시험을 함께 되돌려 잰다.
+
+
+def _e2e_repo(repo: Path) -> Path:
+    """기준 리포에 e2e 시험 하나를 더한 기준 커밋 — e2e 시험도 생산 모듈을 관측한다."""
+    (repo / "e2e").mkdir()
+    (repo / "e2e" / "test_flow.py").write_text(
+        "import sys, pathlib\n"
+        "sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))\n"
+        "from src.thing import value\n\n\n"
+        "def test_flow():\n    assert value() == 1\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "e2e base")
+    return repo
+
+
+def _e2e_observing(expected: int) -> str:
+    return ("import sys, pathlib\n"
+            "sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))\n"
+            "from src.thing import value\n\n\n"
+            f"def test_flow():\n    assert value() == {expected}\n")
+
+
+def test_the_unit_job_hands_e2e_prs_to_the_e2e_job(repo: Path):
+    """🔴 e2e 시험이 바뀐 PR — 단위 잡은 판정하지 않고 넘긴다(무관한 단위 시험만으로 거짓 빨강을 내지 않는다)."""
+    _e2e_repo(repo)
+    (repo / "src" / "thing.py").write_text("def value():\n    return 2\n", encoding="utf-8")
+    (repo / "e2e" / "test_flow.py").write_text(_e2e_observing(2), encoding="utf-8")
+    (repo / "tests" / "test_unrelated.py").write_text("def test_x():\n    assert True\n", encoding="utf-8")
+    base, head = _commit(repo, "e2e observes")
+    code, lines = gate.evaluate(base, head, repo=repo)
+    assert code == 0, "\n".join(lines)
+    assert any("E2E 잡" in line for line in lines), lines
+
+
+def test_e2e_mode_passes_when_the_e2e_test_observes(repo: Path):
+    _e2e_repo(repo)
+    (repo / "src" / "thing.py").write_text("def value():\n    return 2\n", encoding="utf-8")
+    (repo / "e2e" / "test_flow.py").write_text(_e2e_observing(2), encoding="utf-8")
+    base, head = _commit(repo, "e2e observes")
+    code, lines = gate.evaluate_with_e2e(base, head, repo=repo)
+    assert code == 0, "\n".join(lines)
+    assert any("e2e" in line and "assertion" in line for line in lines), lines
+
+
+def test_e2e_mode_blocks_when_nothing_observes(repo: Path):
+    """🔴 본체 — 생산을 바꿨는데 바뀐 e2e 시험도 단위 시험도 그것을 보지 않으면 red."""
+    _e2e_repo(repo)
+    (repo / "src" / "thing.py").write_text("def value():\n    return 2\n", encoding="utf-8")
+    (repo / "e2e" / "test_new.py").write_text("def test_nothing():\n    assert 1 + 1 == 2\n", encoding="utf-8")
+    base, head = _commit(repo, "vacuous e2e")
+    code, lines = gate.evaluate_with_e2e(base, head, repo=repo)
+    assert code == 1, "\n".join(lines)
+
+
+def test_e2e_mode_counts_a_unit_observer_too(repo: Path):
+    """단위 잡이 넘겼으므로 E2E 잡이 단위 시험도 잰다 — 단위가 관측하면 e2e 가 안 봐도 관측됨이다."""
+    _e2e_repo(repo)
+    (repo / "src" / "thing.py").write_text("def value():\n    return 2\n", encoding="utf-8")
+    (repo / "tests" / "test_thing.py").write_text(
+        "import sys, pathlib\n"
+        "sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))\n"
+        "from src.thing import value\n\n\n"
+        "def test_value():\n    assert value() == 2\n", encoding="utf-8")
+    (repo / "e2e" / "test_new.py").write_text("def test_nothing():\n    assert True\n", encoding="utf-8")
+    base, head = _commit(repo, "unit observes")
+    code, lines = gate.evaluate_with_e2e(base, head, repo=repo)
+    assert code == 0, "\n".join(lines)
+
+
+def test_e2e_mode_leaves_the_working_tree_as_it_found_it(repo: Path):
+    """제자리에서 되돌리므로 끝나면 복원한다 — 되돌린 파일 · 지운 새 파일 모두."""
+    _e2e_repo(repo)
+    (repo / "src" / "thing.py").write_text("def value():\n    return 2\n", encoding="utf-8")
+    (repo / "src" / "added.py").write_text("NEW = 1\n", encoding="utf-8")
+    (repo / "e2e" / "test_flow.py").write_text(_e2e_observing(2), encoding="utf-8")
+    base, head = _commit(repo, "with a new module")
+    gate.evaluate_with_e2e(base, head, repo=repo)
+    status = subprocess.run(["git", "status", "--porcelain"], cwd=str(repo), capture_output=True,
+                            text=True, check=True).stdout
+    assert status == "", status
+    assert (repo / "src" / "added.py").exists()
+    assert (repo / "src" / "thing.py").read_text(encoding="utf-8") == "def value():\n    return 2\n"
+
+
+def test_e2e_mode_restores_a_production_file_the_pr_deleted(repo: Path):
+    """🔴 PR 이 지운 생산 파일은 되돌릴 때 살아난다 — 복원 뒤에는 다시 지워져 있어야 한다(트리가 HEAD 그대로)."""
+    _e2e_repo(repo)
+    (repo / "src" / "old.py").write_text("OLD = 1\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "old module")
+    (repo / "src" / "old.py").unlink()
+    (repo / "src" / "thing.py").write_text("def value():\n    return 2\n", encoding="utf-8")
+    (repo / "e2e" / "test_flow.py").write_text(_e2e_observing(2), encoding="utf-8")
+    base, head = _commit(repo, "delete a module")
+    gate.evaluate_with_e2e(base, head, repo=repo)
+    status = subprocess.run(["git", "status", "--porcelain"], cwd=str(repo), capture_output=True,
+                            text=True, check=True).stdout
+    assert status == "", status
+    assert not (repo / "src" / "old.py").exists()
+
+
+def test_e2e_mode_refuses_a_dirty_tree(repo: Path):
+    """🔴 제자리 되돌림은 깨끗한 트리에서만 — 미커밋 수정을 덮거나 잃으면 안 된다(판정 불가)."""
+    _e2e_repo(repo)
+    (repo / "src" / "thing.py").write_text("def value():\n    return 2\n", encoding="utf-8")
+    (repo / "e2e" / "test_flow.py").write_text(_e2e_observing(2), encoding="utf-8")
+    base, head = _commit(repo, "e2e observes")
+    (repo / "src" / "thing.py").write_text("def value():\n    return 3\n", encoding="utf-8")   # 미커밋
+    code, lines = gate.evaluate_with_e2e(base, head, repo=repo)
+    assert code == 1, "\n".join(lines)
+    assert (repo / "src" / "thing.py").read_text(encoding="utf-8") == "def value():\n    return 3\n"
+
+
+def test_e2e_mode_ignores_and_keeps_an_unrelated_dirty_file(repo: Path):
+    """앞 스텝이 되돌림 밖의 추적 파일을 건드렸어도 판정한다 — 그리고 그 수정은 손대지 않고 남긴다."""
+    _e2e_repo(repo)
+    (repo / "notes.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "notes")
+    (repo / "src" / "thing.py").write_text("def value():\n    return 2\n", encoding="utf-8")
+    (repo / "e2e" / "test_flow.py").write_text(_e2e_observing(2), encoding="utf-8")
+    base, head = _commit(repo, "e2e observes")
+    (repo / "notes.md").write_text("touched by an earlier step\n", encoding="utf-8")
+    code, lines = gate.evaluate_with_e2e(base, head, repo=repo)
+    assert code == 0, "\n".join(lines)
+    assert (repo / "notes.md").read_text(encoding="utf-8") == "touched by an earlier step\n"
+
+
+def test_e2e_mode_skips_a_pr_without_e2e_tests(repo: Path):
+    """e2e 시험이 안 바뀐 PR 은 단위 잡이 잰다 — E2E 잡은 쉰다."""
+    (repo / "src" / "thing.py").write_text("def value():\n    return 2\n", encoding="utf-8")
+    base, head = _commit(repo, "prod only")
+    code, lines = gate.evaluate_with_e2e(base, head, repo=repo)
+    assert code == 0
+    assert any("단위 잡" in line for line in lines), lines
+
+
+def test_only_e2e_test_modules_count_as_e2e_tests():
+    """`e2e/conftest.py`(생산 표면 — 되돌린다) · 도우미는 e2e 시험 모듈이 아니다."""
+    assert gate.e2e_tests_of(["e2e/conftest.py", "e2e/test_a.py", "e2e/_helpers.py", "e2e/branchprobe.py",
+                              "e2e/sub/test_b.py", "src/x.py", "tests/test_c.py"]) == [
+        "e2e/test_a.py", "e2e/sub/test_b.py"]
+
+
+def _marking(label: str, marks: Path) -> str:
+    """돌면 `marks/<label>` 을 남기고 `value() == 2` 를 보는 시험 모듈 — «그 잡이 이 시험을 돌렸는가» 를 파일로 본다."""
+    return ("import sys, pathlib\n"
+            "sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))\n"
+            "from src.thing import value\n\n\n"
+            "def test_it():\n"
+            f"    pathlib.Path({marks.as_posix()!r}, {label!r}).write_text('ran', encoding='utf-8')\n"
+            "    assert value() == 2\n")
+
+
+def _shape(repo: Path, kind: str, marks: Path) -> tuple[str, str]:
+    """한 PR 모양을 커밋한다 — 생산 변경은 늘 있고, 시험 쪽만 `kind` 로 갈린다. 바뀐 시험은 돌면 표지를 남긴다."""
+    _e2e_repo(repo)
+    (repo / "src" / "thing.py").write_text("def value():\n    return 2\n", encoding="utf-8")
+    if kind == "e2e module":
+        (repo / "e2e" / "test_flow.py").write_text(_marking("e2e", marks), encoding="utf-8")
+    elif kind == "e2e helper only":
+        (repo / "tests" / "test_thing.py").write_text(_marking("unit", marks), encoding="utf-8")
+        (repo / "e2e" / "_helpers.py").write_text("HELP = 1\n", encoding="utf-8")
+    elif kind == "e2e module deleted":
+        (repo / "tests" / "test_thing.py").write_text(_marking("unit", marks), encoding="utf-8")
+        (repo / "e2e" / "test_flow.py").unlink()
+    elif kind == "unit helper + e2e module":
+        (repo / "tests" / "_helpers.py").write_text("HELP = 1\n", encoding="utf-8")
+        (repo / "e2e" / "test_flow.py").write_text(_marking("e2e", marks), encoding="utf-8")
+    else:
+        raise AssertionError(kind)
+    return _commit(repo, kind)
+
+
+def _ran(marks: Path) -> list[str]:
+    """표지를 읽고 비운다 — 다음 잡의 실행과 섞이지 않게."""
+    names = sorted(path.name for path in marks.iterdir())
+    for path in marks.iterdir():
+        path.unlink()
+    return names
+
+
+@pytest.mark.parametrize("kind, e2e_job_measures", [
+    ("e2e module", True),
+    ("unit helper + e2e module", True),
+    ("e2e helper only", False),
+    ("e2e module deleted", False),
+])
+def test_exactly_one_job_judges_each_pr(repo: Path, kind: str, e2e_job_measures: bool):
+    """🔴 단위 잡이 넘기면 E2E 잡이 재고, 단위 잡이 재면 E2E 잡은 쉰다 — 어느 쪽도 안 재는 PR 이 없다.
+
+    도우미만 · 지운 e2e 시험은 넘기지 않는다(E2E 잡이 돌릴 모듈이 없어 «안 쟀음» 으로 지나가게 된다).
+    «쟀다» 는 출력 글자가 아니라 **그 잡이 이 PR 의 시험을 실제로 돌렸는가**(시험이 남긴 표지)로 본다.
+    """
+    marks = repo.parent / f"{repo.name}-marks"
+    marks.mkdir()
+    base, head = _shape(repo, kind, marks)
+    unit_code, unit_lines = gate.evaluate(base, head, repo=repo)
+    unit_ran = _ran(marks)
+    e2e_code, e2e_lines = gate.evaluate_with_e2e(base, head, repo=repo)
+    e2e_ran = _ran(marks)
+    assert (unit_ran == []) == e2e_job_measures, (unit_ran, unit_lines)
+    assert (e2e_ran == []) != e2e_job_measures, (e2e_ran, e2e_lines)
+    judged = (e2e_code, e2e_lines) if e2e_job_measures else (unit_code, unit_lines)
+    assert judged[0] == 0, judged[1]
+
+
+def test_a_vacuous_unit_test_no_longer_blocks_an_e2e_observed_pr(repo: Path):
+    """새로 통과하는 부류 — 무관한 단위 시험 + 관측하는 e2e 시험. 예전엔 단위 잡이 거짓 빨강을 냈다."""
+    _e2e_repo(repo)
+    (repo / "src" / "thing.py").write_text("def value():\n    return 2\n", encoding="utf-8")
+    (repo / "tests" / "test_unrelated.py").write_text("def test_x():\n    assert True\n", encoding="utf-8")
+    (repo / "e2e" / "test_flow.py").write_text(_e2e_observing(2), encoding="utf-8")
+    base, head = _commit(repo, "vacuous unit, observing e2e")
+    code, lines = gate.evaluate_with_e2e(base, head, repo=repo)
+    assert code == 0, "\n".join(lines)
+    assert any("단위:" in line and "green" in line for line in lines), lines
+
+
+def test_a_unit_helper_with_a_vacuous_e2e_test_is_still_blocked(repo: Path):
+    """도우미는 돌리지 않으므로 관측자는 e2e 시험뿐이다 — 그것이 안 보면 red."""
+    _e2e_repo(repo)
+    (repo / "src" / "thing.py").write_text("def value():\n    return 2\n", encoding="utf-8")
+    (repo / "tests" / "_helpers.py").write_text("HELP = 1\n", encoding="utf-8")
+    (repo / "e2e" / "test_new.py").write_text("def test_nothing():\n    assert True\n", encoding="utf-8")
+    base, head = _commit(repo, "helper + vacuous e2e")
+    code, lines = gate.evaluate_with_e2e(base, head, repo=repo)
+    assert code == 1, "\n".join(lines)
+
+
+def _e2e_job_steps() -> list[dict]:
+    import yaml  # noqa: PLC0415
+
+    ci = yaml.safe_load((_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+    return ci["jobs"]["e2e"]["steps"]
+
+
+def test_the_e2e_job_runs_the_gate_last_with_the_live_body():
+    from tests.unit.scripts._wiring_shape import invokes  # noqa: PLC0415
+
+    steps = _e2e_job_steps()
+    hits = [i for i, s in enumerate(steps) if invokes(s.get("run", ""), "scripts/check_reverse_mutation.py")]
+    assert len(hits) == 1, [s.get("name") for s in steps]
+    step = steps[hits[0]]
+    assert hits[0] == len(steps) - 1, "제자리 되돌림 — 마지막 스텝이어야 뒤 스텝이 되돌린 트리를 보지 않는다"
+    assert "pull_request" in str(step.get("if", ""))
+    passed = step.get("env", {})
+    assert "steps.prbody.outputs.body" in str(passed.get("PR_BODY")), passed
+    for key in ("PR_BASE_SHA", "PR_HEAD_SHA"):
+        assert key in passed, key
+    checkout = next(s for s in steps if str(s.get("uses", "")).startswith("actions/checkout"))
+    assert checkout.get("with", {}).get("fetch-depth") == 0, "기점 커밋이 없으면 되돌릴 수 없다"
+
+
+# ─── e2e 는 이 PR 이 고친 시험 함수만 · 빨간 그 시험은 복원한 트리에서 다시 ─────────────────────
+
+
+_SPANS_SOURCE = (
+    "import pytest\n"                           # 1
+    "\n"                                        # 2
+    "HELPER = 1\n"                              # 3
+    "\n"                                        # 4
+    "\n"                                        # 5
+    "@pytest.mark.parametrize('n', [1, 2])\n"   # 6
+    "def test_param(n):\n"                      # 7
+    "    assert n\n"                            # 8
+    "\n"                                        # 9
+    "\n"                                        # 10
+    "async def test_async():\n"                 # 11
+    "    assert True\n"                         # 12
+    "\n"                                        # 13
+    "\n"                                        # 14
+    "class TestGroup:\n"                        # 15
+    "    def test_method(self):\n"              # 16
+    "        assert True\n"                     # 17
+    "\n"                                        # 18
+    "    def helper(self):\n"                   # 19
+    "        return 1\n"                        # 20
+    "\n"                                        # 21
+    "\n"                                        # 22
+    "def make():\n"                             # 23
+    "    return 2\n"                            # 24
+)
+
+
+def test_test_spans_cover_decorators_classes_and_skip_helpers():
+    assert gate._test_spans(_SPANS_SOURCE) == [
+        ("test_param", 6, 8), ("test_async", 11, 12), ("TestGroup::test_method", 16, 17)]
+
+
+def _module_repo(repo: Path, body: str) -> None:
+    _e2e_repo(repo)
+    (repo / "e2e" / "test_many.py").write_text(body, encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "many")
+
+
+_MANY = ("HELP = 1\n\n\n"
+         "def test_a():\n    assert HELP\n\n\n"
+         "def test_b():\n    assert HELP\n\n\n"
+         "def test_c():\n    assert HELP\n")
+
+
+def test_e2e_targets_narrow_to_the_changed_function(repo: Path):
+    """🔴 모듈 하나가 시험 수백 건이다 — 이 PR 이 고친 함수만 돌린다."""
+    _module_repo(repo, _MANY)
+    (repo / "e2e" / "test_many.py").write_text(_MANY.replace("def test_b():\n    assert HELP\n",
+                                                            "def test_b():\n    assert HELP == 1\n"),
+                                               encoding="utf-8")
+    base, head = _commit(repo, "change b")
+    assert gate.e2e_targets(base, head, ["e2e/test_many.py"], repo) == ["e2e/test_many.py::test_b"]
+
+
+def test_e2e_targets_count_a_deletion_inside_a_function(repo: Path):
+    _module_repo(repo, _MANY.replace("def test_c():\n    assert HELP\n", "def test_c():\n    x = 1\n    assert HELP\n"))
+    (repo / "e2e" / "test_many.py").write_text(_MANY, encoding="utf-8")
+    base, head = _commit(repo, "drop a line in c")
+    assert gate.e2e_targets(base, head, ["e2e/test_many.py"], repo) == ["e2e/test_many.py::test_c"]
+
+
+def test_e2e_targets_fall_back_to_the_module_when_only_module_code_changed(repo: Path):
+    """함수 밖(도우미 · 상수 · import)만 바뀌면 어느 시험이 그것을 쓰는지 모른다 — 모듈 전체."""
+    _module_repo(repo, _MANY)
+    (repo / "e2e" / "test_many.py").write_text(_MANY.replace("HELP = 1", "HELP = 2"), encoding="utf-8")
+    base, head = _commit(repo, "module level")
+    assert gate.e2e_targets(base, head, ["e2e/test_many.py"], repo) == ["e2e/test_many.py"]
+
+
+def test_e2e_targets_fall_back_to_the_module_when_the_source_does_not_parse(repo: Path):
+    _module_repo(repo, _MANY)
+    (repo / "e2e" / "test_many.py").write_text(_MANY + "def broken(:\n", encoding="utf-8")
+    base, head = _commit(repo, "syntax error")
+    assert gate.e2e_targets(base, head, ["e2e/test_many.py"], repo) == ["e2e/test_many.py"]
+
+
+def test_an_e2e_red_that_stays_red_after_restore_is_not_an_observation(repo: Path):
+    """🔴 되돌려서 빨간 그 시험이 복원한 트리에서도 빨갛다면 되돌림이 낸 red 가 아니다 — 판정 불가(red).
+
+    스위트 초록만 믿으면 순서 의존 · 불안정 · 환경이 낸 red 를 «관측» 으로 읽는다(거짓 초록).
+    """
+    _e2e_repo(repo)
+    (repo / "src" / "thing.py").write_text("def value():\n    return 2\n", encoding="utf-8")
+    (repo / "e2e" / "test_flow.py").write_text(
+        _e2e_observing(2).replace("assert value() == 2\n", "assert value() == 2\n    assert False, 'red either way'\n"),
+        encoding="utf-8")
+    base, head = _commit(repo, "red either way")
+    code, lines = gate.evaluate_with_e2e(base, head, repo=repo)
+    assert code == 1, "\n".join(lines)
+    assert any("복원한 트리에서도" in line for line in lines), lines
+
+
+def test_a_failed_restore_build_is_red_before_any_verdict(repo: Path):
+    """🔴 복원 뒤 빌드가 실패하면 «복원 뒤 그 시험» 실행이 HEAD 를 재지 못한다 — 관측이어도 판정 불가(red)로 알린다.
+
+    빌드 대역: HEAD 의 소스(`return 2`)에서만 실패하는 스크립트 — 되돌린 뒤엔 통과, 복원한 뒤엔 실패.
+    """
+    _e2e_repo(repo)
+    (repo / "src" / "thing.py").write_text("def value():\n    return 2\n", encoding="utf-8")
+    (repo / "e2e" / "test_flow.py").write_text(_e2e_observing(2), encoding="utf-8")
+    base, head = _commit(repo, "e2e observes")
+    (repo / "build_stub.py").write_text(
+        "import pathlib, sys\n"
+        "sys.exit(1 if 'return 2' in pathlib.Path('src/thing.py').read_text(encoding='utf-8') else 0)\n",
+        encoding="utf-8")
+    code, lines = gate.evaluate_with_e2e(base, head, repo=repo, rebuild=[sys.executable, "build_stub.py"])
+    assert code == 1, "\n".join(lines)
+    assert lines[0].startswith("🔴 복원 실패"), lines
+    assert (repo / "src" / "thing.py").read_text(encoding="utf-8") == "def value():\n    return 2\n"
+
+
+def test_a_unit_observer_short_circuits_the_e2e_run(repo: Path):
+    """단위가 관측하면 e2e 는 돌리지 않는다 — e2e 쪽이 무엇이든(여기선 늘 빨강) 판정은 단위로 끝난다."""
+    _e2e_repo(repo)
+    (repo / "src" / "thing.py").write_text("def value():\n    return 2\n", encoding="utf-8")
+    (repo / "tests" / "test_thing.py").write_text(
+        "import sys, pathlib\n"
+        "sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))\n"
+        "from src.thing import value\n\n\n"
+        "def test_value():\n    assert value() == 2\n", encoding="utf-8")
+    (repo / "e2e" / "test_flow.py").write_text(
+        _e2e_observing(2).replace(
+            "assert value() == 2\n",
+            "pathlib.Path(__file__).with_name('ran.marker').write_text('ran', encoding='utf-8')\n"
+            "    assert False, 'never run'\n"),
+        encoding="utf-8")
+    base, head = _commit(repo, "unit observes, e2e always red")
+    code, lines = gate.evaluate_with_e2e(base, head, repo=repo)
+    assert code == 0, "\n".join(lines)
+    assert not (repo / "e2e" / "ran.marker").exists(), "단위가 관측했는데 e2e 를 돌렸다"
