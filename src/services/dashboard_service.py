@@ -48,6 +48,7 @@ from src.shared.claude_metrics import (
     extract_anthropic_usage, log_claude_api_call, new_async_anthropic, release_session_before_claude,
 )
 from src.shared.feature_kill_switch import is_disabled
+from src import constants
 from src.repositories import insight_narrative_cache_repo
 from src.shared.lang_names import LANG_NAMES
 from src.shared.time_utils import to_naive_utc
@@ -642,10 +643,11 @@ def repo_insight_cards(  # pylint: disable=too-many-locals
     Per-repo insight card summary for the dashboard section (max 10 repos).
 
     N+1 개선 (Issue #408): 리포별 개별 쿼리 대신 배치 조회 (3 쿼리 — 현재·직전 기간 점수 집계 + 현재 기간 최신 행).
-    점수는 그 리포 인사이트 페이지 KPI 와 같은 기간 전체 집계라 카드 = KPI 다. 반복 이슈는 리포마다 최신 30건.
+    점수는 그 리포 인사이트 페이지 KPI 와 같은 기간 전체 집계라 카드 = KPI 다. 반복 이슈는 리포마다 최신
+    `constants.ISSUE_AGGREGATE_MAX_ANALYSES` 건(인사이트 페이지와 같은 상한).
     N+1 fix (Issue #408): batch queries for all repos instead of per-repo individual queries.
     Scores use the same whole-window aggregate as that repo's insights KPI, so a card equals it;
-    recurring issues are counted over each repo's newest 30 rows.
+    recurring issues are counted over each repo's newest `constants.ISSUE_AGGREGATE_MAX_ANALYSES` rows.
 
     Returns list of dicts with: repo_id, full_name, avg_score, grade,
     recurring_issue_count, score_trend, insights_url.
@@ -669,9 +671,9 @@ def repo_insight_cards(  # pylint: disable=too-many-locals
     prev_since = _now - timedelta(days=days * 2)
     prev_until = since
 
-    # 리포당 이슈 집계 행 수 — 인사이트 페이지와 같은 상한
-    # Per-repo cap on the rows the issue count reads, the same as the insights page
-    max_per_repo = 30
+    # 리포당 이슈 집계 행 수 — 인사이트 페이지와 같은 상한(한 곳)
+    # Per-repo cap on the rows the issue count reads, the same constant as the insights page
+    max_per_repo = constants.ISSUE_AGGREGATE_MAX_ANALYSES
 
     # 점수 = 현재·직전 기간 전체 집계, 반복 이슈 = 리포마다 자기 최신 max_per_repo 건
     # Scores from whole-window aggregates (current and previous); issues from each repo's newest rows
@@ -812,9 +814,9 @@ def _handle_insight_error(
 
 def invalidate_insight_narrative(db: Session, *, user_id: int, days: int) -> None:
     """새로 고침 — (user_id, days) 대시보드 서술 캐시를 언어 무관하게 지운다(성공·실패 행 모두).
-    `refresh=True` 호출과 라우트의 PRG 가 같은 정의를 쓴다. 지우기만 하고 Claude 는 부르지 않는다.
+    라우트의 PRG(새로 고침)만 부른다 — 지우기만 하고 Claude 는 부르지 않는다. 재생성은 그 뒤 GET 의 캐시 miss 다.
     Refresh: drop the (user_id, days) dashboard narrative rows in every language, success and
-    failure alike. Shared by `refresh=True` and the route's PRG; deletes only, never calls Claude.
+    failure alike. Called only by the route's PRG; deletes only, never calls Claude.
     """
     insight_narrative_cache_repo.invalidate(db, user_id=user_id, days=days)
 
@@ -1090,7 +1092,6 @@ async def insight_narrative(  # pylint: disable=too-many-locals,too-many-return-
     now: datetime | None = None,
     api_key: str | None = None,
     user_id: int | None = None,
-    refresh: bool = False,
     language: str = "en",
 ) -> dict[str, Any]:
     """Claude AI 기반 4 카드 인사이트 narrative — Phase 3 PR 2 + PR 5 (user_id 격리).
@@ -1141,8 +1142,7 @@ async def insight_narrative(  # pylint: disable=too-many-locals,too-many-return-
     # Sync DB work around the Claude await runs in a worker thread; on the loop every production round
     #   trip stalled the whole process. The session is handed over sequentially, one thread at a time.
     prepared = await run_in_threadpool(
-        _prepare_insight_prompt, db, days=days, now=_now, user_id=user_id, refresh=refresh,
-        language=language,
+        _prepare_insight_prompt, db, days=days, now=_now, user_id=user_id, language=language,
     )
     if isinstance(prepared, dict):
         return prepared
@@ -1170,7 +1170,7 @@ async def insight_narrative(  # pylint: disable=too-many-locals,too-many-return-
 
 
 def _prepare_insight_prompt(
-    db: Session, *, days: int, now: datetime, user_id: int | None, refresh: bool, language: str,
+    db: Session, *, days: int, now: datetime, user_id: int | None, language: str,
 ) -> dict[str, Any] | str:
     """Claude 호출 앞의 동기 단계 — 끝낼 응답(dict)이나 보낼 프롬프트(str)를 돌려준다(워커 스레드에서).
 
@@ -1180,29 +1180,26 @@ def _prepare_insight_prompt(
     cache / no data, otherwise the prompt string, after releasing the pooled connection.
     """
     # Phase 2-B 🅑 (사이클 74 PR-B) — DB 캐싱 1h TTL (UX 영향 최소 + 60% 비용 절감)
-    # `refresh=True` 시 강제 재생성 (사용자 명시 Refresh 버튼)
+    # 새로 고침은 라우트의 PRG 가 행을 지운 뒤 다시 부른다 — 여기에 «캐시를 건너뛰는» 길은 두지 않는다(유료 호출).
     # `user_id` 명시 시만 캐싱 (admin/legacy 영역 = 캐싱 X)
     # Phase 2-B 🅑 (Cycle 74 PR-B) — DB cache 1h TTL (min UX impact + 60% cost cut).
-    # `refresh=True` forces regen (user-explicit Refresh button).
+    # Refresh is the route's PRG deleting the rows first; no cache-skipping path here (a paid call).
     # Caching only when `user_id` set (admin/legacy paths bypass cache).
     if user_id is not None:
-        if refresh:
-            invalidate_insight_narrative(db, user_id=user_id, days=days)
-        else:
-            cached = insight_narrative_cache_repo.get_fresh(
-                db, user_id=user_id, days=days, language=language, now=now,
-            )
-            if cached is not None:
-                return cached
-            # 부정 캐시 — 창 안의 최근 실패면 KPI 집계·Claude 호출 전에 같은 실패 카드를 돌려준다.
-            #   부르지 않았으니 실패를 다시 기록하지도 비용 행을 남기지도 않는다. 새로 고침은 위에서 행을 지워 넘는다.
-            # Negative cache: a recent failure returns the same card before any KPI work or Claude call.
-            #   No call was made, so nothing is recorded or logged; Refresh gets past it by deleting the row.
-            recorded = insight_narrative_cache_repo.recent_error(
-                db, user_id=user_id, days=days, language=language, now=now,
-            )
-            if recorded is not None:
-                return _build_insight_response(status=_recorded_insight_status(recorded), days=days)
+        cached = insight_narrative_cache_repo.get_fresh(
+            db, user_id=user_id, days=days, language=language, now=now,
+        )
+        if cached is not None:
+            return cached
+        # 부정 캐시 — 창 안의 최근 실패면 KPI 집계·Claude 호출 전에 같은 실패 카드를 돌려준다.
+        #   부르지 않았으니 실패를 다시 기록하지도 비용 행을 남기지도 않는다. 새로 고침(PRG)은 행을 지워 넘는다.
+        # Negative cache: a recent failure returns the same card before any KPI work or Claude call.
+        #   No call was made, so nothing is recorded or logged; Refresh (PRG) gets past it by deleting the row.
+        recorded = insight_narrative_cache_repo.recent_error(
+            db, user_id=user_id, days=days, language=language, now=now,
+        )
+        if recorded is not None:
+            return _build_insight_response(status=_recorded_insight_status(recorded), days=days)
 
     # 4 dashboard 헬퍼 호출로 컨텍스트 수집 + Phase 3 PR 5 user_id 격리
     # Collect context by invoking the 4 dashboard helpers + PR 5 user_id isolation

@@ -120,19 +120,19 @@ def _text_response(text: str) -> MagicMock:
     return resp
 
 
-async def _call(h, db, site, *, refresh=False):
+async def _call(h, db, site):
     """라우트와 같은 순서 — 요청 세션으로 KPI 를 읽고 나서 내러티브를 부른다.
     Same order as the routes: KPIs read on the request session, then the narrative.
     """
     h.db = db
     if site == "dashboard":
         return await dashboard_service.insight_narrative(
-            db, 7, api_key="sk-test", user_id=h.user_id, refresh=refresh)
+            db, 7, api_key="sk-test", user_id=h.user_id)
     kpi = repo_kpi(db, h.repo_id, 30)
     recurring = repo_recurring_issues(db, h.repo_id, 30)
     return await repo_insight_service.repo_insight_narrative(
         db, h.repo_id, 30, repo_full_name="o/r", kpi=kpi, recurring=recurring,
-        user_id=h.user_id, refresh=refresh)
+        user_id=h.user_id)
 
 
 def _cache_rows(h):
@@ -151,17 +151,14 @@ def _await_entry(h):
 # ─── T5: no connection held across the await ───
 
 
+# 새로 고침은 라우트의 PRG(지운 뒤 다른 요청의 평범한 호출)라 서비스에 따로 갈래가 없다 — 두 자리만 잰다.
+# Refresh is the route's PRG (delete, then a plain call in another request): no separate service path.
 @pytest.mark.asyncio
-@pytest.mark.parametrize("site, refresh", [
-    ("dashboard", False), ("dashboard", True), ("repo", False),
-    # 수정 전에도 초록인 대조군 — invalidate_repo 가 커밋한 뒤 쿼리가 없다(계기가 «해제» 를 본다).
-    # Control, green before the fix too: the recorder can observe a released connection.
-    ("repo", True),
-], ids=["dashboard-refresh0", "dashboard-refresh1", "repo-refresh0", "repo-refresh1"])
-async def test_no_pooled_connection_held_while_awaiting_claude(world, site, refresh):
-    """🔴 수정 전 실측 — dashboard 두 경로와 repo refresh=0 이 `(1, True)`: 연결을 쥔 채 기다렸다."""
+@pytest.mark.parametrize("site", ["dashboard", "repo"])
+async def test_no_pooled_connection_held_while_awaiting_claude(world, site):
+    """🔴 수정 전 실측 — 두 자리 모두 `(1, True)`: 연결을 쥔 채 기다렸다."""
     with world.make() as db:
-        out = await _call(world, db, site, refresh=refresh)
+        out = await _call(world, db, site)
 
     assert world.create_calls == 1
     entry, idx = _await_entry(world)
@@ -185,12 +182,11 @@ async def test_no_pooled_connection_held_while_awaiting_claude(world, site, refr
 async def test_success_still_caches_after_release(world, site):
     """성공은 캐시되고, 요청 세션에 이미 올린 ORM 객체는 호출 뒤에도 붙어 있고 읽힌다.
 
-    🔴 해제를 `close()` 로 하면 객체가 세션에서 떨어진다(`repo in db` 가 거짓). 템플릿의 `repo.*` 가
-    DetachedInstanceError 가 되는 것은 캐시 무효화 커밋이 객체를 만료시키는 refresh=1 경로다.
+    🔴 해제를 `close()` 로 하면 객체가 세션에서 떨어진다(`repo in db` 가 거짓) — 그러면 템플릿의 `repo.*` 가
+    DetachedInstanceError 가 될 수 있다.
     Success is cached, and ORM objects already loaded on the request session stay attached
-    and readable afterwards. A `close()` release detaches them (`repo in db` is False); the
-    template's `repo.*` raises DetachedInstanceError on the refresh=1 path, where the cache
-    invalidation commit has expired the object.
+    and readable afterwards. A `close()` release detaches them (`repo in db` is False), and the
+    template's `repo.*` could then raise DetachedInstanceError.
     """
     world.reply = _text_response(_OK_CARDS if site == "dashboard" else _OK_REPO)
     with world.make() as db:
