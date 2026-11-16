@@ -558,3 +558,138 @@ def test_the_widened_surfaces_reach_the_gate(tmp_path, rel, text, blocked):
     listed = [ln.split()[1].rsplit(":", 1)[0] for ln in proc.stdout.splitlines() if ln.startswith("   - ")]
     assert proc.returncode == (1 if blocked else 0), proc.stdout + proc.stderr
     assert listed == ([rel] if blocked else []), f"막힌 목록: {listed}\n{proc.stdout}"
+
+
+# ─── 이 PR 이 단 반례만 센다 (회고 원장 L12 P2-51 · 사용자 11-16 결정) ───────────────
+#
+# 🔴 이전 판은 «바뀐 시험 파일» 의 코퍼스를 **파일째** 모았다. 그래서 이미 있던 코퍼스가 든 시험 파일을
+#    한 줄만 건드려도 그 값들이 새 술어의 반례로 셌다 — 새 술어와 무관한 코퍼스가 통과시켰다(#1812 가 스스로 적었다).
+#    병합 기점의 같은 파일들에 이미 있던 값은 빼고, 이 PR 이 단 값만 센다.
+
+_NEW_PREDICATE = 'def f(k):\n    return k in ("alpha", "beta", "gamma")\n'
+
+
+def _corpus_module(values: list[str]) -> str:
+    """코퍼스 표기가 붙은 시험 파일 — 파일을 읽는 시험이라 시험 표면에 든다."""
+    return ('TEXT = open("x").read()\n'
+            "# witness-corpus: 같은 부류인데 그 술어가 못 알아보는 값 — 시험용 사유\n"
+            f"_CORPUS = {values!r}\n")
+
+
+def _git_history(root: pathlib.Path, before: dict[str, str], after: dict[str, str]) -> str:
+    """기준 커밋(`before`) → 그 위 커밋(`after` 로 덮어씀). 기준 커밋의 sha."""
+    def git(*args: str) -> str:
+        return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=root,
+                              check=True, capture_output=True, text=True).stdout.strip()
+
+    def write(files: dict[str, str]) -> None:
+        for rel, text in files.items():
+            target = root / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(text, encoding="utf-8")
+            git("add", rel)
+
+    git("init", "-q")
+    (root / "README.md").write_text("base\n", encoding="utf-8")
+    git("add", "README.md")
+    write(before)
+    git("commit", "-q", "-m", "base")
+    base = git("rev-parse", "HEAD")
+    write(after)
+    git("commit", "-q", "--allow-empty", "-m", "change")
+    return base
+
+
+def _gate(root: pathlib.Path, base: str) -> subprocess.CompletedProcess:
+    env = {**os.environ, "PR_BODY": "본문 — 면제 선언 없음"}
+    return subprocess.run([sys.executable, str(_SCRIPT), base], cwd=str(root), env=env,
+                          capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
+
+
+def test_an_existing_corpus_does_not_pass_a_new_predicate(tmp_path):
+    """🔴 이미 있던 코퍼스가 든 시험 파일을 한 줄만 건드려도, 그 값은 새 술어의 반례가 아니다."""
+    old = _corpus_module(["delta", "omega"])
+    base = _git_history(tmp_path, {"tests/unit/test_old.py": old},
+                        {"scripts/new_guard.py": _NEW_PREDICATE,
+                         "tests/unit/test_old.py": old + "# 손만 댄 줄\n"})
+    proc = _gate(tmp_path, base)
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "이미 있던" in proc.stdout, proc.stdout
+
+
+def test_values_the_pr_adds_to_an_existing_corpus_count(tmp_path):
+    """대조군 — 같은 코퍼스에 이 PR 이 값 둘을 더하면 통과한다(이미 있던 `delta` 는 세지 않는다)."""
+    base = _git_history(tmp_path, {"tests/unit/test_old.py": _corpus_module(["delta"])},
+                        {"scripts/new_guard.py": _NEW_PREDICATE,
+                         "tests/unit/test_old.py": _corpus_module(["delta", "omega", "sigma"])})
+    proc = _gate(tmp_path, base)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
+def test_one_added_value_is_not_enough_when_the_rest_already_existed(tmp_path):
+    """🔴 경계 — 이 PR 이 단 값 하나 + 이미 있던 값 하나는 «둘» 이 아니다."""
+    base = _git_history(tmp_path, {"tests/unit/test_old.py": _corpus_module(["delta"])},
+                        {"scripts/new_guard.py": _NEW_PREDICATE,
+                         "tests/unit/test_old.py": _corpus_module(["delta", "omega"])})
+    assert _gate(tmp_path, base).returncode == 1
+
+
+def test_reformatting_an_existing_corpus_adds_nothing(tmp_path):
+    """🔴 값을 다른 줄로 옮기거나 순서를 바꾼 것은 «단» 것이 아니다 — 줄이 아니라 값으로 잰다."""
+    base = _git_history(tmp_path, {"tests/unit/test_old.py": _corpus_module(["delta", "omega"])},
+                        {"scripts/new_guard.py": _NEW_PREDICATE,
+                         "tests/unit/test_old.py": ('TEXT = open("x").read()\n'
+                                                    "# witness-corpus: 같은 부류인데 그 술어가 못 알아보는 값 — 시험용 사유\n"
+                                                    '_CORPUS = [\n    "omega",\n    "delta",\n]\n')})
+    assert _gate(tmp_path, base).returncode == 1
+
+
+def test_a_corpus_in_a_new_test_file_counts(tmp_path):
+    """새 시험 파일의 코퍼스는 전부 이 PR 이 단 값이다."""
+    base = _git_history(tmp_path, {}, {"scripts/new_guard.py": _NEW_PREDICATE,
+                                       "tests/unit/test_new.py": _corpus_module(["omega", "sigma"])})
+    proc = _gate(tmp_path, base)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
+def _git_move(root: pathlib.Path, old: str, new: str, extra: dict[str, str]) -> str:
+    """기준 커밋 → `old` 를 `new` 로 옮기고(`git mv`) `extra` 를 더한 커밋. 기준 커밋의 sha."""
+    def git(*args: str) -> str:
+        return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=root,
+                              check=True, capture_output=True, text=True).stdout.strip()
+
+    base = git("rev-parse", "HEAD")
+    (root / new).parent.mkdir(parents=True, exist_ok=True)
+    git("mv", old, new)
+    for rel, text in extra.items():
+        target = root / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+        git("add", rel)
+    git("commit", "-q", "-m", "move")
+    return base
+
+
+def test_moving_a_test_file_does_not_turn_its_corpus_new(tmp_path):
+    """🔴 시험 파일을 옮기기만 해도(rename) 그 코퍼스는 이미 있던 값이다 — 새 경로만 보면 통째로 새 값으로 센다."""
+    _git_history(tmp_path, {"tests/unit/test_old.py": _corpus_module(["delta", "omega"])}, {})
+    base = _git_move(tmp_path, "tests/unit/test_old.py", "tests/unit/moved/test_old.py",
+                     {"scripts/new_guard.py": _NEW_PREDICATE})
+    assert _gate(tmp_path, base).returncode == 1
+
+
+def test_a_corpus_moved_out_of_a_deleted_file_is_not_new(tmp_path):
+    """🔴 지운 파일의 코퍼스를 새 파일로 옮겨 달아도 이미 있던 값이다."""
+    _git_history(tmp_path, {"tests/unit/test_gone.py": _corpus_module(["delta", "omega"])}, {})
+    base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=tmp_path, check=True,
+                          capture_output=True, text=True).stdout.strip()
+    subprocess.run(["git", "rm", "-q", "tests/unit/test_gone.py"], cwd=tmp_path, check=True)
+    new_file = tmp_path / "tests" / "unit" / "test_fresh.py"
+    new_file.parent.mkdir(parents=True, exist_ok=True)       # git rm 이 빈 디렉터리째 지운다
+    new_file.write_text(_corpus_module(["omega", "delta"]) + "# 다른 파일\n", encoding="utf-8")
+    (tmp_path / "scripts").mkdir(exist_ok=True)
+    (tmp_path / "scripts" / "new_guard.py").write_text(_NEW_PREDICATE, encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "x"],
+                   cwd=tmp_path, check=True)
+    assert _gate(tmp_path, base).returncode == 1

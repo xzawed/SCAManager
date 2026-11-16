@@ -377,8 +377,8 @@ def _added_lines(base: str, path: pathlib.Path) -> set[int]:
     return added
 
 
-def _corpus_values(paths: list[pathlib.Path]) -> tuple[list[str], list[str]]:
-    """`# witness-corpus:` 표기가 붙은 컬렉션의 **문자열 값**과 사유를 뽑는다.
+def _corpus_values_in(text: str) -> tuple[list[str], list[str]]:
+    """한 파일 본문에서 `# witness-corpus:` 표기가 붙은 컬렉션의 **문자열 값**과 사유를 뽑는다.
 
     🔴 표기만 세면 주석 한 줄로 통과한다 — 첫 판이 그랬고 실측으로 exit 0 이었다.
     값을 세야 「검사가 못 알아보는 것을 실제로 넣었는가」를 물을 수 있다.
@@ -386,32 +386,72 @@ def _corpus_values(paths: list[pathlib.Path]) -> tuple[list[str], list[str]]:
     Collect the literal values under a marker, not just the marker.
     """
     values: list[str] = []
+    marked = {i for i, line in enumerate(text.split("\n"))
+              if (m := CORPUS_MARKER.search(line))
+              and len(m.group(1).strip()) >= MIN_REASON}
+    if not marked:
+        return values, []
+    reasons = [CORPUS_MARKER.search(line).group(1).strip()
+               for i, line in enumerate(text.split("\n")) if i in marked]
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return values, reasons
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign | ast.AnnAssign):
+            continue
+        # 표기는 대입 **바로 위** 줄들에 있다 — 몇 줄 위까지 본다(데코레이터·주석 여유).
+        if not any(node.lineno - k - 2 in marked for k in range(4)):
+            continue
+        for sub in ast.walk(node):
+            if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
+                values.append(sub.value)
+    return values, reasons
+
+
+def _paths_with_a_past(base: str) -> list[str]:
+    """병합 기점에 있던 시험 파일 중 이 PR 이 바꾸거나 지우거나 옮긴 것 — 옮긴 것은 **옛 경로**.
+
+    그 파일들의 기점 본문에 든 코퍼스 값이 «이미 있던» 값이다. 옮긴 파일을 새 경로로만 보면 기점에 없어
+    그 코퍼스가 통째로 새 값으로 센다 — 시험 파일을 옮기는 리팩터링 PR 에서 흔하다.
+    `-z` — 이름에 공백 · 따옴표가 있어도 git 이 인용하지 않은 채 NUL 로 나눈다.
+    Test files present at the merge base that this PR modified, deleted or renamed (old path for renames).
+    """
+    fields = _git("diff", "--name-status", "-z", "-M", f"{base}...HEAD", "--", "tests", "e2e").split("\0")
+    out: list[str] = []
+    i = 0
+    while i < len(fields) and fields[i]:
+        status = fields[i][:1]
+        width = 3 if status == "R" or status == "C" else 2
+        if status != "A":
+            out.append(fields[i + 1])
+        i += width
+    return [rel for rel in out if rel.endswith(".py")]
+
+
+def _pr_added_corpus(base: str, paths: list[pathlib.Path]) -> tuple[list[str], list[str]]:
+    """**이 PR 이 단** 코퍼스 값과 사유 — 병합 기점의 같은 파일들에 이미 있던 값은 뺀다 (회고 원장 L12 P2-51).
+
+    🔴 이전 판은 바뀐 시험 파일의 코퍼스를 파일째 모았다. 이미 있던 코퍼스가 든 파일을 한 줄만 건드려도
+    그 값들이 새 술어의 반례로 셌다 — 새 술어와 무관한 코퍼스가 통과시켰다(#1812 가 스스로 적었다).
+    줄이 아니라 **값**으로 뺀다 — 값을 다른 줄로 옮기거나 순서를 바꾼 것은 «단» 것이 아니다.
+    Count only corpus values this PR added; values present at the merge base do not count.
+    """
+    merge_base = _git("merge-base", base, "HEAD").strip()
+    before: set[str] = set()
+    added: list[str] = []
     reasons: list[str] = []
+    for rel in _paths_with_a_past(base):
+        before.update(_corpus_values_in(_git("show", f"{merge_base}:{rel}"))[0])
     for path in paths:
         if not path.exists():
             continue
-        text = path.read_text(encoding="utf-8", errors="ignore")
-        marked = {i for i, line in enumerate(text.split("\n"))
-                   if (m := CORPUS_MARKER.search(line))
-                   and len(m.group(1).strip()) >= MIN_REASON}
-        if not marked:
-            continue
-        reasons += [CORPUS_MARKER.search(line).group(1).strip()
-                    for i, line in enumerate(text.split("\n")) if i in marked]
-        try:
-            tree = ast.parse(text)
-        except SyntaxError:
-            continue
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Assign | ast.AnnAssign):
-                continue
-            # 표기는 대입 **바로 위** 줄들에 있다 — 몇 줄 위까지 본다(데코레이터·주석 여유).
-            if not any(node.lineno - k - 2 in marked for k in range(4)):
-                continue
-            for sub in ast.walk(node):
-                if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
-                    values.append(sub.value)
-    return values, reasons
+        values, found = _corpus_values_in(path.read_text(encoding="utf-8", errors="ignore"))
+        fresh = [v for v in values if v not in before]
+        added += fresh
+        if fresh:
+            reasons += found
+    return added, reasons
 
 
 def _new_predicates(base: str) -> list[tuple[str, int, str, frozenset]]:
@@ -430,9 +470,9 @@ def _new_predicates(base: str) -> list[tuple[str, int, str, frozenset]]:
 def _report_missing(new, values, needles, outside) -> int:
     """왜 막혔는지 말한다 — 「무엇을 하라」까지 적지 않으면 사람이 가드를 끈다."""
     if values:
-        print(f"🔴 반례 코퍼스가 있지만 **검사가 알아보는 값뿐**이다 "
+        print(f"🔴 이 PR 이 단 반례 코퍼스가 있지만 **검사가 알아보는 값뿐**이다 "
               f"(바깥 {len(outside)} < {MIN_OUTSIDE}):")
-        print("   The corpus holds only values the check already recognises.")
+        print("   The corpus this PR added holds only values the check already recognises.")
         print(f"   증거집합: {sorted(needles)[:8]}")
         print(f"   코퍼스 값: {values[:8]}")
         print()
@@ -440,14 +480,14 @@ def _report_missing(new, values, needles, outside) -> int:
         print("   **잡는** 값이라, 초록이 부류를 덮었다는 뜻이 전혀 아니었다.")
         return 1
 
-    print("🔴 새 **유한 증거집합 술어**에 외부 반례 코퍼스가 없다:")
-    print("   New finite-witness-set predicate without an external counterexample corpus:")
+    print("🔴 새 **유한 증거집합 술어**에 **이 PR 이 단** 외부 반례 코퍼스가 없다 — 이미 있던 코퍼스는 세지 않는다:")
+    print("   New finite-witness-set predicate without a counterexample corpus added by this PR:")
     for path, line, kind, evidence in new:
         shown = f" {sorted(evidence)[:5]}" if evidence else ""
         print(f"   - {path}:{line}  {kind}{shown}")
     print()
     print("해결 / Fix: 이 PR 의 테스트에 그 부류이면서 **검사가 못 알아보는** 값을")
-    print(f"   {MIN_OUTSIDE}개 이상 두고, 그 컬렉션 위에 표기하세요:")
+    print(f"   새로 {MIN_OUTSIDE}개 이상 더하고, 그 컬렉션 위에 표기하세요:")
     print("     # witness-corpus: <왜 이것들이 같은 부류인가 — 16자 이상>")
     print("   그 값은 검사에서 뽑지 마세요 — 이슈·코퍼스·실사건에서 가져옵니다.")
     # 「열 0」이라 적었으나 판정은 `^[ \t]*` 다 — 들여쓰기를 허용한다. 안내가 판정보다
@@ -504,7 +544,7 @@ def main() -> int:
     changed = _git("diff", "--name-only", f"{base}...HEAD")
     tests = [pathlib.Path(p) for p in changed.split("\n")
              if p.strip().startswith(("tests/", "e2e/")) and p.endswith(".py")]
-    values, reasons = _corpus_values(tests)
+    values, reasons = _pr_added_corpus(base, tests)
 
     # 🔴 여기가 이 가드의 본체다. 표기가 있는지가 아니라, **검사가 못 알아보는 값을
     #    실제로 넣었는지**를 묻는다. 첫 판은 표기만 세서 주석 한 줄로 통과했다
