@@ -13,6 +13,7 @@ factory calls, the single entry point where cost starts.
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
@@ -28,6 +29,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
+from src import constants
 from src.auth.session import CurrentUser, require_login
 from src.config import settings
 from src.database import Base
@@ -38,7 +40,7 @@ from src.models.insight_narrative_cache import InsightNarrativeCache
 from src.models.repository import Repository
 from src.models.user import User
 from src.repositories import insight_narrative_cache_repo
-from src.services import dashboard_service, repo_insight_service
+from src.services import dashboard_service, insight_cost_guard, repo_insight_service
 from src.ui._helpers import redirect_without_refresh
 from src.ui.routes.repo_insights import _get_db
 
@@ -220,7 +222,12 @@ def test_refresh_invalidates_then_redirects_303_without_refresh(
     # 두 언어로 캐시를 심는다 — 새로 고침은 언어와 무관하게 그 창의 서술을 버린다.
     # Seed two languages; Refresh drops the window's narrative regardless of language.
     q = dict(_query(path))
-    days = int(q.get("days", 7 if path.startswith("/dashboard") else 30))
+    # 생성 · 새로 고침은 화면 값으로 접힌 기간을 키로 쓴다(회고 원장 L17 P2-7) — 심는 키도 그 값.
+    # Generation and refresh key on the snapped window (retro ledger L17 P2-7); seed that key.
+    on_dashboard = path.startswith("/dashboard")
+    days = insight_cost_guard.snap_days(
+        int(q.get("days", 7 if on_dashboard else 30)),
+        constants.INSIGHT_DAYS_DASHBOARD if on_dashboard else constants.INSIGHT_DAYS_REPO)
     for lang in ("en", "ko"):
         if path.startswith("/dashboard"):
             insight_narrative_cache_repo.upsert(
@@ -321,3 +328,76 @@ def test_repo_guards_answer_before_any_redirect(db, owner, client_for, which, st
     assert sdk.factory.call_count == 0
     db.expire_all()
     assert db.query(InsightNarrativeCache).count() == before
+
+
+# ─── 생성 기간은 화면 값으로 (회고 원장 L17 P2-7) ─────────────────────────────────
+
+
+def _period_links(html: str, path: str) -> list[int]:
+    """`path` 로 가는 앵커의 days 값들(쿼리 파싱) — 기간 링크 묶음을 문구가 아니라 URL 로 읽는다."""
+    days = []
+    for href in re.findall(r'href="([^"]+)"', html):
+        u = urlsplit(href.replace("&amp;", "&"))
+        q = dict(parse_qsl(u.query))
+        if u.path == path and "days" in q and "refresh" not in q and "repo" not in q:
+            days.append(int(q["days"]))
+    return days
+
+
+def test_the_period_links_are_the_snapping_values(db, owner, client_for):
+    """두 화면의 기간 링크 = 접는 값 — 화면에 없는 값으로는 접지 않고, 접는 값은 모두 화면에 있다."""
+    user_id, _ = owner
+    client = client_for(user_id)
+    dashboard = client.get("/dashboard?mode=insight&days=7").text
+    repo = client.get(f"/repos/{_REPO}/insights?days=7").text
+    # 기간 묶음 안의 링크만 — 모드 탭도 days 를 단다 / only the period group (mode tabs carry days too)
+    dash_group = re.search(r'<nav class="dash-range-toggle".*?</nav>', dashboard, re.S)
+    repo_group = re.search(r'<div class="ri-day-selector">.*?</div>', repo, re.S)
+    assert dash_group and repo_group, "기간 링크 묶음을 못 찾았다"
+    assert _period_links(dash_group.group(0), "/dashboard") == list(constants.INSIGHT_DAYS_DASHBOARD)
+    assert _period_links(repo_group.group(0), f"/repos/{_REPO}/insights") == list(constants.INSIGHT_DAYS_REPO)
+
+
+def test_repo_page_at_the_cap_without_a_result_draws_the_limit_note_not_a_failure(db, owner, client_for, monkeypatch):
+    """라우트까지 — 상한에 닿고 지난 결과가 없으면 한도 줄을 그리고, 실패 줄 · 새로 고침은 그리지 않는다."""
+    user_id, _ = owner
+    monkeypatch.setattr(constants, "INSIGHT_GENERATIONS_PER_USER_PER_DAY", 1)
+    db.add(ClaudeApiCall(model="claude-haiku-4-5", user_id=user_id,
+                         created_at=datetime.now(timezone.utc).replace(tzinfo=None)))
+    db.commit()
+    with _Sdk(_fail()) as sdk:
+        r = client_for(user_id).get(f"/repos/{_REPO}/insights?days=30", headers={"Accept-Language": "en"})
+    assert r.status_code == 200
+    assert sdk.factory.call_count == 0, "한도인데 Claude 를 불렀다"
+    assert 'class="ri-narrative-note"' in r.text, "한도 줄이 없다"
+    assert 'class="ri-narrative-failed"' not in r.text, "한도를 실패로 그렸다"
+    assert "refresh=1" not in r.text, "상한에서 새로 고침을 그렸다"
+
+
+# witness-corpus: 화면 기간 목록에 없는 요청 기간(쿼리 문자열) → 맞출 화면 값 — 기대 키는 함수가 아니라 이 표가 정한다
+_OFF_SCREEN_DAYS = {"2": 7, "13": 30, "45": 90, "365": 90}
+
+
+@pytest.mark.parametrize("page", ["dashboard", "repo"])
+@pytest.mark.parametrize("asked", sorted(_OFF_SCREEN_DAYS))
+def test_off_screen_windows_reuse_the_on_screen_key(db, owner, client_for, page, asked):
+    """화면에 없는 요청 기간 하나하나가 맞춘 화면 값의 캐시를 쓴다(Claude 호출 0).
+
+    기대 키는 접는 함수에서 계산하지 않고 표에 적는다 — 함수가 틀려도 시험이 따라 틀리지 않게.
+    """
+    user_id, repo_id = owner
+    key = _OFF_SCREEN_DAYS[asked]
+    if page == "dashboard":
+        insight_narrative_cache_repo.upsert(db, user_id=user_id, days=key, language="en", response={
+            "status": "success", "days": key, "positive_highlights": ["접힌 키"], "focus_areas": [],
+            "key_metrics": [], "next_actions": []})
+        path = f"/dashboard?mode=insight&days={asked}"
+    else:
+        insight_narrative_cache_repo.upsert_repo(db, user_id=user_id, repo_id=repo_id, days=key, language="en",
+                                                 response={"text": "접힌 키", "status": "success"})
+        path = f"/repos/{_REPO}/insights?days={asked}"
+    with _Sdk(_fail()) as sdk:
+        r = client_for(user_id).get(path, headers={"Accept-Language": "en"})
+    assert r.status_code == 200
+    assert sdk.factory.call_count == 0, f"days={asked} 가 맞춘 키의 캐시를 쓰지 않았다"
+    assert "접힌 키" in r.text

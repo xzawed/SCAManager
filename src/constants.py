@@ -94,6 +94,16 @@ GATE_DEFAULT_MERGE_THRESHOLD = 75     # merge_threshold 기본값
 # capped. Consumers read `constants.X` at call time so one patch here moves all three.
 ISSUE_AGGREGATE_MAX_ANALYSES = 30
 
+# ── AI 인사이트 생성 한도 (회고 원장 L17 P2-7 — `src/services/insight_cost_guard.py`) ─────────────
+# ── AI insight generation limits (retro ledger L17 P2-7) ──────────────────────────────────────────
+# 생성 기간은 화면이 주는 값으로만 — 그 밖은 덮는 가장 작은 값으로 맞춘다. 두 화면의 기간 링크가 이 값을 그린다.
+# 하루 한도 = 그 사용자에게 귀속된 Claude 호출 수(UTC 하루) — 닿으면 마지막 결과와 «오늘 한도».
+# Generation windows are the on-screen values only (others snap up); both pages draw their period links from
+# these. The daily cap counts Claude calls attributed to the user in a UTC day.
+INSIGHT_DAYS_DASHBOARD = (1, 7, 30, 90)
+INSIGHT_DAYS_REPO = (7, 30, 90)
+INSIGHT_GENERATIONS_PER_USER_PER_DAY = 50
+
 # ── 언어 가이드 임계값 (review_prompt._select_guide_modes) ─────────────────
 LANG_GUIDE_ALL_FULL_MAX = 3    # N<=3: 모든 언어 full 모드
 LANG_GUIDE_TIER1_FULL_MAX = 6  # 4<=N<=6: Tier1 full, 나머지 compact

@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
+from src import constants
 from src.auth.session import CurrentUser, require_login
 from src.config import settings
 from src.database import SessionLocal
@@ -28,6 +29,7 @@ from src.services.repo_insight_service import (
     repo_problem_files,
     repo_recurring_issues,
 )
+from src.services import insight_cost_guard
 from src.shared.log_safety import sanitize_for_log
 from src.ui._helpers import get_locale, redirect_without_refresh, templates
 
@@ -99,6 +101,9 @@ async def repo_insights(  # pylint: disable=too-many-positional-arguments
 
     Per-repository code insights page.
     """
+    # 기간은 화면 값으로 — 페이지의 수치와 서술이 같은 기간을 말해야 한다(회고 원장 L17 P2-7).
+    # On-screen windows only, so the figures and the narrative share the window.
+    days = insight_cost_guard.snap_days(days, constants.INSIGHT_DAYS_REPO)
     logger.info(
         "repo_insights user_id=%d repo=%s days=%s",
         current_user.id,
@@ -147,6 +152,7 @@ async def repo_insights(  # pylint: disable=too-many-positional-arguments
     # AI narrative — only when API key is configured
     narrative: dict | None = None
     narrative_failed = False
+    narrative_limited = False
     if settings.anthropic_api_key:
         narrative = await repo_insight_narrative(
             db,
@@ -161,6 +167,11 @@ async def repo_insights(  # pylint: disable=too-many-positional-arguments
         # 실패(벤더·우리 코드)면 서술 자리에 실패 줄 + 새로 고침 — 부정 캐시를 사용자가 넘는 길.
         # On failure (vendor or ours) show a failure line with Refresh — the user's way past the negative cache.
         narrative_failed = bool(narrative) and narrative.get("status") not in _NARRATIVE_NOT_FAILED
+        # 하루 상한에 닿았고 마지막 결과도 없으면 «오늘 한도» 줄 — 실패가 아니라 새로 고침도 그리지 않는다.
+        # At the daily cap with no earlier result: a limit line, not a failure, and no refresh link.
+        narrative_limited = bool(narrative) and narrative.get("status") == "daily_limit"
+        if narrative_limited:
+            narrative_failed = False
         if narrative and narrative.get("status") != "success":
             narrative = None
         # 서술 단계의 커밋이 `repo` 를 만료시켰으면 템플릿의 `repo.*` 가 루프 위에서 SELECT 한다 — 여기서 채운다.
@@ -184,6 +195,9 @@ async def repo_insights(  # pylint: disable=too-many-positional-arguments
             "breakdown": breakdown,
             "narrative": narrative,
             "narrative_failed": narrative_failed,
+            "narrative_limited": narrative_limited,
+            "daily_cap": constants.INSIGHT_GENERATIONS_PER_USER_PER_DAY,
+            "insight_days": constants.INSIGHT_DAYS_REPO,
             "locale": get_locale(request),
         },
     )

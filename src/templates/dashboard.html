@@ -963,10 +963,16 @@
       {% if insight.generated_at %}
       <span title="{{ 'dashboard.insight.generated_at_tooltip' | i18n_args(locale | default('ko')) }}">⏱ {{ insight.generated_at[:16].replace('T', ' ') }}</span>
       {% endif %}
+      {# 하루 상한(회고 원장 L17 P2-7) — 마지막 결과를 보여 주고 새로 고침은 그리지 않는다(누르면 그 결과를 지운다). #}
+      {# Daily cap: show the latest result and no refresh link (refreshing would delete it). #}
+      {% if insight.daily_limit %}
+      <span class="dash-insight-limit">{{ 'dashboard.insight.daily_limit_stale' | i18n_args(locale | default('ko'), cap=insight.daily_cap) }}</span>
+      {% else %}
       <a href="/dashboard?mode=insight&days={{ days }}&refresh=1"
          title="{{ 'dashboard.insight.refresh_tooltip' | i18n_args(locale | default('ko')) }}"
          {# 🔴 WCAG 2.5.8 — 24×24. 0.85em flex 아이템이라 20px 였다(실측). #}
          style="text-decoration:none; display:inline-flex; align-items:center; min-height:24px;">{{ 'dashboard.insight.refresh' | i18n_args(locale | default('ko')) }}</a>
+      {% endif %}
     </div>
     <div class="dash-insight-grid" role="region" aria-label="{{ 'dashboard.insight.card_aria' | i18n_args(locale | default('ko')) }}">
       <div class="dash-insight-card">
@@ -1013,6 +1019,10 @@
     {% elif insight and insight.status == 'disabled' %}
     <div class="dash-insight-status">
       {{ 'dashboard.insight.disabled' | i18n_args(locale | default('ko')) }}
+    </div>
+    {% elif insight and insight.status == 'daily_limit' %}
+    <div class="dash-insight-status">
+      {{ 'dashboard.insight.daily_limit' | i18n_args(locale | default('ko'), cap=insight.daily_cap) }}
     </div>
     {% else %}
     {# 실패에도 새로 고침 — 최근 실패는 잠시 재시도를 막으므로(부정 캐시) 이 링크가 그것을 넘는 길이다.

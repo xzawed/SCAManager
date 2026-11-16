@@ -480,7 +480,8 @@
 }
 
 /* ── AI 내러티브 실패 줄 / AI narrative failure line ────── */
-.ri-narrative-failed {
+.ri-narrative-failed,
+.ri-narrative-note {
   display: flex;
   flex-wrap: wrap;
   align-items: center;

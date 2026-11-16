@@ -49,6 +49,7 @@ from src.shared.claude_metrics import (
 )
 from src.shared.feature_kill_switch import is_disabled
 from src import constants
+from src.services import insight_cost_guard
 from src.repositories import insight_narrative_cache_repo
 from src.shared.lang_names import LANG_NAMES
 from src.shared.time_utils import to_naive_utc
@@ -1123,6 +1124,9 @@ async def insight_narrative(  # pylint: disable=too-many-locals,too-many-return-
     # Cost control — INSIGHT_DISABLED=1 disables the dashboard narrative entirely.
     if is_disabled("INSIGHT"):
         return _build_insight_response(status="disabled", days=days)
+    # 생성 기간은 화면 값으로만 — 화면의 기간 링크와 같은 키를 쓴다(회고 원장 L17 P2-7).
+    # Generation windows are on-screen values only, the same keys the period links use.
+    days = insight_cost_guard.snap_days(days, constants.INSIGHT_DAYS_DASHBOARD)
 
     # API key fallback — 명시 인자 우선, 없으면 settings
     # API key fallback — explicit arg wins, otherwise settings
@@ -1200,6 +1204,12 @@ def _prepare_insight_prompt(
         )
         if recorded is not None:
             return _build_insight_response(status=_recorded_insight_status(recorded), days=days)
+        # 하루 한도 — 이 사용자의 오늘 호출이 한도면 부르지 않고 마지막 결과(없으면 한도 상태)로 끝낸다
+        #   (회고 원장 L17 P2-7). 캐시 · 부정 캐시 뒤 — 부를 일이 없으면 세지도 않는다.
+        # Daily cap: at the cap, end with the latest result (or the limit status) instead of a new call.
+        if insight_cost_guard.daily_limit_reached(db, user_id=user_id, now=now):
+            latest = insight_narrative_cache_repo.get_latest(db, user_id=user_id, days=days, language=language)
+            return insight_cost_guard.limited(latest, _build_insight_response(status="daily_limit", days=days))
 
     # 4 dashboard 헬퍼 호출로 컨텍스트 수집 + Phase 3 PR 5 user_id 격리
     # Collect context by invoking the 4 dashboard helpers + PR 5 user_id isolation

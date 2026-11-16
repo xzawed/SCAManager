@@ -2,7 +2,7 @@
 claude_api_cost_repo — persist ClaudeApiCall + user cost aggregation (single source)."""
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from src.models.claude_api_call import ClaudeApiCall
@@ -12,6 +12,17 @@ from src.shared.time_utils import to_naive_utc
 # 모델 패밀리 매핑 — claude_metrics 와 동일 규칙(sonnet/haiku/opus/other)
 # Model-family mapping — same rule as claude_metrics.
 _FAMILIES = ("opus", "sonnet", "haiku")
+
+
+def count_user_calls_since(db: Session, *, user_id: int, since: datetime) -> int:
+    """`since`(naive UTC) 이후 이 사용자에게 귀속된 호출 수 — 인사이트 경로만 `user_id` 를 단다(리뷰는 `repo_id`).
+
+    Calls attributed to this user since `since` (naive UTC); only insight calls carry `user_id`.
+    """
+    return int(db.scalar(
+        select(func.count()).select_from(ClaudeApiCall)
+        .where(ClaudeApiCall.user_id == user_id, ClaudeApiCall.created_at >= since)
+    ) or 0)
 
 
 def _family(model: str) -> str:

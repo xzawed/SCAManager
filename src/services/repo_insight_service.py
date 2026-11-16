@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
 from src import constants
+from src.services import insight_cost_guard
 from src.shared.anthropic_caching import first_text_block
 from src.config import settings
 from src.models.analysis import Analysis
@@ -769,6 +770,14 @@ def _prepare_repo_narrative(  # pylint: disable=too-many-arguments
         )
         if recorded is not None:
             return {"text": "", "status": _status_for_recorded_error(recorded)}
+        # 하루 한도 — 이 사용자의 오늘 호출이 한도면 부르지 않고 마지막 결과(없으면 한도 상태)로 끝낸다
+        #   (회고 원장 L17 P2-7). 캐시 · 부정 캐시 뒤 — 부를 일이 없으면 세지도 않는다.
+        # Daily cap: at the cap, end with the latest result (or the limit status) instead of a new call.
+        if insight_cost_guard.daily_limit_reached(db, user_id=user_id, now=now):
+            latest = insight_narrative_cache_repo.get_latest_repo(
+                db, user_id=user_id, repo_id=repo_id, days=days, language=language,
+            )
+            return insight_cost_guard.limited(latest, {"text": "", "status": "daily_limit"})
 
     if not kpi.get("analysis_count"):
         _record_narrative_error(

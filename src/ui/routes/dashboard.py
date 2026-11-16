@@ -23,7 +23,8 @@ from src.database import SessionLocal
 from src.models.analysis import Analysis
 from src.models.repository import Repository
 from src.repositories import repository_repo
-from src.services import dashboard_service
+from src import constants
+from src.services import dashboard_service, insight_cost_guard
 from src.services.repo_insight_service import (
     issue_basis,
     repo_ai_suggestions,
@@ -187,6 +188,11 @@ async def dashboard(  # pylint: disable=too-many-locals
             # 사이클 138 — /dashboard 진입 시 항상 개요 표시 (사용자 신호 기반 auto-detect 제거)
             # Cycle 138 — always default to overview on /dashboard entry (removed auto-detect)
             effective_mode = "overview"
+
+        if effective_mode == "insight":
+            # 인사이트 생성 기간은 화면 값으로 — 새로 고침이 지우는 키와 생성 키가 같아야 한다(회고 원장 L17 P2-7).
+            # Insight windows are on-screen values, so refresh deletes the same key the generation uses.
+            days = insight_cost_guard.snap_days(days, constants.INSIGHT_DAYS_DASHBOARD)
 
         # 새로 고침은 PRG — 캐시만 지우고 refresh 를 뺀 주소로 303. 재생성은 그 GET 이 캐시 miss 로 한다.
         #   주소에 refresh 가 남으면 F5 마다 캐시를 지우고 유료 호출을 또 시작한다(부정 캐시도 우회).
