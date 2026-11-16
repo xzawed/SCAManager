@@ -134,6 +134,33 @@ def _build_repo_summary(db: Session, user_id: int, days: int) -> dict:
     }
 
 
+def _build_repo_report(db: Session, user_id: int, repo_name: str, days: int) -> dict | None:
+    """repos 모드에서 고른 리포의 상세 레포트 — 사용자가 볼 수 없는 리포면 None. 동기 DB 라 워커 스레드에서 부른다.
+
+    Detailed report for the selected repo in repos mode, or None when the user may not see it.
+    Sync DB throughout, so the route calls it in a worker thread.
+    """
+    repo = repository_repo.find_by_full_name(db, repo_name)
+    if not repo or (repo.user_id is not None and repo.user_id != user_id):
+        return None
+    now = datetime.now(_tz.utc)
+    report_kpi = repo_kpi(db, repo.id, days, now=now)
+    return {
+        "repo_full_name": repo.full_name,
+        "kpi": report_kpi,
+        # 추세는 기간 전체, 카테고리·AI 요약·권장 사항은 최근 N건 — N < 분석 수면 템플릿이 적는다
+        # Trend covers the window, the issue sections its latest N; noted when N < count
+        "issue_basis": issue_basis(report_kpi["analysis_count"]),
+        "recurring_issues": repo_recurring_issues(db, repo.id, days, now=now),
+        "category_breakdown": repo_category_breakdown(db, repo.id, days, now=now),
+        "ai_suggestions": repo_ai_suggestions(db, repo.id, days, now=now),
+        "score_trend": repo_score_trend(db, repo.id, days, now=now),
+        # 추세는 미검증 점수까지 평균한다(값은 API 와 같다) — 그 수를 차트 아래 적는다.
+        # The trend averages unverified scores too (same values as the API); say how many.
+        "trend_unverified": repo_trend_unverified_count(db, repo.id, days, now=now),
+    }
+
+
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(  # pylint: disable=too-many-locals
     request: Request,
@@ -195,36 +222,11 @@ async def dashboard(  # pylint: disable=too-many-locals
             )
             repo_report_data = None
             if selected_repo_name:
-                repo = repository_repo.find_by_full_name(db, selected_repo_name)
-                if repo and (
-                    repo.user_id is None or repo.user_id == current_user.id
-                ):
-                    now = datetime.now(_tz.utc)
-                    report_kpi = repo_kpi(db, repo.id, days, now=now)
-                    repo_report_data = {
-                        "repo_full_name": repo.full_name,
-                        "kpi": report_kpi,
-                        # 추세는 기간 전체, 카테고리·AI 요약·권장 사항은 최근 N건 — N < 분석 수면 템플릿이 적는다
-                        # Trend covers the window, the issue sections its latest N; noted when N < count
-                        "issue_basis": issue_basis(report_kpi["analysis_count"]),
-                        "recurring_issues": repo_recurring_issues(
-                            db, repo.id, days, now=now
-                        ),
-                        "category_breakdown": repo_category_breakdown(
-                            db, repo.id, days, now=now
-                        ),
-                        "ai_suggestions": repo_ai_suggestions(
-                            db, repo.id, days, now=now
-                        ),
-                        "score_trend": repo_score_trend(
-                            db, repo.id, days, now=now
-                        ),
-                        # 추세는 미검증 점수까지 평균한다(값은 API 와 같다) — 그 수를 차트 아래 적는다.
-                        # The trend averages unverified scores too (same values as the API); say how many.
-                        "trend_unverified": repo_trend_unverified_count(
-                            db, repo.id, days, now=now
-                        ),
-                    }
+                # 리포 조회 + 집계 6개(SQL 열 문장 남짓)는 동기 DB — 요약처럼 루프 밖에서 (회고 원장 L17 P2-6 · P2-33).
+                # The repo lookup and six aggregates are sync DB; off the loop like the summary.
+                repo_report_data = await run_in_threadpool(
+                    _build_repo_report, db, current_user.id, selected_repo_name, days
+                )
             return templates.TemplateResponse(
                 request,
                 _DASHBOARD_TEMPLATE,

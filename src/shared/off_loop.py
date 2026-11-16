@@ -16,11 +16,19 @@ close a session the thread is still using.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
-from typing import Any
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
+from typing import Any, Protocol
 
 import anyio
 from starlette.concurrency import run_in_threadpool
+
+
+class _Closable(Protocol):  # pylint: disable=too-few-public-methods
+    """닫을 수 있는 세션 — `session_off_loop` 가 아는 것은 `close()` 하나다 / a session with close()."""
+
+    def close(self) -> None:
+        """세션을 닫는다(연결 반납)."""
 
 
 async def run_blocking[T](fn: Callable[..., T], /, *args: Any, **kwargs: Any) -> T:
@@ -54,3 +62,23 @@ async def run_blocking[T](fn: Callable[..., T], /, *args: Any, **kwargs: Any) ->
             work.exception()  # 스레드의 예외를 «회수됨» 으로 — 경고 소음 차단 / mark it retrieved
         raise interrupted
     return work.result()
+
+
+@asynccontextmanager
+async def session_off_loop[S: _Closable](factory: Callable[[], S]) -> AsyncIterator[S]:
+    """세션을 만들고 닫는 일(연결 반납 = 운영에서 ROLLBACK 왕복)까지 워커 스레드에서 — 스케줄러 · 내부 cron 공유.
+
+    Create and close a session (returning the connection = a ROLLBACK round trip in production) in a
+    worker thread; shared by the scheduler and the internal cron endpoints.
+
+    🔴 세션 안의 DB 도 부르는 쪽이 `run_blocking`(또는 서비스가 스스로) 넘긴다 — 루프에는 GitHub · Telegram
+    await 만 남긴다. `run_blocking` 은 취소에도 스레드를 기다리므로, close 가 아직 쓰이는 세션을 다른 스레드에서
+    만지지 않는다. 팩토리를 받는 이유: 워커 세션 별칭(`WorkerSessionLocal as SessionLocal`)을 import 하는 파일
+    집합을 `tests/unit/test_worker_session_routing.py` 가 대조한다 — 그 import 는 부르는 쪽에 남는다.
+    The caller passes its own session factory, so the worker-alias import (audited per file) stays there.
+    """
+    db = await run_blocking(factory)
+    try:
+        yield db
+    finally:
+        await run_blocking(db.close)

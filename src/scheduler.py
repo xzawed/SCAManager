@@ -21,7 +21,6 @@ In-app periodic job scheduler — replaces the Railway cron config that never ra
 """
 import asyncio
 import logging
-from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Awaitable, Callable
@@ -44,7 +43,7 @@ from src.services.cron_service import (
 from src.services.db_heartbeat_service import run_db_heartbeat
 from src.services.merge_retry_service import process_pending_retries
 from src.services.security_scan_service import scan_all_repos
-from src.shared.off_loop import run_blocking
+from src.shared.off_loop import run_blocking, session_off_loop
 
 logger = logging.getLogger(__name__)
 
@@ -94,12 +93,11 @@ def scheduler_enabled(settings):
 # Job bodies — every sync DB statement runs in a worker thread
 
 
-@asynccontextmanager
-async def _worker_session():
-    """job 세션 — 만들기·닫기(연결 반납 = 운영에서 ROLLBACK 왕복)까지 워커 스레드에서.
+def _worker_session():
+    """job 세션 — 만들기·닫기(연결 반납 = 운영에서 ROLLBACK 왕복)까지 워커 스레드에서(`session_off_loop`).
 
     Job session; creating and closing it (returning the connection = a ROLLBACK round trip in
-    production) also run in a worker thread.
+    production) also run in a worker thread. The internal cron endpoints use the same helper.
 
     🔴 루프 위의 동기 DB 는 왕복마다 프로세스 전체를 세운다 — DB 이전 전(왕복 ≈ 0.2 s, 뒤 ≈ 2 ms) 1분 주기
     retry job 이 **빈 큐**에서도 루프를 ≈ 0.78 s 막았다. 세션 안의 DB 도 서비스가 `run_blocking` 으로
@@ -108,11 +106,7 @@ async def _worker_session():
     Sync DB on the loop stalled the whole process per round trip. run_blocking waits for its thread
     even on stop()'s cancellation, so close never overlaps a thread still using the session.
     """
-    db = await run_blocking(SessionLocal)
-    try:
-        yield db
-    finally:
-        await run_blocking(db.close)
+    return session_off_loop(SessionLocal)
 
 
 async def _retry_pending_merges():
