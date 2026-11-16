@@ -1,6 +1,11 @@
 """내부 Cron 엔드포인트 — Railway native cron 트리거용.
 Internal cron endpoints — triggered by Railway native cron jobs.
 
+🔴 인앱 스케줄러(`src/scheduler.py`)와 같은 작업의 HTTP 쌍둥이다 — 세션 만들기 · 닫기와 동기 작업은 스케줄러와
+같이 워커 스레드에서(`session_off_loop` · `run_blocking`). 루프 위의 동기 DB 는 왕복마다 프로세스의 모든 요청을
+세운다(회고 원장 L17 P2-34).
+The HTTP twin of the in-app scheduler jobs: session create/close and sync work run off the loop, as there.
+
 인증: INTERNAL_CRON_API_KEY 헤더 (admin api_key와 분리).
 Auth: INTERNAL_CRON_API_KEY header (separate from admin api_key).
 """
@@ -23,6 +28,7 @@ from src.services.cron_service import (
 from src.services.db_heartbeat_service import run_db_heartbeat
 from src.services.merge_retry_service import process_pending_retries
 from src.services.security_scan_service import scan_all_repos
+from src.shared.off_loop import run_blocking, session_off_loop
 
 logger = logging.getLogger(__name__)
 
@@ -76,9 +82,9 @@ async def trigger_weekly_reports() -> dict:
         {"status": "ok", "sent": <int>} — 발송된 리포트 수
         {"status": "ok", "sent": <int>} — number of reports sent
     """
-    # SessionLocal() context manager로 DB 세션 획득 — 함수 종료 시 자동 반환
-    # Acquire DB session via SessionLocal() context manager — auto-released on exit
-    with SessionLocal() as db:
+    # 세션 만들기 · 닫기는 워커 스레드에서 — 스케줄러 job 과 같은 도우미
+    # Session create/close off the loop — the same helper as the scheduler job
+    async with session_off_loop(SessionLocal) as db:
         sent = await run_weekly_reports(db)
     logger.info("weekly_reports: sent=%d", sent)
     return {"status": "ok", "sent": sent}
@@ -93,9 +99,9 @@ async def trigger_trend_check() -> dict:
         {"status": "ok", "alerted": <int>} — 경고 발송된 리포 수
         {"status": "ok", "alerted": <int>} — number of repos that received an alert
     """
-    # SessionLocal() context manager로 DB 세션 획득 — 함수 종료 시 자동 반환
-    # Acquire DB session via SessionLocal() context manager — auto-released on exit
-    with SessionLocal() as db:
+    # 세션 만들기 · 닫기는 워커 스레드에서 — 스케줄러 job 과 같은 도우미
+    # Session create/close off the loop — the same helper as the scheduler job
+    async with session_off_loop(SessionLocal) as db:
         alerted = await run_trend_check(db)
     logger.info("trend_check: alerted=%d", alerted)
     return {"status": "ok", "alerted": alerted}
@@ -110,9 +116,9 @@ async def trigger_security_scan() -> dict:
     Returns:
         {"status": "ok", "totals": {"code_scanning": N, "secret_scanning": M, "skipped": K, "repos": R}}
     """
-    # SessionLocal() context manager — F1 read-only (audit log upsert 만, dismiss X)
-    # SessionLocal() context manager — F1 read-only (audit log upsert only, no dismiss)
-    with SessionLocal() as db:
+    # F1 read-only (audit log upsert 만, dismiss X) — 세션 만들기 · 닫기는 워커 스레드에서
+    # F1 read-only (audit log upsert only, no dismiss); session create/close off the loop
+    async with session_off_loop(SessionLocal) as db:
         totals = await scan_all_repos(db)
     logger.info("security_scan: totals=%s", totals)
     return {"status": "ok", "totals": totals}
@@ -127,9 +133,9 @@ async def trigger_retry_pending_merges() -> dict:
         {"status": "ok", "counts": {...}} — 처리 결과 카운트
         {"status": "ok", "counts": {...}} — processing result counts
     """
-    # SessionLocal() context manager로 DB 세션 획득 — 함수 종료 시 자동 반환
-    # Acquire DB session via SessionLocal() context manager — auto-released on exit
-    with SessionLocal() as db:
+    # 세션 만들기 · 닫기는 워커 스레드에서 — 스케줄러 job 과 같은 도우미
+    # Session create/close off the loop — the same helper as the scheduler job
+    async with session_off_loop(SessionLocal) as db:
         counts = await process_pending_retries(
             db, limit=settings.merge_retry_worker_batch_size
         )
@@ -158,7 +164,7 @@ async def trigger_sweep_orphans() -> dict:
 
     SIGTERM/OOM 로 증발한 분석의 흔적을 로그+운영자 Telegram 으로 표면화하고 정리한다(준비도 감사 #11).
     """
-    with SessionLocal() as db:
+    async with session_off_loop(SessionLocal) as db:
         surfaced = await sweep_analysis_attempts(db)
     logger.info("sweep_orphans: surfaced=%d", surfaced)
     return {"status": "ok", "orphans_surfaced": surfaced}
@@ -170,7 +176,9 @@ async def trigger_retention_sweep() -> dict:
 
     Trigger the retention sweep — GC expired cache + terminal queue rows.
     """
-    with SessionLocal() as db:
-        counts = run_retention_sweep(db)
+    # 🔴 sweep 은 동기 함수다 — 통째로 워커 스레드에서(스케줄러와 같다). 루프에서 돌면 DELETE 왕복마다 선다.
+    # The sweep is synchronous: run it whole in a worker thread, as the scheduler does.
+    async with session_off_loop(SessionLocal) as db:
+        counts = await run_blocking(run_retention_sweep, db)
     logger.info("retention_sweep: counts=%s", counts)
     return {"status": "ok", "counts": counts}

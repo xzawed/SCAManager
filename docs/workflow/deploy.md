@@ -12,7 +12,7 @@
 
 - replica 는 `us-east4-eqdc4a` 1개 — 인앱 스케줄러(`src/scheduler.py::JOBS = (`)가 단일 인스턴스 전제라 2 이상이면 주간 리포트가 중복 발송된다. 올리려면 먼저 분산 잠금을 넣는다.
 - `railway.toml`·`railway.json` 을 다시 만들지 않는다 — 설정 주인이 둘이 된다. 가드 `tests/unit/scripts/test_no_railway_config_as_code.py`.
-- 주기 작업은 `src/scheduler.py` 에 등록하고 동기 DB 는 `src/shared/off_loop.py::run_blocking` 으로 루프 밖에서 돌린다(`tests/unit/test_scheduler_off_loop.py` 가 job 마다 잰다).
+- 주기 작업은 `src/scheduler.py` 에 등록하고, 세션은 `session_off_loop` · 동기 DB 는 `src/shared/off_loop.py::def run_blocking` 으로 루프 밖에서 돌린다(`tests/unit/test_scheduler_off_loop.py` 가 job 마다 잰다).
 
 ## 환경변수 추가
 
