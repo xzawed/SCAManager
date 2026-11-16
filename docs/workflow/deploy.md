@@ -32,9 +32,14 @@
 
 `requirements.txt` 는 직접 의존성 전부 `==` 정확 핀. semgrep 만 `requirements-semgrep.txt` — 그 정확 전이 핀이 앱 해석 · 감사를 묶지 않게 자기 venv 에 둔다. 그 감사는 이 파일을 바꾼 PR 만 막고 나머지는 경고 — 새 권고는 주간 예약 감사가 이슈로 알린다(예외 · 근거 = `scripts/semgrep_audit.py`). analyzer 바이너리를 추가하면 `tests/unit/scripts/test_analyzer_provenance.py` `_PROVENANCE` 에 (바이너리, 조달모드, 사유) 를 등재해야 CI 가 통과한다.
 
+## 머지 뒤 배포 확인
+
+1. `railway deployment list --json` 에서 머지 커밋(`meta.commitHash`)의 배포가 `SUCCESS` 인지 본다(`WAITING` = CI 대기 · `SKIPPED` = `meta.skippedReason`).
+2. 로그 = `railway logs <전체 배포 id> --deployment --json`(짧은 id 는 «not found» 한 줄 — 거짓 0). 비밀값 꼴부터 세고 그 줄은 열지 않는다. `Application startup complete` 와 앱 로거의 WARNING · ERROR · Traceback 을 본다 — Railway 가 error 로 표시하는 uvicorn · alembic INFO(stderr)와 starlette `Config file '' not found` 는 잡음이다. 이상이 있으면 아래로.
+
 ## 배포 실패 시
 
-1. `railway deployment list --json` 으로 상태부터(`SKIPPED` 면 `meta.skippedReason`). 빌드 실패면 로그 앞뒤 30줄로 원인을 특정한다 — 추측 수정 금지. 로컬 재현 `docker build -t scam-local .`.
+1. 상태 · 로그는 위 «머지 뒤 배포 확인» 1 · 2 로 본다. 빌드 실패면 로그 앞뒤 30줄로 원인을 특정한다 — 추측 수정 금지. 로컬 재현 `docker build -t scam-local .`.
 2. 서비스를 먼저 되돌린다 — Railway 에서 **이전 배포 재배포**. 지금 DB 의 alembic 리비전을 아는 배포만(모르는 코드의
    `alembic upgrade head` 는 `Can't locate revision` 으로 실패한다), 운영 DB 를 옮긴 뒤의 배포만 고른다(Rollback 은 그 배포 당시 변수까지 되돌린다). 그다음 원인을 고친다.
 3. 마이그레이션 단계 실패면 [db.md](db.md) §롤백.

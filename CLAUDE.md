@@ -16,7 +16,7 @@ GitHub Push/PR → 정적 분석 + AI 리뷰 → 점수·등급 → 알림(Teleg
 4. **구현**
 5. **검증** — [verify.md](docs/workflow/verify.md) 의 절차를 그대로 따른다.
 6. **PR** — `gh pr create --body-file <임시파일>`(URL 안내 금지).
-7. **머지는 사용자가 한다.**
+7. **머지는 사용자가 한다.** 머지 뒤 배포를 확인한다([deploy.md](docs/workflow/deploy.md)).
 
 ## 영역 문서
 

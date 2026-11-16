@@ -23,10 +23,9 @@
    gh api repos/xzawed/SCAManager/pulls/<n> -q '.head.sha, .commits'   # 🔴 머지 **직전에도**
    ```
 
-   🔴 **두 확인은 서로를 대신하지 못한다.** `ls-remote` 는 ref 만 본다 — ref 가 갔어도 PR 객체가
-   그 커밋을 집지 않으면 CI 는 **옛 커밋**을 초록으로 통과시킨다. 그래서
-   `head.sha == git rev-parse HEAD` 를 **머지를 누르기 직전에** 다시 본다.
-   ⚠️ `mergeStateStatus=UNKNOWN` 이 지속되면 「계산 중」이 아니라 이 상태를 의심한다.
+   🔴 **두 확인은 서로를 대신하지 못한다**(`ls-remote` 는 ref 만 본다) — `head.sha == git rev-parse HEAD` 를
+   **머지를 누르기 직전에** 다시 본다. ⚠️ `mergeStateStatus=UNKNOWN` 이 지속되면 「계산 중」이 아니라 이 상태를 의심한다.
+   🔴 머지 직전 main 최신 CI 가 초록인지(`py -3 scripts/check_main_red.py`) · PR base 가 main 끝인지 본다 — 아니면 rebase 뒤 다시 잰다.
    🔴 보완 커밋을 더했으면 머지 직전 PR 제목(= squash 커밋 제목)이 최종 diff 를 말하는지도 본다 — 아니면 `gh pr edit --title`.
    🔴 본문 수치가 틀렸으면 본문을 고치고 `gh run rerun --failed` 한다. 본문을 읽는 스텝은
    `gh api /pulls/N` 으로 **살아 있는 값**을 조회한다(고정 페이로드 아님).
