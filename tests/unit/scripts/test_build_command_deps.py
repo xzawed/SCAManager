@@ -44,10 +44,13 @@ _COMMAND_PROVENANCE = {
     "apt-get": _BASE,
     "chmod": _BASE,
     "echo": _BASE,
+    "install": _BASE,     # coreutils — 내려받은 golangci-lint 를 권한과 함께 놓는다(회고 원장 R-7)
     "ln": _BASE,
     "mkdir": _BASE,
     "rm": _BASE,
     "sh": _BASE,
+    "sha256sum": _BASE,   # coreutils — 릴리스 내려받기를 고정한 값과 대조한다(회고 원장 R-7)
+    "tar": _BASE,         # ubuntu 필수 패키지 — golangci-lint 릴리스 tarball 을 푼다(회고 원장 R-7)
     "useradd": _BASE,
     "curl": _APT,
     "gem": _APT,          # ruby-full
