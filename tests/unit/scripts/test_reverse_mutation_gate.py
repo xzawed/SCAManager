@@ -24,6 +24,7 @@ pytest 재실행 → 판정)를 돌린다. 스파이로 대체하고 kwargs 만 
 from __future__ import annotations
 
 import subprocess  # nosec B404
+import sys
 from pathlib import Path
 
 import pytest
@@ -916,6 +917,26 @@ def test_an_e2e_red_that_stays_red_after_restore_is_not_an_observation(repo: Pat
     code, lines = gate.evaluate_with_e2e(base, head, repo=repo)
     assert code == 1, "\n".join(lines)
     assert any("복원한 트리에서도" in line for line in lines), lines
+
+
+def test_a_failed_restore_build_is_red_before_any_verdict(repo: Path):
+    """🔴 복원 뒤 빌드가 실패하면 «복원 뒤 그 시험» 실행이 HEAD 를 재지 못한다 — 관측이어도 판정 불가(red)로 알린다.
+
+    빌드 대역: HEAD 의 소스(`return 2`)에서만 실패하는 스크립트 — 되돌린 뒤엔 통과, 복원한 뒤엔 실패.
+    """
+    _e2e_repo(repo)
+    (repo / "src" / "thing.py").write_text("def value():\n    return 2\n", encoding="utf-8")
+    (repo / "e2e" / "test_flow.py").write_text(_e2e_observing(2), encoding="utf-8")
+    base, head = _commit(repo, "e2e observes")
+    (repo / "build_stub.py").write_text(
+        "import pathlib, sys\n"
+        "sys.exit(1 if 'return 2' in pathlib.Path('src/thing.py').read_text(encoding='utf-8') else 0)\n",
+        encoding="utf-8")
+    python = sys.executable.replace("\\", "/")
+    code, lines = gate.evaluate_with_e2e(base, head, repo=repo, rebuild=f'"{python}" build_stub.py')
+    assert code == 1, "\n".join(lines)
+    assert lines[0].startswith("🔴 복원 실패"), lines
+    assert (repo / "src" / "thing.py").read_text(encoding="utf-8") == "def value():\n    return 2\n"
 
 
 def test_a_unit_observer_short_circuits_the_e2e_run(repo: Path):

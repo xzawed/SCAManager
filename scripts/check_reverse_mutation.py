@@ -497,48 +497,72 @@ def evaluate_with_e2e(base_sha: str, head_sha: str, repo: Path | None = None,
         return _revert_and_run(root, base_sha, prod, unit, targets, rebuild, cache)
 
 
+def _mutate_and_run(root: Path, base_sha: str, prod: list[str], unit: list[str], targets: list[str],
+                    rebuild: str | None, cache: str):
+    """되돌리고 → 빌드 → 단위 → (단위가 관측 못 했으면) e2e. 판정 불가면 (판정, None, None), 아니면 (None, 단위, e2e)."""
+    existing = [f for f in prod if _blob_exists(base_sha, f, root)]
+    created = [f for f in prod if f not in existing]
+    if existing:
+        rv = _run(["git", "checkout", base_sha, "--", *existing], root, timeout=600)
+        if rv.returncode != 0:
+            return (1, [f"🔴 되돌리기 실패 — 판정 불가: {rv.stderr[-200:]}"]), None, None
+    for f in created:
+        _run(["git", "rm", "-f", "--quiet", f], root, timeout=120)
+    if _clean(root, prod) is not False:
+        return (1, ["🔴 되돌림이 **no-op** — 뮤테이션이 무효라 아무것도 증명하지 못한다."]), None, None
+    if rebuild:
+        try:
+            built = _run(shlex.split(rebuild), root, timeout=900)
+        except (OSError, subprocess.SubprocessError) as exc:
+            return (1, [f"🔴 되돌린 뒤 빌드를 못 돌렸다 — 판정 불가: {exc}"]), None, None
+        if built.returncode != 0:
+            tail = f"{(built.stdout or '')[-200:]}{(built.stderr or '')[-200:]}"
+            return (1, [f"🔴 되돌린 뒤 빌드 실패 — 판정 불가: {tail}"]), None, None
+    unit_after = _pytest(unit, root) if unit else None
+    e2e_after = None
+    if unit_after is None or unit_after.returncode == 0:
+        # 단위가 관측하지 않았을 때만 e2e 를 돈다 — 첫 실패에서 멈추고, 그 시험을 복원한 뒤 다시 돌린다.
+        # e2e only when the unit side did not observe; stop at the first failure and re-check it after the restore.
+        e2e_after = _pytest(targets, root, [*_E2E_FLAGS, "--maxfail=1"], cache_dir=cache)
+    return None, unit_after, e2e_after
+
+
+def _restore(root: Path, prod: list[str], rebuild: str | None) -> bool:
+    """되돌린 생산 파일을 HEAD 로 · 빌드를 다시. 둘 다 됐는가(되돌린 파일이 HEAD 와 같고 빌드가 0).
+
+    🔴 나눠 복원한다 — PR 이 지운 생산 파일은 HEAD 에 없어, 한 번에 `checkout HEAD -- …` 하면 경로 하나 때문에
+    통째로 실패하고 트리가 되돌린 채 남는다. HEAD 에 있는 것은 체크아웃, 없는 것은 다시 지운다.
+    Restore in two groups: a path the PR deleted is absent from HEAD and would fail the whole checkout.
+    """
+    keep = [f for f in prod if _blob_exists("HEAD", f, root)]
+    if keep:
+        _run(["git", "checkout", "HEAD", "--", *keep], root, timeout=600)
+    for f in prod:
+        if f not in keep:
+            _run(["git", "rm", "-f", "--quiet", "--ignore-unmatch", f], root, timeout=120)
+    built = True
+    if rebuild:
+        try:
+            built = _run(shlex.split(rebuild), root, timeout=900).returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            built = False
+    return built and _clean(root, prod) is True
+
+
 def _revert_and_run(root: Path, base_sha: str, prod: list[str], unit: list[str], targets: list[str],
                     rebuild: str | None, cache: str) -> tuple[int, list[str]]:
     """제자리에서 되돌리고 → 단위(관측하면 끝) → e2e(첫 실패에서 멈춤) → 복원 → 빨간 e2e 시험을 복원한 트리에서 다시."""
-    existing = [f for f in prod if _blob_exists(base_sha, f, root)]
-    created = [f for f in prod if f not in existing]
-    unit_after = e2e_after = None
     try:
-        if existing:
-            rv = _run(["git", "checkout", base_sha, "--", *existing], root, timeout=600)
-            if rv.returncode != 0:
-                return 1, [f"🔴 되돌리기 실패 — 판정 불가: {rv.stderr[-200:]}"]
-        for f in created:
-            _run(["git", "rm", "-f", "--quiet", f], root, timeout=120)
-        if _clean(root, prod) is not False:
-            return 1, ["🔴 되돌림이 **no-op** — 뮤테이션이 무효라 아무것도 증명하지 못한다."]
-        if rebuild:
-            try:
-                built = _run(shlex.split(rebuild), root, timeout=900)
-            except (OSError, subprocess.SubprocessError) as exc:
-                return 1, [f"🔴 되돌린 뒤 빌드를 못 돌렸다 — 판정 불가: {exc}"]
-            if built.returncode != 0:
-                return 1, [f"🔴 되돌린 뒤 빌드 실패 — 판정 불가: {(built.stdout or '')[-200:]}{(built.stderr or '')[-200:]}"]
-        unit_after = _pytest(unit, root) if unit else None
-        if unit_after is None or unit_after.returncode == 0:
-            # 단위가 관측하지 않았을 때만 e2e 를 돈다 — 첫 실패에서 멈추고, 그 시험을 아래에서 되돌리지 않고 다시 돌린다.
-            # e2e only when the unit side did not observe; stop at the first failure and re-check it below.
-            e2e_after = _pytest(targets, root, [*_E2E_FLAGS, "--maxfail=1"], cache_dir=cache)
+        early, unit_after, e2e_after = _mutate_and_run(root, base_sha, prod, unit, targets, rebuild, cache)
     finally:
-        # 🔴 나눠 복원한다 — PR 이 지운 생산 파일은 HEAD 에 없어, 한 번에 `checkout HEAD -- …` 하면 경로 하나 때문에
-        #    통째로 실패하고 트리가 되돌린 채 남는다. HEAD 에 있는 것은 체크아웃, 없는 것은 다시 지운다.
-        # Restore in two groups: a path the PR deleted is absent from HEAD and would fail the whole checkout.
-        keep = [f for f in prod if _blob_exists("HEAD", f, root)]
-        if keep:
-            _run(["git", "checkout", "HEAD", "--", *keep], root, timeout=600)
-        for f in prod:
-            if f not in keep:
-                _run(["git", "rm", "-f", "--quiet", "--ignore-unmatch", f], root, timeout=120)
-        if rebuild:
-            try:
-                _run(shlex.split(rebuild), root, timeout=900)
-            except (OSError, subprocess.SubprocessError):
-                pass  # 복원 뒤 재빌드는 최선 노력 — 판정은 이미 났다 / best effort after the verdict
+        restored = _restore(root, prod, rebuild)
+    if not restored:
+        # 🔴 어떤 판정보다 먼저 — 트리가 되돌린 채이거나 빌드가 HEAD 와 다르면 그 위의 «복원 뒤» 실행은 아무것도 증명하지 못한다.
+        # Before any verdict: a tree left reverted (or a failed rebuild) makes every later run meaningless.
+        return 1, ["🔴 복원 실패 — 되돌린 생산 파일이 HEAD 와 다르거나 복원 뒤 빌드가 실패했다(판정 불가). "
+                   "`git checkout HEAD -- <아래 파일>` 로 직접 되돌린다:", *(f"   {f}" for f in prod[:10])]
+    if early is not None:
+        return early
 
     counts = f"   되돌린 생산 파일 {len(prod)}건 · 단위 {len(unit)}건 · e2e 대상 {len(targets)}개"
     if unit_after is not None and unit_after.returncode != 0:
