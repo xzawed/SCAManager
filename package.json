@@ -9,11 +9,11 @@
     "lint:js": "eslint \"src/templates/**/*.html\" --quiet"
   },
   "devDependencies": {
-    "@tailwindcss/cli": "^4.3.4",
+    "@tailwindcss/cli": "^4.3.5",
     "tailwindcss": "^4.1.0",
     "eslint": "^10.14.0",
     "eslint-plugin-html": "^8.2.1",
-    "@typescript-eslint/parser": "^8.72.1",
+    "@typescript-eslint/parser": "^8.72.2",
     "typescript": "^6.0.3",
     "globals": "^17.14.0"
   }
