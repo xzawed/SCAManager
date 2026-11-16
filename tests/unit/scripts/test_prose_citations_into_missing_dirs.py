@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import ast
 import io
+import posixpath
 import re
 import subprocess
 import tokenize
@@ -41,10 +42,8 @@ _EXEMPT = {
         "보호 경로 판정이 부분 문자열로 잡는다는 것을 보이는 시험 입력",
     ("tests/unit/i18n/test_translation_path_citations.py", "docs/_archive/runbooks/sentry-activation.md"):
         "운영자 화면에 죽은 경로가 렌더되던 사고의 기록 — 그 경로가 증거다",
-    ("tests/unit/scripts/test_hook_command_cwd_independence.py", "scripts/../x.py"):
-        "작업 폴더 밖으로 나가는 훅 명령을 거부하는지 보는 시험 입력",
     ("tests/unit/scripts/test_hook_command_cwd_independence.py", "scripts/../../../x.py"):
-        "같은 시험 입력",
+        "작업 폴더 밖으로 나가는 훅 명령을 거부하는지 보는 시험 입력",
     ("scripts/extract_design_tokens.py", "docs/design/brief/01-current-tokens.json"):
         "스크립트의 출력 경로 — 실행할 때 만든다",
 }
@@ -66,13 +65,14 @@ def _python_prose(text: str) -> list[tuple[int, str]]:
     for node in ast.walk(tree):
         if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             doc = ast.get_docstring(node, clean=False)
-            if doc and node.body:
+            if doc is not None and node.body:  # 빈 독스트링도 문장이다(Grok 반례 `""""""`)
                 out.append((node.body[0].lineno, doc))
     return out
 
 
 def _directories(tracked: set[str]) -> set[str]:
-    dirs: set[str] = set()
+    """추적 파일의 모든 조상 디렉터리 — 리포 루트(`.`)도 실재한다."""
+    dirs: set[str] = {"."}
     for path in tracked:
         parent = PurePosixPath(path).parent
         while str(parent) not in (".", ""):
@@ -94,7 +94,9 @@ def violations(files: dict[str, str], tracked: set[str]) -> tuple[list[tuple[str
         for line, chunk in chunks:
             for m in _CITATION.finditer(chunk):
                 ref = m.group(1)
-                if ref not in tracked and str(PurePosixPath(ref).parent) not in dirs:
+                # `..` 를 풀어 판정한다 — `scripts/foo/../x.py` 는 실재하는 `scripts/` 로 돌아온다(Grok 반례).
+                norm = posixpath.normpath(ref)
+                if norm not in tracked and (posixpath.dirname(norm) or ".") not in dirs:
                     found.append((rel, line, ref))
     return found, scanned
 
@@ -136,6 +138,7 @@ _PLANTED = {
     "src/a.py": '# 정본은 `.claude/rules/testing.md` 다\nX = 1\n',
     "src/b.py": '"""모듈 설명 — docs/design/plan.md 참고."""\n',
     "src/c.py": '# 예시: `scripts/x.py` 는 가짜 이름이다\nP = ".claude/rules/in_code_value.md"\n',
+    "src/d.py": "# 돌아오는 경로 `scripts/foo/../x.py` 는 실재하는 scripts/ 다\n",
     "docs/workflow/x.md": "자세히는 `README.md` · `node_modules/a.js` · `build/out.py`.\n",
     "docs/reports/2026-01-01-retro.md": "그때는 `.claude/rules/old.md` 였다.\n",
 }
@@ -143,11 +146,16 @@ _PLANTED_TRACKED = set(_PLANTED) | {"scripts/real.py"}
 
 
 def test_the_detector_sees_planted_dead_citations_and_nothing_else():
-    """🔴 계기 뒤집기 — 사라진 트리를 가리키는 주석 · 독스트링은 잡고, 실재 디렉터리의 가짜 이름 · 코드 문자열 값 ·
-    리포 밖 경로 · 이력 문서는 잡지 않는다."""
+    """🔴 계기 뒤집기 — 사라진 트리를 가리키는 주석 · 독스트링은 잡고, 실재 디렉터리의 가짜 이름 · `..` 로 실재
+    디렉터리에 돌아오는 경로 · 코드 문자열 값 · 리포 밖 경로 · 이력 문서는 잡지 않는다."""
     found, scanned = violations(_PLANTED, _PLANTED_TRACKED)
-    assert scanned >= 4, scanned
+    assert scanned >= 5, scanned
     assert sorted((rel, ref) for rel, _, ref in found) == [
         ("src/a.py", ".claude/rules/testing.md"),
         ("src/b.py", "docs/design/plan.md"),
     ], found
+
+
+def test_an_empty_docstring_is_still_prose():
+    """빈 독스트링도 문장 조각으로 돌려준다 — 주석 · 독스트링을 «정확히» 돌려준다는 계약(Grok 반례 `""\"""\"`)."""
+    assert _python_prose('def f():\n    """"""\n') == [(2, "")]
