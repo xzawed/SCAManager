@@ -115,6 +115,9 @@ _DIFF_SCOPED = (
     "check_dual_import.py",
     "check_noqa_sideeffect.py",
     "check_dead_code.py",
+    # B8 래칫 — 이 PR 이 쓴 «원문 글자 포함» 단언만 막는다(회고 원장 L12 P2-52).
+    # Ratchet on raw-text substring asserts this PR wrote.
+    "check_raw_text_asserts.py",
 )
 
 # ci.yml 잡을 이 스크립트가 어떻게 다루나 — 잡이 늘면 `test_pre_push_gate.py` 가 둘 중 한쪽 등재를 요구한다
@@ -225,7 +228,7 @@ def run_integrity(py: str, env: dict | None = None) -> list[str]:
 
 
 def run_diff_scoped(py: str, base: str, env: dict | None = None) -> list[str]:
-    """PR-diff 한정 가드 — CI `lint-changed-tests` job 과 같은 4종.
+    """PR-diff 한정 가드 — CI `lint-changed-tests` job 과 같은 목록(정본 = `_DIFF_SCOPED`).
     Diff-scoped guards mirroring the CI lint-changed-tests job."""
     print(f"\n== PR-diff 한정 (base {base[:12]}) ==")
     failures = []

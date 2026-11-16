@@ -61,7 +61,7 @@
 - `e2e` — CSS 빌드 후 `--e2e-strict-skips`(skip 집합 ↔ `e2e/SKIP_ALLOWLIST`, 양방향 red),
   수집 건수 ↔ `e2e/EXPECTED_COUNT` 대조 · 스위트 시간 ↔ 스텝 벽(85% 초과 red, `scripts/e2e_budget.py`).
 - `lint-changed-tests` — 변경 test: `flake8 --isolated --select=F401,F841` +
-  dual-import · noqa 은닉 import · 미배선 dead code.
+  dual-import · noqa 은닉 import · 미배선 dead code · 이 PR 이 쓴 «원문 글자 포함» 단언.
 - `repo-integrity` — stdlib 가드 전량(정본 = `pre_push_gate.py` `_INTEGRITY`).
 - `docker-image` — 운영 이미지 빌드 + 런타임 사용자로 분석기 핀·`$PORT` 의 `/health`.
 
