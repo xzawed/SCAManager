@@ -11,7 +11,7 @@ semgrep 은 subprocess CLI 로만 부르는데 앱과 같은 venv(`requirements.
 1. `requirements.txt` 에 semgrep 요구가 없고, `requirements-semgrep.txt` 가 semgrep 하나를 정확 핀한다.
 2. 이미지는 semgrep 을 `/opt/venv` 가 아닌 자기 venv 에 설치하고 그 `semgrep` 만 PATH 디렉터리에 링크한다.
 3. CI 의 단위 시험 잡도 같다 — 그리고 그 venv 의 bin 을 PATH 에 올리지 않는다(올리면 그 venv 의 python 이 앱 시험을 돈다).
-4. 앱 감사(`-r requirements.txt`)에는 예외가 없고, semgrep 환경은 따로 감사한다.
+4. 앱 감사(`-r requirements.txt`)에는 예외가 없고, semgrep 환경은 따로 감사한다(`scripts/semgrep_audit.py`).
 """
 from __future__ import annotations
 
@@ -21,6 +21,8 @@ import shlex
 from pathlib import Path
 
 import yaml
+
+from tests.unit.scripts._wiring_shape import invokes
 
 _ROOT = Path(__file__).resolve().parents[3]
 _SEMGREP_REQS = "requirements-semgrep.txt"
@@ -144,7 +146,7 @@ def test_the_semgrep_exception_premises_still_hold():
     """🔴 semgrep 감사 예외의 «도달 불가» 전제 — 앱은 `semgrep scan` 만 부르고 `--trace` 도 `mcp` 도 주지 않는다.
 
     mcp 서버 · 클라이언트 권고는 `semgrep mcp` 에서만, OpenTelemetry 전파 권고는 `--trace` 에서만 닿는다
-    (ci.yml 의 semgrep 감사 스텝). 이 전제가 깨지면 그 예외를 지워야 하는데, 지금까지 그것을 재는 곳이 0이었다(P2-86).
+    (`scripts/semgrep_audit.py` 의 예외 목록). 이 전제가 깨지면 그 예외를 지워야 하는데, 지금까지 그것을 재는 곳이 0이었다(P2-86).
     """
     calls = _semgrep_argv_lists()
     assert calls, "src/ 에서 semgrep 호출을 하나도 못 찾았다 — 판정이 공허하다(호출 꼴이 바뀌었는지 볼 것)"
@@ -157,7 +159,9 @@ def test_the_semgrep_exception_premises_still_hold():
 def test_the_app_audit_has_no_exceptions_and_semgrep_is_audited_separately():
     calls = _pip_audit_calls(_ci()["jobs"]["dependency-audit"])
     app = [c for c in calls if "requirements.txt" in c]
-    semgrep = [c for c in calls if _SEMGREP_REQS in c]
-    assert app and semgrep, f"앱 감사와 semgrep 감사가 둘 다 있어야 한다: {calls}"
+    assert app, f"앱 감사가 없다: {calls}"
     assert not any("--ignore-vuln" in c for c in app), "앱 감사에 예외가 남았다 — 다 semgrep 전이 의존이었다"
     assert not any(_SEMGREP_REQS in c for c in app), "앱 감사가 semgrep 파일도 같이 본다"
+    assert any(invokes(run, "scripts/semgrep_audit.py") for run in _runs(_ci()["jobs"]["dependency-audit"])), (
+        "semgrep 환경 감사 스텝이 없다 — 예외 · 막는 조건은 scripts/semgrep_audit.py 가 갖는다"
+    )

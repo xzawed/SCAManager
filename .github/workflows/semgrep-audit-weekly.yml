@@ -1,0 +1,53 @@
+name: semgrep venv 감사 (주간)
+
+# requirements-semgrep.txt 를 바꾸지 않은 PR · main push 에서는 semgrep 감사가 경고만 남긴다(scripts/semgrep_audit.py).
+# 그 사이에 뜬 새 권고를 이 예약 실행이 이슈로 알린다(회고 원장 L09 P2-54 · 사용자 11-16 결정 — 알림 = 이슈).
+# 🔴 감사 결과로는 red 가 되지 않는다 — 실패하면 main 최신 커밋에 ❌ 가 붙고, Railway 가 CI 를 기다리는 배포와 겹치면
+#    그 배포를 SKIP 한다. 준비 단계(체크아웃 · 설치)가 실패했거나 알리지 못했을 때(이슈 목록 · 작성 실패)만 red 다.
+# Weekly audit of semgrep's own venv; findings are reported through an issue and the run itself stays green.
+on:
+  schedule:
+    # 월 03:23 UTC(12:23 KST) — 배포가 몰리는 저녁(KST)을 피한다 / avoids the evening deploy window
+    - cron: "23 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  audit:
+    name: semgrep venv 감사 (주간)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install pip-audit
+        run: "pip install --only-binary=:all: pip-audit==2.10.1"
+
+      # 감사 실패도 이 스텝은 초록 — 결과(rc)를 다음 스텝에 넘긴다 / the step passes; rc goes to the next step
+      - name: Audit semgrep's own venv requirements
+        id: audit
+        run: |
+          set +e
+          python scripts/semgrep_audit.py --always-block --report "$RUNNER_TEMP/semgrep-audit.txt"
+          echo "rc=$?" >> "$GITHUB_OUTPUT"
+
+      # 앞 단계 실패로 감사를 못 돌렸어도 알린다 — 그때 본문은 «감사 출력이 없다».
+      # 🔴 `!cancelled()` 필수 — 상태 함수가 없는 `if:` 에는 `success() &&` 가 암묵으로 붙어, 앞 단계가 실패하면
+      #    이 스텝이 건너뛰어진다(Grok claim-review 0f913383 BROKEN).
+      # 🔴 rc 만 보면 안 된다 — 건너뛴 스텝의 출력은 `null` 이고, 식은 타입이 다르면 숫자로 맞춰 `null != '0'` 이
+      #    0 ≠ 0 = 거짓이 된다(Grok 9bca15d3 BROKEN). 그래서 스텝 결과(outcome)로 먼저 가른다.
+      # Notify also when the audit never ran: a skipped step's output is null, and null != '0' coerces to 0 != 0.
+      - name: 이슈로 알림 — 예외 밖 권고 · 감사 실패
+        if: ${{ !cancelled() && (steps.audit.outcome != 'success' || steps.audit.outputs.rc != '0') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/semgrep_audit.py --notify "$RUNNER_TEMP/semgrep-audit.txt"
