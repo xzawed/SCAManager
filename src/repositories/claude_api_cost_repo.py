@@ -54,6 +54,27 @@ def record(  # pylint: disable=too-many-arguments,too-many-locals
     db.commit()
 
 
+def window_totals(db: Session, *, since: datetime, until: datetime) -> dict:
+    """[since, until](naive UTC · 두 끝 포함)에 기록된 모든 호출의 호출 수 · 비용 · 토큰 합 — 테넌트를 거르지 않는다.
+
+    관리자 «운영» 화면 전용이라 워커(BYPASSRLS) 세션으로 부른다. 비용은 기록 경로가 호출마다 매긴 값을 더할 뿐이다.
+    Totals of every call recorded in [since, until] (naive UTC, both ends inclusive) — no tenant
+    filter; the admin operations page calls it with the BYPASSRLS worker session.
+    """
+    count, cost, input_tokens, output_tokens = db.execute(
+        select(
+            func.count(),  # pylint: disable=not-callable
+            func.coalesce(func.sum(ClaudeApiCall.cost_usd), 0.0),
+            func.coalesce(func.sum(ClaudeApiCall.input_tokens), 0),
+            func.coalesce(func.sum(ClaudeApiCall.output_tokens), 0),
+        )
+        .where(ClaudeApiCall.created_at >= since)
+        .where(ClaudeApiCall.created_at <= until)
+    ).one()
+    return {"call_count": int(count), "cost_usd": float(cost),
+            "input_tokens": int(input_tokens), "output_tokens": int(output_tokens)}
+
+
 def _owned_repo_ids_subquery(user_id: int):
     """사용자 소유 repo id 서브쿼리 — 레거시 repo(user_id IS NULL) 포함, dashboard owner 필터와 동일 컨벤션
     (`dashboard_service._apply_analysis_user_filter`/`_apply_merge_attempt_user_filter`, db.md: 레거시

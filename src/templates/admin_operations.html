@@ -254,19 +254,19 @@
       <small class="admin-ops-card-hint">{{ 'admin.operations.cache_hint' | i18n_args(locale | default('ko')) }}</small>
     </div>
 
-    {# Card 2: API 비용 추정 (사이클 72 #242 비용 모델) #}
-    {# Card 2: API cost estimate (cycle 72 #242 cost model) #}
-    <div class="admin-ops-card">
+    {# Card 2: API 비용 — 최근 N일 claude_api_calls 실측 합 (`operations_service._api_cost_kpi`) #}
+    {# Card 2: API cost — recorded totals of claude_api_calls over the last N days #}
+    <div class="admin-ops-card" data-kpi="api-cost">
       <h2 class="admin-ops-card-title">{{ 'admin.operations.api_cost_title' | i18n_args(locale | default('ko')) }}</h2>
       <div class="admin-ops-metric">
-        <span class="admin-ops-metric-label">{{ 'admin.operations.api_cost_label' | i18n_args(locale | default('ko')) }}</span>
-        <span class="admin-ops-metric-value">${{ kpi.api_cost.estimated_usd }}</span>
+        <span class="admin-ops-metric-label">{{ 'admin.operations.api_cost_label' | i18n_args(locale | default('ko'), days=kpi.api_cost.days) }}</span>
+        <span class="admin-ops-metric-value">${{ kpi.api_cost.recorded_usd }}</span>
       </div>
       <div class="admin-ops-metric">
         <span class="admin-ops-metric-label">{{ 'admin.operations.api_cost_input_tokens' | i18n_args(locale | default('ko')) }}</span>
         <span class="admin-ops-metric-value">{{ kpi.api_cost.input_tokens }}</span>
       </div>
-      <small class="admin-ops-card-hint">{{ kpi.api_cost.model }}</small>
+      <small class="admin-ops-card-hint">{{ 'admin.operations.api_cost_hint' | i18n_args(locale | default('ko'), count=kpi.api_cost.call_count) }}</small>
     </div>
 
     {# Card 3: cache token 분포 (read vs creation) #}

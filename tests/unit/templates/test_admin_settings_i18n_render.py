@@ -15,6 +15,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+import pytest
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from src.i18n.filters import register_i18n_filters
@@ -202,7 +203,8 @@ def _ops_ctx(**overrides) -> dict:
         "kpi": {
             "cache": {"cache_hit_rate_pct": 85, "total_calls": 100,
                       "cache_read_tokens": 5000, "cache_creation_tokens": 1000},
-            "api_cost": {"estimated_usd": 1.23, "input_tokens": 50000, "model": "claude-sonnet-4-6"},
+            "api_cost": {"recorded_usd": 1.2345, "input_tokens": 50000, "output_tokens": 4000,
+                         "call_count": 42, "days": 7},
             "merge": {"days": 7, "success_rate_pct": 75, "success_count": 6, "total_attempts": 8},
             "pipeline_latency": {"available": False, "p95_ms": 0, "reason": "Phase 2 보류"},
             # Phase 5 PR-17 (사이클 84) — i18n KPI 2 카드
@@ -230,7 +232,6 @@ def test_admin_operations_renders_korean():
     assert "📈 Operations 운영 모니터링" in out
     assert "최근 7일" in out
     assert "⚡ Cache Hit Rate" in out
-    assert "💰 API 비용 추정" in out
     assert "📊 Cache 토큰 분포" in out
     assert "🔀 Merge Success" in out
     assert "🕒 Pipeline Latency" in out
@@ -242,7 +243,6 @@ def test_admin_operations_renders_english():
     out = _render("admin_operations.html", locale="en", **_ops_ctx())
     assert "📈 Operations Monitoring" in out
     assert "Last 7 days" in out
-    assert "💰 API cost estimate" in out
     assert "Last 7 days success rate" in out
     assert "📭 Phase 2 area" in out
 
@@ -251,8 +251,49 @@ def test_admin_operations_renders_japanese():
     out = _render("admin_operations.html", locale="ja", **_ops_ctx())
     assert "📈 Operations 運用モニタリング" in out
     assert "最近 7 日" in out
-    assert "💰 API コスト推定" in out
     assert "最近 7 日成功率" in out
+
+
+def _api_cost_card(out: str) -> str:
+    """API 비용 카드 한 장의 마크업 — 다른 카드의 글자가 판정에 섞이지 않게 카드 경계로 자른다.
+
+    Jinja 주석은 렌더 결과에 없다 — 카드의 `data-kpi` 표지에서 다음 카드 시작까지.
+    """
+    start = out.index('data-kpi="api-cost"')
+    end = out.index('<div class="admin-ops-card"', start)
+    return out[start:end]
+
+
+# 화면에 보여야 할 것 · 사라져야 할 것 — 언어별 (회고 원장 이관 K11 · 사용자 11-17 결정 «실측 합으로»)
+_API_COST_CARD = {
+    "ko": (("💰 API 비용", "최근 9일 기록 비용 (USD)", "$1.2345", "호출 42건"), ("추정", "assumed")),
+    "en": (("💰 API cost", "Recorded cost, last 9 days (USD)", "$1.2345", "42 recorded calls"),
+           ("estimate", "assumed")),
+    "ja": (("💰 API コスト", "最近 9 日の記録コスト (USD)", "$1.2345", "42 件"), ("推定", "assumed")),
+}
+
+
+@pytest.mark.parametrize("locale", sorted(_API_COST_CARD))
+def test_the_api_cost_card_shows_the_recorded_sum_and_its_period(locale):
+    """🔴 카드가 기간(`api_cost.days` — 화면 기간과 다른 값을 심어 출처를 가른다) · 기록 합 · 호출 수를 보이고
+    «추정» · 가정 모델 문구는 없다."""
+    ctx = _ops_ctx()
+    ctx["kpi"]["api_cost"]["days"] = 9
+    card = _api_cost_card(_render("admin_operations.html", locale=locale, **ctx))
+    shown, gone = _API_COST_CARD[locale]
+    missing = [s for s in shown if s not in card]
+    assert not missing, f"{locale}: 카드에 없다 {missing}"
+    stale = [s for s in gone if s.lower() in card.lower()]
+    assert not stale, f"{locale}: 옛 «추정» 문구가 남았다 {stale}"
+
+
+def test_the_card_check_can_fail():
+    """판정식 뒤집기 — 옛 카드(추정 제목 · 가정 모델 힌트)를 같은 판정에 넣으면 걸린다."""
+    old = ('<div class="admin-ops-card" data-kpi="api-cost"><h2>💰 API 비용 추정</h2>'
+           '<small>claude-sonnet-5 (assumed default)</small></div><div class="admin-ops-card"></div>')
+    card = _api_cost_card(old)
+    _, gone = _API_COST_CARD["ko"]
+    assert [s for s in gone if s.lower() in card.lower()] == ["추정", "assumed"]
 
 
 # ── settings.html (focused on visible text) ─────────────────────────────────
