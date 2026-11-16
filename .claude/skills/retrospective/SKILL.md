@@ -16,6 +16,12 @@ description: 5+1 다중 에이전트 회고 실행 (정책 8) — loop-until-dry
 2. `Workflow({ scriptPath: '<repo-abs>/.claude/workflows/retrospective.mjs', args: { scope, context, domains? } })` — 절대경로 필수. `area=<관점>` → `domains` ∈ process/code/docs/decision/tooling.
 3. 반환 `{rounds, findings_total, verdict_coverage, confirmed[], unverified_findings[], scope_drift_during_run, roi}` → `docs/reports/YYYY-MM-DD-retrospective.md` (P0/P1/P2 · ROI · `false_positives` 표). 첫 표에 분석 종료 `head`(main SHA)를 적는다. `verdict_coverage < 1.0` → 재실행/수동 확인.
 4. 확정 목록은 `[WBS]` Issue 하나로 등재한다. fix 는 사용자 결정(자동 수정 금지).
+   - 처리 순서는 사용자가 정한다 — «문서 · 절차는 맨 뒤» 같은 부류 정렬을 기본으로 두지 않는다(그 정렬이 절차 묶음을
+     한 번도 닫지 못했다). 다음 할 일은 Issue 머리의 «다음» 줄이 갖는다 — 메모리에만 두지 않는다.
+   - 결정 질문은 권장안을 먼저 원장에 적고 묻는다. «권장안대로» 같은 포괄 답은 그때 원장에 적힌 권장안에만 적용하고,
+     답은 원문 그대로 항목의 결정 줄에 남긴다(민감한 결정은 «내용은 작성자 메모» 로만).
+   - 항목을 닫기 전 · 회고 착수 전, 머지된 PR 본문의 «원장 … P#-##» 참조와 체크 상태를 대조한다 — 해소를 적은 PR 이
+     있는데 미체크면 체크하고, 체크인데 해소 PR 이 없으면 근거를 적는다.
 
 ## 규율
 - 5+1(내부 self-verify)과 opus 적대 리뷰는 2-layer 독립 — 상호 생략 금지.
