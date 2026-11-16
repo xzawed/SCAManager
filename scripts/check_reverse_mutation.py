@@ -51,6 +51,7 @@ touched. If they still pass, those tests do not observe what the PR changed.
 from __future__ import annotations
 
 import argparse
+import ast
 import os
 import shlex
 import subprocess  # nosec B404
@@ -119,8 +120,18 @@ def classify(files: list[str]) -> tuple[list[str], list[str]]:
 
 
 def e2e_tests_of(files: list[str]) -> list[str]:
-    """바뀐 e2e 시험 파일 — `e2e/` 의 파이썬 가운데 생산 표면(`e2e/conftest.py`)이 아닌 것."""
-    return [f for f in files if f.startswith("e2e/") and f.endswith(".py") and not f.startswith(PROD_PREFIXES)]
+    """바뀐 e2e 시험 **모듈** — `e2e/` 의 `test_*.py`. 도우미 · `e2e/conftest.py`(생산 표면)는 시험이 아니다.
+
+    🔴 단위 잡이 넘기는 조건과 E2E 잡이 재는 조건이 이 한 함수다 — 둘이 갈리면 어느 잡도 안 재는 PR 이 생긴다.
+    One predicate for both the unit job's hand-off and the E2E job's scope, so no PR falls between them.
+    """
+    return [f for f in files
+            if f.startswith("e2e/") and f.endswith(".py") and Path(f).name.startswith("test_")]
+
+
+def e2e_present(files: list[str], prod: list[str], head_sha: str, cwd: Path) -> list[str]:
+    """E2E 잡이 잴 e2e 시험 — 생산 변경이 있고 HEAD 에 남아 있는 바뀐 e2e 시험 모듈. 지운 시험은 대상이 아니다."""
+    return existing_at(head_sha, e2e_tests_of(files), cwd) if prod else []
 
 
 def _test_modules(paths: list[str]) -> list[str]:
@@ -171,7 +182,8 @@ def _append_step_summary(markdown: str) -> None:
         pass  # 기록 실패가 판정을 바꾸면 안 된다 / logging must never change the verdict
 
 
-def _pytest(paths: list[str], cwd: Path, extra: list[str] | None = None) -> subprocess.CompletedProcess:
+def _pytest(paths: list[str], cwd: Path, extra: list[str] | None = None,
+            cache_dir: str | None = None) -> subprocess.CompletedProcess:
     """되돌림이 **실제로 반영되도록** 바이트코드 캐시를 끄고 실행한다.
 
     🔴 이것이 없으면 게이트가 **fail-open** 한다 (2026-08-08 CI 실측, Linux 에서만 발현):
@@ -186,11 +198,16 @@ def _pytest(paths: list[str], cwd: Path, extra: list[str] | None = None) -> subp
 
     Disable bytecode caching so the revert is actually observed; otherwise a same-size revert
     within the same second reuses the stale .pyc and the gate reports a false "vacuous".
+
+    `cache_dir` 를 주면 pytest 의 실패 기록만 그 임시 폴더에 남긴다(리포 밖) — `--lf` 로 «되돌려서 빨간 그 시험» 을
+    되돌리지 않고 다시 돌리려고. 바이트코드 캐시는 그때도 끈다.
+    With `cache_dir`, pytest's last-failed record goes to that temp folder so `--lf` can re-run the same test.
     """
     env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+    cache = ["-o", f"cache_dir={cache_dir}"] if cache_dir else ["-p", "no:cacheprovider"]
     proc = subprocess.run(  # nosec B603
         [sys.executable, "-B", "-m", "pytest", *paths, "-q", "--no-header",
-         "-p", "no:cacheprovider", *(extra or [])],
+         *cache, *(extra or [])],
         cwd=str(cwd), capture_output=True, text=True,
         encoding="utf-8", errors="replace", timeout=1800, check=False, env=env,
     )
@@ -200,6 +217,62 @@ def _pytest(paths: list[str], cwd: Path, extra: list[str] | None = None) -> subp
 # e2e 는 루트와 다른 프로세스 설정으로 돈다(`e2e/pytest.ini` · asyncio 끔 · 시험마다 벽) — CI 스위트 스텝과 같은 꼴.
 # e2e runs with its own settings, like the CI suite step.
 _E2E_FLAGS = ["-p", "no:asyncio", "--timeout=120"]
+
+# `git diff -U0` 의 hunk 머리 — 새 쪽 시작 줄 · 줄 수(생략 = 1, 0 = 그 자리에서 지움).
+# A `git diff -U0` hunk header: the new side's start line and count (omitted = 1, 0 = a deletion there).
+_HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@", re.MULTILINE)
+
+
+def _changed_lines(base_sha: str, head_sha: str, path: str, cwd: Path) -> set[int] | None:
+    """이 PR 이 `path` 에서 고친 HEAD 쪽 줄 번호 — 못 읽으면 None. 지운 자리는 그 앞뒤 줄로 친다."""
+    proc = _run(["git", "diff", "-U0", "--no-color", "--no-ext-diff", f"{base_sha}...{head_sha}", "--", path],
+                cwd, timeout=120)
+    if proc.returncode != 0:
+        return None
+    lines: set[int] = set()
+    for hunk in _HUNK.finditer(proc.stdout or ""):
+        start, count = int(hunk.group(1)), int(hunk.group(2) or "1")
+        lines.update(range(start, start + count) if count else (start, start + 1))
+    return lines
+
+
+def _test_spans(source: str) -> list[tuple[str, int, int]]:
+    """(pytest 이름, 첫 줄, 끝 줄) — 최상위 `test*` 함수와 `Test*` 클래스의 `test*` 메서드. 데코레이터 줄 포함."""
+    def span(node: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[int, int]:
+        first = min([node.lineno, *(d.lineno for d in node.decorator_list)])
+        return first, node.end_lineno or node.lineno
+
+    def is_test(node: ast.stmt) -> bool:
+        return isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test")
+
+    spans: list[tuple[str, int, int]] = []
+    for node in ast.parse(source).body:
+        if is_test(node):
+            spans.append((node.name, *span(node)))
+        elif isinstance(node, ast.ClassDef) and node.name.startswith("Test"):
+            spans.extend((f"{node.name}::{item.name}", *span(item)) for item in node.body if is_test(item))
+    return spans
+
+
+def e2e_targets(base_sha: str, head_sha: str, modules: list[str], cwd: Path) -> list[str]:
+    """돌릴 e2e 시험 — 모듈마다 **이 PR 이 고친 시험 함수**만. 함수 밖만 바뀌었거나 못 읽으면 그 모듈 전체.
+
+    🔴 e2e 모듈 하나가 시험 수백 건이다(CI 에서 십 분대). 모듈째 두 번 돌리면 스텝 벽에 닿는다 — 이 PR 의 시험은
+    이 PR 이 고친 함수이므로 그것만 돌린다. 이름으로 고르므로 병합 커밋에서 줄이 밀려도 같은 시험이다.
+    Only the test functions this PR touched (a module can hold hundreds of e2e tests); the whole module when
+    only module-level code changed or the source cannot be read.
+    """
+    targets: list[str] = []
+    for module in modules:
+        lines = _changed_lines(base_sha, head_sha, module, cwd)
+        source = _run(["git", "show", f"{head_sha}:{module}"], cwd, timeout=60)
+        try:
+            spans = _test_spans(source.stdout or "") if source.returncode == 0 else None
+        except SyntaxError:
+            spans = None
+        hit = [name for name, first, last in spans or [] if any(first <= n <= last for n in lines or ())]
+        targets.extend([f"{module}::{name}" for name in hit] if hit else [module])
+    return targets
 
 
 # 🔴 **요약 줄 하나에서만 읽는다.** blob 전체를 검색하면 SUT 가 인쇄한 숫자가 요약을
@@ -278,8 +351,8 @@ def evaluate(base_sha: str, head_sha: str, repo: Path | None = None) -> tuple[in
         return 1, ["🔴 변경 파일을 산출하지 못했다 — **판정 불가**(fail-closed)."]
 
     prod, tests = classify(files)
-    e2e = e2e_tests_of(files)
-    if prod and e2e:
+    e2e = e2e_present(files, prod, head_sha, root)
+    if e2e:
         # 🔴 e2e 로 관측하는 PR 을 단위 시험만으로 재면 «대상 아님» 이거나 거짓 빨강이다 — E2E 잡이 함께 잰다.
         # A PR whose e2e tests changed is judged in the E2E job, unit and e2e tests together.
         return 0, [f"⏭️  e2e 시험이 바뀐 PR — E2E 잡(`--with-e2e`)이 단위 · e2e 시험을 함께 되돌려 잰다 "
@@ -364,9 +437,14 @@ def evaluate(base_sha: str, head_sha: str, repo: Path | None = None) -> tuple[in
             _run(["git", "worktree", "remove", "--force", str(wt)], root, timeout=600)
 
 
-def _clean(root: Path) -> bool | None:
-    """추적 파일에 미커밋 수정이 없는가 — 못 재면 None. 추적 밖 파일(빌드 산출물 등)은 보지 않는다."""
-    proc = _run(["git", "status", "--porcelain", "--untracked-files=no"], root, timeout=120)
+def _clean(root: Path, paths: list[str]) -> bool | None:
+    """`paths`(되돌릴 생산 파일)에 HEAD 와 다른 점이 없는가 — 못 재면 None.
+
+    🔴 이 경로만 본다. 앞 스텝(스위트 · 빌드)이 다른 추적 파일을 건드렸어도 되돌림 · 복원은 이 경로만 쓰므로
+    판정을 막지 않는다. 이 경로에 미커밋 수정이 있으면 덮어쓰거나 잃으므로 판정 불가다.
+    Only the reverted paths: other tracked files a prior step touched are neither written nor read here.
+    """
+    proc = _run(["git", "status", "--porcelain", "--untracked-files=no", "--", *paths], root, timeout=120)
     if proc.returncode != 0:
         return None
     return not (proc.stdout or "").strip()
@@ -376,44 +454,55 @@ def _report_run(label: str, proc: subprocess.CompletedProcess | None) -> str:
     if proc is None:
         return f"   {label}: 돌릴 시험 없음"
     summary = _summary_line(proc) or "?"
-    verdict = f"신호 등급 **{_grade(proc)}**" if proc.returncode != 0 else "green"
-    return f"   {label}: {summary} · {verdict}"
+    if proc.returncode == 0:
+        return f"   {label}: {summary} · green"
+    grade = _grade(proc)
+    return f"   {label}: {summary} · 신호 등급 **{grade}**{_GRADE_CAVEAT.get(grade, '')}"
 
 
 def evaluate_with_e2e(base_sha: str, head_sha: str, repo: Path | None = None,
                       rebuild: str | None = None) -> tuple[int, list[str]]:
     """E2E 잡의 판정 — 생산 변경을 **제자리에서** 되돌리고 이 PR 이 바꾼 단위 · e2e 시험을 함께 다시 돌린다.
 
-    🔴 제자리인 이유: e2e 는 빌드한 CSS · node_modules · 브라우저가 있는 그 잡의 체크아웃에서만 돈다. 스위트 스텝이
-    이미 초록이었으므로 e2e 기준선은 섰다(단위 시험 기준선만 여기서 다시 잰다). 끝나면 되돌린 파일을 복원한다.
-    🔴 깨끗한 트리에서만 — 미커밋 수정이 있으면 덮어쓰거나 잃으므로 판정 불가로 실패한다.
-    Revert in place (only that job's checkout can run e2e), then restore; refuse a dirty tree.
+    🔴 제자리인 이유: e2e 는 빌드한 CSS · node_modules · 브라우저가 있는 그 잡의 체크아웃에서만 돈다. 끝나면 복원한다.
+    🔴 e2e 기준선은 «그 시험» 으로 잰다 — 되돌려서 빨간 e2e 시험을 복원한 트리에서 다시 돌려 초록이어야 관측이다
+    (스위트 초록만 믿으면 순서 의존 · 불안정이 거짓 «관측» 을 낸다). 단위 기준선은 되돌리기 전에 잰다.
+    🔴 되돌릴 생산 파일에 미커밋 수정이 있으면 덮어쓰거나 잃으므로 판정 불가로 실패한다.
+    Revert in place, then restore; an e2e red counts only if that test passes again on the restored tree.
     """
     root = repo or _ROOT
     files = changed_files(base_sha, head_sha, root)
     if files is None:
         return 1, ["🔴 변경 파일을 산출하지 못했다 — **판정 불가**(fail-closed)."]
     prod, tests = classify(files)
-    e2e = e2e_tests_of(files)
-    if not e2e:
-        return 0, ["⏭️  e2e 시험 변경 0건 — 단위 잡이 잰다."]
-    if not prod:
-        return 0, [f"⏭️  생산 표면 변경 0건 — 되돌릴 것이 없다 (e2e {len(e2e)}건)."]
+    # 단위 잡이 넘긴 조건과 같은 함수 — 여기서 쉬는 PR 은 단위 잡이 쟀다(어느 쪽도 안 재는 PR 이 없다).
+    # The same predicate as the unit job's hand-off: a PR skipped here was judged there.
+    e2e_run = e2e_present(files, prod, head_sha, root)
+    if not e2e_run:
+        return 0, ["⏭️  단위 잡의 몫 — 생산 변경이 없거나, HEAD 에 남은 바뀐 e2e 시험 모듈이 없다."]
+    # 단위 쪽은 시험 모듈만 — 도우미만 넘기면 pytest 가 «수집 0건»(exit 5)으로 기준선을 빨갛게 만든다.
+    # Unit side runs test modules only; a helper alone would make the baseline exit 5.
     unit = _test_modules(existing_at(head_sha, tests, root))
-    e2e_run = _test_modules(existing_at(head_sha, e2e, root))
-    if not unit and not e2e_run:
-        return 0, ["⏭️  돌릴 시험 모듈 0건(삭제 · 도우미만 바뀜) — 이 축은 안 쟀음."]
-    clean = _clean(root)
+    clean = _clean(root, prod)
     if clean is not True:
-        return 1, ["🔴 작업 트리가 깨끗하지 않다(또는 못 쟀다) — 제자리 되돌림으로 판정할 수 없다(판정 불가)."]
+        return 1, ["🔴 되돌릴 생산 파일에 미커밋 수정이 있다(또는 못 쟀다) — 제자리 되돌림이 그것을 덮는다(판정 불가)."]
     if unit:
         before = _pytest(unit, root)
         if before.returncode != 0:
             return 1, ["🔴 되돌리기 **전에 이미 red**(단위) — 무엇 때문에 빨간지 알 수 없다(판정 불가).",
                        f"   {(before.stdout or '')[-400:]}"]
 
+    targets = e2e_targets(base_sha, head_sha, e2e_run, root)
+    with tempfile.TemporaryDirectory(prefix="reverse-mutation-lf-") as cache:
+        return _revert_and_run(root, base_sha, prod, unit, targets, rebuild, cache)
+
+
+def _revert_and_run(root: Path, base_sha: str, prod: list[str], unit: list[str], targets: list[str],
+                    rebuild: str | None, cache: str) -> tuple[int, list[str]]:
+    """제자리에서 되돌리고 → 단위(관측하면 끝) → e2e(첫 실패에서 멈춤) → 복원 → 빨간 e2e 시험을 복원한 트리에서 다시."""
     existing = [f for f in prod if _blob_exists(base_sha, f, root)]
     created = [f for f in prod if f not in existing]
+    unit_after = e2e_after = None
     try:
         if existing:
             rv = _run(["git", "checkout", base_sha, "--", *existing], root, timeout=600)
@@ -421,7 +510,7 @@ def evaluate_with_e2e(base_sha: str, head_sha: str, repo: Path | None = None,
                 return 1, [f"🔴 되돌리기 실패 — 판정 불가: {rv.stderr[-200:]}"]
         for f in created:
             _run(["git", "rm", "-f", "--quiet", f], root, timeout=120)
-        if _clean(root) is not False:
+        if _clean(root, prod) is not False:
             return 1, ["🔴 되돌림이 **no-op** — 뮤테이션이 무효라 아무것도 증명하지 못한다."]
         if rebuild:
             try:
@@ -431,7 +520,10 @@ def evaluate_with_e2e(base_sha: str, head_sha: str, repo: Path | None = None,
             if built.returncode != 0:
                 return 1, [f"🔴 되돌린 뒤 빌드 실패 — 판정 불가: {(built.stdout or '')[-200:]}{(built.stderr or '')[-200:]}"]
         unit_after = _pytest(unit, root) if unit else None
-        e2e_after = _pytest(e2e_run, root, _E2E_FLAGS) if e2e_run else None
+        if unit_after is None or unit_after.returncode == 0:
+            # 단위가 관측하지 않았을 때만 e2e 를 돈다 — 첫 실패에서 멈추고, 그 시험을 아래에서 되돌리지 않고 다시 돌린다.
+            # e2e only when the unit side did not observe; stop at the first failure and re-check it below.
+            e2e_after = _pytest(targets, root, [*_E2E_FLAGS, "--maxfail=1"], cache_dir=cache)
     finally:
         # 🔴 나눠 복원한다 — PR 이 지운 생산 파일은 HEAD 에 없어, 한 번에 `checkout HEAD -- …` 하면 경로 하나 때문에
         #    통째로 실패하고 트리가 되돌린 채 남는다. HEAD 에 있는 것은 체크아웃, 없는 것은 다시 지운다.
@@ -448,11 +540,20 @@ def evaluate_with_e2e(base_sha: str, head_sha: str, repo: Path | None = None,
             except (OSError, subprocess.SubprocessError):
                 pass  # 복원 뒤 재빌드는 최선 노력 — 판정은 이미 났다 / best effort after the verdict
 
-    observed = [proc for proc in (unit_after, e2e_after) if proc is not None and proc.returncode != 0]
-    report = [_report_run("단위", unit_after), _report_run("e2e", e2e_after),
-              f"   되돌린 생산 파일 {len(prod)}건 · 단위 {len(unit)}건 · e2e {len(e2e_run)}건"]
-    if observed:
-        return 0, ["✅ 역-뮤테이션(e2e 포함) red — 이 PR 의 시험이 변경을 관측한다", *report]
+    counts = f"   되돌린 생산 파일 {len(prod)}건 · 단위 {len(unit)}건 · e2e 대상 {len(targets)}개"
+    if unit_after is not None and unit_after.returncode != 0:
+        return 0, ["✅ 역-뮤테이션(e2e 잡) red — 이 PR 의 단위 시험이 변경을 관측한다(e2e 는 돌리지 않았다)",
+                   _report_run("단위", unit_after), counts]
+    report = [_report_run("단위", unit_after), _report_run("e2e", e2e_after), counts]
+    if e2e_after is not None and e2e_after.returncode != 0:
+        # 🔴 되돌려서 빨간 그 시험이 **되돌리지 않은 트리**에서 초록이어야 관측이다 — 아니면 순서 의존 · 불안정 · 환경이다.
+        # The test that went red after the revert must pass on the restored tree; otherwise the red proves nothing.
+        confirm = _pytest(targets, root, [*_E2E_FLAGS, "--lf", "--last-failed-no-failures", "none"], cache_dir=cache)
+        report.append(_report_run("e2e 복원 뒤 그 시험", confirm))
+        if confirm.returncode == 0:
+            return 0, ["✅ 역-뮤테이션(e2e 잡) red — 이 PR 의 e2e 시험이 변경을 관측한다(복원 뒤 그 시험 초록)", *report]
+        return 1, ["🔴 되돌려서 빨간 e2e 시험이 **복원한 트리에서도** 초록이 아니다 — 되돌림이 낸 red 가 아니다(판정 불가).",
+                   *report]
     return 1, ["🔴 역-뮤테이션(e2e 포함)이 **green** — 이 PR 의 단위 · e2e 시험은 이 PR 의 변경을 관측하지 않는다.",
                *report, "",
                "   → 그 변경을 **실제로 깨뜨리는** 단언을 추가하세요.",

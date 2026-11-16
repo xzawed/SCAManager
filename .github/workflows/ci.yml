@@ -858,7 +858,7 @@ jobs:
     #    잡 벽은 준비 + 스위트 벽을 덮는 마지막 방어선이다. 기다리다 멈춘 시험 하나는 `--timeout=120` 이 끊는다.
     # Two layers: each download step has its own wall (a stalled mirror fails that step instead of cancelling
     # the job), and the suite step's wall is the time budget — e2e_budget.py goes red above 85% of it.
-    # 잡 벽 75 = 준비 + 스위트 벽 + 마지막 역-뮤테이션 스텝 벽(15)을 덮는다 / covers the reverse-mutation step too.
+    # 잡 벽 75 = 준비 + 스위트 벽 + 마지막 역-뮤테이션 스텝 벽(20)을 덮는다 / covers the reverse-mutation step too.
     timeout-minutes: 75
     steps:
       # 전체 이력 — 마지막 역-뮤테이션 스텝이 PR base 의 파일로 되돌린다 / the last step reverts to the PR base
@@ -973,12 +973,14 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       # 🔴 역-뮤테이션 — e2e 시험까지(회고 원장 L12 P2-23 · P2-53). 단위 잡의 게이트는 e2e 시험이 바뀐 PR 을 이리로 넘긴다.
-      #    스위트가 초록이었으므로 e2e 기준선은 섰다. 생산 변경을 **제자리에서** 되돌리고 CSS 를 다시 빌드한 뒤, 이 PR 이
-      #    바꾼 단위 · e2e 시험을 다시 돌린다 — 하나라도 red 면 관측됨이다. 제자리라 **마지막 스텝**이어야 한다.
-      # Reverse-mutation including e2e: revert in place, rebuild CSS, re-run this PR's unit and e2e tests. Must be last.
+      #    생산 변경을 **제자리에서** 되돌리고 CSS 를 다시 빌드한 뒤 이 PR 의 단위 시험 → (관측 못 했으면) 이 PR 이 고친
+      #    e2e 시험 함수를 돌린다. 빨간 e2e 시험은 복원한 트리에서 다시 초록이어야 관측이다. 제자리라 **마지막 스텝**이다.
+      #    벽 20 = 함수 밖만 바뀌어 모듈째 도는 경우(가장 큰 모듈은 시험 수백 건)까지.
+      # Reverse-mutation including e2e: revert in place, rebuild CSS, run this PR's unit tests, then its changed e2e
+      # test functions; an e2e red counts only if that test passes again after the restore. Must be the last step.
       - name: 역-뮤테이션 — e2e 시험까지 (PR)
         if: github.event_name == 'pull_request'
-        timeout-minutes: 15
+        timeout-minutes: 20
         env:
           PR_BODY: ${{ steps.prbody.outputs.body }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
