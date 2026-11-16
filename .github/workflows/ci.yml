@@ -368,8 +368,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # 전체 이력 — semgrep 감사가 PR 의 base..head 에서 `requirements-semgrep.txt` 를 바꿨는지 본다.
+      # base 커밋이 없으면 «못 잼» 이라 늘 막는다(결정과 반대).
+      # Full history: the semgrep audit diffs base..head; a missing base reads as unknown and blocks.
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v7
@@ -388,65 +393,16 @@ jobs:
         run: python -m pip_audit -r requirements.txt -r requirements-dev.txt --desc on
 
       - name: Audit semgrep's own venv requirements
-        # semgrep 은 앱과 다른 venv 다(requirements-semgrep.txt · Dockerfile `/opt/semgrep`). 그 전이 의존은 앱 설치본에
-        # 없으므로 아래 예외의 «도달 불가» 근거는 semgrep CLI 만 본다.
-        # 🔴 권고가 막으면 예외를 넣기 전에 semgrep 을 올려 풀리는지 먼저 본다. 예외는 아래에 적은 것뿐이다.
-        #
-        # 🔴 --ignore-vuln CVE-2026-59951 (mcp 1.29.0, 2026-10-16) — semgrep 이 강제하는 전이 핀.
-        #    semgrep(`requirements-semgrep.txt` 의 핀)이 `mcp==1.29.0`(정확 핀)을 요구해
-        #    **버전 업으로 해결 불가**. 권고 전제 = mcp 의 Streamable HTTP «서버» 를 상태 유지 모드로 띄움.
-        #    우리 사용 방식에선 **도달 불가**:
-        #      · semgrep 은 `["semgrep","scan","--config=<고정 룰 묶음>","--json",…]` 비대화형 CLI subprocess 로만
-        #        호출된다(src/analyzer/io/tools/semgrep.py) — `semgrep mcp` 서버를 띄우는 곳이 0건.
-        #      · src/·scripts/ 가 `mcp` 패키지를 import 하는 곳 0건, FastMCP·StreamableHTTP 기동 0건.
-        #        (src/mcp/ 는 스키마 선언만 있는 별개 모듈로 이 패키지와 무관하다.)
-        #    재검토 조건 — 충족되면 이 ID 를 즉시 지운다:
-        #      (1) semgrep 이 mcp 핀을 >=1.30.0 으로 올리면(그 판으로 semgrep 을 올리고 예외 삭제)
-        #      (2) 우리가 MCP 서버를 Streamable HTTP 로 실제 띄우게 되면(도달 불가 근거가 무효)
-        #    습관적으로 ID 를 더하지 말 것 — 다른 CVE 는 계속 게이트로 막힌다.
-        #
-        # 🔴 --ignore-vuln CVE-2026-114603 · CVE-2026-126360 (opentelemetry-api 1.37.0, 10-22 · 11-13) —
-        #    semgrep 이 강제하는 전이 핀. semgrep 이 `opentelemetry-api~=1.37.0` 을 요구해
-        #    **버전 업으로 해결 불가**(수정판 114603 = 1.45.1 · 126360 = 1.45.2). 둘 다 바깥 값이 전파
-        #    extract 에 들어와야 한다 — 114603 = 들어오는 `tracestate` 헤더(`TraceState.from_header`),
-        #    126360 = 조작한 `traceparent` 의 정규식 역추적(`TraceContextTextMapPropagator.extract`).
-        #    우리 사용 방식에선 **도달 불가**:
-        #      · 앱 코드는 OpenTelemetry 를 쓰지 않는다 — src/·scripts/ 에 opentelemetry·tracestate·
-        #        traceparent·OTEL_ 0건. Starlette 의 `OpenTelemetryMiddleware` 는 직접 붙여야 켜지고 붙이는 곳 0건.
-        #      · 운영 의존성 설치본에서 extract 를 부르는 곳은 그 미들웨어 · semgrep 자체 텔레메트리 · OTel 계측의
-        #        서버 span 도우미(`_start_internal_or_server_span`)뿐이다. 도우미를 부르는 설치 패키지는 0개다.
-        #        semgrep 은 `--trace` 일 때만 extract 하고(우리는 `semgrep scan` 에 주지 않는다) 그 `traceparent` 도
-        #        부모 프로세스 환경변수로 스스로 만든다. anthropic SDK 의 추적은 extract 하지 않는다.
-        #    재검토 조건 — 충족되면 해당 ID 를 즉시 지운다:
-        #      (1) semgrep 이 그 ID 의 수정판을 허용하면(그 판으로 semgrep 을 올리고 예외 삭제)
-        #      (2) 앱에 OpenTelemetry 서버 계측(Starlette `OpenTelemetryMiddleware` · asgi/fastapi 계측)을 켜거나
-        #          semgrep 에 `--trace` 를 주게 되면(둘 다 삭제)
-        #
-        # 🔴 --ignore-vuln CVE-2026-116684 · CVE-2026-116685 · CVE-2026-116686 (mcp 1.29.0, 2026-10-28) —
-        #    CVE-2026-59951 과 같은 semgrep 정확 핀(`mcp==1.29.0`)이라 **버전 업으로 해결 불가**
-        #    (수정판 1.30.0). 권고 전제와 우리 쪽:
-        #      · 116685(리다이렉트를 따라 헤더 전송) · 116686(도구 출력 스키마의 `$ref` 를 가져옴)은 MCP «클라이언트»
-        #        (`ClientSession`·`streamablehttp_client`·`sse_client`·`ClientSessionGroup`) 를 쓸 때만이다. semgrep
-        #        소스에 그 API 가 0건이고(핀을 올리면 다시 잰다), 앱 설치본에는 `mcp` 가 없다.
-        #      · 116684(bearer 토큰 audience 미검사)는 SDK 의 HTTP «서버» bearer 인증(`AuthSettings`+`token_verifier`)을
-        #        켤 때만이다. semgrep 에서 그 코드는 `semgrep mcp` 하위 명령뿐이고, 우리는 `semgrep scan` 만 부른다
-        #        (src/analyzer/io/tools/semgrep.py).
-        #    재검토 조건 — 충족되면 세 ID 를 즉시 지운다:
-        #      (1) semgrep 이 mcp 핀을 >=1.30.0 으로 올리면(CVE-2026-59951 과 함께 삭제)
-        #      (2) 우리가 MCP 클라이언트를 쓰거나 `semgrep mcp`(또는 SDK 의 HTTP 서버 인증)를 띄우게 되면
-        # semgrep runs from its own venv; these advisories sit only in that venv.
-        # When an advisory blocks, first try bumping semgrep. Exceptions: CVE-2026-59951 — semgrep 1.180.0/1.181.0 pin `mcp==1.29.0`
-        # exactly, and the advisory needs a stateful Streamable HTTP MCP server, which we never
-        # start (semgrep runs only as a CLI subprocess). Remove it when semgrep allows mcp>=1.30.0
-        # or if we ever serve MCP over Streamable HTTP. CVE-2026-114603 / CVE-2026-126360 — semgrep
-        # pins opentelemetry-api~=1.37.0 (fixes 1.45.1 / 1.45.2); both need outside input to reach a
-        # propagator extract (an inbound `tracestate` / a crafted `traceparent`). The app never enables
-        # OpenTelemetry server instrumentation, and semgrep extracts only under `--trace`, which we
-        # never pass. Remove each when semgrep allows its fix, or if either of those is turned on.
-        # CVE-2026-116684/116685/116686 — the same exact mcp pin; 116685/116686 need an MCP client
-        # (absent from semgrep and from the app) and 116684 needs the SDK's HTTP server bearer auth,
-        # which only `semgrep mcp` uses. Remove them with CVE-2026-59951 when semgrep allows mcp>=1.30.0.
-        run: python -m pip_audit -r requirements-semgrep.txt --desc on --ignore-vuln CVE-2026-59951 --ignore-vuln CVE-2026-114603 --ignore-vuln CVE-2026-126360 --ignore-vuln CVE-2026-116684 --ignore-vuln CVE-2026-116685 --ignore-vuln CVE-2026-116686
+        # semgrep 은 앱과 다른 venv 다(requirements-semgrep.txt · Dockerfile `/opt/semgrep`). 그 정확 전이 핀에 상류 권고가
+        # 뜨면 우리 쪽에서 고칠 길이 없다 — 그래서 막는 것은 그 파일을 바꾼(또는 바꿨는지 못 잰) PR 뿐이고, 나머지는
+        # 경고 · job summary 로 남긴다. 그 사이의 새 권고는 주간 예약 감사(semgrep-audit-weekly.yml)가 이슈로 알린다.
+        # 예외(--ignore-vuln) 목록 · 근거 · 제거 조건은 scripts/semgrep_audit.py 한 곳에만 둔다(회고 원장 L09 P2-54).
+        # Blocks only the PR that changes requirements-semgrep.txt; elsewhere it warns. The exception list,
+        # reasons and removal conditions live in scripts/semgrep_audit.py; a weekly run reports through an issue.
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python scripts/semgrep_audit.py
 
   test-and-analyze:
     name: pytest + Codecov + SonarCloud

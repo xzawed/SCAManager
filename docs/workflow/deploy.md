@@ -30,7 +30,7 @@
 
 ## 의존성
 
-`requirements.txt` 는 직접 의존성 전부 `==` 정확 핀. semgrep 만 `requirements-semgrep.txt` — 그 정확 전이 핀이 앱 해석 · 감사를 묶지 않게 자기 venv 에 둔다(감사 예외는 `ci.yml` semgrep 감사 스텝에만). analyzer 바이너리를 추가하면 `tests/unit/scripts/test_analyzer_provenance.py` `_PROVENANCE` 에 (바이너리, 조달모드, 사유) 를 등재해야 CI 가 통과한다.
+`requirements.txt` 는 직접 의존성 전부 `==` 정확 핀. semgrep 만 `requirements-semgrep.txt` — 그 정확 전이 핀이 앱 해석 · 감사를 묶지 않게 자기 venv 에 둔다. 그 감사는 이 파일을 바꾼 PR 만 막고 나머지는 경고 — 새 권고는 주간 예약 감사가 이슈로 알린다(예외 · 근거 = `scripts/semgrep_audit.py`). analyzer 바이너리를 추가하면 `tests/unit/scripts/test_analyzer_provenance.py` `_PROVENANCE` 에 (바이너리, 조달모드, 사유) 를 등재해야 CI 가 통과한다.
 
 ## 배포 실패 시
 
