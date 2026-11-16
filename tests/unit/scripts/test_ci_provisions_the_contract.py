@@ -37,6 +37,9 @@ _REQS = _ROOT / "requirements.txt"
 # 패키지 이름 ≠ 분석기 이름인 경우만 — 표가 커지면 그 자체가 손유지 부채다.
 _PIP_ALIAS = {"slither-analyzer": "slither"}
 _NPM_ALIAS = {"typescript": "tsc"}
+# golangci-lint 는 설치 스크립트 대신 릴리스 tarball 을 받는다 — 그 주소의 버전 마디가 핀이다(회고 원장 R-7).
+# golangci-lint comes from its release tarball (not the install script); the version segment is the pin.
+_GOLANGCI_RELEASE = re.compile(r"golangci-lint/releases/download/(v\d[\w.]*)/golangci-lint-")
 
 
 def _ci_text() -> str:
@@ -98,7 +101,7 @@ def ci_provisioned() -> set[str]:
     names |= set(re.findall(r"-o /usr/bin/([A-Za-z0-9_-]+)", ci))
     names |= set(re.findall(r"-b /usr/bin\s+\S*\s*([A-Za-z0-9_-]+)?", ci)) - {None, ""}
     names |= set(re.findall(r"([A-Za-z0-9_-]+)_linux_amd64\.zip", ci))
-    if "golangci-lint/master/install.sh" in ci:
+    if _GOLANGCI_RELEASE.search(ci):
         names.add("golangci-lint")
 
     return {n.strip() for n in names if n and n.strip()}
@@ -152,7 +155,7 @@ def _pins(text: str) -> dict:
     text = re.sub(r"\\\s*\n\s*", " ", text)
     pins = dict(_RELEASE_PIN.findall(text))
     pins |= dict(re.findall(r"gem install (\S+) -v (\S+)", text))
-    if (m := re.search(r"golangci-lint/\S+/install\.sh.{0,40}?-b /usr/bin (v\d[\w.]*)", text)):
+    if (m := _GOLANGCI_RELEASE.search(text)):
         pins["golangci-lint"] = m.group(1)
     for chunk in re.findall(r"npm install -g ([^\n&|]+)", text):
         for word in shlex.split(chunk):
@@ -177,8 +180,9 @@ def _image_pins() -> dict:
 def test_pin_reader_on_planted_text():
     """판정식 뒤집기 — 실제 설치 형태는 읽고, 주석 속 버전은 Dockerfile 에서 버린다."""
     ci = ("gem install rubocop -v 1.57.2 --no-document\n"
-          "curl https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh \\\n"
-          "  | sudo sh -s -- -b /usr/bin v1.55.2\n"
+          "curl -sSfL https://github.com/golangci/golangci-lint/releases/download/v1.55.2/"
+          "golangci-lint-1.55.2-linux-amd64.tar.gz \\\n"
+          "  -o /tmp/golangci-lint.tar.gz\n"
           "npm install -g 'typescript@>=6.0.3 <6.1.0'\n"
           'node-version: "20"\n')
     assert _pins(ci) == {"rubocop": "1.57.2", "golangci-lint": "v1.55.2",
@@ -211,6 +215,52 @@ def test_ci_and_image_pin_the_same_versions(tool):
         f"`{tool}` 버전이 갈렸다 — CI {ci[tool]} vs Dockerfile {image[tool]}. "
         "두 파일을 같은 커밋에서 고칠 것."
     )
+
+
+# ── 릴리스 내려받기는 재시도하고 sha256 을 대조한다 — 두 환경이 같은 값으로 (회고 원장 R-7) ─────────
+#
+# 🔴 11-09 GitHub 504 동안 배포 빌드 3건이 `--retry 3`(≈7 초)으로 실패했고, 받은 바이너리는 아무것도 대조하지 않았다.
+# Release downloads retry for minutes and are sha256-checked with the same values in CI and the image.
+_RELEASE_DOWNLOAD = re.compile(r"https://github\.com/\S+/releases/download/\S+")
+_SHA256_CHECK = re.compile(r'echo "([0-9a-f]{64})  (\S+)" \| sha256sum -c -')
+_RETRY_FLAGS = "--retry 10 --retry-all-errors --retry-delay 15 --retry-max-time 300"
+
+
+def _release_downloads(text: str) -> list[str]:
+    return _RELEASE_DOWNLOAD.findall(re.sub(r"\\\s*\n\s*", " ", text))
+
+
+def _checksums(text: str) -> list[str]:
+    return [digest for digest, _ in _SHA256_CHECK.findall(text)]
+
+
+def test_checksum_reader_on_planted_text():
+    """판정식 뒤집기 — `echo "<64hex>  <파일>" | sha256sum -c -` 만 대조로 센다(짧은 해시 · 다른 명령은 아니다)."""
+    planted = ('echo "' + "a" * 64 + '  /usr/bin/x" | sha256sum -c -\n'
+               'echo "' + "b" * 40 + '  /usr/bin/y" | sha256sum -c -\n'
+               'sha256sum /usr/bin/z\n')
+    assert _checksums(planted) == ["a" * 64]
+
+
+@pytest.mark.parametrize("name", ["ci.yml", "Dockerfile"])
+def test_every_release_download_retries_and_is_checksummed(name):
+    """🔴 릴리스 내려받기마다 sha256 대조가 하나씩 · 재시도 플래그가 붙는다 — 하나라도 빠지면 그 도구는 다시 GitHub 의
+    그 순간과 받은 바이트를 그대로 믿는다."""
+    text = (_ci_run_text(_ci_text()) if name == "ci.yml"
+            else _image_run_text(DOCKERFILE.read_text(encoding="utf-8")))
+    downloads = _release_downloads(text)
+    assert downloads, f"{name} 에서 릴리스 내려받기를 못 읽었다 — 이 검사가 공허하다"
+    assert len(_checksums(text)) == len(downloads), (
+        f"{name}: 릴리스 내려받기 {len(downloads)}건 · sha256 대조 {len(_checksums(text))}건 — 수가 같아야 한다")
+    flat = re.sub(r"\\\s*\n\s*", " ", text)
+    assert flat.count(_RETRY_FLAGS) == len(downloads), f"{name}: 재시도 플래그가 빠진 내려받기가 있다"
+
+
+def test_ci_and_image_check_the_same_checksums():
+    """🔴 두 환경이 같은 바이트를 받아들인다 — 체크섬이 갈리면 한쪽만 빌드가 깨지거나, 한쪽이 다른 파일을 믿는다."""
+    ci = _checksums(_ci_run_text(_ci_text()))
+    image = _checksums(_image_run_text(DOCKERFILE.read_text(encoding="utf-8")))
+    assert ci and sorted(ci) == sorted(image), f"체크섬이 갈렸다 — ci.yml {sorted(ci)} vs Dockerfile {sorted(image)}"
 
 
 # ── 핀은 정확한 버전 하나다 — 범위 · 메이저만 · 버전 없음은 핀이 아니다 ─────────
