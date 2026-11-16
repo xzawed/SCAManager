@@ -42,6 +42,7 @@ import subprocess  # nosec B404 — git 만, 인자는 이 파일의 상수 + �
 import sys
 import tokenize
 import warnings
+from pathlib import PurePosixPath, PureWindowsPath
 
 _ESCAPE = "# fail-open-reviewed:"
 # 원문을 읽는 메서드 / methods that read raw file text
@@ -86,7 +87,7 @@ class _Taint:
         if isinstance(node, ast.Name):
             return node.id == "__file__" or node.id in self.paths
         if isinstance(node, ast.Constant):
-            return isinstance(node.value, str)
+            return isinstance(node.value, str) and _relative(node.value)
         if isinstance(node, ast.Attribute):
             return node.attr == "parent" and self.repo_path(node.value)
         if isinstance(node, ast.Subscript):
@@ -145,6 +146,11 @@ class _Taint:
         """조각마다 원문인 값인가 — 원문의 `split(...)` · `partition(...)`."""
         return (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
                 and node.func.attr in _PIECES and self.raw(node.func.value))
+
+
+def _relative(text: str) -> bool:
+    """상대 경로 리터럴인가 — 절대 경로(`/tmp/x` · `C:/x` · `~/x`)는 리포 밖이다(Grok claim-review 1ffd81ae)."""
+    return not (PurePosixPath(text).is_absolute() or PureWindowsPath(text).is_absolute() or text.startswith("~"))
 
 
 def _assigned_names(scope: ast.AST) -> set[str]:

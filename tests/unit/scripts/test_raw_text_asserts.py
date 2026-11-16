@@ -75,6 +75,9 @@ def test_a_raw_text_substring_assert_is_flagged(name, src):
     ("시험이 만든 임시 파일", 'def test_a(tmp_path):\n    out = tmp_path / "o.txt"\n    out.write_text("x")\n'
      '    assert "alpha" in out.read_text()\n'),
     ("인자로 받은 경로", 'def test_a(p):\n    assert "alpha" in p.read_text()\n'),
+    ("절대 경로 리터럴(POSIX)", 'def test_a():\n    assert "alpha" in open("/tmp/out.txt").read()\n'),
+    ("절대 경로 리터럴(Windows)", 'def test_a():\n    assert "alpha" in open("C:/Windows/win.ini").read()\n'),
+    ("홈 경로 리터럴", 'from pathlib import Path\ndef test_a():\n    assert "alpha" in Path("~/x").read_text()\n'),
     ("목록 소속", 'NAMES = ["alpha", "beta"]\ndef test_a():\n    assert "alpha" in NAMES\n'),
     ("HTTP 응답", 'def test_a(client):\n    body = client.get("/").text\n    assert "alpha" in body\n'),
     ("왼쪽이 리터럴이 아님", 'TEXT = open("x").read()\ndef test_a(k):\n    assert k in TEXT\n'),
