@@ -40,12 +40,14 @@ jobs:
           python scripts/semgrep_audit.py --always-block --report "$RUNNER_TEMP/semgrep-audit.txt"
           echo "rc=$?" >> "$GITHUB_OUTPUT"
 
-      # rc 가 비어 있어도(앞 단계 실패로 감사를 못 돌림) 알린다 — 그때 본문은 «감사 출력이 없다».
+      # 앞 단계 실패로 감사를 못 돌렸어도 알린다 — 그때 본문은 «감사 출력이 없다».
       # 🔴 `!cancelled()` 필수 — 상태 함수가 없는 `if:` 에는 `success() &&` 가 암묵으로 붙어, 앞 단계가 실패하면
       #    이 스텝이 건너뛰어진다(Grok claim-review 0f913383 BROKEN).
-      # An empty rc also notifies; without a status function the step would be skipped after a failure.
+      # 🔴 rc 만 보면 안 된다 — 건너뛴 스텝의 출력은 `null` 이고, 식은 타입이 다르면 숫자로 맞춰 `null != '0'` 이
+      #    0 ≠ 0 = 거짓이 된다(Grok 9bca15d3 BROKEN). 그래서 스텝 결과(outcome)로 먼저 가른다.
+      # Notify also when the audit never ran: a skipped step's output is null, and null != '0' coerces to 0 != 0.
       - name: 이슈로 알림 — 예외 밖 권고 · 감사 실패
-        if: ${{ !cancelled() && steps.audit.outputs.rc != '0' }}
+        if: ${{ !cancelled() && (steps.audit.outcome != 'success' || steps.audit.outputs.rc != '0') }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: python scripts/semgrep_audit.py --notify "$RUNNER_TEMP/semgrep-audit.txt"

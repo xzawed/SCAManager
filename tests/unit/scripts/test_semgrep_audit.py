@@ -309,8 +309,10 @@ def test_the_weekly_workflow_audits_and_notifies_without_turning_red():
     assert audit_step.get("id"), "알림 스텝이 결과를 읽을 id 가 없다"
     notify = [s for s in steps if any(args[:1] == ["--notify"] for args in _script_args(s.get("run", "")))]
     assert len(notify) == 1, "알림 스텝이 하나여야 한다"
-    # 🔴 상태 함수가 없으면 `success() &&` 가 암묵으로 붙어, 앞 단계가 실패해 rc 가 빈 때 알림이 건너뛰어진다.
-    want = "${{ !cancelled() && steps.%s.outputs.rc != '0' }}" % audit_step["id"]
+    # 🔴 상태 함수가 없으면 `success() &&` 가 암묵으로 붙어 앞 단계 실패 때 알림이 건너뛰어지고, 건너뛴 스텝의
+    #    출력은 null 이라 `null != '0'` 이 숫자 0 ≠ 0 = 거짓이다 — 그래서 스텝 결과로 먼저 가른다.
+    want = ("${{ !cancelled() && (steps.%s.outcome != 'success' || steps.%s.outputs.rc != '0') }}"
+            % (audit_step["id"], audit_step["id"]))
     assert notify[0].get("if") == want, notify[0].get("if")
     assert "GH_TOKEN" in notify[0].get("env", {}), "gh 가 쓸 토큰이 없다"
 
