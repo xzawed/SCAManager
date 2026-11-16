@@ -120,11 +120,15 @@ def test_alembic_edits_route_to_migration_tests():
 
 
 def test_script_edits_route_to_their_exact_test_when_one_exists():
-    """`scripts/X.py` → `tests/unit/scripts/test_X.py`(있으면), 없으면 디렉토리."""
+    """`scripts/X.py` → `tests/unit/scripts/test_X.py`(있으면), 없으면 None(수집 스모크).
+
+    🔴 예전 기대값(«없으면 디렉토리») 이 결함을 고정하고 있었다 — 디렉토리로 떨어지면 그 스크립트를 검증하지 않는
+       남의 시험 수백 건이 75 초 벽에 걸렸다(원장 L11 P2-83). 훅 쪽(`.claude/hooks`)은 같은 이유로 이미 None 이다.
+    """
     assert derive_test_target("scripts/check_main_red.py", _ROOT) == (
         "tests/unit/scripts/test_check_main_red.py"
     )
-    assert derive_test_target("scripts/does_not_exist_xyz.py", _ROOT) == "tests/unit/scripts"
+    assert derive_test_target("scripts/does_not_exist_xyz.py", _ROOT) is None
 
 
 def test_non_python_and_unwatched_paths_are_ignored():

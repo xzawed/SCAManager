@@ -57,7 +57,7 @@ def is_inside(path: str, directory: Path) -> bool:
 
 
 def read_payload() -> object:
-    """stdin 을 **바이트로 읽어 UTF-8 로 직접 디코드**한다 — `doc_review_gate.read_payload` 와 같은 관용구.
+    """stdin 을 **바이트로 읽어 UTF-8 로 직접 디코드**한다 — 다른 훅들과 같은 관용구.
 
     🔴 `json.load(sys.stdin)` 를 쓰면 안 된다 — 실훅 자식 프로세스의 stdin 은 cp949 라, 한글이 든 메모리 경로가
     깨져 «메모리 밖» 으로 읽히고 이 훅이 조용히 죽었다(적대 패스 실측). 깨진 입력이면 None.

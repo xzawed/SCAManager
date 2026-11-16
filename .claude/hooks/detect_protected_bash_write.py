@@ -141,10 +141,15 @@ def main() -> int:
     # Only a non-empty string id names a session; without one, nothing is suppressed or recorded.
     raw = payload.get("session_id") if isinstance(payload, dict) else None
     session = raw if isinstance(raw, str) and raw else ""
-    # 🔴 검증 가능한 환경에서는 차단 훅도 통과시킨다 — 같은 조건을 그대로 쓴다.
-    if can_run_tests():
-        return 0
+    # 🔴 검증 가능한 환경에서는 차단 훅도 통과시킨다 — 같은 조건을 그대로 쓴다. 단, 인터프리터 probe 는 더러운
+    #    보호 경로가 있을 때만 — 예전엔 Bash 호출마다 후보 인터프리터를 띄워(약 0.9 초) 늘 같은 답을 버렸다(원장 L11
+    #    P2-25). 더러운 경로가 없으면 어느 환경이든 알릴 것이 없고, 세션 상태는 비운다 — 그래서 세션 중에 검증 가능
+    #    여부가 바뀌면 같은 내용을 한 번 더 알릴 수 있다(덜 알리지는 않는다 · Grok 반례 `893f576d`).
+    # Probe only when a protected path is dirty. A clean tree clears the session state, so a mid-session change in
+    # verifiability can re-report once; it never reports less.
     dirty = dirty_protected_paths()
+    if dirty and can_run_tests():
+        return 0
     seen = already_reported(session) if session else {}
     now = {p: _fingerprint(p) for p, _ in dirty}
     fresh = [(p, r) for p, r in dirty if seen.get(p) != now[p]]

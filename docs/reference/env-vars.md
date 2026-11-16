@@ -77,8 +77,6 @@
 |`SAAS_MULTITENANT_DISABLED`|0|admin 503|
 |`OPERATIONS_DASHBOARD_DISABLED`|0|/admin/operations 503|
 |**로컬 전용**|
-|`DOC_REVIEW_GATE_DISABLED`|0|Anthropic 호출 차단|
-|`DOC_REVIEW_GATE_LEDGER`|ON|0/false/no 만 끈다|
 | `SKIP_MAIN_RED_CHECK` | 미설정 | main CI red 관측 생략 |
 |`PERF_PROD_URL`|운영 URL|perf_measure.py|
 |`PERF_API_KEY`||X-Api-Key|

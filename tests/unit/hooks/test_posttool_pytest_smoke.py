@@ -10,11 +10,14 @@ This smoke scopes to the affected tests/unit subdir (collection smoke fallback),
 전체 게이트는 push-time(6-step ②)로 위임 — 이 훅은 best-effort 조기 실패 탐지(전체 게이트 대체 아님).
 The full gate stays at push-time (6-step ②); this hook is best-effort early-failure detection.
 """
+import io
+import json
+import subprocess
 import sys
 from pathlib import Path
 
-# 훅 파일 직접 임포트 (src/ 외부) — test_doc_review_gate.py 동일 패턴.
-# Import the hook file directly (outside src/) — same pattern as test_doc_review_gate.py.
+# 훅 파일 직접 임포트 (src/ 외부) — 훅 디렉토리를 sys.path 에 더한다.
+# Import the hook file directly (outside src/) by adding the hooks directory to sys.path.
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / ".claude" / "hooks"))
 
 import pytest  # noqa: E402
@@ -22,6 +25,10 @@ import pytest  # noqa: E402
 from posttool_pytest_smoke import (  # noqa: E402
     derive_test_target, is_src_file, is_watched_file,
 )
+
+# 모듈 객체 — `_run` 을 갈아 끼워 main() 배선을 잰다. `import … as` 를 더하면 이중 import 가드에 걸린다.
+# The module object, for patching `_run`; a second `import … as` would trip the dual-import guard.
+smoke = sys.modules["posttool_pytest_smoke"]
 
 
 # ── 순수 함수: is_src_file ───────────────────────────────────────────────
@@ -94,17 +101,17 @@ class TestClaudeHooksAreWatched:
     """훅 편집이 대응 테스트를 실제로 겨냥하는가."""
 
     @pytest.mark.parametrize("path", [
-        ".claude/hooks/doc_review_gate.py",
-        "f:/repo/.claude/hooks/doc_review_gate.py",              # 절대경로
-        r"f:\repo\.claude\hooks\doc_review_gate.py",             # Windows 구분자 (raw 필수)
+        ".claude/hooks/check_edit_allowed.py",
+        "f:/repo/.claude/hooks/check_edit_allowed.py",           # 절대경로
+        r"f:\repo\.claude\hooks\check_edit_allowed.py",          # Windows 구분자 (raw 필수)
     ])
     def test_hook_file_is_watched(self, path):
         assert is_watched_file(path) is True, f"훅이 감시 밖이다: {path}"
 
     def test_hook_maps_to_its_exact_test_file(self):
         """정확 대응 파일이 있으면 그것을 겨냥한다 — 디렉토리로 강등하지 않는다."""
-        assert derive_test_target(".claude/hooks/doc_review_gate.py") == \
-            "tests/unit/hooks/test_doc_review_gate.py"
+        assert derive_test_target(".claude/hooks/check_edit_allowed.py") == \
+            "tests/unit/hooks/test_check_edit_allowed.py"
 
     def test_hook_without_a_test_is_not_reported_as_passing(self):
         """🔴 대응 테스트가 없으면 **None** — 디렉토리로 강등하면 거짓 초록이 된다.
@@ -122,8 +129,8 @@ class TestClaudeHooksAreWatched:
         선언 순서로 순회하면 `src/.claude/hooks/x.py` 가 루트 `src` 로 잡혀
         `tests/unit/.claude` 라는 존재하지 않는 대상이 나왔다. 긴 루트 먼저 본다.
         """
-        assert derive_test_target("src/.claude/hooks/doc_review_gate.py") == (
-            "tests/unit/hooks/test_doc_review_gate.py"
+        assert derive_test_target("src/.claude/hooks/check_edit_allowed.py") == (
+            "tests/unit/hooks/test_check_edit_allowed.py"
         )
 
     def test_non_python_hook_asset_is_not_watched(self):
@@ -147,3 +154,53 @@ class TestClaudeHooksAreWatched:
                 f"{rel} → {target}. 훅은 **자기 것을 검증하는** 테스트를 겨냥해야 한다 — "
                 "남의 스위트를 돌려 ✅ 를 찍으면 이 훅이 없애려던 false-green 이다."
             )
+
+
+# ── 원장 L11 — 스크립트 폴백 · 워크트리 ──────────────────────────────────────────
+
+
+def test_a_script_without_its_own_test_is_not_sent_to_the_whole_directory():
+    """🔴 정확 대응 시험이 없으면 None — `tests/unit/scripts` 전체로 떨어져 남의 시험 수백 건이 75 초 벽에 걸렸다(P2-83).
+
+    None 이면 수집 스모크 + «단언 0건» 배너다. 대조군 — 정확 대응 시험이 있으면 그것을 겨냥한다.
+    """
+    assert derive_test_target("scripts/no_such_script_scam.py") is None
+    assert derive_test_target("scripts/check_memory_refs.py") == "tests/unit/scripts/test_check_memory_refs.py"
+
+
+def _git_repo_with_worktree(tmp_path):
+    main_repo = tmp_path / "Main"
+    (main_repo / "scripts").mkdir(parents=True)
+    (main_repo / "scripts" / "foo.py").write_text("x = 1\n", encoding="utf-8")
+
+    def git(*args):
+        subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=main_repo,
+                       capture_output=True, text=True, check=True)
+
+    git("init", "-q")
+    git("add", "scripts/foo.py")
+    git("commit", "-q", "-m", "init")
+    worktree = tmp_path / "Main-wt-x"
+    git("worktree", "add", "-q", str(worktree))
+    return worktree
+
+
+def test_the_smoke_runs_in_the_checkout_that_holds_the_edited_file(tmp_path, monkeypatch, capsys):
+    """🔴 워크트리에서 고친 파일은 그 워크트리에서 잰다 — 예전엔 훅 파일이 든 주 체크아웃의 옛 코드를 재고 ✅ 였다(P1-30).
+
+    배선까지 잰다(main() 이 그 체크아웃을 cwd 로 넘기는가). 대조군 — 상대 경로 · git 밖 경로는 예전처럼 fallback.
+    """
+    worktree = _git_repo_with_worktree(tmp_path)
+    fallback = tmp_path / "fallback"
+    assert smoke.checkout_of(str(worktree / "scripts" / "foo.py"), fallback).resolve() == worktree.resolve()
+    assert smoke.checkout_of("scripts/foo.py", fallback) == fallback
+    loose = tmp_path / "loose"
+    loose.mkdir()
+    assert smoke.checkout_of(str(loose / "x.py"), fallback) == fallback
+
+    seen = []
+    monkeypatch.setattr(smoke, "_run", lambda cmd, cwd: seen.append(cwd) or (0, ""))
+    payload = json.dumps({"tool_input": {"file_path": str(worktree / "scripts" / "foo.py")}})
+    monkeypatch.setattr(sys, "stdin", io.StringIO(payload))
+    assert smoke.main() == 0
+    assert [Path(c).resolve() for c in seen] == [worktree.resolve()], (seen, capsys.readouterr().out)

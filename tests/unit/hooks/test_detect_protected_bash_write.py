@@ -291,3 +291,21 @@ def _stdin(payload: str):
 def test_shared_predicate_still_classifies_the_documented_paths(path, expected):
     """공유 술어가 문서가 약속한 네 부류를 그대로 가리는지 — import 가 살아 있는지도 함께."""
     assert (hook.protected_reason(path) is not None) is expected
+
+
+def test_no_interpreter_probe_without_a_dirty_protected_path(monkeypatch, capsys, tmp_path):
+    """🔴 probe 는 더러운 보호 경로가 있을 때만 — 예전엔 Bash 호출마다 후보 인터프리터를 띄웠다(약 0.9 초 · 원장 L11 P2-25).
+
+    알림은 같다: 더러운 경로가 없으면 어느 환경이든 말하지 않는다. 계기 뒤집기 — 더러운 경로가 있으면 probe 를 부른다.
+    """
+    calls = []
+    monkeypatch.setattr(hook, "can_run_tests", lambda: calls.append("probe") or True)
+    monkeypatch.setattr(hook, "_STATE", tmp_path / "state")
+    monkeypatch.setattr(hook, "dirty_protected_paths", lambda: [])
+    monkeypatch.setattr(sys, "stdin", _stdin('{"tool_name":"Bash"}'))
+    assert hook.main() == 0
+    assert calls == [] and capsys.readouterr().out == ""
+    monkeypatch.setattr(hook, "dirty_protected_paths", lambda: [("src/templates/x.html", "이유")])
+    monkeypatch.setattr(sys, "stdin", _stdin('{"tool_name":"Bash"}'))
+    assert hook.main() == 0
+    assert calls == ["probe"] and capsys.readouterr().out == ""
