@@ -161,8 +161,6 @@
 
   --chart-grid: rgba(255, 255, 255, 0.05);
 
-  /* Page atmosphere — only used in Signature variant */
-
   /* Animated atmosphere orb colors (per theme) */
   --atm-color-1: #7c7aff;
   --atm-color-2: #b289ff;
@@ -522,10 +520,6 @@
   --anim-page-in:   page-in 0.35s var(--ease-out) backwards;
   --anim-reveal-up: reveal-up 0.4s var(--ease-out) both;
   --anim-badge-pop: badge-pop 0.4s var(--ease-spring) both;
-
-  /* Blur scale compat */
-
-  /* Elevation compat (old names) */
 
   /* Phantom token aliases */
   --bg-hover:    var(--bg-mute);
