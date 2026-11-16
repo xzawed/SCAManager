@@ -7,9 +7,11 @@ B8 floor(`check_guard_fail_open.py`)는 파일 단위다 — 파일 어디서든
 
 ## 막는 것
 
-`assert` 안의 `"글자" in X` · `"글자" not in X`(왼쪽이 문자열 리터럴 · f-문자열)에서 X 가 **파일 원문**일 때.
+`assert` 안의 `"글자" in X` · `"글자" not in X`(왼쪽이 문자열 리터럴 · f-문자열)에서 X 가 **리포 소스 원문**일 때.
 
-- 원문 = `read_text(...)` · `read_bytes(...)` · `open(...).read()` · `with open(...) as f` 의 `f.read()`.
+- 원문 = 리포 경로를 읽은 `read_text(...)` · `read_bytes(...)` · `open(...).read()` · `with open(...) as f` 의 `f.read()`,
+  그리고 `inspect.getsource(...)`. 리포 경로 = `__file__` 에서 온 경로(`.parent` · `parents[n]` · `resolve()` · `/` 결합) ·
+  그것을 담은 이름 · 상대 경로 리터럴(`open("src/x.css")` · `Path("docs/x.md")`).
 - 원문을 그대로 두는 변형 = `decode` · `lower` · `upper` · `casefold` · `strip` 류 · `replace` · 자르기(`text[a:b]`) ·
   `split` · `partition` 결과의 한 조각 · `+` 로 이어 붙임.
 - 따라가는 길 = 같은 함수 · 모듈 최상위의 이름 대입, 원문을 돌려주는 모듈 함수의 호출, 원문을 돌려주는 픽스처를 받은 인자.
@@ -24,6 +26,8 @@ B8 floor(`check_guard_fail_open.py`)는 파일 단위다 — 파일 어디서든
 
 - 위 목록 밖의 원문 보존 변형을 거치면 못 본다 — 공백 접기 `" ".join(text.split())`(join) · `textwrap.dedent(text)`(dedent) ·
   `text.removeprefix(...)`(removeprefix) 등.
+- 경로가 인자 · 픽스처로 오면(parametrize 된 리포 파일 포함) 따라가지 않는다. 시험이 만든 임시 파일(`tmp_path`)은
+  원문이 아니라 출력이다 — 주석이 끼어들 자리가 없어 이 가드의 질문이 아니다.
 - 클래스 속성 · 다른 모듈에서 가져온 원문 · 픽스처를 받는 픽스처(두 단계) · `self` 메서드는 따라가지 않는다.
 - 흐름을 보지 않는다 — 한 함수에서 한 번이라도 원문을 대입한 이름은 그 함수 내내 원문으로 본다.
 
@@ -46,6 +50,8 @@ _READS = frozenset({"read_text", "read_bytes"})
 _KEEPS_TEXT = frozenset({"decode", "lower", "upper", "casefold", "strip", "lstrip", "rstrip", "replace"})
 # 원문을 조각내는 메서드 — 그 결과의 한 조각이 원문이다 / methods whose result's pieces are raw text
 _PIECES = frozenset({"split", "rsplit", "partition", "rpartition"})
+# 경로를 그대로 두는 메서드 — 리포 경로에 부르면 리포 경로다 / path methods that keep a repo path a repo path
+_KEEPS_PATH = frozenset({"resolve", "absolute", "joinpath", "with_name", "with_suffix"})
 _HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 
 
@@ -70,22 +76,51 @@ def _own_nodes(scope: ast.AST):
 
 
 class _Taint:
-    """한 범위에서 원문인 이름 · 파일 핸들, 그리고 모듈의 원문 함수 · 원문 픽스처."""
+    """한 범위에서 원문인 이름 · 리포 경로인 이름 · 파일 핸들, 그리고 모듈의 원문 함수."""
 
-    def __init__(self, names: set[str], handles: set[str], funcs: set[str]):
-        self.names, self.handles, self.funcs = names, handles, funcs
+    def __init__(self, names: set[str], paths: set[str], handles: set[str], funcs: set[str]):
+        self.names, self.paths, self.handles, self.funcs = names, paths, handles, funcs
+
+    def repo_path(self, node: ast.AST) -> bool:
+        """리포 경로인가 — `__file__` 에서 온 경로 · 그것을 담은 이름 · 상대 경로 리터럴. 인자 · 임시 경로는 아니다."""
+        if isinstance(node, ast.Name):
+            return node.id == "__file__" or node.id in self.paths
+        if isinstance(node, ast.Constant):
+            return isinstance(node.value, str)
+        if isinstance(node, ast.Attribute):
+            return node.attr == "parent" and self.repo_path(node.value)
+        if isinstance(node, ast.Subscript):
+            return (isinstance(node.value, ast.Attribute) and node.value.attr == "parents"
+                    and self.repo_path(node.value.value))
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+            return self.repo_path(node.left)
+        if isinstance(node, ast.Call):
+            func = node.func
+            if isinstance(func, ast.Attribute) and func.attr in _KEEPS_PATH:
+                return self.repo_path(func.value)
+            named = func.id if isinstance(func, ast.Name) else getattr(func, "attr", "")
+            return named == "Path" and bool(node.args) and self.repo_path(node.args[0])
+        return False
 
     def is_read(self, node: ast.AST) -> bool:
-        """원문을 읽는 호출인가 — `x.read_text()` · `x.read_bytes()` · `open(..).read()` · 핸들의 `.read()`."""
-        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+        """리포 소스를 읽는 호출인가 — 리포 경로의 `read_text()` · `read_bytes()` · `open(..).read()` · 핸들의
+        `.read()` · `inspect.getsource(..)`."""
+        if not isinstance(node, ast.Call):
             return False
-        if node.func.attr in _READS:
+        func = node.func
+        if isinstance(func, ast.Name):
+            return func.id == "getsource"
+        if not isinstance(func, ast.Attribute):
+            return False
+        if func.attr == "getsource":
             return True
-        if node.func.attr != "read":
+        if func.attr in _READS:
+            return self.repo_path(func.value)
+        if func.attr != "read":
             return False
-        owner = node.func.value
-        if isinstance(owner, ast.Call) and isinstance(owner.func, ast.Name):
-            return owner.func.id == "open"
+        owner = func.value
+        if isinstance(owner, ast.Call) and isinstance(owner.func, ast.Name) and owner.func.id == "open":
+            return bool(owner.args) and self.repo_path(owner.args[0])
         return isinstance(owner, ast.Name) and owner.id in self.handles
 
     def raw(self, node: ast.AST) -> bool:
@@ -121,15 +156,19 @@ def _assigned_names(scope: ast.AST) -> set[str]:
     return names
 
 
-def _scope_taint(scope: ast.AST, inherited: set[str], funcs: set[str], params: set[str]) -> _Taint:
-    """그 범위의 원문 이름 — 대입 순서와 무관하게 두 번 돈다(흐름 무감각)."""
-    taint = _Taint((inherited - _assigned_names(scope)) | params, set(), funcs)
-    for _ in range(2):
+def _scope_taint(scope: ast.AST, inherited: _Taint | None, funcs: set[str], params: set[str]) -> _Taint:
+    """그 범위의 원문 · 리포 경로 이름 — 대입 순서와 무관하게 세 번 돈다(흐름 무감각)."""
+    local = _assigned_names(scope)
+    names = (inherited.names - local) if inherited else set()
+    paths = (inherited.paths - local) if inherited else set()
+    taint = _Taint(names | params, paths, set(), funcs)
+    for _ in range(3):
         for node in _own_nodes(scope):
             if isinstance(node, ast.With | ast.AsyncWith):
                 for item in node.items:
                     call = item.context_expr
                     if (isinstance(call, ast.Call) and isinstance(call.func, ast.Name) and call.func.id == "open"
+                            and call.args and taint.repo_path(call.args[0])
                             and isinstance(item.optional_vars, ast.Name)):
                         taint.handles.add(item.optional_vars.id)
             elif isinstance(node, ast.Assign | ast.AnnAssign) and node.value is not None:
@@ -137,6 +176,9 @@ def _scope_taint(scope: ast.AST, inherited: set[str], funcs: set[str], params: s
                 for target in targets:
                     if isinstance(target, ast.Name) and taint.raw(node.value):
                         taint.names.add(target.id)
+                    elif isinstance(target, ast.Name) and not isinstance(node.value, ast.Constant) \
+                            and taint.repo_path(node.value):
+                        taint.paths.add(target.id)
                     elif isinstance(target, ast.Tuple) and taint.pieces(node.value):
                         taint.names.update(e.id for e in target.elts if isinstance(e, ast.Name))
     return taint
@@ -188,14 +230,14 @@ def violations_in(src: str, added: set[int]) -> list[tuple[int, str]]:
         warnings.simplefilter("ignore", SyntaxWarning)
         tree = ast.parse(src)
     reviewed = _reviewed_lines(src)
-    module = _scope_taint(tree, set(), set(), set())
+    module = _scope_taint(tree, None, set(), set())
     top = [n for n in tree.body if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)]
     funcs: set[str] = set()
     fixtures: set[str] = set()
     for _ in range(len(top) + 1):            # 원문 함수가 원문 함수를 부를 수 있다 — 고정점까지
         before = (len(funcs), len(fixtures))
         for fn in top:
-            if _returns_raw(fn, _scope_taint(fn, module.names, funcs, set())):
+            if _returns_raw(fn, _scope_taint(fn, module, funcs, set())):
                 (fixtures if _is_fixture(fn) else funcs).add(fn.name)
         if (len(funcs), len(fixtures)) == before:
             break
@@ -205,7 +247,7 @@ def violations_in(src: str, added: set[int]) -> list[tuple[int, str]]:
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             params = {a.arg for a in [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]}
-            scopes.append((node, _scope_taint(node, module.names, funcs, params & fixtures)))
+            scopes.append((node, _scope_taint(node, module, funcs, params & fixtures)))
     found: list[tuple[int, str]] = []
     for scope, taint in scopes:
         for node in _own_nodes(scope):

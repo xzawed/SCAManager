@@ -36,24 +36,31 @@ def _flagged(src: str, added: set[int] | None = None) -> list[int]:
     return [line for line, _text in mod.violations_in(src, lines)]
 
 
+# 리포 루트를 `__file__` 에서 얻는 시험의 첫 줄들 / the usual repo-root preamble
+_ROOTED = 'from pathlib import Path\nROOT = Path(__file__).resolve().parents[1]\n'
+
 # ── 1. 막는다 ─────────────────────────────────────────────────────────────
 
 
 @pytest.mark.parametrize("name, src", [
     ("모듈 최상위 원문", 'TEXT = open("x").read()\ndef test_a():\n    assert "alpha" in TEXT\n'),
-    ("함수 안 read_text", 'def test_a(p):\n    text = p.read_text(encoding="utf-8")\n    assert "alpha" in text\n'),
-    ("바로 읽은 원문", 'def test_a(p):\n    assert "alpha" in p.read_text()\n'),
-    ("read_bytes 를 decode", 'def test_a(p):\n    raw = p.read_bytes().decode("utf-8")\n    assert "alpha" in raw\n'),
-    ("lower 를 거친 원문", 'def test_a(p):\n    text = p.read_text().lower()\n    assert "alpha" in text\n'),
-    ("자른 조각", 'def test_a(p):\n    text = p.read_text()\n    part = text[3:90]\n    assert "alpha" in part\n'),
-    ("partition 의 조각", 'def test_a(p):\n    head, _, tail = p.read_text().partition("x")\n    assert "alpha" in tail\n'),
-    ("split 의 한 조각", 'def test_a(p):\n    block = p.read_text().split("- id: x", 1)[1]\n    assert "alpha" in block\n'),
-    ("with open 의 read", 'def test_a(p):\n    with open(p) as fh:\n        text = fh.read()\n    assert "alpha" in text\n'),
+    ("함수 안 read_text", _ROOTED + 'def test_a():\n    text = (ROOT / "x").read_text(encoding="utf-8")\n    assert "alpha" in text\n'),
+    ("바로 읽은 원문", _ROOTED + 'def test_a():\n    assert "alpha" in (ROOT / "x").read_text()\n'),
+    ("read_bytes 를 decode", 'from pathlib import Path\ndef test_a():\n    raw = Path("src/x.css").read_bytes().decode()\n'
+     '    assert "alpha" in raw\n'),
+    ("lower 를 거친 원문", _ROOTED + 'CSS = ROOT / "x.css"\ndef test_a():\n    text = CSS.read_text().lower()\n'
+     '    assert "alpha" in text\n'),
+    ("자른 조각", 'def test_a():\n    text = open("x").read()\n    part = text[3:90]\n    assert "alpha" in part\n'),
+    ("partition 의 조각", 'def test_a():\n    head, _, tail = open("x").read().partition("x")\n    assert "alpha" in tail\n'),
+    ("split 의 한 조각", 'def test_a():\n    block = open("x").read().split("- id: x", 1)[1]\n    assert "alpha" in block\n'),
+    ("with open 의 read", _ROOTED + 'def test_a():\n    with open(ROOT / "x") as fh:\n        text = fh.read()\n'
+     '    assert "alpha" in text\n'),
     ("원문을 돌려주는 함수", 'def _src():\n    return open("x").read()\ndef test_a():\n    assert "alpha" in _src()\n'),
     ("원문 픽스처", 'import pytest\n@pytest.fixture\ndef css():\n    return open("x").read()\ndef test_a(css):\n    assert "alpha" in css\n'),
     ("f-문자열 글자", 'TEXT = open("x").read()\ndef test_a(k):\n    assert f"{k}-alpha" in TEXT\n'),
     ("not in", 'TEXT = open("x").read()\ndef test_a():\n    assert "alpha" not in TEXT\n'),
     ("and 로 묶은 단언", 'TEXT = open("x").read()\ndef test_a():\n    assert "a" in TEXT and "b" in TEXT\n'),
+    ("함수 원문(getsource)", 'import inspect\ndef test_a():\n    src = inspect.getsource(test_a)\n    assert "alpha" in src\n'),
 ])
 def test_a_raw_text_substring_assert_is_flagged(name, src):
     assert _flagged(src), f"{name}: 막지 못했다"
@@ -63,8 +70,11 @@ def test_a_raw_text_substring_assert_is_flagged(name, src):
 
 
 @pytest.mark.parametrize("name, src", [
-    ("주석을 지운 본문", 'def test_a(p):\n    css = strip_css_comments(p.read_text())\n    assert "alpha" in css\n'),
-    ("파서를 거친 값", 'import json\ndef test_a(p):\n    doc = json.loads(p.read_text())\n    assert "alpha" in doc\n'),
+    ("주석을 지운 본문", 'def test_a():\n    css = strip_css_comments(open("x").read())\n    assert "alpha" in css\n'),
+    ("파서를 거친 값", 'import json\ndef test_a():\n    doc = json.loads(open("x").read())\n    assert "alpha" in doc\n'),
+    ("시험이 만든 임시 파일", 'def test_a(tmp_path):\n    out = tmp_path / "o.txt"\n    out.write_text("x")\n'
+     '    assert "alpha" in out.read_text()\n'),
+    ("인자로 받은 경로", 'def test_a(p):\n    assert "alpha" in p.read_text()\n'),
     ("목록 소속", 'NAMES = ["alpha", "beta"]\ndef test_a():\n    assert "alpha" in NAMES\n'),
     ("HTTP 응답", 'def test_a(client):\n    body = client.get("/").text\n    assert "alpha" in body\n'),
     ("왼쪽이 리터럴이 아님", 'TEXT = open("x").read()\ndef test_a(k):\n    assert k in TEXT\n'),
