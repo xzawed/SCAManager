@@ -14,9 +14,15 @@ from sqlalchemy.orm import sessionmaker
 
 from src.database import Base
 from src.models.claude_api_call import ClaudeApiCall
-from src.models.repository import Repository  # noqa: F401
-from src.models.user import User  # noqa: F401
+from src.models.repository import Repository
+from src.models.user import User
 from src.repositories import claude_api_cost_repo
+
+# FK 대상 테이블 등록용 import — 튜플로 쓰고, 빠지면 바로 실패한다(docs/workflow/verify.md «side-effect-only ORM import»).
+# Registration-only imports for the FK targets; used through the tuple and loud when missing.
+_FK_TARGET_MODELS = (Repository, User)
+if any(m.__tablename__ not in Base.metadata.tables for m in _FK_TARGET_MODELS):
+    raise RuntimeError("side-effect ORM import 소실 — 테이블 미등록")
 
 UNTIL = datetime(2026, 11, 17, 12, 0, 0)
 SINCE = UNTIL - timedelta(days=7)
