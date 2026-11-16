@@ -30,15 +30,14 @@
   선언하지 않는다 — `runtime_checkable` 이 인스턴스에 요구해 미선언 어댑터가 전부 떨어진다(실측 3건 red).
 - 신뢰도 판정 = `src/scorer/reliability.py` — `should_null_persist_score`(AI 실패만 컬럼 NULL) / `score_is_unreliable`(그 외는 집계만 제외).
 
-## 분석기 추가 (24종)
+## 분석기 추가
 
 1. `src/analyzer/io/tools/<도구>.py` 작성 — `name`·`category` + `supports(ctx)`·`is_enabled(ctx)`(`shutil.which`)·`run(ctx)`. 본보기 `src/analyzer/io/tools/eslint.py::did not produce JSON`.
 2. `run` 은 `subprocess.run(..., timeout=STATIC_ANALYSIS_TIMEOUT, check=False)`. `TimeoutExpired` 는 `ctx.timed_out = True` 후 `[]` 반환(예외 금지). 비-JSON stdout 과 도구가 실패로 쓰는 종료 코드는 JSON 이 와도 `RuntimeError`(`src/analyzer/io/tools/semgrep.py::if r.returncode != 0:`).
 3. 모듈 하단 `register(...)` + `static.py` 상단 import 1줄(로드 시 자동 등록).
 4. 조달한 바이너리는 `src/analyzer/io/static.py::PROVISIONED_ANALYZERS:` 에 등재. 등재분 부재 = 배포 회귀 → `incomplete` 차단, 미등재분 부재 = 미제공 → 가시화만.
 5. 새 언어면 `src/analyzer/pure/language.py::_EXTENSION_MAP:` 확장자 맵 + `review_guides/tier{N}/<lang>.py` + `src/analyzer/pure/review_guides/__init__.py::_GUIDE_MAP:` 1줄.
-6. `docs/architecture.md::tools/` 의 `tools/(N 어댑터)` 개수를 갱신한다.
-7. `tests/unit/scripts/test_analyzer_provenance.py::_PROVENANCE = ` 에 `(바이너리, 조달모드, optional 사유)` 를 등재한다 — 미등재는 CI FAIL. 조달하지 않으면 `optional_absent_ok` + 사유. 바이너리 이름이 도구명과 다르면
+6. `tests/unit/scripts/test_analyzer_provenance.py::_PROVENANCE = ` 에 `(바이너리, 조달모드, optional 사유)` 를 등재한다 — 미등재는 CI FAIL. 조달하지 않으면 `optional_absent_ok` + 사유. 바이너리 이름이 도구명과 다르면
    `src/analyzer/io/static.py::_BINARY_OVERRIDES:` 에 매핑한다 — 없으면 조달했는데 부재로 판정되고 행의 판도 null 이다.
 
 ## 검증

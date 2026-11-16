@@ -208,13 +208,24 @@ def test_both_readmes_carry_the_derived_analyzer_count():
     assert checked == 2, "두 README 를 다 재지 못했다 — 공허화"
 
 
-def test_readme_ko_provisioned_count_is_derived():
-    """부정 통제 — 같은 문장의 **조달 수**는 다른 축이다. 둘을 섞으면 한쪽이 조용히 맞는다."""
+def test_both_readmes_carry_the_derived_provisioned_count():
+    """부정 통제 — 같은 문장의 **조달 수**는 다른 축이다. 둘을 섞으면 한쪽이 조용히 맞는다.
+
+    🔴 바로 위 시험이 «두 README» 로 고친 비대칭을 이 시험은 그대로 남겼다 — 영문 README 의 조달 수(«N ship in every
+       deployment»)는 아무도 대조하지 않았다(원장 K21 P2-22). 두 README 를 같은 축으로 잰다.
+    """
     import importlib  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     provisioned = importlib.import_module("src.analyzer.io.static").PROVISIONED_ANALYZERS
-    readme = (_ROOT / "README.ko.md").read_text(encoding="utf-8")
-    m = re.search(r"모두 \*\*(\d+)종\*\*이고, 그중 \*\*(\d+)종\*\*", readme)
-    assert m and int(m.group(2)) == len(provisioned), (
-        f"README.ko 필수 설치 수가 조달 계약({len(provisioned)}종)과 다르다"
-    )
+    checked = 0
+    for name, pattern in (
+        ("README.ko.md", r"모두 \*\*(\d+)종\*\*이고, 그중 \*\*(\d+)종\*\*"),
+        ("README.md", r"There are \*\*(\d+) registered analyzers\*\*; \*\*(\d+)\*\* ship in every deployment"),
+    ):
+        m = re.search(pattern, (_ROOT / name).read_text(encoding="utf-8"))
+        assert m, f"{name} 에서 조달 수 문장을 못 찾았다 — 표기가 바뀌었으면 이 시험도 고쳐라"
+        assert int(m.group(2)) == len(provisioned), (
+            f"{name} 의 필수 설치 수 {m.group(2)} 가 조달 계약({len(provisioned)}종)과 다르다"
+        )
+        checked += 1
+    assert checked == 2, "두 README 를 다 재지 못했다 — 공허화"
