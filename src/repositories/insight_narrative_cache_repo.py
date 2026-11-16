@@ -107,6 +107,24 @@ def get_fresh(
     return dict(row.response_json or {})
 
 
+def get_latest(db: Session, *, user_id: int, days: int, language: str = "en") -> dict[str, Any] | None:
+    """만료와 무관한 마지막 서술 — 하루 상한에 닿았을 때 보여 줄 것. 비었거나(오류 전용 행) 없으면 None.
+
+    The latest narrative regardless of expiry, shown at the daily cap; None when absent or empty (error-only row).
+    """
+    row = (
+        db.query(InsightNarrativeCache)
+        .filter(
+            InsightNarrativeCache.user_id == user_id,
+            InsightNarrativeCache.days == days,
+            InsightNarrativeCache.repo_id.is_(None),
+            InsightNarrativeCache.language == language,
+        )
+        .first()
+    )
+    return dict(row.response_json) if row is not None and row.response_json else None
+
+
 def upsert(
     db: Session,
     *,
@@ -244,6 +262,26 @@ def get_fresh_repo(
     if expires <= now:
         return None
     return dict(row.response_json or {})
+
+
+def get_latest_repo(
+    db: Session, *, user_id: int, repo_id: int, days: int, language: str = "en",
+) -> dict[str, Any] | None:
+    """만료와 무관한 마지막 서술 — 하루 상한에 닿았을 때 보여 줄 것. 비었거나(오류 전용 행) 없으면 None.
+
+    The latest narrative regardless of expiry, shown at the daily cap; None when absent or empty (error-only row).
+    """
+    row = (
+        db.query(InsightNarrativeCache)
+        .filter(
+            InsightNarrativeCache.user_id == user_id,
+            InsightNarrativeCache.repo_id == repo_id,
+            InsightNarrativeCache.days == days,
+            InsightNarrativeCache.language == language,
+        )
+        .first()
+    )
+    return dict(row.response_json) if row is not None and row.response_json else None
 
 
 def upsert_repo(

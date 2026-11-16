@@ -1254,11 +1254,13 @@ def insight_key_window():
 #             실패를 돌려준다.
 # 🔴 성공 행 위에 `record_error_repo` 를 덮으면 오류 칸만 채워지고 성공 응답은 신선한 채 남는다 —
 #    한 키로 두 상태를 차례로 열 수 없다. 상태마다 `days` 를 따로 쓰고, 들어갈 때 그 키를 비운다.
+#    리포 화면은 기간을 화면 값(`src/constants.py::INSIGHT_DAYS_REPO`)으로 접는다 — 그 값 가운데서 고른다.
 # 🔴 되읽기는 서비스가 읽는 그 함수로 한다(`get_fresh_repo` · `recent_error_repo`). 행이 있어도
 #    언어·창이 어긋나면 캐시가 빗나가 호출로 흘러간다.
 # Opens the narrative card and the failure line with the rows the write path itself produces, one
-# `days` key per state (an error recorded over a fresh success row leaves the success served).
-REPO_NARRATIVE_DAYS = {"success": 13, "failed": 17}
+# `days` key per state (an error recorded over a fresh success row leaves the success served). The repo
+# page snaps windows to its on-screen values, so the keys are picked among them.
+REPO_NARRATIVE_DAYS = {"success": 7, "failed": 90}
 REPO_NARRATIVE_TEXT = "e2e repo narrative: scores held steady while two recurring issues stay open."
 REPO_NARRATIVE_ERROR = "APIConnectionError"
 

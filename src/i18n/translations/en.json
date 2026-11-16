@@ -152,7 +152,9 @@
       "no_api_key": "🔑 ANTHROPIC_API_KEY not set — Insight mode requires AI analysis. Please set the key in Railway Variables.",
       "no_data": "📭 Insufficient analysis data in the last {days} days — please try again after results accumulate.",
       "load_failed": "⚠️ AI Insight generation failed ({status}) — please try again later.",
-      "disabled": "AI insight is disabled by configuration (INSIGHT_DISABLED)."
+      "disabled": "AI insight is disabled by configuration (INSIGHT_DISABLED).",
+      "daily_limit": "⏳ You have used today's {cap} AI insight generations — new ones are available tomorrow (UTC).",
+      "daily_limit_stale": "Today's generation limit ({cap}) reached — showing the last insight"
     },
     "select_repo_placeholder": "— Select a Repo —",
     "score_trend": "Score Trend",
@@ -932,7 +934,9 @@
     "chart_qual_err": "Code quality error",
     "chart_qual_warn": "Code quality warning",
     "count_items": "{count}",
-    "total_items": "Total {count}"
+    "total_items": "Total {count}",
+    "narrative_daily_limit": "You have used today's {cap} AI summary generations — new ones are available tomorrow (UTC).",
+    "narrative_daily_limit_stale": "Today's generation limit ({cap}) reached — showing the last summary"
   },
   "landing": {
     "page_title": "SCAManager — AI Code Review Automation",

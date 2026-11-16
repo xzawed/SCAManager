@@ -10,6 +10,7 @@ failure card. Assertions read parsed anchors (where they sit, what their query s
 from __future__ import annotations
 
 import re
+from html import unescape
 from html.parser import HTMLParser
 from unittest.mock import AsyncMock, patch
 from urllib.parse import parse_qs, urlsplit
@@ -280,3 +281,58 @@ def test_route_renders_no_failure_line_for_non_failures(route_client, status):
     resp = _get_with_status(route_client, status)
     assert resp.status_code == 200
     assert _refresh_links(resp.text, "/repos/owner/myrepo/insights") == []
+
+
+# ─── 하루 생성 상한 (회고 원장 L17 P2-7) ──────────────────────────────────────────
+#
+# 상한에 닿으면 새로 고침을 그리지 않는다 — 누르면 마지막 결과를 지우고, 다시 만들지도 못한다(상한).
+
+
+def _plain(fragment: str) -> str:
+    """태그를 벗기고 HTML 엔티티를 푼 화면 글자 — 영어 문구의 아포스트로피는 `&#39;` 로 이스케이프된다."""
+    return " ".join(unescape(re.sub(r"<[^>]+>", "", fragment)).split())
+
+
+@pytest.mark.parametrize("locale", ["ko", "en", "ja"])
+def test_dashboard_at_the_cap_shows_the_last_cards_with_the_limit_line_and_no_refresh(locale):
+    html = _dashboard({"status": "success", "daily_limit": True, "daily_cap": 50,
+                       "generated_at": "2026-11-16T01:00:00Z", "positive_highlights": ["지난 서술"],
+                       "focus_areas": ["b"], "key_metrics": [], "next_actions": ["c"]}, locale=locale)
+    assert _refresh_links(html, "/dashboard") == []
+    want = get_text("dashboard.insight.daily_limit_stale", locale, cap=50)
+    assert want != "dashboard.insight.daily_limit_stale", "문구 키가 없다"
+    line = re.search(r'<span class="dash-insight-limit">(.*?)</span>', html, re.S)
+    assert line and _plain(line.group(1)) == " ".join(want.split())
+    assert "지난 서술" in html, "마지막 결과의 카드가 사라졌다"
+
+
+@pytest.mark.parametrize("locale", ["ko", "en", "ja"])
+def test_dashboard_at_the_cap_without_a_result_shows_the_limit_box_and_no_refresh(locale):
+    html = _dashboard({"status": "daily_limit", "daily_cap": 50}, locale=locale)
+    assert _refresh_links(html, "/dashboard") == []
+    box = re.search(r'<div class="dash-insight-status">(.*?)</div>', html, re.S)
+    assert box, "한도 상태 상자가 없다"
+    assert _plain(box.group(1)) == " ".join(get_text("dashboard.insight.daily_limit", locale, cap=50).split())
+
+
+@pytest.mark.parametrize("locale", ["ko", "en", "ja"])
+def test_repo_at_the_cap_shows_the_last_text_with_the_limit_line_and_no_refresh(locale):
+    html = _render("repo_insights.html", locale=locale, **_repo_ctx(
+        narrative={"text": "지난 진단", "status": "success", "daily_limit": True, "daily_cap": 50},
+        insight_days=(7, 30, 90)))
+    assert _refresh_links(html, "/repos/owner/repo/insights") == []
+    line = re.search(r'<div class="ri-narrative-limit"[^>]*>(.*?)</div>', html, re.S)
+    want = get_text("repo_insights.narrative_daily_limit_stale", locale, cap=50)
+    assert line and _plain(line.group(1)) == " ".join(want.split())
+    assert "지난 진단" in html
+
+
+@pytest.mark.parametrize("locale", ["ko", "en", "ja"])
+def test_repo_at_the_cap_without_a_result_shows_a_note_not_a_failure(locale):
+    html = _render("repo_insights.html", locale=locale, **_repo_ctx(
+        narrative_limited=True, daily_cap=50, insight_days=(7, 30, 90)))
+    assert _refresh_links(html, "/repos/owner/repo/insights") == []
+    note = re.search(r'<div class="ri-narrative-note">(.*?)</div>', html, re.S)
+    assert note, "한도 줄이 없다"
+    assert " ".join(get_text("repo_insights.narrative_daily_limit", locale, cap=50).split()) in _plain(note.group(1))
+    assert get_text("repo_insights.narrative_failed", locale) not in html, "한도를 실패로 그렸다"
