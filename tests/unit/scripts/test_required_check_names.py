@@ -15,7 +15,7 @@
 
 ## 🔴 이 파일이 닫는 축 — 그리고 닫지 **못하는** 축
 
-required check 는 **(SHA, 이름)** 으로 식별된다(`.claude/rules/guards.md`).
+required check 는 **(SHA, 이름)** 으로 식별된다.
 그래서 `ci.yml` 의 job `name:` 을 바꾸면 GitHub 이 기다리는 이름의 체크는
 **영원히 보고되지 않는다** — 설정은 그대로인데 게이트가 조용히 의미를 잃는다.
 이 파일은 그 **이름 drift** 만 막는다.

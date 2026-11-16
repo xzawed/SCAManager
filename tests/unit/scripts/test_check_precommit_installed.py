@@ -286,7 +286,7 @@ def test_config_installs_both_hook_types_by_default():
 
     ## 왜 이 단언이 필요한가 (2026-08-17 실측 · 정책 4)
 
-    `.claude/rules/guards.md` 와 `docs/runbooks/secret-prevention.md` 가
+    옛 가드 규칙 문서와 `docs/runbooks/secret-prevention.md` 가
     **「맨 `pre-commit install` 이 두 타입을 함께 설치한다」** 고 단언하고, 그 근거로
     문서 8지점에서 `--hook-type` 처방을 걷어냈다. 그 단언이 참인 이유는 오직 이 키 하나다.
 

@@ -12,7 +12,7 @@ Phase 3 PR 1 — `src/analyzer/io/ai_review.py` 와 향후 `dashboard_service.py
 (insight_narrative — Phase 3 PR 2) 양쪽이 본 헬퍼를 재사용한다. 운영 opt-out 은
 환경변수 DISABLE_PROMPT_CACHE=1 (또는 settings.disable_prompt_cache=True) 로 제어.
 
-기획 근거: docs/design/2026-05-02-insight-dashboard-rework.md §5.3 Phase 3 PR 1.
+기획 근거: 2026-05-02 인사이트 대시보드 개편 설계 §5.3 Phase 3 PR 1(설계 문서는 리포에서 내렸다).
 """
 from src.config import settings
 

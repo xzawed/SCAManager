@@ -77,7 +77,7 @@ def test_done_marker_is_not_satisfied_by_a_date_alone():
 #
 # - `cue`(실행 지시 어휘) = **전역**. 어디에 있든 위험하다.
 # - `unchecked>=5`(남은 일 목록) = **계획 배치 한정**. 전역화하면 살아있는 운영 체크리스트
-#   (`.claude/policies/active.md`·`docs/runbooks/rls-role-separation.md` 등)에까지
+#   (`docs/runbooks/rls-role-separation.md` 등)에까지
 #   "실행하지 마라" 를 붙이게 된다 — 감사가 오탐으로 지목한 축이다.
 #
 # ## 인용 면제

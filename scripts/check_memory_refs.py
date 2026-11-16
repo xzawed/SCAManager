@@ -3,7 +3,7 @@
 메모리 슬러그 교차 점검 스크립트.
 Memory slug cross-checker script.
 
-CLAUDE.md / .claude/policies/active.md / history.md 에서 참조된 메모리 슬러그와
+처방적 문서(`CLAUDE.md` · `_DOC_GLOBS` 가 고르는 영역 문서)에서 참조된 메모리 슬러그와
 실제 메모리 디렉토리 파일 목록을 비교해 누락·스테일 어노테이션·미참조 파일을 보고한다.
 
 Compares memory slugs referenced in project docs against actual files in the memory

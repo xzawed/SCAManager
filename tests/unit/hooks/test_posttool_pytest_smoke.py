@@ -74,7 +74,7 @@ def test_derive_test_target_none_only_when_no_matching_test_exists():
 
     "기존 테스트가 왜 통과하는가" 를 물어야 하는 정확한 사례 — 테스트가 초록인 이유가
     구현이 옳아서가 아니라 **테스트가 결함을 기술하고 있어서**였다.
-    (`.claude/rules/testing.md` §회귀 차단 트랩 · SMTP 587 과 동일 클래스)
+    (SMTP 587 과 같은 «기존 시험이 결함을 고정» 부류)
     """
     # 대응 테스트가 실재 → 그 파일로 매핑돼야 한다
     assert derive_test_target("src/main.py") == "tests/unit/test_main.py"

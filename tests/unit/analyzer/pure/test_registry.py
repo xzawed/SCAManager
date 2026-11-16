@@ -1,12 +1,12 @@
 """TDD Red 상태 테스트 — Phase A: Static Analyzer Registry 인프라.
 
-신설 대상:
-  src/analyzer/registry.py          — AnalyzeContext, Analyzer Protocol, REGISTRY, register()
-  src/analyzer/tools/__init__.py    — 빈 패키지
-  src/analyzer/tools/python.py      — _PylintAnalyzer, _Flake8Analyzer, _BanditAnalyzer
+신설 대상(지금 위치):
+  src/analyzer/pure/registry.py     — AnalyzeContext, Analyzer Protocol, REGISTRY, register()
+  src/analyzer/io/tools/__init__.py — 빈 패키지
+  src/analyzer/io/tools/python.py   — _PylintAnalyzer, _Flake8Analyzer, _BanditAnalyzer
 
-수정 대상:
-  src/analyzer/static.py            — AnalysisIssue에 category/language 필드 추가
+수정 대상(지금 위치):
+  src/analyzer/io/static.py         — AnalysisIssue에 category/language 필드 추가
   src/scorer/calculator.py          — category+severity 기반 집계
 """
 import os

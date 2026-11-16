@@ -59,7 +59,7 @@ def _ephemeral_migration_db(monkeypatch):
     Pin the migration URL to in-memory SQLite so no real database is ever touched.
 
     🔴 alembic/env.py 는 cfg 의 `sqlalchemy.url` 을 `settings.effective_migration_url` 로 **무조건
-    override** 하므로 cfg 만 설정하면 무효다 (.claude/rules/db.md) — settings 싱글톤을 patch 한다.
+    override** 하므로 cfg 만 설정하면 무효다 — settings 싱글톤을 patch 한다.
     🔴 env.py always overrides cfg's sqlalchemy.url with settings.effective_migration_url, so the
     settings singleton (not the cfg) is what must be patched.
     """
