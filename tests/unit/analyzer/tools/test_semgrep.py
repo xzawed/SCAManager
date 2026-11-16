@@ -1,7 +1,7 @@
 """TDD Red 상태 테스트 — Phase B: Semgrep Analyzer.
 
-신설 대상:
-  src/analyzer/tools/semgrep.py  — _SemgrepAnalyzer (Analyzer Protocol 구현)
+신설 대상(지금 위치):
+  src/analyzer/io/tools/semgrep.py  — _SemgrepAnalyzer (Analyzer Protocol 구현)
 
 semgrep은 30+ 언어 baseline 정적분석을 담당한다.
 subprocess.run mock으로 실제 semgrep 바이너리 호출 없이 모든 경로를 검증한다.

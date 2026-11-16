@@ -68,7 +68,7 @@ _SENSITIVE_PATTERNS: tuple[re.Pattern, ...] = tuple(
         r"(^|/)(auth|oauth|oidc|saml|session|login|logout|token|jwt|secret|secrets|"
         r"credential|credentials|password|passwd|permission|rbac|acl)[^/]*\.[a-z]+$",
         # SCAManager 고유 보안 파일 — 파일명 토큰으로 안 잡히는 명시 지정.
-        #   🔴 **이 목록은 손유지다** — 대조 대상이던 `.claude/rules/security.md` 가 삭제돼
+        #   🔴 **이 목록은 손유지다** — 대조 대상이던 옛 보안 규칙 문서가 삭제돼
         #   drift 를 강제하는 테스트가 없다. 새 보안 파일을 만들면 여기 등재해야 하고,
         #   빠뜨리면 그 파일이 무검토 auto-merge 를 통과한다(아무것도 red 가 되지 않는다).
         #   Hand-maintained: the doc it was cross-checked against is gone, so nothing enforces it.

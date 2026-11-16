@@ -27,7 +27,7 @@ from scripts.check_claim_review_trace import (
     missing_trace_fields,
 )
 
-# 🔴 패치는 string-path (`.claude/rules/testing.md` §이중 import 회피 — 신규 코드 규칙).
+# 🔴 패치는 string-path (이중 import 회피 — CI `lint-changed-tests` 의 dual-import 가드가 막는다).
 _MOD = "scripts.check_claim_review_trace"
 
 _REPO = pathlib.Path(__file__).resolve().parents[3]

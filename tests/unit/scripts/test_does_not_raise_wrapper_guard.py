@@ -4,7 +4,7 @@ does-not-raise wrapper guard — seals the `try: … except (Exception|bare): py
 ## 배경 (#1170 → 이 가드) / Background
 
 2026-07-22 회고 P1-⑤: #1170 이 "does not raise" 테스트의 `try/except+pytest.fail` 안티패턴을
-**산문 규칙(`.claude/rules/testing.md`)으로만** 봉인했는데, 실제 위반 인스턴스(`test_failover.py:304`)가
+**산문 규칙(옛 시험 규칙 문서)으로만** 봉인했는데, 실제 위반 인스턴스(`test_failover.py:304`)가
 살아 있었다 = 문서-only 시정 재생산(정책 8-5 직격). 이 가드가 그 규칙을 **기계 집행**으로 승격한다.
 
 ## 왜 안티패턴인가 / Why it is an antipattern
@@ -163,5 +163,5 @@ def test_no_does_not_raise_wrapper_in_tests():
             + "\n  ".join(violations)
             + "\n해결 / Fix: try/except+pytest.fail wrapper 를 제거하고 직접 호출하세요 "
             "— 예외가 나면 pytest 가 그대로 실패 보고합니다. 정당한 사용이면 "
-            "`# does-not-raise-ok: <사유>` 주석으로 면제 (.claude/rules/testing.md 참조)."
+            "`# does-not-raise-ok: <사유>` 주석으로 면제한다."
         )

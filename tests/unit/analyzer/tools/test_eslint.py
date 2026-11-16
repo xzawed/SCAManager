@@ -1,7 +1,7 @@
 """TDD Red 상태 테스트 — Phase C: ESLint Analyzer.
 
-신설 대상:
-  src/analyzer/tools/eslint.py  — _ESLintAnalyzer (Analyzer Protocol 구현)
+신설 대상(지금 위치):
+  src/analyzer/io/tools/eslint.py  — _ESLintAnalyzer (Analyzer Protocol 구현)
 
 ESLint는 JavaScript/TypeScript 파일의 코드 품질 분석을 담당한다.
 subprocess.run mock으로 실제 eslint 바이너리 호출 없이 모든 경로를 검증한다.

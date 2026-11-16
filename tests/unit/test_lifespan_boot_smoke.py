@@ -160,7 +160,7 @@ def boot_env(monkeypatch, logging_isolation):  # pylint: disable=unused-argument
     even after another test reloaded src.config / src.main.
     """
     # 🔴 alembic/env.py 는 cfg 의 sqlalchemy.url 을 settings.effective_migration_url 로 **무조건
-    # override** 하므로 cfg 만 설정하면 무효다 (.claude/rules/db.md) — settings 싱글톤을 patch.
+    # override** 하므로 cfg 만 설정하면 무효다 — settings 싱글톤을 patch.
     # env.py always overrides cfg's URL with settings.effective_migration_url — patch the singleton.
     monkeypatch.setattr("src.config.settings.database_url", "sqlite://")
     monkeypatch.setattr("src.config.settings.migration_database_url", "")

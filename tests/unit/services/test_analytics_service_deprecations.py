@@ -10,7 +10,7 @@ PR 3 (repo_comparison + leaderboard) 폐기 시 동일 패턴으로 가드 항�
 
 Background:
 Phase 1 cleanup of analytics_service follows the user-approved deprecation plan
-(see docs/design/2026-05-02-insight-dashboard-rework.md §6.3). This module is
+(the 2026-05-02 insight dashboard rework design §6.3 — that design doc has since been removed). This module is
 the single source of regression guards for those removals.
 """
 from __future__ import annotations
