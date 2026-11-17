@@ -16,8 +16,8 @@ from alembic import op
 
 from src.shared.alembic_dialect import is_postgresql
 
-revision = "0050"
-down_revision = "0049"
+revision = "0051"
+down_revision = "0050"
 branch_labels = None
 depends_on = None
 

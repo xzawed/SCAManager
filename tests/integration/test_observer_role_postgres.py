@@ -36,13 +36,13 @@ def _load_migration():
 _MIG = _load_migration()
 _ROLE = _MIG.ROLE
 
-# 0049 뒤에 관측 역할에 컬럼을 더 주는 revision — 0050 은 `github_state` 하나(회고 원장 L05 P1-35).
-# Later revisions that grant the observer more columns; 0050 adds `github_state`.
-_LATER_GRANTS = Path(__file__).resolve().parents[2] / "alembic" / "versions" / "0050_security_alert_github_state.py"
+# 0049 뒤에 관측 역할에 컬럼을 더 주는 revision — 0051 은 `github_state` 하나(회고 원장 L05 P1-35).
+# Later revisions that grant the observer more columns; 0051 adds `github_state`.
+_LATER_GRANTS = Path(__file__).resolve().parents[2] / "alembic" / "versions" / "0051_security_alert_github_state.py"
 
 
 def _later_grants() -> dict[str, tuple[str, ...]]:
-    spec = importlib.util.spec_from_file_location("observer_grants_0050", _LATER_GRANTS)
+    spec = importlib.util.spec_from_file_location("observer_grants_0051", _LATER_GRANTS)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module._ADDED_GRANTS  # pylint: disable=protected-access
@@ -379,7 +379,7 @@ def test_migration_runs_as_a_non_superuser_owner(engine):
                "/observer_sim")
     admin = create_engine(_PG_URL, isolation_level="AUTOCOMMIT")
     expected_columns = sum(len(columns) for columns in _MIG._ALLOWED.values())
-    expected_columns += sum(len(columns) for columns in _later_grants().values())  # 0050 github_state
+    expected_columns += sum(len(columns) for columns in _later_grants().values())  # 0051 github_state
     defaults = {"default_transaction_read_only=on", "statement_timeout=5s", "idle_in_transaction_session_timeout=10s"}
     try:
         with admin.connect() as conn:
