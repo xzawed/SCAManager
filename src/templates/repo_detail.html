@@ -1107,8 +1107,20 @@ function renderPagination(totalPages, total, start, count) {
   pg.onclick = function(e) {
     var btn = e.target.closest('[data-page]');
     if (!btn || btn.disabled) return;
+    // 🔴 막대를 다시 그리면 누른 버튼이 사라져 포커스가 <body> 로 떨어졌다(회고 원장 L04 P2-61) — 같은 자리의 새 버튼으로
+    //    옮긴다: 화살표면 그 화살표(막혔으면 현재 페이지), 번호면 현재 페이지. 스크롤은 아래 scrollIntoView 가 정한다.
+    // Re-rendering drops focus to <body>; move it to the matching button in the new bar (without scrolling).
+    var hadFocus = document.activeElement === btn;
+    var all = pg.querySelectorAll('.page-btn');
+    var arrow = btn === all[0] ? 'first' : (btn === all[all.length - 1] ? 'last' : null);
     state.currentPage = parseInt(btn.dataset.page);
     applyFilters();
+    if (hadFocus) {
+      var now = pg.querySelectorAll('.page-btn');
+      var same = arrow === 'first' ? now[0] : (arrow === 'last' ? now[now.length - 1] : null);
+      var target = (same && !same.disabled) ? same : pg.querySelector('.page-btn.active');
+      if (target) target.focus({preventScroll: true});
+    }
     // 스크립트가 고른 'smooth' 는 CSS 모션 감소 리셋이 닿지 않는다 — 직접 묻는다.
     // A script-chosen smooth scroll bypasses the CSS reduced-motion reset; ask directly.
     var calm = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;

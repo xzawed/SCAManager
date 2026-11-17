@@ -118,3 +118,34 @@ def test_history_page_flip_scrolls_at_once_when_reduced_motion_is_requested(seed
     assert plain["after"] < -50, f"감소 안 함인데 클릭과 같은 구간에서 이미 도착했다 {plain} — 계기가 smooth 를 못 가른다"
     calm = _flip_to_first_page(seeded_page, url, "reduce")
     assert calm["after"] >= -1, f"모션 감소인데 페이지 넘김 스크롤이 그 자리에서 끝나지 않았다(smooth) {calm}"
+
+
+# 포커스가 지금 어디에 있는가 — 페이지 막대 안의 누를 수 있는 버튼인지, 그 글자와 켜짐까지.
+# Where focus is now: inside the pagination bar on an enabled button, with its label and active state.
+_FOCUS_JS = """() => { const a = document.activeElement;
+  return {tag: a ? a.tagName.toLowerCase() : null, inBar: !!(a && a.closest && a.closest('#pagination')),
+          enabled: !!(a && !a.disabled), active: !!(a && a.classList && a.classList.contains('active')),
+          label: a ? (a.textContent || '').trim() : null}; }"""
+
+
+def test_history_page_buttons_keep_keyboard_focus(seeded_page, base_url, paginated_history):
+    """🔴 분석 이력 페이지 버튼을 키보드로 누르면 포커스가 다시 그린 막대에 남는다 (회고 원장 L04 P2-61).
+
+    막대를 `innerHTML` 로 다시 그려 누른 버튼이 사라지면서 포커스가 `<body>` 로 떨어졌다 — 키보드 사용자는 문서
+    처음부터 다시 Tab 해야 했다. 번호를 누르면 새 현재 페이지에, 화살표를 누르면 그 화살표(막혔으면 현재 페이지)에 남는다.
+    Activating a history page button by keyboard keeps focus in the re-rendered bar instead of dropping it to <body>.
+    """
+    page = seeded_page
+    page.set_viewport_size({"width": 1280, "height": 900})
+    page.goto(f"{base_url}/repos/owner%2Ftestrepo")
+    bar = page.locator("#pagination")
+    bar.get_by_role("button", name="2", exact=True).focus()
+    page.keyboard.press("Enter")
+    page.wait_for_timeout(300)
+    got = page.evaluate(_FOCUS_JS)
+    assert got["inBar"] and got["active"] and got["label"] == "2", f"번호 «2» 를 누른 뒤 포커스가 {got}"
+    bar.get_by_role("button", name="‹", exact=True).focus()
+    page.keyboard.press("Enter")
+    page.wait_for_timeout(300)
+    got = page.evaluate(_FOCUS_JS)
+    assert got["inBar"] and got["enabled"], f"«‹» 를 누른 뒤 포커스가 페이지 막대 밖이다: {got}"
