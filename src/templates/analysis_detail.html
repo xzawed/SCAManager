@@ -33,7 +33,7 @@
           {{ 'analysis_detail.grade_label' | i18n_args(locale | default('ko'), grade=analysis.grade or '—') }}
         </span>
         {% if analysis.score is not none %}
-        <span class="ad-score-label" style="font-size: 13px; color: var(--text-2);">
+        <span style="font-size: 13px; color: var(--text-2);">
           {% if analysis.score >= 90 %}{{ 'analysis_detail.score_message.excellent' | i18n_args(locale | default('ko')) }}
           {% elif analysis.score >= 75 %}{{ 'analysis_detail.score_message.good' | i18n_args(locale | default('ko')) }}
           {% elif analysis.score >= 60 %}{{ 'analysis_detail.score_message.fair' | i18n_args(locale | default('ko')) }}
@@ -107,7 +107,7 @@
 
   <!-- 점수 피드백 카드 (thumbs) / Score feedback card (thumbs) -->
   <!-- Phase E.3 — 이 점수가 맞나요? / Is this score correct? -->
-  <div class="card feedback-card" id="feedbackCard"
+  <div class="card" id="feedbackCard"
        data-analysis-id="{{ analysis.id }}"
        data-repo="{{ repo_name }}"
        data-current-thumbs="{{ user_feedback.thumbs if user_feedback and user_feedback.thumbs else '' }}"
@@ -122,11 +122,11 @@
       <div class="feedback-buttons" role="group" aria-label="{{ 'analysis_detail.feedback.aria_group' | i18n_args(locale | default('ko')) }}">
         <button type="button" class="fb-btn fb-up" data-value="1"
                 title="{{ 'analysis_detail.feedback.thumbs_up_title' | i18n_args(locale | default('ko')) }}" aria-label="{{ 'analysis_detail.feedback.thumbs_up_aria' | i18n_args(locale | default('ko')) }}">
-          <span aria-hidden="true">👍</span> <span class="fb-btn-label">{{ 'analysis_detail.feedback.thumbs_up' | i18n_args(locale | default('ko')) }}</span>
+          <span aria-hidden="true">👍</span> <span>{{ 'analysis_detail.feedback.thumbs_up' | i18n_args(locale | default('ko')) }}</span>
         </button>
         <button type="button" class="fb-btn fb-down" data-value="-1"
                 title="{{ 'analysis_detail.feedback.thumbs_down_title' | i18n_args(locale | default('ko')) }}" aria-label="{{ 'analysis_detail.feedback.thumbs_down_aria' | i18n_args(locale | default('ko')) }}">
-          <span aria-hidden="true">👎</span> <span class="fb-btn-label">{{ 'analysis_detail.feedback.thumbs_down' | i18n_args(locale | default('ko')) }}</span>
+          <span aria-hidden="true">👎</span> <span>{{ 'analysis_detail.feedback.thumbs_down' | i18n_args(locale | default('ko')) }}</span>
         </button>
         <span class="fb-status" id="fbStatus" role="status" aria-live="polite"></span>
       </div>
