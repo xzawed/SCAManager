@@ -1010,6 +1010,78 @@ def _listing_pipeline_reads_dotenv(stages):
     return False
 
 
+# ── find 가 찾은 파일을 읽게 넘기는가 (회고 원장 R-3) ──────────────────────────────────────
+# 경로 판정은 낱말을 Bash 점 규칙 · 그 폴더로 대 본다. find 의 이름 패턴은 그와 달리 `*` 가 점 파일도 집고 find 는 아래
+# 폴더까지 내려가므로 따로 본다 — find 가 찾은 파일을 실행 술어로 넘기거나 이름만 다루는 명령이 아닌 뒤 단계로 넘길 때,
+# 시작 경로 아래의 실제 .env 꼴 파일에 find 의 패턴을 find 처럼 대 본다. 이름만 내보내는 find 는 대상이 아니다(ls 처럼
+# 이름 글자뿐).
+# find's `*` matches dot-files and find descends; when find hands its matches to a command (-exec …) or to a
+# later stage that is not name-only, match its patterns the way find does against the real .env-like files.
+_FIND_PATTERN_PRIMARIES = frozenset({"-name", "-iname", "-path", "-ipath", "-wholename", "-iwholename"})
+_FIND_RUN_PRIMARIES = frozenset({"-exec", "-execdir", "-ok", "-okdir"})
+# 받은 이름을 글자로만 다루는 뒤 단계 — 닫힌 허용 목록이다. 목록 밖(xargs · 반복문 · 처음 보는 명령)은 읽기로 본다.
+# Later stages that treat the names as text only; a closed allowlist — anything else counts as a read.
+_NAME_ONLY_CONSUMERS = frozenset({"head", "tail", "wc", "sort", "uniq", "grep", "egrep", "fgrep", "cut", "tr",
+                                  "cat"})
+_FIND_GLOBAL_OPTIONS = frozenset({"-h", "-l", "-p"})
+
+
+def _find_call(stage):
+    """명령 자리의 find → (시작 경로들, [(술어, 패턴)], 부정이 있나, 실행 술어가 있나) — find 가 아니면 None.
+    find at the command position as (start paths, [(primary, pattern)], negated?, runs a command?)."""
+    head, words = _command_words(stage.replace("\\", "/"))
+    if head != "find":
+        return None
+    i = 0
+    while i < len(words) and (words[i].lower() in _FIND_GLOBAL_OPTIONS or re.fullmatch(r"-O\d*", words[i])):
+        i += 1
+    starts = []
+    while i < len(words) and not words[i].startswith(("-", "(", "!", ",", "/(", "/!")):
+        starts.append(words[i])
+        i += 1
+    patterns, negated, runs = [], False, False
+    expression = words[i:]
+    for k, word in enumerate(expression):
+        if word in _FIND_PATTERN_PRIMARIES and k + 1 < len(expression):
+            patterns.append((word, expression[k + 1]))
+        negated = negated or word in ("!", "/!", "-not")
+        runs = runs or word in _FIND_RUN_PRIMARIES
+    return starts or ["."], patterns, negated, runs
+
+
+def _find_may_select(files, start, patterns, negated):
+    """find 의 패턴(점 파일 포함 · 경로 패턴은 시작 경로부터)이 .env 꼴 파일 하나라도 고르는가. 부정이 있거나 패턴이
+    없으면 고른다고 본다(막는 쪽). Would find's patterns select any of these .env-like files?"""
+    if negated or not patterns:
+        return bool(files)
+    for parts in files:
+        for primary, pattern in patterns:
+            target = parts[-1] if primary in ("-name", "-iname") else "/".join((start.rstrip("/"), *parts))
+            if primary.startswith("-i"):
+                target, pattern = target.lower(), pattern.lower()
+            if fnmatch.fnmatchcase(target, pattern):
+                return True
+    return False
+
+
+def _find_reads_dotenv(stages):
+    """find 가 찾은 파일을 실행 술어나 «이름만 다루지 않는» 뒤 단계로 넘기고, 그 find 가 .env 꼴 파일을 고를 수 있는가.
+    Does a find hand its matches to a command or a non-name-only later stage, and could it select a .env file?"""
+    for i, stage in enumerate(stages):
+        call = _find_call(stage)
+        if call is None:
+            continue
+        starts, patterns, negated, runs = call
+        hands_over = runs or any(_command_words(s)[0] not in _NAME_ONLY_CONSUMERS for s in stages[i + 1:])
+        if not hands_over:
+            continue
+        for start in starts:
+            files = _dotenv_files(start)
+            if files is None or _find_may_select(files, start, patterns, negated):
+                return True
+    return False
+
+
 # ── credential **값**을 stdout 으로 쏟는 명령: (판정 함수, 사유, 중화 수단, 안내) ──────
 # Commands that dump credential values: (matcher, reason, neutralizers, hint).
 # 🔴 `.env\b(?!\.)` 부정 lookahead — 커밋된 템플릿 `.env.example` 은 값이 없고
@@ -1186,6 +1258,10 @@ def _decide_segment(segment, marked=None):
     # A listing piped into a content reader is only visible across stages.
     if len(stages) > 1 and _listing_pipeline_reads_dotenv(stages):
         return "나열 → 내용 읽기 — .env 까지 읽는다", _SAFE_SEARCH
+    # find 가 찾은 파일을 읽게 넘긴다 — find 의 `*` 는 점 파일도 집고 아래 폴더까지 내려간다(R-3).
+    # find hands its matches to a reader; its `*` matches dot-files and it descends.
+    if _find_reads_dotenv(stages):
+        return "find → 내용 읽기 — find 가 고른 .env 까지 읽는다", _SAFE_SEARCH
     for i, stage in enumerate(stages):
         for matcher, reason, neutralizers, hint in _BLOCKED:
             hit = matcher(path_stages[i] if matcher is _reads_dotenv else stage)
