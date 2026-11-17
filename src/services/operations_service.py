@@ -3,7 +3,7 @@
 5+1 cross-verify (관점 🅔 옵션 🅑) — operations 대시보드 KPI 5종:
 - cache_hit_rate (claude_metrics 메모리 카운터)
 - silent_cache_fallback ratio (silent fallback streak 영역)
-- API 비용 추정 (estimate_claude_cost_usd)
+- API 비용 — 최근 N일 claude_api_calls 실측 합 (DB · 재배포해도 유지)
 - merge success rate (MergeAttempt aggregate 재사용)
 - pipeline 단계 latency p95 (stage_metrics 영역)
 
@@ -20,12 +20,9 @@ from sqlalchemy.orm import Session
 
 from src.i18n.loader import get_i18n_metrics
 from src.models.merge_attempt import MergeAttempt
-from src.repositories import merge_attempt_repo
+from src.repositories import claude_api_cost_repo, merge_attempt_repo
 from src.models.user import User
-from src.shared.claude_metrics import (
-    estimate_claude_cost_usd,
-    get_cache_stats,
-)
+from src.shared.claude_metrics import get_cache_stats
 from src.shared.time_utils import to_naive_utc
 
 
@@ -53,33 +50,23 @@ def _cache_kpi() -> dict[str, Any]:
     }
 
 
-def _api_cost_estimate(stats: dict[str, int | float]) -> dict[str, Any]:
-    """API 비용 추정 — Sonnet default (가장 가능성 ↑).
+def _api_cost_kpi(db: Session, days: int = 7) -> dict[str, Any]:
+    """API 비용 카드 — 최근 N일 `claude_api_calls` 에 기록된 호출의 실측 합(전체 테넌트).
 
-    API cost estimate — Sonnet default (most likely model).
-    process restart 시 reset 명시.
+    API cost card — totals of the calls recorded in `claude_api_calls` over the last N days.
+    호출마다 기록 경로가 실제 토큰과 그 모델의 요율로 매긴 비용을 더할 뿐이다 — 모델을 가정하거나 출력 토큰을 짓지 않고,
+    DB 에 있어 재배포해도 유지된다(사용자 11-17 결정 «실측 합으로»).
+    Sums what was recorded per call; no assumed model, no invented output tokens; survives redeploys.
     """
-    input_tok = int(stats.get("input_tokens") or 0)
-    cache_read = int(stats.get("cache_read_tokens") or 0)
-    cache_creation = int(stats.get("cache_creation_tokens") or 0)
-    # output_tokens 부재 (claude_metrics 카운터 미수집) — input 의 1/8 추정 (heuristic)
-    # output_tokens absent — estimated as input/8 (heuristic from cycle 72 baseline)
-    output_estimate = input_tok // 8
-
-    cost_usd = estimate_claude_cost_usd(
-        model="claude-sonnet-5",
-        input_tokens=input_tok,
-        output_tokens=output_estimate,
-        cache_read_tokens=cache_read,
-        cache_creation_tokens=cache_creation,
-    )
+    # naive UTC — ClaudeApiCall.created_at 은 naive 컬럼 / naive column
+    until = to_naive_utc(datetime.now(timezone.utc))
+    totals = claude_api_cost_repo.window_totals(db, since=until - timedelta(days=days), until=until)
     return {
-        "estimated_usd": round(cost_usd, 4),
-        "input_tokens": input_tok,
-        "output_estimate": output_estimate,
-        "cache_read_tokens": cache_read,
-        "cache_creation_tokens": cache_creation,
-        "model": "claude-sonnet-5 (assumed default)",
+        "recorded_usd": round(totals["cost_usd"], 4),
+        "input_tokens": totals["input_tokens"],
+        "output_tokens": totals["output_tokens"],
+        "call_count": totals["call_count"],
+        "days": days,
     }
 
 
@@ -175,10 +162,9 @@ def operations_kpi(db: Session, days: int = 7) -> dict[str, Any]:
     - language_distribution = User.preferred_language 분포 (en/ko/ja)
     - i18n_fallback = fallback rate (메모리 카운터)
     """
-    stats = get_cache_stats()
     return {
         "cache": _cache_kpi(),
-        "api_cost": _api_cost_estimate(stats),
+        "api_cost": _api_cost_kpi(db, days=days),
         "merge": _merge_kpi(db, days=days),
         # pipeline_latency 영역 = stage_metrics 메모리 카운터 부재
         # (logger.info 만 — 사용처 ≥3 도달 후 메모리 카운터 추가 결정)

@@ -145,6 +145,20 @@ def test_operations_merge_kpi_uses_naive_bound():
     )
 
 
+def test_operations_api_cost_kpi_uses_naive_bounds():
+    """operations _api_cost_kpi 의 ClaudeApiCall.created_at 창 두 경계가 naive UTC."""
+    mock_db = MagicMock()
+    mock_db.execute.return_value.one.return_value = (0, 0.0, 0, 0)
+    operations_service._api_cost_kpi(mock_db, days=7)  # pylint: disable=protected-access
+
+    stmt = mock_db.execute.call_args.args[0]
+    dt_params = [v for v in stmt.compile().params.values() if isinstance(v, datetime)]
+    assert len(dt_params) == 2, f"창 경계 datetime 바인드가 둘이 아니다: {dt_params!r}"
+    assert all(v.tzinfo is None for v in dt_params), (
+        f"_api_cost_kpi 창 경계가 aware: {[p for p in dt_params if p.tzinfo]!r}"
+    )
+
+
 # ─── 🔴 전수 쓸이 — 헬퍼를 우회하는 생 tzinfo 벗기기 금지 ──────────────────────
 #
 # `to_naive_utc` 는 **먼저 UTC 로 변환하고** tzinfo 를 벗긴다. 생 `.replace(tzinfo=None)` 은

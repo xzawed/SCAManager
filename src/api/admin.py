@@ -41,7 +41,7 @@ def _get_db():
 def _get_worker_db():
     """시스템 컨텍스트 세션 의존성 — tenants/operations cross-tenant 집계 전용 (RLS Phase 4).
 
-    tenant_inventory(User/Repository/Analysis)·operations_kpi(MergeAttempt/User)는 전체 테넌트
+    tenant_inventory(User/Repository/Analysis)·operations_kpi(MergeAttempt/User/ClaudeApiCall)는 전체 테넌트
     집계라, Phase 4 비-BYPASSRLS app role 전환 시 admin 세션 RLS(app.user_id=admin)가 admin 본인
     행만 남겨 under-report 한다. worker(BYPASSRLS) 경유로 cross-tenant 가시성을 보존한다.
     DATABASE_URL_WORKER 미설정 시 WorkerSessionLocal is SessionLocal — 현행 동작 동일.

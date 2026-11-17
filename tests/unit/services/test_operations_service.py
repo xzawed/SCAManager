@@ -1,10 +1,11 @@
 """operations_service — admin 운영 모니터링 KPI 회귀 가드 (Cycle 80 PR 2).
 
-cache_kpi + api_cost_estimate + merge_kpi + pipeline_latency 영역 검증.
+cache_kpi + api_cost_kpi + merge_kpi + pipeline_latency 영역 검증.
 """
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy import create_engine
@@ -12,6 +13,7 @@ from sqlalchemy.orm import sessionmaker
 
 from src.database import Base
 from src.gate import _merge_attempt_states as _states
+from src.models.claude_api_call import ClaudeApiCall
 from src.models.merge_attempt import MergeAttempt
 from src.services import operations_service
 from src.shared import claude_metrics
@@ -61,32 +63,52 @@ class TestCacheKpi:
         assert result["cache_hit_rate_pct"] == 80.0
 
 
-# ─── _api_cost_estimate ──────────────────────────────────────────────
+# ─── _api_cost_kpi ───────────────────────────────────────────────────
 
 
-class TestApiCostEstimate:
-    def test_zero_when_no_calls(self):
-        stats = claude_metrics.get_cache_stats()
-        result = operations_service._api_cost_estimate(stats)
-        assert result["estimated_usd"] == 0.0
-        assert result["input_tokens"] == 0
+def _add_call(db, *, days_ago, cost, inp, out, model="claude-haiku-4-5"):
+    db.add(ClaudeApiCall(
+        created_at=datetime.now(timezone.utc) - timedelta(days=days_ago), model=model, status="success",
+        input_tokens=inp, output_tokens=out, cache_read_tokens=0, cache_creation_tokens=0,
+        cost_usd=cost, duration_ms=1.0,
+    ))
+    db.commit()
 
-    def test_cost_with_cache(self):
-        # 1M input + 500K cache_read 시뮬레이션
-        # Sonnet input $3/M + cache_read 0.1× ($0.30/M)
-        # output_estimate = 1M / 8 = 125K (output $15/M = $1.875)
-        stats = {
-            "input_tokens": 1_000_000,
-            "cache_read_tokens": 500_000,
-            "cache_creation_tokens": 0,
-            "total_calls": 100,
-            "cache_hit_rate": 0.333,
-        }
-        result = operations_service._api_cost_estimate(stats)
-        assert result["input_tokens"] == 1_000_000
-        assert result["output_estimate"] == 125_000
-        # cost > 0
-        assert result["estimated_usd"] > 0
+
+class TestApiCostKpi:
+    """API 비용 카드 = 최근 N일 `claude_api_calls` 실측 합 (사용자 11-17 결정 «실측 합으로»)."""
+
+    def test_zero_when_nothing_was_recorded(self, db):
+        result = operations_service._api_cost_kpi(db, days=7)
+        assert result == {"recorded_usd": 0.0, "input_tokens": 0, "output_tokens": 0, "call_count": 0, "days": 7}
+
+    def test_the_recorded_cost_is_summed_not_re_estimated(self, db):
+        """🔴 기록된 비용을 그대로 더한다 — 모델을 가정하거나 출력을 입력의 몇 분의 일로 짓지 않는다.
+
+        기록값은 요율표와 일부러 다르게 심었다: 다시 매기면 이 합이 나올 수 없다.
+        """
+        _add_call(db, days_ago=1, cost=0.0123, inp=1_000_000, out=0)
+        _add_call(db, days_ago=2, cost=0.0077, inp=0, out=500_000, model="claude-sonnet-5")
+        result = operations_service._api_cost_kpi(db, days=7)
+        assert result["recorded_usd"] == 0.02
+        assert (result["input_tokens"], result["output_tokens"], result["call_count"]) == (1_000_000, 500_000, 2)
+
+    def test_the_in_memory_counter_does_not_feed_the_card(self, db):
+        """🔴 재배포로 비는 메모리 카운터가 아니라 DB 기록에서 온다 — 카운터만 오르면 카드는 0 이다."""
+        with patch("src.repositories.claude_api_cost_repo.record"):
+            claude_metrics.log_claude_api_call(
+                model="claude-sonnet-5", duration_ms=100, input_tokens=1_000_000, output_tokens=200,
+                status="success")
+        assert claude_metrics.get_cache_stats()["input_tokens"] == 1_000_000
+        result = operations_service._api_cost_kpi(db, days=7)
+        assert (result["recorded_usd"], result["input_tokens"], result["call_count"]) == (0.0, 0, 0)
+
+    def test_the_window_follows_days(self, db):
+        _add_call(db, days_ago=3, cost=0.5, inp=10, out=1)
+        _add_call(db, days_ago=20, cost=2.0, inp=20, out=2)
+        assert operations_service._api_cost_kpi(db, days=7)["recorded_usd"] == 0.5
+        wide = operations_service._api_cost_kpi(db, days=30)
+        assert (wide["recorded_usd"], wide["call_count"], wide["days"]) == (2.5, 2, 30)
 
 
 # ─── _merge_kpi ──────────────────────────────────────────────────────
@@ -215,7 +237,8 @@ class TestOperationsKpi:
         assert "Phase 2" in result["pipeline_latency"]["reason"]
 
     def test_days_parameter_propagation(self, db):
-        """days 파라미터 = merge_kpi 에 전달."""
+        """days 파라미터 = merge_kpi · API 비용 카드에 전달."""
         result = operations_service.operations_kpi(db, days=30)
         assert result["days"] == 30
         assert result["merge"]["days"] == 30
+        assert result["api_cost"]["days"] == 30
