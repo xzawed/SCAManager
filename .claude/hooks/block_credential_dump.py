@@ -1018,6 +1018,11 @@ def _listing_pipeline_reads_dotenv(stages):
 # find's `*` matches dot-files and find descends; when find hands its matches to a command (-exec …) or to a
 # later stage that is not name-only, match its patterns the way find does against the real .env-like files.
 _FIND_PATTERN_PRIMARIES = frozenset({"-name", "-iname", "-path", "-ipath", "-wholename", "-iwholename"})
+# 정규식 시험은 전체 경로에 대 본다(파이썬 re 로 — emacs 와 뜻이 갈리는 글자가 있으면 막는 쪽).
+# 링크 대상 시험은 대 보지 않는다 — 있으면 전부 고른다고 본다(막는 쪽).
+# Regex tests are matched against the whole path; link-target tests are not modelled (select everything).
+_FIND_REGEX_PRIMARIES = frozenset({"-regex", "-iregex"})
+_FIND_UNMODELLED_TESTS = frozenset({"-lname", "-ilname"})
 _FIND_RUN_PRIMARIES = frozenset({"-exec", "-execdir", "-ok", "-okdir"})
 # 받은 이름을 글자로만 다루는 뒤 단계 — 닫힌 허용 목록이다. 목록 밖(xargs · 반복문 · 처음 보는 명령)은 읽기로 본다.
 # Later stages that treat the names as text only; a closed allowlist — anything else counts as a read.
@@ -1027,36 +1032,55 @@ _FIND_GLOBAL_OPTIONS = frozenset({"-h", "-l", "-p"})
 
 
 def _find_call(stage):
-    """명령 자리의 find → (시작 경로들, [(술어, 패턴)], 부정이 있나, 실행 술어가 있나) — find 가 아니면 None.
-    find at the command position as (start paths, [(primary, pattern)], negated?, runs a command?)."""
-    head, words = _command_words(stage.replace("\\", "/"))
+    """명령 자리의 find → (시작 경로들, [(시험, 패턴)], 전부 고른다고 볼 것인가, 실행 술어가 있나) — find 가 아니면 None.
+    낱말은 셸 규칙으로 나눈다 — `\\(` · `\\;` 를 경로 구분자로 바꾸면 시작 경로를 잘못 읽는다(Grok 반례 검토 중 실측).
+    부정 · 링크 대상 시험이 있으면 전부 고른다고 본다(막는 쪽).
+    find at the command position as (start paths, [(test, pattern)], select-all?, runs a command?); words are
+    split with shell rules — turning `\\(` into a path separator misread the start paths."""
+    head, words = _command_words(stage)
     if head != "find":
         return None
     i = 0
     while i < len(words) and (words[i].lower() in _FIND_GLOBAL_OPTIONS or re.fullmatch(r"-O\d*", words[i])):
         i += 1
     starts = []
-    while i < len(words) and not words[i].startswith(("-", "(", "!", ",", "/(", "/!")):
+    while i < len(words) and not words[i].startswith(("-", "!", ",")):
         starts.append(words[i])
         i += 1
-    patterns, negated, runs = [], False, False
+    tests, select_all, runs = [], False, False
     expression = words[i:]
     for k, word in enumerate(expression):
-        if word in _FIND_PATTERN_PRIMARIES and k + 1 < len(expression):
-            patterns.append((word, expression[k + 1]))
-        negated = negated or word in ("!", "/!", "-not")
+        if word in _FIND_PATTERN_PRIMARIES | _FIND_REGEX_PRIMARIES and k + 1 < len(expression):
+            tests.append((word, expression[k + 1]))
+        select_all = select_all or word in ("!", "-not") or word in _FIND_UNMODELLED_TESTS
         runs = runs or word in _FIND_RUN_PRIMARIES
-    return starts or ["."], patterns, negated, runs
+    return starts or ["."], tests, select_all, runs
 
 
-def _find_may_select(files, start, patterns, negated):
-    """find 의 패턴(점 파일 포함 · 경로 패턴은 시작 경로부터)이 .env 꼴 파일 하나라도 고르는가. 부정이 있거나 패턴이
-    없으면 고른다고 본다(막는 쪽). Would find's patterns select any of these .env-like files?"""
-    if negated or not patterns:
+def _find_regex_selects(pattern, path, ignore_case):
+    """find 정규식(기본 emacs 문법)이 경로를 고르는가 — `|` · 괄호 · 중괄호는 emacs 와 파이썬의 뜻이 갈려 막는 쪽.
+    Does a find regex select the path? `|`, parentheses and braces differ between emacs and Python: fail closed."""
+    if any(ch in pattern for ch in "|(){}"):
+        return True
+    try:
+        return re.fullmatch(pattern, path, re.IGNORECASE if ignore_case else 0) is not None
+    except re.error:
+        return True
+
+
+def _find_may_select(files, start, tests, select_all):
+    """find 의 시험(점 파일 포함 · 경로 · 정규식은 시작 경로부터)이 .env 꼴 파일 하나라도 고르는가. 전부 고른다고 볼
+    때나 시험이 없으면 고른다. Would find's tests select any of these .env-like files?"""
+    if select_all or not tests:
         return bool(files)
     for parts in files:
-        for primary, pattern in patterns:
-            target = parts[-1] if primary in ("-name", "-iname") else "/".join((start.rstrip("/"), *parts))
+        path = "/".join((start.rstrip("/"), *parts))
+        for primary, pattern in tests:
+            if primary in _FIND_REGEX_PRIMARIES:
+                if _find_regex_selects(pattern, path, primary == "-iregex"):
+                    return True
+                continue
+            target = parts[-1] if primary in ("-name", "-iname") else path
             if primary.startswith("-i"):
                 target, pattern = target.lower(), pattern.lower()
             if fnmatch.fnmatchcase(target, pattern):
@@ -1071,13 +1095,13 @@ def _find_reads_dotenv(stages):
         call = _find_call(stage)
         if call is None:
             continue
-        starts, patterns, negated, runs = call
+        starts, tests, select_all, runs = call
         hands_over = runs or any(_command_words(s)[0] not in _NAME_ONLY_CONSUMERS for s in stages[i + 1:])
         if not hands_over:
             continue
         for start in starts:
             files = _dotenv_files(start)
-            if files is None or _find_may_select(files, start, patterns, negated):
+            if files is None or _find_may_select(files, start, tests, select_all):
                 return True
     return False
 

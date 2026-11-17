@@ -39,6 +39,12 @@ _DENIED = [
     pytest.param("root_env", "find . -name '*.env' | while read f; do cat \"$f\"; done", id="names-into-a-loop"),
     pytest.param("nested_env", "find . -name '.env*' -exec cat {} +", id="only-in-a-subfolder"),
     pytest.param("nested_env", "find . -path '*/deep/*' -execdir cat {} +", id="path-pattern"),
+    # Grok claim-review(9df0d484) 반례의 부류 — 다른 이름 패턴과 «또는» 으로 묶인 정규식 · 대소문자 무시 정규식
+    pytest.param("nested_env", "find . \\( -name '*.md' -o -regex '.*local' \\) -exec cat {} \\;",
+                 id="regex-or-name"),
+    pytest.param("nested_env", "find . -iregex '.*\\.ENV.*' -exec cat {} +", id="case-insensitive-regex"),
+    pytest.param("nested_env", "find . -regex '.*\\(local\\|txt\\)' -exec cat {} +", id="emacs-regex-fails-closed"),
+    pytest.param("root_env", "find . -lname '*' -exec cat {} +", id="unmodelled-test-fails-closed"),
 ]
 
 _ALLOWED = [
@@ -47,6 +53,7 @@ _ALLOWED = [
     pytest.param("root_env", "find . -name '*.md' -exec grep -n TODO {} +", id="pattern-misses-dotenv"),
     pytest.param("root_env", "find . -name '*.md' | xargs wc -l", id="xargs-on-other-files"),
     pytest.param("nested_env", "find src -name '*' -exec cat {} +", id="start-path-without-dotenv"),
+    pytest.param("root_env", "find . -regex '.*\\.md' -exec grep -n TODO {} +", id="regex-misses-dotenv"),
 ]
 
 
