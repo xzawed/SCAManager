@@ -651,6 +651,15 @@ _FORCED_PAIRS_JS = r"""
   const offBox = onBox && boxes.find(b => !b.checked
     && b.nextElementSibling.className === onBox.nextElementSibling.className);
   add('checkbox', onBox && onBox.nextElementSibling, offBox && offBox.nextElementSibling);
+  // 🔴 `.active` 클래스로만 나르는 상태 — 앱이 가장 많이 쓰는 꼴인데 ARIA 를 선언하지 않아 위 축들이 못 봤다(회고 원장
+  //    L04 P1-25). 같은 부모 · 같은 태그 · `active` 를 뺀 같은 클래스의 형제를 «꺼짐» 짝으로 잡는다.
+  //    `.active`-only states: the sibling with the same tag and the same classes minus `active` is the "off" twin.
+  document.querySelectorAll('.active').forEach(on => {
+    if (!on.parentElement) return;
+    const base = Array.from(on.classList).filter(c => c !== 'active').sort().join(' ');
+    const off = Array.from(on.parentElement.children).find(s => s !== on && s.tagName === on.tagName
+      && !s.classList.contains('active') && Array.from(s.classList).sort().join(' ') === base);
+    add('class-active', on, off); });
   // 시드에는 한 상태만 있다 — 바로 옆에 반대 상태의 복제를 두고 같은 문맥에서 잰다(B 와 같은 방식).
   const dot = document.querySelector('.conn-dot');
   if (dot) {
@@ -708,7 +717,7 @@ def test_declared_states_stay_distinct_in_forced_colors(seeded_page, base_url):
                 if p["same"]:
                     bad.append(f"{path} {p['kind']}: {p['onId']} ↔ {p['offId']} 가 같은 모양이다")
         # 🔴 기록된 색만의 상태와 ARIA 상태가 실제로 쌍으로 잡혀야 한다 — 0 이면 못 잰 것이다.
-        for kind in ("conn-dot", "checkbox", "aria-checked", "aria-sort"):
+        for kind in ("conn-dot", "checkbox", "aria-checked", "aria-sort", "class-active"):
             assert seen.get(kind), f"forced-colors 에서 {kind} 쌍을 하나도 못 잡았다 — 재지 못했다"
         assert not bad, "forced-colors 에서 상태가 사라진다:\n  " + "\n  ".join(sorted(set(bad)))
     finally:
