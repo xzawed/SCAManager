@@ -1,0 +1,87 @@
+{# 대시보드 인사이트 서술 — 페이지(캐시 적중 · 끝난 상태)와 조각 경로(`GET /dashboard/insight`)가 함께 그린다
+   (회고 원장 #1706 안 C). `#dashInsight` 는 페이지의 자리 표시를 htmx 가 바꿔 끼우는 표적이다 — 안쪽은 예전 페이지 그대로.
+   Shared by the page (cache hit · settled states) and the fragment route; #dashInsight is the htmx swap target. #}
+<div id="dashInsight">
+    {# Phase 2-B 🅑 (사이클 74 PR-B) — DB 캐싱 1h TTL + Refresh 버튼 + generated_at 표시 / Phase 2 PR-6 — i18n #}
+    {# Phase 2-B 🅑 (Cycle 74 PR-B) — DB cache 1h TTL + Refresh button + generated_at display / Phase 2 PR-6 — i18n #}
+    {% if insight and insight.status == 'success' %}
+    <div style="display:flex; justify-content:flex-end; align-items:center; gap:12px; margin-bottom:8px; font-size:0.85em; color:var(--text-2);">
+      {% if insight.generated_at %}
+      <span title="{{ 'dashboard.insight.generated_at_tooltip' | i18n_args(locale | default('ko')) }}">⏱ {{ insight.generated_at[:16].replace('T', ' ') }}</span>
+      {% endif %}
+      {# 하루 상한(회고 원장 L17 P2-7) — 마지막 결과를 보여 주고 새로 고침은 그리지 않는다(누르면 그 결과를 지운다). #}
+      {# Daily cap: show the latest result and no refresh link (refreshing would delete it). #}
+      {% if insight.daily_limit %}
+      <span class="dash-insight-limit">{{ 'dashboard.insight.daily_limit_stale' | i18n_args(locale | default('ko'), cap=insight.daily_cap) }}</span>
+      {% else %}
+      <a href="/dashboard?mode=insight&days={{ days }}&refresh=1"
+         title="{{ 'dashboard.insight.refresh_tooltip' | i18n_args(locale | default('ko')) }}"
+         {# 🔴 WCAG 2.5.8 — 24×24. 0.85em flex 아이템이라 20px 였다(실측). #}
+         style="text-decoration:none; display:inline-flex; align-items:center; min-height:24px;">{{ 'dashboard.insight.refresh' | i18n_args(locale | default('ko')) }}</a>
+      {% endif %}
+    </div>
+    <div class="dash-insight-grid" role="region" aria-label="{{ 'dashboard.insight.card_aria' | i18n_args(locale | default('ko')) }}">
+      <div class="dash-insight-card">
+        <h2 class="dash-insight-title">{{ 'dashboard.insight.positive_title' | i18n_args(locale | default('ko')) }}</h2>
+        <ul class="dash-insight-list">
+          {% for item in insight.positive_highlights %}<li>{{ item }}</li>{% endfor %}
+        </ul>
+      </div>
+      <div class="dash-insight-card">
+        <h2 class="dash-insight-title">{{ 'dashboard.insight.focus_title' | i18n_args(locale | default('ko')) }}</h2>
+        <ul class="dash-insight-list">
+          {% for item in insight.focus_areas %}<li>{{ item }}</li>{% endfor %}
+        </ul>
+      </div>
+      <div class="dash-insight-card">
+        <h2 class="dash-insight-title">{{ 'dashboard.insight.metrics_title' | i18n_args(locale | default('ko')) }}</h2>
+        <div>
+          {% for m in insight.key_metrics %}
+          <div class="dash-insight-metric">
+            <span class="dash-insight-metric-label">{{ m.label }}</span>
+            <span>
+              <span class="dash-insight-metric-value">{{ m.value }}</span>
+              {% if m.delta %}<span class="dash-insight-metric-delta">{{ m.delta }}</span>{% endif %}
+            </span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="dash-insight-card">
+        <h2 class="dash-insight-title">{{ 'dashboard.insight.next_title' | i18n_args(locale | default('ko')) }}</h2>
+        <ul class="dash-insight-list">
+          {% for item in insight.next_actions %}<li>{{ item }}</li>{% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% elif insight and insight.status == 'no_api_key' %}
+    <div class="dash-insight-status">
+      {{ 'dashboard.insight.no_api_key' | i18n_args(locale | default('ko')) }}
+    </div>
+    {% elif insight and insight.status == 'no_data' %}
+    <div class="dash-insight-status">
+      {{ 'dashboard.insight.no_data' | i18n_args(locale | default('ko'), days=days) }}
+    </div>
+    {% elif insight and insight.status == 'disabled' %}
+    <div class="dash-insight-status">
+      {{ 'dashboard.insight.disabled' | i18n_args(locale | default('ko')) }}
+    </div>
+    {% elif insight and insight.status == 'daily_limit' %}
+    <div class="dash-insight-status">
+      {{ 'dashboard.insight.daily_limit' | i18n_args(locale | default('ko'), cap=insight.daily_cap) }}
+    </div>
+    {% else %}
+    {# 실패에도 새로 고침 — 최근 실패는 잠시 재시도를 막으므로(부정 캐시) 이 링크가 그것을 넘는 길이다.
+       성공 헤더와 같은 줄에 둔다: 상태 상자 글자는 정본 문구 그대로여야 한다(e2e 대비 측정이 innerText 를 대조). #}
+    {# Refresh on failure too (a recent failure briefly blocks retries). Same header row as success,
+       outside the status box, whose text must stay the exact sentence the e2e contrast check compares. #}
+    <div style="display:flex; justify-content:flex-end; align-items:center; gap:12px; margin-bottom:8px; font-size:0.85em; color:var(--text-2);">
+      <a href="/dashboard?mode=insight&days={{ days }}&refresh=1"
+         title="{{ 'dashboard.insight.refresh_tooltip' | i18n_args(locale | default('ko')) }}"
+         style="text-decoration:none; display:inline-flex; align-items:center; min-height:24px;">{{ 'dashboard.insight.refresh' | i18n_args(locale | default('ko')) }}</a>
+    </div>
+    <div class="dash-insight-status">
+      {{ 'dashboard.insight.load_failed' | i18n_args(locale | default('ko'), status=(insight.status if insight else 'unknown')) }}
+    </div>
+    {% endif %}
+</div>

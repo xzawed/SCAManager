@@ -121,8 +121,15 @@ _EXPECTED = {
 def _url(page: str, *, days: int, refresh: bool = False) -> str:
     tail = "&refresh=1" if refresh else ""
     if page == "dashboard":
-        return f"/dashboard?mode=insight&days={days}{tail}"
+        # 대시보드의 유료 호출은 조각 경로에서만 나간다 — 페이지는 자리만 그린다(원장 #1706 안 C). 새로 고침은 페이지의 PRG.
+        # The dashboard's paid call happens only on the fragment route; Refresh stays the page's PRG.
+        return f"/dashboard?mode=insight&days={days}{tail}" if refresh else f"/dashboard/insight?days={days}"
     return f"/repos/{_REPO}/insights?days={days}{tail}"
+
+
+# 조각 경로는 htmx 요청만 받는다 — 아니면 화면으로 303. 다른 경로는 이 헤더를 보지 않는다.
+# The fragment route answers htmx requests only; other routes ignore this header.
+_HX = {"HX-Request": "true"}
 
 
 # ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -235,7 +242,7 @@ def _reply(text: str) -> MagicMock:
 
 async def _get(url: str) -> httpx.Response:
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as ac:
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver", headers=_HX) as ac:
         return await ac.get(url)
 
 
@@ -264,6 +271,27 @@ async def test_sync_db_work_never_runs_on_the_event_loop_thread(world, page, out
     assert world.sql_threads, "SQL 이 한 문장도 안 잡혔다 — 엔진 기록기가 공허하다"
     sql_on_loop = sum(t is world.loop_thread for t in world.sql_threads)
     assert not sql_on_loop, f"이벤트 루프 스레드에서 실행된 SQL {sql_on_loop}문장 / {len(world.sql_threads)}"
+
+
+async def test_the_dashboard_page_stops_before_the_paid_call_off_the_loop(world):
+    """대시보드 페이지(캐시 미스) — 유료 호출 직전까지의 동기 DB(KPI · 캐시 · 부정 캐시 · 연결 반납)는 루프 밖에서 돌고,
+    Claude 는 부르지 않는다. 자리만 그리고 조각 경로가 부른다(원장 #1706 안 C).
+
+    The dashboard page on a miss runs the pre-call sync DB work off the loop and never calls Claude.
+    """
+    world.reply = _reply(_OK_CARDS)
+    r = await _get("/dashboard?mode=insight&days=7")
+
+    assert r.status_code == 200, r.text[:300]
+    assert 'hx-get="/dashboard/insight?days=7"' in r.text, "캐시 미스인데 자리 표시가 아니다"
+    called = {name for name, _ in world.calls}
+    missing = (_KPI_NAMES["dashboard"] | {"release_session_before_claude", "get_fresh", "recent_error"}) - called
+    assert not missing, f"기대한 동기 호출이 없었다(단언이 공허해진다): {sorted(missing)}"
+    assert world.create_threads == [], "페이지 요청이 Claude 를 불렀다"
+    on_loop = sorted({name for name, t in world.calls if t is world.loop_thread})
+    assert not on_loop, f"이벤트 루프 스레드에서 돈 동기 DB 작업: {on_loop}"
+    assert world.sql_threads, "SQL 이 한 문장도 안 잡혔다 — 엔진 기록기가 공허하다"
+    assert not any(t is world.loop_thread for t in world.sql_threads), "이벤트 루프 스레드에서 실행된 SQL 이 있다"
 
 
 # ─── 느린 KPI 가 같은 루프의 다른 코루틴을 세우지 않는다 ─────────────────────────
@@ -360,7 +388,7 @@ async def test_off_loop_sql_sees_the_request_rls_user_id(world, db, owner, page,
     token = set_rls_user_id(None)
     try:
         transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://testserver",
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver", headers=_HX,
                                      cookies={"session": _session_cookie(owner)}) as ac:
             r = await ac.get(_url(page, days=7, refresh=outcome == "refresh"))
     finally:

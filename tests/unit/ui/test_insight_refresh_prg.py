@@ -171,6 +171,17 @@ def _query(url: str) -> list[tuple[str, str]]:
     return parse_qsl(urlsplit(url).query, keep_blank_values=True)
 
 
+def _load_placeholder(client: TestClient, page) -> None:
+    """페이지에 서술 자리 표시가 있으면 브라우저(htmx)처럼 그 조각을 한 번 받는다 — 대시보드의 유료 호출은 거기서 나간다
+    (원장 #1706 안 C). 리포 인사이트 페이지에는 자리가 없다.
+
+    Fetch the narrative fragment once, as htmx would, when the page drew the placeholder.
+    """
+    m = re.search(r'<div id="dashInsight"[^>]*\shx-get="([^"]+)"', page.text)
+    if m:
+        assert client.get(m.group(1), headers={"HX-Request": "true"}).status_code == 200
+
+
 # ─── F5 는 유료 호출을 되풀이하지 않는다 ─────────────────────────────────────
 
 
@@ -185,9 +196,11 @@ def test_reload_after_refresh_makes_no_second_client(owner, client_for, page, ou
     with _Sdk(create) as sdk:
         first = client.get(refresh_url)
         assert first.status_code == 200
+        _load_placeholder(client, first)
         assert sdk.factory.call_count == 1, "새로 고침이 서술을 한 번 새로 만들지 않았다"
 
         reload_ = client.get(str(first.url))  # F5 = 주소창의 주소를 다시 GET / F5 re-GETs the address bar
+        _load_placeholder(client, reload_)
 
     assert reload_.status_code == 200
     assert sdk.factory.call_count == 1, (
