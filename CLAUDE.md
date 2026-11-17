@@ -16,7 +16,9 @@ GitHub Push/PR → 정적 분석 + AI 리뷰 → 점수·등급 → 알림(Teleg
 4. **구현**
 5. **검증** — [verify.md](docs/workflow/verify.md) 의 절차를 그대로 따른다.
 6. **PR** — `gh pr create --body-file <임시파일>`(URL 안내 금지).
-7. **머지는 사용자가 한다.** 머지 뒤 배포를 확인한다([deploy.md](docs/workflow/deploy.md)).
+7. **머지** — `py -3 scripts/merge_approved.py <PR> --head <승인한 SHA> --approval "<사용자 발화>"`. 승인(위임 포함)은
+   그 head 에 묶인다 — 뒤에 push 했으면 다시 받는다. 시각 변경(`templates/`·`static/`·`i18n/`)은 화면을 본
+   발화(`--visual`)까지 받는다 — 위임으로 덮지 않고, 정적 테스트 통과는 근거가 아니다. 머지 뒤 배포를 확인한다([deploy.md](docs/workflow/deploy.md)).
 
 ## 영역 문서
 
@@ -57,7 +59,6 @@ py -3 -m pytest e2e/ -p no:asyncio  # E2E (tests/ 와 같이 돌리지 않는다
 - 스키마·API·권한·데이터모델 변경은 착수 전 확인받고, 나머지는 진행하고 보고한다.
 - 사용자 결정은 `[WBS]` 원장의 결정 줄(날짜 · 결정 이름)과, 그 결정을 이행하는 PR 본문의 원문 인용 한 줄로 남긴다 —
   민감한 결정은 두 곳 모두 «내용은 작성자 메모» 로만 적는다. 문서 · 런북에 «결정» 으로 적는 것은 그 뒤다.
-- 시각 변경(`templates/`·`static/`)은 사람이 봐야 한다 — 정적 테스트 통과는 근거가 아니다.
 - 운영은 행위로 가른다: 배포·로그·상태 읽기와 DB 읽기(`scripts/observe_db.py` — 관측 역할)만 자율,
   `railway ssh`·`run`·배포·변수 변경·그 밖의 DB SQL 은 사용자가 `!` 로(훅 차단). `SET SESSION …` 은 풀러가 앱 연결에 남긴다.
 - 문서 수치는 실행 결과를 옮긴다. 코드 좌표는 **줄번호가 아니라 앵커**다 — `path::파일에 실재하는 문자열`(`scripts/check_doc_anchors.py` 가 강제).
