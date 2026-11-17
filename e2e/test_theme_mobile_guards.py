@@ -5557,11 +5557,13 @@ def test_the_stale_webhook_warning_keeps_its_icon_beside_the_text(
     🔴 같은 플렉스 행에 있는 것만으로는 부족하다 — `.alert` 의 `align-items: center` 때문에 글이
        여러 줄로 접히면 ⚠️ 가 글의 세로 가운데(폰 폭 4줄의 2·3줄 옆)에 섰다. 상자 겹침만 보던 첫 판은
        그것을 못 갈랐다. 그래서 ⚠️ 의 세로 가운데가 글 첫 줄 조각의 위·아래 안에 있는지 잰다.
+    🔴 304px 이하(폴더블 커버 화면)도 잰다 — 글 덩어리 기본 폭 16rem 이 아이콘 옆에 안 들어가 ⚠️ 가 혼자 첫 행에
+       남던 구간이다(#1639 · 주석에 «한계» 로 적혀 있었다).
     """
     path, user, state, _ = _NEW_USER_ARMS["settings-stale-webhook-telegram-linked"]
     got = {}
     with _new_user_arm_state(user, state):
-        for width in (1440, 375):
+        for width in (1440, 375, 320, 304, 280):
             seeded_page.set_viewport_size({"width": width, "height": 900})
             seeded_page.goto(f"{base_url}{path}")
             got[width] = seeded_page.evaluate("""() => {
