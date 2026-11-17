@@ -48,7 +48,18 @@ _DENIED = [
     # Grok claim-review(bdd00182) — emacs 의 `\'` 는 끝 고정이고 파이썬에선 따옴표 글자다
     pytest.param("root_env", "find . -regex '.*\\.env\\'\"'\" -exec cat {} \\;", id="emacs-end-anchor"),
     pytest.param("root_env", "find . -regex '.*[[:alpha:]]env' -exec cat {} +", id="posix-class"),
+    # Grok claim-review(af786686) — emacs 는 가운데의 `^` · `$` 를 글자로 본다
+    # 마지막 조각이 글롭 · .env 이름처럼 보이지 않게 한다(`.e.v`) — 경로 판정이 우연히 막으면 이 시험이 공허하다.
+    pytest.param("caret_env", "find . -regex '.*a^/.e.v' -exec cat {} +", id="mid-pattern-caret-is-literal"),
 ]
+
+
+@pytest.fixture(name="caret_env")
+def _caret_env(tmp_path):
+    """폴더 이름에 `^` 가 든 곳에만 .env 가 있다 — emacs 정규식의 가운데 `^` 는 그 글자를 고른다."""
+    (tmp_path / "a^").mkdir()
+    (tmp_path / "a^" / ".env").write_text("PLANT=1\n", encoding="utf-8")
+    return tmp_path
 
 _ALLOWED = [
     pytest.param("root_env", "find . -name '*.env'", id="names-only"),

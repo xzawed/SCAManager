@@ -1065,6 +1065,10 @@ def _find_regex_selects(pattern, path, ignore_case):
     `|`, parentheses, braces, POSIX classes, and any backslash escape other than a literal-punctuation one."""
     if any(ch in pattern for ch in "|(){}") or "[:" in pattern or re.search(r"\\(?![.*+?\[\]^$\\/-])", pattern):
         return True
+    # emacs 의 `^` · `$` 는 맨 앞 · 맨 끝에서만 고정이고 가운데선 글자다 — 파이썬은 늘 고정(Grok claim-review af786686).
+    # In emacs `^`/`$` anchor only at the very start/end and are literal elsewhere; Python always anchors.
+    if "^" in pattern[1:] or "$" in pattern[:-1]:
+        return True
     try:
         return re.fullmatch(pattern, path, re.IGNORECASE if ignore_case else 0) is not None
     except re.error:
