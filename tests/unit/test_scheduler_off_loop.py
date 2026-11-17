@@ -396,10 +396,11 @@ async def test_scan_security_job_runs_its_db_work_off_the_loop(world, monkeypatc
         db.commit()
 
     def alerts(_token, _repo, kind):
+        # (열린 목록, 끝까지 받았는가) — 끝까지 받은 목록이라 닫힘 대조(UPDATE)도 탄다
         if kind == "code-scanning":
             return [{"number": 1, "rule": {"id": "py/a", "severity": "error"}},
-                    {"number": 2, "rule": {"id": "py/b", "severity": "warning"}}]
-        return [{"number": 3, "secret_type": "github_pat"}]
+                    {"number": 2, "rule": {"id": "py/b", "severity": "warning"}}], True
+        return [{"number": 3, "secret_type": "github_pat"}], True
 
     monkeypatch.setattr(security_scan_service, "_fetch_alerts", _http(world, "alerts", alerts))
     world.reset_records()
@@ -407,6 +408,8 @@ async def test_scan_security_job_runs_its_db_work_off_the_loop(world, monkeypatc
     await _run("scan-security")
 
     _assert_off_loop(world, expect_http=True, expect=_WRITES)
+    assert any(stmt.startswith("UPDATE security_alert_process_logs") for _, stmt in world.sql), (
+        "닫힘 대조가 안 돌았다 — 그 경로를 안 쟀다")
     with world.factory() as db:
         assert db.query(SecurityAlertProcessLog).count() == 6
 
@@ -439,7 +442,7 @@ async def test_scan_security_failure_rolls_back_off_the_loop(world, monkeypatch,
     if failure == "fetch":
         fetch = _http(world, "alerts", exc=httpx.ConnectError("down"))
     else:
-        fetch = _http(world, "alerts", lambda *_a: alerts)
+        fetch = _http(world, "alerts", lambda *_a: (alerts, True))
         real = security_scan_service.security_alert_log_repo.upsert_alert_log
 
         def flaky_upsert(db, **kwargs):
@@ -456,6 +459,11 @@ async def test_scan_security_failure_rolls_back_off_the_loop(world, monkeypatch,
     await _run("scan-security")
 
     _assert_off_loop(world, expect_http=True, expect=_ROLLS_BACK)
+    if failure == "upsert":
+        # alert 단위 격리 — code scanning 한 건만 롤백되고 secret scanning 행은 남는다(리포 단위 롤백이면 0)
+        # Per-alert isolation: only the code-scanning upsert rolls back; the secret-scanning row stays.
+        with world.factory() as db:
+            assert [r.alert_type for r in db.query(SecurityAlertProcessLog).all()] == ["secret_scanning"]
 
 
 async def test_db_heartbeat_job_runs_its_db_work_off_the_loop(world, monkeypatch):

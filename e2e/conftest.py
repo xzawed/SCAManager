@@ -676,13 +676,15 @@ def _seed_absence_analysis(db_path: str) -> int:
 #    끊을 자리가 없는 50자라 폰 폭 그리드가 그 길이를 견디는지 잰다.
 # One item of GitHub's open-alert list responses, fed to the writer exactly as polling receives it.
 SECURITY_LONG_SECRET_TYPE = "google_cloud_storage_service_account_access_key_id"
+# (종류, (열린 목록, 끝까지 받았는가)) — 폴링이 `_record_alerts` 에 넘기는 꼴 그대로(완전한 목록).
+# (kind, (open alerts, complete)), exactly what the poller hands `_record_alerts` (a complete list).
 _SECURITY_ALERT_PAYLOADS = (
     (("code-scanning", "code_scanning"),
-     [{"number": 9001, "state": "open",
-       "rule": {"id": "py/sql-injection", "severity": "error", "security_severity_level": "high"}}]),
+     ([{"number": 9001, "state": "open",
+        "rule": {"id": "py/sql-injection", "severity": "error", "security_severity_level": "high"}}], True)),
     (("secret-scanning", "secret_scanning"),
-     [{"number": 9002, "state": "open", "secret_type": SECURITY_LONG_SECRET_TYPE,
-       "secret_type_display_name": "Google Cloud Storage Service Account Access Key ID"}]),
+     ([{"number": 9002, "state": "open", "secret_type": SECURITY_LONG_SECRET_TYPE,
+        "secret_type_display_name": "Google Cloud Storage Service Account Access Key ID"}], True)),
 )
 
 
@@ -690,15 +692,15 @@ def _seed_security_alerts(db_path: str) -> int:
     """보안 알림 2건(code scanning 1 · secret scanning 1)을 운영 writer 로 쓴다 → 새로 쓴 행 수.
 
     🔴 `?mode=security` 는 세 갈래다(`dashboard.html`):
-       kill-switch → `total_alerts == 0` 빈 상태 → **4카드 그리드**.
+       kill-switch → `total_alerts == 0` 빈 상태 → **카드 그리드**.
        e2e 는 알림이 0건이라 언제나 «빈 상태» 만 그렸다(#1639 W12-b).
     🔴 운영이 쓰는 모양으로 심는다 — 알림 행을 쓰는 곳은 폴링(`security_scan_service._record_alerts`)
        하나이고 GitHub 응답에서 심각도·규칙 id 만 옮긴다. AI 분류·사용자 결정을 쓰는 코드는 없다
-       (`record_user_decision` 은 호출처가 없다). 그래서 운영의 알림은 언제나 «미분류 · 대기» 다.
+       그래서 운영의 알림은 언제나 «미분류 · 대기» 다.
     🔴 «기존 리포를 재사용» 한다. 새 리포를 만들면 `active_repos.total` 이 또 움직인다
        (`dashboard_service.py::_kpi_active_repos` 의 `total` 은 Repository 수를 센다).
        보안 알림 자체는 `analyses` 를 거치지 않아 평균 점수·HIGH KPI 를 건드리지 않는다.
-    Seed two alerts through the production writer so the security mode renders its 4-card grid.
+    Seed two alerts through the production writer so the security mode renders its card grid.
     """
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
@@ -1831,8 +1833,8 @@ def stale_webhook_listing(hook_id: int = FRESH_WEBHOOK_ID):
 # 🔴 운영이 쓰는 모양으로 심는다 — 시도마다 그 PR 의 분석이 먼저 있고(게이트는 분석 저장 뒤에만 돈다),
 #    리포에는 auto-merge 를 켠 설정 행이 있으며(없으면 기본값 auto_merge=False 라 시도 자체가 없다),
 #    시도 행은 운영 writer(`log_merge_attempt`)가 쓴다. 시각만 그 창으로 옮긴다.
-# 🔴 «알림은 있는데 대기 0» 보안 화면은 심지 않는다 — 운영은 `user_decision` 을 쓰지 않아(`record_user_decision`
-#    은 호출처가 없다) 모든 알림이 대기다. 그 팔은 도달 불가로 분류한다.
+# 🔴 «알림은 있는데 열린 것 0» 보안 화면은 심지 않는다 — GitHub 에서 모두 닫히면 운영에서도 닿지만(회고 원장 L05
+#    P1-35), 그 팔은 «최근 열린 alert» 이 빈 안내로 바뀌는 것뿐이라 단위(`test_dashboard_security.py`)가 맡는다.
 # 🔴 머지 판정은 `success` 가 아니라 `_merge_attempt_states.is_merged(state, success)` 다.
 SETTLED_UP_USER_ID = 9202
 SETTLED_UP_LOGIN = "e2e-settled-up"

@@ -104,14 +104,13 @@
       "empty_hint_part2": " も可能です。",
       "load_failed": "⚠️ Security データ読み込み失敗 — しばらくしてから再試行してください。",
       "card_aria": "Security audit 4 カード",
-      "processed_title": "✨ 処理済み",
-      "processed_label": "ユーザー confirm 完了",
+      "closed_title": "✅ GitHub でクローズ",
+      "closed_label": "修正・却下でクローズされた alert",
       "total_label": "全 alert 累計",
-      "pending_title": "🔍 新規 pending",
-      "pending_label": "ユーザー決定待ち",
-      "classification_title": "📊 分類分布",
-      "recent_pending_title": "💬 最近 pending (Top 5)",
-      "recent_pending_empty": "pending alert なし。"
+      "pending_title": "🔍 オープンの alert",
+      "pending_label": "GitHub でまだオープン",
+      "recent_pending_title": "💬 最近のオープン alert (Top 5)",
+      "recent_pending_empty": "オープンの alert なし。"
     },
     "usage": {
       "empty_title": "📭 登録されたリポジトリがありません。",

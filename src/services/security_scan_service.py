@@ -7,11 +7,11 @@ Cycle 73 F1 — cron polling + GHAS graceful degradation + kill-switch + audit l
 1. GHAS kill-switch (`SECURITY_AUTO_PROCESS_DISABLED=1`) 검사 → 활성 시 즉시 skip
 2. repo 별 GitHub Code Scanning + Secret Scanning open alerts API 호출
 3. GHAS 비활성 (403/404) → silent skip + WARNING 1회 (graceful degradation)
-4. alert 별 audit log upsert (분류 = pending — Phase 2 AI 분류 시점에 갱신)
+4. alert 별 audit log upsert(GitHub 상태 = open) · 열린 목록을 끝까지 받은 종류는 목록에 없는 행을 closed 로
 5. counts dict 반환 (운영 데이터 baseline)
 
-Phase 1 = read-only (자동 dismiss X). 사용자 결정을 받는 화면은 아직 없다 — 대시보드는 알림을 보여 주기만 한다.
-Phase 1 is read-only (no auto-dismiss). No screen takes the user's decision yet — the dashboard only shows alerts.
+read-only 다(자동 dismiss X). AI 분류 · 사용자 결정은 없다 — 대시보드는 열린 · 닫힌 알림 수와 최근 열린 알림을 보여 준다.
+Read-only (no auto-dismiss) and no AI classification or user decision: the dashboard shows open and closed counts.
 """
 from __future__ import annotations
 
@@ -70,12 +70,16 @@ _MAX_ALERT_PAGES = 20
 
 async def _fetch_alerts(  # pylint: disable=too-many-return-statements
     token: str, repo_full_name: str, alert_kind: str,
-) -> list[dict[str, Any]] | None:
-    """GitHub Security alerts API 호출 (graceful degradation).
+) -> tuple[list[dict[str, Any]] | None, bool]:
+    """GitHub Security alerts API 호출 (graceful degradation) — `(열린 alert 목록, 끝까지 받았는가)`.
 
-    Call GitHub Security alerts API (graceful degradation).
+    Call the GitHub Security alerts API (graceful degradation); returns `(open alerts, complete)`.
     alert_kind = "code-scanning" | "secret-scanning".
-    Returns None on GHAS 비활성 (403/404) — silent skip + WARNING.
+    목록 None = 스캔 안 됨(GHAS 비활성 403/404 · rate-limit · 첫 페이지 실패). 🔴 둘째 값이 True 인 것은 마지막
+    페이지까지 받았을 때뿐이다 — 중간 실패 · 페이지 상한은 부분 목록과 False 다. 닫힘 대조는 True 일 때만 한다
+    (부분 목록으로 대조하면 열린 alert 을 닫는다 — 회고 원장 L05 P1-35).
+    A None list means not scanned. `complete` is True only when the last page was reached; a mid-way failure or the
+    page cap returns the partial list with False, and the closed-state reconciliation only runs on True.
     """
     url = f"{GITHUB_API}/repos/{repo_full_name}/{alert_kind}/alerts"
     client = get_http_client()
@@ -102,7 +106,7 @@ async def _fetch_alerts(  # pylint: disable=too-many-return-statements
                 sanitize_for_log(repo_full_name), page, type(exc).__name__,
             )
             # 첫 페이지 실패 = 스캔 실패(None) / 이후 페이지 실패 = 부분결과 보존(0 오보고 방지)
-            return None if page == 1 else alerts
+            return (None, False) if page == 1 else (alerts, False)
         if page == 1:
             # 상태 분류는 첫 페이지만 (403/404 GHAS-off vs rate-limit vs non-200). 이후 페이지는 200 기대.
             if resp.status_code == 403 and (
@@ -113,32 +117,32 @@ async def _fetch_alerts(  # pylint: disable=too-many-return-statements
                     "retry pending, '0 alerts' 로 오인 금지)",
                     sanitize_for_log(repo_full_name),
                 )
-                return None
+                return None, False
             if resp.status_code in (403, 404):
                 logger.info(
                     "security_scan: GHAS 비활성 repo=%s status=%d (skip)",
                     sanitize_for_log(repo_full_name), resp.status_code,
                 )
-                return None
+                return None, False
         if resp.status_code != 200:
             logger.warning(
                 "security_scan: 비정상 응답 repo=%s page=%d status=%d",
                 sanitize_for_log(repo_full_name), page, resp.status_code,
             )
-            return None if page == 1 else alerts
+            return (None, False) if page == 1 else (alerts, False)
         try:
             batch = resp.json() or []
         except (ValueError, KeyError):
-            return None if page == 1 else alerts
+            return (None, False) if page == 1 else (alerts, False)
         alerts.extend(batch)
         if len(batch) < 100:
-            return alerts  # 마지막 페이지 도달 / reached the last page
+            return alerts, True  # 마지막 페이지 도달 — 완전한 목록 / reached the last page: the list is complete
     # 상한 도달 — 이후 alert 미스캔을 표면화(silent truncation 금지)
     logger.warning(
         "security_scan: repo=%s alert 이 %d 페이지(=%d) 초과 — 이후 미스캔(silent 0 오인 금지)",
         sanitize_for_log(repo_full_name), _MAX_ALERT_PAGES, _MAX_ALERT_PAGES * 100,
     )
-    return alerts
+    return alerts, False
 
 
 def _alert_metadata(alert: dict[str, Any], alert_kind: str) -> dict[str, Any]:
@@ -187,8 +191,8 @@ async def scan_repo_alerts(
 
     # 두 종류 alert 를 병렬 fetch (독립 read-only GET) — DB upsert 는 단일 세션 직렬 유지
     # Fetch both alert kinds in parallel (independent read-only GETs); DB upserts stay serial
-    # (_fetch_alerts 는 자체적으로 에러 시 None 반환 — gather return_exceptions 불요)
-    # (_fetch_alerts returns None on error itself — no need for gather return_exceptions)
+    # (_fetch_alerts 는 자체적으로 에러 시 (None, False) 반환 — gather return_exceptions 불요)
+    # (_fetch_alerts returns (None, False) on error itself — no need for gather return_exceptions)
     kinds = (("code-scanning", _CODE_SCANNING_KEY), ("secret-scanning", _SECRET_SCANNING_KEY))
     fetched = await asyncio.gather(
         *(_fetch_alerts(token, repo_name, kind) for kind, _ in kinds)
@@ -204,11 +208,13 @@ def _scan_inputs(repo: Repository, user) -> tuple[int, str, str | None]:
 
 def _record_alerts(
     db: Session, repo_id: int, repo_name: str,
-    fetched: list[tuple[tuple[str, str], list[dict[str, Any]] | None]], counts: dict[str, int],
+    fetched: list[tuple[tuple[str, str], tuple[list[dict[str, Any]] | None, bool]]], counts: dict[str, int],
 ) -> None:
-    """가져온 alert 를 audit log 에 upsert 한다 — 워커 스레드에서. 한 건 실패는 롤백 후 계속.
-    Upsert the fetched alerts into the audit log (worker thread); one failure rolls back and continues."""
-    for (kind, key), alerts in fetched:
+    """가져온 alert 를 audit log 에 upsert 하고, 끝까지 받은 종류는 목록에 없는 행을 닫힘으로 — 워커 스레드에서.
+    한 건 실패는 롤백 후 계속.
+    Upsert the fetched alerts (worker thread); for a kind fetched completely, close the rows missing from it.
+    One failure rolls back and continues."""
+    for (kind, key), (alerts, complete) in fetched:
         if alerts is None:
             continue
         for alert in alerts:
@@ -229,6 +235,31 @@ def _record_alerts(
                     sanitize_for_log(repo_name), type(exc).__name__,
                 )
                 db.rollback()
+        if complete:
+            _close_missing(db, repo_id, repo_name, kind, alerts)
+
+
+def _close_missing(db: Session, repo_id: int, repo_name: str, kind: str, alerts: list[dict[str, Any]]) -> None:
+    """끝까지 받은 열린 목록에 없는 그 종류의 행을 닫힘으로 — GitHub 에서 해결 · 무시된 alert 이다(회고 원장 L05 P1-35).
+
+    Close this kind's rows that a complete open-alert list no longer has (fixed or dismissed on GitHub).
+    """
+    # 빈 목록에서도 종류 이름은 같은 정규화로 얻는다 / derive the stored type with the same normalisation, even for []
+    alert_type = _alert_metadata({}, kind)["alert_type"]
+    open_numbers = {_alert_metadata(alert, kind)["alert_number"] for alert in alerts}
+    try:
+        closed = security_alert_log_repo.close_missing_alerts(
+            db, repo_id=repo_id, alert_type=alert_type, open_numbers=open_numbers,
+        )
+    except SQLAlchemyError as exc:
+        logger.warning(
+            "security_scan: 닫힘 대조 실패 repo=%s err=%s", sanitize_for_log(repo_name), type(exc).__name__,
+        )
+        db.rollback()
+        return
+    if closed:
+        logger.info("security_scan: GitHub 에서 닫힌 alert %d 건 repo=%s type=%s",
+                    closed, sanitize_for_log(repo_name), alert_type)
 
 
 async def scan_all_repos(db: Session) -> dict[str, int]:

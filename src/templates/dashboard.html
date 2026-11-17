@@ -260,6 +260,9 @@
     padding: 20px 22px;
     min-height: 200px;
   }
+  /* 한 줄 전체를 쓰는 카드 — 보안 카드가 3장이라 최근 목록을 아래 한 줄로 편다(회고 원장 L05 P2-87).
+     A card spanning the whole row: with three security cards the recent list takes the bottom row. */
+  .dash-insight-card--wide { grid-column: 1 / -1; min-height: auto; }
   .dash-insight-title {
     font-size: 16px; font-weight: 600;
     color: var(--text-1, #fff);
@@ -845,10 +848,10 @@
     {% elif security %}
     <div class="dash-insight-grid" role="region" aria-label="{{ 'dashboard.security.card_aria' | i18n_args(locale | default('ko')) }}">
       <div class="dash-insight-card">
-        <h2 class="dash-insight-title">{{ 'dashboard.security.processed_title' | i18n_args(locale | default('ko')) }}</h2>
+        <h2 class="dash-insight-title">{{ 'dashboard.security.closed_title' | i18n_args(locale | default('ko')) }}</h2>
         <div class="dash-insight-metric">
-          <span class="dash-insight-metric-label">{{ 'dashboard.security.processed_label' | i18n_args(locale | default('ko')) }}</span>
-          <span class="dash-insight-metric-value">{{ security.processed_count }}</span>
+          <span class="dash-insight-metric-label">{{ 'dashboard.security.closed_label' | i18n_args(locale | default('ko')) }}</span>
+          <span class="dash-insight-metric-value">{{ security.closed_count }}</span>
         </div>
         <div class="dash-insight-metric">
           <span class="dash-insight-metric-label">{{ 'dashboard.security.total_label' | i18n_args(locale | default('ko')) }}</span>
@@ -862,23 +865,12 @@
           <span class="dash-insight-metric-value">{{ security.pending_count }}</span>
         </div>
       </div>
-      <div class="dash-insight-card">
-        <h2 class="dash-insight-title">{{ 'dashboard.security.classification_title' | i18n_args(locale | default('ko')) }}</h2>
-        <div>
-          {% for key, count in security.classification.items() %}
-          <div class="dash-insight-metric">
-            <span class="dash-insight-metric-label">{{ key }}</span>
-            <span class="dash-insight-metric-value">{{ count }}</span>
-          </div>
-          {% endfor %}
-        </div>
-      </div>
-      <div class="dash-insight-card">
+      <div class="dash-insight-card dash-insight-card--wide">
         <h2 class="dash-insight-title">{{ 'dashboard.security.recent_pending_title' | i18n_args(locale | default('ko')) }}</h2>
         {% if security.recent_pending %}
         <ul class="dash-insight-list">
           {% for row in security.recent_pending %}
-          <li><strong>#{{ row.alert_number }}</strong> [{{ row.severity }}] {{ row.alert_type }} — <code style="font-size:0.85em;">{{ row.rule_id }}</code> ({{ row.ai_classification }})</li>
+          <li><strong>#{{ row.alert_number }}</strong> [{{ row.severity }}] {{ row.alert_type }} — <code style="font-size:0.85em;">{{ row.rule_id }}</code></li>
           {% endfor %}
         </ul>
         {% else %}

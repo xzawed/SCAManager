@@ -1277,7 +1277,8 @@ def dashboard_security(
     """`/dashboard?mode=security` 카드 데이터 — F2 Phase 1 MVP (read-only).
 
     `/dashboard?mode=security` card data — F2 Phase 1 MVP (read-only).
-    4 카드: ✨ 처리됨 / 🔍 신규 pending / 📊 분류 분포 / 💬 최근 alert (Top 5).
+    3 카드: GitHub 에서 닫힘(+ 누적) / 열린 alert / 최근 열린 alert (Top 5). AI 분류 · 사용자 결정은 쓰는 곳이 없어
+    보여 주지 않는다(회고 원장 L05 P2-87). Cards: closed on GitHub (+ cumulative), open alerts, the 5 most recent open alerts.
     """
     # 신규 import 는 함수 안에 배치 — 정책 16 default (모듈 import 영향 0)
     # Inline import — keeps top-level import surface minimal (policy 16 default).
@@ -1289,17 +1290,12 @@ def dashboard_security(
     # Per-user isolation (app-level 1st layer — blocks U0 cross-tenant exposure): both the pending list
     # and audit counts are filtered by user_id (repo ownership). None → admin/legacy = all.
     pending = security_alert_log_repo.list_pending(db, user_id=user_id, limit=5)
-    counts = security_alert_log_repo.count_by_classification(db, user_id=user_id)
-
-    # AI 분류 분포 정규화 (4 카테고리 — false_positive / used_in_tests / actual_violation / deferred)
-    classification_keys = ("false_positive", "used_in_tests", "actual_violation", "deferred", "unclassified")
-    classification = {key: counts.get(key, 0) for key in classification_keys}
+    counts = security_alert_log_repo.count_alerts(db, user_id=user_id)
 
     return {
         "total_alerts": counts.get("total", 0),
         "pending_count": counts.get("pending", 0),
-        "processed_count": counts.get("total", 0) - counts.get("pending", 0),
-        "classification": classification,
+        "closed_count": counts.get("closed", 0),
         "recent_pending": [
             {
                 "id": row.id,
@@ -1307,8 +1303,6 @@ def dashboard_security(
                 "alert_number": row.alert_number,
                 "severity": row.severity or "unknown",
                 "rule_id": row.rule_id or "-",
-                "ai_classification": row.ai_classification or "pending",
-                "ai_confidence": row.ai_confidence,
             }
             for row in pending
         ],
