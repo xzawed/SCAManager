@@ -758,3 +758,48 @@ def test_issue_modal_backdrop_covers_the_nav(seeded_page, base_url, seeded_analy
     got = seeded_page.evaluate(_NAV_COVERED_JS)
     assert not got.get("error"), got["error"]
     assert got["covered"], f"모달이 떠 있는데 nav 가운데의 맨 위가 {got['hit']} 다 — 배경이 nav 를 못 덮는다"
+
+
+# 모달의 두 버튼이 «버튼» 으로 그려지는가 — 같은 줄에 심은 기준 `.btn` 과 안쪽 여백 · 모서리 · 테두리를 견준다
+# (회고 원장 R-13). 기준이 상자 모양이 아니면(못 쟀으면) red.
+# Are the modal's two action buttons drawn as buttons? Compare their box with a reference `.btn` planted in the same row.
+_MODAL_BUTTON_BOX_JS = """() => {
+    const box = el => { const s = getComputedStyle(el);
+        return {pad: [s.paddingTop, s.paddingRight, s.paddingBottom, s.paddingLeft].join(' '),
+                radius: s.borderTopLeftRadius, border: s.borderTopWidth + ' ' + s.borderTopStyle}; };
+    const row = document.querySelector('#issueModalOverlay .issue-modal-actions');
+    if (!row) return {error: '모달 버튼 줄이 없다'};
+    const ref = document.createElement('button');
+    ref.className = 'btn';
+    row.appendChild(ref);
+    const want = box(ref);
+    ref.remove();
+    const got = {};
+    for (const id of ['issueModalCancel', 'issueModalSubmit']) {
+        const el = document.getElementById(id);
+        got[id] = el ? box(el) : null;
+    }
+    return {want, got};
+}"""
+
+
+@pytest.mark.e2e
+def test_issue_modal_action_buttons_are_drawn_as_buttons(seeded_page, base_url, seeded_analysis):
+    """🔴 이슈 등록 모달의 «취소» · «등록» 은 디자인 시스템 버튼(`.btn`)과 같은 상자다 (회고 원장 R-13).
+
+    «취소» 는 CSS 어디에도 규칙이 없는 `.btn-secondary` 라 맨 글자처럼 보였고, «등록» 은 기본 `.btn` 없이 `.btn-primary`
+    만 달아 색만 있고 안쪽 여백 · 모서리가 없었다(#614 부터 — 두 장 모두 화면 PR 스크린샷에서 발견).
+    The modal's Cancel had no CSS rule at all and Create lacked the base `.btn`; both must share the `.btn` box.
+    """
+    from e2e.test_theme_mobile_guards import _STATE_OPENERS  # noqa: PLC0415
+
+    path, opener = _STATE_OPENERS["#issueModalOverlay"]
+    seeded_page.set_viewport_size({"width": 1280, "height": 800})
+    seeded_page.goto(f"{base_url}{path.replace('__ID__', str(seeded_analysis))}")
+    seeded_page.evaluate(opener)
+    res = seeded_page.evaluate(_MODAL_BUTTON_BOX_JS)
+    assert not res.get("error"), res["error"]
+    want = res["want"]
+    assert want["pad"] != "0px 0px 0px 0px" and want["radius"] != "0px", f"기준 `.btn` 이 상자 모양이 아니다 — 재지 못했다: {want}"
+    off = {name: box for name, box in res["got"].items() if box != want}
+    assert not off, f"모달 버튼이 `.btn` 상자와 다르다 — 기준 {want} · 다른 것 {off}"
