@@ -361,7 +361,9 @@ def _path_tokens(text):
     """명령의 경로 후보 토큰. 백슬래시는 / 로(Windows 경로). 옵션의 `=값` · `KEY=값` 의 값도 후보에 넣는다.
     제외 글롭 값 옵션(grep --exclude · PowerShell -Exclude · rg -g '!…')의 값은 그런 옵션이 있는 명령에서만 뺀다.
     Path-like tokens; `--opt=value` and `KEY=value` values are candidates too. Exclusion-glob option values
-    are dropped only for commands that really have such options."""
+    are dropped only for commands that really have such options.
+    따옴표 안 글롭 글자의 표지(`_mark_quoted_literals`)는 글자 그대로의 패턴(`[*]`)으로 읽는다.
+    Quoted-glob sentinels are read as literal patterns (`[*]`)."""
     text = text.replace("\\", "/")
     try:
         toks = shlex.split(text, posix=True)
@@ -375,7 +377,7 @@ def _path_tokens(text):
         if skip:
             skip = False
             continue
-        tok = _TOKEN_WRAPPERS.sub("", raw.strip("`"))
+        tok = _TOKEN_WRAPPERS.sub("", raw.strip("`")).translate(_SENTINEL_LITERALS)
         name, eq, value = tok.partition("=")
         low = name.lower()
         if low in excludes:
@@ -390,6 +392,171 @@ def _path_tokens(text):
         if eq and value:
             out.append(value.rstrip("/"))
     return out
+
+
+# ── 따옴표 안 글자는 펼치지 않는다 (회고 원장 R-5) ─────────────────────────────────────────
+# Bash 는 따옴표 안의 `*` · `?` · `[` 를 펼치지 않는다. 그 글자를 경로 글롭으로 보면 검색 정규식이 .env 를 집는
+# 와일드카드로 읽혀 막혔다. 다만 인자를 스스로 펼치는 명령(find · git · tar …)이나 글자를 실행하는 명령이 그 단계거나
+# 뒤 단계면 따옴표가 지켜 주지 못한다 — 그래서 펼치지도 실행하지도 않는 글자 처리 명령(`_QUOTED_LITERAL_HEADS`)으로만
+# 끝까지 이어진 단계에서, 명령 전체의 따옴표를 Bash 규칙으로 믿을 수 있을 때만 그 글자를 글자 그대로 본다.
+# 표지(사용자 영역 문자)로 바꿔 두면 세그먼트 · 단계 분할을 지나도 자리가 유지되고, 경로 후보(`_path_tokens`)만
+# 그것을 글자 그대로의 패턴으로 읽는다 — 다른 판정(재귀 검색 · 환경 나열 …)은 원문을 본다.
+# PowerShell 은 cmdlet 이 따옴표 안 와일드카드도 펼치므로 적용하지 않는다.
+# Quoted glob characters are literal in Bash. They are read literally only in pipeline stages that, to the
+# end of the pipeline, are text tools which neither expand nor execute their arguments, and only when the
+# whole command's quoting can be trusted. Sentinels keep their place through segment/stage splitting and
+# only the path-candidate check reads them literally; every other check sees the original text.
+# Never for PowerShell: cmdlets expand wildcards inside quotes.
+_QUOTED_LITERAL_HEADS = frozenset({"grep", "egrep", "fgrep", "echo", "printf", "head", "tail", "wc", "cut",
+                                   "tr", "uniq", "sort"})
+# 그 명령에서 무언가를 실행하거나 변수에 넣는 옵션(앞부분) — 있으면 그 단계는 글자 그대로 보지 않는다.
+# Option prefixes that run something or assign a variable; a stage with one is not read literally.
+_QUOTED_LITERAL_UNSAFE_OPTIONS = {"sort": ("--co",), "printf": ("-v",)}
+# 따옴표 판정을 믿지 않는 꼴 — 치환 · 매개변수 전개 · ANSI-C/로캘 따옴표 · 히어독(주석 · 묶음은 훑으며 본다).
+# Constructs that make the quote reading untrustworthy (comments and grouping are caught while scanning).
+_QUOTE_SCAN_UNTRUSTED = re.compile(r"\$[('{\"]|`|[<>]\(|<<")
+_SCAN_OPERATORS = ("&>>", "&>", "&&", "||", "|&", ">>", ">|", ">&", "<&", "<>", ";", "&", "|", "<", ">", "\n")
+_SCAN_SEPARATORS = frozenset({";", "&", "&&", "||", "\n"})
+_SCAN_PIPES = frozenset({"|", "|&"})
+_SCAN_OUTPUTS = frozenset({">", ">>", ">|", "&>", "&>>", "<>", ">&"})
+_GLOB_SENTINELS = {"*": "", "?": "", "[": ""}
+_SENTINEL_LITERALS = str.maketrans({"": "[*]", "": "[?]", "": "[[]"})
+
+
+def _scan_bash(command):
+    """Bash 따옴표 규칙으로 낱말 · 연산자를 나눈다 — 낱말은 [(자리, 글자, 따옴표 안?)], 연산자는 문자열.
+    믿을 수 없는 꼴(치환 · 히어독 · 주석 · 괄호 · 중괄호 · 닫히지 않은 따옴표)이면 None. 따옴표 밖 백슬래시가
+    이스케이프한 글자는 따옴표 안으로 치지 않는다(예전 판정 그대로 — 막는 쪽).
+    Words as [(index, char, quoted)] and operator strings; None when the quoting cannot be trusted.
+    A backslash-escaped character outside quotes is not counted as quoted (unchanged, fail closed)."""
+    if _QUOTE_SCAN_UNTRUSTED.search(command):
+        return None
+    items, word, started, quote, i = [], [], False, None, 0
+    while i < len(command):
+        ch = command[i]
+        if quote == "'" or (quote == '"' and ch == '"'):
+            if ch == quote:
+                quote = None
+            else:
+                word.append((i, ch, True))
+            i += 1
+            continue
+        if quote == '"':
+            if ch == "\\" and command[i + 1:i + 2] in ("$", "`", '"', "\\", "\n"):
+                i += 1
+            word.append((i, command[i], True))
+            i += 1
+            continue
+        if ch in "'\"":
+            quote, started = ch, True
+            i += 1
+            continue
+        if ch == "\\":
+            if command[i + 1:i + 2] not in ("", "\n"):
+                word.append((i + 1, command[i + 1], False))
+                started = True
+            i += 2
+            continue
+        if ch in "#(){}":
+            return None
+        op = next((o for o in _SCAN_OPERATORS if command.startswith(o, i)), None)
+        if op or ch in " \t\r":
+            # `2>` 의 2 는 리디렉션의 일부다 / the fd number of `2>` belongs to the redirection
+            fd_number = op and op[0] in "<>" and word and all(c.isdigit() and not q for _, c, q in word)
+            if started and not fd_number:
+                items.append(word)
+            word, started = [], False
+            if op:
+                items.append(op)
+            i += len(op) if op else 1
+            continue
+        word.append((i, ch, False))
+        started = True
+        i += 1
+    if quote:
+        return None
+    if started:
+        items.append(word)
+    return items
+
+
+def _scan_pipelines(items):
+    """낱말 · 연산자 → 파이프라인 목록 — 단계 = {"words": 낱말들, "outputs": [(연산자, 대상 낱말)]}.
+    대상 없는 리디렉션이면 None. Pipelines of stages with their words and output redirections."""
+    pipelines, stages, stage, pending = [], [], {"words": [], "outputs": []}, None
+    for item in items:
+        if isinstance(item, list):
+            if pending in _SCAN_OUTPUTS:
+                stage["outputs"].append((pending, item))
+            elif pending is None:
+                stage["words"].append(item)
+            pending = None
+            continue
+        if pending is not None:
+            return None
+        if item in _SCAN_SEPARATORS or item in _SCAN_PIPES:
+            stages.append(stage)
+            stage = {"words": [], "outputs": []}
+            if item in _SCAN_SEPARATORS:
+                pipelines.append(stages)
+                stages = []
+        else:
+            pending = item
+    if pending is not None:
+        return None
+    stages.append(stage)
+    pipelines.append(stages)
+    return pipelines
+
+
+def _word_text(word):
+    return "".join(ch for _, ch, _ in word)
+
+
+def _literal_stage(stage):
+    """이 단계의 따옴표 안 글자를 글자 그대로 볼 수 있는가 — 앞쪽 대입 뒤 명령이 글자 처리 명령이고, 무언가를
+    실행하는 옵션이 없고, 파일로 내보내지 않는다(`/dev/null` · 파일 기술자 복제는 된다).
+    Can this stage's quoted characters be read literally? A text tool after any leading assignments, no
+    option that runs something, and no output to a file (/dev/null and fd duplication are fine)."""
+    words = stage["words"]
+    k = 0
+    while k < len(words) and _ASSIGNMENT.fullmatch(_word_text(words[k])) \
+            and not any(q for _, _, q in words[k][:_word_text(words[k]).index("=") + 1]):
+        k += 1
+    if k >= len(words) or any(q or ch in "*?[" for _, ch, q in words[k]):
+        return False
+    head = _command_name(_word_text(words[k]))
+    if head not in _QUOTED_LITERAL_HEADS:
+        return False
+    unsafe = _QUOTED_LITERAL_UNSAFE_OPTIONS.get(head)
+    if unsafe and any(_word_text(w).startswith(unsafe) for w in words[k + 1:]):
+        return False
+    for op, target in stage["outputs"]:
+        text = _word_text(target)
+        if not (text == "/dev/null" or (op == ">&" and re.fullmatch(r"\d+|-", text))):
+            return False
+    return True
+
+
+def _mark_quoted_literals(command):
+    """Bash 에서 글자 처리 단계의 따옴표 안 글롭 글자를 표지로 바꾼 명령 — 바꿀 곳이 없거나 믿을 수 없으면 원문.
+    The command with quoted glob characters of literal-safe Bash stages replaced by sentinels; else unchanged."""
+    if _CONTEXT["shell"] != "bash":
+        return command
+    items = _scan_bash(command)
+    pipelines = _scan_pipelines(items) if items is not None else None
+    if not pipelines:
+        return command
+    chars = list(command)
+    for stages in pipelines:
+        literal = [_literal_stage(stage) for stage in stages]
+        for k, stage in enumerate(stages):
+            if all(literal[k:]):  # 이 단계부터 파이프라인 끝까지 / this stage through the end of the pipeline
+                for word in stage["words"]:
+                    for index, ch, quoted in word:
+                        if quoted and ch in _GLOB_SENTINELS:
+                            chars[index] = _GLOB_SENTINELS[ch]
+    return "".join(chars)
 
 
 def _has_dotenv_path(text):
@@ -1002,10 +1169,15 @@ def _neutralized(stages, i, neutralizers):
     return False
 
 
-def _decide_segment(segment):
-    """단일 명령(파이프라인 포함)에 대한 판정 — 차단 사유와 안내를 내거나 None.
-    Verdict for one command (pipeline included): (reason, hint) or None."""
+def _decide_segment(segment, marked=None):
+    """단일 명령(파이프라인 포함)에 대한 판정 — 차단 사유와 안내를 내거나 None. `marked` 는 따옴표 안 글롭 글자에
+    표지를 단 같은 세그먼트(R-5) — .env 경로 판정만 그것을 본다.
+    Verdict for one command (pipeline included): (reason, hint) or None. `marked` is the same segment with
+    quoted-glob sentinels; only the .env path check reads it."""
     stages = _split_stages(segment)
+    path_stages = _split_stages(marked) if marked and marked != segment else stages
+    if len(path_stages) != len(stages):
+        path_stages = stages  # 나뉨이 어긋나면 표지를 쓰지 않는다 / never trust a misaligned split
     # 🔴 `#` 이 있으면 그 뒤가 주석일 수 있다 — `--kv # | cut -d= -f1` 의 cut 은 실행되지 않는다(Grok G1).
     #    단계 분해는 주석을 모르므로, `#` 이 든 세그먼트에서는 어떤 중화도 인정하지 않는다.
     # A `#` may start a comment («--kv # | cut» never runs the cut), so no neutralizer counts there.
@@ -1016,11 +1188,11 @@ def _decide_segment(segment):
         return "나열 → 내용 읽기 — .env 까지 읽는다", _SAFE_SEARCH
     for i, stage in enumerate(stages):
         for matcher, reason, neutralizers, hint in _BLOCKED:
-            hit = matcher(stage)
+            hit = matcher(path_stages[i] if matcher is _reads_dotenv else stage)
             # 🔴 .env 를 다루는 «안전한» 명령도 출력이 다음 단계로 넘어가면 읽기다(`ls .env | xargs cat` ·
             #    `Get-Item .env | Get-Content` — 보안 리뷰 지적). 안전은 파이프라인의 마지막 단계일 때만.
             # A "safe" .env command whose output flows to a next stage is a read; safe only as the last stage.
-            if not hit and matcher is _reads_dotenv and i + 1 < len(stages) and _mentions_dotenv(stage):
+            if not hit and matcher is _reads_dotenv and i + 1 < len(stages) and _mentions_dotenv(path_stages[i]):
                 hit = True
             if hit and (commented or not _neutralized(stages, i, neutralizers)):
                 return reason, hint
@@ -1053,10 +1225,14 @@ def decide_with_hint(command, cwd=None, shell="bash"):
     if not command:
         return None
     segments = _all_segments(command)
+    marked = _mark_quoted_literals(command)
+    marked_segments = _all_segments(marked) if marked != command else segments
+    if len(marked_segments) != len(segments):
+        marked_segments = segments  # 나뉨이 어긋나면 표지를 쓰지 않는다 / never trust a misaligned split
     for segment in segments:
         _follow_directory_change(segment)
-    for segment in segments:
-        found = _decide_segment(segment)
+    for segment, marked_segment in zip(segments, marked_segments):
+        found = _decide_segment(segment, marked_segment)
         if found:
             return found
     return None
