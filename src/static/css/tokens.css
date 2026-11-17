@@ -12,6 +12,10 @@
 
 /* ----- Universal: type, spacing scale, motion, elevation primitives ------- */
 :root {
+  /* nav 높이 — nav 자신 · 모바일 메뉴 · 진행 막대 · 위에 붙는 토스트가 함께 읽는다(회고 원장 L04 P1-4).
+     Nav height, shared by the nav, the mobile menu, the progress bar and top-anchored toasts. */
+  --nav-h: 56px;
+
   /* Type — Pretendard 한글 우선, Inter fallback, JetBrains Mono 코드 */
   --font-sans: "Pretendard Variable", "Pretendard", "Inter", system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", sans-serif;
   --font-mono: "JetBrains Mono", "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;

@@ -24,8 +24,9 @@
   /* 토스트 에러 팝업
      Toast error popup */
   .toast {
-    /* 위 거리는 안전 영역 가장자리에서 — 상태 표시줄 · 노치 밑에 깔리지 않게. Offset from the safe-area top. */
-    position: fixed; top: calc(1.5rem + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%);
+    /* 🔴 nav 아래에 띄운다 — 본문(`.container`)의 쌓임 맥락 안이라 z-index 로는 sticky nav 위에 못 올라간다(회고 원장
+       L04 P1-4 · settings.html 의 저장 토스트와 같다). 안전 영역 inset 도 더한다. Below the nav, plus the safe-area top. */
+    position: fixed; top: calc(var(--nav-h) + 1.5rem + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%);
     /* 🔴 danger 면 위 글자는 danger 전용 on-토큰을 쓴다 — accent 용을 빌리면
        면이 달라 테마마다 우연히 맞거나 틀린다(pastel 4.28 이었다). */
     background: var(--danger, #f87171); color: var(--danger-text-on, #fff);

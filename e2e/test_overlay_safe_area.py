@@ -139,3 +139,46 @@ def test_landing_error_banner_stays_inside_the_safe_area(anonymous_page, base_ur
     anonymous_page.goto(f"{base_url}/?error=oauth_failed")
     _assert_inside(anonymous_page.evaluate(_BOX_JS, "#authErrorBanner"), "#authErrorBanner",
                    ("top", "left", "right"))
+
+
+# 칠해진 맨 위가 그 토스트인가 — 상자 · 안전 영역이 맞아도 다른 층(sticky nav)이 위에 칠해지면 사용자는 못 본다(회고 원장
+# L04 P1-4). 토스트 가운데와 네 귀퉁이 안쪽 점에서 `elementFromPoint` 가 그 토스트(또는 그 안)를 돌려줘야 한다. 등록 오류
+# 토스트는 늘 `pointer-events: none` 이라 적중 판정에서 빠지므로 재는 동안만 auto 로 둔다 — 쌓임 순서는 그 값과 무관하다.
+# 본문 진입 애니메이션만 끝낸다 — 토스트의 퇴장 애니메이션(3 s 뒤 pointer-events: none)까지 끝내면 적중 판정에서 빠진다.
+# Is the toast what is painted on top? Hit-test its centre and inner corners; only the page-entry animation is finished.
+_PAINTED_ON_TOP_JS = """async sel => {
+    const frame = () => new Promise(r => requestAnimationFrame(() => r()));
+    await frame(); await frame();
+    const el = document.querySelector(sel);
+    if (!el) return {error: sel + ' 가 없다'};
+    for (const a of document.querySelector('.container').getAnimations()) { try { a.finish(); } catch (e) { /* 무시 */ } }
+    el.style.pointerEvents = 'auto';
+    await frame();
+    const r = el.getBoundingClientRect();
+    const name = n => !n ? 'null' : n.id ? '#' + n.id : n.tagName.toLowerCase() + (n.className ? '.' + String(n.className).split(' ')[0] : '');
+    const covered = [];
+    for (const [x, y] of [[r.left + r.width / 2, r.top + r.height / 2], [r.left + 4, r.top + 4], [r.right - 4, r.top + 4],
+                          [r.left + 4, r.bottom - 4], [r.right - 4, r.bottom - 4]]) {
+        const hit = document.elementFromPoint(x, y);
+        if (!hit || !el.contains(hit)) covered.push(`(${x.toFixed(0)},${y.toFixed(0)}) → ${name(hit)}`);
+    }
+    return {shown: el.checkVisibility(), w: r.width, h: r.height, covered};
+}"""
+
+
+@pytest.mark.parametrize("viewport", [(1280, 800), (390, 844)], ids=["desktop", "mobile"])
+@pytest.mark.parametrize("selector", sorted(_SIGNED_IN))
+def test_floating_toast_is_painted_on_top(seeded_page, base_url, seeded_analysis, selector, viewport):
+    """🔴 토스트는 맨 위에 칠해진다 — 본문(`.container`)의 쌓임 맥락 안이라 z-index 를 아무리 높여도 sticky nav(100)를
+    넘지 못한다. 위에 붙은 토스트(설정 저장 · 등록 오류)가 nav 밑에 깔려 안 보였다(회고 원장 L04 P1-4). 아래에 붙은 이슈
+    생성 토스트는 nav 와 겹치지 않아 대조군이다.
+    Toasts live inside the page body's stacking context, so a top-anchored toast was painted under the sticky nav."""
+    path, opener, _edges = _SIGNED_IN[selector]
+    seeded_page.set_viewport_size({"width": viewport[0], "height": viewport[1]})
+    seeded_page.goto(f"{base_url}{path.replace('__ID__', str(seeded_analysis))}")
+    if opener:
+        seeded_page.evaluate(opener)
+    res = seeded_page.evaluate(_PAINTED_ON_TOP_JS, selector)
+    assert not res.get("error"), res["error"]
+    assert res["shown"] and res["w"] > 0 and res["h"] > 0, f"{selector} 가 안 떴다({res}) — 재지 못했다"
+    assert not res["covered"], f"{selector} 위에 다른 요소가 칠해진다: " + " · ".join(res["covered"])

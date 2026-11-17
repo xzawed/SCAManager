@@ -362,8 +362,10 @@
 
   /* Save toast */
   .save-toast {
-    /* 위 거리는 안전 영역 가장자리에서 — 상태 표시줄 · 노치 밑에 깔리지 않게. Offset from the safe-area top. */
-    position:fixed; top:calc(1.1rem + env(safe-area-inset-top, 0px)); left:50%; transform:translateX(-50%);
+    /* 🔴 nav 아래에 띄운다 — 토스트는 본문(`.container`, z-index 1)의 쌓임 맥락 안이라 z-index 를 높여도 sticky nav(100)
+       위로 못 올라간다. nav 와 겹치는 높이면 nav 밑에 깔려 안 보였다(회고 원장 L04 P1-4). 안전 영역 inset 도 더한다.
+       Below the nav: inside the body's stacking context no z-index lifts a toast over the sticky nav. */
+    position:fixed; top:calc(var(--nav-h) + 1.1rem + env(safe-area-inset-top, 0px)); left:50%; transform:translateX(-50%);
     padding:.65rem 1.4rem; border-radius:10px;
     font-size:13px; font-weight:600; z-index:1000;
     box-shadow:0 4px 18px rgba(0,0,0,.18);
