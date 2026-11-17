@@ -798,6 +798,9 @@
   <!-- 네비게이션 로딩 프로그레스 바 / Navigation loading progress bar -->
   <div id="page-progress"></div>
   <div class="container">{% block content %}{% endblock %}</div>
+  {# 본문 쌓임 맥락(.container, z-index 1) 밖의 층 — 여기 둔 모달 배경은 sticky nav 까지 덮는다(회고 원장 R-11). body 안이라
+     boost 교체 때 함께 바뀐다. A layer outside the body's stacking context: an overlay here covers the sticky nav too. #}
+  {% block overlay %}{% endblock %}
   <!-- HTMX hx-boost: 앵커 클릭을 fetch 교체로 업그레이드 (전체 페이지 리로드 제거)
        HTMX hx-boost: upgrades anchor clicks to fetch-based swaps (eliminates full page reload) -->
   <script src="/static/vendor/htmx.min.js"></script>
