@@ -479,8 +479,13 @@
     .filter-search { min-width: unset; }
     .custom-date-wrap { flex-direction: column; align-items: stretch; }
     .date-input { width: 100%; }
-    /* 좁은 모바일: '커밋'(2번째)+'출처'(6번째) 컬럼 숨김 → 4컬럼으로 축소 */
-    /* Narrow mobile: hide commit (col2) + source (col6) → collapse to 4 cols */
+  }
+  @media (max-width: 700px) {
+    /* 700px 이하: '커밋'(2번째)+'출처'(6번째) 컬럼 숨김 → 4컬럼으로 축소. 481~700px 도 같다 — 여섯 열이면 가장 넓은
+       행이 481px 에서 영어 222px · 한국어 167px 카드 밖으로 밀렸다(사용자 11-17 결정 «4열로 줄이기»). 커밋 메시지
+       미리보기(날짜 밑)는 480px 까지 남는다.
+       700px and below: hide commit (col2) + source (col6) → four columns. The 481–700px band too: with six columns the
+       widest row overflowed the card by up to 222px at 481px. The commit message preview under the date stays above 480px. */
     .tbl th:nth-child(2), .tbl td:nth-child(2),
     .tbl th:nth-child(6), .tbl td:nth-child(6) { display: none; }
     /* 남은 네 열이 카드 안에 들어가게 — 셀 좌우 여백 16→6px, 머리글 자간 0, 점수는 막대 없이 숫자만.
