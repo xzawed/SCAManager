@@ -1058,9 +1058,12 @@ def _find_call(stage):
 
 
 def _find_regex_selects(pattern, path, ignore_case):
-    """find 정규식(기본 emacs 문법)이 경로를 고르는가 — `|` · 괄호 · 중괄호는 emacs 와 파이썬의 뜻이 갈려 막는 쪽.
-    Does a find regex select the path? `|`, parentheses and braces differ between emacs and Python: fail closed."""
-    if any(ch in pattern for ch in "|(){}"):
+    """find 정규식(기본 emacs 문법)이 경로를 고르는가. emacs 와 파이썬의 뜻이 갈리는 꼴이면 막는 쪽이다 — `|` · 괄호 ·
+    중괄호, POSIX 클래스(`[:`), 글자 그대로를 뜻하는 이스케이프(`\\.` · `\\*` …) 밖의 백슬래시 구문(emacs `\\'` 는 끝 고정
+    인데 파이썬에선 따옴표 글자다 — Grok claim-review bdd00182).
+    Does a find regex select the path? Constructs whose meaning differs between emacs and Python fail closed:
+    `|`, parentheses, braces, POSIX classes, and any backslash escape other than a literal-punctuation one."""
+    if any(ch in pattern for ch in "|(){}") or "[:" in pattern or re.search(r"\\(?![.*+?\[\]^$\\/-])", pattern):
         return True
     try:
         return re.fullmatch(pattern, path, re.IGNORECASE if ignore_case else 0) is not None

@@ -45,6 +45,9 @@ _DENIED = [
     pytest.param("nested_env", "find . -iregex '.*\\.ENV.*' -exec cat {} +", id="case-insensitive-regex"),
     pytest.param("nested_env", "find . -regex '.*\\(local\\|txt\\)' -exec cat {} +", id="emacs-regex-fails-closed"),
     pytest.param("root_env", "find . -lname '*' -exec cat {} +", id="unmodelled-test-fails-closed"),
+    # Grok claim-review(bdd00182) — emacs 의 `\'` 는 끝 고정이고 파이썬에선 따옴표 글자다
+    pytest.param("root_env", "find . -regex '.*\\.env\\'\"'\" -exec cat {} \\;", id="emacs-end-anchor"),
+    pytest.param("root_env", "find . -regex '.*[[:alpha:]]env' -exec cat {} +", id="posix-class"),
 ]
 
 _ALLOWED = [
