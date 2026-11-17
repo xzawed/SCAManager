@@ -194,9 +194,13 @@
   /* ----- 2. Count-up animation ------------------------------------------- */
   function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 
-  function animateNumber(textNode, target, duration = 1100, suffix = "", prefix = "", decimals = null) {
+  // 🔴 끝값은 서버가 쓴 글자 원문(`original`)이다 — `formatNumber` 의 `toLocaleString()` 은 브라우저 로케일로 자릿수를 묶어
+  //    1000 이상을 «1,234» · «1.234» 로 끝냈다(회고 원장 L04 P2-63). 도중 값의 자릿수 구분은 원문을 따른다(`grouped`).
+  // The final text is the server's original; mid-animation grouping follows the original.
+  function animateNumber(textNode, target, duration = 1100, suffix = "", prefix = "", decimals = null, original = null) {
+    const grouped = /\d,\d{3}/.test(original || "");
     if (reduced()) {
-      textNode.nodeValue = prefix + formatNumber(target, decimals) + suffix;
+      textNode.nodeValue = original !== null ? original : prefix + formatNumber(target, decimals, grouped) + suffix;
       return;
     }
     const start = performance.now();
@@ -209,25 +213,33 @@
       const t = Math.min(Math.max((now - start) / duration, 0), 1);
       const eased = easeOutCubic(t);
       const v = initial + (target - initial) * eased;
-      textNode.nodeValue = prefix + formatNumber(v, decimals) + suffix;
-      if (t < 1) requestAnimationFrame(step);
-      else textNode.nodeValue = prefix + formatNumber(target, decimals) + suffix;
+      if (t < 1) {
+        textNode.nodeValue = prefix + formatNumber(v, decimals, grouped) + suffix;
+        requestAnimationFrame(step);
+      } else {
+        textNode.nodeValue = original !== null ? original : prefix + formatNumber(target, decimals, grouped) + suffix;
+      }
     }
     requestAnimationFrame(step);
   }
 
   // decimals = 서버가 쓴 소수 자릿수 — 끝값이 서버 표기와 같게(«50.0%» 가 «50%» 로 바뀌었다).
-  // decimals = the server's decimal places, so the final text matches the server's ("50.0%" became "50%").
-  function formatNumber(v, decimals = null) {
+  // grouped = 서버 글자에 자릿수 구분 쉼표가 있는가 — 브라우저 로케일이 아니라 서버 표기를 따른다(P2-63).
+  // decimals = the server's decimal places; grouped = whether the server's text uses comma grouping.
+  function formatNumber(v, decimals = null, grouped = false) {
+    const int = (n) => (grouped ? Math.round(n).toLocaleString("en-US") : String(Math.round(n)));
     if (decimals !== null) {
-      return decimals > 0 ? v.toFixed(decimals) : Math.round(v).toLocaleString();
+      return decimals > 0 ? v.toFixed(decimals) : int(v);
     }
     const isFloat = Math.abs(v - Math.round(v)) > 0.01;
     if (isFloat) return v.toFixed(1);
-    return Math.round(v).toLocaleString();
+    return int(v);
   }
 
   function setupCountUp() {
+    // 🔴 «동작 줄이기» 면 서버 글자를 건드리지 않는다 — «0» 을 먼저 칠했다가 화면에 들어올 때 끝값으로 뛰었다
+    //    (회고 원장 L04 P2-62). Under reduced motion the server's text is left alone (no "0" pre-fill).
+    if (reduced()) return;
     // Match: leading number in elements with count-up role
     const candidates = freshOnly(
       document.querySelectorAll(".kpi__value, .repo-card__score, .detail-hero__num, .reason-row__count, .freq-row__count, .breakdown__val"),
@@ -263,7 +275,8 @@
             // 최초 캡처한 클로저가 이 노드를 소유 — 이후 클로저는 위 가드로 skip (재캡처 차단).
             // The first closure to capture owns this node; later closures skip it via the guard above.
             el.dataset.cuBound = "1";
-            targets.push({ node, target, suffix, prefix, decimals, host: el });
+            // 원문(공백 포함)을 그대로 쥔다 — 끝값은 이것이다(P2-63). Keep the original text: it is the final value.
+            targets.push({ node, target, suffix, prefix, decimals, host: el, original: node.nodeValue });
             // pre-fill 0 so the initial paint isn't the final number
             node.nodeValue = prefix + formatNumber(0, decimals) + suffix;
             break;
@@ -273,7 +286,7 @@
     });
     onceInView(targets.map((t) => t.host), (host) => {
       const t = targets.find((x) => x.host === host);
-      if (t) animateNumber(t.node, t.target, 1100, t.suffix, t.prefix, t.decimals);
+      if (t) animateNumber(t.node, t.target, 1100, t.suffix, t.prefix, t.decimals, t.original);
     });
   }
 

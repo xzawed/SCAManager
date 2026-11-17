@@ -12,6 +12,7 @@ Rendering defects found by the 2026-10-16 page-by-page review, measured on paint
 from __future__ import annotations
 
 import os
+import re
 from urllib.parse import quote
 
 
@@ -194,6 +195,98 @@ def test_countup_lands_on_the_server_text_and_never_goes_negative(
     assert not problems, "카운트업:\n  " + "\n  ".join(problems)
 
 
+# 대시보드 응답에서 카운트업 대상 둘을 1000 이상으로 바꾼다 — 시드 최대값(27)으로는 자릿수 구분 분기를 못 연다(회고 원장
+# L04 P2-63). `[data-count]`(base.html countUp) 하나와 `.freq-row__count`(effects.js) 하나.
+# Lift two count-up targets in the dashboard response above 1000: the seed's maximum (27) never opens the grouping branch.
+_BIG_TARGETS = (
+    (re.compile(r'(<span class="t-num" data-count=")(\d+)(">)(\d+)(</span>)'), r"\g<1>1234\g<3>1234\g<5>"),
+    (re.compile(r'(<span class="freq-row__count">)(\d+)(</span>)'), r"\g<1>1234\g<3>"),
+)
+
+
+def test_countup_lands_on_the_server_text_above_a_thousand(browser_instance, live_server, seeded_analysis):
+    """🔴 1000 이상도 끝값이 서버 글자 그대로다 — `toLocaleString()` 은 브라우저 로케일로 자릿수를 묶어 «1234» 를
+    «1,234»(de 계열은 «1.234»)로 끝냈다(회고 원장 L04 P2-63). 독일어 로케일 브라우저로 잰다.
+    The final text equals the server's even above 1000; toLocaleString grouped it by the browser locale."""
+    ctx = browser_instance.new_context(base_url=live_server, viewport={"width": 1440, "height": 900}, locale="de-DE")
+    replaced = []
+
+    def lift(route):
+        resp = route.fetch()
+        body = resp.text()
+        for pattern, repl in _BIG_TARGETS:
+            body, n = pattern.subn(repl, body, count=1)
+            replaced.append(n)
+        route.fulfill(response=resp, body=body)
+
+    page = ctx.new_page()
+    page.route("**/dashboard", lift)
+    try:
+        resp = page.goto("/dashboard", wait_until="load")
+        page.evaluate("""async () => {
+            const step = Math.max(200, Math.floor(innerHeight * 0.6));
+            for (let y = 0; y < document.body.scrollHeight; y += step) {
+                scrollTo(0, y); await new Promise(r => setTimeout(r, 250)); }
+            scrollTo(0, 0); }""")
+        page.wait_for_timeout(1800)
+        page.evaluate("() => { window.__cu = window.__cu || {negative: []}; }")
+        res = page.evaluate(_COUNTUP_READ_JS, [resp.text(), _COUNTUP_TARGETS])
+    finally:
+        ctx.close()
+    assert replaced == [1, 1], f"1000 이상으로 바꿀 대상을 못 찾았다(바꾼 수 {replaced}) — 재지 못했다"
+    big = [(a, b) for a, b in zip(res["server"], res["final"]) if "1234" in a]
+    # 부모 `.kpi__value` 도 같은 숫자를 담으므로 둘 이상 / the parent .kpi__value carries the same number too
+    assert len(big) >= 2, f"바꾼 대상 둘을 화면에서 못 짝지었다: {big}"
+    assert all(a == b for a, b in big), f"1000 이상의 끝값이 서버 글자와 다르다 (서버, 끝) {big}"
+
+
+# 동작 줄이기에서 카운트업 대상의 글자를 프레임마다 모은다 — 위아래로 훑어 화면 안 진입 시점도 지나간다.
+# Under reduced motion, collect every count-up target's text on every frame while scrolling through the page.
+_COUNTUP_FRAMES_JS = r"""async (sel) => {
+  const seen = [];
+  const sample = () => document.querySelectorAll(sel).forEach((e, i) => {
+    (seen[i] = seen[i] || new Set()).add(e.textContent.replace(/\s+/g, ' ').trim()); });
+  const frame = () => new Promise(r => requestAnimationFrame(r));
+  const t0 = performance.now();
+  const step = Math.max(200, Math.floor(innerHeight * 0.6));
+  for (let y = 0; y < document.body.scrollHeight; y += step) { scrollTo(0, y); for (let k = 0; k < 8; k++) { sample(); await frame(); } }
+  scrollTo(0, 0);
+  while (performance.now() - t0 < 2500) { sample(); await frame(); }
+  return seen.map(s => Array.from(s));
+}"""
+
+
+def test_reduced_motion_never_paints_an_intermediate_countup_value(browser_instance, live_server, seeded_analysis):
+    """🔴 «동작 줄이기» 에서는 카운트업 대상이 처음부터 끝까지 서버 글자 하나만 칠한다 (회고 원장 L04 P2-62).
+
+    대시보드 KPI(base.html countUp)는 이 설정을 보지 않고 약 1.4초 동안 값 22개를 그렸다. #1779 의 계기
+    (`getAnimations`)는 rAF 로 바꾸는 글자를 원리적으로 못 봐 초록이었다 — 여기서는 프레임마다 글자를 모은다.
+    Under reduced motion every count-up target paints only the server's text; this samples text on every frame.
+    """
+    ctx = browser_instance.new_context(base_url=live_server, viewport={"width": 1440, "height": 900},
+                                       reduced_motion="reduce")
+    problems, measured = [], 0
+    try:
+        for path in ("/dashboard", "/"):
+            page = ctx.new_page()
+            resp = page.goto(path, wait_until="domcontentloaded")
+            frames = page.evaluate(_COUNTUP_FRAMES_JS, _COUNTUP_TARGETS)
+            page.evaluate("() => { window.__cu = window.__cu || {negative: []}; }")
+            server = page.evaluate(_COUNTUP_READ_JS, [resp.text(), _COUNTUP_TARGETS])["server"]
+            page.close()
+            measured += len(server)
+            if len(frames) != len(server):
+                problems.append(f"{path}: 대상 수가 다르다 — 응답 {len(server)} · 화면 {len(frames)}")
+                continue
+            for i, (want, painted) in enumerate(zip(server, frames)):
+                extra = [v for v in painted if v != want]
+                if extra:
+                    problems.append(f"{path} #{i}: 서버 글자 {want!r} 말고도 {extra[:4]} 를 칠했다")
+    finally:
+        ctx.close()
+    assert measured, "카운트업 대상을 0개 쟀다 — 선택자가 화면과 어긋났다(공허한 초록)"
+    assert not problems, "동작 줄이기에서 카운트업이 돈다:\n  " + "\n  ".join(problems)
+
 def test_a_missing_page_opened_in_the_browser_is_an_error_page(seeded_page, base_url):
     """🔴 브라우저로 없는 리포 주소를 열면 JSON 원문이 아니라 nav 가 있는 오류 화면이다(상태 404 유지)."""
     resp = seeded_page.goto(f"{base_url}/repos/{quote('owner/no-such-repo', safe='')}")
@@ -236,8 +329,6 @@ def test_an_unverified_repo_card_shows_its_recorded_grade(browser_instance, live
     데스크톱·모바일에서 등급 칩(색 있음) · 평균만큼 찬 막대 · 점수 · «미검증 포함 · AI 리뷰 꺼짐» 이
     카드 안에 보이는지 잰다. 시드 = 70점 분석 2회.
     """
-    import re  # noqa: PLC0415
-
     from playwright.sync_api import expect  # noqa: PLC0415
 
     from src.i18n.loader import get_text  # noqa: PLC0415
