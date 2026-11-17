@@ -1,6 +1,7 @@
-"""리포 상세의 분석 이력 표가 폰 폭에서 카드 안에 다 들어간다 (#1639).
+"""리포 상세의 분석 이력 표가 폰 폭 · 481~700px 띠에서 카드 안에 다 들어간다 (#1639).
 
-480px 이하에서는 커밋 · 출처 열을 숨겨 네 열(날짜 · PR · 점수 · 등급)만 남는다. 그래도 셀 좌우 여백
+700px 이하에서는 커밋 · 출처 열을 숨겨 네 열(날짜 · PR · 점수 · 등급)만 남는다(481~700px 는 사용자 11-17 결정
+«4열로 줄이기» — 여섯 열이면 481px 에서 가장 넓은 행이 영어 222px 가려졌다). 480px 이하에서는 셀 좌우 여백
 16px 과 70px 점수 막대 때문에 표가 카드보다 넓었다. `.table-wrap` 이 가로 스크롤을 품고 있어 페이지는
 넘치지 않으므로, 페이지 넘침 검사로는 보이지 않았다. 수정 전 375px 에서는 등급 열이 한국어 60px ·
 영어 83px 가려졌고, 날짜가 하이픈에서 두 줄로 접혔다.
@@ -32,11 +33,13 @@ _WIDEST_SHA = "phone-fit-widest"
 _WIDEST_SCORE = 100
 _WIDEST_PR = 12345
 _LANGS = ("ko", "en", "ja")
-_FIT_WIDTHS = (360, 375, 390, 414, 480)
+# 폰 폭 다섯 + 481~700px 띠(띠의 양 끝과 그 사이) — 네 열이 카드 안에 다 들어가야 하는 폭.
+# Five phone widths plus the 481–700px band (both ends and between): all four columns must fit.
+_FIT_WIDTHS = (360, 375, 390, 414, 480, 481, 540, 600, 640, 700)
 _ONE_LINE_DATE_WIDTHS = (375, 390, 414, 480)
-# 480px 규칙 밖 — 점수 막대가 그대로 보여야 하는 폭(규칙이 폰 폭에만 걸렸는가).
-# Outside the 480px rule: the score bar must still show here.
-_BAR_WIDTHS = (481, 1440)
+# 700px 규칙 밖 — 여섯 열 · 점수 막대가 그대로 보여야 하는 폭(규칙이 700px 이하에만 걸렸는가).
+# Outside the 700px rule: six columns and the score bar must still show here.
+_BAR_WIDTHS = (701, 1440)
 # 판정 글꼴 — 폭 목록은 CI 가 라틴 글자를 이 글꼴로 그릴 때 여유가 남게 맞췄다(CI 가 조달한다 — ci.yml «judging font»).
 # The judging font: the width lists keep a margin when CI draws Latin text with it (CI provisions it).
 _JUDGING_LATIN_FONT = "DejaVu Sans"
@@ -170,10 +173,10 @@ def _measure(page) -> dict:
 
 @pytest.mark.parametrize("language", _LANGS)
 def test_history_table_fits_inside_the_card_at_phone_widths(seeded_page, base_url, language):
-    """🔴 폰 폭 다섯(360~480px) — 네 열이 모두 카드 안에 들어가고, 점수는 막대 없이 숫자로 보인다.
+    """🔴 폰 폭 다섯(360~480px) · 481~700px 띠 — 네 열이 모두 카드 안에 들어가고, 점수는 막대 없이 숫자로 보인다.
 
-    375px 부터는 날짜도 한 줄이다(하이픈에서 접히지 않는다).
-    All four columns fit at five phone widths; the score shows as a number without its bar.
+    375~480px 에서는 날짜도 한 줄이다(하이픈에서 접히지 않는다).
+    All four columns fit at five phone widths and across the 481–700px band; the score shows without its bar.
     """
     failures, measured, fonts = [], 0, []
     with _widest_history_rows():
@@ -226,15 +229,17 @@ def test_the_width_judging_font_is_read_from_the_renderer(seeded_page, base_url)
 
 
 def test_history_table_keeps_the_score_bar_above_the_phone_breakpoint(seeded_page, base_url):
-    """🔴 대조군 — 480px 위에서는 점수 막대가 그대로 보인다(숨김 규칙이 폰 폭에만 걸렸는가)."""
+    """🔴 대조군 — 700px 위에서는 여섯 열과 점수 막대가 그대로 보인다(숨김 규칙이 700px 이하에만 걸렸는가)."""
     failures = []
     with _widest_history_rows():
         for width in _BAR_WIDTHS:
             _open_history(seeded_page, base_url, "ko", width)
             m = _measure(seeded_page)
+            if len(m["cols"]) != 6:
+                failures.append(f"{width}px: 보이는 열이 여섯 개가 아니다 {m['cols']}")
             if not m["widest"]["barShown"] or m["widest"]["barWidth"] < 60:
                 failures.append(f"{width}px: 점수 막대가 안 보이거나 줄었다 {m['widest']}")
-    assert not failures, "480px 위 이력 표:\n  " + "\n  ".join(failures)
+    assert not failures, "700px 위 이력 표:\n  " + "\n  ".join(failures)
 
 
 def test_history_table_instrument_sees_hidden_overflow_and_counts_lines(seeded_page, base_url):
