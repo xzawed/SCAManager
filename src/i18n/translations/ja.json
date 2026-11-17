@@ -150,6 +150,7 @@
       "next_title": "💬 次",
       "no_api_key": "🔑 ANTHROPIC_API_KEY 未設定 — Insight モードは AI 分析が必要です。Railway Variables で key を設定してください。",
       "no_data": "📭 最近 {days} 日の分析データが不足しています — 分析結果が蓄積された後に再試行してください。",
+      "loading": "✨ AI インサイトを生成中です — 新しく生成するときは少し時間がかかります。",
       "load_failed": "⚠️ AI Insight 生成失敗 ({status}) — しばらくしてから再試行してください。",
       "disabled": "AIインサイトは設定で無効化されています (INSIGHT_DISABLED)。",
       "daily_limit": "⏳ 本日の AI インサイト生成上限（{cap} 回）に達しました — 明日（UTC）以降に再び生成できます。",

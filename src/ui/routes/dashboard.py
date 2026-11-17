@@ -44,6 +44,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _DASHBOARD_TEMPLATE = "dashboard.html"
+_INSIGHT_FRAGMENT_TEMPLATE = "_dashboard_insight.html"  # 페이지와 조각 경로가 함께 그린다 / shared by page and fragment
 
 _VALID_MODES = ("overview", "insight", "security", "usage", "repos")
 
@@ -291,10 +292,11 @@ async def dashboard(  # pylint: disable=too-many-locals
             # Phase 3 PR 2 — Claude AI 4 카드 narrative (caching 적용) + PR 5 user_id 격리.
             # Phase 2-B 🅑 (사이클 74 PR-B) — DB 캐싱 1h TTL. ?refresh=1 은 위에서 무효화 후 303 으로 떠났다.
             # Phase 2-B 🅑 (Cycle 74 PR-B) — DB cache 1h TTL; ?refresh=1 already invalidated and left above.
-            # 서비스가 Claude await 앞뒤의 동기 DB 를 스스로 워커 스레드로 넘긴다 (#1701).
-            # The service moves its own sync DB work around the Claude await to worker threads.
+            # 🔴 페이지는 유료 호출을 하지 않는다 — 캐시 미스면 `pending` 자리만 그리고, 그 자리가 조각 경로
+            #   (`dashboard_insight_fragment`)를 불러 채운다(원장 #1706 안 C · 캐시 미스 응답 10 s 실측).
+            # The page never makes the paid call: on a miss it draws a `pending` placeholder that loads the fragment.
             insight = await dashboard_service.insight_narrative(
-                db, days=days, user_id=current_user.id, language=locale_value,
+                db, days=days, user_id=current_user.id, language=locale_value, call_claude=False,
             )
             return templates.TemplateResponse(
                 request,
@@ -349,6 +351,31 @@ async def dashboard(  # pylint: disable=too-many-locals
             "days": days,
             "locale": locale_value,
         },
+    )
+
+
+@router.get("/dashboard/insight", response_class=HTMLResponse)
+async def dashboard_insight_fragment(
+    request: Request,
+    current_user: Annotated[CurrentUser, Depends(require_login)],
+    days: int = Query(default=7, ge=1, le=365),
+):
+    """인사이트 서술 조각 — 대시보드가 `pending` 자리를 그린 뒤 htmx 로 부른다(회고 원장 #1706 안 C).
+
+    유료 호출은 여기서만 나간다. 캐시 · 부정 캐시 · 하루 한도 · 기한(45 s)은 페이지와 같은 서비스 함수가 그대로 건다.
+    htmx 요청이 아니면(주소창 · 새 탭) 그 화면으로 303 — 맨 조각은 스타일 없는 HTML 이다.
+    The insight narrative fragment the dashboard placeholder loads; the only place the paid call is made.
+    """
+    days = insight_cost_guard.snap_days(days, constants.INSIGHT_DAYS_DASHBOARD)
+    if request.headers.get("HX-Request") != "true":
+        return RedirectResponse(url=f"/dashboard?mode=insight&days={days}", status_code=303)
+    locale_value = get_locale(request)
+    with SessionLocal() as db:
+        insight = await dashboard_service.insight_narrative(
+            db, days=days, user_id=current_user.id, language=locale_value,
+        )
+    return templates.TemplateResponse(
+        request, _INSIGHT_FRAGMENT_TEMPLATE, {"insight": insight, "days": days, "locale": locale_value},
     )
 
 

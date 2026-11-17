@@ -1094,6 +1094,7 @@ async def insight_narrative(  # pylint: disable=too-many-locals,too-many-return-
     api_key: str | None = None,
     user_id: int | None = None,
     language: str = "en",
+    call_claude: bool = True,
 ) -> dict[str, Any]:
     """Claude AI 기반 4 카드 인사이트 narrative — Phase 3 PR 2 + PR 5 (user_id 격리).
 
@@ -1108,6 +1109,11 @@ async def insight_narrative(  # pylint: disable=too-many-locals,too-many-return-
         api_key: None 시 settings.anthropic_api_key 사용. Defaults to settings on None.
         user_id: PR 5 — 사용자별 데이터 격리. None 시 모든 리포 (admin/legacy 호환).
         language: 응답 언어 코드 ("ko"/"en"/"ja"). Response language code.
+        call_claude: False 면 유료 호출 바로 앞에서 멈추고 `status="pending"` 을 돌려준다 — 대시보드 페이지는
+            자리만 그리고 조각 요청(`GET /dashboard/insight`)이 부른다(회고 원장 #1706 안 C). 캐시 · 부정 캐시 ·
+            하루 한도 · 데이터 0건은 그대로 여기서 끝난다.
+            False stops right before the paid call with status "pending"; the page draws a placeholder
+            and the fragment request makes the call. Cache, negative cache, daily cap and no-data still end here.
 
     Returns:
         {
@@ -1115,7 +1121,8 @@ async def insight_narrative(  # pylint: disable=too-many-locals,too-many-return-
             "focus_areas": list[str],           # 🔍 신경 쓸 것 (3~5건)
             "key_metrics": list[dict],          # 📊 숫자 [{"label", "value", "delta"}] × 4
             "next_actions": list[str],          # 💬 다음 (2~4건)
-            "status": "success" | "no_api_key" | "no_data" | "api_error" | "parse_error" | "disabled",
+            "status": "success" | "no_api_key" | "no_data" | "api_error" | "parse_error" | "disabled"
+                      | "daily_limit" | "pending",
             "generated_at": "YYYY-MM-DDTHH:MM:SSZ",
             "days": int,
         }
@@ -1150,6 +1157,10 @@ async def insight_narrative(  # pylint: disable=too-many-locals,too-many-return-
     )
     if isinstance(prepared, dict):
         return prepared
+    if not call_claude:
+        # 유료 호출 바로 앞 — 페이지 요청은 Claude 를 기다리지 않는다(캐시 미스 응답 10 s 실측 · 원장 #1706 안 C).
+        # Right before the paid call: the page request does not wait for Claude.
+        return _build_insight_response(status="pending", days=days)
 
     # timeout/max_retries 는 명시한다. SDK 는 재시도 대기를 묶지 않아 페이지 상한을 건다 (#1690)
     # Explicit timeout/max_retries; the SDK does not bound retry waits, so apply the page cap

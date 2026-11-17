@@ -150,6 +150,7 @@
       "next_title": "💬 Next",
       "no_api_key": "🔑 ANTHROPIC_API_KEY not set — Insight mode requires AI analysis. Please set the key in Railway Variables.",
       "no_data": "📭 Insufficient analysis data in the last {days} days — please try again after results accumulate.",
+      "loading": "✨ Generating the AI insight — a new one takes a moment.",
       "load_failed": "⚠️ AI Insight generation failed ({status}) — please try again later.",
       "disabled": "AI insight is disabled by configuration (INSIGHT_DISABLED).",
       "daily_limit": "⏳ You have used today's {cap} AI insight generations — new ones are available tomorrow (UTC).",

@@ -36,7 +36,7 @@ from e2e.conftest import (CONFIG_MODEL_ID, CONFIG_USER_ID, DELTA_DAYS,
                           rls_catalog_double, repo_narrative_state,
                           stale_webhook_listing, unverified_trend_day,
                           expected_avg_delta, expected_cost_delta,
-                          expected_score_delta, insight_key_window,
+                          expected_score_delta, insight_call_held, insight_key_window,
                           keep_fresh_analysis_in_this_month)
 
 
@@ -3804,6 +3804,9 @@ def test_token_text_meets_aa_in_insight_status_states(
     # ③ load_failed — 키는 있고 캐시는 비웠고 호출은 루프백으로 나가 실패한다.
     with insight_key_window():
         seeded_page.goto(f"{base_url}/dashboard?mode=insight&refresh=1")
+        # 캐시 미스면 페이지는 자리만 그리고 실패 상자는 조각 요청(루프백 호출 · SDK 재시도)이 끝난 뒤 들어온다(원장 #1706 안 C).
+        # On a miss the page draws a placeholder; the failure box arrives when the fragment request settles.
+        seeded_page.wait_for_function("() => !document.querySelector('#dashInsight[aria-busy]')", timeout=30000)
         apply_theme(seeded_page, theme)
         seeded_page.add_style_tag(
             content="*,*::before,*::after{transition:none !important}")
@@ -5412,6 +5415,14 @@ def _assert_arm_text_meets_aa(page, url: str, opened: str, theme: str, arm: str)
     page.set_viewport_size(_WIDE_VIEWPORT)
     page.goto(url)
     assert "localhost" in page.url, f"{page.url[:60]} 로 나갔다 — 남의 페이지를 잰다"
+    _assert_open_page_text_meets_aa(page, opened, theme, arm)
+
+
+def _assert_open_page_text_meets_aa(page, opened: str, theme: str, arm: str) -> None:
+    """지금 열린 화면 그대로 — 다시 열지 않고 같은 측정을 한다(한 화면 안에서 상태가 바뀌는 팔).
+
+    Same measurement on the page as it is now, for arms whose state changes within one page.
+    """
     apply_theme(page, theme)
     page.add_style_tag(content="*,*::before,*::after{transition:none !important}")
     page.wait_for_timeout(350)
@@ -5429,6 +5440,35 @@ def _assert_arm_text_meets_aa(page, url: str, opened: str, theme: str, arm: str)
         f"[{theme}] {arm} — 글자 {len(bad)}건이 AA 미달 (관측 {sum(res['seen'].values())}건):\n  "
         + "\n  ".join(f"[{b['state']}] {b['ratio']} < {b['need']} bg={b['bg']} "
                       f"cls={b['cls']!r} {b['text']!r}" for b in bad[:10]))
+
+
+# ── E-22b. 대시보드 인사이트 서술 — 자리 → 조각 (회고 원장 #1706 안 C) ──────────────────────
+#
+# 🔴 조각 경로(`GET /dashboard/insight`)는 브라우저가 주소로 열지 않는다 — 대시보드의 자리 표시(`pending`)가 htmx 로
+#    부른다. 그래서 이 스윕이 그 경로를 «연다» 는 것은 자리를 거쳐 조각이 실제로 바꿔 끼워지는 것이다. 요청이 그
+#    경로로 나갔는지 확인하고, 두 상태(자리 · 채운 조각)의 글자를 같은 측정으로 잰다. Claude 호출은
+#    `insight_call_held` 가 풀기 전까지 붙잡는다 — 자리 상태를 시간에 기대지 않고 잰다.
+_INSIGHT_FRAGMENT_PATHS = ["/dashboard/insight"]
+_INSIGHT_PENDING_OPENED = (
+    "() => !!document.querySelector('#dashInsight[aria-busy=\"true\"] .dash-insight-status')?.checkVisibility()")
+_INSIGHT_SWAPPED_OPENED = ("() => !!document.querySelector('#dashInsight .dash-insight-grid')?.checkVisibility()"
+                           " && !document.querySelector('#dashInsight[aria-busy], #dashInsight[hx-get]')")
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_insight_placeholder_and_swapped_fragment_text_meet_aa(seeded_page, base_url, seeded_analysis, theme):
+    """자리(로딩 문구)와 바꿔 낀 조각(네 카드)의 모든 글자가 네 테마에서 AA 다 — 조각 경로를 실제로 거친다."""
+    seeded_page.context.add_cookies(
+        [{"name": "preferred_language", "value": INSIGHT_LANGUAGE, "url": base_url}])
+    with insight_call_held() as release:
+        seeded_page.set_viewport_size(_WIDE_VIEWPORT)
+        with seeded_page.expect_request(
+                lambda r: r.url.split("?")[0].endswith(tuple(_INSIGHT_FRAGMENT_PATHS))):
+            seeded_page.goto(f"{base_url}/dashboard?mode=insight&days=7")
+        _assert_open_page_text_meets_aa(seeded_page, _INSIGHT_PENDING_OPENED, theme, "insight-pending")
+        release()
+        seeded_page.wait_for_function(_INSIGHT_SWAPPED_OPENED, timeout=15000)
+        _assert_open_page_text_meets_aa(seeded_page, _INSIGHT_SWAPPED_OPENED, theme, "insight-fragment")
 
 
 # ── E-23. 막 시작한 사용자가 보는 팔 (#1639 W12 · 분기 프로브 main `25ad2665`) ──────────

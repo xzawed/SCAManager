@@ -75,7 +75,9 @@ def test_inline_refresh_links_declare_the_minimum():
     """
     targets = {
         "src/templates/repo_insights.html": "insights ↺ Refresh",
-        "src/templates/dashboard.html": "dashboard insight Refresh",
+        # 대시보드 인사이트 서술은 페이지와 조각 경로가 함께 그리는 조각 템플릿에 있다(원장 #1706 안 C).
+        # The dashboard insight narrative lives in the partial shared by the page and the fragment route.
+        "src/templates/_dashboard_insight.html": "dashboard insight Refresh",
     }
     bad = []
     for path, label in targets.items():
