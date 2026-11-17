@@ -1152,6 +1152,25 @@
     //    (실측: `/` → 대시보드 6회 중 5회 «85 → 14»). 표식은 effects.js init 이 뗀다(5s 안전망 동일).
     //    실제로 교체할 때만 — 오류 응답(shouldSwap=false)에 걸면 옛 화면이 안전망까지 비어 보인다.
     // Raise the first-paint flag before a whole-body swap too; effects.js init clears it.
+    // 🔴 boost 이동(GET)이 받은 응답이 «앱 화면» 이 아니면 끼워 넣지 않고 그 주소로 전체 이동한다(회고 원장 L04 P2-60).
+    //    앱 화면 = 응답의 <body> 가 hx-boost="true"(이 base.html). 그 밖은 둘이었다: (1) 자기 <head> · CSS 를 가진 랜딩 —
+    //    body 만 끼우면 CSS 없이 그려졌다 (2) 오류 — htmx 는 Accept: text/html 을 안 보내 서버가 JSON 404 를 주고, htmx 는
+    //    오류 응답을 끼우지 않아 화면은 그대로 · 진행 막대는 끝없이 돌았다. 전체 이동이면 브라우저가 제 문서를 받는다.
+    //    아래 «등장 전» 표식보다 먼저 건다 — 끼우지 않을 응답에 표식을 걸지 않게.
+    // A boosted GET whose response is not an app page (standalone landing, JSON error) is opened with a full navigation.
+    if (document._boostPageGuard) document.removeEventListener('htmx:beforeSwap', document._boostPageGuard);
+    document._boostPageGuard = function (e) {
+      var d = e.detail || {};
+      var verb = d.requestConfig && d.requestConfig.verb;
+      if (!d.boosted || d.target !== document.body || !d.xhr || String(verb).toLowerCase() !== 'get') return;
+      var doc = new DOMParser().parseFromString(d.serverResponse || '', 'text/html');
+      if (doc.body && doc.body.getAttribute('hx-boost') === 'true') return;
+      d.shouldSwap = false;
+      d.isError = false;
+      location.assign(d.xhr.responseURL || (d.pathInfo && d.pathInfo.requestPath) || location.href);
+    };
+    document.addEventListener('htmx:beforeSwap', document._boostPageGuard);
+
     if (document._fxPendingOnSwap) document.removeEventListener('htmx:beforeSwap', document._fxPendingOnSwap);
     document._fxPendingOnSwap = function (e) {
       var d = e.detail || {};
@@ -1314,9 +1333,15 @@
       if (document._finishProgressHandler) {
         document.removeEventListener('htmx:afterSettle', document._finishProgressHandler);
         document.removeEventListener('htmx:historyRestore', document._finishProgressHandler);
+        document.removeEventListener('htmx:responseError', document._finishProgressHandler);
+        document.removeEventListener('htmx:sendError', document._finishProgressHandler);
       }
       document._finishProgressHandler = _finishProgress;
       document.addEventListener('htmx:afterSettle', document._finishProgressHandler);
+      // 🔴 끼우지 않은 오류 응답 · 네트워크 오류에서도 끝낸다 — afterSettle 만 기다리면 끝없이 돌았다(회고 원장 L04 P2-60).
+      // Also finish on an unswapped error response or a network error; afterSettle alone left it spinning.
+      document.addEventListener('htmx:responseError', document._finishProgressHandler);
+      document.addEventListener('htmx:sendError', document._finishProgressHandler);
       // 뒤로가기(historyRestore) 시 mid-animation 고착 방지
       // Prevent progress bar from freezing mid-animation on back navigation
       document.addEventListener('htmx:historyRestore', document._finishProgressHandler);
