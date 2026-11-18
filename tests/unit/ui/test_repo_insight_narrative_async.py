@@ -237,12 +237,22 @@ def test_page_placeholder_uses_the_snapped_window(owner, client_for):
     assert _placeholder_url(page.text) == f"{_FRAGMENT}?days=30"
 
 
-def test_fragment_hides_another_users_repo(owner, client_for, db):
-    """남의 리포 — 페이지와 같이 404, 유료 호출 없음(유료 호출 입구의 권한 격리)."""
+@pytest.mark.parametrize("headers", [_HX, {}], ids=["htmx", "direct"])
+def test_fragment_hides_another_users_repo(owner, client_for, db, headers):
+    """남의 리포 — htmx 든 주소창이든 페이지와 같이 404, 유료 호출 없음. 리다이렉트로 리포가 있다는 것도 알리지 않는다."""
     stranger = _user(db, "stranger")
     with _Sdk(_reply(_TEXT)) as sdk:
-        resp = client_for(stranger).get(f"{_FRAGMENT}?days=30", headers=_HX)
+        resp = client_for(stranger).get(f"{_FRAGMENT}?days=30", headers=headers)
     assert resp.status_code == 404
+    assert sdk.factory.call_count == 0
+
+
+def test_fragment_redirect_uses_the_stored_repo_name(owner, client_for):
+    """주소창으로 연 조각의 303 은 DB 의 리포 이름으로 만든다 — 요청 경로의 글자(퍼센트 인코딩 포함)를 되돌려 주지 않는다."""
+    with _Sdk(_reply(_TEXT)) as sdk:
+        resp = client_for(owner).get("/repos/async-owner%2Fasync-repo/insights/narrative?days=30")
+    assert resp.status_code == 303
+    assert resp.headers["location"] == f"{_PAGE}?days=30"
     assert sdk.factory.call_count == 0
 
 

@@ -238,13 +238,15 @@ async def repo_insight_narrative_fragment(
     The narrative fragment that replaces the page's placeholder via htmx — the only entry to the paid call.
     """
     days = insight_cost_guard.snap_days(days, constants.INSIGHT_DAYS_REPO)
-    # 주소창 · 새 탭으로 열면 조각만 덩그러니 뜬다 — 페이지로 돌려보낸다(그 페이지가 자리를 그리고 다시 부른다).
-    # Opened directly (address bar, new tab) the bare fragment would show; send the user to the page instead.
-    if request.headers.get("HX-Request") != "true":
-        return RedirectResponse(url=f"/repos/{quote(repo_name, safe='/')}/insights?days={days}", status_code=303)
     repo = await run_in_threadpool(_find_repo, db, repo_name, current_user.id)
     if repo is None:
         raise HTTPException(status_code=404, detail="Repository not found")
+    # 주소창 · 새 탭으로 열면 조각만 덩그러니 뜬다 — 페이지로 돌려보낸다(그 페이지가 자리를 그리고 다시 부른다).
+    #   🔴 주소는 요청 경로가 아니라 DB 에서 찾은 리포 이름으로 만든다 — 요청 글자로 만든 리다이렉트는 CodeQL
+    #   `py/url-redirection`(#1899 첫 판 alert #651)이고, 리포를 먼저 찾으니 남의 리포는 리다이렉트 없이 404 다.
+    # Opened directly, send the user to the page — built from the stored repo name, never the request path.
+    if request.headers.get("HX-Request") != "true":
+        return RedirectResponse(url=f"/repos/{quote(repo.full_name, safe='/')}/insights?days={days}", status_code=303)
     locale_value = get_locale(request)
     view = _narrative_view(None)
     if settings.anthropic_api_key:
