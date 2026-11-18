@@ -157,11 +157,7 @@ def _pins(text: str) -> dict:
     pins |= dict(re.findall(r"gem install (\S+) -v (\S+)", text))
     if (m := _GOLANGCI_RELEASE.search(text)):
         pins["golangci-lint"] = m.group(1)
-    for chunk in re.findall(r"npm install -g ([^\n&|]+)", text):
-        for word in shlex.split(chunk):
-            name, _, spec = word.lstrip("@").partition("@")
-            if spec:
-                pins[("@" if word.startswith("@") else "") + name] = spec
+    pins |= _npm_globals(text)
     if (m := re.search(r"solc-select install (\S+)", text)):
         pins["solc"] = m.group(1)
     nodes = set(re.findall(r'node-version:\s*"?(\d+)', text)) | set(re.findall(r"node_(\d+)\.x", text))
@@ -169,6 +165,18 @@ def _pins(text: str) -> dict:
         # 둘 이상이면 어느 쪽과도 같지 않게 — 한 환경 안에서 갈린 것도 red 다.
         # More than one value never equals the other side: a split inside one file is red too.
         pins["node"] = ",".join(sorted(nodes))
+    return pins
+
+
+def _npm_globals(text: str) -> dict:
+    """`npm install -g` 가 까는 (패키지 → 버전 표기). 줄 이음(`\\`)은 먼저 잇는다."""
+    text = re.sub(r"\\\s*\n\s*", " ", text)
+    pins = {}
+    for chunk in re.findall(r"npm install -g ([^\n&|]+)", text):
+        for word in shlex.split(chunk):
+            name, _, spec = word.lstrip("@").partition("@")
+            if spec:
+                pins[("@" if word.startswith("@") else "") + name] = spec
     return pins
 
 
@@ -214,6 +222,26 @@ def test_ci_and_image_pin_the_same_versions(tool):
     assert ci[tool] == image[tool], (
         f"`{tool}` 버전이 갈렸다 — CI {ci[tool]} vs Dockerfile {image[tool]}. "
         "두 파일을 같은 커밋에서 고칠 것."
+    )
+
+
+# 🔴 운영 npm 엔진(`npm install -g`)의 트리는 package-lock.json 밖이라 Dependabot 이 못 본다. 판이 lockfile 과 같으면
+#    lockfile 의 같은 패키지 하위 트리가 같은 범위로 풀려 알림이 운영 엔진을 대신 읽는다 — 갈리면 어긋난다
+#    (11-18 실측: 운영 eslint 10.14.0 의 minimatch ^10.2.6 이 남았는데 lockfile 은 10.15.0 이라 알림 #11 이 «fixed»).
+# The global npm tree is outside package-lock.json; same versions make the lockfile's subtree resolve the same ranges.
+_LOCK = _ROOT / "package-lock.json"
+
+
+def test_every_global_npm_engine_is_the_version_the_lockfile_pins():
+    """운영 이미지의 전역 npm 엔진마다 판 = package-lock 의 판 — Dependabot 알림이 운영 엔진을 대신 읽게."""
+    engines = _npm_globals("\n".join(run_steps(DOCKERFILE.read_text(encoding="utf-8"))))
+    assert engines, "Dockerfile 에서 `npm install -g` 핀을 못 읽었다 — 이 검사가 공허하다"
+    packages = json.loads(_LOCK.read_text(encoding="utf-8"))["packages"]
+    locked = {name: packages.get(f"node_modules/{name}", {}).get("version") for name in engines}
+    assert engines == locked, (
+        f"운영 npm 엔진 판이 package-lock 과 갈렸다 — Dockerfile {engines} vs lockfile {locked}. "
+        "Dockerfile · ci.yml 의 `npm install -g` 핀을 lockfile 판으로 같은 커밋에서 맞출 것 — "
+        "Dependabot 의 npm PR 이 eslint · typescript 를 올리면 그 PR 에서."
     )
 
 

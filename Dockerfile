@@ -53,11 +53,11 @@ RUN mkdir -p /etc/apt/keyrings \
 # 삼킨 실패는 이 레이어에 **캐시돼** 이후 빌드마다 도구 없는 이미지가 나온다. 빌드가 실패하면 Railway 는
 # 이전 배포를 그대로 서비스한다.
 # eslint 는 엔진만 여기서 온다 — 분석기 설정이 import 하는 파서(@typescript-eslint/parser)와 그 typescript 는
-# 아래 `npm ci`(package-lock)에서 온다. package.json 의 eslint 는 이 리포 템플릿 린트(`lint:js`)용이다.
+# 아래 `npm ci`(package-lock)에서 온다. `npm install -g` 판 = package-lock 판(전역 트리는 Dependabot 밖 — 같은 시험이 잰다).
 # Analyzers pinned to one exact version each (the contract test rejects ranges, bare majors and bare names).
 # Failures are not swallowed: a swallowed failure would be cached in this layer and every later
 # build would ship without the tool. A failed build keeps the old deploy. Only the eslint engine
-# comes from here; the parser its config imports comes from `npm ci` below.
+# comes from here; the parser its config imports comes from `npm ci` below. Global versions = package-lock's.
 # GitHub 릴리스 내려받기는 몇 분 흔들려도 버티게 재시도하고(모든 오류 · 연결 20 초 · 한 번 180 초 · 15 초 간격 20번 —
 # 빠른 실패면 약 5 분 · 새 시도는 300 초까지) 받은 파일마다
 # sha256 을 대조한다 — 11-09 GitHub 504 동안 배포 빌드 3건이 이 단계에서 실패했다(회고 원장 R-7). 체크섬 = 각 릴리스의
@@ -91,7 +91,7 @@ RUN gem install rubocop-ast -v 1.36.2 --no-document --bindir /usr/bin \
  && unzip -o /tmp/tflint.zip -d /usr/bin/ \
  && chmod +x /usr/bin/tflint \
  && rm /tmp/tflint.zip \
- && npm install -g eslint@10.14.0 typescript@6.0.3 \
+ && npm install -g eslint@10.15.0 typescript@6.0.3 \
  && npm cache clean --force
 
 WORKDIR /app
