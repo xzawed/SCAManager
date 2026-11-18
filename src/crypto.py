@@ -55,7 +55,14 @@ def decrypt_token(ciphertext: str) -> str:
     try:
         return f.decrypt(ciphertext.encode()).decode()
     except (InvalidToken, ValueError):
-        # 암호화 키 도입 전 평문 저장된 레거시 토큰 — 그대로 반환
-        # Legacy token stored in plaintext before encryption key was introduced — return as-is.
-        logger.warning("Token decryption failed — returning as plaintext (legacy token?)")
+        # 저장값을 그대로 돌려준다 — 암호화 도입 전 평문 토큰이면 그대로 쓰이고, 옛 키로 암호화된 토큰(키 교체 뒤
+        #   재로그인 안 함)이면 GitHub 가 401 로 거절한다(실패로 닫힌다).
+        # 🔴 빈 값으로 바꾸지 않는다 — 토큰을 쓰는 경로(분석 · 웹훅 이슈 닫기 · 머지 재시도 · 보안 폴링)가 모두
+        #   «소유자 토큰이 비면 운영자 토큰(앱 전역)» 꼴이라, 빈 값이면 다른 사용자의 리포에 운영자 신원으로 접근한다
+        #   (회고 원장 R-16 · `tests/unit/test_undecryptable_token_stays_owner_bound.py`).
+        # Return the stored value unchanged: legacy plaintext keeps working, a previous-key token fails at GitHub (401).
+        # Never return "" here: every caller falls back to the operator's app-wide token when the owner token is empty.
+        logger.warning(
+            "Stored token could not be decrypted — kept as-is (legacy plaintext, or encrypted with a previous "
+            "key: the owner must log in again; the app-wide token is not used for that owner's repos)")
         return ciphertext
