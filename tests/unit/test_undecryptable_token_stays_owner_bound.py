@@ -103,10 +103,10 @@ def _stored_for(state: str, stored: str) -> str | None:
 
 def test_decrypt_keeps_an_old_key_token_as_is_and_non_empty(rotated):
     """복호화가 실패해도 빈 값이 아니라 저장값 그대로 — 호출부의 «비면 운영자 토큰» 이 깨어나지 않는다."""
-    from src.crypto import decrypt_token  # noqa: PLC0415
+    import src.crypto as crypto_mod  # noqa: PLC0415
 
-    assert decrypt_token(rotated) == rotated
-    assert decrypt_token(rotated), "빈 값이면 모든 호출부가 운영자 토큰으로 넘어간다"
+    assert crypto_mod.decrypt_token(rotated) == rotated
+    assert crypto_mod.decrypt_token(rotated), "빈 값이면 모든 호출부가 운영자 토큰으로 넘어간다"
 
 
 def test_the_warning_says_the_owner_must_log_in_again(rotated):
@@ -130,10 +130,10 @@ def test_the_warning_says_the_owner_must_log_in_again(rotated):
 @pytest.mark.parametrize("state", _STATES)
 def test_analysis_pipeline_resolves_to_the_owner_side(db, rotated, state):
     """분석 경로(`_ensure_repo`) — 리뷰 · 댓글이 쓰는 토큰."""
-    from src.worker.pipeline import _ensure_repo  # noqa: PLC0415
+    from src.worker import pipeline  # noqa: PLC0415
 
     _owner_with(db, _stored_for(state, rotated))
-    resolved = _ensure_repo(db, _REPO, f"sha{uuid.uuid4().hex}")
+    resolved = pipeline._ensure_repo(db, _REPO, f"sha{uuid.uuid4().hex}")  # noqa: SLF001 — 결정식 직접 / the resolver
     assert resolved is not None
     assert resolved[1] == _expected(state, rotated)
 
@@ -141,19 +141,19 @@ def test_analysis_pipeline_resolves_to_the_owner_side(db, rotated, state):
 @pytest.mark.parametrize("state", _STATES)
 def test_merge_retry_resolves_to_the_owner_side(db, rotated, state):
     """머지 재시도(`_resolve_github_token`)."""
-    from src.services.merge_retry_service import _resolve_github_token  # noqa: PLC0415
+    from src.services import merge_retry_service  # noqa: PLC0415
 
     _owner_with(db, _stored_for(state, rotated))
-    assert _resolve_github_token(db, _REPO) == _expected(state, rotated)
+    assert merge_retry_service._resolve_github_token(db, _REPO) == _expected(state, rotated)  # noqa: SLF001
 
 
 @pytest.mark.parametrize("state", _STATES)
 def test_security_poll_resolves_to_the_owner_side(db, rotated, state):
     """보안 폴링(`_resolve_token`) — 운영자 토큰은 env `GITHUB_TOKEN` 에서 온다."""
-    from src.services.security_scan_service import _resolve_token  # noqa: PLC0415
+    from src.services import security_scan_service  # noqa: PLC0415
 
     user = _owner_with(db, _stored_for(state, rotated))
-    assert _resolve_token(user) == _expected(state, rotated)
+    assert security_scan_service._resolve_token(user) == _expected(state, rotated)  # noqa: SLF001
 
 
 @pytest.mark.parametrize("state", _STATES)
