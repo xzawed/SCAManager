@@ -136,9 +136,10 @@ def test_derived_screen_routes_are_actually_registered():
         "SESSION_SECRET": "x" * 32,
     }.items():
         os.environ.setdefault(key, val)
-    import sys
-    sys.path.insert(0, str(_ROOT / "tests" / "unit"))
-    from _route_helpers import registered_paths  # noqa: PLC0415
+    # 다른 시험과 같은 절대 import — `tests/unit` 을 sys.path 맨 앞에 넣으면 되돌리지 않는 한 세션 내내 남아
+    # 뒤의 `import scripts.…` 가 루트 `scripts/` 대신 `tests/unit/scripts/` 패키지로 풀렸다(원장 R-14).
+    # Same absolute import as the other tests; prepending tests/unit leaked for the whole session.
+    from tests.unit._route_helpers import registered_paths  # noqa: PLC0415
     from src.main import app  # noqa: PLC0415
 
     registered = registered_paths(app)
