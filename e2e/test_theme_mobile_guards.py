@@ -33,7 +33,7 @@ from e2e.conftest import (CONFIG_MODEL_ID, CONFIG_USER_ID, DELTA_DAYS,
                           INSIGHT_LANGUAGE, REPO_NARRATIVE_TEXT, SECURITY_LONG_SECRET_TYPE,
                           VARIANT_BREAKDOWN, VARIANT_FEEDBACKS,
                           acting_as, apply_theme, claude_api_call_count, delta_repo_name,
-                          rls_catalog_double, repo_narrative_state,
+                          rls_catalog_double, repo_insight_call_held, repo_narrative_state,
                           stale_webhook_listing, unverified_trend_day,
                           expected_avg_delta, expected_cost_delta,
                           expected_score_delta, insight_call_held, insight_key_window,
@@ -5469,6 +5469,35 @@ def test_insight_placeholder_and_swapped_fragment_text_meet_aa(seeded_page, base
         release()
         seeded_page.wait_for_function(_INSIGHT_SWAPPED_OPENED, timeout=15000)
         _assert_open_page_text_meets_aa(seeded_page, _INSIGHT_SWAPPED_OPENED, theme, "insight-fragment")
+
+
+# ── E-22c. 리포 인사이트 서술 — 자리 → 조각 (원장 #1706 안 C 를 리포 인사이트에) ─────────────────
+#
+# 🔴 위 E-22b 와 같다 — 조각 경로(`GET /repos/{name}/insights/narrative`)는 리포 인사이트의 자리(`pending`)가 htmx 로
+#    부른다. 요청이 그 경로로 나갔는지 확인하고, 두 상태(자리 · 채운 서술 카드)의 글자를 같은 측정으로 잰다.
+#    Claude 호출은 `repo_insight_call_held` 가 풀기 전까지 붙잡는다.
+_REPO_INSIGHT_FRAGMENT_PATHS = ["/repos/owner/testrepo/insights/narrative"]
+_REPO_NARRATIVE_PENDING_OPENED = (
+    "() => !!document.querySelector('#riNarrative[aria-busy=\"true\"] .ri-narrative-note')?.checkVisibility()")
+_REPO_NARRATIVE_SWAPPED_OPENED = (
+    "() => !!document.querySelector('#riNarrative .ri-narrative-card')?.checkVisibility()"
+    " && !document.querySelector('#riNarrative[aria-busy], #riNarrative[hx-get]')")
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "pastel", "catppuccin"])
+def test_repo_narrative_placeholder_and_swapped_fragment_text_meet_aa(seeded_page, base_url, seeded_analysis, theme):
+    """리포 인사이트의 자리(로딩 문구)와 바꿔 낀 서술 카드의 모든 글자가 네 테마에서 AA 다 — 조각 경로를 실제로 거친다."""
+    seeded_page.context.add_cookies(
+        [{"name": "preferred_language", "value": INSIGHT_LANGUAGE, "url": base_url}])
+    with repo_insight_call_held("owner/testrepo", days=30) as release:
+        seeded_page.set_viewport_size(_WIDE_VIEWPORT)
+        with seeded_page.expect_request(
+                lambda r: r.url.split("?")[0].endswith(tuple(_REPO_INSIGHT_FRAGMENT_PATHS))):
+            seeded_page.goto(f"{base_url}/repos/owner/testrepo/insights?days=30")
+        _assert_open_page_text_meets_aa(seeded_page, _REPO_NARRATIVE_PENDING_OPENED, theme, "repo-narrative-pending")
+        release()
+        seeded_page.wait_for_function(_REPO_NARRATIVE_SWAPPED_OPENED, timeout=15000)
+        _assert_open_page_text_meets_aa(seeded_page, _REPO_NARRATIVE_SWAPPED_OPENED, theme, "repo-narrative-fragment")
 
 
 # ── E-23. 막 시작한 사용자가 보는 팔 (#1639 W12 · 분기 프로브 main `25ad2665`) ──────────

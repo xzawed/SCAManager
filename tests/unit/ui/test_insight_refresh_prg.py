@@ -172,14 +172,15 @@ def _query(url: str) -> list[tuple[str, str]]:
 
 
 def _load_placeholder(client: TestClient, page) -> None:
-    """페이지에 서술 자리 표시가 있으면 브라우저(htmx)처럼 그 조각을 한 번 받는다 — 대시보드의 유료 호출은 거기서 나간다
-    (원장 #1706 안 C). 리포 인사이트 페이지에는 자리가 없다.
+    """페이지에 서술 자리 표시가 있으면 브라우저(htmx)처럼 그 조각을 한 번 받는다 — 두 페이지 모두 유료 호출은 거기서
+    나간다(원장 #1706 안 C · 리포 인사이트는 그 후속).
 
     Fetch the narrative fragment once, as htmx would, when the page drew the placeholder.
     """
-    m = re.search(r'<div id="dashInsight"[^>]*\shx-get="([^"]+)"', page.text)
-    if m:
-        assert client.get(m.group(1), headers={"HX-Request": "true"}).status_code == 200
+    for box_id in ("dashInsight", "riNarrative"):
+        m = re.search(rf'<div id="{box_id}"[^>]*\shx-get="([^"]+)"', page.text)
+        if m:
+            assert client.get(m.group(1), headers={"HX-Request": "true"}).status_code == 200
 
 
 # ─── F5 는 유료 호출을 되풀이하지 않는다 ─────────────────────────────────────

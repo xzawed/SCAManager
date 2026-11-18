@@ -1299,6 +1299,67 @@ def insight_call_held(*, days: int = 7):
         engine.dispose()
 
 
+REPO_NARRATIVE_HELD_TEXT = "Held repo narrative: the fragment replaced the placeholder."
+
+
+@contextlib.contextmanager
+def repo_insight_call_held(full_name: str = "owner/testrepo", *, days: int = 30):
+    """리포 인사이트 서술의 Claude 호출이 «멈춰 있다가» 풀어 주면 정해진 서술을 돌려주는 창 — 풀기 함수를 넘긴다.
+
+    리포 인사이트 페이지도 캐시 미스에 자리(`pending`)만 그리고 htmx 가 `GET /repos/{name}/insights/narrative` 로
+    서술을 채운다. 이 창에서는 그 조각 요청의 Claude 호출이 풀기 전까지 멈춰 있다 — 시간에 기대지 않는다.
+    🔴 바꿔 끼우는 것은 키(`insight_key_window`)와 SDK 클라이언트 팩토리(`new_async_anthropic`)뿐이다 — `pending` 판정 ·
+       조각 경로 · 응답 파싱 · 캐시 쓰기 · 비용 행은 진짜 코드가 돈다. 네트워크는 나가지 않는다.
+    🔴 그 창(`_E2E_USER_ID` · 리포 · `days`)의 캐시 행을 모든 언어째 들어갈 때와 나올 때 지운다.
+    ⚠️ 앱 전역 상태다 — 순차 실행 전제(이 스위트가 그렇다).
+    Holds the repo narrative Claude call until released; only the key and the SDK client factory are replaced.
+    """
+    from types import SimpleNamespace  # noqa: PLC0415
+    from unittest import mock  # noqa: PLC0415
+
+    from sqlalchemy import create_engine  # noqa: PLC0415
+    from sqlalchemy.orm import sessionmaker  # noqa: PLC0415
+
+    from src.models.repository import Repository  # noqa: PLC0415
+    from src.repositories import insight_narrative_cache_repo as cache  # noqa: PLC0415
+    from src.services import repo_insight_service  # noqa: PLC0415
+
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    engine = create_engine(f"sqlite:///{db_path}")
+    make_session = sessionmaker(bind=engine)
+    gate = threading.Event()
+    with make_session() as session:
+        key = {"user_id": _E2E_USER_ID, "days": days,
+               "repo_id": session.query(Repository).filter_by(full_name=full_name).one().id}
+
+    def _clear() -> None:
+        with make_session() as session:
+            cache.invalidate_repo(session, **key)
+
+    class _HeldMessages:
+        async def create(self, **_kwargs):
+            await asyncio.to_thread(gate.wait, 30)
+            block = SimpleNamespace(type="text", text=json.dumps({"text": REPO_NARRATIVE_HELD_TEXT}))
+            return SimpleNamespace(content=[block], stop_reason="end_turn",
+                                   usage=SimpleNamespace(input_tokens=0, output_tokens=0))
+
+    class _HeldClient:
+        messages = _HeldMessages()
+
+        async def close(self) -> None:
+            return None
+
+    _clear()
+    try:
+        with insight_key_window(), mock.patch.object(
+                repo_insight_service, "new_async_anthropic", lambda **_kwargs: _HeldClient()):
+            yield gate.set
+    finally:
+        gate.set()
+        _clear()
+        engine.dispose()
+
+
 # ── 리포 인사이트 서술의 «성공 카드» · «실패 줄» (#1639 W12 · repo_insights.html) ──────
 #
 # 🔴 서술은 키가 있어야 깨어나고(`settings.anthropic_api_key`) e2e 에는 키가 없다 — 그래서
