@@ -55,12 +55,6 @@ _SCRIPT = _ROOT / "scripts" / "check_witness_set_predicates.py"
 _CORPUS = pathlib.Path(__file__).parent / "fixtures" / "witness_corpus"
 
 
-def _run(*args, cwd=None):
-    return subprocess.run(
-        [sys.executable, str(_SCRIPT), *args], capture_output=True, text=True,
-        encoding="utf-8", errors="replace", cwd=str(cwd or _ROOT), check=False)
-
-
 # ─── 계기 자기검증 — 실제 사건으로 ─────────────────────────────────────────
 
 
@@ -263,14 +257,30 @@ def test_the_evidence_values_are_reported_not_just_the_size():
     )
 
 
-def test_the_guard_is_green_on_the_current_tree():
-    """🔴 이 PR 은 새 술어를 **넣었고**, 위 반례 코퍼스가 그것을 충족한다.
+def test_the_guards_own_predicates_are_covered_by_this_files_corpus():
+    """🔴 가드는 처방을 자기 구성에 먼저 적용했다 — 가드 자신의 술어를 이 파일의 반례 코퍼스가 «바깥» 값으로 충족한다.
 
-    가드가 자기 자신을 잡았다(술어 4건) — 처방을 자기 구성에 먼저 적용한 것이다.
-    코퍼스를 지우면 이 테스트가 red 가 된다.
+    diff 없이 잰다. PR 단위 판정(PR 이 단 술어 · 본문 면제 채널)은 CI repo-integrity 의 가드 스텝이 본문과 함께
+    맡는다. 예전 판은 가드를 `origin/main...HEAD` 로 그대로 돌렸다 — CI 의 pytest 단계엔 본문이 없어 가드가 안내한
+    면제를 적어도 red 였고(#1899 첫 판에서 실측 · 원장 R-17), main 에서는 새 술어가 없어 늘 공허한 초록이었다.
+    Self-application without a diff; the PR-level gate (with the PR body and its exemption) is the CI guard step.
     """
-    proc = _run()
-    assert proc.returncode == 0, f"현재 트리에서 red:\n{proc.stdout}\n{proc.stderr}"
+    from scripts.check_witness_set_predicates import (  # noqa: PLC0415
+        MIN_OUTSIDE, _corpus_values_in, outside_witness, predicates_on_surface)
+
+    hits = predicates_on_surface("scripts/check_witness_set_predicates.py", _SCRIPT)
+    assert hits, "가드 자신에게서 술어를 0건 찾았다 — 자기 적용이 공허하다"
+    needles: set[str] = set()
+    for _line, _kind, _size, evidence in hits:
+        needles |= set(evidence)
+    text = pathlib.Path(__file__).read_text(encoding="utf-8")
+    outside = outside_witness(_corpus_values_in(text)[0], needles=needles)
+    assert len(outside) >= MIN_OUTSIDE, (
+        f"가드 자신의 술어 {len(hits)}건에 이 파일 코퍼스의 «바깥» 값이 {len(outside)}개뿐 — 코퍼스가 빠졌다")
+    # 계기 뒤집기 — 코퍼스 표기를 지운 같은 파일이면 같은 판정이 red 다
+    # Flip: the same file with its corpus markers removed fails the same check.
+    stripped = "\n".join(ln for ln in text.splitlines() if not ln.lstrip().startswith("# witness-corpus:"))
+    assert len(outside_witness(_corpus_values_in(stripped)[0], needles=needles)) < MIN_OUTSIDE
 
 
 def test_an_exemption_needs_a_reason():
