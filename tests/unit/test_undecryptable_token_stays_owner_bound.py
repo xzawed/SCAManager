@@ -13,7 +13,6 @@ A stored token the current key cannot decrypt stays bound to its owner: each of 
 # pylint: disable=redefined-outer-name
 from __future__ import annotations
 
-import logging
 import uuid
 from contextlib import nullcontext
 from unittest.mock import AsyncMock, patch
@@ -99,16 +98,22 @@ def test_decrypt_keeps_an_old_key_token_as_is_and_non_empty(rotated):
     assert decrypt_token(rotated), "빈 값이면 모든 호출부가 운영자 토큰으로 넘어간다"
 
 
-def test_the_warning_says_the_owner_must_log_in_again(rotated, caplog):
-    """경고는 «평문을 돌려준다» 가 아니라 «소유자가 다시 로그인해야 한다 · 앱 토큰은 쓰지 않는다» 를 말한다."""
-    from src.crypto import decrypt_token  # noqa: PLC0415
+def test_the_warning_says_the_owner_must_log_in_again(rotated):
+    """경고는 «평문을 돌려준다» 가 아니라 «소유자가 다시 로그인해야 한다 · 앱 토큰은 쓰지 않는다» 를 말한다.
 
-    with caplog.at_level(logging.WARNING, logger="src.crypto"):
-        decrypt_token(rotated)
-    text = caplog.text
-    assert "owner must log in again" in text
-    assert "app-wide token is not used" in text
-    assert "returning as plaintext" not in text
+    caplog 대신 모듈 로거의 호출을 본다 — 앞선 시험의 로깅 설정(alembic `fileConfig` 등)이 로거를 끄면 caplog 는 빈 문자열을
+    받는다(전체 실행에서 실측 — 단독 실행은 초록이었다).
+    Watch the module logger call, not caplog: earlier tests' logging config can disable the logger in a full run.
+    """
+    import src.crypto as crypto_mod  # noqa: PLC0415
+
+    with patch.object(crypto_mod.logger, "warning") as warn:
+        crypto_mod.decrypt_token(rotated)
+    assert warn.call_count == 1
+    message = warn.call_args.args[0]
+    assert "owner must log in again" in message
+    assert "app-wide token is not used" in message
+    assert "returning as plaintext" not in message
 
 
 @pytest.mark.parametrize("state", _STATES)
