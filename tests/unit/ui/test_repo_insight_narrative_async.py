@@ -35,7 +35,7 @@ from src.models.insight_narrative_cache import InsightNarrativeCache
 from src.models.repository import Repository
 from src.models.user import User
 from src.services import repo_insight_service
-from src.ui.routes.repo_insights import _get_db
+from src.ui.routes.repo_insights import _get_db, _narrative_view
 
 _TABLE_MODELS = (Analysis, ClaudeApiCall, InsightNarrativeCache, Repository, User)
 if any(m.__tablename__ not in Base.metadata.tables for m in _TABLE_MODELS):
@@ -255,6 +255,31 @@ def test_fragment_requires_login():
     finally:
         if prev is not None:
             app.dependency_overrides[require_login] = prev
+
+
+# ─── 서술 결과 → 화면 변수 (페이지 · 조각이 같이 쓴다) ────────────────────────
+
+# witness-corpus: 서술이 낼 수 있는데 «실패 아님» 목록 밖인 status — 벤더 · 우리 코드 실패와 아직 없는 새 값
+_OUTSIDE_NOT_FAILED = ["api_error", "internal_error", "max_tokens", "vendor_overloaded"]
+
+
+@pytest.mark.parametrize("status", _OUTSIDE_NOT_FAILED)
+def test_a_status_outside_the_not_failed_list_draws_the_failure_line(status):
+    """목록 밖 status 는 모르는 값까지 실패 줄(새로 고침)로 — 실패를 목록으로 적으면 새 실패가 조용히 빠진다."""
+    assert _narrative_view({"text": "", "status": status}) == {
+        "narrative": None, "narrative_failed": True, "narrative_limited": False}
+
+
+@pytest.mark.parametrize(("result", "want"), [
+    ({"text": _TEXT, "status": "success"}, {"narrative": {"text": _TEXT, "status": "success"},
+                                            "narrative_failed": False, "narrative_limited": False}),
+    ({"text": "", "status": "daily_limit"}, {"narrative": None, "narrative_failed": False, "narrative_limited": True}),
+    ({"text": "", "status": "no_data"}, {"narrative": None, "narrative_failed": False, "narrative_limited": False}),
+    (None, {"narrative": None, "narrative_failed": False, "narrative_limited": False}),
+], ids=["success", "daily_limit", "no_data", "none"])
+def test_listed_statuses_keep_their_own_state(result, want):
+    """대조군 — 성공은 카드, 하루 한도는 한도 줄(실패 아님), 데이터 0 · 결과 없음은 아무것도 그리지 않는다."""
+    assert _narrative_view(result) == want
 
 
 # ─── 자리 표시의 실패 대비 ───────────────────────────────────────────────────
