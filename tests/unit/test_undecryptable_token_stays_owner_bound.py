@@ -23,7 +23,6 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
-from src.config import settings
 from src.database import Base
 from src.models.analysis import Analysis
 from src.models.repository import Repository
@@ -55,11 +54,23 @@ def db():
 
 @pytest.fixture()
 def rotated(monkeypatch):
-    """옛 키로 만든 토큰과, 지금 키(다른 키) · 운영자 토큰을 건 환경 — 옛 키 토큰을 돌려준다."""
+    """옛 키로 만든 토큰과, 지금 키(다른 키) · 운영자 토큰을 건 환경 — 옛 키 토큰을 돌려준다.
+
+    🔴 `settings` 는 읽는 쪽이 보는 객체에 건다 — `tests/unit/test_config.py` 가 `importlib.reload(src.config)` 로 새
+    객체를 만들고, `src.crypto` 는 부를 때마다 `src.config.settings` 를 다시 읽는다. import 때 잡은 객체에 걸면 전체 실행에서
+    키가 빈 채로 돌았다(실측 — 단독 실행은 초록).
+    Patch the settings object each reader actually sees: test_config.py reloads src.config, crypto re-reads it per call.
+    """
+    import src.config as config_mod  # noqa: PLC0415
+    from src.services import merge_retry_service  # noqa: PLC0415
+    from src.webhook.providers import github as gh  # noqa: PLC0415
+    from src.worker import pipeline  # noqa: PLC0415
+
     old_key, new_key = Fernet.generate_key(), Fernet.generate_key()
     stored = Fernet(old_key).encrypt(_OWNER_PLAINTEXT.encode()).decode()
-    monkeypatch.setattr(settings, "token_encryption_key", new_key.decode())
-    monkeypatch.setattr(settings, "github_token", _APP_TOKEN)
+    monkeypatch.setattr(config_mod.settings, "token_encryption_key", new_key.decode())
+    for reader in (config_mod, pipeline, merge_retry_service, gh):
+        monkeypatch.setattr(reader.settings, "github_token", _APP_TOKEN)
     monkeypatch.setenv("GITHUB_TOKEN", _APP_TOKEN)
     _reset_fernet_cache()
     yield stored
@@ -101,9 +112,9 @@ def test_decrypt_keeps_an_old_key_token_as_is_and_non_empty(rotated):
 def test_the_warning_says_the_owner_must_log_in_again(rotated):
     """경고는 «평문을 돌려준다» 가 아니라 «소유자가 다시 로그인해야 한다 · 앱 토큰은 쓰지 않는다» 를 말한다.
 
-    caplog 대신 모듈 로거의 호출을 본다 — 앞선 시험의 로깅 설정(alembic `fileConfig` 등)이 로거를 끄면 caplog 는 빈 문자열을
-    받는다(전체 실행에서 실측 — 단독 실행은 초록이었다).
-    Watch the module logger call, not caplog: earlier tests' logging config can disable the logger in a full run.
+    모듈 로거의 호출을 직접 본다 — 전역 로깅 상태(핸들러 · 전파)에 기대지 않는다. 호출 수 1 이 «예외 분기에 닿았다» 의
+    바닥이다: 키가 빈 채로 돌면(`rotated` 의 설정 함정) 경고가 아예 안 나서 여기가 red 다.
+    Watch the module logger call directly; a call count of 1 proves the except branch was reached.
     """
     import src.crypto as crypto_mod  # noqa: PLC0415
 
