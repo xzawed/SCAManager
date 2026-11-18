@@ -916,6 +916,7 @@
     "kpi_security_high": "セキュリティ HIGH",
     "narrative_title": "AI 総合診断",
     "narrative_failed": "AI 総合診断を生成できませんでした。",
+    "narrative_loading": "AI 総合診断を生成中です — 新しく生成するときは少し時間がかかります。",
     "refresh": "更新",
     "recurring_ranking_title": "繰り返しイシューランキング",
     "th_message": "イシューメッセージ",

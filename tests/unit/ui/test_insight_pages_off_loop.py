@@ -108,10 +108,12 @@ _EXPECTED = {
         "release_session_before_claude", "get_fresh", "recent_error", "record_error",
         "log_claude_api_call"},
     ("dashboard", "refresh"): {"invalidate"},
-    ("repo", "success"): _KPI_NAMES["repo"] | {
+    # 리포의 유료 호출은 조각 경로 — 그 경로는 프롬프트가 읽는 두 집계만 다시 잰다(나머지 셋은 페이지 몫).
+    # The repo's paid call is on the fragment route, which reloads only the two aggregates the prompt reads.
+    ("repo", "success"): {"_find_repo", "repo_kpi", "repo_recurring_issues"} | {
         "release_session_before_claude", "get_fresh_repo", "recent_error_repo", "upsert_repo",
         "log_claude_api_call"},
-    ("repo", "api_error"): _KPI_NAMES["repo"] | {
+    ("repo", "api_error"): {"_find_repo", "repo_kpi", "repo_recurring_issues"} | {
         "release_session_before_claude", "get_fresh_repo", "recent_error_repo", "record_error_repo",
         "log_claude_api_call"},
     ("repo", "refresh"): {"_find_repo", "invalidate_repo"},
@@ -124,7 +126,9 @@ def _url(page: str, *, days: int, refresh: bool = False) -> str:
         # 대시보드의 유료 호출은 조각 경로에서만 나간다 — 페이지는 자리만 그린다(원장 #1706 안 C). 새로 고침은 페이지의 PRG.
         # The dashboard's paid call happens only on the fragment route; Refresh stays the page's PRG.
         return f"/dashboard?mode=insight&days={days}{tail}" if refresh else f"/dashboard/insight?days={days}"
-    return f"/repos/{_REPO}/insights?days={days}{tail}"
+    # 리포 인사이트도 같다 — 유료 호출은 조각 경로, 새로 고침은 페이지의 PRG.
+    # Same for repo insights: the paid call is on the fragment route, Refresh is the page's PRG.
+    return f"/repos/{_REPO}/insights?days={days}{tail}" if refresh else f"/repos/{_REPO}/insights/narrative?days={days}"
 
 
 # 조각 경로는 htmx 요청만 받는다 — 아니면 화면으로 303. 다른 경로는 이 헤더를 보지 않는다.
@@ -286,6 +290,27 @@ async def test_the_dashboard_page_stops_before_the_paid_call_off_the_loop(world)
     assert 'hx-get="/dashboard/insight?days=7"' in r.text, "캐시 미스인데 자리 표시가 아니다"
     called = {name for name, _ in world.calls}
     missing = (_KPI_NAMES["dashboard"] | {"release_session_before_claude", "get_fresh", "recent_error"}) - called
+    assert not missing, f"기대한 동기 호출이 없었다(단언이 공허해진다): {sorted(missing)}"
+    assert world.create_threads == [], "페이지 요청이 Claude 를 불렀다"
+    on_loop = sorted({name for name, t in world.calls if t is world.loop_thread})
+    assert not on_loop, f"이벤트 루프 스레드에서 돈 동기 DB 작업: {on_loop}"
+    assert world.sql_threads, "SQL 이 한 문장도 안 잡혔다 — 엔진 기록기가 공허하다"
+    assert not any(t is world.loop_thread for t in world.sql_threads), "이벤트 루프 스레드에서 실행된 SQL 이 있다"
+
+
+async def test_the_repo_page_stops_before_the_paid_call_off_the_loop(world):
+    """리포 인사이트 페이지(캐시 미스) — 다섯 집계 · 캐시 · 부정 캐시 · 연결 반납은 루프 밖에서 돌고, Claude 는 부르지 않는다.
+    자리만 그리고 조각 경로가 부른다.
+
+    The repo insights page on a miss runs the pre-call sync DB work off the loop and never calls Claude.
+    """
+    world.reply = _reply(_OK_REPO)
+    r = await _get(f"/repos/{_REPO}/insights?days=7")
+
+    assert r.status_code == 200, r.text[:300]
+    assert f'hx-get="/repos/{_REPO}/insights/narrative?days=7"' in r.text, "캐시 미스인데 자리 표시가 아니다"
+    called = {name for name, _ in world.calls}
+    missing = (_KPI_NAMES["repo"] | {"release_session_before_claude", "get_fresh_repo", "recent_error_repo"}) - called
     assert not missing, f"기대한 동기 호출이 없었다(단언이 공허해진다): {sorted(missing)}"
     assert world.create_threads == [], "페이지 요청이 Claude 를 불렀다"
     on_loop = sorted({name for name, t in world.calls if t is world.loop_thread})

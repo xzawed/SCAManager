@@ -567,14 +567,18 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
     now: datetime | None = None,
     user_id: int | None = None,
     language: str = "en",
+    call_claude: bool = True,
 ) -> dict[str, Any]:
     """리포별 Claude AI 진단 내러티브 — 1h TTL 캐시(새로 고침은 라우트의 PRG 가 지운 뒤 다시 부른다).
 
     Repo-level Claude AI narrative — 1h TTL cache (Refresh = the route's PRG deleting it first).
     Returns: {"text": str, "status": "success"|"no_api_key"|"no_data"|"api_error"
-                                |"internal_error"|"disabled"}
+                                |"internal_error"|"disabled"|"daily_limit"|"pending"}
       🔴 `api_error` = 벤더(`anthropic.APIError` · 페이지 기한 초과), `internal_error` = 우리 코드.
       api_error means the vendor failed; internal_error means our code did.
+      `pending` = `call_claude=False` 인데 Claude 를 불러야 할 때(캐시 · 부정 캐시 · 한도 · 데이터 0 을 모두 지난 뒤) —
+      페이지는 자리만 그리고 유료 호출은 조각 경로가 한다(원장 #1706 안 C 를 리포 인사이트에).
+      `pending` = call_claude=False past every guard: the page draws a placeholder, the fragment route makes the call.
     """
     # 비용 제어 — INSIGHT_DISABLED=1 시 리포 내러티브 전면 차단(API 호출 0).
     # Cost control — INSIGHT_DISABLED=1 disables the per-repo narrative entirely.
@@ -602,6 +606,10 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
     )
     if isinstance(prepared, dict):
         return prepared
+    if not call_claude:
+        # 캐시 미스 — 페이지는 여기서 멈추고 조각 요청이 다시 부른다(그 요청이 같은 가드를 다시 지난다).
+        # Cache miss: the page stops here; the fragment request calls again and passes the same guards.
+        return {"text": "", "status": "pending"}
     user_prompt = prepared
     start = time.perf_counter()
     # 🔴 **실제로 소비된 토큰은 error 경로에서도 보고한다** (backlog R65).
