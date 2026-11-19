@@ -16,6 +16,7 @@ import io
 import logging
 import logging.config
 
+import pytest
 from uvicorn.config import LOGGING_CONFIG as UVICORN_LOGGING_CONFIG
 
 from src.logging_config import _MARKER, _redact, _RedactSecretsFilter, configure_logging
@@ -671,6 +672,186 @@ def test_configure_logging_does_not_duplicate_uvicorn_filter(logging_isolation):
     assert count == 1, (
         f"uvicorn 핸들러의 리댁션 필터 개수가 1이 아니다(실제: {count}). "
         f"0 이면 미부착(유출 방치), 2 이상이면 재호출마다 누적(중복 적용)."
+    )
+
+
+_FAKE_OAUTH_CODE = "FAKEOAUTHCODE0042"
+_FAKE_OAUTH_STATE = "FAKECSRFSTATE0042"
+_OAUTH_ISSUER = "https%3A%2F%2Fgithub.com%2Flogin%2Foauth"
+
+
+def _configured_access_handler():
+    """운영 순서로 세운 뒤 `uvicorn.access` 핸들러(uvicorn 의 AccessFormatter)를 StringIO 로 돌린다.
+    Production ordering, then point the uvicorn.access handler (uvicorn's AccessFormatter) at a StringIO.
+    """
+    _configured_uvicorn_handler()
+    handlers = logging.getLogger("uvicorn.access").handlers
+    assert handlers, "uvicorn.access 핸들러 없음 — dictConfig 재현 실패(테스트 전제 붕괴)"
+    stream = io.StringIO()
+    handlers[0].setStream(stream)
+    return stream
+
+
+def _emit_access_line(method, path):
+    """uvicorn 이 접근 로그를 남기는 꼴 그대로 — 형식 문자열 하나와 인자 5개(포맷터가 이 5개를 풀어 쓴다).
+    The exact shape uvicorn logs an access line with: one format string and five args, which its
+    AccessFormatter unpacks."""
+    logging.getLogger("uvicorn.access").info(
+        '%s - "%s %s HTTP/%s" %d', "127.0.0.1:5555", method, path, "1.1", 302
+    )
+
+
+@pytest.mark.parametrize(
+    "case",  # (method, path, secrets, masked_path)
+    [
+        ("GET", "/api/hook/o%2Fr/verify?token=FAKEHOOKTOKEN7", ["FAKEHOOKTOKEN7"],
+         "/api/hook/o%2Fr/verify?token=***"),
+        (
+            "GET",
+            f"/auth/callback?code={_FAKE_OAUTH_CODE}&iss={_OAUTH_ISSUER}&state={_FAKE_OAUTH_STATE}",
+            [_FAKE_OAUTH_CODE, _FAKE_OAUTH_STATE],
+            f"/auth/callback?code=***&iss={_OAUTH_ISSUER}&state=***",
+        ),
+        ("POST", "/webhooks/railway/FAKERAILWAYTOKEN0042", ["FAKERAILWAYTOKEN0042"], "/webhooks/railway/***"),
+    ],
+    ids=["hook-token", "oauth-callback", "railway-webhook-path"],
+)
+def test_masked_access_line_is_still_printed_with_its_fields(logging_isolation, capsys, case):
+    """🔴 운영 축 그대로 — 값을 가린 접근 로그 줄도 **한 줄로 그대로 찍힌다**(주소 · 요청 줄 · 상태 문구).
+
+    uvicorn 의 AccessFormatter 는 레코드의 인자 5개를 풀어 요청 줄을 만든다. 필터가 인자를 비우면 그 줄은
+    사라지고 stderr 에 `--- Logging error ---` 가 대신 찍힌다. OAuth 콜백의 `code` · `state` 는 일회용 인가
+    값이라 가리되 이웃한 `iss` 와 경로는 남기고, Railway 웹훅은 경로에 실린 토큰만 가린다.
+    Production axis: a masked access line must still print as one line with its fields. uvicorn's
+    AccessFormatter unpacks five args, so emptying them loses the line to a logging error. The OAuth
+    callback's one-time `code` and `state` are masked while `iss` and the path stay readable; the Railway
+    webhook keeps its path with only the token segment masked.
+    """
+    method, path, secrets, masked_path = case
+    stream = _configured_access_handler()
+
+    _emit_access_line(method, path)
+    out = stream.getvalue()
+    err = capsys.readouterr().err
+
+    assert "Logging error" not in err, f"가린 접근 로그 줄이 포맷 오류로 사라졌다.\nstderr: {err!r}"
+    for secret in secrets:
+        assert secret not in out + err, f"접근 로그에 일회용 · 비밀 값이 그대로 남았다.\n출력: {out!r}"
+    assert f'127.0.0.1:5555 - "{method} {masked_path} HTTP/1.1" 302 Found' in out, (
+        f"접근 로그 줄이 필드(주소 · 요청 줄 · 상태 문구)를 갖춘 한 줄로 찍히지 않았다.\n출력: {out!r}"
+    )
+    assert len(out.strip().splitlines()) == 1, f"접근 로그가 한 줄이 아니다.\n출력: {out!r}"
+
+
+def test_oauth_value_names_are_masked_on_any_path_position_and_case():
+    """`code` · `state` 는 이름으로 가린다 — 콜백 경로가 아니어도, 첫 인자가 아니어도, 대소문자가 달라도.
+
+    경로로 좁히면 콜백 경로가 바뀌는 날 조용히 풀린다. 그 대가로 다른 주소의 `state=open` 도 가려진다.
+    Masked by name, not by path: narrowing to the callback path would silently lapse if the path ever
+    changed. The accepted cost is that `state=open` on other URLs is masked too.
+    """
+    line = "GET /repos/o/r/issues?per_page=1&state=open&CODE=abc123 HTTP/1.1"
+    out = _redact(line)
+    assert "&state=***" in out and "&CODE=***" in out, f"이름이 같은 값을 놓쳤다.\n출력: {out!r}"
+    assert "abc123" not in out and "per_page=1" in out, f"가린 범위가 어긋났다.\n출력: {out!r}"
+
+
+def test_query_names_that_only_contain_code_or_state_are_kept():
+    """부정 통제 — 이름이 정확히 `code` · `state` 일 때만 가린다. 그 낱말을 품은 이름은 그대로 둔다.
+    Negative control: only the exact names are masked; names that merely contain them stay intact.
+    """
+    line = "GET /x?error_code=E42&zipcode=12345&statement=keep1&codes=keep2&iss=keep3 HTTP/1.1"
+    assert _redact(line) == line
+
+
+# witness-corpus: OAuth 콜백 오류 응답(RFC 6749 4.1.2.1) · 발급자(RFC 9207)와 이 앱 주소가 실제로 싣는 비밀 아닌 쿼리 이름
+_QUERY_NAMES_KEPT = ["iss", "error", "error_description", "error_uri", "deleted", "days"]
+
+
+def test_real_non_secret_query_names_stay_readable():
+    """부정 통제(실제 출처) — 콜백 줄에 `state` 와 함께 실리는 비밀 아닌 이름은 그대로 읽힌다.
+
+    GitHub 는 사용자가 거부하면 `error` · `error_description` · `error_uri` 를 `state` 와 함께 콜백으로 돌려주고,
+    성공하면 `iss` 를 `code` · `state` 사이에 싣는다. `deleted` · `days` 는 이 앱 화면 주소의 쿼리다.
+    Negative control from real sources: the OAuth error response and issuer parameters, and this app's own
+    page query names, stay readable next to a masked `state`.
+    """
+    for name in _QUERY_NAMES_KEPT:
+        out = _redact(f"GET /auth/callback?{name}=keep-me&state={_FAKE_OAUTH_STATE} HTTP/1.1")
+        assert f"?{name}=keep-me&state=***" in out, f"비밀 아닌 쿼리 이름 `{name}` 이 가려졌다.\n출력: {out!r}"
+
+
+def test_secret_inside_a_non_string_arg_is_still_masked(logging_isolation):
+    """🔴 인자 모양을 지키는 길이 비-문자열 인자로 새지 않는다 — `httpx.URL` 처럼 `str()` 에서야 주소가
+    나오는 객체는 인자마다 가릴 수 없으니 완성 문자열로 가린다.
+    The shape-preserving path must not leak through non-string args: an object whose address only
+    appears through str() (like httpx.URL) cannot be masked per argument, so the finished string is.
+    """
+
+    class _UrlLike:  # pylint: disable=too-few-public-methods
+        def __str__(self):
+            return "https://x.example/verify?token=OBJSECRET9"
+
+    stream, _ = _fresh_configured_handler()
+    logging.getLogger("tests.redaction_probe").info("redirect to %s", _UrlLike())
+    out = stream.getvalue()
+    assert "OBJSECRET9" not in out and "token=***" in out, f"비-문자열 인자의 값이 샜다.\n출력: {out!r}"
+
+
+def test_secret_split_across_two_args_is_still_masked(logging_isolation):
+    """🔴 인자 하나하나에는 패턴이 안 걸리지만 이어 붙이면 걸리는 값도 가린다 — 인자마다 가린 결과가 통째로
+    가린 결과와 다르면 완성 문자열로 간다.
+    A value that only matches once two args are joined is still masked: when per-arg masking differs
+    from whole-message masking, the finished string is used.
+    """
+    stream, _ = _fresh_configured_handler()
+    logging.getLogger("tests.redaction_probe").info(
+        "%s%s", "https://api.telegram.org/bot", f"{_FAKE_BOT_TOKEN}/sendMessage"
+    )
+    out = stream.getvalue()
+    assert _FAKE_BOT_TOKEN not in out and "api.telegram.org/bot***" in out, (
+        f"두 인자에 걸친 값이 샜다.\n출력: {out!r}"
+    )
+
+
+def test_appended_patterns_never_reveal_what_the_older_chain_hid():
+    """🔴 새 패턴은 끝에 붙어 앞 패턴의 맥락(`://`)을 깨지 않는다 — 전에 가려지던 비밀번호가 계속 가려진다.
+
+    두 줄은 Grok 반례다: 새 패턴을 앞에 끼우면(Railway 경로 · 기존 쿼리 패턴 안의 `code`) 그 패턴이 `http:` 나
+    `x://us` 를 먼저 가려 사용자 정보 패턴이 비밀번호를 놓쳤다.
+    Grok's two counterexamples: inserted before the userinfo pattern, a new pattern masked away its `://`
+    context and the password survived.
+    """
+    for line in (
+        "/webhooks/railway/http://user:FAKEPASSWORD1@host",
+        "GET /x?code=x://us&er:FAKEPASSWORD2@host HTTP/1.1",
+    ):
+        out = _redact(line)
+        assert "FAKEPASSWORD" not in out, f"전에 가려지던 비밀번호가 드러났다.\n입력: {line!r}\n출력: {out!r}"
+
+
+def test_kept_args_print_exactly_the_whole_message_masking(logging_isolation):
+    """«같음» 확인은 레코드 자신의 `getMessage()` 로 한다 — 흉내 낸 계산(`msg % args`)과 실제 계산이 갈리는 인자
+    (비어 있지만 참인 `tuple` 하위 클래스 — Grok 반례)에서도 찍히는 글은 통째로 가린 결과와 같다.
+    The check uses the record's own getMessage(): even with args where an imitation (`msg % args`) and the
+    real computation differ (a truthy empty tuple subclass — Grok's counterexample), the printed text equals
+    the whole-message masking.
+    """
+
+    class _TruthyEmpty(tuple):
+        def __bool__(self):
+            return True
+
+    stream, _ = _fresh_configured_handler()
+    record = logging.LogRecord(
+        name="tests.redaction_probe", level=logging.INFO, pathname=__file__, lineno=1,
+        msg=f"{_FAKE_TELEGRAM_URL} 100%%", args=_TruthyEmpty(), exc_info=None,
+    )
+    _marker_handler().handle(record)
+    out = stream.getvalue()
+    assert _FAKE_BOT_TOKEN not in out, f"값이 샜다.\n출력: {out!r}"
+    assert "api.telegram.org/bot***/sendMessage 100%" in out and "100%%" not in out, (
+        f"찍힌 글이 통째로 가린 결과(`… 100%`)와 다르다.\n출력: {out!r}"
     )
 
 

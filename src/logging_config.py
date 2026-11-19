@@ -77,6 +77,24 @@ _SECRET_URL_PATTERNS = (
     # Empty userinfo usernames are real (`redis://:pass@host`); quote/query chars are excluded
     # because real userinfo percent-encodes them, while including them mangles ordinary log lines.
     re.compile(r"(://[^/\s:@]*:)[^/\s@\"',?&#]+(?=@)"),
+    # ── 🔴 새 패턴은 **끝에만** 붙인다 — 앞 패턴들이 예전과 같은 글자를 보게 해, 전에 가려지던 글자는 계속 가려진다.
+    #    앞에 끼우면 그 패턴이 뒤 패턴의 맥락(`://` 등)을 가려 깨뜨려 비밀번호가 드러날 수 있다(Grok 반례
+    #    `/webhooks/railway/http://user:PASSWORD@host`). 끝에 붙인 패턴은 앞의 결과에서 더 가리기만 한다.
+    # ── New patterns go at the END only, so the earlier ones keep seeing the same text and everything they hid
+    #    stays hidden; inserted earlier, a new pattern can mask away a later pattern's context (`://`) and
+    #    reveal a password. Appended patterns can only mask more of the earlier result.
+    # `code` · `state` = OAuth 콜백(`/auth/callback?code=…&state=…`)의 일회용 인가 코드 · CSRF 값. 경로가 아니라
+    # 이름으로 가린다(콜백 경로가 바뀌어도 풀리지 않게 — 다른 주소의 `state=open` 도 가려지는 것은 감수한다).
+    # 이름 전체가 같을 때만이다(`[?&]` 바로 뒤에서 시작해 `=` 앞에서 끝난다) — `error_code` · `zipcode` · `statement` ·
+    # `codes` 는 그대로 남는다.
+    # `code` / `state` are the OAuth callback's one-time authorization code and CSRF value. Masked by name, not
+    # path, so a moved callback cannot silently lapse (accepting that `state=open` elsewhere is masked too);
+    # whole names only (starting right after `[?&]`, ending at `=`) — `error_code`, `zipcode`, `statement` and
+    # `codes` stay.
+    re.compile(r"([?&](?:code|state)=)[^&\s\"']+", re.IGNORECASE),
+    # 들어오는 Railway 배포 웹훅은 토큰을 경로로 받는다(`/webhooks/railway/{token}`) — 접근 로그가 경로를 그대로 남긴다.
+    # The inbound Railway deploy webhook carries its token in the path, which the access log prints verbatim.
+    re.compile(r"(/webhooks/railway/)[^/\s?#\"']+"),
 )
 
 # 리댁션 대상이 예외 텍스트일 때 쓰는 기본 포맷터 — exc_info → 문자열 변환 전용.
@@ -91,6 +109,34 @@ def _redact(text):
     for pattern in _SECRET_URL_PATTERNS:
         out = pattern.sub(r"\1***", out)
     return out
+
+
+# 인자 모양을 지킨 채 가려도 되는 단순 값 — 객체(`httpx.URL` 등)는 `str()` 에서야 값이 나와 인자마다 가릴 수 없다.
+# Plain values that can be masked in place; objects such as httpx.URL only reveal their text via str().
+_PLAIN_ARG_TYPES = (str, int, float, bool, type(None))
+
+
+def _redact_args_in_place(record, redacted):
+    """msg 와 인자를 하나씩 가려 레코드에 넣고, 그 레코드의 `getMessage()` 가 `redacted`(통째로 가린 결과)와 같을 때만
+    남기고 True — 아니면 되돌리고 False. 흉내 낸 계산이 아니라 레코드 자신의 `getMessage()` 로 확인한다(하위 클래스
+    msg · args 가 계산을 바꿔도 확인이 출력과 어긋나지 않게 — Grok 반례 2개).
+    Mask msg and each arg into the record and keep it (True) only when the record's own getMessage() then
+    equals `redacted`; otherwise restore and return False. Checking with the record's real getMessage(),
+    not an imitation, keeps subclassed msg/args from making the check disagree with the output."""
+    args = record.args
+    if not (isinstance(record.msg, str) and isinstance(args, tuple) and args
+            and all(isinstance(arg, _PLAIN_ARG_TYPES) for arg in args)):
+        return False
+    original = record.msg, args
+    record.msg = _redact(record.msg)
+    record.args = tuple(_redact(arg) if isinstance(arg, str) else arg for arg in args)
+    try:
+        same = record.getMessage() == redacted
+    except (TypeError, ValueError):
+        same = False
+    if not same:
+        record.msg, record.args = original
+    return same
 
 
 class _RedactSecretsFilter(logging.Filter):  # pylint: disable=too-few-public-methods
@@ -135,11 +181,22 @@ class _RedactSecretsFilter(logging.Filter):  # pylint: disable=too-few-public-me
             return
 
         redacted = _redact(text)
-        if redacted != text:
-            # 완성된 문자열로 대체하므로 args 를 비워야 재포맷 시 오류가 없다.
-            # Replace with the finished string; args must be cleared to avoid re-formatting.
-            record.msg = redacted
-            record.args = ()
+        if redacted == text:
+            return
+        # 먼저 인자마다 가려 인자 모양을 지킨다 — uvicorn 의 AccessFormatter 는 접근 로그 레코드의 인자 5개를 풀어
+        # 요청 줄을 만들므로, 인자를 비우면 그 줄은 사라지고 `--- Logging error ---` 가 대신 찍힌다. 인자가 모두
+        # 단순 값이고 인자마다 가린 결과가 통째로 가린 결과와 **글자까지 같을 때만** 쓴다 — 아니면(객체 인자 ·
+        # 인자와 형식 문자열에 걸친 값) 아래의 완성 문자열로 간다.
+        # Mask per argument first to keep the args shape: uvicorn's AccessFormatter unpacks the access
+        # record's five args, so emptying them loses the line to `--- Logging error ---`. Used only when
+        # every arg is a plain value and the result is character-identical to masking the whole message;
+        # otherwise (object args, a value spanning args and format string) fall through to the finished string.
+        if _redact_args_in_place(record, redacted):
+            return
+        # 완성된 문자열로 대체하므로 args 를 비워야 재포맷 시 오류가 없다.
+        # Replace with the finished string; args must be cleared to avoid re-formatting.
+        record.msg = redacted
+        record.args = ()
 
     @staticmethod
     def _redact_traceback(record):
