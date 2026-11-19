@@ -830,20 +830,29 @@ def test_appended_patterns_never_reveal_what_the_older_chain_hid():
         assert "FAKEPASSWORD" not in out, f"전에 가려지던 비밀번호가 드러났다.\n입력: {line!r}\n출력: {out!r}"
 
 
-def test_redact_returns_a_plain_str_even_for_a_str_subclass():
-    """`_redact_args_in_place` 의 «같음» 확인은 `getMessage()` 와 같은 계산(정확한 `str` 의 `%`)이어야 한다 — 그 전제는
-    `_redact` 가 하위 클래스를 받아도 정확한 `str` 을 돌려준다는 것이다(`re.sub` 동작). «바뀐 게 없으면 받은 객체를
-    그대로 돌려주는» 최적화가 들어오면 `__mod__` 를 바꾼 하위 클래스가 확인을 속일 수 있다(Grok 반례).
-    The equality check must compute what getMessage() computes (exact-str `%`); that rests on `_redact` returning
-    an exact str even for a str subclass. An "unchanged → return the same object" shortcut would let a subclass
-    with its own `__mod__` fool the check.
+def test_kept_args_print_exactly_the_whole_message_masking(logging_isolation):
+    """«같음» 확인은 레코드 자신의 `getMessage()` 로 한다 — 흉내 낸 계산(`msg % args`)과 실제 계산이 갈리는 인자
+    (비어 있지만 참인 `tuple` 하위 클래스 — Grok 반례)에서도 찍히는 글은 통째로 가린 결과와 같다.
+    The check uses the record's own getMessage(): even with args where an imitation (`msg % args`) and the
+    real computation differ (a truthy empty tuple subclass — Grok's counterexample), the printed text equals
+    the whole-message masking.
     """
 
-    class _Sub(str):
-        pass
+    class _TruthyEmpty(tuple):
+        def __bool__(self):
+            return True
 
-    for text in ("nothing secret %s", "https://api.telegram.org/botX/sendMessage"):
-        assert type(_redact(_Sub(text))) is str, f"`_redact` 가 하위 클래스를 그대로 돌려줬다: {text!r}"
+    stream, _ = _fresh_configured_handler()
+    record = logging.LogRecord(
+        name="tests.redaction_probe", level=logging.INFO, pathname=__file__, lineno=1,
+        msg=f"{_FAKE_TELEGRAM_URL} 100%%", args=_TruthyEmpty(), exc_info=None,
+    )
+    _marker_handler().handle(record)
+    out = stream.getvalue()
+    assert _FAKE_BOT_TOKEN not in out, f"값이 샜다.\n출력: {out!r}"
+    assert "api.telegram.org/bot***/sendMessage 100%" in out and "100%%" not in out, (
+        f"찍힌 글이 통째로 가린 결과(`… 100%`)와 다르다.\n출력: {out!r}"
+    )
 
 
 def test_slack_webhook_url_is_redacted_from_handler_output(logging_isolation):

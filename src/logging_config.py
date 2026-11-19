@@ -117,27 +117,26 @@ _PLAIN_ARG_TYPES = (str, int, float, bool, type(None))
 
 
 def _redact_args_in_place(record, redacted):
-    """msg 와 인자를 하나씩 가린 결과가 `redacted`(통째로 가린 결과)와 같으면 그 모양대로 바꾸고 True.
-    Mask msg and each arg separately; apply and return True only when the result equals `redacted`.
-
-    `_redact` 는 하위 클래스를 받아도 정확한 `str` 을 돌려준다(`re.sub`) — 그래서 아래 `msg % masked` 는 바꾼 뒤
-    `getMessage()` 가 할 계산(`str(msg) % args`)과 같다. 시험: `test_redact_returns_a_plain_str_even_for_a_str_subclass`.
-    `_redact` returns an exact str even for a subclass (re.sub), so `msg % masked` is the very computation
-    getMessage() performs afterwards."""
+    """msg 와 인자를 하나씩 가려 레코드에 넣고, 그 레코드의 `getMessage()` 가 `redacted`(통째로 가린 결과)와 같을 때만
+    남기고 True — 아니면 되돌리고 False. 흉내 낸 계산이 아니라 레코드 자신의 `getMessage()` 로 확인한다(하위 클래스
+    msg · args 가 계산을 바꿔도 확인이 출력과 어긋나지 않게 — Grok 반례 2개).
+    Mask msg and each arg into the record and keep it (True) only when the record's own getMessage() then
+    equals `redacted`; otherwise restore and return False. Checking with the record's real getMessage(),
+    not an imitation, keeps subclassed msg/args from making the check disagree with the output."""
     args = record.args
     if not (isinstance(record.msg, str) and isinstance(args, tuple) and args
             and all(isinstance(arg, _PLAIN_ARG_TYPES) for arg in args)):
         return False
-    msg = _redact(record.msg)
-    masked = tuple(_redact(arg) if isinstance(arg, str) else arg for arg in args)
+    original = record.msg, args
+    record.msg = _redact(record.msg)
+    record.args = tuple(_redact(arg) if isinstance(arg, str) else arg for arg in args)
     try:
-        candidate = msg % masked
+        same = record.getMessage() == redacted
     except (TypeError, ValueError):
-        return False
-    if candidate != redacted:
-        return False
-    record.msg, record.args = msg, masked
-    return True
+        same = False
+    if not same:
+        record.msg, record.args = original
+    return same
 
 
 class _RedactSecretsFilter(logging.Filter):  # pylint: disable=too-few-public-methods
