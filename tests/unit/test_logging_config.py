@@ -16,6 +16,7 @@ import io
 import logging
 import logging.config
 
+import pytest
 from uvicorn.config import LOGGING_CONFIG as UVICORN_LOGGING_CONFIG
 
 from src.logging_config import _MARKER, _redact, _RedactSecretsFilter, configure_logging
@@ -671,6 +672,123 @@ def test_configure_logging_does_not_duplicate_uvicorn_filter(logging_isolation):
     assert count == 1, (
         f"uvicorn 핸들러의 리댁션 필터 개수가 1이 아니다(실제: {count}). "
         f"0 이면 미부착(유출 방치), 2 이상이면 재호출마다 누적(중복 적용)."
+    )
+
+
+_FAKE_OAUTH_CODE = "FAKEOAUTHCODE0042"
+_FAKE_OAUTH_STATE = "FAKECSRFSTATE0042"
+_OAUTH_ISSUER = "https%3A%2F%2Fgithub.com%2Flogin%2Foauth"
+
+
+def _configured_access_handler():
+    """운영 순서로 세운 뒤 `uvicorn.access` 핸들러(uvicorn 의 AccessFormatter)를 StringIO 로 돌린다.
+    Production ordering, then point the uvicorn.access handler (uvicorn's AccessFormatter) at a StringIO.
+    """
+    _configured_uvicorn_handler()
+    handlers = logging.getLogger("uvicorn.access").handlers
+    assert handlers, "uvicorn.access 핸들러 없음 — dictConfig 재현 실패(테스트 전제 붕괴)"
+    stream = io.StringIO()
+    handlers[0].setStream(stream)
+    return stream
+
+
+def _emit_access_line(path):
+    """uvicorn 이 접근 로그를 남기는 꼴 그대로 — 형식 문자열 하나와 인자 5개(포맷터가 이 5개를 풀어 쓴다).
+    The exact shape uvicorn logs an access line with: one format string and five args, which its
+    AccessFormatter unpacks."""
+    logging.getLogger("uvicorn.access").info(
+        '%s - "%s %s HTTP/%s" %d', "127.0.0.1:5555", "GET", path, "1.1", 302
+    )
+
+
+@pytest.mark.parametrize(
+    ("path", "secrets", "masked_path"),
+    [
+        ("/api/hook/o%2Fr/verify?token=FAKEHOOKTOKEN7", ["FAKEHOOKTOKEN7"], "/api/hook/o%2Fr/verify?token=***"),
+        (
+            f"/auth/callback?code={_FAKE_OAUTH_CODE}&iss={_OAUTH_ISSUER}&state={_FAKE_OAUTH_STATE}",
+            [_FAKE_OAUTH_CODE, _FAKE_OAUTH_STATE],
+            f"/auth/callback?code=***&iss={_OAUTH_ISSUER}&state=***",
+        ),
+    ],
+    ids=["hook-token", "oauth-callback"],
+)
+def test_masked_access_line_is_still_printed_with_its_fields(logging_isolation, capsys, path, secrets, masked_path):
+    """🔴 운영 축 그대로 — 값을 가린 접근 로그 줄도 **한 줄로 그대로 찍힌다**(주소 · 요청 줄 · 상태 문구).
+
+    uvicorn 의 AccessFormatter 는 레코드의 인자 5개를 풀어 요청 줄을 만든다. 필터가 인자를 비우면 그 줄은
+    사라지고 stderr 에 `--- Logging error ---` 가 대신 찍힌다. OAuth 콜백의 `code` · `state` 는 일회용 인가
+    값이라 가리되, 이웃한 `iss` 와 경로는 남긴다.
+    Production axis: a masked access line must still print as one line with its fields. uvicorn's
+    AccessFormatter unpacks five args, so emptying them loses the line to a logging error. The OAuth
+    callback's one-time `code` and `state` are masked while `iss` and the path stay readable.
+    """
+    stream = _configured_access_handler()
+
+    _emit_access_line(path)
+    out = stream.getvalue()
+    err = capsys.readouterr().err
+
+    assert "Logging error" not in err, f"가린 접근 로그 줄이 포맷 오류로 사라졌다.\nstderr: {err!r}"
+    for secret in secrets:
+        assert secret not in out + err, f"접근 로그에 일회용 · 비밀 값이 그대로 남았다.\n출력: {out!r}"
+    assert f'127.0.0.1:5555 - "GET {masked_path} HTTP/1.1" 302 Found' in out, (
+        f"접근 로그 줄이 필드(주소 · 요청 줄 · 상태 문구)를 갖춘 한 줄로 찍히지 않았다.\n출력: {out!r}"
+    )
+    assert len(out.strip().splitlines()) == 1, f"접근 로그가 한 줄이 아니다.\n출력: {out!r}"
+
+
+def test_oauth_value_names_are_masked_on_any_path_position_and_case():
+    """`code` · `state` 는 이름으로 가린다 — 콜백 경로가 아니어도, 첫 인자가 아니어도, 대소문자가 달라도.
+
+    경로로 좁히면 콜백 경로가 바뀌는 날 조용히 풀린다. 그 대가로 다른 주소의 `state=open` 도 가려진다.
+    Masked by name, not by path: narrowing to the callback path would silently lapse if the path ever
+    changed. The accepted cost is that `state=open` on other URLs is masked too.
+    """
+    line = "GET /repos/o/r/issues?per_page=1&state=open&CODE=abc123 HTTP/1.1"
+    out = _redact(line)
+    assert "&state=***" in out and "&CODE=***" in out, f"이름이 같은 값을 놓쳤다.\n출력: {out!r}"
+    assert "abc123" not in out and "per_page=1" in out, f"가린 범위가 어긋났다.\n출력: {out!r}"
+
+
+def test_query_names_that_only_contain_code_or_state_are_kept():
+    """부정 통제 — 이름이 정확히 `code` · `state` 일 때만 가린다. 그 낱말을 품은 이름은 그대로 둔다.
+    Negative control: only the exact names are masked; names that merely contain them stay intact.
+    """
+    line = "GET /x?error_code=E42&zipcode=12345&statement=keep1&codes=keep2&iss=keep3 HTTP/1.1"
+    assert _redact(line) == line
+
+
+def test_secret_inside_a_non_string_arg_is_still_masked(logging_isolation):
+    """🔴 인자 모양을 지키는 길이 비-문자열 인자로 새지 않는다 — `httpx.URL` 처럼 `str()` 에서야 주소가
+    나오는 객체는 인자마다 가릴 수 없으니 완성 문자열로 가린다.
+    The shape-preserving path must not leak through non-string args: an object whose address only
+    appears through str() (like httpx.URL) cannot be masked per argument, so the finished string is.
+    """
+
+    class _UrlLike:  # pylint: disable=too-few-public-methods
+        def __str__(self):
+            return "https://x.example/verify?token=OBJSECRET9"
+
+    stream, _ = _fresh_configured_handler()
+    logging.getLogger("tests.redaction_probe").info("redirect to %s", _UrlLike())
+    out = stream.getvalue()
+    assert "OBJSECRET9" not in out and "token=***" in out, f"비-문자열 인자의 값이 샜다.\n출력: {out!r}"
+
+
+def test_secret_split_across_two_args_is_still_masked(logging_isolation):
+    """🔴 인자 하나하나에는 패턴이 안 걸리지만 이어 붙이면 걸리는 값도 가린다 — 인자마다 가린 결과가 통째로
+    가린 결과와 다르면 완성 문자열로 간다.
+    A value that only matches once two args are joined is still masked: when per-arg masking differs
+    from whole-message masking, the finished string is used.
+    """
+    stream, _ = _fresh_configured_handler()
+    logging.getLogger("tests.redaction_probe").info(
+        "%s%s", "https://api.telegram.org/bot", f"{_FAKE_BOT_TOKEN}/sendMessage"
+    )
+    out = stream.getvalue()
+    assert _FAKE_BOT_TOKEN not in out and "api.telegram.org/bot***" in out, (
+        f"두 인자에 걸친 값이 샜다.\n출력: {out!r}"
     )
 
 
