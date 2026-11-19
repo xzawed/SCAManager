@@ -43,6 +43,9 @@ _SECRET_URL_PATTERNS = (
     re.compile(r"(api\.telegram\.org/bot)[^/\s]+"),
     re.compile(r"(hooks\.slack\.com/services/)\S+"),
     re.compile(r"(discord(?:app)?\.com/api/webhooks/)\S+"),
+    # 들어오는 Railway 배포 웹훅은 토큰을 경로로 받는다(`/webhooks/railway/{token}`) — 접근 로그가 경로를 그대로 남긴다.
+    # The inbound Railway deploy webhook carries its token in the path, which the access log prints verbatim.
+    re.compile(r"(/webhooks/railway/)[^/\s?#\"']+"),
     # 🔴 인바운드 쿼리스트링 시크릿 (종합감사 P2) — uvicorn.access 는 경로+쿼리를 통째로 로깅한다.
     # `hook_token` 은 `?token=<secret>`(deprecated 하위호환)로도 전달돼 access 로그에 평문으로
     # 남았다. 파라미터명은 보존하고 값만 마스킹 — 위 필터가 uvicorn.access 핸들러에도 부착된다.
@@ -52,10 +55,12 @@ _SECRET_URL_PATTERNS = (
     # api[_-]?key already matches apikey/api_key/api-key — no separate `apikey` alternative (S5855).
     # `code` · `state` = OAuth 콜백(`/auth/callback?code=…&state=…`)의 일회용 인가 코드 · CSRF 값. 경로가 아니라
     # 이름으로 가린다(콜백 경로가 바뀌어도 풀리지 않게 — 다른 주소의 `state=open` 도 가려지는 것은 감수한다).
-    # 이름이 정확히 같을 때만이다 — `error_code` · `zipcode` · `statement` 는 `[?&]` 바로 뒤가 아니라 그대로 남는다.
+    # 이름 전체가 같을 때만이다(`[?&]` 바로 뒤에서 시작해 `=` 앞에서 끝난다) — `error_code` · `zipcode` · `statement` ·
+    # `codes` 는 그대로 남는다.
     # `code` / `state` are the OAuth callback's one-time authorization code and CSRF value. Masked by name, not
     # path, so a moved callback cannot silently lapse (accepting that `state=open` elsewhere is masked too);
-    # exact names only — `error_code`, `zipcode` and `statement` do not follow `[?&]` directly and stay.
+    # whole names only (starting right after `[?&]`, ending at `=`) — `error_code`, `zipcode`, `statement` and
+    # `codes` stay.
     re.compile(r"([?&](?:token|api[_-]?key|access[_-]?token|hook[_-]?token|code|state)=)[^&\s\"']+",
                re.IGNORECASE),
     # 🔴 URL userinfo 비밀번호 — `scheme://user:PASSWORD@host` (backlog R8, 범위 정정 후).

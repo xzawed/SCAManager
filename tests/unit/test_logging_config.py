@@ -692,47 +692,52 @@ def _configured_access_handler():
     return stream
 
 
-def _emit_access_line(path):
+def _emit_access_line(method, path):
     """uvicorn 이 접근 로그를 남기는 꼴 그대로 — 형식 문자열 하나와 인자 5개(포맷터가 이 5개를 풀어 쓴다).
     The exact shape uvicorn logs an access line with: one format string and five args, which its
     AccessFormatter unpacks."""
     logging.getLogger("uvicorn.access").info(
-        '%s - "%s %s HTTP/%s" %d', "127.0.0.1:5555", "GET", path, "1.1", 302
+        '%s - "%s %s HTTP/%s" %d', "127.0.0.1:5555", method, path, "1.1", 302
     )
 
 
 @pytest.mark.parametrize(
-    ("path", "secrets", "masked_path"),
+    "case",  # (method, path, secrets, masked_path)
     [
-        ("/api/hook/o%2Fr/verify?token=FAKEHOOKTOKEN7", ["FAKEHOOKTOKEN7"], "/api/hook/o%2Fr/verify?token=***"),
+        ("GET", "/api/hook/o%2Fr/verify?token=FAKEHOOKTOKEN7", ["FAKEHOOKTOKEN7"],
+         "/api/hook/o%2Fr/verify?token=***"),
         (
+            "GET",
             f"/auth/callback?code={_FAKE_OAUTH_CODE}&iss={_OAUTH_ISSUER}&state={_FAKE_OAUTH_STATE}",
             [_FAKE_OAUTH_CODE, _FAKE_OAUTH_STATE],
             f"/auth/callback?code=***&iss={_OAUTH_ISSUER}&state=***",
         ),
+        ("POST", "/webhooks/railway/FAKERAILWAYTOKEN0042", ["FAKERAILWAYTOKEN0042"], "/webhooks/railway/***"),
     ],
-    ids=["hook-token", "oauth-callback"],
+    ids=["hook-token", "oauth-callback", "railway-webhook-path"],
 )
-def test_masked_access_line_is_still_printed_with_its_fields(logging_isolation, capsys, path, secrets, masked_path):
+def test_masked_access_line_is_still_printed_with_its_fields(logging_isolation, capsys, case):
     """🔴 운영 축 그대로 — 값을 가린 접근 로그 줄도 **한 줄로 그대로 찍힌다**(주소 · 요청 줄 · 상태 문구).
 
     uvicorn 의 AccessFormatter 는 레코드의 인자 5개를 풀어 요청 줄을 만든다. 필터가 인자를 비우면 그 줄은
     사라지고 stderr 에 `--- Logging error ---` 가 대신 찍힌다. OAuth 콜백의 `code` · `state` 는 일회용 인가
-    값이라 가리되, 이웃한 `iss` 와 경로는 남긴다.
+    값이라 가리되 이웃한 `iss` 와 경로는 남기고, Railway 웹훅은 경로에 실린 토큰만 가린다.
     Production axis: a masked access line must still print as one line with its fields. uvicorn's
     AccessFormatter unpacks five args, so emptying them loses the line to a logging error. The OAuth
-    callback's one-time `code` and `state` are masked while `iss` and the path stay readable.
+    callback's one-time `code` and `state` are masked while `iss` and the path stay readable; the Railway
+    webhook keeps its path with only the token segment masked.
     """
+    method, path, secrets, masked_path = case
     stream = _configured_access_handler()
 
-    _emit_access_line(path)
+    _emit_access_line(method, path)
     out = stream.getvalue()
     err = capsys.readouterr().err
 
     assert "Logging error" not in err, f"가린 접근 로그 줄이 포맷 오류로 사라졌다.\nstderr: {err!r}"
     for secret in secrets:
         assert secret not in out + err, f"접근 로그에 일회용 · 비밀 값이 그대로 남았다.\n출력: {out!r}"
-    assert f'127.0.0.1:5555 - "GET {masked_path} HTTP/1.1" 302 Found' in out, (
+    assert f'127.0.0.1:5555 - "{method} {masked_path} HTTP/1.1" 302 Found' in out, (
         f"접근 로그 줄이 필드(주소 · 요청 줄 · 상태 문구)를 갖춘 한 줄로 찍히지 않았다.\n출력: {out!r}"
     )
     assert len(out.strip().splitlines()) == 1, f"접근 로그가 한 줄이 아니다.\n출력: {out!r}"
@@ -757,6 +762,23 @@ def test_query_names_that_only_contain_code_or_state_are_kept():
     """
     line = "GET /x?error_code=E42&zipcode=12345&statement=keep1&codes=keep2&iss=keep3 HTTP/1.1"
     assert _redact(line) == line
+
+
+# witness-corpus: OAuth 콜백 오류 응답(RFC 6749 4.1.2.1) · 발급자(RFC 9207)와 이 앱 주소가 실제로 싣는 비밀 아닌 쿼리 이름
+_QUERY_NAMES_KEPT = ["iss", "error", "error_description", "error_uri", "deleted", "days"]
+
+
+def test_real_non_secret_query_names_stay_readable():
+    """부정 통제(실제 출처) — 콜백 줄에 `state` 와 함께 실리는 비밀 아닌 이름은 그대로 읽힌다.
+
+    GitHub 는 사용자가 거부하면 `error` · `error_description` · `error_uri` 를 `state` 와 함께 콜백으로 돌려주고,
+    성공하면 `iss` 를 `code` · `state` 사이에 싣는다. `deleted` · `days` 는 이 앱 화면 주소의 쿼리다.
+    Negative control from real sources: the OAuth error response and issuer parameters, and this app's own
+    page query names, stay readable next to a masked `state`.
+    """
+    for name in _QUERY_NAMES_KEPT:
+        out = _redact(f"GET /auth/callback?{name}=keep-me&state={_FAKE_OAUTH_STATE} HTTP/1.1")
+        assert f"?{name}=keep-me&state=***" in out, f"비밀 아닌 쿼리 이름 `{name}` 이 가려졌다.\n출력: {out!r}"
 
 
 def test_secret_inside_a_non_string_arg_is_still_masked(logging_isolation):
