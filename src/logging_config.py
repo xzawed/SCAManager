@@ -43,9 +43,6 @@ _SECRET_URL_PATTERNS = (
     re.compile(r"(api\.telegram\.org/bot)[^/\s]+"),
     re.compile(r"(hooks\.slack\.com/services/)\S+"),
     re.compile(r"(discord(?:app)?\.com/api/webhooks/)\S+"),
-    # 들어오는 Railway 배포 웹훅은 토큰을 경로로 받는다(`/webhooks/railway/{token}`) — 접근 로그가 경로를 그대로 남긴다.
-    # The inbound Railway deploy webhook carries its token in the path, which the access log prints verbatim.
-    re.compile(r"(/webhooks/railway/)[^/\s?#\"']+"),
     # 🔴 인바운드 쿼리스트링 시크릿 (종합감사 P2) — uvicorn.access 는 경로+쿼리를 통째로 로깅한다.
     # `hook_token` 은 `?token=<secret>`(deprecated 하위호환)로도 전달돼 access 로그에 평문으로
     # 남았다. 파라미터명은 보존하고 값만 마스킹 — 위 필터가 uvicorn.access 핸들러에도 부착된다.
@@ -53,15 +50,7 @@ _SECRET_URL_PATTERNS = (
     # value would land verbatim. Preserve the param name, mask the value only.
     # `api[_-]?key` 는 apikey/api_key/api-key 를 모두 커버하므로 별도 apikey 대안 불필요(S5855).
     # api[_-]?key already matches apikey/api_key/api-key — no separate `apikey` alternative (S5855).
-    # `code` · `state` = OAuth 콜백(`/auth/callback?code=…&state=…`)의 일회용 인가 코드 · CSRF 값. 경로가 아니라
-    # 이름으로 가린다(콜백 경로가 바뀌어도 풀리지 않게 — 다른 주소의 `state=open` 도 가려지는 것은 감수한다).
-    # 이름 전체가 같을 때만이다(`[?&]` 바로 뒤에서 시작해 `=` 앞에서 끝난다) — `error_code` · `zipcode` · `statement` ·
-    # `codes` 는 그대로 남는다.
-    # `code` / `state` are the OAuth callback's one-time authorization code and CSRF value. Masked by name, not
-    # path, so a moved callback cannot silently lapse (accepting that `state=open` elsewhere is masked too);
-    # whole names only (starting right after `[?&]`, ending at `=`) — `error_code`, `zipcode`, `statement` and
-    # `codes` stay.
-    re.compile(r"([?&](?:token|api[_-]?key|access[_-]?token|hook[_-]?token|code|state)=)[^&\s\"']+",
+    re.compile(r"([?&](?:token|api[_-]?key|access[_-]?token|hook[_-]?token)=)[^&\s\"']+",
                re.IGNORECASE),
     # 🔴 URL userinfo 비밀번호 — `scheme://user:PASSWORD@host` (backlog R8, 범위 정정 후).
     #
@@ -88,6 +77,24 @@ _SECRET_URL_PATTERNS = (
     # Empty userinfo usernames are real (`redis://:pass@host`); quote/query chars are excluded
     # because real userinfo percent-encodes them, while including them mangles ordinary log lines.
     re.compile(r"(://[^/\s:@]*:)[^/\s@\"',?&#]+(?=@)"),
+    # ── 🔴 새 패턴은 **끝에만** 붙인다 — 앞 패턴들이 예전과 같은 글자를 보게 해, 전에 가려지던 글자는 계속 가려진다.
+    #    앞에 끼우면 그 패턴이 뒤 패턴의 맥락(`://` 등)을 가려 깨뜨려 비밀번호가 드러날 수 있다(Grok 반례
+    #    `/webhooks/railway/http://user:PASSWORD@host`). 끝에 붙인 패턴은 앞의 결과에서 더 가리기만 한다.
+    # ── New patterns go at the END only, so the earlier ones keep seeing the same text and everything they hid
+    #    stays hidden; inserted earlier, a new pattern can mask away a later pattern's context (`://`) and
+    #    reveal a password. Appended patterns can only mask more of the earlier result.
+    # `code` · `state` = OAuth 콜백(`/auth/callback?code=…&state=…`)의 일회용 인가 코드 · CSRF 값. 경로가 아니라
+    # 이름으로 가린다(콜백 경로가 바뀌어도 풀리지 않게 — 다른 주소의 `state=open` 도 가려지는 것은 감수한다).
+    # 이름 전체가 같을 때만이다(`[?&]` 바로 뒤에서 시작해 `=` 앞에서 끝난다) — `error_code` · `zipcode` · `statement` ·
+    # `codes` 는 그대로 남는다.
+    # `code` / `state` are the OAuth callback's one-time authorization code and CSRF value. Masked by name, not
+    # path, so a moved callback cannot silently lapse (accepting that `state=open` elsewhere is masked too);
+    # whole names only (starting right after `[?&]`, ending at `=`) — `error_code`, `zipcode`, `statement` and
+    # `codes` stay.
+    re.compile(r"([?&](?:code|state)=)[^&\s\"']+", re.IGNORECASE),
+    # 들어오는 Railway 배포 웹훅은 토큰을 경로로 받는다(`/webhooks/railway/{token}`) — 접근 로그가 경로를 그대로 남긴다.
+    # The inbound Railway deploy webhook carries its token in the path, which the access log prints verbatim.
+    re.compile(r"(/webhooks/railway/)[^/\s?#\"']+"),
 )
 
 # 리댁션 대상이 예외 텍스트일 때 쓰는 기본 포맷터 — exc_info → 문자열 변환 전용.
@@ -111,7 +118,12 @@ _PLAIN_ARG_TYPES = (str, int, float, bool, type(None))
 
 def _redact_args_in_place(record, redacted):
     """msg 와 인자를 하나씩 가린 결과가 `redacted`(통째로 가린 결과)와 같으면 그 모양대로 바꾸고 True.
-    Mask msg and each arg separately; apply and return True only when the result equals `redacted`."""
+    Mask msg and each arg separately; apply and return True only when the result equals `redacted`.
+
+    `_redact` 는 하위 클래스를 받아도 정확한 `str` 을 돌려준다(`re.sub`) — 그래서 아래 `msg % masked` 는 바꾼 뒤
+    `getMessage()` 가 할 계산(`str(msg) % args`)과 같다. 시험: `test_redact_returns_a_plain_str_even_for_a_str_subclass`.
+    `_redact` returns an exact str even for a subclass (re.sub), so `msg % masked` is the very computation
+    getMessage() performs afterwards."""
     args = record.args
     if not (isinstance(record.msg, str) and isinstance(args, tuple) and args
             and all(isinstance(arg, _PLAIN_ARG_TYPES) for arg in args)):

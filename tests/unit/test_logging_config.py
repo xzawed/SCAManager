@@ -814,6 +814,38 @@ def test_secret_split_across_two_args_is_still_masked(logging_isolation):
     )
 
 
+def test_appended_patterns_never_reveal_what_the_older_chain_hid():
+    """🔴 새 패턴은 끝에 붙어 앞 패턴의 맥락(`://`)을 깨지 않는다 — 전에 가려지던 비밀번호가 계속 가려진다.
+
+    두 줄은 Grok 반례다: 새 패턴을 앞에 끼우면(Railway 경로 · 기존 쿼리 패턴 안의 `code`) 그 패턴이 `http:` 나
+    `x://us` 를 먼저 가려 사용자 정보 패턴이 비밀번호를 놓쳤다.
+    Grok's two counterexamples: inserted before the userinfo pattern, a new pattern masked away its `://`
+    context and the password survived.
+    """
+    for line in (
+        "/webhooks/railway/http://user:FAKEPASSWORD1@host",
+        "GET /x?code=x://us&er:FAKEPASSWORD2@host HTTP/1.1",
+    ):
+        out = _redact(line)
+        assert "FAKEPASSWORD" not in out, f"전에 가려지던 비밀번호가 드러났다.\n입력: {line!r}\n출력: {out!r}"
+
+
+def test_redact_returns_a_plain_str_even_for_a_str_subclass():
+    """`_redact_args_in_place` 의 «같음» 확인은 `getMessage()` 와 같은 계산(정확한 `str` 의 `%`)이어야 한다 — 그 전제는
+    `_redact` 가 하위 클래스를 받아도 정확한 `str` 을 돌려준다는 것이다(`re.sub` 동작). «바뀐 게 없으면 받은 객체를
+    그대로 돌려주는» 최적화가 들어오면 `__mod__` 를 바꾼 하위 클래스가 확인을 속일 수 있다(Grok 반례).
+    The equality check must compute what getMessage() computes (exact-str `%`); that rests on `_redact` returning
+    an exact str even for a str subclass. An "unchanged → return the same object" shortcut would let a subclass
+    with its own `__mod__` fool the check.
+    """
+
+    class _Sub(str):
+        pass
+
+    for text in ("nothing secret %s", "https://api.telegram.org/botX/sendMessage"):
+        assert type(_redact(_Sub(text))) is str, f"`_redact` 가 하위 클래스를 그대로 돌려줬다: {text!r}"
+
+
 def test_slack_webhook_url_is_redacted_from_handler_output(logging_isolation):
     """🔴 D3 — Slack Incoming Webhook URL 이 마스킹되고 호스트 구조는 남는다.
 
