@@ -354,13 +354,17 @@ async def test_race_recovery_finishes_attempt(pipeline_deps):
 
 
 async def test_duplicate_sha_never_begins_attempt(pipeline_deps):
-    """계약 10 — `_ensure_repo` 가 None(SHA 중복) 이면 begin 미호출.
+    """계약 10 — `_ensure_repo` 가 None(SHA 중복) 이면 begin 미호출 · 그 (리포, SHA) 흔적은 한 번 정리.
 
-    Contract 10 — when `_ensure_repo` returns None (SHA already analyzed) no attempt is begun.
+    Contract 10 — when `_ensure_repo` returns None (SHA already analyzed) no attempt is begun, and the
+    (repo, sha) breadcrumb is cleared once.
     비싼 작업에 진입하지 않으므로 보호할 창이 없다. 여기서 begin 하면 기존 Analysis 가 있는
-    SHA 에 대해 orphan 행이 생겨 탐지 리포트가 오염된다.
+    SHA 에 대해 orphan 행이 생겨 탐지 리포트가 오염된다. 같은 까닭으로 슬롯을 기다리기 전에 남긴
+    흔적(#1871)도 이 출구에서 지운다(회고 원장 R-19) — 예전 «finish 미호출» 단언은 이 출구에 지울
+    행이 있을 수 없던 때의 것이다.
     No expensive work is entered, so there is no window to protect. Beginning here would create
-    an orphan row for an already-analyzed SHA and pollute the detection report.
+    an orphan row for an already-analyzed SHA and pollute the detection report; for the same reason
+    the breadcrumb written before a slot wait (#1871) is cleared on this exit (retro ledger R-19).
     """
     pipeline_deps["find_analysis"].return_value = MagicMock(id=99)
 
@@ -371,7 +375,7 @@ async def test_duplicate_sha_never_begins_attempt(pipeline_deps):
     # Confirm the early return really happened — no file collection at all
     pipeline_deps["push"].assert_not_called()
     begin.assert_not_called()
-    finish.assert_not_called()
+    finish.assert_called_once_with(pipeline_deps["db"], repo_id=1, commit_sha="abc123def456")
 
 
 async def test_blank_sha_never_begins_attempt(pipeline_deps):

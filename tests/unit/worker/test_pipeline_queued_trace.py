@@ -27,6 +27,7 @@ from sqlalchemy.orm import sessionmaker
 
 import src.worker.pipeline as pipeline
 from src.database import Base
+from src.models.analysis import Analysis
 from src.models.analysis_attempt import AnalysisAttempt
 from src.models.repository import Repository
 
@@ -231,3 +232,64 @@ async def test_the_body_starts_only_after_its_queued_note_is_written(world, monk
             holder.release.set()  # 흔적 쓰기(0.3 s)가 끝나기 전에 슬롯이 빈다
         await asyncio.wait_for(waiter, timeout=5)
     assert seen_at_body_start == [[(world.repo_id, _SHA)]]
+
+
+def _pr(repo_name: str, number: int, sha: str = _SHA) -> dict:
+    return {"repository": {"full_name": repo_name}, "number": number,
+            "pull_request": {"head": {"sha": sha, "ref": "feature"}, "title": "queued pr"}}
+
+
+def _seed_analysis(world, *, result: dict | None) -> None:
+    """이 커밋의 분석이 이미 저장돼 있다 — 줄을 섰던 이벤트의 본문은 «이미 분석함» 으로 끝난다.
+
+    The commit is already analyzed, so the queued event's body ends on the dedup path (a PR event that
+    arrives after its push finished).
+    """
+    with world.make() as db:
+        db.add(Analysis(repo_id=world.repo_id, commit_sha=_SHA, score=80, grade="B", result=result))
+        db.commit()
+
+
+async def _queue_then_run(world, event: str, payload: dict) -> None:
+    """슬롯을 쥔 채 이벤트를 줄 세워 대기 전 흔적이 써진 것을 본 뒤, 슬롯을 놓고 진짜 본문까지 끝낸다."""
+    with patch(_LIMIT, 1, create=True):
+        async with _Holder() as holder:
+            waiter = asyncio.create_task(pipeline.run_analysis_pipeline(event, payload))
+            await _until(lambda: world.attempts() == [(world.repo_id, _SHA)])
+            holder.release.set()
+        await asyncio.wait_for(waiter, timeout=5)
+
+
+@pytest.mark.parametrize(
+    ("event", "payload"),
+    [("push", _push(_KNOWN)), ("pull_request", _pr(_KNOWN, 7))],
+    ids=["push", "pull_request"],
+)
+async def test_a_queued_event_for_an_analyzed_commit_leaves_no_trace(world, event, payload):
+    """🔴 본체(회고 원장 R-19) — 줄을 섰던 이벤트가 «이미 분석함» 으로 끝나면 대기 전 흔적도 지운다.
+
+    지우지 않으면 30분 뒤 고아 정리가 잃은 것 없는 분석을 «사라진 분석» 으로 알린다. 기존 시험은 본문을
+    바꿔 끼워 이 출구를 한 번도 돌지 않았다 — 여기서는 진짜 본문을 끝까지 돌린다.
+    A queued event that ends on the dedup path clears its before-wait breadcrumb; otherwise the orphan sweep
+    reports a lost analysis 30 minutes later. Runs the real body (the older tests swapped it out).
+    """
+    _seed_analysis(world, result=None)
+    await _queue_then_run(world, event, payload)
+    assert world.attempts() == [], "이미 분석된 커밋인데 대기 전 흔적이 남았다"
+
+
+async def test_the_trace_is_cleared_before_the_regate(world, monkeypatch):
+    """재게이트보다 먼저 지운다 — 분석은 이미 저장돼 있어 재게이트 실패는 소실이 아니다(알림과 같은 원칙).
+
+    Cleared before the regate: the analysis is persisted, so a regate failure is not a loss (as for notify).
+    """
+    _seed_analysis(world, result={"source": "webhook"})
+    seen_at_gate: list[list[tuple[int, str]]] = []
+
+    async def gate(**_kwargs) -> None:
+        seen_at_gate.append(world.attempts())
+
+    monkeypatch.setattr(pipeline, "run_gate_check", gate)
+    await _queue_then_run(world, "pull_request", _pr(_KNOWN, 7))
+    assert seen_at_gate == [[]], seen_at_gate
+    assert world.attempts() == []

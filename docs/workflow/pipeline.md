@@ -3,8 +3,8 @@
 진입 = `src/webhook/providers/github.py::add_task(run_analysis_pipeline` (BackgroundTask). 동시 상한 `src/constants.py::PIPELINE_MAX_CONCURRENCY` — 대기분은 리포 행이 있으면 대기 전에 흔적(3.)을 남긴다. 본문에서 재진입 금지. 이하 좌표는 `src/worker/pipeline.py`.
 
 1. 메타 추출(`::def _extract_event_metadata`). sha 가 비었거나 all-zeros 면 슬롯 없이 반환(`::def _is_blank_sha`).
-2. repo 등록 + sha 중복 판정(`::def _ensure_repo`). 중복이면 PR 만 gate 재실행. CLI 훅 행(`source=="cli"`)은 중복이 아니라 교체 대상(`::def _is_cli_only`).
-3. `_begin_attempt`(`::_begin_attempt(_review_repo_id`) 는 비싼 작업 **앞**. `_finish_attempt`(`::def _finish_attempt`) 는 정상 종료 3곳에서만.
+2. repo 등록 + sha 중복 판정(`::def _ensure_repo`). 중복이면 흔적만 지우고(`::def _clear_trace_of_analyzed_commit`) PR 만 gate 재실행. CLI 훅 행(`source=="cli"`)은 중복이 아니라 교체 대상(`::def _is_cli_only`).
+3. `_begin_attempt`(`::_begin_attempt(_review_repo_id`) 는 비싼 작업 **앞**, `_finish_attempt`(`::def _finish_attempt`) 는 정상 종료에서만.
 4. 파일 수집(`::def _collect_files`) — 동기 I/O 는 `asyncio.to_thread` offload.
 5. 병렬 실행(`::asyncio.gather(*`) — `_run_static_with_timeout` + `review_code`.
    - 정적: 파일별 순차, deadline(`::PIPELINE_ANALYSIS_TIMEOUT =`), 도구당(`src/constants.py::STATIC_ANALYSIS_TIMEOUT`). 초과 시 완료분 보존 + `incomplete`.
