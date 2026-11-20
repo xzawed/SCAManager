@@ -548,6 +548,27 @@ def _begin_queued_attempt(repo_name: str, commit_sha: str, pr_number: int | None
         logger.warning("analysis_attempt 대기 흔적 기록 실패 (sha=%s): %s", commit_sha[:8], exc)
 
 
+def _clear_trace_of_analyzed_commit(repo_name: str, commit_sha: str) -> None:
+    """이미 분석된 커밋의 흔적을 지운다 — «이미 분석함» 출구(자체 세션 · fail-safe).
+
+    Clear the breadcrumb of an already-analyzed commit on the dedup exit (own session, fail-safe).
+
+    🔴 슬롯을 기다린 이벤트는 기다리기 전에 흔적을 남긴다(`_begin_queued_attempt`). 본문이 «이미 분석함» 으로
+    끝나면 `_begin_attempt` · `_finish_attempt` 짝에 닿지 않아, 지우지 않으면 30분 뒤 고아 정리가 잃은 것 없는
+    분석을 «사라진 분석» 으로 알린다. 이 커밋의 분석은 저장돼 있으니 (리포, SHA) 흔적은 소실 증거가 아니다.
+    🔴 An event that waited for a slot wrote a breadcrumb first. A body ending on the dedup path never reaches the
+    begin/finish pair, so the orphan sweep would report a lost analysis 30 minutes later; the commit's analysis
+    is persisted, so a (repo, sha) breadcrumb is no evidence of a loss.
+    """
+    try:
+        with SessionLocal() as db:
+            repo = repository_repo.find_by_full_name(db, repo_name)
+            if repo is not None:
+                analysis_attempt_repo.finish_attempt(db, repo_id=repo.id, commit_sha=commit_sha)
+    except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+        logger.warning("analysis_attempt 정리 실패 (sha=%s): %s", commit_sha[:8], exc)
+
+
 def _is_cli_only(analysis: Analysis) -> bool:
     """이 Analysis 가 CLI 훅 산출물인가 — 즉 정적분석이 한 번도 실행되지 않았는가.
 
@@ -1210,6 +1231,10 @@ async def _run_pipeline_body(event: str, data: dict) -> None:  # pylint: disable
             with SessionLocal() as db:
                 ensure_result = _ensure_repo(db, repo_name, commit_sha)
                 if ensure_result is None:
+                    # 기다리기 전에 남긴 흔적도 지운다 — 재게이트보다 먼저(저장 뒤 실패는 소실이 아니다, 알림과 같다).
+                    # Clear a before-wait breadcrumb too, ahead of the regate: failures after persistence
+                    # are not losses (same rule as notify).
+                    _clear_trace_of_analyzed_commit(repo_name, commit_sha)
                     if event == "pull_request" and pr_number is not None:
                         await _regate_pr_if_needed(db, repo_name, commit_sha, pr_number)
                     return
