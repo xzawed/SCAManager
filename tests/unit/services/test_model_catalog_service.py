@@ -379,6 +379,21 @@ async def test_probe_cost_row_is_written_off_the_event_loop(world, monkeypatch):
     assert len(writer_threads) == 1 and writer_threads[0] != threading.get_ident()
 
 
+async def test_refresh_reads_the_database_off_the_event_loop(world):
+    # 세션 만들기 · 조회 · 닫기가 모두 워커 스레드에서 — 내부 크론 경로가 세션을 직접 열지 않는 근거.
+    # Session create, queries and close all happen in a worker thread; why the cron route opens no session itself.
+    opened_on = []
+
+    def _factory():
+        opened_on.append(threading.get_ident())
+        return world.session_factory()
+
+    _record(world, "claude-haiku-5-5")  # 검증판이 이미 최신 — 시험 호출이 끼지 않는다 / no probe
+    _use(world, _FakeClient(listing=_LISTING))
+    await svc.refresh_catalog(api_key="k", session_factory=_factory)
+    assert opened_on and threading.get_ident() not in opened_on
+
+
 async def test_rejected_probe_is_recorded_as_model_rejected(world):
     # 재시작 뒤 rejected_models 가 같은 판을 실패로 되살리는 근거 / what lets a restart restore the failure
     _use(world, _FakeClient(plain=[_status_error(anthropic.BadRequestError, 400)]))
