@@ -9,8 +9,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from src.database import Base
-from src.models.claude_api_call import ClaudeApiCall  # noqa: F401  (Base.metadata 등록 / register on metadata)
+from src.models.claude_api_call import ClaudeApiCall
 from src.repositories import claude_api_cost_repo
+
+_TABLE_MODELS = (ClaudeApiCall,)
+if any(m.__tablename__ not in Base.metadata.tables for m in _TABLE_MODELS):
+    raise RuntimeError("side-effect ORM import 소실 — 테이블 미등록 / ORM import lost, table unregistered")
 
 T0 = datetime(2026, 11, 1, tzinfo=timezone.utc)
 SINCE = T0 - timedelta(days=30)

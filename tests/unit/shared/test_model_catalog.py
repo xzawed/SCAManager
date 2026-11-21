@@ -40,9 +40,12 @@ def test_parse_auto_value():
         mc.parse_model_value("auto:")
 
 
-@pytest.mark.parametrize(("raw", "want"), [
-    ("haiku", "haiku"), ("claude-haiku", "haiku"), ("Sonnet", "sonnet"), (" OPUS ", "opus"),
-    ("fable", "fable"), ("mythos", None), ("", None), (None, None),
+# witness-corpus: 목록 API 의 line 로 SDK ModelLine 의 다른 계열(mythos)과 사람이 쓰는 대문자 · 접두사 꼴 — 네 계열 문자열 밖
+_LINE_SPELLINGS = [("mythos", None), ("Haiku", "haiku"), ("Claude-Sonnet", "sonnet"), (" OPUS ", "opus")]
+
+
+@pytest.mark.parametrize(("raw", "want"), _LINE_SPELLINGS + [
+    ("haiku", "haiku"), ("claude-haiku", "haiku"), ("fable", "fable"), ("", None), (None, None),
 ])
 def test_normalise_line(raw, want):
     assert mc.normalise_line(raw) == want

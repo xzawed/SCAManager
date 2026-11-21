@@ -142,7 +142,8 @@ def _to_entry(info, now: datetime) -> mc.ModelEntry:
 
     Map one listed model to a catalog entry; lifecycle is the retirement signal and dates are kept as given.
     """
-    lifecycle = getattr(info, "lifecycle", None) or "active"
+    # 계열 값처럼 대소문자 · 앞뒤 공백을 접는다 / fold case and surrounding spaces, as for line values
+    lifecycle = str(getattr(info, "lifecycle", None) or "active").strip().lower()
     capabilities = getattr(info, "capabilities", None)
     return mc.ModelEntry(
         id=info.id,
@@ -263,15 +264,6 @@ def _lines_of(values: list[str]) -> frozenset[str]:
         if line in mc.KNOWN_LINES:
             lines.add(line)
     return frozenset(lines)
-
-
-def lines_in_use(db: Session) -> set[str]:
-    """AI 를 켠 리포의 실효 값과 리뷰 기본값 · 인사이트 모델이 쓰는 계열.
-
-    Lines used by AI-enabled repos' effective values, the review default and the insight model.
-    """
-    defaults = [settings.claude_review_model, settings.claude_insight_model]
-    return set(_lines_of(_stored_review_values(db) + defaults))
 
 
 def _read_usage(session_factory) -> _Usage:

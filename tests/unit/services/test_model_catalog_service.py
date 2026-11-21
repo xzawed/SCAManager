@@ -22,11 +22,15 @@ from sqlalchemy.pool import StaticPool
 
 from src.config import settings
 from src.database import Base
-from src.models.claude_api_call import ClaudeApiCall  # noqa: F401  (Base.metadata 등록 / register on metadata)
+from src.models.claude_api_call import ClaudeApiCall
 from src.models.repo_config import RepoConfig
 from src.repositories import claude_api_cost_repo
 from src.services import model_catalog_service as svc
 from src.shared import model_catalog as mc
+
+_TABLE_MODELS = (ClaudeApiCall, RepoConfig)
+if any(m.__tablename__ not in Base.metadata.tables for m in _TABLE_MODELS):
+    raise RuntimeError("side-effect ORM import 소실 — 테이블 미등록 / ORM import lost, table unregistered")
 
 NOW = datetime(2026, 11, 21, 12, 0, tzinfo=timezone.utc)
 _REQUEST = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
@@ -549,3 +553,17 @@ async def test_refresh_log_names_model_count_and_newest(world, caplog):
         await _refresh(world)
     (line,) = [r.getMessage() for r in caplog.records if r.getMessage().startswith("claude model catalog")]
     assert "models=6" in line and "haiku=claude-haiku-5-5" in line and "newest=claude-haiku-5-5" in line
+
+
+# witness-corpus: Anthropic 모델 지원 중단 문서의 상태 표기(대문자 Active · Retired 와 legacy 단계) — SDK 의 세 소문자 값 밖
+_LIFECYCLE_SPELLINGS = [("Retired", "retired"), ("Active", "active"), ("legacy", "deprecated")]
+
+
+@pytest.mark.parametrize(("raw", "want"), _LIFECYCLE_SPELLINGS)
+async def test_lifecycle_spellings_map_to_catalog_states(world, raw, want):
+    # 대소문자는 접어서 읽고, 모르는 단계는 «후보 아님 · 고정 판 그대로» 인 deprecated 로.
+    # Case is folded; an unknown stage becomes deprecated (not a candidate, pins kept).
+    _use(world, _FakeClient(listing=[_info("claude-opus-z", "opus", _d(2026, 3, 1), lifecycle=raw)]))
+    await svc.sync_models(api_key="k")
+    (entry,) = mc.snapshot_entries()
+    assert entry.lifecycle == want

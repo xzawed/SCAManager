@@ -16,12 +16,16 @@ from sqlalchemy.pool import StaticPool
 
 from src.database import Base
 from src.models.analysis import Analysis
-from src.models.claude_api_call import ClaudeApiCall  # noqa: F401  (Base.metadata 등록 / register on metadata)
-from src.models.insight_narrative_cache import InsightNarrativeCache  # noqa: F401
+from src.models.claude_api_call import ClaudeApiCall
+from src.models.insight_narrative_cache import InsightNarrativeCache
 from src.models.repository import Repository
 from src.models.user import User
 from src.services import repo_insight_service
 from src.shared import model_catalog as mc
+
+_TABLE_MODELS = (Analysis, ClaudeApiCall, InsightNarrativeCache, Repository, User)
+if any(m.__tablename__ not in Base.metadata.tables for m in _TABLE_MODELS):
+    raise RuntimeError("side-effect ORM import 소실 — 테이블 미등록 / ORM import lost, table unregistered")
 
 _KPI = {
     "analysis_count": 2, "avg_score": 60, "grade": "D", "score_delta": None,

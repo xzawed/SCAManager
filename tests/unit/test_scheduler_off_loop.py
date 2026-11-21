@@ -40,7 +40,7 @@ from src import scheduler
 from src.database import Base
 from src.models.analysis import Analysis
 from src.models.analysis_attempt import AnalysisAttempt
-from src.models.claude_api_call import ClaudeApiCall  # noqa: F401  (비용 행 테이블 / cost-row table)
+from src.models.claude_api_call import ClaudeApiCall
 from src.models.insight_narrative_cache import InsightNarrativeCache
 from src.models.merge_retry import MergeRetryQueue
 from src.models.repo_config import RepoConfig
@@ -52,7 +52,7 @@ from src.services import cron_service, db_heartbeat_service, merge_retry_service
 
 # job 이 읽고 쓰는 테이블이 등록돼야 한다 — 튜플을 **읽어** import 소실을 loud-fail 한다.
 # Tables the jobs touch must be registered; reading the tuple loud-fails a lost import.
-_TABLE_MODELS = (Analysis, AnalysisAttempt, InsightNarrativeCache, MergeRetryQueue, RepoConfig,
+_TABLE_MODELS = (Analysis, AnalysisAttempt, ClaudeApiCall, InsightNarrativeCache, MergeRetryQueue, RepoConfig,
                  Repository, SecurityAlertProcessLog, User)
 if any(m.__tablename__ not in Base.metadata.tables for m in _TABLE_MODELS):
     raise RuntimeError("ORM import 소실 — 테이블 미등록 / ORM import lost, table unregistered")
