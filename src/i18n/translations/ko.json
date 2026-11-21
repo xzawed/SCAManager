@@ -715,6 +715,13 @@
       "orphan_sweep_title": "🔴 <b>분석 소실 탐지</b> — {count}건이 완료 전 증발했습니다 (SIGTERM/OOM/크래시).",
       "orphan_sweep_hint": "해당 커밋은 재분석되지 않았습니다. 필요 시 재-push 하거나 수동 재트리거하세요."
     },
+    "models": {
+      "promoted": "🧭 <b>Claude 모델 전환</b> — {line}: <code>{old}</code> → <code>{new}</code> (이 계열을 따르는 리포 {count}개)",
+      "probe_failed": "⚠️ <b>새 Claude 모델 시험 호출 실패</b> — {line}: <code>{model}</code> ({reason}). 계속 쓰는 판: <code>{current}</code>",
+      "pinned_retiring": "⚠️ <b>고정한 Claude 모델이 내려갈 예정</b> — <code>{model}</code> · 내려가는 날 {date}. 설정에서 바꿀 수 있습니다: 다른 판 · «최신 {line}»",
+      "pinned_missing": "⚠️ <b>고정한 Claude 모델이 목록에 없습니다</b> — <code>{model}</code>. 대신 부르는 판: <code>{moved}</code>",
+      "sync_failed": "⚠️ <b>Claude 모델 목록을 읽지 못했습니다</b> — {count}회 연속. 마지막으로 읽은 목록({source})으로 계속 부릅니다."
+    },
     "no_issues": "이슈 없음",
     "score_label": "점수: {score}/100",
     "grade_label": "등급 {grade}",

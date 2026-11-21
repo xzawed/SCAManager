@@ -715,6 +715,13 @@
       "orphan_sweep_title": "🔴 <b>分析の消失を検知</b> — {count}件が完了前に消失しました (SIGTERM/OOM/クラッシュ)。",
       "orphan_sweep_hint": "該当コミットは再分析されていません。必要に応じて再pushまたは手動で再実行してください。"
     },
+    "models": {
+      "promoted": "🧭 <b>Claude モデルを切り替えました</b> — {line}: <code>{old}</code> → <code>{new}</code> (この系列に従うリポジトリ: {count}件)",
+      "probe_failed": "⚠️ <b>新しい Claude モデルのテスト呼び出しに失敗</b> — {line}: <code>{model}</code> ({reason})。引き続き使用: <code>{current}</code>",
+      "pinned_retiring": "⚠️ <b>固定した Claude モデルが提供終了予定</b> — <code>{model}</code>・終了日 {date}。設定で変更できます: 別のモデル・«最新の {line}»",
+      "pinned_missing": "⚠️ <b>固定した Claude モデルが一覧にありません</b> — <code>{model}</code>。代わりに呼び出すモデル: <code>{moved}</code>",
+      "sync_failed": "⚠️ <b>Claude モデル一覧を取得できませんでした</b> — {count}回連続。最後に取得した一覧 ({source}) で呼び出し続けます。"
+    },
     "no_issues": "問題なし",
     "score_label": "スコア: {score}/100",
     "grade_label": "グレード {grade}",

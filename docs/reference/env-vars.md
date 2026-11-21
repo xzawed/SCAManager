@@ -5,7 +5,7 @@
 튜닝 상수 = `src/constants.py` · `SENTRY_*` 는 `extra:"ignore"` 로 버려진다.
 
 🔴 `VAR=` 는 기본값을 **빈 문자열로 덮는다** — 복구 validator 는
-`CLAUDE_REVIEW_MODEL`·`CLAUDE_INSIGHT_MODEL`·`SMTP_PORT` 뿐.
+`CLAUDE_REVIEW_MODEL`·`CLAUDE_INSIGHT_MODEL`·`CLAUDE_CALL_EFFORT`·`SMTP_PORT` 뿐.
 
 |변수|기본값|무엇을 바꾸는가|
 |---|---|---|
@@ -37,6 +37,7 @@
 |`ANTHROPIC_API_KEY`|
 |`CLAUDE_REVIEW_MODEL`|claude-sonnet-5|
 |`CLAUDE_INSIGHT_MODEL`|claude-haiku-4-5|
+|`CLAUDE_CALL_EFFORT`|medium|low·medium·high · 받는 판만 · `CLAUDE_EFFORT` 는 Claude Code 몫|
 |`CLAUDE_REVIEW_MAX_TOKENS`|8192|초과=400→api_error|
 |`DISABLE_PROMPT_CACHE`|false|
 |`OPENAI_API_KEY`||빈 값=검증자 비활성|

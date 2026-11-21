@@ -13,6 +13,10 @@ from src.shared.time_utils import to_naive_utc
 # Model-family mapping — same rule as claude_metrics.
 _FAMILIES = ("opus", "sonnet", "haiku")
 
+# 판이 우리 요청을 거부했다(400)는 표식 — 재시작 뒤 모델 카탈로그가 그 판을 다시 실패로 올린다.
+# Marks a model that rejected our request (400); after a restart the model catalog marks it failed again.
+MODEL_REJECTED = "model_rejected"
+
 
 def count_user_calls_since(db: Session, *, user_id: int, since: datetime) -> int:
     """`since`(naive UTC) 이후 이 사용자에게 귀속된 호출 수 — 인사이트 경로만 `user_id` 를 단다(리뷰는 `repo_id`).
@@ -52,6 +56,39 @@ def record(  # pylint: disable=too-many-arguments,too-many-locals
     )
     db.add(row)
     db.commit()
+
+
+def recent_success_models(db: Session, *, since: datetime) -> list[tuple[str, datetime]]:
+    """`since` 이후 성공한 판과 판마다 마지막 성공 시각(naive UTC) — 최근순.
+
+    재시작 직후 모델 카탈로그가 «검증된 판» 을 되살리는 근거다 — 시험 호출의 성공도 같은 행으로 남는다.
+    Models that succeeded since `since` with each one's last success (naive UTC), newest first; the model
+    catalog rebuilds its verified models from this after a restart (probe successes are rows too).
+    """
+    last_success = func.max(ClaudeApiCall.created_at)  # pylint: disable=not-callable,assignment-from-no-return
+    rows = db.execute(
+        select(ClaudeApiCall.model, last_success)
+        .where(ClaudeApiCall.status == "success", ClaudeApiCall.created_at >= to_naive_utc(since))
+        .group_by(ClaudeApiCall.model)
+        .order_by(last_success.desc())
+    ).all()
+    return [(str(model), at) for model, at in rows]
+
+
+def rejected_models(db: Session, *, since: datetime) -> set[str]:
+    """`since` 이후 마지막 행이 판 거부(`MODEL_REJECTED`)인 판 — 뒤에 성공했으면 빠진다.
+
+    Models whose latest row since `since` is a model rejection; a later success clears it.
+    """
+    last_ids = (
+        select(func.max(ClaudeApiCall.id))  # pylint: disable=not-callable
+        .where(ClaudeApiCall.created_at >= to_naive_utc(since))
+        .group_by(ClaudeApiCall.model)
+    )
+    return set(db.scalars(
+        select(ClaudeApiCall.model)
+        .where(ClaudeApiCall.id.in_(last_ids), ClaudeApiCall.error_type == MODEL_REJECTED)
+    ).all())
 
 
 def window_totals(db: Session, *, since: datetime, until: datetime) -> dict:

@@ -710,6 +710,31 @@ def test_blank_model_env_falls_back_to_default(monkeypatch):
     assert s.claude_insight_model == "claude-haiku-4-5"
 
 
+def test_blank_effort_env_falls_back_to_default(monkeypatch):
+    """`CLAUDE_CALL_EFFORT=` (값 없음)도 기본값을 덮지 않는다 — 빈 값이면 Literal 검증이 기동을 멈춘다.
+
+    A blank CLAUDE_CALL_EFFORT keeps the default; otherwise the Literal check would stop the app at import.
+    """
+    import src.config as cfg  # noqa: PLC0415  # 파일 관용구 — dual-import 가드 준수
+    monkeypatch.setenv("CLAUDE_CALL_EFFORT", " ")
+    assert cfg.Settings().claude_call_effort == "medium"
+    monkeypatch.setenv("CLAUDE_CALL_EFFORT", "low")
+    assert cfg.Settings().claude_call_effort == "low"
+
+
+def test_harness_effort_env_does_not_reach_settings(monkeypatch):
+    """🔴 Claude Code 는 자식 프로세스에 `CLAUDE_EFFORT`(세션의 effort, 예: max)를 넘긴다 — 실측 2026-11-21.
+
+    앱 설정이 그 이름을 읽으면 Claude Code 에서 띄운 개발 · 시험 환경이 기동에 실패하거나(Literal 밖 값)
+    effort 가 조용히 올라간다. Claude Code passes `CLAUDE_EFFORT` (its session effort) to child processes;
+    an app setting under that name would fail import there or silently raise the effort.
+    """
+    import src.config as cfg  # noqa: PLC0415  # 파일 관용구 — dual-import 가드 준수
+    monkeypatch.setenv("CLAUDE_EFFORT", "max")
+    monkeypatch.delenv("CLAUDE_CALL_EFFORT", raising=False)
+    assert cfg.Settings().claude_call_effort == "medium"
+
+
 def test_explicit_model_env_still_wins(monkeypatch):
     """폴백이 정상 오버라이드까지 삼키면 안 된다 — 가드가 기능을 죽이는 것 방지.
 

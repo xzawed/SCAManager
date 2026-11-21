@@ -36,7 +36,7 @@ FALLBACK_DEFAULT_BY_LINE: Mapping[str, str] = MappingProxyType({
 
 
 @dataclass(frozen=True)
-class ModelEntry:
+class ModelEntry:  # pylint: disable=too-many-instance-attributes
     """목록 API 의 판 하나 — 해석과 시험 호출이 쓰는 필드만.
 
     One model from the listing API, with only the fields resolution and probing use.
@@ -64,9 +64,10 @@ class ModelChoice:
     model_id: str | None = None
 
 
-def _fallback(model_id: str, line: str, display_name: str, created_at: datetime, *, effort: bool) -> ModelEntry:
+def _fallback(model_id: str, line: str, display_name: str, created: tuple[int, int, int], *,
+              effort: bool) -> ModelEntry:
     return ModelEntry(
-        id=model_id, line=line, display_name=display_name, created_at=created_at,
+        id=model_id, line=line, display_name=display_name, created_at=datetime(*created, tzinfo=timezone.utc),
         deprecated_at=None, retires_at=None, supports_structured_outputs=True, supports_effort=effort,
     )
 
@@ -76,14 +77,14 @@ def _fallback(model_id: str, line: str, display_name: str, created_at: datetime,
 # Haiku 4.5 는 effort 인자를 받지 않는다(보내면 400) — 나머지 판은 받는다.
 # Haiku 4.5 takes no effort parameter (a 400 if sent); the other models do.
 FALLBACK_CATALOG: tuple[ModelEntry, ...] = (
-    _fallback("claude-haiku-4-5", "haiku", "Claude Haiku 4.5", datetime(2025, 10, 1, tzinfo=timezone.utc), effort=False),
-    _fallback("claude-haiku-5-5", "haiku", "Claude Haiku 5.5", datetime(2026, 10, 1, tzinfo=timezone.utc), effort=True),
-    _fallback("claude-sonnet-5", "sonnet", "Claude Sonnet 5", datetime(2026, 4, 1, tzinfo=timezone.utc), effort=True),
-    _fallback("claude-sonnet-5-5", "sonnet", "Claude Sonnet 5.5", datetime(2026, 10, 1, tzinfo=timezone.utc), effort=True),
-    _fallback("claude-opus-5", "opus", "Claude Opus 5", datetime(2026, 6, 1, tzinfo=timezone.utc), effort=True),
-    _fallback("claude-opus-5-5", "opus", "Claude Opus 5.5", datetime(2026, 10, 1, tzinfo=timezone.utc), effort=True),
-    _fallback("claude-fable-5-1", "fable", "Claude Fable 5.1", datetime(2026, 7, 1, tzinfo=timezone.utc), effort=True),
-    _fallback("claude-fable-5-2", "fable", "Claude Fable 5.2", datetime(2026, 10, 1, tzinfo=timezone.utc), effort=True),
+    _fallback("claude-haiku-4-5", "haiku", "Claude Haiku 4.5", (2025, 10, 1), effort=False),
+    _fallback("claude-haiku-5-5", "haiku", "Claude Haiku 5.5", (2026, 10, 1), effort=True),
+    _fallback("claude-sonnet-5", "sonnet", "Claude Sonnet 5", (2026, 4, 1), effort=True),
+    _fallback("claude-sonnet-5-5", "sonnet", "Claude Sonnet 5.5", (2026, 10, 1), effort=True),
+    _fallback("claude-opus-5", "opus", "Claude Opus 5", (2026, 6, 1), effort=True),
+    _fallback("claude-opus-5-5", "opus", "Claude Opus 5.5", (2026, 10, 1), effort=True),
+    _fallback("claude-fable-5-1", "fable", "Claude Fable 5.1", (2026, 7, 1), effort=True),
+    _fallback("claude-fable-5-2", "fable", "Claude Fable 5.2", (2026, 10, 1), effort=True),
 )
 
 
@@ -95,6 +96,9 @@ class _CatalogState:
     # 계열 → 검증된 순서(오래된 것 → 새것) / line -> verification order (oldest -> newest)
     verified: Mapping[str, tuple[str, ...]]
     failed: frozenset[str]
+    # 판 → 서버 대체(fallbacks) 인자를 받는가 — 계열이 아니라 판마다 다르다(실측으로만 안다).
+    # model -> whether it accepts the server-side `fallbacks` parameter; known per model, by observation only.
+    server_fallback: Mapping[str, bool]
 
 
 def _index(entries: tuple[ModelEntry, ...]) -> Mapping[str, ModelEntry]:
@@ -104,7 +108,7 @@ def _index(entries: tuple[ModelEntry, ...]) -> Mapping[str, ModelEntry]:
 def _initial_state() -> _CatalogState:
     return _CatalogState(
         entries=FALLBACK_CATALOG, by_id=_index(FALLBACK_CATALOG), source="fallback",
-        verified=MappingProxyType({}), failed=frozenset(),
+        verified=MappingProxyType({}), failed=frozenset(), server_fallback=MappingProxyType({}),
     )
 
 
@@ -167,10 +171,34 @@ def install_snapshot(entries: Sequence[ModelEntry], *, source: Literal["api", "f
 
 
 def snapshot_entries() -> tuple[ModelEntry, ...]:
+    """지금 목록 / the current listing."""
     return _STATE.entries
 
 
+def entry_for(model_id: str) -> ModelEntry | None:
+    """지금 목록의 그 판(없으면 None) / the listed entry for an id, or None."""
+    return _STATE.by_id.get(model_id)
+
+
+def set_server_fallback(model_id: str, supported: bool) -> None:
+    """판이 서버 대체 인자를 받는지 적는다 — 시험 호출이나 실제 호출에서 본 대로.
+
+    Record whether a model accepts the server-side fallback parameter, as seen in a probe or a real call.
+    """
+    global _STATE  # pylint: disable=global-statement
+    with _WRITE_LOCK:
+        table = dict(_STATE.server_fallback)
+        table[model_id] = supported
+        _STATE = replace(_STATE, server_fallback=MappingProxyType(table))
+
+
+def server_fallback_supported(model_id: str) -> bool | None:
+    """서버 대체 인자를 받는가(모르면 None) / whether it accepts the fallback parameter (None if unknown)."""
+    return _STATE.server_fallback.get(model_id)
+
+
 def snapshot_source() -> str:
+    """지금 목록의 출처(api · fallback) / where the current listing came from."""
     return _STATE.source
 
 
@@ -192,11 +220,13 @@ def _good_history(state: _CatalogState, line: str) -> list[str]:
 
 
 def verified_latest(line: str) -> str | None:
+    """계열의 가장 최근 검증판(실패 제외) / the line's most recently verified model, failures excluded."""
     good = _good_history(_STATE, line)
     return good[-1] if good else None
 
 
 def previous_verified(line: str) -> str | None:
+    """그 바로 앞 검증판 / the verified model before that."""
     good = _good_history(_STATE, line)
     return good[-2] if len(good) >= 2 else None
 
@@ -224,6 +254,7 @@ def mark_failed(model_id: str) -> None:
 
 
 def is_failed(model_id: str) -> bool:
+    """실패로 적힌 판인가 / whether the model is marked failed."""
     return model_id in _STATE.failed
 
 

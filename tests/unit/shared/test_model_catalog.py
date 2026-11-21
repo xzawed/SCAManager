@@ -26,11 +26,8 @@ def _entry(model_id: str, line: str, created: datetime, *, deprecated: datetime 
     )
 
 
-@pytest.fixture(autouse=True)
-def _fresh_catalog(monkeypatch):
-    # 시험마다 모듈 상태를 처음 꼴로 바꿔 끼운다 — 제품 코드에 시험 전용 초기화 함수를 두지 않는다.
-    # Swap in a fresh module state per test; no test-only reset function in production code.
-    monkeypatch.setattr(mc, "_STATE", mc._initial_state())
+# 카탈로그 상태는 tests/unit/conftest.py 의 autouse fixture 가 시험마다 처음 꼴로 되돌린다.
+# tests/unit/conftest.py resets the catalog state before every test.
 
 
 def test_parse_auto_value():
@@ -140,6 +137,14 @@ def test_failed_model_is_never_resolved():
     mc.mark_failed("claude-haiku-5-5")
     assert mc.is_failed("claude-haiku-5-5")
     assert mc.resolve_model("auto:haiku", default_value="auto:sonnet", now=_NOW) == "claude-haiku-4-5"
+
+
+def test_server_fallback_support_is_recorded_per_model():
+    assert mc.server_fallback_supported("claude-sonnet-5-5") is None
+    mc.set_server_fallback("claude-sonnet-5-5", True)
+    mc.set_server_fallback("claude-sonnet-5", False)
+    assert mc.server_fallback_supported("claude-sonnet-5-5") is True
+    assert mc.server_fallback_supported("claude-sonnet-5") is False
 
 
 def test_failed_without_previous_uses_fallback_default():
