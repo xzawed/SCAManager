@@ -28,6 +28,7 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import httpx
+from anthropic.types import Message, ModelInfo
 import pytest
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.exc import SQLAlchemyError
@@ -39,14 +40,15 @@ from src import scheduler
 from src.database import Base
 from src.models.analysis import Analysis
 from src.models.analysis_attempt import AnalysisAttempt
+from src.models.claude_api_call import ClaudeApiCall  # noqa: F401  (비용 행 테이블 / cost-row table)
 from src.models.insight_narrative_cache import InsightNarrativeCache
 from src.models.merge_retry import MergeRetryQueue
 from src.models.repo_config import RepoConfig
 from src.models.repository import Repository
 from src.models.security_alert_log import SecurityAlertProcessLog
 from src.models.user import User
-from src.repositories import insight_narrative_cache_repo, merge_retry_repo
-from src.services import cron_service, db_heartbeat_service, merge_retry_service, security_scan_service
+from src.repositories import claude_api_cost_repo, insight_narrative_cache_repo, merge_retry_repo
+from src.services import cron_service, db_heartbeat_service, merge_retry_service, model_catalog_service, security_scan_service
 
 # job 이 읽고 쓰는 테이블이 등록돼야 한다 — 튜플을 **읽어** import 소실을 loud-fail 한다.
 # Tables the jobs touch must be registered; reading the tuple loud-fails a lost import.
@@ -485,6 +487,76 @@ async def test_db_heartbeat_job_runs_its_db_work_off_the_loop(world, monkeypatch
     _assert_off_loop(world, expect_http=True, expect=_ROLLS_BACK)
 
 
+class _AsyncItems:
+    """models.list() 가짜 — 비동기 반복자 / async iterator stand-in for models.list()."""
+
+    def __init__(self, items):
+        self._items = list(items)
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if not self._items:
+            raise StopAsyncIteration
+        return self._items.pop(0)
+
+
+class _AnthropicFake:
+    """`async with` 로 쓰는 클라이언트 가짜 — 목록은 바로 주고 create 는 루프에서 await 되는 HTTP 가짜다."""
+
+    def __init__(self, w, listing, reply):
+        self.models = SimpleNamespace(list=lambda: _AsyncItems(listing))
+        self.messages = SimpleNamespace(create=_http(w, "anthropic", result=reply))
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_exc):
+        return False
+
+
+def _listed(model_id: str, created: datetime) -> ModelInfo:
+    return ModelInfo.construct(
+        id=model_id, type="model", display_name=model_id, created_at=created, line="haiku", lifecycle="active",
+        capabilities={"effort": {"supported": True}, "structured_outputs": {"supported": True}})
+
+
+async def test_sync_claude_models_job_runs_its_db_work_off_the_loop(world, monkeypatch):
+    """모델 동기화는 재시작 기준 · 쓰는 계열 읽기 · 시험 호출의 비용 행을 워커 스레드에서 하고,
+    Anthropic 호출과 운영자 알림만 루프에서 await 한다.
+    The model sync reads its baseline and lines in use and writes the probe cost row off the loop;
+    only the vendor call and the operator alert are awaited on it."""
+    # 비용 행 기록기는 부를 때 WorkerSessionLocal 을 읽는다 — 기록 엔진으로 / the writer reads it at call time
+    monkeypatch.setattr("src.database.WorkerSessionLocal", world.factory)
+    monkeypatch.setattr(model_catalog_service, "_SVC", model_catalog_service._ServiceState())
+    for name, value in (("anthropic_api_key", "sk-ant-offloop"), ("claude_review_model", "claude-haiku-4-5"),
+                        ("claude_insight_model", "claude-haiku-4-5"), ("telegram_bot_token", "123:ABC"),
+                        ("telegram_chat_id", "-100ops")):
+        monkeypatch.setattr(model_catalog_service.settings, name, value)
+    monkeypatch.setattr(model_catalog_service, "telegram_post_message", _http(world, "telegram"))
+    created = datetime(2026, 10, 1, tzinfo=timezone.utc)
+    listing = [_listed("claude-haiku-4-5", created - timedelta(days=365)), _listed("claude-haiku-5-5", created)]
+    reply = Message.construct(
+        id="msg_probe", type="message", role="assistant", model="claude-haiku-5-5",
+        content=[{"type": "text", "text": '{"ok": true}'}], stop_reason="end_turn", stop_sequence=None,
+        usage={"input_tokens": 12, "output_tokens": 5})
+    monkeypatch.setattr(model_catalog_service, "new_async_anthropic",
+                        lambda **_kwargs: _AnthropicFake(world, listing, reply))
+    # 지금 판(4.5)이 기록상 검증돼 있어 새 판(5.5) 시험 1회가 돈다 / the current model is known-good, so one probe runs
+    with world.factory() as db:
+        claude_api_cost_repo.record(
+            db, model="claude-haiku-4-5", status="success", input_tokens=1, output_tokens=1, cache_read_tokens=0,
+            cache_creation_tokens=0, cost_usd=0.0, duration_ms=1.0,
+            now=datetime.now(timezone.utc) - timedelta(hours=1))
+    world.reset_records()
+
+    await _run("sync-claude-models")
+
+    _assert_off_loop(world, expect_http=True, expect=_WRITES)
+    assert {name for _, name in world.http} == {"anthropic", "telegram"}
+
+
 # 🔴 새 job 은 여기에 시나리오를 더해야 한다 — 없으면 아래 테스트가 red 다(«루프 밖» 은 job 마다 증명한다).
 # A new job must add a scenario here; otherwise the test below goes red.
 _COVERED = {
@@ -495,6 +567,7 @@ _COVERED = {
     "retention-sweep": test_retention_job_runs_its_db_work_off_the_loop,
     "scan-security": test_scan_security_job_runs_its_db_work_off_the_loop,
     "db-heartbeat": test_db_heartbeat_job_runs_its_db_work_off_the_loop,
+    "sync-claude-models": test_sync_claude_models_job_runs_its_db_work_off_the_loop,
 }
 
 
