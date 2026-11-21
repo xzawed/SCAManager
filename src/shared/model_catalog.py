@@ -27,6 +27,9 @@ _CLAUDE_PREFIX = "claude-"
 # 판 id 꼴에서 계열을 읽는다 — 목록에 없는 id(내린 판 등)일 때만 쓴다.
 # Reads the line from the id shape; used only for ids absent from the listing (e.g. retired ones).
 _LINE_FROM_ID = re.compile(r"^claude-(" + "|".join(sorted(KNOWN_LINES)) + r")-")
+# 날짜 붙은 전체 id(`claude-haiku-4-5-20251001`)의 별칭 = 접미사를 뗀 id — 저장값 · 기록은 별칭이다.
+# The alias of a dated full id is the id without the date suffix; stored values and history use aliases.
+_DATED_SUFFIX = re.compile(r"-\d{8}$")
 
 # 목록 · 기록 · 검증이 모두 없을 때 계열마다 부르는 판 — 지금 선택지(`src/constants.py` CLAUDE_MODELS)의 판이다.
 # Per-line model used only when listing, history and verification are all absent: today's selectable models.
@@ -53,6 +56,8 @@ class ModelEntry:  # pylint: disable=too-many-instance-attributes
     retires_at: datetime | None
     supports_structured_outputs: bool
     supports_effort: bool
+    # active · deprecated · retired — 내려감 판정은 이것으로만(SDK 계약) / the retirement signal (SDK contract)
+    lifecycle: str = "active"
 
 
 @dataclass(frozen=True)
@@ -105,7 +110,14 @@ class _CatalogState:
 
 
 def _index(entries: tuple[ModelEntry, ...]) -> Mapping[str, ModelEntry]:
-    return MappingProxyType({e.id: e for e in entries})
+    """id 와 별칭(날짜 접미사를 뗀 id) 둘 다로 찾게 — 같은 글자의 실제 id 가 있으면 그것이 이긴다.
+
+    Index by id and by alias (id without the date suffix); an entry whose real id is that string wins.
+    """
+    index = {e.id: e for e in entries}
+    for entry in entries:
+        index.setdefault(_DATED_SUFFIX.sub("", entry.id), entry)
+    return MappingProxyType(index)
 
 
 def _initial_state() -> _CatalogState:
@@ -205,15 +217,14 @@ def snapshot_source() -> str:
     return _STATE.source
 
 
-def latest_candidate(line: str, *, now: datetime | None = None) -> ModelEntry | None:
-    """계열에서 폐기 예정도 내려가지도 않은 가장 새 판 — 아직 검증 전일 수 있다.
+def latest_candidate(line: str) -> ModelEntry | None:
+    """계열에서 active 이고 구조화 출력을 받는(우리 호출 꼴로 부를 수 있는) 가장 새 판 — 아직 검증 전일 수 있다.
 
-    The newest model of a line that is neither deprecated nor retired; it may not be verified yet.
+    The newest active model of a line that takes structured outputs (our call shape); it may not be verified yet.
     """
-    moment = now or datetime.now(timezone.utc)
     candidates = [
         e for e in _STATE.entries
-        if e.line == line and e.deprecated_at is None and (e.retires_at is None or e.retires_at > moment)
+        if e.line == line and e.lifecycle == "active" and e.supports_structured_outputs
     ]
     return max(candidates, key=lambda e: e.created_at, default=None)
 
@@ -266,27 +277,21 @@ def _resolve_line(state: _CatalogState, line: str) -> str:
     return good[-1] if good else FALLBACK_DEFAULT_BY_LINE[line]
 
 
-def _resolve_pinned(state: _CatalogState, model_id: str, now: datetime) -> str:
+def _resolve_pinned(state: _CatalogState, model_id: str) -> str:
+    # 목록에 없다 ≠ 내려갔다(내려간 판도 기록으로 목록에 남는다) — 그대로 부른다. 내려감 판정은 lifecycle 로만
+    # (SDK 계약: 폐기 예정 판의 지난 retires_at 은 «늦어진 은퇴» 다).
+    # Absent is not retired (retired models stay listed), so keep it; only lifecycle says retired (SDK contract).
     entry = state.by_id.get(model_id)
-    if entry is not None:
-        if entry.retires_at is None or entry.retires_at > now:
-            return model_id
-        line: str | None = entry.line
-    elif state.source == "api":
-        # 목록 API 가 준 목록에 없다 = 내려간 판 — 대체 목록만 있을 때는 모른다고 보고 그대로 둔다.
-        # Missing from the API listing means retired; with only the fallback listing we cannot tell, so keep it.
-        line = _line_from_id(model_id)
-    else:
+    if entry is None or entry.lifecycle != "retired" or entry.line not in KNOWN_LINES:
         return model_id
-    if line not in KNOWN_LINES:
-        return model_id
-    return _resolve_line(state, line)
+    return _resolve_line(state, entry.line)
 
 
-def resolve_model(value: str | None, *, default_value: str, now: datetime | None = None) -> str:
+def resolve_model(value: str | None, *, default_value: str) -> str:
     """저장값을 부를 판 id 로 바꾼다 — 빈 값은 default_value 로, 내려간 고정 판은 그 계열의 검증판으로.
 
     Turn a stored value into a model id: blank uses default_value; a retired pin moves to its line's verified model.
+    날짜 붙은 전체 id 로 목록에 오른 판은 별칭으로도 찾는다. / Dated listed ids are also found by their alias.
     읽을 수 없는 저장값(모르는 계열)은 경고 한 줄 뒤 기본값으로 — 호출을 깨지 않는다. default_value 가 그렇다면 설정
     오류라 ValueError 를 올린다(설정은 기동에서 검증된다).
     An unreadable stored value (unknown line) logs a warning and uses the default instead of breaking the call;
@@ -304,4 +309,4 @@ def resolve_model(value: str | None, *, default_value: str, now: datetime | None
             raise ValueError("default_value is empty")
     if choice.kind == "auto":
         return _resolve_line(state, choice.line or "")
-    return _resolve_pinned(state, choice.model_id or "", now or datetime.now(timezone.utc))
+    return _resolve_pinned(state, choice.model_id or "")

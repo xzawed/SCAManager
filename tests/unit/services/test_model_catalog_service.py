@@ -187,14 +187,17 @@ async def test_sync_maps_model_info(world):
         _info("claude-opus-4-1", "opus", _d(2025, 8, 5), lifecycle="retired"),
         _info("claude-opus-x", "opus", _d(2026, 1, 1), structured=False),
         _info("claude-fable-x", "fable", _d(2026, 2, 1), with_capabilities=False),
+        _info("claude-opus-y", "opus", _d(2026, 3, 1), lifecycle="sunset"),
     ]))
     assert await svc.sync_models(api_key="k") is True
     got = {e.id: e for e in mc.snapshot_entries()}
     assert mc.snapshot_source() == "api"
     assert (got["claude-haiku-4-5"].supports_effort, got["claude-haiku-4-5"].supports_structured_outputs) == (False, True)
-    assert (got["claude-sonnet-4-5"].deprecated_at, got["claude-sonnet-4-5"].retires_at) == (_d(2026, 8, 1), _d(2026, 11, 30))
-    # 날짜 없이 retired 로만 온 판도 내려간 판이다 / a model that is only marked retired counts as retired
-    assert (got["claude-opus-4-1"].deprecated_at, got["claude-opus-4-1"].retires_at) == (NOW, NOW)
+    assert (got["claude-sonnet-4-5"].lifecycle, got["claude-sonnet-4-5"].retires_at) == ("deprecated", _d(2026, 11, 30))
+    # 내려감 판정은 lifecycle 로만 — 날짜는 받은 그대로 / lifecycle is the signal; dates are kept as given
+    assert (got["claude-opus-4-1"].lifecycle, got["claude-opus-4-1"].retires_at) == ("retired", None)
+    # 모르는 lifecycle 값은 후보에서 빼되 고정 판은 옮기지 않는 쪽(deprecated)으로 / unknown values become deprecated
+    assert got["claude-opus-y"].lifecycle == "deprecated"
     assert got["claude-opus-x"].supports_structured_outputs is False
     # capabilities 가 없으면 구조화 출력은 시험 호출이 판정하고 effort 는 보내지 않는다
     # without capabilities the probe judges structured outputs and effort is not sent
@@ -213,8 +216,8 @@ async def test_line_values_are_normalised(world):
         "claude-haiku-5-5": "haiku", "claude-sonnet-5-5": "sonnet", "claude-opus-9": "", "claude-mythos-5-2": "",
     }
     # 계열 없이 온 판에 id 로 계열을 붙이지 않는다(SDK 계약) / no line is inferred from the id of a line-less model
-    assert mc.latest_candidate("opus", now=NOW) is None
-    assert mc.latest_candidate("haiku", now=NOW).id == "claude-haiku-5-5"
+    assert mc.latest_candidate("opus") is None
+    assert mc.latest_candidate("haiku").id == "claude-haiku-5-5"
 
 
 @pytest.mark.parametrize("second", ["error", "empty"])
@@ -394,12 +397,41 @@ async def test_refresh_reads_the_database_off_the_event_loop(world):
     assert opened_on and threading.get_ident() not in opened_on
 
 
+@pytest.mark.parametrize(("control_outcome", "want_reason", "want_rows"), [
+    # 지금 판은 통과 → 후보 탓 / the current model passes, so the candidate is to blame
+    (_message(model="claude-haiku-4-5"), "rejected",
+     [("claude-haiku-5-5", "error", "model_rejected"), ("claude-haiku-4-5", "success", "")]),
+    # 지금 판도 400 → 계정 · 요청 쪽 문제(잔액 부족 등) — 후보를 실패로 적지 않는다
+    # the current model 400s too: an account/request problem (e.g. low credit), not the candidate
+    (_status_error(anthropic.BadRequestError, 400), "transient:BadRequestError",
+     [("claude-haiku-5-5", "error", "BadRequestError"), ("claude-haiku-4-5", "error", "probe_control")]),
+])
+async def test_probe_400_is_settled_only_when_the_current_model_passes(world, control_outcome, want_reason, want_rows):
+    client = _use(world, _FakeClient(plain=[_status_error(anthropic.BadRequestError, 400), control_outcome]))
+    result = await svc.probe_model(_entry("claude-haiku-5-5", "haiku"), api_key="k",
+                                   control=_entry("claude-haiku-4-5", "haiku", effort=False))
+    assert (result.ok, result.reason) == (False, want_reason)
+    assert [call["model"] for call in client.messages.calls] == ["claude-haiku-5-5", "claude-haiku-4-5"]
+    assert sorted((row["model"], row["status"], row["error_type"]) for row in world.cost_rows) == sorted(want_rows)
+
+
+async def test_account_level_400_does_not_fail_the_candidate(world):
+    _record(world, "claude-haiku-4-5")
+    _use(world, _FakeClient(listing=_LISTING, plain=[_status_error(anthropic.BadRequestError, 400),
+                                                     _status_error(anthropic.BadRequestError, 400)]))
+    report = await _refresh(world)
+    assert (mc.is_failed("claude-haiku-5-5"), report.failed, world.alerts) == (False, {}, [])
+
+
 async def test_rejected_probe_is_recorded_as_model_rejected(world):
-    # 재시작 뒤 rejected_models 가 같은 판을 실패로 되살리는 근거 / what lets a restart restore the failure
-    _use(world, _FakeClient(plain=[_status_error(anthropic.BadRequestError, 400)]))
-    result = await svc.probe_model(_entry("claude-haiku-5-5", "haiku"), api_key="k")
-    assert (result.ok, result.reason) == (False, "rejected")
-    assert [(row["status"], row["error_type"]) for row in world.cost_rows] == [("error", "model_rejected")]
+    # 재시작 뒤 같은 판을 실패로 되살리는 근거 / what lets a restart restore the failure
+    _record(world, "claude-haiku-4-5")
+    _use(world, _FakeClient(listing=_LISTING, plain=[_status_error(anthropic.BadRequestError, 400),
+                                                     _message(model="claude-haiku-4-5")]))
+    report = await _refresh(world)
+    assert report.failed == {"haiku": "rejected"}
+    assert ("claude-haiku-5-5", "error", "model_rejected") in [
+        (row["model"], row["status"], row["error_type"]) for row in world.cost_rows]
 
 
 # ── 운영자 알림 / operator alerts ──
@@ -427,7 +459,8 @@ async def test_pinned_model_missing_from_listing_alerts_once(world):
         _use(world, _FakeClient(listing=listing))
         await _refresh(world)
     ((_, _, text),) = world.alerts
-    assert "claude-sonnet-4-6" in text and "claude-sonnet-5-5" in text
+    assert "claude-sonnet-4-6" in text and "claude-sonnet-5-5" not in text
+    assert mc.resolve_model("claude-sonnet-4-6", default_value="auto:haiku") == "claude-sonnet-4-6"
 
 
 async def test_sync_failure_alert_at_most_daily(world):
@@ -451,3 +484,68 @@ async def test_alert_send_failure_does_not_stop_refresh(world, monkeypatch):
     _use(world, _FakeClient(listing=_LISTING, plain=[_message()]))
     report = await _refresh(world)
     assert report.promoted == {"haiku": "claude-haiku-5-5"}
+
+
+# ── 검토 반영(Final) / review fixes ──
+
+async def test_dated_listing_keeps_alias_pins_and_history(world):
+    # 목록 API 는 Haiku 4.5 를 날짜 붙은 전체 id 로 준다 — 저장값 · 기록은 별칭(마이그레이션 0050).
+    # The listing names Haiku 4.5 by its dated full id; stored values and history use the alias.
+    _record(world, "claude-haiku-4-5")
+    _repo(world, "o/pin", "claude-haiku-4-5")
+    listing = [_info("claude-haiku-4-5-20251001", "haiku", _d(2025, 10, 1), effort=False),
+               _info("claude-haiku-5-5", "haiku", _d(2026, 10, 1))]
+    _use(world, _FakeClient(listing=listing, plain=[_message()]))
+    await _refresh(world)
+    assert mc.resolve_model("claude-haiku-4-5", default_value="auto:sonnet") == "claude-haiku-4-5"
+    assert (mc.verified_latest("haiku"), mc.previous_verified("haiku")) == ("claude-haiku-5-5", "claude-haiku-4-5")
+    # 전환 알림 하나 — 고정 판 «목록 없음» 알림은 없다 / one promotion alert, no absent-pin alert
+    ((_, _, text),) = world.alerts
+    assert "claude-haiku-4-5</code> →" in text
+
+
+async def test_retired_pin_is_rerouted_and_alerted(world):
+    _record(world, "claude-haiku-4-5")
+    _record(world, "claude-sonnet-5-5")
+    _repo(world, "o/pin", "claude-sonnet-4-5")
+    listing = [_info("claude-haiku-4-5", "haiku", _d(2025, 10, 1), effort=False),
+               _info("claude-sonnet-4-5", "sonnet", _d(2025, 9, 29), lifecycle="retired"),
+               _info("claude-sonnet-5-5", "sonnet", _d(2026, 10, 1))]
+    for _ in range(2):
+        _use(world, _FakeClient(listing=listing))
+        await _refresh(world)
+    assert mc.resolve_model("claude-sonnet-4-5", default_value="auto:haiku") == "claude-sonnet-5-5"
+    ((_, _, text),) = world.alerts
+    assert "claude-sonnet-4-5" in text and "claude-sonnet-5-5" in text
+
+
+async def test_settled_probe_failures_survive_restart(world):
+    # 거부(400)뿐 아니라 엉뚱한 답 · 거절 · 404 로 판정 난 판도 재시작 뒤 다시 시험 · 알림하지 않는다.
+    # Not only rejections: bad output, refusals and 404s stay failed after a restart (no re-probe, no re-alert).
+    _record(world, "claude-haiku-4-5", hours_ago=3)
+    _record(world, "claude-haiku-5-5", status="error", error_type="probe_bad_output", hours_ago=2)
+    client = _use(world, _FakeClient(listing=_LISTING))
+    await _refresh(world)
+    assert mc.is_failed("claude-haiku-5-5")
+    assert (client.messages.calls, world.alerts) == ([], [])
+
+
+async def test_unrecognised_line_values_are_warned(world, caplog):
+    _use(world, _FakeClient(listing=[_info("claude-haiku-5-5", "haiku", _d(2026, 10, 1)),
+                                     _info("claude-x-1", "Haiku-Next", _d(2026, 11, 1)),
+                                     _info("claude-mythos-5-2", "mythos", _d(2026, 10, 1)),
+                                     _info("claude-y-1", None, _d(2026, 11, 1))]))
+    with caplog.at_level("WARNING", logger="src.services.model_catalog_service"):
+        await svc.sync_models(api_key="k")
+    warned = [r.getMessage() for r in caplog.records if "unrecognised line" in r.getMessage()]
+    # 아는 다른 계열(mythos) · 계열 없음(null)은 경고하지 않는다 / known other lines and null are not warned
+    assert len(warned) == 1 and "Haiku-Next" in warned[0] and "mythos" not in warned[0]
+
+
+async def test_refresh_log_names_model_count_and_newest(world, caplog):
+    _record(world, "claude-haiku-5-5")
+    _use(world, _FakeClient(listing=_LISTING))
+    with caplog.at_level("INFO", logger="src.services.model_catalog_service"):
+        await _refresh(world)
+    (line,) = [r.getMessage() for r in caplog.records if r.getMessage().startswith("claude model catalog")]
+    assert "models=6" in line and "haiku=claude-haiku-5-5" in line and "newest=claude-haiku-5-5" in line

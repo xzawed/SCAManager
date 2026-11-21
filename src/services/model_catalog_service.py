@@ -5,8 +5,9 @@ Model catalog service: listing sync, restart baseline, probe gate and operator a
 새 판은 작은 JSON 시험 호출을 통과해야 계열의 «검증된 최신» 이 된다 — 그 전까지 auto 값은 이전 판을 부른다.
 A new model becomes its line's verified latest only after a small JSON probe passes; until then auto values
 keep calling the previous one.
-재시작 직후의 기준은 비용 기록이다 — 최근 성공한 판은 검증판으로, 마지막 행이 거부인 판은 실패로 되살린다.
-After a restart the cost log is the baseline: recently successful models come back verified, last-rejected ones failed.
+재시작 직후의 기준은 비용 기록이다 — 최근 성공한 판은 검증판으로, 마지막 행이 판정 난 시험 실패인 판은 실패로 되살린다.
+After a restart the cost log is the baseline: recently successful models come back verified, models whose last row is
+a settled probe failure come back failed.
 """
 from __future__ import annotations
 
@@ -15,7 +16,7 @@ import json
 import logging
 import time
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from html import escape
 
@@ -44,6 +45,9 @@ logger = logging.getLogger(__name__)
 # Server-side fallback is tried per line; a model that rejects the parameter (400) is called once more without it.
 _SERVER_FALLBACK_BETA = "server-side-fallback-2026-07-01"
 _SERVER_FALLBACK_LINES = frozenset({"sonnet", "opus", "fable"})
+# 목록 API 의 계열 값 가운데 우리가 따르지 않지만 아는 것 — 경고하지 않는다 / known lines we do not follow
+_OTHER_KNOWN_LINES = frozenset({"mythos"})
+_LIFECYCLES = frozenset({"active", "deprecated", "retired"})
 # 재시작 기준으로 읽는 비용 기록의 길이 / how far back the restart baseline reads the cost log
 _HISTORY_WINDOW = timedelta(days=30)
 # 목록 동기화가 이만큼 잇달아 실패하면 알린다 — 알림은 하루 한 번까지.
@@ -63,9 +67,12 @@ _PROBE_SCHEMA = {
     "required": ["ok"],
     "additionalProperties": False,
 }
-# 판에 대한 답이 난 실패 — 이 프로세스에서 다시 시험하지 않는다(그 밖은 다음 주기에 다시).
-# Failures that settle the model, so it is not probed again in this process (others are retried next cycle).
+# 판에 대한 답이 난 실패 — 다시 시험하지 않는다(그 밖은 다음 주기에 다시).
+# Failures that settle the model, so it is not probed again (others are retried next cycle).
 _SETTLED_FAILURES = frozenset({"rejected", "not_found", "refusal", "bad_output", "no_structured_outputs"})
+# 대조 호출(지금 판)의 실패 표지 — 판정 난 실패로 세지 않아 재시작 뒤 지금 판을 실패로 되살리지 않는다.
+# The control call's failure label; never a settled failure, so a restart never marks the current model failed.
+_CONTROL_FAILED = "probe_control"
 
 
 @dataclass(frozen=True)
@@ -95,6 +102,8 @@ class RefreshReport:
 class _ServiceState:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     bootstrapped: bool = False
+    # 고정 판 알림은 프로세스마다 한 번(곧 배포마다 한 번) — 따로 저장하지 않는 대가로 받아들인 한계.
+    # Pin alerts go out once per process (so once per deploy); the accepted cost of not persisting them.
     alerted_pins: set[str] = field(default_factory=set)
     sync_failures: int = 0
     last_sync_alert_at: datetime | None = None
@@ -129,19 +138,11 @@ def _supported(capabilities, name: str, *, default: bool) -> bool:
 
 
 def _to_entry(info, now: datetime) -> mc.ModelEntry:
-    """목록 API 의 판 하나를 카탈로그 항목으로 — lifecycle 을 폐기 · 내림 날짜에 반영한다.
+    """목록 API 의 판 하나를 카탈로그 항목으로 — 내려감 판정은 lifecycle 로만, 날짜는 받은 그대로.
 
-    Map one listed model to a catalog entry, folding its lifecycle into the deprecation/retirement dates.
+    Map one listed model to a catalog entry; lifecycle is the retirement signal and dates are kept as given.
     """
-    lifecycle = getattr(info, "lifecycle", None)
-    deprecated_at = _aware(getattr(info, "deprecated_at", None))
-    retires_at = _aware(getattr(info, "retires_at", None))
-    if lifecycle in ("deprecated", "retired") and deprecated_at is None:
-        deprecated_at = now
-    if lifecycle == "retired" and (retires_at is None or retires_at > now):
-        # 내려간 판도 기록으로 목록에 남는다 — 부르면 실패하니 지금 내려간 것으로 둔다.
-        # Retired models stay listed as a record; calls to them fail, so treat them as retired now.
-        retires_at = now
+    lifecycle = getattr(info, "lifecycle", None) or "active"
     capabilities = getattr(info, "capabilities", None)
     return mc.ModelEntry(
         id=info.id,
@@ -150,13 +151,22 @@ def _to_entry(info, now: datetime) -> mc.ModelEntry:
         line=mc.normalise_line(getattr(info, "line", None)) or "",
         display_name=getattr(info, "display_name", None) or info.id,
         created_at=_aware(getattr(info, "created_at", None)) or now,
-        deprecated_at=deprecated_at,
-        retires_at=retires_at,
+        deprecated_at=_aware(getattr(info, "deprecated_at", None)),
+        retires_at=_aware(getattr(info, "retires_at", None)),
         # 모르면 구조화 출력은 시험 호출이 판정하고, effort 는 보내지 않는다(받지 않는 판에 보내면 400).
         # When unknown, the probe judges structured outputs and effort is not sent (a 400 where unsupported).
         supports_structured_outputs=_supported(capabilities, "structured_outputs", default=True),
         supports_effort=_supported(capabilities, "effort", default=False),
+        # 모르는 lifecycle 값은 후보에서 빼되(active 아님) 고정 판은 옮기지 않는다(retired 아님).
+        # An unknown lifecycle value is not a candidate (not active) and does not move pins (not retired).
+        lifecycle=lifecycle if lifecycle in _LIFECYCLES else "deprecated",
     )
+
+
+def _unrecognised_lines(infos: list) -> list[str]:
+    raw_values = {str(raw) for info in infos if (raw := getattr(info, "line", None)) is not None}
+    return sorted(raw for raw in raw_values
+                  if mc.normalise_line(raw) is None and raw.strip().lower() not in _OTHER_KNOWN_LINES)
 
 
 async def sync_models(*, api_key: str) -> bool:
@@ -170,7 +180,8 @@ async def sync_models(*, api_key: str) -> bool:
             api_key=api_key, timeout=_LIST_TIMEOUT_SECONDS, max_retries=1, caller="model_catalog",
             retry_after_cap=ANTHROPIC_RETRY_AFTER_CAP_PIPELINE_SECONDS,
         ) as client:
-            entries = [_to_entry(info, now) async for info in client.models.list()]
+            infos = [info async for info in client.models.list()]
+        entries = [_to_entry(info, now) for info in infos]
     except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
         # 어떤 실패든 이전 목록으로 계속 부른다 — 목록 동기화가 호출 경로를 멈추면 안 된다.
         # Any failure keeps the previous listing; the sync must never stop the call paths.
@@ -180,34 +191,50 @@ async def sync_models(*, api_key: str) -> bool:
     if not entries:
         logger.warning("claude model listing came back empty — keeping the %s listing", mc.snapshot_source())
         return False
+    unrecognised = _unrecognised_lines(infos)
+    if unrecognised:
+        # 정규화가 놓친 계열 값 — 그 판들은 따르지 않는다(값은 API 데이터라 repr 로 · 잘라서).
+        # Line values normalisation missed; those models are not followed (API data: repr'd and truncated).
+        logger.warning("claude model listing: unrecognised line values %r — those models are not followed",
+                       [value[:30] for value in unrecognised[:10]])
     mc.install_snapshot(entries, source="api")
     return True
 
 
 # ── 재시작 기준 · 쓰는 계열 / restart baseline and lines in use ──
 
-def _retired(entry: mc.ModelEntry, now: datetime) -> bool:
-    return entry.retires_at is not None and entry.retires_at <= now
+def _error_type(reason: str) -> str:
+    if reason == "ok":
+        return ""
+    if reason == "rejected":
+        return claude_api_cost_repo.MODEL_REJECTED
+    if reason.startswith("transient:"):
+        return reason.split(":", 1)[1]
+    return f"probe_{reason}"
+
+
+# 재시작 뒤 실패로 되살리는 비용 행 표지 — 판정 난 실패에서 파생한다(행을 남기지 않는 구조화 출력 미지원은 빠진다).
+# Cost-row labels restored as failed after a restart, derived from the settled failures (rowless ones drop out).
+_SETTLED_ERROR_TYPES = frozenset(_error_type(reason) for reason in _SETTLED_FAILURES - {"no_structured_outputs"})
 
 
 def bootstrap_from_history(db: Session) -> None:
-    """비용 기록으로 검증판을 되살린다 — 계열마다 최근 성공한 판을 출시 순서대로, 마지막 행이 거부인 판은 실패로.
+    """비용 기록으로 검증판을 되살린다 — 계열마다 최근 성공한 판을 출시 순서대로, 판정 난 시험 실패가 마지막인 판은 실패로.
 
-    Rebuild verified models from the cost log: each line's recently successful models in release order;
-    models whose last row is a rejection become failed.
+    Rebuild verified models from the cost log: each line's recently successful models in release order; models whose
+    last row is a settled probe failure become failed. History keeps the id that was called (an alias, usually).
     """
-    now = _utcnow()
-    since = now - _HISTORY_WINDOW
-    by_line: dict[str, list[mc.ModelEntry]] = {}
+    since = _utcnow() - _HISTORY_WINDOW
+    by_line: dict[str, list[tuple[mc.ModelEntry, str]]] = {}
     for model_id, _last_success in claude_api_cost_repo.recent_success_models(db, since=since):
         entry = mc.entry_for(model_id)
-        if entry is None or entry.line not in mc.KNOWN_LINES or _retired(entry, now):
+        if entry is None or entry.line not in mc.KNOWN_LINES or entry.lifecycle == "retired":
             continue
-        by_line.setdefault(entry.line, []).append(entry)
-    for line, entries in by_line.items():
-        for entry in sorted(entries, key=lambda e: e.created_at):
-            mc.set_verified(line, entry.id)
-    for model_id in claude_api_cost_repo.rejected_models(db, since=since):
+        by_line.setdefault(entry.line, []).append((entry, model_id))
+    for line, pairs in by_line.items():
+        for _entry, model_id in sorted(pairs, key=lambda pair: pair[0].created_at):
+            mc.set_verified(line, model_id)
+    for model_id in claude_api_cost_repo.failed_models(db, since=since, error_types=_SETTLED_ERROR_TYPES):
         mc.mark_failed(model_id)
 
 
@@ -269,6 +296,13 @@ def _read_usage(session_factory) -> _Usage:
 
 # ── 시험 호출 / probe ──
 
+def _probe_output_config(entry: mc.ModelEntry) -> dict:
+    output_config: dict = {"format": {"type": "json_schema", "schema": _PROBE_SCHEMA}}
+    if entry.supports_effort:
+        output_config["effort"] = settings.claude_call_effort
+    return output_config
+
+
 async def _send_probe(client, entry: mc.ModelEntry, output_config: dict):
     server_fallback_ok: bool | None = None
     if entry.line in _SERVER_FALLBACK_LINES:
@@ -314,17 +348,7 @@ def _tokens(usage, name: str) -> int:
     return int(getattr(usage, name, 0) or 0)
 
 
-def _error_type(reason: str) -> str:
-    if reason == "ok":
-        return ""
-    if reason == "rejected":
-        return claude_api_cost_repo.MODEL_REJECTED
-    if reason.startswith("transient:"):
-        return reason.split(":", 1)[1]
-    return f"probe_{reason}"
-
-
-async def _log_probe(model_id: str, response, reason: str, started: float) -> None:
+async def _write_cost_row(model_id: str, response, *, ok: bool, error_type: str, started: float) -> None:
     usage = getattr(response, "usage", None)
     # 비용 행 INSERT 는 동기 DB 다 — 루프 밖에서(#1701). / The cost-row INSERT is sync DB work: off the loop.
     await run_blocking(
@@ -335,24 +359,43 @@ async def _log_probe(model_id: str, response, reason: str, started: float) -> No
         output_tokens=_tokens(usage, "output_tokens"),
         cache_read_tokens=_tokens(usage, "cache_read_input_tokens"),
         cache_creation_tokens=_tokens(usage, "cache_creation_input_tokens"),
-        status="success" if reason == "ok" else "error",
-        error_type=_error_type(reason),
+        status="success" if ok else "error",
+        error_type=error_type,
         repo_id=None,
         user_id=None,
     )
 
 
-async def probe_model(entry: mc.ModelEntry, *, api_key: str) -> ProbeResult:
-    """판 하나에 작은 JSON 요청을 보내 우리 호출 꼴(구조화 출력 · effort · 서버 대체)이 통하는지 본다 — 비용 행 1개.
+async def _control_passes(client, control: mc.ModelEntry | None) -> bool:
+    """후보가 400 이면 지금 판에 같은 꼴을 보낸다 — 지금 판도 실패하면 판이 아니라 계정 · 요청 쪽 문제다(잔액 부족 등).
 
-    Send one small JSON request to check our call shape (structured output, effort, server fallback) works on the
-    model; writes exactly one cost row.
+    When the candidate gets a 400, send the same shape to the current model; if that fails too, the cause is the
+    account or request (e.g. low credit), not the candidate. The control call writes its own cost row.
+    """
+    if control is None:
+        return False
+    started = time.monotonic()
+    response = None
+    try:
+        response = await client.messages.create(
+            model=control.id, max_tokens=_PROBE_MAX_TOKENS, system=_PROBE_SYSTEM, messages=_PROBE_MESSAGES,
+            output_config=_probe_output_config(control),
+        )
+        ok = _judge(response) == "ok"
+    except anthropic.APIError:
+        ok = False
+    await _write_cost_row(control.id, response, ok=ok, error_type="" if ok else _CONTROL_FAILED, started=started)
+    return ok
+
+
+async def probe_model(entry: mc.ModelEntry, *, api_key: str, control: mc.ModelEntry | None = None) -> ProbeResult:
+    """판 하나에 작은 JSON 요청을 보내 우리 호출 꼴(구조화 출력 · effort · 서버 대체)이 통하는지 본다 — 호출마다 비용 행 1개.
+
+    Send one small JSON request to check our call shape (structured output, effort, server fallback) works on the model.
+    A 400 counts against the model only when the same shape passes on `control` (the current model).
     """
     if not entry.supports_structured_outputs:
         return ProbeResult(ok=False, reason="no_structured_outputs", server_fallback_ok=None)
-    output_config: dict = {"format": {"type": "json_schema", "schema": _PROBE_SCHEMA}}
-    if entry.supports_effort:
-        output_config["effort"] = settings.claude_call_effort
     started = time.monotonic()
     response = None
     server_fallback_ok: bool | None = None
@@ -361,15 +404,16 @@ async def probe_model(entry: mc.ModelEntry, *, api_key: str) -> ProbeResult:
             api_key=api_key, timeout=_PROBE_TIMEOUT_SECONDS, max_retries=1, caller="model_probe",
             retry_after_cap=ANTHROPIC_RETRY_AFTER_CAP_PIPELINE_SECONDS,
         ) as client:
-            response, server_fallback_ok = await _send_probe(client, entry, output_config)
-        reason = _judge(response)
-    except anthropic.BadRequestError:
-        reason = "rejected"
+            try:
+                response, server_fallback_ok = await _send_probe(client, entry, _probe_output_config(entry))
+                reason = _judge(response)
+            except anthropic.BadRequestError:
+                reason = "rejected" if await _control_passes(client, control) else "transient:BadRequestError"
     except anthropic.NotFoundError:
         reason = "not_found"
     except anthropic.APIError as exc:
         reason = f"transient:{type(exc).__name__}"
-    await _log_probe(entry.id, response, reason, started)
+    await _write_cost_row(entry.id, response, ok=reason == "ok", error_type=_error_type(reason), started=started)
     return ProbeResult(ok=reason == "ok", reason=reason, server_fallback_ok=server_fallback_ok)
 
 
@@ -405,28 +449,31 @@ async def _note_sync_result(synced: bool) -> None:
                                    count=_SVC.sync_failures, source=mc.snapshot_source()))
 
 
-def _pin_alert_text(model_id: str, now: datetime, language: str) -> str | None:
+def _pin_alert_text(model_id: str, language: str) -> str | None:
     entry = mc.entry_for(model_id)
-    if entry is not None:
-        if entry.deprecated_at is None and entry.retires_at is None:
+    if entry is None:
+        # 목록에 없는 고정 판은 그대로 부른다 — 대체 목록만 있거나 Claude 꼴이 아닌 id 면 알리지 않는다.
+        # An absent pin is kept as is; no alert with only the fallback listing or for a non-Claude-shaped id.
+        if mc.snapshot_source() != "api" or mc.line_of(model_id) is None:
             return None
+        return get_text("notifier.models.pinned_missing", language, model=escape(model_id))
+    if entry.lifecycle == "retired":
+        moved = mc.resolve_model(model_id, default_value=model_id)
+        if moved == model_id:
+            return None
+        return get_text("notifier.models.pinned_retired", language, model=escape(model_id), moved=escape(moved))
+    if entry.lifecycle == "deprecated":
         date = entry.retires_at.date().isoformat() if entry.retires_at else "—"
         return get_text("notifier.models.pinned_retiring", language, model=escape(model_id), date=date,
                         line=escape(entry.line or "—"))
-    if mc.snapshot_source() != "api":
-        return None
-    moved = mc.resolve_model(model_id, default_value=model_id, now=now)
-    if moved == model_id:
-        return None
-    return get_text("notifier.models.pinned_missing", language, model=escape(model_id), moved=escape(moved))
+    return None
 
 
 async def _alert_pins(pinned: tuple[str, ...]) -> None:
-    now = _utcnow()
     for model_id in pinned:
         if model_id in _SVC.alerted_pins:
             continue
-        text = _pin_alert_text(model_id, now, settings.default_locale)
+        text = _pin_alert_text(model_id, settings.default_locale)
         if text is None:
             continue
         _SVC.alerted_pins.add(model_id)
@@ -439,19 +486,31 @@ def _current(line: str) -> str:
     return mc.verified_latest(line) or mc.FALLBACK_DEFAULT_BY_LINE[line]
 
 
+def _control_entry(current: str, line: str) -> mc.ModelEntry:
+    """대조 호출용 지금 판 — 별칭으로 찾았어도 부르는 id 는 지금 쓰는 그 글자다.
+
+    The current model for the control call; even when found by alias, the id called is the one in use.
+    """
+    entry = mc.entry_for(current)
+    if entry is not None:
+        return replace(entry, id=current)
+    return mc.ModelEntry(id=current, line=line, display_name=current, created_at=_utcnow(), deprecated_at=None,
+                         retires_at=None, supports_structured_outputs=True, supports_effort=False)
+
+
 async def _advance_line(line: str, *, api_key: str, followers: int) -> tuple[str, str] | None:
     """계열의 새 판이 지금 판보다 새면 시험하고, 통과하면 올린다 — (결과, 값) 또는 None.
 
     Probe the line's newer model and promote it on a pass; returns (outcome, value) or None.
     """
-    candidate = mc.latest_candidate(line, now=_utcnow())
+    candidate = mc.latest_candidate(line)
     current = _current(line)
     if candidate is None or candidate.id == current or mc.is_failed(candidate.id):
         return None
     current_entry = mc.entry_for(current)
     if current_entry is not None and current_entry.created_at >= candidate.created_at:
         return None
-    result = await probe_model(candidate, api_key=api_key)
+    result = await probe_model(candidate, api_key=api_key, control=_control_entry(current, line))
     if result.server_fallback_ok is not None:
         mc.set_server_fallback(candidate.id, result.server_fallback_ok)
     language = settings.default_locale
@@ -468,6 +527,11 @@ async def _advance_line(line: str, *, api_key: str, followers: int) -> tuple[str
     await notify_operator(get_text("notifier.models.probe_failed", language, line=line, model=escape(candidate.id),
                                    reason=escape(result.reason), current=escape(current)))
     return "failed", result.reason
+
+
+def _line_summary(line: str) -> str:
+    newest = mc.latest_candidate(line)
+    return f"{line}={_current(line)} newest={newest.id if newest else '-'}"
 
 
 async def refresh_catalog(*, api_key: str, session_factory) -> RefreshReport:
@@ -490,6 +554,7 @@ async def refresh_catalog(*, api_key: str, session_factory) -> RefreshReport:
             else:
                 failed[line] = value
         await _alert_pins(usage.pinned)
-        logger.info("claude model catalog — source=%s %s", mc.snapshot_source(),
-                    " ".join(f"{line}={_current(line)}" for line in sorted(usage.lines)) or "(no lines in use)")
+        # 첫 동기화 뒤 이 한 줄로 목록의 꼴(모델 수 · 계열별 최신)을 확인한다 / the first sync is checked from this line
+        logger.info("claude model catalog — source=%s models=%d %s", mc.snapshot_source(), len(mc.snapshot_entries()),
+                    " ".join(_line_summary(line) for line in sorted(usage.lines)) or "(no lines in use)")
         return RefreshReport(source=mc.snapshot_source(), promoted=promoted, failed=failed)

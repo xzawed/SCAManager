@@ -75,10 +75,10 @@ def recent_success_models(db: Session, *, since: datetime) -> list[tuple[str, da
     return [(str(model), at) for model, at in rows]
 
 
-def rejected_models(db: Session, *, since: datetime) -> set[str]:
-    """`since` 이후 마지막 행이 판 거부(`MODEL_REJECTED`)인 판 — 뒤에 성공했으면 빠진다.
+def failed_models(db: Session, *, since: datetime, error_types: frozenset[str]) -> set[str]:
+    """`since` 이후 마지막 행의 error_type 이 `error_types` 에 드는 판 — 뒤에 성공했으면 빠진다.
 
-    Models whose latest row since `since` is a model rejection; a later success clears it.
+    Models whose latest row since `since` has an error_type in `error_types`; a later success clears it.
     """
     last_ids = (
         select(func.max(ClaudeApiCall.id))  # pylint: disable=not-callable
@@ -87,7 +87,7 @@ def rejected_models(db: Session, *, since: datetime) -> set[str]:
     )
     return set(db.scalars(
         select(ClaudeApiCall.model)
-        .where(ClaudeApiCall.id.in_(last_ids), ClaudeApiCall.error_type == MODEL_REJECTED)
+        .where(ClaudeApiCall.id.in_(last_ids), ClaudeApiCall.error_type.in_(sorted(error_types)))
     ).all())
 
 

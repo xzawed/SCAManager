@@ -48,16 +48,20 @@ def test_recent_success_models_orders_by_last_success(db):
     assert got[0][1].replace(tzinfo=None) == datetime(2026, 11, 1, 3, 0)
 
 
-def test_rejected_models_uses_last_row_only(db):
+def test_failed_models_uses_last_row_only(db):
     # 거부 뒤 성공 → 거부 아님 / rejected then succeeded -> not rejected
     _row(db, "claude-sonnet-5-5", at=T0 + timedelta(hours=1), status="error", error_type="model_rejected")
     _row(db, "claude-sonnet-5-5", at=T0 + timedelta(hours=2))
     # 성공 뒤 거부 → 거부 / succeeded then rejected -> rejected
     _row(db, "claude-haiku-5-5", at=T0 + timedelta(hours=1))
     _row(db, "claude-haiku-5-5", at=T0 + timedelta(hours=2), status="error", error_type="model_rejected")
-    # 거부가 마지막이지만 다른 오류 / last row is a different error
+    # 다른 판정 난 표지도 센다 / other settled labels count too
+    _row(db, "claude-sonnet-6", at=T0 + timedelta(hours=1), status="error", error_type="probe_bad_output")
+    # 마지막 행이 판정 안 난 오류 / last row is an unsettled error
     _row(db, "claude-opus-5-5", at=T0 + timedelta(hours=1), status="error", error_type="RateLimitError")
     # 창 밖 거부 / rejection outside the window
     _row(db, "claude-fable-5-2", at=T0 - timedelta(days=31), status="error", error_type="model_rejected")
 
-    assert claude_api_cost_repo.rejected_models(db, since=SINCE) == {"claude-haiku-5-5"}
+    settled = frozenset({"model_rejected", "probe_bad_output"})
+    assert claude_api_cost_repo.failed_models(db, since=SINCE, error_types=settled) == {
+        "claude-haiku-5-5", "claude-sonnet-6"}

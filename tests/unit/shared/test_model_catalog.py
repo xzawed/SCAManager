@@ -10,19 +10,17 @@ import pytest
 
 from src.shared import model_catalog as mc
 
-_NOW = datetime(2026, 11, 21, tzinfo=timezone.utc)
-
 
 def _d(year: int, month: int, day: int) -> datetime:
     return datetime(year, month, day, tzinfo=timezone.utc)
 
 
-def _entry(model_id: str, line: str, created: datetime, *, deprecated: datetime | None = None,
-           retires: datetime | None = None, effort: bool = True) -> mc.ModelEntry:
+def _entry(model_id: str, line: str, created: datetime, *, lifecycle: str = "active",
+           retires: datetime | None = None, structured: bool = True, effort: bool = True) -> mc.ModelEntry:
     return mc.ModelEntry(
         id=model_id, line=line, display_name=model_id, created_at=created,
-        deprecated_at=deprecated, retires_at=retires,
-        supports_structured_outputs=True, supports_effort=effort,
+        deprecated_at=None, retires_at=retires,
+        supports_structured_outputs=structured, supports_effort=effort, lifecycle=lifecycle,
     )
 
 
@@ -62,18 +60,20 @@ def test_fallback_catalog_covers_every_known_line_and_default():
     assert set(mc.FALLBACK_DEFAULT_BY_LINE.values()) <= {e.id for e in mc.FALLBACK_CATALOG}
 
 
-def test_latest_candidate_skips_deprecated_and_retired():
+def test_latest_candidate_is_the_newest_active_model_we_can_call():
     mc.install_snapshot([
         _entry("claude-haiku-4-5", "haiku", _d(2025, 10, 1)),
         _entry("claude-haiku-5-5", "haiku", _d(2026, 10, 1)),
         # 가장 새것이지만 폐기 예정 / newest but deprecated
-        _entry("claude-haiku-6-preview", "haiku", _d(2026, 11, 1), deprecated=_d(2026, 11, 10)),
-        # 5-5 보다 새것이지만 폐기일이 지났다 / newer than 5-5 but already retired
-        _entry("claude-haiku-5-1", "haiku", _d(2026, 10, 15), retires=_d(2026, 11, 20)),
+        _entry("claude-haiku-6-preview", "haiku", _d(2026, 11, 1), lifecycle="deprecated"),
+        # 5-5 보다 새것이지만 내려갔다 / newer than 5-5 but retired
+        _entry("claude-haiku-5-1", "haiku", _d(2026, 10, 15), lifecycle="retired"),
+        # 5-5 보다 새것이지만 구조화 출력이 없다 — 우리 호출 꼴로 부를 수 없다 / newer but no structured outputs
+        _entry("claude-haiku-5-9", "haiku", _d(2026, 10, 20), structured=False),
         _entry("claude-sonnet-5-5", "sonnet", _d(2026, 12, 1)),
     ], source="api")
-    assert mc.latest_candidate("haiku", now=_NOW).id == "claude-haiku-5-5"
-    assert mc.latest_candidate("opus", now=_NOW) is None
+    assert mc.latest_candidate("haiku").id == "claude-haiku-5-5"
+    assert mc.latest_candidate("opus") is None
 
 
 def test_resolve_auto_prefers_verified_over_newest():
@@ -82,59 +82,81 @@ def test_resolve_auto_prefers_verified_over_newest():
         _entry("claude-haiku-5-5", "haiku", _d(2026, 10, 1)),
     ], source="api")
     mc.set_verified("haiku", "claude-haiku-4-5")
-    assert mc.resolve_model("auto:haiku", default_value="auto:sonnet", now=_NOW) == "claude-haiku-4-5"
+    assert mc.resolve_model("auto:haiku", default_value="auto:sonnet") == "claude-haiku-4-5"
 
 
 def test_resolve_without_api_or_history_uses_fallback_default():
     assert mc.snapshot_source() == "fallback"
-    assert mc.resolve_model("auto:sonnet", default_value="auto:haiku", now=_NOW) == "claude-sonnet-5"
-    assert mc.resolve_model("auto:haiku", default_value="auto:haiku", now=_NOW) == "claude-haiku-4-5"
+    assert mc.resolve_model("auto:sonnet", default_value="auto:haiku") == "claude-sonnet-5"
+    assert mc.resolve_model("auto:haiku", default_value="auto:haiku") == "claude-haiku-4-5"
 
 
 def test_resolve_default_uses_setting_value():
     mc.set_verified("haiku", "claude-haiku-5-5")
-    assert mc.resolve_model(None, default_value="auto:haiku", now=_NOW) == "claude-haiku-5-5"
-    assert mc.resolve_model("", default_value="claude-opus-5", now=_NOW) == "claude-opus-5"
+    assert mc.resolve_model(None, default_value="auto:haiku") == "claude-haiku-5-5"
+    assert mc.resolve_model("", default_value="claude-opus-5") == "claude-opus-5"
     with pytest.raises(ValueError):
-        mc.resolve_model(None, default_value="  ", now=_NOW)
+        mc.resolve_model(None, default_value="  ")
 
 
 def test_unreadable_value_resolves_to_the_default():
     # 저장값이 모르는 계열이면 기본값으로 — 기본값 자체가 그렇다면 설정 오류로 올린다.
     # An unknown line in a stored value falls back to the default; an unknown line in the default itself raises.
-    assert mc.resolve_model("auto:gpt", default_value="auto:haiku", now=_NOW) == "claude-haiku-4-5"
+    assert mc.resolve_model("auto:gpt", default_value="auto:haiku") == "claude-haiku-4-5"
     with pytest.raises(ValueError):
-        mc.resolve_model(None, default_value="auto:gpt", now=_NOW)
+        mc.resolve_model(None, default_value="auto:gpt")
 
 
 def test_pinned_listed_id_passes_through():
     mc.install_snapshot([_entry("claude-opus-5", "opus", _d(2026, 6, 1))], source="api")
-    assert mc.resolve_model("claude-opus-5", default_value="auto:haiku", now=_NOW) == "claude-opus-5"
+    assert mc.resolve_model("claude-opus-5", default_value="auto:haiku") == "claude-opus-5"
 
 
 def test_pinned_retired_moves_to_line_latest():
     mc.install_snapshot([
-        _entry("claude-sonnet-4-5", "sonnet", _d(2025, 9, 29), deprecated=_d(2026, 8, 1), retires=_d(2026, 11, 20)),
+        _entry("claude-sonnet-4-5", "sonnet", _d(2025, 9, 29), lifecycle="retired"),
         _entry("claude-sonnet-5-5", "sonnet", _d(2026, 10, 1)),
     ], source="api")
     mc.set_verified("sonnet", "claude-sonnet-5-5")
-    assert mc.resolve_model("claude-sonnet-4-5", default_value="auto:haiku", now=_NOW) == "claude-sonnet-5-5"
-    # 폐기일 전이면 고정 그대로 / before the retirement date the pin stays
-    assert mc.resolve_model("claude-sonnet-4-5", default_value="auto:haiku", now=_d(2026, 11, 1)) == "claude-sonnet-4-5"
+    assert mc.resolve_model("claude-sonnet-4-5", default_value="auto:haiku") == "claude-sonnet-5-5"
 
 
-def test_pinned_id_missing_from_listing_moves_to_line_latest():
+def test_deprecated_pin_stays_even_past_its_retirement_date():
+    # SDK 계약: 폐기 예정 판의 지난 retires_at 은 «늦어진 은퇴» 이지 은퇴가 아니다 — 판정은 lifecycle 로만.
+    # SDK contract: a past retires_at on a deprecated model means overdue, not retired; lifecycle decides.
+    mc.install_snapshot([
+        _entry("claude-sonnet-4-5", "sonnet", _d(2025, 9, 29), lifecycle="deprecated", retires=_d(2026, 11, 1)),
+        _entry("claude-sonnet-5-5", "sonnet", _d(2026, 10, 1)),
+    ], source="api")
+    mc.set_verified("sonnet", "claude-sonnet-5-5")
+    assert mc.resolve_model("claude-sonnet-4-5", default_value="auto:haiku") == "claude-sonnet-4-5"
+
+
+def test_pinned_id_missing_from_listing_is_kept():
+    # 목록에 없다 ≠ 내려갔다(내려간 판도 기록으로 목록에 남는다) — 별칭 불일치 · 조직 가시성일 수 있어 그대로 부른다.
+    # Absent is not retired (retired models stay listed); it may be an alias mismatch or visibility, so keep it.
     mc.install_snapshot([_entry("claude-sonnet-5-5", "sonnet", _d(2026, 10, 1))], source="api")
     mc.set_verified("sonnet", "claude-sonnet-5-5")
-    assert mc.resolve_model("claude-sonnet-4-6", default_value="auto:haiku", now=_NOW) == "claude-sonnet-5-5"
-    # 계열을 모르는 id 는 그대로 둔다 / an id of no known line is left as is
-    assert mc.resolve_model("gpt-4o", default_value="auto:haiku", now=_NOW) == "gpt-4o"
+    assert mc.resolve_model("claude-sonnet-4-6", default_value="auto:haiku") == "claude-sonnet-4-6"
+    assert mc.resolve_model("gpt-4o", default_value="auto:haiku") == "gpt-4o"
 
 
-def test_pinned_id_stays_when_listing_is_only_the_fallback():
+def test_dated_listing_ids_match_alias_pins():
+    # 목록 API 는 옛 판을 날짜 붙은 전체 id 로 준다 — 저장값 · 기록은 별칭이다(마이그레이션 0050).
+    # The listing gives older models their dated full id; stored values and history use the alias.
+    mc.install_snapshot([
+        _entry("claude-haiku-4-5-20251001", "haiku", _d(2025, 10, 1)),
+        _entry("claude-haiku-5-5", "haiku", _d(2026, 10, 1)),
+        _entry("claude-sonnet-4-5-20250929", "sonnet", _d(2025, 9, 29), lifecycle="retired"),
+        _entry("claude-sonnet-5-5", "sonnet", _d(2026, 10, 1)),
+    ], source="api")
+    mc.set_verified("haiku", "claude-haiku-5-5")
     mc.set_verified("sonnet", "claude-sonnet-5-5")
-    assert mc.snapshot_source() == "fallback"
-    assert mc.resolve_model("claude-sonnet-4-6", default_value="auto:haiku", now=_NOW) == "claude-sonnet-4-6"
+    assert mc.entry_for("claude-haiku-4-5").id == "claude-haiku-4-5-20251001"
+    assert mc.line_of("claude-haiku-4-5") == "haiku"
+    assert mc.resolve_model("claude-haiku-4-5", default_value="auto:sonnet") == "claude-haiku-4-5"
+    # 별칭으로 찾은 판이 내려갔으면 그 계열의 검증판으로 / an alias whose listed model is retired moves on
+    assert mc.resolve_model("claude-sonnet-4-5", default_value="auto:haiku") == "claude-sonnet-5-5"
 
 
 def test_failed_model_is_never_resolved():
@@ -144,7 +166,7 @@ def test_failed_model_is_never_resolved():
     assert mc.previous_verified("haiku") == "claude-haiku-4-5"
     mc.mark_failed("claude-haiku-5-5")
     assert mc.is_failed("claude-haiku-5-5")
-    assert mc.resolve_model("auto:haiku", default_value="auto:sonnet", now=_NOW) == "claude-haiku-4-5"
+    assert mc.resolve_model("auto:haiku", default_value="auto:sonnet") == "claude-haiku-4-5"
 
 
 def test_server_fallback_support_is_recorded_per_model():
@@ -158,4 +180,4 @@ def test_server_fallback_support_is_recorded_per_model():
 def test_failed_without_previous_uses_fallback_default():
     mc.set_verified("haiku", "claude-haiku-5-5")
     mc.mark_failed("claude-haiku-5-5")
-    assert mc.resolve_model("auto:haiku", default_value="auto:sonnet", now=_NOW) == "claude-haiku-4-5"
+    assert mc.resolve_model("auto:haiku", default_value="auto:sonnet") == "claude-haiku-4-5"
