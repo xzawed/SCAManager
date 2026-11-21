@@ -324,9 +324,11 @@ def _error_type(reason: str) -> str:
     return f"probe_{reason}"
 
 
-def _log_probe(model_id: str, response, reason: str, started: float) -> None:
+async def _log_probe(model_id: str, response, reason: str, started: float) -> None:
     usage = getattr(response, "usage", None)
-    log_claude_api_call(
+    # 비용 행 INSERT 는 동기 DB 다 — 루프 밖에서(#1701). / The cost-row INSERT is sync DB work: off the loop.
+    await run_blocking(
+        log_claude_api_call,
         model=model_id,
         duration_ms=(time.monotonic() - started) * 1000.0,
         input_tokens=_tokens(usage, "input_tokens"),
@@ -367,7 +369,7 @@ async def probe_model(entry: mc.ModelEntry, *, api_key: str) -> ProbeResult:
         reason = "not_found"
     except anthropic.APIError as exc:
         reason = f"transient:{type(exc).__name__}"
-    _log_probe(entry.id, response, reason, started)
+    await _log_probe(entry.id, response, reason, started)
     return ProbeResult(ok=reason == "ok", reason=reason, server_fallback_ok=server_fallback_ok)
 
 

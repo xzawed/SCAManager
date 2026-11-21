@@ -6,6 +6,7 @@ Fakes sit only at the outer boundaries (Anthropic client, Telegram send, cost-ro
 are built from the SDK's real types.
 """
 import asyncio
+import threading
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import ANY
@@ -366,6 +367,16 @@ async def test_probe_logs_one_cost_row(world):
         "cache_read_tokens": 0, "cache_creation_tokens": 0, "status": "success", "error_type": "",
         "repo_id": None, "user_id": None,
     }]
+
+
+async def test_probe_cost_row_is_written_off_the_event_loop(world, monkeypatch):
+    # 비용 행 INSERT 는 동기 DB 다 — 루프 위에서 쓰면 그동안 프로세스의 모든 요청이 선다(#1701).
+    # The cost-row INSERT is sync DB work; on the loop it would stall every request meanwhile (#1701).
+    writer_threads = []
+    monkeypatch.setattr(svc, "log_claude_api_call", lambda **_row: writer_threads.append(threading.get_ident()))
+    _use(world, _FakeClient(plain=[_message()]))
+    await svc.probe_model(_entry("claude-haiku-5-5", "haiku"), api_key="k")
+    assert len(writer_threads) == 1 and writer_threads[0] != threading.get_ident()
 
 
 async def test_rejected_probe_is_recorded_as_model_rejected(world):
