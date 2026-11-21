@@ -9,6 +9,7 @@
 3. **기동** — Start Command 는 **비운다** → 이미지 `CMD`(`/bin/sh -c "exec uvicorn … --port ${PORT:-8000} --proxy-headers"`)가 돈다 = 테스트가 보는 명령. 값을 넣으면 exec 형이라 셸로 감싸야 `$PORT` 가 확장된다. import 시점에 `src/config.py::settings = build_settings()` 가 돌아 설정 검증 실패면 기동이 막힌다.
 4. **lifespan** — `_validate_startup_config()` → `alembic upgrade head` 재실행([db.md](db.md) §적용) → 스케줄러·루프 지연 프로브 기동(`src/main.py::async def lifespan`). 루프가 막히면 30초 창마다 `event loop lag` WARNING 한 줄.
 5. **헬스체크** — `GET /health` 60초. 재시작 On Failure 최대 10회(플랫폼 기본값이라 읽기에 안 나온다).
+6. **교체** — 앞 컨테이너는 SIGTERM 뒤 진행 중인 분석이 끝나기를 기다린다. Draining time **120초** — 서비스 변수 `RAILWAY_DEPLOYMENT_DRAINING_SECONDS`(설정 읽기에는 안 나온다). 실측 분석 한 건의 처음부터 끝(파일 수집 → 정적 deadline `src/worker/pipeline.py::PIPELINE_ANALYSIS_TIMEOUT =` ‖ Claude 호출 `src/analyzer/io/ai_review.py::timeout=90.0`)이 들어가는 길이다. 비우면 기본값(문서 0초 · 실측 ≈10초)이라 분석이 끊긴다. 그동안 앞 컨테이너의 스케줄러도 돈다.
 
 - replica 는 `us-east4-eqdc4a` 1개 — 인앱 스케줄러(`src/scheduler.py::JOBS = (`)가 단일 인스턴스 전제라 2 이상이면 주간 리포트가 중복 발송된다. 올리려면 먼저 분산 잠금을 넣는다.
 - `railway.toml`·`railway.json` 을 다시 만들지 않는다 — 설정 주인이 둘이 된다. 가드 `tests/unit/scripts/test_no_railway_config_as_code.py`.
