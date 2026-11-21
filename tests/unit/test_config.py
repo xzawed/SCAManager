@@ -710,6 +710,21 @@ def test_blank_model_env_falls_back_to_default(monkeypatch):
     assert s.claude_insight_model == "claude-haiku-4-5"
 
 
+def test_model_setting_rejects_unknown_auto_line(monkeypatch):
+    """모르는 계열(`auto:gpt`)은 기동에서 멈춘다 — 조용히 기본 판으로 떨어지지 않게. 아는 계열은 대소문자와 무관하다.
+
+    An unknown line stops startup rather than silently falling back; known lines are accepted in any case.
+    """
+    import src.config as cfg  # noqa: PLC0415  # 파일 관용구 — dual-import 가드 준수
+    monkeypatch.setenv("CLAUDE_REVIEW_MODEL", "auto:gpt")
+    with pytest.raises(ValueError, match="unknown model line"):
+        cfg.Settings()
+    monkeypatch.setenv("CLAUDE_REVIEW_MODEL", "auto:Haiku")
+    monkeypatch.setenv("CLAUDE_INSIGHT_MODEL", "claude-haiku-4-5")
+    s = cfg.Settings()
+    assert (s.claude_review_model, s.claude_insight_model) == ("auto:Haiku", "claude-haiku-4-5")
+
+
 def test_blank_effort_env_falls_back_to_default(monkeypatch):
     """`CLAUDE_CALL_EFFORT=` (값 없음)도 기본값을 덮지 않는다 — 빈 값이면 Literal 검증이 기동을 멈춘다.
 

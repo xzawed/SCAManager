@@ -35,8 +35,8 @@
 |`INTERNAL_CRON_API_KEY`||cron · 503/401|
 |`SAAS_ADMIN_EMAILS`||admin CSV · 503/403|
 |`ANTHROPIC_API_KEY`|
-|`CLAUDE_REVIEW_MODEL`|claude-sonnet-5|
-|`CLAUDE_INSIGHT_MODEL`|claude-haiku-4-5|
+|`CLAUDE_REVIEW_MODEL`|claude-sonnet-5|판 id · `auto:<계열>`=검증된 최신(모르는 계열=기동 실패)|
+|`CLAUDE_INSIGHT_MODEL`|claude-haiku-4-5|같은 꼴|
 |`CLAUDE_CALL_EFFORT`|medium|low·medium·high · 받는 판만 · `CLAUDE_EFFORT` 는 Claude Code 몫|
 |`CLAUDE_REVIEW_MAX_TOKENS`|8192|초과=400→api_error|
 |`DISABLE_PROMPT_CACHE`|false|

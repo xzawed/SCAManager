@@ -9,6 +9,7 @@ The state is one immutable object (`_STATE`): readers take a single reference; w
 """
 from __future__ import annotations
 
+import logging
 import re
 import threading
 from collections.abc import Mapping, Sequence
@@ -16,6 +17,8 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from types import MappingProxyType
 from typing import Literal
+
+logger = logging.getLogger(__name__)
 
 KNOWN_LINES = frozenset({"haiku", "sonnet", "opus", "fable"})
 
@@ -284,9 +287,17 @@ def resolve_model(value: str | None, *, default_value: str, now: datetime | None
     """저장값을 부를 판 id 로 바꾼다 — 빈 값은 default_value 로, 내려간 고정 판은 그 계열의 검증판으로.
 
     Turn a stored value into a model id: blank uses default_value; a retired pin moves to its line's verified model.
+    읽을 수 없는 저장값(모르는 계열)은 경고 한 줄 뒤 기본값으로 — 호출을 깨지 않는다. default_value 가 그렇다면 설정
+    오류라 ValueError 를 올린다(설정은 기동에서 검증된다).
+    An unreadable stored value (unknown line) logs a warning and uses the default instead of breaking the call;
+    an unreadable default_value is a configuration error and raises (settings are validated at startup).
     """
     state = _STATE
-    choice = parse_model_value(value)
+    try:
+        choice = parse_model_value(value)
+    except ValueError:
+        logger.warning("unreadable stored model value %r — using the default", (value or "")[:40])
+        choice = ModelChoice("default")
     if choice.kind == "default":
         choice = parse_model_value(default_value)
         if choice.kind == "default":

@@ -22,10 +22,21 @@ def test_settings_claude_review_model_unchanged():
 
 
 @pytest.mark.asyncio
-async def test_insight_narrative_uses_insight_model_not_review_model():
-    """insight_narrative → claude_insight_model 호출 (review_model 사용 X)."""
+async def test_insight_narrative_uses_insight_model_not_review_model(monkeypatch):
+    """insight_narrative → claude_insight_model 을 해석한 판으로 호출 (review_model 사용 X).
+
+    두 설정을 서로 다른 계열(auto:haiku · auto:sonnet)로 두고 검증판을 심는다 — 해석을 건너뛰거나 리뷰 값을 쓰면 어긋난다.
+    The two settings follow different lines with seeded verified models; skipping resolution or using the review value
+    would both diverge from the literal expectation.
+    """
     from src.services import dashboard_service
     from src.config import settings
+    from src.shared import model_catalog as mc
+
+    monkeypatch.setattr(settings, "claude_insight_model", "auto:haiku")
+    monkeypatch.setattr(settings, "claude_review_model", "auto:sonnet")
+    mc.set_verified("haiku", "claude-haiku-5-5")
+    mc.set_verified("sonnet", "claude-sonnet-5-5")
 
     # 모든 의존성 mock — 실제 API 호출 없이 model 인자 전달만 검증
     fake_kpi = {"analysis_count": {"value": 5}}
@@ -43,9 +54,8 @@ async def test_insight_narrative_uses_insight_model_not_review_model():
             db=MagicMock(), days=7, api_key="sk-ant-test",
         )
 
-    # _call_insight_claude_api 가 정확히 settings.claude_insight_model 로 호출됨
+    # _call_insight_claude_api 가 인사이트 설정을 해석한 판으로 호출됨 / called with the resolved insight model
     mock_call.assert_awaited_once()
     call_args = mock_call.call_args
     # 두 번째 positional 인자 = model
-    assert call_args.args[1] == settings.claude_insight_model
-    assert "haiku" in call_args.args[1].lower()
+    assert call_args.args[1] == "claude-haiku-5-5"

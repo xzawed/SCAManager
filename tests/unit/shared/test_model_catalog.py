@@ -99,6 +99,14 @@ def test_resolve_default_uses_setting_value():
         mc.resolve_model(None, default_value="  ", now=_NOW)
 
 
+def test_unreadable_value_resolves_to_the_default():
+    # 저장값이 모르는 계열이면 기본값으로 — 기본값 자체가 그렇다면 설정 오류로 올린다.
+    # An unknown line in a stored value falls back to the default; an unknown line in the default itself raises.
+    assert mc.resolve_model("auto:gpt", default_value="auto:haiku", now=_NOW) == "claude-haiku-4-5"
+    with pytest.raises(ValueError):
+        mc.resolve_model(None, default_value="auto:gpt", now=_NOW)
+
+
 def test_pinned_listed_id_passes_through():
     mc.install_snapshot([_entry("claude-opus-5", "opus", _d(2026, 6, 1))], source="api")
     assert mc.resolve_model("claude-opus-5", default_value="auto:haiku", now=_NOW) == "claude-opus-5"

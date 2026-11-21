@@ -6,6 +6,7 @@ from urllib.parse import urlparse, parse_qs, unquote_plus
 from pydantic_settings import BaseSettings
 from pydantic import Field, ValidationError, field_validator, model_validator
 from src.constants import MERGE_VERIFIER_BAND_DEFAULT
+from src.shared.model_catalog import parse_model_value
 from src.logging_config import _redact
 
 logger = logging.getLogger(__name__)
@@ -300,6 +301,17 @@ class Settings(BaseSettings):
             # 기본값 리터럴을 여기 복제하지 않는다 — 필드 정의에서 가져와 단일 출처 유지.
             # Read the default from the field definition instead of duplicating the literal.
             return cls.model_fields[info.field_name].default
+        return v
+
+    @field_validator("claude_review_model", "claude_insight_model")
+    @classmethod
+    def _model_value_has_a_known_shape(cls, v: str) -> str:
+        """판 id 또는 `auto:<haiku|sonnet|opus|fable>` 만 — 모르는 계열은 기동에서 멈춘다(조용히 기본 판으로 떨어지지 않게).
+
+        Only a model id or `auto:<line>` with a known line; an unknown line stops startup instead of silently
+        falling back.
+        """
+        parse_model_value(v)
         return v
 
     @field_validator("session_secret")
