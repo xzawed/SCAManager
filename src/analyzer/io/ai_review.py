@@ -34,6 +34,7 @@ from src.shared.claude_metrics import (
     log_claude_api_call, new_async_anthropic,
 )
 from src.shared.feature_kill_switch import is_disabled
+from src.shared.model_catalog import resolve_model
 
 logger = logging.getLogger(__name__)
 
@@ -194,7 +195,9 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
         api_key=api_key, timeout=90.0, max_retries=1,
         caller="ai_review", retry_after_cap=ANTHROPIC_RETRY_AFTER_CAP_PIPELINE_SECONDS,
     )
-    model = model or settings.claude_review_model
+    # 저장값(auto:<계열> · 판 id · 빈 값)을 부를 판으로 — 검증된 최신 · 내려간 고정 판 옮기기 · 기본값 (#1905).
+    # Resolve the stored value (line, pinned id or blank) to a callable model (#1905).
+    model = resolve_model(model, default_value=settings.claude_review_model)
     # 출력 토큰 상한 — settings 경유 configurable.
     # 구값 1500 은 한국어 리뷰 JSON(~2660 토큰)을 잘라 stop_reason=max_tokens → parse_error 로
     # 출시 이래 ~80% 실패 (운영 DB + 실제 API 재현, 2026-06-18). default 8192.

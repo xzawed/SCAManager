@@ -27,6 +27,7 @@ from src.services.cron_service import (
 )
 from src.services.db_heartbeat_service import run_db_heartbeat
 from src.services.merge_retry_service import process_pending_retries
+from src.services.model_catalog_service import refresh_catalog
 from src.services.security_scan_service import scan_all_repos
 from src.shared.off_loop import run_blocking, session_off_loop
 
@@ -182,3 +183,21 @@ async def trigger_retention_sweep() -> dict:
         counts = await run_blocking(run_retention_sweep, db)
     logger.info("retention_sweep: counts=%s", counts)
     return {"status": "ok", "counts": counts}
+
+
+@router.post("/sync-claude-models", status_code=200)
+async def trigger_sync_claude_models() -> dict:
+    """Claude 모델 목록 동기화 · 쓰는 계열의 새 판 시험 1회 — 스케줄러 `sync-claude-models` 의 HTTP 쌍둥이(#1905).
+
+    Run the Claude model listing sync and probes once; the HTTP twin of the scheduler job (#1905).
+    🔴 새 판 시험은 유료 호출이다(작은 JSON 요청 · 판마다 한 번). / Probes are small paid calls, once per new model.
+
+    Returns:
+        {"status": "ok", "source": "api", "promoted": {...}, "failed": {...}} · 키가 없으면 {"status": "skipped", ...}
+    """
+    if not settings.anthropic_api_key:
+        logger.info("sync_claude_models: skipped — ANTHROPIC_API_KEY is not set")
+        return {"status": "skipped", "reason": "anthropic_api_key_missing"}
+    report = await refresh_catalog(api_key=settings.anthropic_api_key, session_factory=SessionLocal)
+    logger.info("sync_claude_models: source=%s promoted=%s failed=%s", report.source, report.promoted, report.failed)
+    return {"status": "ok", "source": report.source, "promoted": report.promoted, "failed": report.failed}

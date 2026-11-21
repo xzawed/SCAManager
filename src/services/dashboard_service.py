@@ -48,6 +48,7 @@ from src.shared.claude_metrics import (
     extract_anthropic_usage, log_claude_api_call, new_async_anthropic, release_session_before_claude,
 )
 from src.shared.feature_kill_switch import is_disabled
+from src.shared.model_catalog import resolve_model
 from src import constants
 from src.services import insight_cost_guard
 from src.repositories import insight_narrative_cache_repo
@@ -1172,7 +1173,7 @@ async def insight_narrative(  # pylint: disable=too-many-locals,too-many-return-
         # Phase 2 d-🅓 (사이클 74) — Insight 영역 한정 Haiku (67% 비용 절감, AI 리뷰 Sonnet 보존)
         # Phase 2 d-🅓 (Cycle 74) — Insight-only Haiku (67% cheaper, AI review keeps Sonnet)
         text = await _call_insight_claude_api(
-            client, settings.claude_insight_model, prepared, user_id=user_id,
+            client, resolve_model(None, default_value=settings.claude_insight_model), prepared, user_id=user_id,
         )
     finally:
         # 취소(CancelledError)에도 AsyncAnthropic httpx 커넥션 풀을 닫는다 — FD 누수 차단 (WBS P1 · #1697).

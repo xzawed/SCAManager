@@ -23,14 +23,14 @@ src/
 ├── verifier/  # 2nd-LLM(OpenAI)
 ├── github_client/  # PyGithub 래퍼
 ├── railway_client/  # 빌드 실패 웹훅
-├── services/  # dashboard·merge_retry·security_scan·saas·operations
+├── services/  # dashboard·merge_retry·security_scan·saas·operations·model_catalog
 ├── repositories/  # models/ 와 파일명 1:1
 ├── models/
 ├── config_manager/  # 리포 설정 read/upsert
 ├── api/
 ├── auth/  # 세션 가드·GitHub OAuth
 ├── ui/
-├── shared/  # http_client·log_safety·ssrf·secure_compare·rls_context·loop_lag·off_loop
+├── shared/  # http_client·log_safety·ssrf·secure_compare·rls_context·loop_lag·off_loop·model_catalog
 ├── middleware/  # rls_session·rate_limiter·locale
 ├── i18n/  # translations/(en·ko·ja)
 ├── templates/

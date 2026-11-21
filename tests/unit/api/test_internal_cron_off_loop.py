@@ -61,7 +61,11 @@ async def _post(path: str) -> httpx.Response:
 def test_every_session_endpoint_is_measured():
     """라우터의 엔드포인트가 늘면 이 시험도 그것을 재야 한다 — 목록 밖 엔드포인트가 조용히 빠지지 않게."""
     paths = {route.path for route in internal_cron.router.routes}
-    assert paths - {"/api/internal/cron/db-heartbeat"} == set(_ENDPOINTS), paths
+    # db-heartbeat · sync-claude-models 는 세션을 직접 열지 않는다 — 모델 동기화는 refresh_catalog 가 워커 스레드에서
+    # 연다(tests/unit/services/test_model_catalog_service.py::test_refresh_reads_the_database_off_the_event_loop).
+    # Neither opens a session itself; the model sync opens its sessions in a worker thread (measured there).
+    unmeasured = {"/api/internal/cron/db-heartbeat", "/api/internal/cron/sync-claude-models"}
+    assert paths - unmeasured == set(_ENDPOINTS), paths
 
 
 @pytest.mark.parametrize("path", sorted(_ENDPOINTS))

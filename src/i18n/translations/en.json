@@ -715,6 +715,14 @@
       "orphan_sweep_title": "🔴 <b>Lost analyses detected</b> — {count} vanished before completion (SIGTERM/OOM/crash).",
       "orphan_sweep_hint": "Those commits were not re-analyzed. Re-push or manually re-trigger if needed."
     },
+    "models": {
+      "promoted": "🧭 <b>Claude model switched</b> — {line}: <code>{old}</code> → <code>{new}</code> (repos following this line: {count})",
+      "probe_failed": "⚠️ <b>A new Claude model failed its test call</b> — {line}: <code>{model}</code> ({reason}). Still using <code>{current}</code>.",
+      "pinned_retiring": "⚠️ <b>A pinned Claude model is being retired</b> — <code>{model}</code>, retires {date}. Pick another model or «latest {line}» in the settings.",
+      "pinned_missing": "⚠️ <b>A pinned Claude model is not in the model list</b> — <code>{model}</code>. Still calling it; if calls fail, pick another model in the settings.",
+      "pinned_retired": "⚠️ <b>A pinned Claude model has been retired</b> — <code>{model}</code>. Calling instead: <code>{moved}</code>",
+      "sync_failed": "⚠️ <b>Could not read the Claude model list</b> — {count} times in a row. Still using the last list ({source})."
+    },
     "no_issues": "No issues",
     "score_label": "Score: {score}/100",
     "grade_label": "Grade {grade}",
