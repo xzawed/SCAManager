@@ -6,7 +6,7 @@ from src.config import settings
 from src.middleware.rate_limiter import limiter, RATE_LIMIT_API, RATE_LIMIT_HEAVY
 from src.api.auth import require_api_key
 from src.api.deps import get_repo_or_404
-from src.shared.model_catalog import UI_EFFORT_LEVELS
+from src.shared.model_catalog import validate_effort_value
 from src.shared.ssrf import is_safe_webhook_url
 from src.constants import (
     GATE_DEFAULT_APPROVE_THRESHOLD,
@@ -77,12 +77,8 @@ class RepoConfigUpdate(BaseModel):
 
         Only the three levels the screen offers; blank means the global setting (xhigh and max are not taken).
         """
-        if v is None or not v.strip():
-            return None
-        level = v.strip().lower()
-        if level not in UI_EFFORT_LEVELS:
-            raise ValueError(f"review_effort must be one of {sorted(UI_EFFORT_LEVELS)} or blank")
-        return level
+        # 저장 관문과 같은 검사 하나 — 422 로 일찍 알린다 / the same check as the store, reported early as a 422
+        return validate_effort_value(v)
 
     @field_validator("notification_language")
     @classmethod

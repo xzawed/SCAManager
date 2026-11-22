@@ -20,8 +20,8 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from src.i18n.filters import register_i18n_filters
 from src.i18n.loader import get_text
-from src.constants import CLAUDE_MODELS
-from src.ui.routes.settings import renderable_secrets
+from src.config import settings as app_settings
+from src.ui.routes.settings import _model_selector, renderable_secrets
 
 
 def _render(template_name: str, **context) -> str:
@@ -348,7 +348,9 @@ def _settings_ctx(**overrides) -> dict:
         # 🔴 아래 둘은 위 가드가 실측으로 찾아낸 **기존 드리프트**다 — 템플릿이 아직
         #    `{% if %}` 로만 써서 Undefined 가 falsy 로 통과하고 있었을 뿐이다.
         "railway_webhook_unclaimed": False,
-        "claude_models": CLAUDE_MODELS,
+        # 🔴 선택 상자도 **프로덕션 함수로 파생**한다(위 secrets 와 같은 까닭) / derived like `secrets`
+        "model_selector": _model_selector(None),
+        "default_review_model": app_settings.claude_review_model,
         "railway_api_token_set": False,
         "webhook_stale": False,
         "onboarding_needed": False,
@@ -603,17 +605,9 @@ class _CfgWithModel(_Cfg):
         super().__init__(**kwargs)
 
 
-# claude_models — 모델 선택 카드 <option> 렌더용 (settings.html:1082 for 루프)
-# claude_models — feeds the model select card <option> loop (settings.html:1082)
-_CLAUDE_MODELS = [
-    {"id": "claude-sonnet-4-6", "label": "Sonnet 4.6"},
-    {"id": "claude-opus-4-1", "label": "Opus 4.1"},
-]
-
-
 def _settings_ctx_146(**overrides) -> dict:
-    """사이클 146/147 키 렌더에 필요한 model 카드 + claude_models 포함 context."""
-    base = _settings_ctx(config=_CfgWithModel(), claude_models=_CLAUDE_MODELS)
+    """사이클 146/147 키 렌더에 필요한 model 카드 포함 context(선택 상자는 `_settings_ctx` 가 파생)."""
+    base = _settings_ctx(config=_CfgWithModel())
     base.update(overrides)
     return base
 

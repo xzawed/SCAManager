@@ -444,8 +444,20 @@
     "hide_value": "値を隠す",
     "show_value": "値を表示",
     "save_toast_ok": "✅ 設定が保存されました。",
-    "save_toast_err": "❌ 保存に失敗しました。承認基準点が却下基準点より低いです。",
-    "model_hint": "AIレビューモデル。Haiku 高速・低コスト($1/1M)・Sonnet バランス($2/1M)・Opus 高品質($5/1M)・Fable 高難度推論($10/1M)。空欄でグローバルデフォルト(claude-sonnet-5)。※ 価格はAnthropic公式基準。"
+    "save_toast_err": "❌ 保存に失敗しました。基準点(承認 ≥ 却下・マージ ≥ 却下)とレビューモデル・effort の値を確認してください。",
+    "model_hint": "AIレビューモデル。「最新 …」を選ぶと、その系列の新しいモデルが試験呼び出しに通ったとき自動で切り替わります。金額は100万トークンあたりの入力 / 出力(USD、Anthropic公式料金)で、(推定)はモデル別の料金がまだなく同じ系列の最新料金で計算した値です。空欄でグローバルデフォルト({model})。",
+    "model_group_auto": "最新モデルに自動追従",
+    "model_group_pinned": "モデルを固定",
+    "model_auto_option": "最新 {line} — 現在 {name}",
+    "model_badge_retiring": "廃止予定",
+    "model_badge_unverified": "未検証",
+    "model_badge_failed": "試験失敗",
+    "model_estimated": "(推定)",
+    "effort_label": "レビュー effort",
+    "effort_low": "低 — 速くて安い",
+    "effort_medium": "中",
+    "effort_high": "高 — 深くレビュー",
+    "effort_hint": "モデルが選んだ段階を受け付けない場合、受け付ける最も近い下の段階で送ります。Haiku 4.5 は effort を受け付けません。"
   },
   "settings_page": {
     "title_prefix": "設定",

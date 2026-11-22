@@ -62,14 +62,42 @@ def test_review_effort_round_trips_through_the_store(db):
     assert get_repo_config(db, "o/effort").review_effort == "low"
 
 
-def test_the_settings_form_keeps_a_stored_review_effort(db):
-    # 화면에 칸이 생기기 전(③b)까지 폼은 이 값을 보내지 않는다 — 저장할 때마다 지워지면 안 된다
-    # Until the screen has the field (③b) the form never posts it; a save must not wipe it.
+def test_the_settings_form_posts_the_review_effort(db):
+    # 설정 화면의 effort 칸(③b) — 고른 단계를 보내고, 빈 값은 운영 변수로 되돌린다
+    # The settings screen's effort field posts the chosen level; blank goes back to the global setting.
     from src.ui.routes.settings import build_repo_config_from_form  # pylint: disable=import-outside-toplevel
 
     upsert_repo_config(db, RepoConfigData(repo_full_name="o/effort", review_effort="medium"))
-    rebuilt = build_repo_config_from_form(db, "o/effort", {"approve_mode": "disabled"})
-    assert rebuilt.review_effort == "medium"
+    assert build_repo_config_from_form(db, "o/effort", {"review_effort": "low"}).review_effort == "low"
+    assert build_repo_config_from_form(db, "o/effort", {"review_effort": ""}).review_effort is None
+
+
+# witness-corpus: 저장 관문이 받지 않는 effort — 모르는 낱말 · 띄어 쓴 단계 · 번역어 · 숫자 단계
+_NOT_AN_EFFORT = ["extreme", "lo w", "중간", "2"]
+
+
+@pytest.mark.parametrize("sent", [*_NOT_AN_EFFORT, "max", "xhigh"])
+def test_the_store_refuses_other_effort_values(db, sent):
+    # 폼 · API 가 함께 지나는 관문 — 폼이 고르지 않은 값을 보내도 저장되지 않는다
+    # The gate both the form and the API pass: a value the screen does not offer is never stored.
+    with pytest.raises(ValueError):
+        upsert_repo_config(db, RepoConfigData(repo_full_name="o/e", review_effort=sent))
+    assert get_repo_config(db, "o/e").review_effort is None
+
+
+def test_the_store_folds_case_and_spaces(db):
+    upsert_repo_config(db, RepoConfigData(repo_full_name="o/e", review_effort=" HIGH "))
+    assert get_repo_config(db, "o/e").review_effort == "high"
+
+
+def test_an_unchanged_stored_effort_is_not_revalidated(db):
+    # 검사가 생기기 전에 저장된 값 — 다른 설정을 저장해도 그대로 둔다(리뷰 모델과 같은 원칙)
+    # A value stored before the check existed stays when another setting is saved.
+    db.add(RepoConfig(repo_full_name="o/legacy", review_effort="xhigh"))
+    db.commit()
+    upsert_repo_config(db, RepoConfigData(repo_full_name="o/legacy", review_effort="xhigh", auto_merge=True))
+    stored = get_repo_config(db, "o/legacy")
+    assert (stored.review_effort, stored.auto_merge) == ("xhigh", True)
 
 
 _SHA = f"{1:040x}"

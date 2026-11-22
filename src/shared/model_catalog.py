@@ -35,8 +35,8 @@ _LINE_FROM_ID = re.compile(r"^claude-(" + "|".join(sorted(KNOWN_LINES)) + r")-")
 # The alias of a dated full id is the id without the date suffix; stored values and history use aliases.
 _DATED_SUFFIX = re.compile(r"-\d{8}$")
 
-# 목록 · 기록 · 검증이 모두 없을 때 계열마다 부르는 판 — 지금 선택지(`src/constants.py` CLAUDE_MODELS)의 판이다.
-# Per-line model used only when listing, history and verification are all absent: today's selectable models.
+# 목록 · 기록 · 검증이 모두 없을 때 계열마다 부르는 판 — 기본 카탈로그의 계열 대표 판(`src/constants.py` CLAUDE_MODELS).
+# Per-line model used only when listing, history and verification are all absent: the fallback catalog's one per line.
 FALLBACK_DEFAULT_BY_LINE: Mapping[str, str] = MappingProxyType({
     "haiku": "claude-haiku-4-5",
     "sonnet": "claude-sonnet-5",
@@ -144,6 +144,9 @@ def _initial_state() -> _CatalogState:
 
 
 _FALLBACK_IDS = frozenset(entry.id for entry in FALLBACK_CATALOG)
+_FALLBACK_BY_ID: Mapping[str, ModelEntry] = MappingProxyType({entry.id: entry for entry in FALLBACK_CATALOG})
+# 설정 화면에 계열을 보여 주는 순서 / the order the settings screen lists the lines in
+_LINE_ORDER = ("haiku", "sonnet", "opus", "fable")
 _STATE = _initial_state()
 _WRITE_LOCK = threading.Lock()
 
@@ -194,6 +197,19 @@ def validate_model_value(value: str | None) -> str | None:
     if model_id in _STATE.by_id or model_id in _FALLBACK_IDS:
         return model_id
     raise ValueError(f"unknown model id {model_id[:40]!r}")
+
+
+def validate_effort_value(value: str | None) -> str | None:
+    """저장할 리뷰 effort — 화면이 고르는 세 단계(대소문자 · 앞뒤 공백 접기)와 빈 값(운영 변수)만, 그 밖은 ValueError.
+
+    Check a review effort before it is stored: the three levels the screen offers (case and spaces folded) or blank.
+    """
+    level = (value or "").strip().lower()
+    if not level:
+        return None
+    if level not in UI_EFFORT_LEVELS:
+        raise ValueError(f"review_effort must be one of {sorted(UI_EFFORT_LEVELS)} or blank")
+    return level
 
 
 def _line_from_id(model_id: str) -> str | None:
@@ -324,6 +340,83 @@ def _resolve_pinned(state: _CatalogState, model_id: str) -> str:
     if entry is None or entry.lifecycle != "retired" or entry.line not in KNOWN_LINES:
         return model_id
     return _resolve_line(state, entry.line)
+
+
+@dataclass(frozen=True)
+class AutoChoice:
+    """설정 화면의 «최신 계열» 선택지 하나 — 지금 이 계열이 부르는 판과 함께.
+
+    One «latest of a line» option on the settings screen, with the model the line runs now.
+    """
+
+    value: str
+    line: str
+    current_id: str
+    current_name: str
+
+
+@dataclass(frozen=True)
+class PinnedChoice:
+    """설정 화면의 판 고정 선택지 하나 / one pinned-model option on the settings screen."""
+
+    value: str
+    line: str
+    name: str
+    # 폐기 예정(lifecycle deprecated 또는 retires_at) / deprecated or scheduled to retire
+    retiring: bool
+    # 계열의 가장 새 후보인데 아직 시험 호출을 통과하지 않았다 / the line's newest candidate, not yet verified
+    unverified: bool
+    # 시험 호출 또는 실제 호출에서 실패로 표시됐다 / marked failed by the probe or a real call
+    failed: bool
+
+
+def _display_name(state: _CatalogState, model_id: str) -> str:
+    entry = state.by_id.get(model_id) or _FALLBACK_BY_ID.get(model_id)
+    return entry.display_name if entry is not None else model_id
+
+
+def _newest_active(state: _CatalogState, line: str) -> ModelEntry | None:
+    candidates = [e for e in state.entries
+                  if e.line == line and e.lifecycle == "active" and e.supports_structured_outputs]
+    return max(candidates, key=lambda e: e.created_at, default=None)
+
+
+def catalog_choices() -> tuple[tuple[AutoChoice, ...], tuple[PinnedChoice, ...]]:
+    """설정 화면의 리뷰 모델 선택지 — 계열 넷(지금 부르는 판과 함께) · 고를 수 있는 판(계열 순 · 새것 먼저).
+
+    The settings screen's review-model choices: the four lines with the model each runs now, and the pinnable models
+    (line by line, newest first). 문구는 템플릿 i18n 이 붙인다 / the template adds the wording.
+    내린 판 · 구조화 출력을 못 받는 판 · 모르는 계열은 뺀다. 날짜 붙은 옛 판은 그 판을 가리키는 별칭으로 고른다 — 지금
+    저장값 꼴이고, 검사(`validate_model_value`)와 해석이 같은 판을 찾는다. 별칭이 다른 실제 판을 가리키면 날짜 id 그대로.
+    Retired, unstructured and unknown-line models are left out; a dated model is offered by the alias that finds it,
+    or by its own id when that alias names another real model.
+    """
+    state = _STATE
+    auto = []
+    for line in _LINE_ORDER:
+        current = _resolve_line(state, line)
+        auto.append(AutoChoice(value=f"{_AUTO_PREFIX}{line}", line=line, current_id=current,
+                               current_name=_display_name(state, current)))
+    order = {line: i for i, line in enumerate(_LINE_ORDER)}
+    pinnable = sorted(
+        (e for e in state.entries
+         if e.lifecycle != "retired" and e.supports_structured_outputs and e.line in KNOWN_LINES),
+        key=lambda e: (order[e.line], -e.created_at.timestamp()),
+    )
+    newest = {line: _newest_active(state, line) for line in _LINE_ORDER}
+    pinned = []
+    for entry in pinnable:
+        alias = _DATED_SUFFIX.sub("", entry.id)
+        value = alias if state.by_id.get(alias) is entry else entry.id
+        failed = entry.id in state.failed or value in state.failed
+        verified = entry.id in state.verified.get(entry.line, ()) or value in state.verified.get(entry.line, ())
+        pinned.append(PinnedChoice(
+            value=value, line=entry.line, name=entry.display_name,
+            retiring=entry.lifecycle == "deprecated" or entry.retires_at is not None,
+            unverified=newest[entry.line] is entry and not verified and not failed,
+            failed=failed,
+        ))
+    return tuple(auto), tuple(pinned)
 
 
 def resolve_model(value: str | None, *, default_value: str) -> str:

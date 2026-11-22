@@ -7,7 +7,7 @@ from src.constants import (
     GATE_DEFAULT_MERGE_THRESHOLD,
 )
 from src.models.repo_config import RepoConfig
-from src.shared.model_catalog import validate_model_value
+from src.shared.model_catalog import validate_effort_value, validate_model_value
 
 
 @dataclass
@@ -118,6 +118,9 @@ def upsert_repo_config(db: Session, data: RepoConfigData) -> RepoConfig:
     # Validate the review model only when it changes, so a value stored before validation never blocks other saves.
     if data.review_model != (record.review_model if record is not None else None):
         data.review_model = validate_model_value(data.review_model)
+    # 리뷰 effort 도 같은 원칙 — 폼(③b) · API 가 함께 지나는 관문 / the same gate for the review effort
+    if data.review_effort != (record.review_effort if record is not None else None):
+        data.review_effort = validate_effort_value(data.review_effort)
     if record is None:
         kwargs = {name: getattr(data, name) for name in field_names}
         record = RepoConfig(repo_full_name=data.repo_full_name, **kwargs)

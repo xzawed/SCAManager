@@ -23,6 +23,9 @@ _SETTINGS_TMPL = pathlib.Path("src/templates/settings.html")
 _LOCALES = ["ko", "en", "ja"]
 _KEYS = [
     "model_card_title", "use_global_default", "model_retired",
+    "model_group_auto", "model_group_pinned", "model_auto_option", "model_estimated",
+    "model_badge_retiring", "model_badge_unverified", "model_badge_failed",
+    "effort_label", "effort_low", "effort_medium", "effort_high", "effort_hint",
     "preset_minimal", "preset_standard", "preset_strict",
     "field_pr_review_comment", "field_commit_comment", "field_create_issue",
     "field_railway_deploy_alerts", "field_approve_mode", "field_auto_merge",
