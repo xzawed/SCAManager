@@ -72,3 +72,20 @@ def test_fable_is_its_own_bucket(monkeypatch):
     monkeypatch.setattr(claude_api_cost_repo, "_owned_repo_ids_subquery", lambda _uid: [])
     summary = claude_api_cost_repo.user_cost_summary(None, user_id=1, days=30)
     assert summary["by_model"] == {"sonnet": 0.25, "haiku": 0.0, "opus": 0.125, "fable": 0.5, "other": 0.0}
+
+
+# witness-corpus: 요율표에 없는 판 이름 — 다음 세대 · 계열만 맞는 일반 id · 다른 회사 모델 · 빈 값 · 대문자 · 앞뒤 공백
+_UNLISTED_MODELS = {
+    "claude-haiku-6": 0.10,      # haiku 의 가장 새 판(Haiku 5.5) / the newest haiku
+    "claude-opus-4": 4.0,        # opus 의 가장 새 판(Opus 5.5) / the newest opus
+    "gpt-x": 2.0,                # 계열 모름 → sonnet 의 가장 새 판(Sonnet 5.5) / unknown line -> newest sonnet
+    "": 2.0,
+    "CLAUDE-HAIKU-6": 0.10,
+    " claude-fable-6 ": 8.0,     # fable 의 가장 새 판(Fable 5.2) / the newest fable
+}
+
+
+@pytest.mark.parametrize(("model", "input_rate"), _UNLISTED_MODELS.items())
+def test_unlisted_models_are_estimated_at_their_line_newest_rate(model, input_rate):
+    assert cm.is_estimated_rate(model)
+    assert _cost(model, input_tokens=10_000) == pytest.approx(10_000 * input_rate / 1e6)
