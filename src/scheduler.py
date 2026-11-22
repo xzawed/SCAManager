@@ -26,6 +26,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Awaitable, Callable
 
 from src.config import Settings
+from src.config import settings as _app_settings
 
 # 🔴 background/시스템 컨텍스트 — worker 세션(BYPASSRLS) alias 의무 (RLS Phase 2 옵션 A, db.md).
 # 스케줄러 job 은 사용자 세션이 없으므로 bare SessionLocal 을 쓰면 `app.user_id` 미설정 상태로
@@ -42,6 +43,7 @@ from src.services.cron_service import (
 )
 from src.services.db_heartbeat_service import run_db_heartbeat
 from src.services.merge_retry_service import process_pending_retries
+from src.services.model_catalog_service import refresh_catalog
 from src.services.security_scan_service import scan_all_repos
 from src.shared.off_loop import run_blocking, session_off_loop
 
@@ -58,6 +60,8 @@ class Job:
     every_seconds: int | None = None
     daily_at: tuple[int, int] | None = None            # (hour, minute) UTC
     weekly_at: tuple[int, int, int] | None = None      # (weekday, hour, minute) UTC, 월=0
+    # 기동 직후에도 한 번 돈다(그 뒤로는 주기대로) / also runs once right after start, then on schedule
+    run_at_start: bool = False
 
 
 # ── 순수 시각 계산 ────────────────────────────────────────────────────────
@@ -161,6 +165,19 @@ async def _db_heartbeat():
         logger.info("scheduler db_heartbeat: %s", results)
 
 
+async def _sync_claude_models():
+    """Claude 모델 목록 동기화 · 쓰는 계열의 새 판 시험(#1905) — 기동 직후 한 번, 그 뒤 6시간마다.
+
+    Sync the Claude model listing and probe newer in-use models (#1905); once at start, then every 6 hours.
+    키가 없으면 부를 것이 없다 — 동기화하지 않는다. / Without an API key there is nothing to call, so skip.
+    """
+    api_key = _app_settings.anthropic_api_key
+    if not api_key:
+        logger.info("scheduler sync_claude_models: skipped — ANTHROPIC_API_KEY is not set")
+        return
+    await refresh_catalog(api_key=api_key, session_factory=SessionLocal)
+
+
 # 🔴 구 railway.toml `[[deploy.cronJobs]]` 5종과 **동일 주기** — 값 변경은 운영 동작 변경이다.
 # Same schedules as the (inert) railway.toml cron blocks; guarded by tests.
 JOBS = (
@@ -172,6 +189,8 @@ JOBS = (
     Job("scan-security", _scan_security, daily_at=(4, 0)),                       # 0 4 * * *
     # 회고 원장 L02 3층 — 풀 연결에 남은 세션 READ ONLY(2026-10-25 25시간 장애)를 1분 안에 / within a minute
     Job("db-heartbeat", _db_heartbeat, every_seconds=60),
+    # Claude 모델 목록 · 새 판 시험(#1905) — 기동 직후 한 번, 그 뒤 6시간마다 / at start, then every 6 hours
+    Job("sync-claude-models", _sync_claude_models, every_seconds=21600, run_at_start=True),
 )
 
 
@@ -187,6 +206,7 @@ CRON_PATH_TO_JOB = {
     "retention-sweep": "retention-sweep",
     "scan-security": "scan-security",
     "db-heartbeat": "db-heartbeat",
+    "sync-claude-models": "sync-claude-models",
 }
 
 # 🔴 의도적으로 주기 실행하지 **않는** cron 경로 → 사유 (2026-07-19 회고 P1).
@@ -215,25 +235,35 @@ def _seconds_until_next(job, now):
     return (next_weekly_run(now, *job.weekly_at) - now).total_seconds()
 
 
+async def _run_job_once(job):
+    """job 1회 실행 — 실패는 로그로만 남기고 삼킨다(취소는 그대로 올린다). 주기 루프와 기동 직후 실행이 같이 쓴다.
+    Run a job once; failures are logged and swallowed, cancellation propagates (shared by the loop and start)."""
+    try:
+        await job.run()
+    # 🔴 disable 은 `except` 줄 끝에 둔다 — 그 앞의 독립 줄 disable 을 pylint 4.1 은 적용하지 않는다(4.0 은 적용).
+    # Keep each disable on its except line; pylint 4.1 ignores a standalone disable line before it.
+    # W0706 의도적 — 아래 `except Exception` 이 취소까지 삼키는 것을 막는 **순서 장치**다.
+    # 이 분기를 지우면 stop() 의 task.cancel() 이 job 격리 핸들러에 먹혀 종료가 멈춘다.
+    # Intentional: this arm exists so the broad handler below cannot swallow cancellation.
+    except asyncio.CancelledError:  # pylint: disable=try-except-raise
+        raise
+    # W0718 의도적 — job 격리. 어떤 job 의 어떤 실패도 스케줄러 루프를 멈춰선 안 된다.
+    # Intentional: job isolation — no job's failure may kill the scheduler loop.
+    except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+        logger.exception("scheduler job failed: %s", job.name)
+
+
 async def _run_job_forever(job):
     """단일 job 루프 — 실행 실패가 루프를 죽이지 않는다(다음 주기 계속).
     Per-job loop; a failing run must never kill the loop."""
+    # 기동 직후 한 번 — 그 job 의 태스크 안에서 돌아 start() 를 막지 않고 stop() 의 취소도 그대로 받는다.
+    # Run once right after start inside the job's own task: start() is not blocked and stop() still cancels it.
+    if job.run_at_start:
+        await _run_job_once(job)
     while True:
         delay = _seconds_until_next(job, datetime.now(timezone.utc))
         await asyncio.sleep(delay)
-        try:
-            await job.run()
-        # 🔴 disable 은 `except` 줄 끝에 둔다 — 그 앞의 독립 줄 disable 을 pylint 4.1 은 적용하지 않는다(4.0 은 적용).
-        # Keep each disable on its except line; pylint 4.1 ignores a standalone disable line before it.
-        # W0706 의도적 — 아래 `except Exception` 이 취소까지 삼키는 것을 막는 **순서 장치**다.
-        # 이 분기를 지우면 stop() 의 task.cancel() 이 job 격리 핸들러에 먹혀 종료가 멈춘다.
-        # Intentional: this arm exists so the broad handler below cannot swallow cancellation.
-        except asyncio.CancelledError:  # pylint: disable=try-except-raise
-            raise
-        # W0718 의도적 — job 격리. 어떤 job 의 어떤 실패도 스케줄러 루프를 멈춰선 안 된다.
-        # Intentional: job isolation — no job's failure may kill the scheduler loop.
-        except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
-            logger.exception("scheduler job failed: %s", job.name)
+        await _run_job_once(job)
 
 
 def start(settings):

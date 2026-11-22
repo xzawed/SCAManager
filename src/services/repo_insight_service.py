@@ -35,6 +35,7 @@ from src.shared.claude_metrics import (
     extract_anthropic_usage, log_claude_api_call, new_async_anthropic, release_session_before_claude,
 )
 from src.shared.feature_kill_switch import is_disabled
+from src.shared.model_catalog import resolve_model
 from src.shared.lang_names import LANG_NAMES
 from src.shared.time_utils import to_naive_utc
 
@@ -617,6 +618,9 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
     # 호출 자체가 실패하면 값이 갱신되지 않아 0 이 남고, 그 경우엔 0 이 맞다.
     # Report tokens actually consumed on the error path too; they are billed once the API responds.
     _tokens: dict[str, int] = {"input_tokens": 0, "output_tokens": 0}
+    # 호출마다 한 번 정한다 — create 와 비용 행이 같은 판을 적는다 (#1905).
+    # Resolve once per call so the create call and the cost rows name the same model (#1905).
+    model = resolve_model(None, default_value=settings.claude_insight_model)
     client = new_async_anthropic(
         api_key=api_key, timeout=60.0, max_retries=2,
         caller="repo_insight", retry_after_cap=ANTHROPIC_RETRY_AFTER_CAP_PAGE_SECONDS,
@@ -627,7 +631,7 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
     try:
         async with deadline:
             response = await client.messages.create(
-                model=settings.claude_insight_model,
+                model=model,
                 max_tokens=_NARRATIVE_MAX_TOKENS,
                 # 🔴 응답 형식을 스키마로 강제 (backlog R51). `data.get("text", raw)` 폴백은 상한이
                 #    아닌 멈춤에만 쓴다 — 상한(max_tokens)에서 멈추면 `_narrative_text` 가 거절한다.
@@ -676,7 +680,7 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
         # The cost-row INSERT is sync DB work; run it off the loop.
         await run_in_threadpool(
             log_claude_api_call,
-            model=settings.claude_insight_model,
+            model=model,
             duration_ms=duration_ms,
             status="success",
             repo_id=repo_id,
@@ -706,7 +710,7 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
         error_type = _log_narrative_failure(exc, status, _tokens["output_tokens"])
         await run_in_threadpool(
             log_claude_api_call,
-            model=settings.claude_insight_model,
+            model=model,
             duration_ms=duration_ms,
             status="error",
             error_type=error_type,

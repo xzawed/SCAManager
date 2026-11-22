@@ -113,7 +113,7 @@ def test_all_cron_jobs_registered():
     names = {j.name for j in JOBS}
     assert names == {
         "retry-pending-merges", "sweep-orphans", "trend", "retention-sweep", "weekly-reports",
-        "scan-security", "db-heartbeat",
+        "scan-security", "db-heartbeat", "sync-claude-models",
     }, f"등록 누락/오타: {names}"
 
 

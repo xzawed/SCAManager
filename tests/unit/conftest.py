@@ -1,5 +1,5 @@
-"""tests/unit 공용 fixture — 전역 logging 상태 격리.
-Shared fixtures for tests/unit — global logging state isolation.
+"""tests/unit 공용 fixture — 전역 logging 상태 격리 · 모델 카탈로그 초기화.
+Shared fixtures for tests/unit — global logging state isolation and a fresh model catalog.
 
 🔴 왜 필요한가: `logging` 은 프로세스 전역 싱글톤이다. `logging.config.fileConfig()` 는
 기본값 `disable_existing_loggers=True` 로 **이미 존재하는 모든 로거를 disable** 하고,
@@ -137,3 +137,16 @@ def database_module_isolation():
         for module, snapshot in saved:
             vars(module).clear()
             vars(module).update(snapshot)
+
+
+@pytest.fixture(autouse=True)
+def _fresh_model_catalog(monkeypatch):
+    """모델 카탈로그(프로세스 전역 상태)를 시험마다 처음 꼴로 — 한 시험이 올린 판 · 실패 표식이 다음 시험으로 새지 않게.
+
+    `src.shared.model_catalog` 는 앱 모듈을 import 하지 않는 잎 모듈이라 모든 시험에 붙여도 import 순서를 바꾸지 않는다.
+    Reset the process-wide model catalog per test so promotions and failure marks never leak; the catalog is a leaf
+    module (no app imports), so autouse does not change import order.
+    """
+    from src.shared import model_catalog  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    monkeypatch.setattr(model_catalog, "_STATE", model_catalog._initial_state())  # pylint: disable=protected-access

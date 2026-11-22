@@ -8,7 +8,7 @@
 4. 파일 수집(`::def _collect_files`) — 동기 I/O 는 `asyncio.to_thread` offload.
 5. 병렬 실행(`::asyncio.gather(*`) — `_run_static_with_timeout` + `review_code`.
    - 정적: 파일별 순차, deadline(`::PIPELINE_ANALYSIS_TIMEOUT =`), 도구당(`src/constants.py::STATIC_ANALYSIS_TIMEOUT`). 초과 시 완료분 보존 + `incomplete`.
-   - AI: `src/analyzer/io/ai_review.py::async def review_code`. diff 절단(`src/analyzer/pure/review_prompt.py::MAX_DIFF_CHARS =`), 모델 기본값(`src/config.py::claude_review_model:`).
+   - AI: `src/analyzer/io/ai_review.py::async def review_code`. diff 절단(`src/analyzer/pure/review_prompt.py::MAX_DIFF_CHARS =`), 모델 = 저장값을 푼 판(`src/shared/model_catalog.py::def resolve_model` · 기본값 `src/config.py::claude_review_model:`).
 6. 채점(`::calculate_score(a`) → 저장·게이트(`::         await run_gate_check(`, PR 만 `run_gate_check`) → 알림(`::_send_notifications(notify_tasks:`).
    저장 직전 부른 분석기의 `--version` 을 루프 밖에서 읽어(`::await _probe_static_provenance(`) 행에 출처(`static_provenance`)를 싣는다.
 

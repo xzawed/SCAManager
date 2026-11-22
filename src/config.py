@@ -1,11 +1,12 @@
 """Application settings loaded from environment variables via pydantic-settings."""
 import logging
 from collections.abc import Mapping
-from typing import get_args
+from typing import Literal, get_args
 from urllib.parse import urlparse, parse_qs, unquote_plus
 from pydantic_settings import BaseSettings
 from pydantic import Field, ValidationError, field_validator, model_validator
 from src.constants import MERGE_VERIFIER_BAND_DEFAULT
+from src.shared.model_catalog import parse_model_value
 from src.logging_config import _redact
 
 logger = logging.getLogger(__name__)
@@ -86,6 +87,11 @@ class Settings(BaseSettings):
     # Phase 2 d-🅓 (Cycle 74) — model for Insight narrative only (default Haiku — 67% cheaper).
     # AI review (review_code) keeps Sonnet (memory feedback-ai-review-quality-protect.md exclusion).
     claude_insight_model: str = "claude-haiku-4-5"
+    # Claude 호출의 effort(생각 깊이 · 토큰 소비) — effort 를 받는 판에만 보낸다(환경변수 CLAUDE_CALL_EFFORT).
+    # 🔴 이름을 CLAUDE_EFFORT 로 두지 않는다 — Claude Code 가 자식 프로세스에 그 이름으로 세션 effort 를 넘긴다.
+    # Effort for Claude calls, sent only to models that accept it (env CLAUDE_CALL_EFFORT). Not CLAUDE_EFFORT:
+    # Claude Code passes its session effort to child processes under that name.
+    claude_call_effort: Literal["low", "medium", "high"] = "medium"
     # AI 리뷰 응답 출력 토큰 상한 (환경변수 CLAUDE_REVIEW_MAX_TOKENS) — 한국어 리뷰 JSON(~2660 토큰) 여유값.
     # 🔴 저한도 모델(claude-3-haiku/opus = 4096)을 claude_review_model 로 쓰면 8192 가 Anthropic 400
     #    거부 → api_error 이므로 그 경우 이 값을 모델 출력 한도 이하로 낮춰야 한다.
@@ -275,7 +281,7 @@ class Settings(BaseSettings):
             v += _query_separator(v) + 'sslmode=require'
         return v
 
-    @field_validator("claude_review_model", "claude_insight_model", mode="before")
+    @field_validator("claude_review_model", "claude_insight_model", "claude_call_effort", mode="before")
     @classmethod
     def _blank_model_falls_back_to_default(cls, v, info):
         """빈 환경변수를 **미설정**으로 취급한다 — 빈 값이 기본값을 덮지 않게.
@@ -295,6 +301,17 @@ class Settings(BaseSettings):
             # 기본값 리터럴을 여기 복제하지 않는다 — 필드 정의에서 가져와 단일 출처 유지.
             # Read the default from the field definition instead of duplicating the literal.
             return cls.model_fields[info.field_name].default
+        return v
+
+    @field_validator("claude_review_model", "claude_insight_model")
+    @classmethod
+    def _model_value_has_a_known_shape(cls, v: str) -> str:
+        """판 id 또는 `auto:<haiku|sonnet|opus|fable>` 만 — 모르는 계열은 기동에서 멈춘다(조용히 기본 판으로 떨어지지 않게).
+
+        Only a model id or `auto:<line>` with a known line; an unknown line stops startup instead of silently
+        falling back.
+        """
+        parse_model_value(v)
         return v
 
     @field_validator("session_secret")
