@@ -425,7 +425,7 @@
     },
     "model_card_title": "AI Code Review Model",
     "use_global_default": "Use global default",
-    "model_retired": "retired from the list · kept as saved",
+    "model_retired": "not in the current list · kept as saved",
     "preset_minimal": "Minimal",
     "preset_standard": "Standard",
     "preset_strict": "Strict",
@@ -457,7 +457,9 @@
     "effort_low": "Low — faster, cheaper",
     "effort_medium": "Medium",
     "effort_high": "High — reviews more deeply",
-    "effort_hint": "If a model does not take the chosen level, the nearest lower level it takes is sent. Haiku 4.5 takes no effort."
+    "effort_hint": "If a model does not take the chosen level, the nearest lower level it takes is sent; models that take no effort get none.",
+    "effort_use_global_default": "Use global default ({effort})",
+    "effort_unlisted": "not offered here · kept as saved"
   },
   "settings_page": {
     "title_prefix": "Settings",

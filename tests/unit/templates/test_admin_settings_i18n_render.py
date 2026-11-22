@@ -351,6 +351,7 @@ def _settings_ctx(**overrides) -> dict:
         # 🔴 선택 상자도 **프로덕션 함수로 파생**한다(위 secrets 와 같은 까닭) / derived like `secrets`
         "model_selector": _model_selector(None),
         "default_review_model": app_settings.claude_review_model,
+        "default_review_effort": app_settings.claude_call_effort,
         "railway_api_token_set": False,
         "webhook_stale": False,
         "onboarding_needed": False,

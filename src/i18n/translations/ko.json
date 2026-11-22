@@ -425,7 +425,7 @@
     },
     "model_card_title": "AI 코드리뷰 모델",
     "use_global_default": "전역 기본값 사용",
-    "model_retired": "목록에서 내린 모델 · 저장값 유지",
+    "model_retired": "지금 목록에 없는 모델 · 저장값 유지",
     "preset_minimal": "최소",
     "preset_standard": "표준",
     "preset_strict": "엄격",
@@ -457,7 +457,9 @@
     "effort_low": "낮음 — 빠르고 저렴",
     "effort_medium": "보통",
     "effort_high": "높음 — 깊게 검토",
-    "effort_hint": "모델이 고른 단계를 받지 않으면 받는 가장 가까운 아래 단계로 보냅니다. Haiku 4.5 는 effort 를 받지 않습니다."
+    "effort_hint": "모델이 고른 단계를 받지 않으면 받는 가장 가까운 아래 단계로 보내고, effort 를 받지 않는 모델에는 보내지 않습니다.",
+    "effort_use_global_default": "전역 기본값 사용 ({effort})",
+    "effort_unlisted": "화면에 없는 단계 · 저장값 유지"
   },
   "settings_page": {
     "title_prefix": "설정",

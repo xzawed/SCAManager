@@ -137,3 +137,12 @@ async def test_the_repo_review_effort_reaches_the_review_call(stored):
         session_cls.return_value = session
         await pipeline.run_analysis_pipeline("push", _PUSH)
     assert review.await_args.kwargs["effort"] == stored
+
+
+def test_a_form_without_the_effort_field_keeps_the_stored_effort(db):
+    # 이 배포 전에 열어 둔 탭에는 effort 칸이 없다 — 키가 없으면 저장값을 그대로 둔다(③b 검토 Important 2)
+    # A tab rendered before this deploy has no effort field; a missing key keeps the stored value.
+    from src.ui.routes.settings import build_repo_config_from_form  # pylint: disable=import-outside-toplevel
+
+    upsert_repo_config(db, RepoConfigData(repo_full_name="o/effort", review_effort="medium"))
+    assert build_repo_config_from_form(db, "o/effort", {"approve_mode": "disabled"}).review_effort == "medium"

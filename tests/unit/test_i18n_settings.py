@@ -26,6 +26,7 @@ _KEYS = [
     "model_group_auto", "model_group_pinned", "model_auto_option", "model_estimated",
     "model_badge_retiring", "model_badge_unverified", "model_badge_failed",
     "effort_label", "effort_low", "effort_medium", "effort_high", "effort_hint",
+    "effort_use_global_default", "effort_unlisted",
     "preset_minimal", "preset_standard", "preset_strict",
     "field_pr_review_comment", "field_commit_comment", "field_create_issue",
     "field_railway_deploy_alerts", "field_approve_mode", "field_auto_merge",
@@ -83,3 +84,15 @@ def test_keys_no_duplicates():
     _KEYS has no duplicates (guards against hand-maintained-list typos).
     """
     assert len(_KEYS) == len(set(_KEYS)), f"_KEYS 중복: {[k for k in set(_KEYS) if _KEYS.count(k) > 1]}"
+
+
+@pytest.mark.parametrize("locale", ["ko", "en", "ja"])
+def test_the_effort_hint_names_no_model(locale):
+    """effort 안내에 판 이름을 박지 않는다 — 가격처럼 판이 바뀌면 낡는다(③b 검토 Minor 6).
+    The effort hint names no model; such a copied fact goes stale like the prices did."""
+    import re  # pylint: disable=import-outside-toplevel
+
+    from src.i18n.loader import load_translations  # pylint: disable=import-outside-toplevel
+
+    hint = load_translations(locale)["settings"]["effort_hint"]
+    assert not re.search(r"(Haiku|Sonnet|Opus|Fable)\s*\d", hint), hint

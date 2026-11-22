@@ -425,7 +425,7 @@
     },
     "model_card_title": "AIコードレビューモデル",
     "use_global_default": "グローバルデフォルトを使用",
-    "model_retired": "一覧から外したモデル · 保存値を維持",
+    "model_retired": "今の一覧にないモデル・保存値を維持",
     "preset_minimal": "最小",
     "preset_standard": "標準",
     "preset_strict": "厳格",
@@ -457,7 +457,9 @@
     "effort_low": "低 — 速くて安い",
     "effort_medium": "中",
     "effort_high": "高 — 深くレビュー",
-    "effort_hint": "モデルが選んだ段階を受け付けない場合、受け付ける最も近い下の段階で送ります。Haiku 4.5 は effort を受け付けません。"
+    "effort_hint": "モデルが選んだ段階を受け付けない場合は受け付ける最も近い下の段階で送り、effort を受け付けないモデルには送りません。",
+    "effort_use_global_default": "グローバルデフォルトを使用 ({effort})",
+    "effort_unlisted": "画面にない段階・保存値を維持"
   },
   "settings_page": {
     "title_prefix": "設定",

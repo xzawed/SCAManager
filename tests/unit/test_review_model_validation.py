@@ -146,3 +146,16 @@ def test_the_api_answers_an_invalid_model_with_422():
          patch("src.api.repos.upsert_repo_config", side_effect=ValueError("review_model: unknown value")):
         response = client.put("/api/repos/owner%2Frepo/config", json={"review_model": "auto:gpt"})
     assert response.status_code == 422
+
+
+def test_a_page_save_keeps_an_unlisted_value_with_spaces(db):
+    """🔴 화면이 제출한 값으로 저장해도 목록 밖 저장값(앞뒤 공백 포함)이 거부되지 않는다 — 이전엔 리포 설정 저장이 막혔다."""
+    from src.ui.routes.settings import _model_selector, build_repo_config_from_form  # pylint: disable=import-outside-toplevel
+
+    db.add(RepoConfig(repo_full_name="o/spaced", review_model=" claude-opus-4-7"))
+    db.commit()
+    submitted = _model_selector(" claude-opus-4-7")["selected"]
+    upsert_repo_config(db, build_repo_config_from_form(db, "o/spaced", {"review_model": submitted,
+                                                                         "auto_merge": "on"}))
+    stored = get_repo_config(db, "o/spaced")
+    assert (stored.review_model, stored.auto_merge) == (" claude-opus-4-7", True)

@@ -97,3 +97,18 @@ def test_a_dated_model_whose_alias_is_another_real_model_keeps_its_own_id():
     _auto, pinned = mc.catalog_choices()
     assert [c.value for c in pinned] == ["claude-opus-9", "claude-opus-9-20260101"]
     assert all(mc.validate_model_value(c.value) == c.value for c in pinned)
+
+
+def test_the_line_order_covers_every_known_line():
+    # 순서표에 없는 계열이 목록에 오면 설정 화면이 KeyError 로 500 이 된다(③b 검토 Minor 4)
+    # A known line missing from the order would make the settings page fail.
+    assert set(mc._LINE_ORDER) == set(mc.KNOWN_LINES)  # pylint: disable=protected-access
+
+
+def test_an_id_whose_value_would_be_empty_is_not_offered():
+    # 날짜만 있는 id 는 별칭이 빈 값이 되어 «전역 기본값»(값 "")과 겹친다 — 선택지로 만들지 않는다(Grok 583c612c)
+    # An id that is only a date suffix would alias to "" and collide with the global-default option.
+    mc.install_snapshot([_entry("-20260101", "opus", _d(2026, 1, 1)), _entry("claude-opus-9", "opus", _d(2026, 2, 1))],
+                        source="api")
+    _auto, pinned = mc.catalog_choices()
+    assert [c.value for c in pinned] == ["claude-opus-9"]

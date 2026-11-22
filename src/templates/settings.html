@@ -899,7 +899,12 @@
               <label class="field-label" for="reviewEffortSelect">{{ 'settings.effort_label' | i18n_args(locale | default('ko')) }}</label>
               <select id="reviewEffortSelect" name="review_effort" form="settingsForm" class="field-input" style="max-width:420px;"
                       aria-label="{{ 'settings.effort_label' | i18n_args(locale | default('ko')) }}">
-                <option value="">{{ 'settings.use_global_default' | i18n_args(locale | default('ko')) }}</option>
+                <option value="">{{ 'settings.effort_use_global_default' | i18n_args(locale | default('ko'), effort=default_review_effort) }}</option>
+                {# 🔴 화면에 없는 단계로 저장돼 있으면 그 값을 선택된 채 보여 준다 — 없으면 다른 설정 저장이 조용히 지운다(K10). #}
+                {# A stored level the screen does not offer is shown selected, or saving other settings clears it. #}
+                {% if config.review_effort and config.review_effort not in ('low', 'medium', 'high') %}
+                <option value="{{ config.review_effort }}" selected>{{ config.review_effort }} — {{ 'settings.effort_unlisted' | i18n_args(locale | default('ko')) }}</option>
+                {% endif %}
                 <option value="low" {% if config.review_effort == 'low' %}selected{% endif %}>{{ 'settings.effort_low' | i18n_args(locale | default('ko')) }}</option>
                 <option value="medium" {% if config.review_effort == 'medium' %}selected{% endif %}>{{ 'settings.effort_medium' | i18n_args(locale | default('ko')) }}</option>
                 <option value="high" {% if config.review_effort == 'high' %}selected{% endif %}>{{ 'settings.effort_high' | i18n_args(locale | default('ko')) }}</option>

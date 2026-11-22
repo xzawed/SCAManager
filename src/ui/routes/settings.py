@@ -187,9 +187,10 @@ def build_repo_config_from_form(db, repo_name: str, form) -> RepoConfigData:
         railway_deploy_alerts=form.get("railway_deploy_alerts") == "on",
         auto_merge_issue_on_failure=form.get("auto_merge_issue_on_failure") == "on",
         review_model=form.get("review_model") or None,
-        # 빈 값 = 운영 변수(CLAUDE_CALL_EFFORT) — 검사는 저장 관문(upsert_repo_config)이 한다(#1905 ③b)
-        # Blank means the global setting; the store's gate validates it.
-        review_effort=form.get("review_effort") or None,
+        # 빈 값 = 운영 변수(CLAUDE_CALL_EFFORT) — 검사는 저장 관문(upsert_repo_config)이 한다(#1905 ③b).
+        # 키가 없으면(effort 칸 이전에 열어 둔 탭) 저장값을 그대로 — 지우지 않는다.
+        # Blank means the global setting; a missing key (a tab older than the field) keeps the stored value.
+        review_effort=form.get("review_effort", current.review_effort) or None,
         # leaderboard_opt_in 폐기 (그룹 60 사용자 결정 정정 — alembic 0025)
         **preserved,
     )
@@ -230,7 +231,9 @@ def _model_selector(stored: str | None) -> dict:
             selected = next((c.value for c in pinned
                              if c.value == text or (entry is not None and mc.entry_for(c.value) is entry)), "")
         if not selected:
-            selected, orphan = text, text
+            # 🔴 원문 그대로 — 공백을 떼어 그리면 저장 관문이 «바뀐 값» 으로 보고 검사해 거부한다(그 리포의 모든 저장이 막혔다).
+            # Keep the exact stored text: a trimmed copy reads as a change and the store's check refuses it.
+            selected, orphan = stored, stored
     return {
         "auto": [{"value": c.value, "line": c.line.capitalize(), "name": c.current_name, **_price(c.current_id)}
                  for c in auto],
@@ -354,6 +357,7 @@ async def repo_settings(  # pylint: disable=too-many-positional-arguments,too-ma
         "locale": get_locale(request),
         "model_selector": _model_selector(config.review_model),
         "default_review_model": app_settings.claude_review_model,
+        "default_review_effort": app_settings.claude_call_effort,
     })
 
 

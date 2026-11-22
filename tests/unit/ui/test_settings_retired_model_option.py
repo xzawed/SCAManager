@@ -109,9 +109,9 @@ def _offered() -> int:
 
 
 @pytest.mark.parametrize("lang, label", [
-    ("ko", "목록에서 내린 모델"),
-    ("en", "retired from the list"),
-    ("ja", "一覧から外したモデル"),
+    ("ko", "지금 목록에 없는 모델"),
+    ("en", "not in the current list"),
+    ("ja", "今の一覧にないモデル"),
 ])
 def test_a_retired_pin_is_shown_selected_and_labelled(lang, label):
     """🔴 내린 모델 고정값이 선택된 채로 보이고, 세 언어 모두 내린 모델이라고 적혀 있다."""
@@ -260,3 +260,62 @@ def test_the_stored_effort_is_selected_and_posted_back():
 def _submitted_effort(options) -> str:
     chosen = [value for value, selected, _text in options if selected]
     return chosen[-1] if chosen else options[0][0]
+
+
+def test_an_unlisted_value_keeps_its_exact_text_on_the_page():
+    """🔴 목록에 없는 저장값은 **원문 그대로** 다시 제출된다 — 공백을 떼면 저장 관문이 «바뀐 값» 으로 보고 거부해
+    그 리포의 어떤 설정도 저장되지 않았다(③b 검토 Important 1)."""
+    for stored in (" claude-opus-4-7", "claude-opus-4-7 ", "auto:gpt "):
+        assert _submitted(_render(stored)) == stored, stored
+
+
+def _loaded_listing():
+    def entry(model_id, line, created, *, lifecycle="active", effort=True):
+        return mc.ModelEntry(id=model_id, line=line, display_name=f"Claude {model_id}", created_at=created,
+                             deprecated_at=None, retires_at=None, supports_structured_outputs=True,
+                             supports_effort=effort, lifecycle=lifecycle)
+
+    old = mc.FALLBACK_CATALOG[0].created_at
+    mc.install_snapshot([
+        entry("claude-haiku-5-5", "haiku", old.replace(year=2026, month=9)),
+        entry("claude-haiku-4-5-20251001", "haiku", old, effort=False),
+        entry("claude-sonnet-4-5-20250929", "sonnet", old.replace(month=9), lifecycle="deprecated"),
+        entry("claude-sonnet-5-5", "sonnet", old.replace(year=2026, month=10)),
+        entry("claude-opus-9-9", "opus", old.replace(year=2026, month=11)),
+    ], source="api")
+    mc.set_verified("haiku", "claude-haiku-5-5")
+    mc.set_verified("sonnet", "claude-sonnet-5-5")
+    mc.mark_failed("claude-haiku-4-5-20251001")
+
+
+@pytest.mark.parametrize("lang, retiring, unverified, failed, estimated", [
+    ("ko", "폐기 예정", "미검증", "시험 실패", "(추정)"),
+    ("en", "retiring", "unverified", "failed its check", "(estimated)"),
+    ("ja", "廃止予定", "未検証", "試験失敗", "(推定)"),
+])
+def test_a_loaded_listing_shows_its_flags_names_and_estimates(lang, retiring, unverified, failed, estimated):
+    """목록을 읽은 상태의 화면 — 지금 판 이름 · 폐기 예정 · 미검증 · 시험 실패 · (추정), 문구 변수가 다 풀린다(③b 검토 Minor 5)."""
+    _loaded_listing()
+    text = {o[0]: o[2] for o in _render(None, lang)}
+    assert "Claude claude-haiku-5-5" in text["auto:haiku"] and "Haiku" in text["auto:haiku"]
+    assert retiring in text["claude-sonnet-4-5"]
+    assert failed in text["claude-haiku-4-5"]
+    assert unverified in text["claude-opus-9-9"] and estimated in text["claude-opus-9-9"]
+    assert unverified not in text["claude-haiku-5-5"] and estimated not in text["claude-haiku-5-5"]
+    assert not any("{" in value for value in text.values()), text
+
+
+def test_an_unlisted_effort_is_shown_selected_and_posted_back():
+    """🔴 화면에 없는 단계(xhigh 등)도 선택된 채 한 줄로 — 다른 설정 저장이 조용히 지우지 않게(③b 검토 Important 2)."""
+    options = _render_effort("xhigh")
+    assert [o[0] for o in options if o[1]] == ["xhigh"], options
+    assert _submitted_effort(options) == "xhigh"
+
+
+@pytest.mark.parametrize("lang", ["ko", "en", "ja"])
+def test_the_global_default_effort_line_names_the_level(lang):
+    """전역 기본값 줄이 지금 단계(운영 변수)를 보인다 / the global-default line names the configured level."""
+    from src.config import settings as app_settings  # pylint: disable=import-outside-toplevel
+
+    options = _render_effort(None, lang)
+    assert options[0][0] == "" and app_settings.claude_call_effort in options[0][2], options[0]

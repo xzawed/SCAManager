@@ -408,6 +408,10 @@ def catalog_choices() -> tuple[tuple[AutoChoice, ...], tuple[PinnedChoice, ...]]
     for entry in pinnable:
         alias = _DATED_SUFFIX.sub("", entry.id)
         value = alias if state.by_id.get(alias) is entry else entry.id
+        if not value:
+            # 날짜만 있는 id 는 별칭이 빈 값 — «전역 기본값»(값 "") 과 겹치니 선택지로 만들지 않는다
+            # An id that is only a date suffix aliases to "", which is the global-default option's value.
+            continue
         failed = entry.id in state.failed or value in state.failed
         verified = entry.id in state.verified.get(entry.line, ()) or value in state.verified.get(entry.line, ())
         pinned.append(PinnedChoice(
