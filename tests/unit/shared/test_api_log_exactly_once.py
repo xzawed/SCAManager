@@ -94,16 +94,26 @@ _ORDERED = (
 
 
 def _is_log_call(node: ast.AST) -> bool:
-    """비용 로그 호출 — 직접 호출이거나 워커 스레드로 넘긴 `run_in_threadpool(log_claude_api_call, …)` (#1701).
-    A cost-log call: direct, or handed to a worker thread via run_in_threadpool (#1701).
+    """비용 로그 호출 — 직접 호출 · 워커 스레드로 넘긴 `run_in_threadpool(log_claude_api_call, …)` (#1701) ·
+    공용 도우미의 `record_response(…)`(마지막 응답의 행, #1905).
+    A cost-log call: direct, handed to a worker thread (#1701), or the shared helper's record_response (#1905).
     """
     if not isinstance(node, ast.Call):
         return False
     name = getattr(node.func, "id", "")
-    if name == "log_claude_api_call":
+    if name in ("log_claude_api_call", "record_response"):
         return True
     return (name == "run_in_threadpool" and bool(node.args)
             and getattr(node.args[0], "id", "") == "log_claude_api_call")
+
+
+def _is_success_log(node: ast.AST) -> bool:
+    """success 를 적는 비용 로그 — 거절(refused) 행은 본문을 읽지 않으므로 추출 앞에 와도 된다 (#1905).
+    A cost log that writes success; a refused row reads no body, so it may come before extraction.
+    """
+    return _is_log_call(node) and any(
+        kw.arg == "status" and isinstance(kw.value, ast.Constant) and kw.value.value == "success"
+        for kw in node.keywords)  # type: ignore[attr-defined]
 
 
 @pytest.mark.parametrize(("rel", "func"), _ORDERED)
@@ -118,7 +128,7 @@ def test_success_log_comes_after_extraction(rel: str, func: str):
                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == func), None)
     assert fn is not None, f"{rel}::{func} 를 못 찾았다 — 이름이 바뀌었으면 가드도 갱신할 것"
 
-    logs = [n.lineno for n in ast.walk(fn) if _is_log_call(n)]
+    logs = [n.lineno for n in ast.walk(fn) if _is_success_log(n)]
     extracts = [n.lineno for n in ast.walk(fn)
                 if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "first_text_block"]
     assert logs and extracts, f"{rel}::{func} 에서 로그/추출 호출을 못 찾았다"

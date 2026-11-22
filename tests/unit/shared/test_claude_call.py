@@ -365,3 +365,12 @@ async def test_refusal_retry_failure_is_recorded_and_raised(rows):
     with pytest.raises(anthropic.RateLimitError):
         await _call(client, rows, "claude-haiku-4-5")
     assert _row_view(rows) == [("claude-haiku-4-5", "refused", ""), ("claude-sonnet-5", "error", "RateLimitError")]
+
+
+async def test_system_is_left_out_when_the_caller_has_none(rows):
+    # 리포 인사이트는 system 없이 부른다 — None(요청 본문의 null)이 아니라 SDK 의 omit 을 넘긴다
+    # The repo insight call has no system prompt: the SDK's omit, never None (a null in the request body).
+    client = _client(plain=[_message(model="claude-haiku-4-5")])
+    await cc.create_json_message(client, model_value="claude-haiku-4-5", default_value="claude-sonnet-5",
+                                 max_tokens=64, system=None, schema=_SCHEMA, messages=_MESSAGES, record=rows.record)
+    assert client.messages.calls[0].get("system", anthropic.omit) is anthropic.omit

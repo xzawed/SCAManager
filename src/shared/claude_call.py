@@ -163,7 +163,7 @@ class _Attempts:
         await _record_failure(self.record, model, error_type or held_type, duration_ms)
 
 
-async def send_once(client, model: str, *, max_tokens: int, system: list, schema: dict, messages: list,
+async def send_once(client, model: str, *, max_tokens: int, system: list | None, schema: dict, messages: list,
                     entry: mc.ModelEntry | None = None):
     """한 번 부른다 — effort 와 서버 대체는 목록이 그 판에 허락한 것만(모르면 보내지 않는다). 시험 호출도 이 꼴이다.
 
@@ -174,13 +174,18 @@ async def send_once(client, model: str, *, max_tokens: int, system: list, schema
     output_config: dict = {"format": {"type": "json_schema", "schema": schema}}
     if entry is not None and entry.supports_effort:
         output_config["effort"] = settings.claude_call_effort
+    # system 이 없는 호출(리포 인사이트)은 SDK 의 omit 으로 뺀다 — None 을 보내면 요청 본문에 null 이 실린다.
+    # A call without a system prompt passes the SDK's omit; None would put a null into the request body.
+    # 🔴 인자는 키워드로 적는다 — `**` 로 펼치면 설치된 SDK 와 대조하는 시험이 키워드를 못 읽는다.
+    # Keywords are written out: `**` hides them from the test that checks them against the installed SDK.
+    system_arg = system if system is not None else anthropic.omit
     if entry is not None and entry.server_fallback:
         return await client.beta.messages.create(
-            model=model, max_tokens=max_tokens, system=system, output_config=output_config, messages=messages,
+            model=model, max_tokens=max_tokens, system=system_arg, output_config=output_config, messages=messages,
             betas=[SERVER_FALLBACK_BETA], fallbacks="default",
         )
     return await client.messages.create(
-        model=model, max_tokens=max_tokens, system=system, output_config=output_config, messages=messages,
+        model=model, max_tokens=max_tokens, system=system_arg, output_config=output_config, messages=messages,
     )
 
 
@@ -234,8 +239,8 @@ async def _after_rejection(attempts: _Attempts, model: str, exc: anthropic.BadRe
 
 # 인자는 요청의 꼴 그대로다 / the arguments are the request's own shape
 async def create_json_message(  # pylint: disable=too-many-arguments,too-many-locals
-        client, *, model_value: str | None, default_value: str, max_tokens: int, system: list, schema: dict,
-        messages: list, record: CostRecorder, unfinished: Unfinished | None = None) -> CallOutcome:
+        client, *, model_value: str | None, default_value: str, max_tokens: int, system: list | None,
+        schema: dict, messages: list, record: CostRecorder, unfinished: Unfinished | None = None) -> CallOutcome:
     """저장값으로 판을 정해 JSON 응답 하나를 받는다 — 처리하지 않는 예외는 그대로 올린다(호출부의 오류 분류 유지).
 
     Resolve the stored value and get one JSON response; unhandled exceptions propagate (callers keep classifying).

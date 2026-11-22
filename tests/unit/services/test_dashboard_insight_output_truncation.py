@@ -234,9 +234,11 @@ async def test_parse_failure_without_max_tokens_stop_is_not_truncation(db, owner
     assert _cap_warnings(caplog) == []
 
 
-@pytest.mark.parametrize("stop_reason", ["stop_sequence", "refusal"])
+# 🔴 `refusal` 은 여기 없다 — 거절은 본문을 읽지 않는 자기 경로(Haiku→Sonnet · api_error)다: test_insight_refusal.py
+# `refusal` is not here: a refusal has its own path (no body read; Haiku-to-Sonnet; api_error) in test_insight_refusal.py
+@pytest.mark.parametrize("stop_reason", ["stop_sequence"])
 async def test_other_stop_reasons_are_not_the_cap(db, owner, sdk, caplog, stop_reason):
-    """🔴 심은 것(무시돼야) — `stop_sequence`·`refusal` 은 상한이 아니다. 닫힌 본문은 경고 없는 success.
+    """🔴 심은 것(무시돼야) — `stop_sequence` 는 상한이 아니다. 닫힌 본문은 경고 없는 success.
     Other stop reasons are not the cap: a full body is a plain success with no cap warning.
     """
     sdk.stop_reason = stop_reason
