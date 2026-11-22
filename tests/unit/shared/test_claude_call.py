@@ -98,6 +98,11 @@ async def _call(client, rows, value, *, default="claude-sonnet-5", unfinished=No
 async def _cancel_while_hanging(client, rows, value, unfinished, *, hung_calls: int):
     task = asyncio.ensure_future(_call(client, rows, value, unfinished=unfinished))
     while len(client.messages.calls) + len(client.beta.messages.calls) < hung_calls:
+        if task.done():
+            # 매달린 시도에 닿기 전에 끝났다 — 그 결과(예외)를 올린다. 기다리기만 하면 영원히 돈다(역-뮤테이션 실측).
+            # The call ended before reaching the hung attempt: surface its outcome instead of spinning forever.
+            task.result()
+            pytest.fail("call finished before reaching the hung attempt")
         await asyncio.sleep(0)
     await asyncio.sleep(0)
     task.cancel()
