@@ -131,6 +131,25 @@ def _supported(capabilities, name: str, *, default: bool) -> bool:
     return default if flag is None else bool(flag)
 
 
+_EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
+
+
+def _child(node, name: str):
+    return node.get(name) if isinstance(node, dict) else getattr(node, name, None)
+
+
+def _effort_levels(capabilities) -> frozenset[str]:
+    """판이 받는 effort 단계 — 지원하지 않으면 빈 집합 · 단계별 표시가 없으면 화면이 고르는 세 단계로 본다.
+
+    The effort levels a model takes: empty when unsupported; the three UI levels when no per-level flags are given.
+    """
+    if not _supported(capabilities, "effort", default=False):
+        return frozenset()
+    node = _child(capabilities, "effort")
+    levels = frozenset(level for level in _EFFORT_LEVELS if _supported(node, level, default=False))
+    return levels or mc.UI_EFFORT_LEVELS
+
+
 def _to_entry(info, now: datetime) -> mc.ModelEntry:
     """목록 API 의 판 하나를 카탈로그 항목으로 — 내려감 판정은 lifecycle 로만, 날짜는 받은 그대로.
 
@@ -159,6 +178,7 @@ def _to_entry(info, now: datetime) -> mc.ModelEntry:
         # An unknown lifecycle value is not a candidate (not active) and does not move pins (not retired).
         lifecycle=lifecycle if lifecycle in _LIFECYCLES else "deprecated",
         server_fallback=None if allowed is None else bool(allowed),
+        effort_levels=_effort_levels(capabilities),
     )
 
 
@@ -343,7 +363,8 @@ async def _write_cost_row(model_id: str, response, *, ok: bool, error_type: str,
 
 async def _send_probe(client, model: str, *, entry: mc.ModelEntry | None = None):
     return await cc.send_once(client, model, max_tokens=_PROBE_MAX_TOKENS, system=_PROBE_SYSTEM,
-                              schema=_PROBE_SCHEMA, messages=_PROBE_MESSAGES, entry=entry)
+                              schema=_PROBE_SCHEMA, messages=_PROBE_MESSAGES, entry=entry,
+                              effort=settings.claude_call_effort)
 
 
 async def _control_passes(client, control: str | None) -> bool:

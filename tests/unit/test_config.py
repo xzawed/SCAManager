@@ -732,7 +732,7 @@ def test_blank_effort_env_falls_back_to_default(monkeypatch):
     """
     import src.config as cfg  # noqa: PLC0415  # 파일 관용구 — dual-import 가드 준수
     monkeypatch.setenv("CLAUDE_CALL_EFFORT", " ")
-    assert cfg.Settings().claude_call_effort == "high"
+    assert cfg.Settings().claude_call_effort is None
     monkeypatch.setenv("CLAUDE_CALL_EFFORT", "low")
     assert cfg.Settings().claude_call_effort == "low"
 
@@ -747,7 +747,7 @@ def test_harness_effort_env_does_not_reach_settings(monkeypatch):
     import src.config as cfg  # noqa: PLC0415  # 파일 관용구 — dual-import 가드 준수
     monkeypatch.setenv("CLAUDE_EFFORT", "max")
     monkeypatch.delenv("CLAUDE_CALL_EFFORT", raising=False)
-    assert cfg.Settings().claude_call_effort == "high"
+    assert cfg.Settings().claude_call_effort is None
 
 
 def test_explicit_model_env_still_wins(monkeypatch):

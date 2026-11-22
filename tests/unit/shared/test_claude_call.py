@@ -29,10 +29,12 @@ def _d(year: int, month: int, day: int) -> datetime:
 
 
 def _entry(model_id: str, line: str, *, effort: bool = True, server_fallback: bool | None = None,
-           created: datetime | None = None) -> mc.ModelEntry:
+           created: datetime | None = None, levels: frozenset | None = None) -> mc.ModelEntry:
+    if levels is None:
+        levels = frozenset({"low", "medium", "high"}) if effort else frozenset()
     return mc.ModelEntry(id=model_id, line=line, display_name=model_id, created_at=created or _d(2026, 10, 1),
                          deprecated_at=None, retires_at=None, supports_structured_outputs=True,
-                         supports_effort=effort, server_fallback=server_fallback)
+                         supports_effort=effort, server_fallback=server_fallback, effort_levels=levels)
 
 
 def _usage(**extra) -> dict:
@@ -88,10 +90,10 @@ def rows():
     return SimpleNamespace(rows=collected, record=_record)
 
 
-async def _call(client, rows, value, *, default="claude-sonnet-5", unfinished=None):
+async def _call(client, rows, value, *, default="claude-sonnet-5", unfinished=None, effort=None):
     return await cc.create_json_message(client, model_value=value, default_value=default, max_tokens=256,
                                         system=_SYSTEM, schema=_SCHEMA, messages=_MESSAGES, record=rows.record,
-                                        unfinished=unfinished)
+                                        unfinished=unfinished, effort=effort)
 
 
 async def _cancel_while_hanging(client, rows, value, unfinished, *, hung_calls: int):
@@ -237,15 +239,14 @@ async def test_transient_errors_are_not_retried(rows, error):
     assert _row_view(rows) == [("claude-haiku-5-5", "error", type(error).__name__)]
 
 
-async def test_effort_goes_only_where_the_listing_says_it_is_supported(rows, monkeypatch):
-    monkeypatch.setattr(settings, "claude_call_effort", "low")
+async def test_effort_goes_only_where_the_listing_says_it_is_supported(rows):
     mc.install_snapshot([_entry("claude-sonnet-5", "sonnet", effort=True),
                          _entry("claude-haiku-4-5", "haiku", effort=False)], source="api")
     client = _client(plain=[_message(model="claude-sonnet-5"), _message(model="claude-haiku-4-5"),
                             _message(model="claude-x")])
-    await _call(client, rows, "claude-sonnet-5")
-    await _call(client, rows, "claude-haiku-4-5")
-    await _call(client, rows, "claude-x")  # 목록에 없는 판 — 모르면 보내지 않는다 / unknown: not sent
+    await _call(client, rows, "claude-sonnet-5", effort="low")
+    await _call(client, rows, "claude-haiku-4-5", effort="low")
+    await _call(client, rows, "claude-x", effort="low")  # 목록에 없는 판 — 모르면 보내지 않는다 / unknown: not sent
     efforts = [call["output_config"].get("effort") for call in client.messages.calls]
     assert efforts == ["low", None, None]
     assert all(call["output_config"]["format"]["type"] == "json_schema" for call in client.messages.calls)
@@ -487,3 +488,25 @@ async def test_primary_hops_carry_the_called_id_and_fallback_hops_their_own(rows
     await cc.record_response(rows.record, sticky, model="claude-sonnet-5", duration_ms=5.0, status="success")
     assert [(r["model"], r["status"], r["input_tokens"]) for r in rows.rows] == [
         ("claude-sonnet-5", "refused", 9), ("claude-opus-5", "success", 12), ("claude-opus-5", "success", 7)]
+
+
+# witness-corpus: 요청 단계 — 판이 받는 단계 · 받지 않아 내려 맞출 단계 · 내려갈 곳이 없는 단계 · 모르는 값 · 비움
+_EFFORT_REQUESTS = [
+    ("high", frozenset({"low", "medium", "high"}), "high"),
+    ("high", frozenset({"low", "medium"}), "medium"),
+    ("medium", frozenset({"low"}), "low"),
+    ("low", frozenset({"high", "max"}), None),
+    ("max", frozenset({"low", "medium", "high"}), "high"),
+    ("turbo", frozenset({"low", "medium", "high"}), None),
+    (None, frozenset({"low", "medium", "high"}), None),
+]
+
+
+@pytest.mark.parametrize(("requested", "levels", "sent"), _EFFORT_REQUESTS)
+async def test_the_requested_effort_is_fitted_to_what_the_model_takes(rows, requested, levels, sent):
+    # 받으면 그 단계 · 아니면 받는 가장 가까운 아래 단계 · 없거나 요청이 비면 보내지 않는다(판의 기본값)
+    # The level if taken, else the nearest lower level taken; nothing when none fits or none was asked.
+    mc.install_snapshot([_entry("claude-sonnet-5", "sonnet", levels=levels)], source="api")
+    client = _client(plain=[_message(model="claude-sonnet-5")])
+    await _call(client, rows, "claude-sonnet-5", effort=requested)
+    assert client.messages.calls[0]["output_config"].get("effort") == sent

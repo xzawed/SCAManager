@@ -176,3 +176,9 @@ def test_failed_without_previous_uses_fallback_default():
     mc.set_verified("haiku", "claude-haiku-5-5")
     mc.mark_failed("claude-haiku-5-5")
     assert mc.resolve_model("auto:haiku", default_value="auto:sonnet") == "claude-haiku-4-5"
+
+
+def test_fallback_models_that_take_effort_take_the_three_ui_levels():
+    for entry in mc.FALLBACK_CATALOG:
+        expected = frozenset({"low", "medium", "high"}) if entry.supports_effort else frozenset()
+        assert entry.effort_levels == expected, entry.id

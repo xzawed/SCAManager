@@ -65,6 +65,9 @@ class ModelEntry:  # pylint: disable=too-many-instance-attributes
     # 서버 대체(fallbacks) 를 받는가 — 목록 API 의 allowed_fallback_models(빈 목록 = 안 받음) · None = 모름(보내지 않는다).
     # Whether the model takes server-side fallbacks: the listing's allowed_fallback_models (empty = no); None = unknown.
     server_fallback: bool | None = None
+    # 받는 effort 단계(low · medium · high · xhigh · max) — 목록의 capabilities.effort 단계별 표시 · 비면 effort 를 받지 않는다.
+    # The effort levels the model takes (the listing's per-level flags); empty when it takes no effort.
+    effort_levels: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -79,11 +82,17 @@ class ModelChoice:
     model_id: str | None = None
 
 
+# 화면이 고르는 effort 세 단계 — 단계별 표시가 없을 때 effort 를 받는 판이 받는다고 보는 범위다.
+# The three effort levels the settings screen offers; assumed taken when a model takes effort without per-level flags.
+UI_EFFORT_LEVELS = frozenset({"low", "medium", "high"})
+
+
 def _fallback(model_id: str, line: str, display_name: str, created: tuple[int, int, int], *,
               effort: bool) -> ModelEntry:
     return ModelEntry(
         id=model_id, line=line, display_name=display_name, created_at=datetime(*created, tzinfo=timezone.utc),
         deprecated_at=None, retires_at=None, supports_structured_outputs=True, supports_effort=effort,
+        effort_levels=UI_EFFORT_LEVELS if effort else frozenset(),
     )
 
 

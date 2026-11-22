@@ -247,7 +247,7 @@ async def review_code(  # pylint: disable=too-many-locals,too-many-return-statem
             # Enforce the response shape via schema; truncation/failure/range guards stay.
             schema=REVIEW_RESPONSE_SCHEMA,
             messages=[{"role": "user", "content": prompt}],
-            record=_record, unfinished=unfinished,
+            record=_record, unfinished=unfinished, effort=settings.claude_call_effort,
         )
         response = outcome.response
         _log["duration_ms"] = (time.perf_counter() - outcome.started) * 1000

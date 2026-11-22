@@ -17,7 +17,6 @@ from dataclasses import dataclass
 
 import anthropic
 
-from src.config import settings
 from src.shared import model_catalog as mc
 from src.shared.claude_metrics import extract_anthropic_usage
 
@@ -199,8 +198,27 @@ class _Attempts:
         await _record_failure(self.record, model, error_type or held_type, duration_ms)
 
 
+_EFFORT_ORDER = ("low", "medium", "high", "xhigh", "max")
+
+
+def _fit_effort(entry: mc.ModelEntry | None, requested: str | None) -> str | None:
+    """요청 단계를 그 판이 받는 단계로 — 받으면 그대로 · 아니면 받는 가장 가까운 아래 단계 · 없으면 None(보내지 않는다).
+
+    Fit the requested level to the model: as asked if taken, else the nearest lower level it takes, else None.
+    요청이 None 이면 보내지 않는다 — 판의 기본값(Sonnet 5 · 5.5 high · Opus 5.5 · Haiku 5.5 medium)으로 돈다.
+    No request means no effort: the model runs at its own default.
+    """
+    if requested not in _EFFORT_ORDER or entry is None or not entry.supports_effort:
+        return None
+    levels = entry.effort_levels or mc.UI_EFFORT_LEVELS
+    for level in reversed(_EFFORT_ORDER[: _EFFORT_ORDER.index(requested) + 1]):
+        if level in levels:
+            return level
+    return None
+
+
 async def send_once(client, model: str, *, max_tokens: int, system: list | None, schema: dict, messages: list,
-                    entry: mc.ModelEntry | None = None, with_fallbacks: bool = False):
+                    entry: mc.ModelEntry | None = None, with_fallbacks: bool = False, effort: str | None = None):
     """한 번 부른다 — effort 는 목록이 그 판에 허락한 것만(모르면 보내지 않는다) · 서버 대체는 부르는 쪽이 정한다.
 
     One call; effort only where the listing says the model takes it (unknown: not sent); the caller decides on
@@ -209,8 +227,9 @@ async def send_once(client, model: str, *, max_tokens: int, system: list | None,
     """
     entry = entry if entry is not None else mc.entry_for(model)
     output_config: dict = {"format": {"type": "json_schema", "schema": schema}}
-    if entry is not None and entry.supports_effort:
-        output_config["effort"] = settings.claude_call_effort
+    fitted = _fit_effort(entry, effort)
+    if fitted is not None:
+        output_config["effort"] = fitted
     # system 이 없는 호출(리포 인사이트)은 SDK 의 omit 으로 뺀다 — None 을 보내면 요청 본문에 null 이 실린다.
     # A call without a system prompt passes the SDK's omit; None would put a null into the request body.
     # 🔴 인자는 키워드로 적는다 — `**` 로 펼치면 설치된 SDK 와 대조하는 시험이 키워드를 못 읽는다.
@@ -282,7 +301,8 @@ async def _after_rejection(attempts: _Attempts, model: str, exc: anthropic.BadRe
 # 인자는 요청의 꼴 그대로다 / the arguments are the request's own shape
 async def create_json_message(  # pylint: disable=too-many-arguments,too-many-locals
         client, *, model_value: str | None, default_value: str, max_tokens: int, system: list | None,
-        schema: dict, messages: list, record: CostRecorder, unfinished: Unfinished | None = None) -> CallOutcome:
+        schema: dict, messages: list, record: CostRecorder, unfinished: Unfinished | None = None,
+        effort: str | None = None) -> CallOutcome:
     """저장값으로 판을 정해 JSON 응답 하나를 받는다 — 처리하지 않는 예외는 그대로 올린다(호출부의 오류 분류 유지).
 
     Resolve the stored value and get one JSON response; unhandled exceptions propagate (callers keep classifying).
@@ -294,7 +314,8 @@ async def create_json_message(  # pylint: disable=too-many-arguments,too-many-lo
       Cost rows: raised or refused attempts here, cancelled ones in `unfinished`, the final response by the caller.
     """
     attempts = _Attempts(client, record, unfinished if unfinished is not None else Unfinished(),
-                         {"max_tokens": max_tokens, "system": system, "schema": schema, "messages": messages})
+                         {"max_tokens": max_tokens, "system": system, "schema": schema, "messages": messages,
+                          "effort": effort})
     model = mc.resolve_model(model_value, default_value=default_value)
     try:
         response, started = await attempts.send(model)
