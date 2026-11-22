@@ -72,6 +72,41 @@ def test_an_unchanged_stored_value_is_not_revalidated(db):
     assert (stored.review_model, stored.auto_merge) == ("claude-sonnet-4-6", True)
 
 
+def test_changing_a_stored_value_to_an_unknown_model_is_refused(db):
+    upsert_repo_config(db, RepoConfigData(repo_full_name="o/m", review_model="claude-sonnet-5"))
+    with pytest.raises(ValueError):
+        upsert_repo_config(db, RepoConfigData(repo_full_name="o/m", review_model="auto:gpt"))
+    assert get_repo_config(db, "o/m").review_model == "claude-sonnet-5"
+
+
+def test_a_changed_value_is_stored_in_its_normal_form(db):
+    upsert_repo_config(db, RepoConfigData(repo_full_name="o/m", review_model="claude-sonnet-5"))
+    upsert_repo_config(db, RepoConfigData(repo_full_name="o/m", review_model=" AUTO:Sonnet "))
+    assert get_repo_config(db, "o/m").review_model == "auto:sonnet"
+
+
+class _Session:
+    """시험 DB 세션을 `with SessionLocal() as db:` 자리에 — 닫지 않는다 / the test session, left open."""
+
+    def __init__(self, db):
+        self._db = db
+
+    def __enter__(self):
+        return self._db
+
+    def __exit__(self, *_exc):
+        return False
+
+
+@pytest.mark.parametrize(("sent", "stored"), [(" AUTO:Sonnet ", "auto:sonnet"), ("", None)])
+def test_the_api_answers_with_what_was_stored(db, sent, stored):
+    # 🔴 응답 = 저장한 값(요청 에코가 아니다) — 저장 단계가 값을 정규화해도 / the response is what was stored
+    with patch("src.api.repos.SessionLocal", return_value=_Session(db)):
+        response = TestClient(app).put("/api/repos/owner%2Frepo/config", json={"review_model": sent})
+    assert response.status_code == 200
+    assert (response.json()["review_model"], get_repo_config(db, "owner/repo").review_model) == (stored, stored)
+
+
 def test_the_api_answers_an_invalid_model_with_422():
     client = TestClient(app)
     session = MagicMock()

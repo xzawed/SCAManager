@@ -242,7 +242,7 @@ CLAUDE_MODELS: list[dict] = [
 
 # 🔴 셀렉터에서 «내렸지만» 여전히 흐르는 모델의 요율.
 #
-# `RepoConfig.review_model` 은 `String(50)` 이고 저장 시 카탈로그 검증이 없다. 그래서 예전에
+# `RepoConfig.review_model` 의 저장 검사(`model_catalog.validate_model_value`)는 값이 바뀔 때만 돈다. 그래서 예전에
 # 고른 모델 id 는 카탈로그에서 빠진 뒤에도 계속 API 로 나가고 비용이 기록된다 — 운영자가
 # 아무것도 바꾸지 않아도 그렇다. 그때 family 요율(sonnet=$2/$10)로 매기면 Sonnet 4.6 호출이
 # **33% 과소 계상**된다. 세대가 오르며 값이 «내렸기» 때문이다.

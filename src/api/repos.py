@@ -209,17 +209,18 @@ def update_repo_config(request: Request, repo_name: str, body: RepoConfigUpdate)
         current = get_repo_config(db, repo_name)
         merged = {name: getattr(current, name) for name in _config_field_names()}
         merged.update(sent)
+        data = RepoConfigData(repo_full_name=repo_name, **merged)
         try:
-            record = upsert_repo_config(db, RepoConfigData(
-                repo_full_name=repo_name,
-                **merged,
-            ))
+            record = upsert_repo_config(db, data)
         except ValueError as exc:
             # 저장 검증(문턱 · 리뷰 모델 값)에 걸린 요청 — 입력 탓이라 422 / a save-time validation failure is a 422
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         # 🔴 응답은 **저장된 것**을 돌려준다 — 요청 에코가 아니다. 구판은 보내지 않은
-        #    필드까지 기본값으로 에코해 호출자에게 거짓 상태를 보여줬다.
-        return {"repo_full_name": record.repo_full_name, **merged}
+        #    필드까지 기본값으로 에코해 호출자에게 거짓 상태를 보여줬다. 저장 단계가 값을 정규화하므로
+        #    (리뷰 모델: `auto:` 소문자 · 앞뒤 공백 · 빈 값 = NULL) 요청 사본이 아니라 저장한 `data` 에서 읽는다.
+        # The response is what was stored; upsert normalises `data` in place before writing it.
+        stored = {name: getattr(data, name) for name in _config_field_names()}
+        return {"repo_full_name": record.repo_full_name, **stored}
 
 
 @router.delete("/repos/{repo_name:path}")

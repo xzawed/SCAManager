@@ -1,8 +1,8 @@
 """리포마다 고르는 리뷰 effort — 저장 · 검증 · 폼 보존 · 리뷰 호출까지 (Issue #1905 ③a · 사용자 11-22 «A안을 승인합니다.»).
 
 Per-repo review effort: storage, validation, form preservation and the review call.
-비우면 운영 변수(`CLAUDE_CALL_EFFORT`)를, 그것도 비면 판의 기본값을 쓴다 — 화면이 고르는 단계는 low · medium · high 셋.
-Blank falls back to CLAUDE_CALL_EFFORT, then to the model's own default; the screen offers low, medium and high.
+비우면 운영 변수(`CLAUDE_CALL_EFFORT`, 기본 high)를 쓴다 — 화면이 고르는 단계는 low · medium · high 셋.
+Blank falls back to CLAUDE_CALL_EFFORT (default high); the screen offers low, medium and high.
 """
 from __future__ import annotations
 

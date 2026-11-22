@@ -18,6 +18,8 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import DBAPIError
 
+from tests.unit.migrations._migration_source import later_observer_grants
+
 _PG_URL = os.environ.get("DATABASE_URL_TEST_POSTGRES", "")
 pytestmark = pytest.mark.skipif(
     not _PG_URL, reason="관측 역할 권한은 실 PostgreSQL 로만 잰다 — DATABASE_URL_TEST_POSTGRES / needs PostgreSQL")
@@ -36,16 +38,9 @@ def _load_migration():
 _MIG = _load_migration()
 _ROLE = _MIG.ROLE
 
-# 0049 뒤에 관측 역할에 컬럼을 더 주는 revision — 0051 은 `github_state` 하나(회고 원장 L05 P1-35).
-# Later revisions that grant the observer more columns; 0051 adds `github_state`.
-_LATER_GRANTS = Path(__file__).resolve().parents[2] / "alembic" / "versions" / "0051_security_alert_github_state.py"
-
-
-def _later_grants() -> dict[str, tuple[str, ...]]:
-    spec = importlib.util.spec_from_file_location("observer_grants_0051", _LATER_GRANTS)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module._ADDED_GRANTS  # pylint: disable=protected-access
+# 0049 뒤에 관측 역할에 컬럼을 더 주는 revision 전부(0051 `github_state` · 0053 `review_effort` …) — 파일마다 `_ADDED_GRANTS`.
+# Every later revision that grants the observer more columns, read from each file's `_ADDED_GRANTS`.
+_LATER_GRANTS = later_observer_grants(Path(__file__).resolve().parents[2] / "alembic" / "versions")
 
 
 @pytest.fixture(scope="module")
@@ -93,7 +88,7 @@ def test_readable_columns_are_exactly_the_allowlist(engine):
     """읽을 수 있는 컬럼(PUBLIC 경유 포함, 실효 권한) = `_ALLOWED`. 테이블 단위 SELECT 는 없다.
     Effective readable columns (including via PUBLIC) equal `_ALLOWED`; no table-level SELECT."""
     expected = {(table, column) for table, columns in _MIG._ALLOWED.items() for column in columns}
-    expected |= {(table, column) for table, columns in _later_grants().items() for column in columns}
+    expected |= _LATER_GRANTS
     with engine.connect() as conn:
         readable = set(conn.execute(text(
             "SELECT c.relname, a.attname FROM pg_class c "
@@ -379,7 +374,7 @@ def test_migration_runs_as_a_non_superuser_owner(engine):
                "/observer_sim")
     admin = create_engine(_PG_URL, isolation_level="AUTOCOMMIT")
     expected_columns = sum(len(columns) for columns in _MIG._ALLOWED.values())
-    expected_columns += sum(len(columns) for columns in _later_grants().values())  # 0051 github_state
+    expected_columns += len(_LATER_GRANTS)  # 0051 github_state · 0053 review_effort …
     defaults = {"default_transaction_read_only=on", "statement_timeout=5s", "idle_in_transaction_session_timeout=10s"}
     try:
         with admin.connect() as conn:

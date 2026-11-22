@@ -20,7 +20,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.config import settings
+from src.config import Settings, settings
 from src.database import Base
 from src.models.claude_api_call import ClaudeApiCall
 from src.models.repo_config import RepoConfig
@@ -339,6 +339,15 @@ async def test_probe_adds_effort_only_when_supported(world, monkeypatch):
     assert "effort" not in second["output_config"]
     assert second["output_config"]["format"]["type"] == "json_schema"
     assert second["model"] == "claude-haiku-4-5"
+
+
+async def test_probe_sends_the_default_effort(world, monkeypatch):
+    # 기본 설정으로도 시험 호출은 effort 를 보낸다 — 리포가 effort 를 비운 실제 리뷰가 보내는 값과 같다(설계 §2)
+    # With the default setting the probe still sends effort, the value a review with no repo effort sends.
+    monkeypatch.setattr(settings, "claude_call_effort", Settings.model_fields["claude_call_effort"].default)
+    client = _use(world, _FakeClient(plain=[_message()]))
+    assert (await svc.probe_model(_entry("claude-haiku-5-5", "haiku"), api_key="k")).ok
+    assert client.messages.calls[0]["output_config"]["effort"] == "high"
 
 
 async def test_probe_rejects_model_without_structured_outputs(world):

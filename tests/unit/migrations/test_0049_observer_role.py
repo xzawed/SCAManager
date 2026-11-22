@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from src.database import Base
-from tests.unit.migrations._migration_source import module_constants
+from tests.unit.migrations._migration_source import later_observer_grants, module_constants
 
 _ROOT = Path(__file__).resolve().parents[3]
 _MIGRATION = _ROOT / "alembic" / "versions" / "0049_observer_role.py"
@@ -46,7 +46,8 @@ def _allowed() -> set[tuple[str, str]]:
     assert "_ALLOWED" in constants, "허용 목록을 리터럴로 못 읽었다 — 못 재면 red / _ALLOWED is not a literal"
     allowed = {(table, column) for table, columns in constants["_ALLOWED"].items() for column in columns}
     assert allowed, "허용 목록이 비었다 / empty allowlist"
-    return allowed
+    # 뒤 revision 이 더 준 컬럼(0051 · 0053 …)도 같은 검사를 받는다 / later grants face the same checks
+    return allowed | later_observer_grants(_ROOT / "alembic" / "versions")
 
 
 def _leaks(allowed: set[tuple[str, str]]) -> set[tuple[str, str]]:
@@ -74,3 +75,32 @@ def test_allowlisted_tables_exist():
     """허용 목록의 테이블은 ORM 테이블이거나 alembic_version 이다 / allowlisted tables exist."""
     orm_tables = set(Base.metadata.tables) | {"alembic_version"}
     assert {table for table, _column in _allowed()} - orm_tables == set()
+
+
+def _observed_columns(allowed: set[tuple[str, str]]) -> set[tuple[str, str]]:
+    tables = {table for table, _column in allowed}
+    return {(t.name, c.name) for t in Base.metadata.tables.values() if t.name in tables for c in t.columns}
+
+
+def _unclassified(allowed: set[tuple[str, str]], observed: set[tuple[str, str]]) -> set[tuple[str, str]]:
+    return observed - allowed - _EXCLUDED
+
+
+def test_every_observed_column_is_granted_or_excluded():
+    """관측 표의 컬럼은 허용(0049 + 뒤 revision 의 `_ADDED_GRANTS`)이거나 뺀 목록이다.
+
+    컬럼 단위 GRANT 라 새 컬럼은 저절로 보이지 않는다(0051) — 비밀값이 아니면 그 컬럼을 더하는 revision 이
+    GRANT 하고, 비밀값 · 개인정보 · 사용자 내용이면 `_EXCLUDED` 에 둔다. 둘 다 아니면 운영 확인이 그 컬럼을 못 읽는다.
+    Every column of an observed table is granted or excluded; column grants never cover a new column by themselves.
+    """
+    allowed = _allowed()
+    observed = _observed_columns(allowed)
+    assert observed, "관측 표의 ORM 컬럼을 못 읽었다 — 못 재면 red / no observed column read"
+    assert _unclassified(allowed, observed) == set()
+
+
+@pytest.mark.parametrize("planted", [("repo_configs", "planted_setting"), ("analyses", "planted_flag")])
+def test_the_coverage_check_catches_a_planted_column(planted):
+    """계기 뒤집기 — 분류되지 않은 컬럼을 심으면 잡는다 / flip: a planted unclassified column is caught."""
+    allowed = _allowed()
+    assert _unclassified(allowed, _observed_columns(allowed) | {planted}) == {planted}

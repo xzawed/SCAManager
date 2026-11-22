@@ -248,8 +248,8 @@ async def review_code(  # pylint: disable=too-many-locals,too-many-return-statem
             # Enforce the response shape via schema; truncation/failure/range guards stay.
             schema=REVIEW_RESPONSE_SCHEMA,
             messages=[{"role": "user", "content": prompt}],
-            # 리포가 고른 단계가 먼저, 비면 운영 변수, 그것도 비면 보내지 않는다(판의 기본값) — 사용자 11-22 A안
-            # The repo's level first, then the global setting, else none (the model's default).
+            # 리포가 고른 단계가 먼저, 비면 운영 변수(기본 high) — 그 판이 받는 단계로 맞춰 보낸다(사용자 11-22 A안)
+            # The repo's level first, else the global setting (default high), fitted to what the model takes.
             record=_record, unfinished=unfinished, effort=effort or settings.claude_call_effort,
         )
         response = outcome.response

@@ -48,8 +48,8 @@ class RepoConfig(Base):
     # NULL = settings.claude_review_model 전역 기본값 사용
     # NULL = fall back to settings.claude_review_model global default
     review_model = Column(String(50), nullable=True)
-    # 리포마다 고르는 리뷰 effort(low · medium · high) — NULL = 운영 변수 CLAUDE_CALL_EFFORT, 그것도 비면 판의 기본값
-    # (사용자 11-22 A안 · Alembic 0053). Per-repo review effort; NULL falls back to CLAUDE_CALL_EFFORT, then the model.
+    # 리포마다 고르는 리뷰 effort(low · medium · high) — NULL = 운영 변수 CLAUDE_CALL_EFFORT(기본 high)
+    # (사용자 11-22 A안 · Alembic 0053). Per-repo review effort; NULL falls back to CLAUDE_CALL_EFFORT (default high).
     review_effort = Column(String(10), nullable=True)
 
     # per-repo 비활성화 도구 목록 — JSON 배열, 기본값 빈 배열 (Alembic 0036)
