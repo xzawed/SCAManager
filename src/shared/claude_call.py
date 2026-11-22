@@ -9,6 +9,7 @@ response's rows with `record_response` after parsing, so "success only after par
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable
@@ -23,6 +24,9 @@ from src.shared.claude_metrics import extract_anthropic_usage
 logger = logging.getLogger(__name__)
 
 SERVER_FALLBACK_BETA = "server-side-fallback-2026-07-01"
+# 서버 대체 인자를 400 으로 거부한 시도의 비용 행 라벨 — 그 판은 이 프로세스 동안 대체 없이 부른다.
+# Cost-row label of an attempt that 400'd on the fallback arguments; that model is then called plainly.
+FALLBACKS_REJECTED = "fallbacks_rejected"
 # 서버 대체가 없는 Haiku 의 거절은 검증된 최신 Sonnet 으로 다시(사용자 11-21 «Haiku는 Sonnet으로 대체 수행»).
 # A Haiku refusal (no server fallback) is retried on the verified latest Sonnet (user decision 11-21).
 _REFUSAL_RETRY_FROM = "haiku"
@@ -66,10 +70,21 @@ async def record_response(record: CostRecorder, response, *, model: str, duratio
     """응답 하나의 비용 행 — 서버 대체가 돌았으면 hop 마다(그 판 · 그 토큰), 아니면 한 행.
 
     Cost rows for one response: one per hop when a server fallback ran (each hop's model and tokens), else one.
-    `model` 은 부른 판이다 — hop 의 model 이 비어 있으면 그 판이다 / `model` is the model called (hops without a model).
+    `model` 은 부른 판이다 — 부른 판의 hop(type=message)은 그 id 그대로, 대체 hop 만 그 판 이름을 쓴다.
+    `model` is the model called: its own hops (type=message) keep that id; only fallback hops name their model.
     앞 hop 은 거절한 판이다 — status 는 refused, 걸린 시간은 마지막 hop 에 둔다.
     Earlier hops are models that declined (status refused); the elapsed time goes on the last hop.
+    🔴 쓰기는 끝까지 간다(shield) — 기한 · 취소가 이 await 에 걸려도 행은 남는다. 그 시도는 이미 `Unfinished` 에서
+    비웠으니 호출부의 flush 가 두 번 적지 않는다.
+    The write runs to its end (shielded): a deadline or cancel landing on this await still leaves the rows, and the
+    attempt was already taken out of `Unfinished`, so the caller's flush never writes it twice.
     """
+    await asyncio.shield(_write_response_rows(record, response, model=model, duration_ms=duration_ms,
+                                              status=status, error_type=error_type))
+
+
+async def _write_response_rows(record: CostRecorder, response, *, model: str, duration_ms: float, status: str,
+                               error_type: str) -> None:
     usage = getattr(response, "usage", None)
     iterations = getattr(usage, "iterations", None)
     hops = ([i for i in iterations if getattr(i, "type", None) in ("message", "fallback_message")]
@@ -77,8 +92,12 @@ async def record_response(record: CostRecorder, response, *, model: str, duratio
     if hops:
         for n, hop in enumerate(hops):
             last = n == len(hops) - 1
+            # 응답이 날짜 붙은 id 를 줘도 부른 판의 행은 부른 이름으로 — 이력 · 실패 표식이 같은 이름을 쓴다.
+            # A primary hop keeps the called id even if a dated id is echoed, so history and marks share one name.
+            fallback_hop = getattr(hop, "type", None) == "fallback_message"
             await record(
-                model=getattr(hop, "model", None) or model, duration_ms=duration_ms if last else 0.0,
+                model=(getattr(hop, "model", None) or model) if fallback_hop else model,
+                duration_ms=duration_ms if last else 0.0,
                 status=status if last else "refused", error_type=error_type if last else "",
                 input_tokens=_int(getattr(hop, "input_tokens", 0)),
                 output_tokens=_int(getattr(hop, "output_tokens", 0)),
@@ -100,8 +119,9 @@ def _elapsed_ms(started: float) -> float:
 
 
 async def _record_failure(record: CostRecorder, model: str, error_type: str, duration_ms: float) -> None:
-    await record(model=model, duration_ms=duration_ms, status="error", error_type=error_type,
-                 input_tokens=0, output_tokens=0, cache_read_tokens=0, cache_creation_tokens=0)
+    # 쓰기는 끝까지(shield) — record_response 와 같은 까닭 / runs to its end, as in record_response
+    await asyncio.shield(record(model=model, duration_ms=duration_ms, status="error", error_type=error_type,
+                                input_tokens=0, output_tokens=0, cache_read_tokens=0, cache_creation_tokens=0))
 
 
 @dataclass
@@ -136,11 +156,27 @@ class _Attempts:
         self._client, self._trace, self._request = client, trace, request
 
     async def send(self, model: str):
-        """한 번 부른다 — 나가 있는 동안은 Unfinished.out 에 남는다 / one call, kept in Unfinished.out while out."""
+        """한 번 부른다 — 나가 있는 동안은 Unfinished.out 에 남는다 / one call, kept in Unfinished.out while out.
+
+        서버 대체 인자를 400 으로 거부한 판은 그 시도를 적고(fallbacks_rejected) 이 프로세스 동안 대체 없이 부른다 —
+        곧바로 대체 없이 한 번 더. 대체가 붙은 요청 꼴은 오프라인으로 확인할 수 없어 둔 안전판이다.
+        A model that 400s on the fallback arguments gets that attempt written and is called without them for the rest
+        of the process, starting with an immediate plain retry: the shape with fallbacks cannot be checked offline.
+        """
+        if mc.takes_fallbacks(model):
+            self._trace.out = (model, time.perf_counter())
+            try:
+                response = await send_once(self._client, model, with_fallbacks=True, **self._request)
+            except anthropic.BadRequestError:
+                mc.refuse_fallbacks(model)
+                logger.warning("claude model %s rejected the server-fallback arguments — calling it without them "
+                               "for the rest of this process", model)
+                await self.fail(FALLBACKS_REJECTED)
+            else:
+                return response, self._take_out()[1]
         self._trace.out = (model, time.perf_counter())
         response = await send_once(self._client, model, **self._request)
-        started = self._take_out()[1]
-        return response, started
+        return response, self._take_out()[1]
 
     def _take_out(self) -> tuple[str, float]:
         out, self._trace.out = self._trace.out, None
@@ -164,11 +200,12 @@ class _Attempts:
 
 
 async def send_once(client, model: str, *, max_tokens: int, system: list | None, schema: dict, messages: list,
-                    entry: mc.ModelEntry | None = None):
-    """한 번 부른다 — effort 와 서버 대체는 목록이 그 판에 허락한 것만(모르면 보내지 않는다). 시험 호출도 이 꼴이다.
+                    entry: mc.ModelEntry | None = None, with_fallbacks: bool = False):
+    """한 번 부른다 — effort 는 목록이 그 판에 허락한 것만(모르면 보내지 않는다) · 서버 대체는 부르는 쪽이 정한다.
 
-    One call; effort and server fallback only where the listing says the model takes them (unknown: not sent).
-    The catalog probe uses this same shape. `entry` overrides the listing lookup (the probe passes its candidate).
+    One call; effort only where the listing says the model takes it (unknown: not sent); the caller decides on
+    server fallback (`with_fallbacks` — real calls via `mc.takes_fallbacks`, the catalog probe never: it checks
+    the candidate alone). `entry` overrides the listing lookup (the probe passes its candidate).
     """
     entry = entry if entry is not None else mc.entry_for(model)
     output_config: dict = {"format": {"type": "json_schema", "schema": schema}}
@@ -179,7 +216,7 @@ async def send_once(client, model: str, *, max_tokens: int, system: list | None,
     # 🔴 인자는 키워드로 적는다 — `**` 로 펼치면 설치된 SDK 와 대조하는 시험이 키워드를 못 읽는다.
     # Keywords are written out: `**` hides them from the test that checks them against the installed SDK.
     system_arg = system if system is not None else anthropic.omit
-    if entry is not None and entry.server_fallback:
+    if with_fallbacks:
         return await client.beta.messages.create(
             model=model, max_tokens=max_tokens, system=system_arg, output_config=output_config, messages=messages,
             betas=[SERVER_FALLBACK_BETA], fallbacks="default",
@@ -207,7 +244,10 @@ def _previous_for(model: str) -> str | None:
     line = mc.line_of(model)
     if line not in mc.KNOWN_LINES:
         return None
-    previous = mc.previous_verified(line) or mc.FALLBACK_DEFAULT_BY_LINE[line]
+    # 다른 호출이 이 판을 이미 실패로 적었으면 남은 최신이 «바로 앞» 이다 — 그 앞까지 내려가지 않는다.
+    # If another call already marked this model failed, the latest good one is the "previous" (not one older).
+    earlier = mc.verified_latest(line) if mc.is_failed(model) else mc.previous_verified(line)
+    previous = earlier or mc.FALLBACK_DEFAULT_BY_LINE[line]
     return None if previous == model else previous
 
 
@@ -230,10 +270,12 @@ async def _after_rejection(attempts: _Attempts, model: str, exc: anthropic.BadRe
         await attempts.release()
         await attempts.fail(type(retry_exc).__name__)
         raise exc from retry_exc
-    await attempts.release(mc.MODEL_REJECTED)
+    # 표식 · 로그가 행 쓰기보다 먼저 — 쓰는 도중에 기한이 와도 실패 표식은 남는다.
+    # The mark and the log come before the row write, so a deadline during the write keeps the mark.
     mc.mark_failed(model)
     logger.warning("claude model %s rejected the request and %s answered it — %s is marked failed",
                    model, previous, model)
+    await attempts.release(mc.MODEL_REJECTED)
     return previous, response, started
 
 

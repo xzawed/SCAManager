@@ -640,6 +640,9 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
     record = functools.partial(_record_narrative_cost, repo_id=repo_id, user_id=user_id)
     unfinished = Unfinished()
     outcome: CallOutcome | None = None
+    # 마지막 응답의 행을 이미 썼는가 — 그 뒤의 실패(부정 캐시 기록 등)가 같은 응답을 또 적지 않게.
+    # Whether the final response's row is written, so a later failure (e.g. the negative cache) never writes it twice.
+    final_written = False
     client = new_async_anthropic(
         api_key=api_key, timeout=60.0, max_retries=2,
         caller="repo_insight", retry_after_cap=ANTHROPIC_RETRY_AFTER_CAP_PAGE_SECONDS,
@@ -672,6 +675,7 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
             # A refusal by the whole chain has no body: api_error, negative-cached as refused.
             await record_response(record, response, model=outcome.requested, duration_ms=duration_ms,
                                   status="refused")
+            final_written = True
             await run_in_threadpool(
                 _record_narrative_error,
                 db, user_id=user_id, repo_id=repo_id, days=days,
@@ -704,6 +708,7 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
         # `data.get` raise *after* the success row was already written.
         await record_response(record, response, model=outcome.requested, duration_ms=duration_ms,
                               status="success")
+        final_written = True
     except Exception as exc:  # pylint: disable=broad-exception-caught  # noqa: BLE001
         # 🔴 **벤더 실패와 우리 코드 버그를 다른 status 로 가른다** (#1458).
         #   try 안에는 API 호출과 **그 뒤의 파싱**이 함께 있다(R63 — 2행 기록을 막느라
@@ -729,7 +734,7 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
         # 도우미가 이미 적었다. 어느 쪽이든 호출당 1행이다 (R63).
         # A failure after a response writes that response's row; a deadline writes the unfinished attempt;
         # an exception from the call itself was already written by the helper. One row per call either way.
-        if outcome is not None:
+        if outcome is not None and not final_written:
             await record_response(record, outcome.response, model=outcome.requested,
                                   duration_ms=(time.perf_counter() - outcome.started) * 1000,
                                   status="error", error_type=error_type)

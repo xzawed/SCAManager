@@ -121,7 +121,7 @@ def owner(db):  # pylint: disable=redefined-outer-name
     return user.id, repo.id
 
 
-async def _repo_narrative(db, owner, client):  # pylint: disable=redefined-outer-name
+async def _repo_narrative(db, owner, client, *, attribution=None):  # pylint: disable=redefined-outer-name
     user_id, repo_id = owner
     factory = MagicMock(return_value=client)
     with patch.object(repo_insight_service, "new_async_anthropic", factory), \
@@ -129,6 +129,8 @@ async def _repo_narrative(db, owner, client):  # pylint: disable=redefined-outer
          patch.object(repo_insight_service, "log_claude_api_call", MagicMock()) as cost_row:
         out = await repo_insight_service.repo_insight_narrative(
             db, repo_id, 30, repo_full_name="refusal/r", kpi=_KPI, recurring=[], user_id=user_id, language="en")
+    if attribution is not None:
+        attribution.extend((c.kwargs["repo_id"], c.kwargs["user_id"]) for c in cost_row.call_args_list)
     return out, _rows(cost_row), factory.call_count
 
 
@@ -137,10 +139,13 @@ async def test_repo_insight_refusal_is_api_error_and_the_next_call_short_circuit
     # A refusal is a vendor-side failure: api_error now, and the negative cache brings back the same status.
     monkeypatch.setattr(repo_insight_service.settings, "anthropic_api_key", "sk-ant-test")
     monkeypatch.setattr(repo_insight_service.settings, "claude_insight_model", "claude-haiku-4-5")
+    attribution: list = []
     out, rows, _ = await _repo_narrative(db, owner, _client(_refused("claude-haiku-4-5"),
-                                                            _refused("claude-sonnet-5")))
+                                                            _refused("claude-sonnet-5")), attribution=attribution)
     assert out == {"text": "", "status": "api_error"}
     assert rows == [("claude-haiku-4-5", "refused", ""), ("claude-sonnet-5", "refused", "")]
+    # 도우미가 쓴 행(앞 거절)도 리포 · 사용자에 귀속된다 / helper-written rows keep the repo and user attribution
+    assert attribution == [(owner[1], owner[0])] * 2
     again, rows_again, calls = await _repo_narrative(db, owner, _client())
     assert (again, rows_again, calls) == ({"text": "", "status": "api_error"}, [], 0)
 
@@ -152,3 +157,16 @@ async def test_repo_haiku_refusal_is_answered_by_sonnet(db, owner, monkeypatch):
                                                             _message(model="claude-sonnet-5", text='{"text": "진단"}')))
     assert out == {"text": "진단", "status": "success"}
     assert rows == [("claude-haiku-4-5", "refused", ""), ("claude-sonnet-5", "success", "")]
+
+
+async def test_repo_refusal_with_a_failing_negative_cache_write_keeps_one_row_per_attempt(db, owner, monkeypatch):  # pylint: disable=redefined-outer-name
+    # 거절 행을 쓴 뒤 부정 캐시 기록이 실패해도 except 가 같은 응답의 행을 또 쓰지 않는다
+    # When the negative-cache write fails after the refused row, the except path does not write that response again.
+    monkeypatch.setattr(repo_insight_service.settings, "anthropic_api_key", "sk-ant-test")
+    monkeypatch.setattr(repo_insight_service.settings, "claude_insight_model", "claude-haiku-4-5")
+    monkeypatch.setattr(repo_insight_service, "_record_narrative_error",
+                        MagicMock(side_effect=[RuntimeError("cache write failed"), None]))
+    out, rows, _ = await _repo_narrative(db, owner, _client(_refused("claude-haiku-4-5"),
+                                                            _refused("claude-sonnet-5")))
+    assert rows == [("claude-haiku-4-5", "refused", ""), ("claude-sonnet-5", "refused", "")]
+    assert out["status"] == "internal_error"

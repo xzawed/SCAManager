@@ -65,3 +65,34 @@ async def test_review_sends_the_configured_effort_only_where_supported(monkeypat
     _, _, haiku_calls = await _review([_message(model="claude-haiku-4-5")], model="claude-haiku-4-5")
     assert sonnet_calls[0]["output_config"]["effort"] == "medium"
     assert "effort" not in haiku_calls[0]["output_config"]
+
+
+async def test_a_fallback_served_review_writes_one_row_per_hop_and_names_the_answering_model():
+    # 서버 대체가 답한 리뷰 — 거절한 판 · 답한 판이 각자 행 하나(그 판의 토큰) · used_model 은 답한 판
+    # A review answered by a server fallback: one row per hop with that hop's tokens; used_model is the answerer.
+    from anthropic.types.beta import BetaMessage  # pylint: disable=import-outside-toplevel
+
+    from src.shared import model_catalog as mc  # pylint: disable=import-outside-toplevel
+
+    mc.install_snapshot([mc.ModelEntry(
+        id="claude-sonnet-5", line="sonnet", display_name="Sonnet 5", created_at=mc.FALLBACK_CATALOG[0].created_at,
+        deprecated_at=None, retires_at=None, supports_structured_outputs=True, supports_effort=True,
+        server_fallback=True)], source="api")
+    hops = [{"type": "message", "model": None, "input_tokens": 40, "output_tokens": 0,
+             "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
+            {"type": "fallback_message", "model": "claude-opus-5", "input_tokens": 45, "output_tokens": 30,
+             "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}]
+    answered = BetaMessage.model_validate({
+        "id": "msg", "type": "message", "role": "assistant", "model": "claude-opus-5",
+        "content": [{"type": "text", "text": _REVIEW_JSON}], "stop_reason": "end_turn", "stop_sequence": None,
+        "usage": {"input_tokens": 45, "output_tokens": 30, "iterations": hops},
+    })
+    client = MagicMock()
+    client.beta.messages.create = AsyncMock(return_value=answered)
+    with patch("src.analyzer.io.ai_review.new_async_anthropic", return_value=client), \
+         patch("src.analyzer.io.ai_review.aclose_anthropic_client", AsyncMock()), \
+         patch("src.analyzer.io.ai_review.log_claude_api_call") as cost_row:
+        result = await review_code("sk-test", "feat: add", [("app.py", "+ x = 1")], model="claude-sonnet-5")
+    assert (result.status, result.used_model) == ("success", "claude-opus-5")
+    assert [(c.kwargs["model"], c.kwargs["status"], c.kwargs["input_tokens"]) for c in cost_row.call_args_list] == [
+        ("claude-sonnet-5", "refused", 40), ("claude-opus-5", "success", 45)]

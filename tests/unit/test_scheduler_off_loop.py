@@ -224,6 +224,7 @@ def _patch_retry_http(w, monkeypatch) -> None:
     monkeypatch.setattr(merge_retry_service, "merge_pr", merge_pr)
     monkeypatch.setattr(merge_retry_service, "_get_ci_status_safe",
                         _http(w, "ci_status", lambda *_a: "running"))
+
     async def telegram(_token, _chat_id, payload):
         w.http.append((threading.current_thread(), "telegram"))
         if "/pull/10" in payload["text"]:

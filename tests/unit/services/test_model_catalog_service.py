@@ -123,15 +123,22 @@ class _FakeCreate:
 
 
 class _FakeClient:
-    def __init__(self, *, listing=(), list_error=None, plain=(), beta=()):
+    def __init__(self, *, listing=(), list_error=None, plain=(), beta=(), beta_list_error=None):
         self.messages = _FakeCreate(plain)
         self.listed_with = []
 
         def _list(**kwargs):
             self.listed_with.append(kwargs)
+            if beta_list_error is not None:
+                raise beta_list_error
+            return _AsyncListing(listing, list_error)
+
+        def _plain_list(**kwargs):
+            self.listed_with.append({"plain": True, **kwargs})
             return _AsyncListing(listing, list_error)
 
         self.beta = SimpleNamespace(messages=_FakeCreate(beta), models=SimpleNamespace(list=_list))
+        self.models = SimpleNamespace(list=_plain_list)
 
     async def __aenter__(self):
         return self
@@ -337,18 +344,27 @@ async def test_probe_rejects_model_without_structured_outputs(world):
     assert not client.messages.calls and not client.beta.messages.calls
 
 
-async def test_probe_sends_server_fallback_only_where_listed(world):
-    # 시험 호출도 실제 호출과 같은 꼴 — 목록이 대체 판을 적어 둔 판에만 fallbacks="default"
-    # The probe has the real calls' shape: fallbacks="default" only where the listing names fallback models.
-    client = _use(world, _FakeClient(beta=[_beta_message()], plain=[_message(model="claude-sonnet-5")]))
+async def test_probe_never_sends_server_fallback(world):
+    # 시험 호출은 후보 판 하나가 답하는지 본다 — 대체가 답하면 그 판의 답이 아니다. 대체 인자의 꼴은 실제 호출이
+    # 거부를 받으면 대체 없이 다시 부르는 길이 맡는다(claude_call).
+    # The probe checks the candidate alone; the real calls' plain retry covers a rejected fallback shape.
+    client = _use(world, _FakeClient(plain=[_message(model="claude-sonnet-5-5"), _message(model="claude-sonnet-5")]))
     assert (await svc.probe_model(_entry("claude-sonnet-5-5", "sonnet", server_fallback=True), api_key="k")).ok
     assert (await svc.probe_model(_entry("claude-sonnet-5", "sonnet", server_fallback=False), api_key="k")).ok
-    assert len(client.beta.messages.calls) == 1
-    beta_call = client.beta.messages.calls[0]
-    assert (beta_call["model"], beta_call["betas"], beta_call["fallbacks"]) == (
-        "claude-sonnet-5-5", ["server-side-fallback-2026-07-01"], "default")
-    assert len(client.messages.calls) == 1
-    assert "fallbacks" not in client.messages.calls[0]
+    assert not client.beta.messages.calls
+    assert [call["model"] for call in client.messages.calls] == ["claude-sonnet-5-5", "claude-sonnet-5"]
+    assert all("fallbacks" not in call for call in client.messages.calls)
+
+
+async def test_sync_reads_the_plain_listing_when_the_beta_header_is_refused(world):
+    # 베타 헤더를 받지 않는 계정 · 지역(400/403) — 일반 목록으로 계속 따른다(서버 대체 = 모름)
+    # An account or region that refuses the beta header still follows models through the plain listing.
+    client = _use(world, _FakeClient(listing=[_info("claude-sonnet-5-5", "sonnet", _d(2026, 10, 1))],
+                                     beta_list_error=_status_error(anthropic.BadRequestError, 400)))
+    assert await svc.sync_models(api_key="k")
+    assert mc.snapshot_source() == "api"
+    assert [(e.id, e.server_fallback) for e in mc.snapshot_entries()] == [("claude-sonnet-5-5", None)]
+    assert client.listed_with == [{"betas": ["server-side-fallback-2026-07-01"]}, {"plain": True}]
 
 
 async def test_sync_reads_server_fallback_support_from_the_listing(world):
@@ -365,14 +381,16 @@ async def test_sync_reads_server_fallback_support_from_the_listing(world):
     assert client.listed_with == [{"betas": ["server-side-fallback-2026-07-01"]}]
 
 
-async def test_refused_probe_fails_even_when_a_fallback_answered(world):
-    _use(world, _FakeClient(beta=[_beta_message(model="claude-opus-5", fallback_ran=True)],
-                            plain=[_message(None, stop_reason="refusal")]))
-    served_by_fallback = await svc.probe_model(_entry("claude-sonnet-5-5", "sonnet", server_fallback=True),
-                                               api_key="k")
-    assert (served_by_fallback.ok, served_by_fallback.reason) == (False, "refusal")
+async def test_refused_probe_fails(world):
+    _use(world, _FakeClient(plain=[_message(None, stop_reason="refusal")]))
     refused = await svc.probe_model(_entry("claude-haiku-5-5", "haiku"), api_key="k")
     assert (refused.ok, refused.reason) == (False, "refusal")
+
+
+def test_a_fallback_served_answer_is_judged_a_refusal():
+    # 시험 호출은 대체를 보내지 않지만, 대체가 답한 응답이 오더라도 시험한 판의 답이 아니다(방어)
+    # Probes send no fallbacks; should a fallback-served answer arrive anyway, the probed model did not answer.
+    assert svc._judge(_beta_message(model="claude-opus-5", fallback_ran=True)) == "refusal"  # pylint: disable=protected-access
 
 
 async def test_concurrent_refresh_probes_once(world):

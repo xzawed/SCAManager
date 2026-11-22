@@ -111,6 +111,9 @@ class _CatalogState:
     # 계열 → 검증된 순서(오래된 것 → 새것) / line -> verification order (oldest -> newest)
     verified: Mapping[str, tuple[str, ...]]
     failed: frozenset[str]
+    # 서버 대체 인자를 실제 호출에서 400 으로 거부한 판 — 이 프로세스 동안 대체 없이 부른다(목록을 다시 읽어도 유지).
+    # Models that 400'd on the fallback arguments in a real call; called plainly for the rest of the process.
+    no_fallbacks: frozenset[str] = frozenset()
 
 
 def _index(entries: tuple[ModelEntry, ...]) -> Mapping[str, ModelEntry]:
@@ -257,6 +260,26 @@ def mark_failed(model_id: str) -> None:
 def is_failed(model_id: str) -> bool:
     """실패로 적힌 판인가 / whether the model is marked failed."""
     return model_id in _STATE.failed
+
+
+def refuse_fallbacks(model_id: str) -> None:
+    """판이 서버 대체 인자를 거부했다 — 이 프로세스에서는 그 판에 대체를 보내지 않는다.
+
+    The model rejected the server-fallback arguments; send it none for the rest of this process.
+    """
+    global _STATE  # pylint: disable=global-statement
+    with _WRITE_LOCK:
+        _STATE = replace(_STATE, no_fallbacks=_STATE.no_fallbacks | {model_id})
+
+
+def takes_fallbacks(model_id: str) -> bool:
+    """서버 대체를 보낼 판인가 — 목록이 받을 대체 판을 적어 두었고(빈 목록 · 모름이 아니고) 여기서 거부한 적이 없다.
+
+    Whether to send server fallbacks: the listing names fallback models for it and it has not refused them here.
+    """
+    state = _STATE
+    entry = state.by_id.get(model_id)
+    return entry is not None and bool(entry.server_fallback) and model_id not in state.no_fallbacks
 
 
 def _resolve_line(state: _CatalogState, line: str) -> str:

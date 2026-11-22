@@ -168,6 +168,20 @@ def _unrecognised_lines(infos: list) -> list[str]:
                   if mc.normalise_line(raw) is None and raw.strip().lower() not in _OTHER_KNOWN_LINES)
 
 
+async def _list_models(client) -> list:
+    """베타 목록(서버 대체 헤더 — 판마다 allowed_fallback_models) · 헤더를 거부하면(400/403) 일반 목록.
+
+    The beta listing with the server-fallback header (allowed_fallback_models per model); the plain listing when
+    the header is refused (400/403) — models are still followed and server fallback stays unknown.
+    """
+    try:
+        return [info async for info in client.beta.models.list(betas=[cc.SERVER_FALLBACK_BETA])]
+    except (anthropic.BadRequestError, anthropic.PermissionDeniedError) as exc:
+        logger.warning("claude beta model listing refused (%s) — reading the plain listing; server fallback unknown",
+                       type(exc).__name__)
+        return [info async for info in client.models.list()]
+
+
 async def sync_models(*, api_key: str) -> bool:
     """목록 API 를 읽어 스냅샷을 바꿔 끼운다 — 실패하거나 비어 오면 이전 스냅샷을 그대로 둔다.
 
@@ -179,9 +193,7 @@ async def sync_models(*, api_key: str) -> bool:
             api_key=api_key, timeout=_LIST_TIMEOUT_SECONDS, max_retries=1, caller="model_catalog",
             retry_after_cap=ANTHROPIC_RETRY_AFTER_CAP_PIPELINE_SECONDS,
         ) as client:
-            # 베타 목록 + 서버 대체 헤더 — 그래야 판마다 allowed_fallback_models 가 온다.
-            # The beta listing with the server-fallback header returns allowed_fallback_models per model.
-            infos = [info async for info in client.beta.models.list(betas=[cc.SERVER_FALLBACK_BETA])]
+            infos = await _list_models(client)
         entries = [_to_entry(info, now) for info in infos]
     except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
         # 어떤 실패든 이전 목록으로 계속 부른다 — 목록 동기화가 호출 경로를 멈추면 안 된다.

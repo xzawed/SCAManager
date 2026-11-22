@@ -374,3 +374,116 @@ async def test_system_is_left_out_when_the_caller_has_none(rows):
     await cc.create_json_message(client, model_value="claude-haiku-4-5", default_value="claude-sonnet-5",
                                  max_tokens=64, system=None, schema=_SCHEMA, messages=_MESSAGES, record=rows.record)
     assert client.messages.calls[0].get("system", anthropic.omit) is anthropic.omit
+
+
+async def _cancel_during_a_write(client, value, *, written, unfinished):
+    """도우미 안의 비용 행 쓰기가 도는 중에 취소한다 — 기한이 쓰기 await 에 걸린 경우.
+    Cancel while a cost-row write inside the helper is running: a deadline landing on that await.
+    """
+    writing = asyncio.Event()
+
+    async def _slow_record(**row):
+        writing.set()
+        await asyncio.sleep(0.05)
+        written.append((row["model"], row["status"], row["error_type"]))
+
+    task = asyncio.ensure_future(cc.create_json_message(
+        client, model_value=value, default_value="claude-sonnet-5", max_tokens=64, system=_SYSTEM,
+        schema=_SCHEMA, messages=_MESSAGES, record=_slow_record, unfinished=unfinished))
+    await writing.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    await asyncio.sleep(0.1)  # 끝까지 도는 쓰기를 기다린다 / let the write run to its end
+    await unfinished.flush(_slow_record, error_type="TimeoutError")
+
+
+async def test_cancel_during_the_rejected_row_write_keeps_the_row_and_the_mark():
+    # 앞 판이 답한 뒤 거부 행을 쓰는 중에 기한이 오면 — 행도 실패 표식도 남는다, 두 번 적히지 않는다
+    # A deadline during the rejected-row write: the row and the failure mark both survive, written once.
+    mc.set_verified("haiku", "claude-haiku-4-5")
+    mc.set_verified("haiku", "claude-haiku-5-5")
+    written = []
+    client = _client(plain=[_status_error(anthropic.BadRequestError, 400), _message(model="claude-haiku-4-5")])
+    await _cancel_during_a_write(client, "auto:haiku", written=written, unfinished=cc.Unfinished())
+    assert written == [("claude-haiku-5-5", "error", "model_rejected")]
+    assert mc.is_failed("claude-haiku-5-5")
+
+
+async def test_cancel_during_the_refused_row_write_keeps_that_row():
+    written = []
+    client = _client(plain=[_message(model="claude-haiku-4-5", stop_reason="refusal", text=None),
+                            _message(model="claude-sonnet-5")])
+    await _cancel_during_a_write(client, "claude-haiku-4-5", written=written, unfinished=cc.Unfinished())
+    assert written == [("claude-haiku-4-5", "refused", "")]
+
+
+async def test_rejected_fallback_arguments_are_dropped_for_the_process(rows):
+    # 서버 대체 인자를 400 으로 거부한 판 — 그 시도 행 하나, 대체 없이 다시, 이 프로세스에선 다시 보내지 않는다
+    # A model that 400s on the fallback arguments: one row, a plain retry, and no fallbacks again this process.
+    mc.install_snapshot([_entry("claude-sonnet-5", "sonnet", server_fallback=True)], source="api")
+    client = _client(beta=[_status_error(anthropic.BadRequestError, 400)],
+                     plain=[_message(model="claude-sonnet-5"), _message(model="claude-sonnet-5")])
+    first = await _call(client, rows, "claude-sonnet-5")
+    second = await _call(client, rows, "claude-sonnet-5")
+    assert (len(client.beta.messages.calls), len(client.messages.calls)) == (1, 2)
+    assert _row_view(rows) == [("claude-sonnet-5", "error", "fallbacks_rejected")]
+    assert (first.model, second.model, first.refused) == ("claude-sonnet-5", "claude-sonnet-5", False)
+
+
+async def test_a_new_model_that_rejects_both_shapes_is_still_a_rejection(rows):
+    mc.install_snapshot([_entry("claude-sonnet-5-5", "sonnet", server_fallback=True),
+                         _entry("claude-sonnet-5", "sonnet", created=_d(2026, 4, 1))], source="api")
+    mc.set_verified("sonnet", "claude-sonnet-5")
+    mc.set_verified("sonnet", "claude-sonnet-5-5")
+    client = _client(beta=[_status_error(anthropic.BadRequestError, 400)],
+                     plain=[_status_error(anthropic.BadRequestError, 400), _message(model="claude-sonnet-5")])
+    outcome = await _call(client, rows, "auto:sonnet")
+    assert outcome.model == "claude-sonnet-5" and mc.is_failed("claude-sonnet-5-5")
+    assert _row_view(rows) == [("claude-sonnet-5-5", "error", "fallbacks_rejected"),
+                               ("claude-sonnet-5-5", "error", "model_rejected")]
+
+
+async def test_a_model_already_failed_by_another_call_retries_on_the_latest_good_one(rows):
+    # 같은 새 판에 두 호출이 동시에 400 — 먼저 끝난 쪽이 실패로 적으면 뒤쪽은 «남은 최신» 으로(그 앞까지 내려가지 않는다)
+    # Two concurrent calls 400 on the same new model: once one marks it failed, the other retries on the latest good.
+    for model_id in ("claude-haiku-3-5", "claude-haiku-4-5", "claude-haiku-5-5"):
+        mc.set_verified("haiku", model_id)
+
+    class _MarkedMeanwhile(_FakeCreate):
+        async def create(self, **kwargs):
+            if not self.calls:
+                mc.mark_failed("claude-haiku-5-5")  # 다른 호출이 그 사이에 / another call, meanwhile
+            return await super().create(**kwargs)
+
+    client = SimpleNamespace(messages=_MarkedMeanwhile([_status_error(anthropic.BadRequestError, 400),
+                                                        _message(model="claude-haiku-4-5")]),
+                             beta=SimpleNamespace(messages=_FakeCreate([])))
+    outcome = await _call(client, rows, "auto:haiku")
+    assert [call["model"] for call in client.messages.calls] == ["claude-haiku-5-5", "claude-haiku-4-5"]
+    assert outcome.model == "claude-haiku-4-5"
+
+
+async def test_a_line_without_an_earlier_verified_model_retries_on_its_default(rows):
+    mc.set_verified("haiku", "claude-haiku-5-5")
+    client = _client(plain=[_status_error(anthropic.BadRequestError, 400), _message(model="claude-haiku-4-5")])
+    outcome = await _call(client, rows, "auto:haiku")
+    assert [call["model"] for call in client.messages.calls] == ["claude-haiku-5-5", "claude-haiku-4-5"]
+    assert outcome.model == "claude-haiku-4-5" and mc.is_failed("claude-haiku-5-5")
+
+
+def _hop(kind: str, model, tokens: int):
+    return SimpleNamespace(type=kind, model=model, input_tokens=tokens, output_tokens=1,
+                           cache_read_input_tokens=0, cache_creation_input_tokens=0)
+
+
+async def test_primary_hops_carry_the_called_id_and_fallback_hops_their_own(rows):
+    # 부른 판의 hop 은 부른 id 그대로(응답이 날짜 id 를 줘도) · 대체 hop 만 그 판 이름 · 고정 대체(sticky)는 대체 hop 하나
+    # A primary hop keeps the called id (even if a dated id is echoed); only fallback hops name their model.
+    dated = SimpleNamespace(usage=SimpleNamespace(iterations=[
+        _hop("message", "claude-sonnet-5-20260401", 9), _hop("fallback_message", "claude-opus-5", 12)]))
+    sticky = SimpleNamespace(usage=SimpleNamespace(iterations=[_hop("fallback_message", "claude-opus-5", 7)]))
+    await cc.record_response(rows.record, dated, model="claude-sonnet-5", duration_ms=5.0, status="success")
+    await cc.record_response(rows.record, sticky, model="claude-sonnet-5", duration_ms=5.0, status="success")
+    assert [(r["model"], r["status"], r["input_tokens"]) for r in rows.rows] == [
+        ("claude-sonnet-5", "refused", 9), ("claude-opus-5", "success", 12), ("claude-opus-5", "success", 7)]
