@@ -60,3 +60,21 @@ def module_constants(path: Path) -> dict[str, object]:
             except (ValueError, TypeError, SyntaxError):
                 continue
     return out
+
+
+def later_observer_grants(versions: Path) -> set[tuple[str, str]]:
+    """0049 뒤 revision 들이 관측 역할에 더 준 컬럼 — 파일마다 `_ADDED_GRANTS` 리터럴의 합(0051 · 0053 …).
+
+    Columns later revisions grant the observer: the union of every file's `_ADDED_GRANTS` literal.
+    리터럴로 못 읽는 `_ADDED_GRANTS` 가 있으면 red — 빠진 채 초록이 되지 않게(못 재면 red).
+    An `_ADDED_GRANTS` that is not a readable literal fails instead of being skipped.
+    """
+    granted: set[tuple[str, str]] = set()
+    for path in sorted(versions.glob("*.py")):
+        constants = module_constants(path)
+        if "_ADDED_GRANTS" not in constants:
+            assert "_ADDED_GRANTS =" not in path.read_text(encoding="utf-8"), (
+                f"{path.name}: _ADDED_GRANTS 를 리터럴로 못 읽었다 / not a readable literal")
+            continue
+        granted |= {(table, column) for table, columns in constants["_ADDED_GRANTS"].items() for column in columns}
+    return granted

@@ -65,6 +65,9 @@ class ModelEntry:  # pylint: disable=too-many-instance-attributes
     # 서버 대체(fallbacks) 를 받는가 — 목록 API 의 allowed_fallback_models(빈 목록 = 안 받음) · None = 모름(보내지 않는다).
     # Whether the model takes server-side fallbacks: the listing's allowed_fallback_models (empty = no); None = unknown.
     server_fallback: bool | None = None
+    # 받는 effort 단계(low · medium · high · xhigh · max) — 목록의 capabilities.effort 단계별 표시 · 비면 effort 를 받지 않는다.
+    # The effort levels the model takes (the listing's per-level flags); empty when it takes no effort.
+    effort_levels: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -79,11 +82,17 @@ class ModelChoice:
     model_id: str | None = None
 
 
+# 화면이 고르는 effort 세 단계 — 단계별 표시가 없을 때 effort 를 받는 판이 받는다고 보는 범위다.
+# The three effort levels the settings screen offers; assumed taken when a model takes effort without per-level flags.
+UI_EFFORT_LEVELS = frozenset({"low", "medium", "high"})
+
+
 def _fallback(model_id: str, line: str, display_name: str, created: tuple[int, int, int], *,
               effort: bool) -> ModelEntry:
     return ModelEntry(
         id=model_id, line=line, display_name=display_name, created_at=datetime(*created, tzinfo=timezone.utc),
         deprecated_at=None, retires_at=None, supports_structured_outputs=True, supports_effort=effort,
+        effort_levels=UI_EFFORT_LEVELS if effort else frozenset(),
     )
 
 
@@ -134,6 +143,7 @@ def _initial_state() -> _CatalogState:
     )
 
 
+_FALLBACK_IDS = frozenset(entry.id for entry in FALLBACK_CATALOG)
 _STATE = _initial_state()
 _WRITE_LOCK = threading.Lock()
 
@@ -165,6 +175,25 @@ def parse_model_value(value: str | None) -> ModelChoice:
             raise ValueError(f"unknown model line in {text!r}")
         return ModelChoice("auto", line=line)
     return ModelChoice("pinned", model_id=text)
+
+
+def validate_model_value(value: str | None) -> str | None:
+    """저장할 리뷰 모델 값을 검사한다 — `auto:<아는 계열>` · 목록(또는 대체 목록)에 있는 판 id · 빈 값만, 그 밖은 ValueError.
+
+    Check a review-model value before it is stored: auto:<known line>, a listed (or fallback) model id, or blank.
+    🔴 날짜 붙은 id 는 목록에 **그 id** 가 있을 때만 받는다 — 별칭만 아는 날짜 id 는 `entry_for` 가 찾지 못해 effort · 요율 ·
+    해석이 모르는 판으로 본다(가짜 날짜도 여기서 막힌다). 돌려주는 값이 저장할 꼴이다(auto 는 정규화 · 판 id 는 앞뒤 공백만 뗀다).
+    A dated id is taken only when the catalog lists that exact id; the returned value is what gets stored.
+    """
+    choice = parse_model_value(value)
+    if choice.kind == "default":
+        return None
+    if choice.kind == "auto":
+        return f"{_AUTO_PREFIX}{choice.line}"
+    model_id = choice.model_id or ""
+    if model_id in _STATE.by_id or model_id in _FALLBACK_IDS:
+        return model_id
+    raise ValueError(f"unknown model id {model_id[:40]!r}")
 
 
 def _line_from_id(model_id: str) -> str | None:

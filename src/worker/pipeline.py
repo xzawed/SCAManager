@@ -1297,6 +1297,7 @@ async def _run_pipeline_body(event: str, data: dict) -> None:  # pylint: disable
             # 리포 설정 단일 조회 — review_model + disabled_tools 양쪽에 사용
             # Single DB fetch — used for both review_model and disabled_tools
             repo_review_model: str | None = None
+            repo_review_effort: str | None = None
             _static_repo_cfg: object | None = None
             # 리포별 AI 리뷰 on/off — 조회 실패/부재 시 default True(기존 동작 보존)
             # Per-repo AI review on/off — default True on fetch failure/absence
@@ -1305,6 +1306,9 @@ async def _run_pipeline_body(event: str, data: dict) -> None:  # pylint: disable
                 with SessionLocal() as db_cfg:
                     _cfg = get_repo_config(db_cfg, repo_name)
                     repo_review_model = _cfg.review_model or None
+                    # 리포가 고른 리뷰 effort — 비면 review_code 가 운영 변수를 쓴다(#1905 ③a · 사용자 11-22 A안)
+                    # The repo's review effort; blank lets review_code use the global setting.
+                    repo_review_effort = _cfg.review_effort or None
                     _static_repo_cfg = _cfg
                     _ai_review_enabled = getattr(_cfg, "ai_review_enabled", True)
             except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
@@ -1336,6 +1340,7 @@ async def _run_pipeline_body(event: str, data: dict) -> None:  # pylint: disable
                         settings.anthropic_api_key, commit_message, patches,
                         language=review_language,
                         model=repo_review_model,
+                        effort=repo_review_effort,
                         enabled=_ai_review_enabled,
                         repo_id=_review_repo_id,
                     ),

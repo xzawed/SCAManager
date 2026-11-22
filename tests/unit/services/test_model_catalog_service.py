@@ -20,7 +20,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.config import settings
+from src.config import Settings, settings
 from src.database import Base
 from src.models.claude_api_call import ClaudeApiCall
 from src.models.repo_config import RepoConfig
@@ -41,13 +41,17 @@ def _d(year: int, month: int, day: int) -> datetime:
 
 
 def _info(model_id, line, created, *, lifecycle="active", deprecated=None, retires=None,
-          effort=True, structured=True, with_capabilities=True, fallbacks=None):
+          effort=True, structured=True, with_capabilities=True, fallbacks=None, effort_levels=None):
     fields = {"id": model_id, "type": "model", "display_name": model_id, "created_at": created, "line": line,
               "lifecycle": lifecycle, "deprecated_at": deprecated, "retires_at": retires}
     if fallbacks is not None:
         fields["allowed_fallback_models"] = fallbacks
     if with_capabilities:
-        fields["capabilities"] = {"effort": {"supported": effort}, "structured_outputs": {"supported": structured}}
+        effort_node = {"supported": effort}
+        if effort_levels is not None:
+            effort_node.update({level: {"supported": level in effort_levels}
+                                for level in ("low", "medium", "high", "xhigh", "max")})
+        fields["capabilities"] = {"effort": effort_node, "structured_outputs": {"supported": structured}}
     return ModelInfo.construct(**fields)
 
 
@@ -335,6 +339,15 @@ async def test_probe_adds_effort_only_when_supported(world, monkeypatch):
     assert "effort" not in second["output_config"]
     assert second["output_config"]["format"]["type"] == "json_schema"
     assert second["model"] == "claude-haiku-4-5"
+
+
+async def test_probe_sends_the_default_effort(world, monkeypatch):
+    # 기본 설정으로도 시험 호출은 effort 를 보낸다 — 리포가 effort 를 비운 실제 리뷰가 보내는 값과 같다(설계 §2)
+    # With the default setting the probe still sends effort, the value a review with no repo effort sends.
+    monkeypatch.setattr(settings, "claude_call_effort", Settings.model_fields["claude_call_effort"].default)
+    client = _use(world, _FakeClient(plain=[_message()]))
+    assert (await svc.probe_model(_entry("claude-haiku-5-5", "haiku"), api_key="k")).ok
+    assert client.messages.calls[0]["output_config"]["effort"] == "high"
 
 
 async def test_probe_rejects_model_without_structured_outputs(world):
@@ -690,3 +703,21 @@ async def test_a_newer_current_model_is_not_replaced_by_an_older_candidate(world
     client = _use(world, _FakeClient(listing=listing))
     await _refresh(world)
     assert not client.messages.calls and mc.verified_latest("haiku") == "claude-haiku-6-preview"
+
+
+async def test_sync_reads_the_effort_levels_each_model_takes(world):
+    _use(world, _FakeClient(listing=[
+        _info("claude-sonnet-5-5", "sonnet", _d(2026, 10, 1), effort_levels={"low", "medium", "high", "xhigh", "max"}),
+        _info("claude-haiku-5-5", "haiku", _d(2026, 10, 1), effort_levels={"low", "medium"}),
+        _info("claude-haiku-4-5", "haiku", _d(2025, 10, 1), effort=False),
+        _info("claude-opus-5", "opus", _d(2026, 6, 1)),  # 단계별 표시 없음 / no per-level flags
+    ]))
+    await svc.sync_models(api_key="k")
+    levels = {e.id: e.effort_levels for e in mc.snapshot_entries()}
+    assert levels == {
+        "claude-sonnet-5-5": frozenset({"low", "medium", "high", "xhigh", "max"}),
+        "claude-haiku-5-5": frozenset({"low", "medium"}),
+        "claude-haiku-4-5": frozenset(),
+        # 지원만 적히고 단계가 없으면 화면이 고르는 세 단계를 받는다고 본다 / assume the three UI levels
+        "claude-opus-5": frozenset({"low", "medium", "high"}),
+    }

@@ -87,12 +87,14 @@ class Settings(BaseSettings):
     # Phase 2 d-🅓 (Cycle 74) — model for Insight narrative only (default Haiku — 67% cheaper).
     # AI review (review_code) keeps Sonnet (memory feedback-ai-review-quality-protect.md exclusion).
     claude_insight_model: str = "claude-haiku-4-5"
-    # Claude 호출의 effort(생각 깊이 · 토큰 소비) — effort 를 받는 판에만 보낸다(환경변수 CLAUDE_CALL_EFFORT).
+    # Claude 호출의 effort(생각 깊이 · 토큰 소비) — effort 를 받는 판에만, 그 판이 받는 단계로 맞춰 보낸다(환경변수 CLAUDE_CALL_EFFORT).
     # 🔴 이름을 CLAUDE_EFFORT 로 두지 않는다 — Claude Code 가 자식 프로세스에 그 이름으로 세션 effort 를 넘긴다.
-    # Effort for Claude calls, sent only to models that accept it (env CLAUDE_CALL_EFFORT). Not CLAUDE_EFFORT:
-    # Claude Code passes its session effort to child processes under that name.
-    # 기본 high — 코드 리뷰는 지능이 중요한 작업이라 high 이상을 권한다(Claude API 안내) · Sonnet 5 의 기본값도 high.
-    # Default high: code review is intelligence-sensitive (high or above recommended); Sonnet 5 defaults to high.
+    # Effort for Claude calls, sent only to models that accept it and fitted to their levels (env CLAUDE_CALL_EFFORT).
+    # Not CLAUDE_EFFORT: Claude Code passes its session effort to child processes under that name.
+    # 기본 high — 코드 리뷰는 지능이 중요한 작업이라 high 이상을 권한다(Claude API 안내). 보내지 않으면 Haiku 5.5 ·
+    #   Opus 5.5 는 판의 기본값 medium 으로 리뷰 깊이가 조용히 낮아진다. 리포마다 고른 값(repo_configs.review_effort)이 먼저다.
+    # Default high: code review is intelligence-sensitive; sending none would quietly drop Haiku 5.5 and Opus 5.5 to
+    #   medium. A repo's own choice (repo_configs.review_effort) comes first (A안, 11-22).
     claude_call_effort: Literal["low", "medium", "high"] = "high"
     # AI 리뷰 응답 출력 토큰 상한 (환경변수 CLAUDE_REVIEW_MAX_TOKENS) — 한국어 리뷰 JSON(~2660 토큰) 여유값.
     # 🔴 저한도 모델(claude-3-haiku/opus = 4096)을 claude_review_model 로 쓰면 8192 가 Anthropic 400

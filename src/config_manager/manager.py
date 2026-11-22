@@ -7,6 +7,7 @@ from src.constants import (
     GATE_DEFAULT_MERGE_THRESHOLD,
 )
 from src.models.repo_config import RepoConfig
+from src.shared.model_catalog import validate_model_value
 
 
 @dataclass
@@ -36,6 +37,9 @@ class RepoConfigData:  # pylint: disable=too-many-instance-attributes
     # 리포별 Claude 코드리뷰 모델 override (Alembic 0032)
     # NULL = settings.claude_review_model 전역 기본값 사용
     review_model: str | None = None
+    # 리포마다 고르는 리뷰 effort — NULL = 운영 변수 CLAUDE_CALL_EFFORT(기본 high) · 사용자 11-22 A안
+    # Per-repo review effort; NULL falls back to CLAUDE_CALL_EFFORT (default high).
+    review_effort: str | None = None
     # per-repo 비활성화 도구 목록 — JSON 배열, 기본값 빈 배열 (Alembic 0036)
     # Per-repo disabled analyzer names — JSON array, defaults to empty list (Alembic 0036)
     disabled_tools: list = field(default_factory=list)
@@ -104,11 +108,16 @@ def upsert_repo_config(db: Session, data: RepoConfigData) -> RepoConfig:
     """RepoConfig를 INSERT 또는 UPDATE(Upsert)한다.
 
     Raises:
-        ValueError: threshold 가 0~100 밖이거나 approve < reject / merge < reject 인 경우
+        ValueError: threshold 가 0~100 밖이거나 approve < reject / merge < reject 인 경우 · 리뷰 모델 값을 새로 바꾸는데
+            받지 않는 값인 경우(`model_catalog.validate_model_value` — 바뀌지 않은 저장값은 다시 검사하지 않는다)
     """
     _validate_thresholds(data)
     field_names = _config_field_names()
     record = db.query(RepoConfig).filter_by(repo_full_name=data.repo_full_name).first()
+    # 리뷰 모델은 값이 바뀔 때만 검사한다 — 검증 전에 저장된 값(내린 판 등)으로 다른 설정을 저장해도 막히지 않게(K10).
+    # Validate the review model only when it changes, so a value stored before validation never blocks other saves.
+    if data.review_model != (record.review_model if record is not None else None):
+        data.review_model = validate_model_value(data.review_model)
     if record is None:
         kwargs = {name: getattr(data, name) for name in field_names}
         record = RepoConfig(repo_full_name=data.repo_full_name, **kwargs)

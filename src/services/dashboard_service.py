@@ -946,7 +946,7 @@ async def _call_insight_claude_api(
                 # Schema-enforced shape; the non-dict/null guards below stay for truncation/failure.
                 schema=_INSIGHT_RESPONSE_SCHEMA,
                 messages=[{"role": "user", "content": user_prompt}],
-                record=record, unfinished=unfinished,
+                record=record, unfinished=unfinished, effort=settings.claude_call_effort,
             )
         response = outcome.response
         duration_ms = (time.perf_counter() - outcome.started) * 1000

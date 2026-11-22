@@ -128,6 +128,7 @@ async def review_code(  # pylint: disable=too-many-locals,too-many-return-statem
     *,
     enabled: bool = True,
     repo_id: int | None = None,
+    effort: str | None = None,
 ) -> AiReviewResult:
     """Claude API로 코드를 리뷰하고 점수를 반환한다. API key가 없으면 기본값 반환.
 
@@ -247,7 +248,9 @@ async def review_code(  # pylint: disable=too-many-locals,too-many-return-statem
             # Enforce the response shape via schema; truncation/failure/range guards stay.
             schema=REVIEW_RESPONSE_SCHEMA,
             messages=[{"role": "user", "content": prompt}],
-            record=_record, unfinished=unfinished,
+            # 리포가 고른 단계가 먼저, 비면 운영 변수(기본 high) — 그 판이 받는 단계로 맞춰 보낸다(사용자 11-22 A안)
+            # The repo's level first, else the global setting (default high), fitted to what the model takes.
+            record=_record, unfinished=unfinished, effort=effort or settings.claude_call_effort,
         )
         response = outcome.response
         _log["duration_ms"] = (time.perf_counter() - outcome.started) * 1000

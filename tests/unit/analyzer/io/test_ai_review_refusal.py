@@ -27,13 +27,14 @@ def _message(*, model: str, stop_reason: str = "end_turn", text: str | None = _R
     })
 
 
-async def _review(responses, *, model):
+async def _review(responses, *, model, effort=None):
     client = MagicMock()
     client.messages.create = AsyncMock(side_effect=list(responses))
     with patch("src.analyzer.io.ai_review.new_async_anthropic", return_value=client), \
          patch("src.analyzer.io.ai_review.aclose_anthropic_client", AsyncMock()), \
          patch("src.analyzer.io.ai_review.log_claude_api_call") as cost_row:
-        result = await review_code("sk-test", "feat: add", [("app.py", "+ x = 1")], model=model, repo_id=7)
+        result = await review_code("sk-test", "feat: add", [("app.py", "+ x = 1")], model=model, repo_id=7,
+                                   effort=effort)
     rows = [(c.kwargs["model"], c.kwargs["status"], c.kwargs.get("error_type", ""), c.kwargs["repo_id"])
             for c in cost_row.call_args_list]
     return result, rows, [c.kwargs for c in client.messages.create.await_args_list]
@@ -96,3 +97,12 @@ async def test_a_fallback_served_review_writes_one_row_per_hop_and_names_the_ans
     assert (result.status, result.used_model) == ("success", "claude-opus-5")
     assert [(c.kwargs["model"], c.kwargs["status"], c.kwargs["input_tokens"]) for c in cost_row.call_args_list] == [
         ("claude-sonnet-5", "refused", 40), ("claude-opus-5", "success", 45)]
+
+
+async def test_the_repo_effort_wins_over_the_global_setting(monkeypatch):
+    # 리포가 고른 단계가 먼저 · 비우면 운영 변수 / the repo's level first, else the global setting
+    monkeypatch.setattr(settings, "claude_call_effort", "high")
+    _, _, repo_calls = await _review([_message(model="claude-sonnet-5")], model="claude-sonnet-5", effort="low")
+    _, _, global_calls = await _review([_message(model="claude-sonnet-5")], model="claude-sonnet-5")
+    assert repo_calls[0]["output_config"]["effort"] == "low"
+    assert global_calls[0]["output_config"]["effort"] == "high"

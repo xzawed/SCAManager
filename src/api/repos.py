@@ -1,11 +1,12 @@
 """Repository and config REST API endpoints (/api/repos/*)."""
 from typing import Annotated, Literal
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator, model_validator
 from src.config import settings
 from src.middleware.rate_limiter import limiter, RATE_LIMIT_API, RATE_LIMIT_HEAVY
 from src.api.auth import require_api_key
 from src.api.deps import get_repo_or_404
+from src.shared.model_catalog import UI_EFFORT_LEVELS
 from src.shared.ssrf import is_safe_webhook_url
 from src.constants import (
     GATE_DEFAULT_APPROVE_THRESHOLD,
@@ -61,10 +62,27 @@ class RepoConfigUpdate(BaseModel):
     # 리포별 Claude 코드리뷰 모델 override (Alembic 0032)
     # NULL = settings.claude_review_model 전역 기본값 사용
     review_model: str | None = None
+    # 리포마다 고르는 리뷰 effort(low · medium · high) — NULL/빈 값 = 운영 변수 CLAUDE_CALL_EFFORT (Alembic 0053)
+    # Per-repo review effort; NULL or blank falls back to CLAUDE_CALL_EFFORT.
+    review_effort: str | None = None
     # per-repo 비활성화 도구 목록 — JSON 배열, 기본값 빈 배열 (Alembic 0036)
     # Per-repo disabled analyzer names — JSON array, defaults to empty list (Alembic 0036)
     disabled_tools: list = Field(default_factory=list)
     # leaderboard_opt_in 폐기 (그룹 60 사용자 결정 정정 — alembic 0025)
+
+    @field_validator("review_effort")
+    @classmethod
+    def validate_review_effort(cls, v):
+        """화면이 고르는 세 단계만 — 빈 값 = 운영 변수로 · 대소문자 · 앞뒤 공백은 접는다(xhigh · max 는 받지 않는다).
+
+        Only the three levels the screen offers; blank means the global setting (xhigh and max are not taken).
+        """
+        if v is None or not v.strip():
+            return None
+        level = v.strip().lower()
+        if level not in UI_EFFORT_LEVELS:
+            raise ValueError(f"review_effort must be one of {sorted(UI_EFFORT_LEVELS)} or blank")
+        return level
 
     @field_validator("notification_language")
     @classmethod
@@ -191,13 +209,18 @@ def update_repo_config(request: Request, repo_name: str, body: RepoConfigUpdate)
         current = get_repo_config(db, repo_name)
         merged = {name: getattr(current, name) for name in _config_field_names()}
         merged.update(sent)
-        record = upsert_repo_config(db, RepoConfigData(
-            repo_full_name=repo_name,
-            **merged,
-        ))
+        data = RepoConfigData(repo_full_name=repo_name, **merged)
+        try:
+            record = upsert_repo_config(db, data)
+        except ValueError as exc:
+            # 저장 검증(문턱 · 리뷰 모델 값)에 걸린 요청 — 입력 탓이라 422 / a save-time validation failure is a 422
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         # 🔴 응답은 **저장된 것**을 돌려준다 — 요청 에코가 아니다. 구판은 보내지 않은
-        #    필드까지 기본값으로 에코해 호출자에게 거짓 상태를 보여줬다.
-        return {"repo_full_name": record.repo_full_name, **merged}
+        #    필드까지 기본값으로 에코해 호출자에게 거짓 상태를 보여줬다. 저장 단계가 값을 정규화하므로
+        #    (리뷰 모델: `auto:` 소문자 · 앞뒤 공백 · 빈 값 = NULL) 요청 사본이 아니라 저장한 `data` 에서 읽는다.
+        # The response is what was stored; upsert normalises `data` in place before writing it.
+        stored = {name: getattr(data, name) for name in _config_field_names()}
+        return {"repo_full_name": record.repo_full_name, **stored}
 
 
 @router.delete("/repos/{repo_name:path}")

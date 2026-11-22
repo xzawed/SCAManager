@@ -666,7 +666,7 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
                     "additionalProperties": False,
                 },
                 messages=[{"role": "user", "content": user_prompt}],
-                record=record, unfinished=unfinished,
+                record=record, unfinished=unfinished, effort=settings.claude_call_effort,
             )
         response = outcome.response
         duration_ms = (time.perf_counter() - outcome.started) * 1000

@@ -153,6 +153,9 @@ _SIMPLE_MODE_FIELDS = frozenset({
 PRESERVED_CONFIG_FIELDS: tuple[str, ...] = (
     "notification_language",
     "disabled_tools",
+    # 리뷰 effort — 화면 칸은 ③b 에서 생긴다. 그 전까지 폼은 보내지 않으니 저장값을 보존한다(#1905 ③a).
+    # Review effort: the screen field arrives in ③b; until then the form never posts it, so keep the stored value.
+    "review_effort",
 )
 
 
