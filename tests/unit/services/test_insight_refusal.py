@@ -4,6 +4,7 @@ Both insight calls go through the shared helper: refusals, Haiku-to-Sonnet, the 
 negative cache. 응답은 SDK 의 실제 타입(Message)이다 — 거절 응답은 본문이 비어 있다.
 Responses are real SDK Message objects; a refusal comes back with no content.
 """
+# pylint: disable=redefined-outer-name
 from __future__ import annotations
 
 import asyncio
@@ -106,7 +107,7 @@ def db():
 
 
 @pytest.fixture()
-def owner(db):  # pylint: disable=redefined-outer-name
+def owner(db):
     user = User(github_id=f"rf-{uuid.uuid4().hex[:8]}", github_login="refusal", email="rf@x.com", display_name="R")
     db.add(user)
     db.commit()
@@ -121,7 +122,7 @@ def owner(db):  # pylint: disable=redefined-outer-name
     return user.id, repo.id
 
 
-async def _repo_narrative(db, owner, client, *, attribution=None):  # pylint: disable=redefined-outer-name
+async def _repo_narrative(db, owner, client, *, attribution=None):
     user_id, repo_id = owner
     factory = MagicMock(return_value=client)
     with patch.object(repo_insight_service, "new_async_anthropic", factory), \
@@ -134,7 +135,7 @@ async def _repo_narrative(db, owner, client, *, attribution=None):  # pylint: di
     return out, _rows(cost_row), factory.call_count
 
 
-async def test_repo_insight_refusal_is_api_error_and_the_next_call_short_circuits(db, owner, monkeypatch):  # pylint: disable=redefined-outer-name
+async def test_repo_insight_refusal_is_api_error_and_the_next_call_short_circuits(db, owner, monkeypatch):
     # 거절도 벤더 쪽 실패다 — api_error 로 답하고, 부정 캐시가 다음 호출에서 같은 status 로 되살린다
     # A refusal is a vendor-side failure: api_error now, and the negative cache brings back the same status.
     monkeypatch.setattr(repo_insight_service.settings, "anthropic_api_key", "sk-ant-test")
@@ -150,7 +151,7 @@ async def test_repo_insight_refusal_is_api_error_and_the_next_call_short_circuit
     assert (again, rows_again, calls) == ({"text": "", "status": "api_error"}, [], 0)
 
 
-async def test_repo_haiku_refusal_is_answered_by_sonnet(db, owner, monkeypatch):  # pylint: disable=redefined-outer-name
+async def test_repo_haiku_refusal_is_answered_by_sonnet(db, owner, monkeypatch):
     monkeypatch.setattr(repo_insight_service.settings, "anthropic_api_key", "sk-ant-test")
     monkeypatch.setattr(repo_insight_service.settings, "claude_insight_model", "claude-haiku-4-5")
     out, rows, _ = await _repo_narrative(db, owner, _client(_refused("claude-haiku-4-5"),
@@ -159,7 +160,7 @@ async def test_repo_haiku_refusal_is_answered_by_sonnet(db, owner, monkeypatch):
     assert rows == [("claude-haiku-4-5", "refused", ""), ("claude-sonnet-5", "success", "")]
 
 
-async def test_repo_refusal_with_a_failing_negative_cache_write_keeps_one_row_per_attempt(db, owner, monkeypatch):  # pylint: disable=redefined-outer-name
+async def test_repo_refusal_with_a_failing_negative_cache_write_keeps_one_row_per_attempt(db, owner, monkeypatch):
     # 거절 행을 쓴 뒤 부정 캐시 기록이 실패해도 except 가 같은 응답의 행을 또 쓰지 않는다
     # When the negative-cache write fails after the refused row, the except path does not write that response again.
     monkeypatch.setattr(repo_insight_service.settings, "anthropic_api_key", "sk-ant-test")

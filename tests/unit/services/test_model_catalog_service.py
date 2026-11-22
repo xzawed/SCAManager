@@ -390,7 +390,8 @@ async def test_refused_probe_fails(world):
 def test_a_fallback_served_answer_is_judged_a_refusal():
     # 시험 호출은 대체를 보내지 않지만, 대체가 답한 응답이 오더라도 시험한 판의 답이 아니다(방어)
     # Probes send no fallbacks; should a fallback-served answer arrive anyway, the probed model did not answer.
-    assert svc._judge(_beta_message(model="claude-opus-5", fallback_ran=True)) == "refusal"  # pylint: disable=protected-access
+    judge = svc._judge  # pylint: disable=protected-access
+    assert judge(_beta_message(model="claude-opus-5", fallback_ran=True)) == "refusal"
 
 
 async def test_concurrent_refresh_probes_once(world):
