@@ -708,7 +708,6 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
         # `data.get` raise *after* the success row was already written.
         await record_response(record, response, model=outcome.requested, duration_ms=duration_ms,
                               status="success")
-        final_written = True
     except Exception as exc:  # pylint: disable=broad-exception-caught  # noqa: BLE001
         # 🔴 **벤더 실패와 우리 코드 버그를 다른 status 로 가른다** (#1458).
         #   try 안에는 API 호출과 **그 뒤의 파싱**이 함께 있다(R63 — 2행 기록을 막느라
