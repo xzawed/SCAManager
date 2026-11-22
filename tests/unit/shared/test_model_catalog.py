@@ -172,14 +172,6 @@ def test_failed_model_is_never_resolved():
     assert mc.resolve_model("auto:haiku", default_value="auto:sonnet") == "claude-haiku-4-5"
 
 
-def test_server_fallback_support_is_recorded_per_model():
-    assert mc.server_fallback_supported("claude-sonnet-5-5") is None
-    mc.set_server_fallback("claude-sonnet-5-5", True)
-    mc.set_server_fallback("claude-sonnet-5", False)
-    assert mc.server_fallback_supported("claude-sonnet-5-5") is True
-    assert mc.server_fallback_supported("claude-sonnet-5") is False
-
-
 def test_failed_without_previous_uses_fallback_default():
     mc.set_verified("haiku", "claude-haiku-5-5")
     mc.mark_failed("claude-haiku-5-5")

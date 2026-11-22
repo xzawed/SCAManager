@@ -91,7 +91,9 @@ class Settings(BaseSettings):
     # 🔴 이름을 CLAUDE_EFFORT 로 두지 않는다 — Claude Code 가 자식 프로세스에 그 이름으로 세션 effort 를 넘긴다.
     # Effort for Claude calls, sent only to models that accept it (env CLAUDE_CALL_EFFORT). Not CLAUDE_EFFORT:
     # Claude Code passes its session effort to child processes under that name.
-    claude_call_effort: Literal["low", "medium", "high"] = "medium"
+    # 기본 high — 코드 리뷰는 지능이 중요한 작업이라 high 이상을 권한다(Claude API 안내) · Sonnet 5 의 기본값도 high.
+    # Default high: code review is intelligence-sensitive (high or above recommended); Sonnet 5 defaults to high.
+    claude_call_effort: Literal["low", "medium", "high"] = "high"
     # AI 리뷰 응답 출력 토큰 상한 (환경변수 CLAUDE_REVIEW_MAX_TOKENS) — 한국어 리뷰 JSON(~2660 토큰) 여유값.
     # 🔴 저한도 모델(claude-3-haiku/opus = 4096)을 claude_review_model 로 쓰면 8192 가 Anthropic 400
     #    거부 → api_error 이므로 그 경우 이 값을 모델 출력 한도 이하로 낮춰야 한다.

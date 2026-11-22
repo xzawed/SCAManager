@@ -22,6 +22,7 @@ now 인자 의존성 주입 패턴 (analytics_service 와 동일).
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
 import logging
 import re
@@ -48,7 +49,7 @@ from src.shared.claude_metrics import (
     extract_anthropic_usage, log_claude_api_call, new_async_anthropic, release_session_before_claude,
 )
 from src.shared.feature_kill_switch import is_disabled
-from src.shared.model_catalog import resolve_model
+from src.shared.claude_call import CallOutcome, Unfinished, create_json_message, record_response
 from src import constants
 from src.services import insight_cost_guard
 from src.repositories import insight_narrative_cache_repo
@@ -897,56 +898,64 @@ def _build_insight_user_prompt(
     )
 
 
+async def _record_insight_cost(  # pylint: disable=too-many-arguments
+        *, user_id: int | None, model: str, duration_ms: float, status: str, error_type: str, input_tokens: int,
+        output_tokens: int, cache_read_tokens: int, cache_creation_tokens: int) -> None:
+    """인사이트 비용 행 하나 — INSERT(WorkerSessionLocal)는 동기 DB 다, 루프 밖에서 (#1701).
+
+    One insight cost row; the INSERT is sync DB work, so it runs off the loop.
+    """
+    await run_in_threadpool(
+        log_claude_api_call, model=model, duration_ms=duration_ms, status=status, error_type=error_type,
+        user_id=user_id, input_tokens=input_tokens, output_tokens=output_tokens,
+        cache_read_tokens=cache_read_tokens, cache_creation_tokens=cache_creation_tokens,
+    )
+
+
 async def _call_insight_claude_api(
-    client: anthropic.AsyncAnthropic, model: str, user_prompt: str,
+    client: anthropic.AsyncAnthropic, model_value: str | None, user_prompt: str,
     *, user_id: int | None = None,
 ) -> str | None:
-    """Claude Messages API 호출 + caching system 인자 + 토큰 로깅. 실패 시 None.
+    """공용 도우미로 Claude 를 부른다(저장값 해석 · effort · 거절 재시도) + caching system 인자. 실패 시 None.
 
-    Calls the Claude Messages API with cached system param and logs tokens.
-    Returns response text on success, None on any exception (caller maps to api_error).
+    Calls Claude through the shared helper (stored-value resolution, effort, refusal retry) with the cached
+    system param. Returns response text on success, None on any failure or refusal (caller maps to api_error).
 
     C1 Phase 3 T3.3 — user_id 는 비용 귀속용(log_claude_api_call 로 그대로 전달).
     C1 Phase 3 T3.3 — user_id is for cost attribution (forwarded to log_claude_api_call).
+    🔴 **실제로 소비된 토큰은 error 경로에서도 보고한다** (backlog R65) — 응답이 있으면 `record_response` 가
+    그 응답의 토큰을 적는다. 호출 자체가 실패했으면 도우미가 0 으로 적는다 — 그 경우엔 0 이 맞다.
+    Tokens actually consumed are reported on the error path too: record_response reads them from the response.
     """
-    start = time.perf_counter()
-    # 🔴 **실제로 소비된 토큰은 error 경로에서도 보고한다** (backlog R65).
-    # API 가 응답을 돌려준 뒤 추출·파싱이 실패한 경우 그 토큰은 **이미 과금**됐다.
-    # 0 으로 적으면 `monthly_cost` KPI 가 과소 계상되고, 실패가 잦을수록 오차가 커진다.
-    # (호출 자체가 실패했으면 값이 갱신되지 않아 0 이 남는다 — 그 경우엔 0 이 맞다.)
-    # Report the tokens actually consumed even on the error path: once the API responded,
-    # they are billed. Zeroing them undercounts cost. If the call itself failed the holder
-    # stays 0, which is correct.
-    _tokens: dict[str, int] = {
-        "input_tokens": 0, "output_tokens": 0,
-        "cache_read_tokens": 0, "cache_creation_tokens": 0,
-    }
+    record = functools.partial(_record_insight_cost, user_id=user_id)
+    unfinished = Unfinished()
+    outcome: CallOutcome | None = None
     try:
         # 전체 기한은 이 try 안에 둔다 — 호출부에서 감싸면 취소가 아래 except 를 건너뛴다 (#1697).
-        # The deadline lives inside this try; wrapped by the caller, the cancel skips this except.
+        # 기한에 걸린 시도는 `unfinished` 에 남아 아래 except 가 TimeoutError 로 적는다.
+        # The deadline lives inside this try; the attempt it cuts off is written below as TimeoutError.
         async with asyncio.timeout(ANTHROPIC_PAGE_DEADLINE_SECONDS):
-            response = await client.messages.create(
-                model=model,
+            outcome = await create_json_message(
+                client, model_value=model_value, default_value=settings.claude_insight_model,
                 max_tokens=_INSIGHT_MAX_TOKENS,
                 system=build_cached_system_param(_INSIGHT_SYSTEM_PROMPT),
                 # 🔴 응답 형식을 스키마로 강제 (backlog R51) — 위 프롬프트가 선언하는 4 카드와
                 #    같은 계약이다. 닫히는 것은 스키마 축뿐이고, non-dict·null 배열 방어
                 #    (`_parse_insight_cards`)는 절단·호출실패를 위해 그대로 둔다.
                 # Schema-enforced shape; the non-dict/null guards below stay for truncation/failure.
-                output_config={
-                    "format": {"type": "json_schema", "schema": _INSIGHT_RESPONSE_SCHEMA}
-                },
+                schema=_INSIGHT_RESPONSE_SCHEMA,
                 messages=[{"role": "user", "content": user_prompt}],
+                record=record, unfinished=unfinished,
             )
-        duration_ms = (time.perf_counter() - start) * 1000
-        input_tokens, output_tokens = extract_anthropic_usage(response)
-        usage = getattr(response, "usage", None)
-        _tokens.update(
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            cache_read_tokens=getattr(usage, "cache_read_input_tokens", 0) or 0,
-            cache_creation_tokens=getattr(usage, "cache_creation_input_tokens", 0) or 0,
-        )
+        response = outcome.response
+        duration_ms = (time.perf_counter() - outcome.started) * 1000
+        if outcome.refused:
+            # 거절(사슬 전체) — 본문이 없다. 새 status 없이 None(호출자가 api_error) (#1905).
+            # A refusal by the whole chain has no body: None, which the caller maps to api_error.
+            await record_response(record, response, model=outcome.requested, duration_ms=duration_ms,
+                                  status="refused")
+            return None
+        _, output_tokens = extract_anthropic_usage(response)
         # 🔴 **추출을 로그보다 먼저** (backlog R63). 이전에는 `status="success"` 를 먼저
         # 기록하고 그 뒤 추출이 실패하면 except 가 `status="error"` 를 **또** 남겨,
         # 한 번의 API 호출이 비용 테이블에 **2행**을 만들었다(성공률·비용 집계 왜곡).
@@ -965,45 +974,29 @@ async def _call_insight_claude_api(
                 "insight_narrative truncated at max_tokens=%d (output_tokens=%d)",
                 _INSIGHT_MAX_TOKENS, output_tokens,
             )
-            await run_in_threadpool(
-                log_claude_api_call,
-                model=model,
-                duration_ms=duration_ms,
-                status="error",
-                error_type="max_tokens",
-                user_id=user_id,
-                **_tokens,
-            )
+            await record_response(record, response, model=outcome.requested, duration_ms=duration_ms,
+                                  status="error", error_type="max_tokens")
             return text
         if at_cap:
             logger.warning(
                 "insight_narrative reached max_tokens=%d (output_tokens=%d), body closed and kept",
                 _INSIGHT_MAX_TOKENS, output_tokens,
             )
-        # 비용 행 INSERT(WorkerSessionLocal)는 동기 DB 다 — 루프 밖에서 (#1701).
-        # The cost-row INSERT is sync DB work; run it off the loop.
-        await run_in_threadpool(
-            log_claude_api_call,
-            model=model,
-            duration_ms=duration_ms,
-            status="success",
-            user_id=user_id,
-            **_tokens,
-        )
+        await record_response(record, response, model=outcome.requested, duration_ms=duration_ms,
+                              status="success")
         return text
     except Exception as exc:  # pylint: disable=broad-exception-caught  # noqa: BLE001
         # anthropic / httpx / 네트워크 오류 모두 graceful fallback (caller 가 api_error 처리)
         # All anthropic/httpx/network errors fall through to graceful fallback (caller maps to api_error)
-        duration_ms = (time.perf_counter() - start) * 1000
-        await run_in_threadpool(
-            log_claude_api_call,
-            model=model,
-            duration_ms=duration_ms,
-            status="error",
-            error_type=type(exc).__name__,
-            user_id=user_id,
-            **_tokens,
-        )
+        # 응답을 받은 뒤의 실패는 그 응답의 행 · 기한에 걸린 시도는 unfinished 의 행 — 호출 자체의 예외는
+        # 도우미가 이미 적었다. 어느 쪽이든 호출당 1행이다 (R63).
+        # A failure after a response writes that response's row; a deadline writes the unfinished attempt;
+        # an exception from the call itself was already written by the helper. One row per call either way.
+        if outcome is not None:
+            await record_response(record, outcome.response, model=outcome.requested,
+                                  duration_ms=(time.perf_counter() - outcome.started) * 1000,
+                                  status="error", error_type=type(exc).__name__)
+        await unfinished.flush(record, error_type=type(exc).__name__)
         logger.exception("insight_narrative API call failed, returning api_error")
         return None
 
@@ -1172,9 +1165,7 @@ async def insight_narrative(  # pylint: disable=too-many-locals,too-many-return-
     try:
         # Phase 2 d-🅓 (사이클 74) — Insight 영역 한정 Haiku (67% 비용 절감, AI 리뷰 Sonnet 보존)
         # Phase 2 d-🅓 (Cycle 74) — Insight-only Haiku (67% cheaper, AI review keeps Sonnet)
-        text = await _call_insight_claude_api(
-            client, resolve_model(None, default_value=settings.claude_insight_model), prepared, user_id=user_id,
-        )
+        text = await _call_insight_claude_api(client, settings.claude_insight_model, prepared, user_id=user_id)
     finally:
         # 취소(CancelledError)에도 AsyncAnthropic httpx 커넥션 풀을 닫는다 — FD 누수 차단 (WBS P1 · #1697).
         # Close the AsyncAnthropic pool even when the await is cancelled.

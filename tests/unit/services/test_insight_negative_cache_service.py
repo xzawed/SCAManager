@@ -289,6 +289,7 @@ async def test_repo_short_circuit_maps_the_recorded_class(db, owner, t0, recorde
     ("AttributeError", "internal_error"),
     ("RuntimeError", "internal_error"),
     ("max_tokens", "internal_error"),
+    ("refused", "api_error"),                   # 안전 거절은 벤더 쪽 실패 (#1905) / a refusal is vendor-side
     ("AnthropicError", "internal_error"),       # SDK 루트는 APIError 하위가 아니다 / SDK root, not APIError
     ("Anthropic", "internal_error"),            # 모듈의 클래스지만 예외가 아니다 / a class, not an exception
     ("types", "internal_error"),                # 모듈의 비-클래스 속성 / non-class module attribute

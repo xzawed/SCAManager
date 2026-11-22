@@ -12,6 +12,7 @@ trend bins every score column in it; issue figures read the result JSON in Pytho
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
 import logging
 import re
@@ -35,7 +36,7 @@ from src.shared.claude_metrics import (
     extract_anthropic_usage, log_claude_api_call, new_async_anthropic, release_session_before_claude,
 )
 from src.shared.feature_kill_switch import is_disabled
-from src.shared.model_catalog import resolve_model
+from src.shared.claude_call import CallOutcome, Unfinished, create_json_message, record_response
 from src.shared.lang_names import LANG_NAMES
 from src.shared.time_utils import to_naive_utc
 
@@ -503,7 +504,7 @@ def _log_narrative_failure(exc: Exception, status: str, output_tokens: int) -> s
 def _status_for_recorded_error(error_type: str) -> str:
     """부정 캐시에 기록된 유형을 반환 status 로 되돌린다 — 아래 except 의 #1458 벤더/우리 구분과 같은 축.
 
-    `anthropic.APIError` 하위 클래스 이름이거나 `TimeoutError` 면 `api_error`, 나머지
+    `anthropic.APIError` 하위 클래스 이름이거나 `TimeoutError` · `refused`(안전 거절, #1905) 면 `api_error`, 나머지
     (`max_tokens` · `JSONDecodeError` · 우리 코드 예외)는 `internal_error`.
     🔴 근사다: 기록에는 클래스명만 남아 `deadline.expired()` 를 다시 볼 수 없으므로, 기록된
     `TimeoutError` 는 페이지 기한 초과로 간주한다(우리 코드의 TimeoutError 도 여기선 api_error 가 된다).
@@ -512,12 +513,31 @@ def _status_for_recorded_error(error_type: str) -> str:
     Approximation: only the class name was recorded, so a recorded TimeoutError is assumed to be the
     page deadline (a TimeoutError raised by our own code also maps to api_error here).
     """
-    if error_type == "TimeoutError":
+    if error_type in ("TimeoutError", _REFUSED):
         return "api_error"
     cls = getattr(anthropic, error_type, None) if error_type else None
     if isinstance(cls, type) and issubclass(cls, anthropic.APIError):
         return "api_error"
     return "internal_error"
+
+
+# 안전 거절(사슬 전체)의 부정 캐시 유형 — 벤더 쪽 실패라 api_error 로 되살린다 (#1905).
+# Negative-cache type for a refusal by the whole chain; a vendor-side failure, so it maps back to api_error.
+_REFUSED = "refused"
+
+
+async def _record_narrative_cost(  # pylint: disable=too-many-arguments
+        *, repo_id: int, user_id: int | None, model: str, duration_ms: float, status: str, error_type: str,
+        input_tokens: int, output_tokens: int, cache_read_tokens: int, cache_creation_tokens: int) -> None:
+    """리포 서술 비용 행 하나 — INSERT(WorkerSessionLocal)는 동기 DB 다, 루프 밖에서 (#1701).
+
+    One repo-narrative cost row; the INSERT is sync DB work, so it runs off the loop.
+    """
+    await run_in_threadpool(
+        log_claude_api_call, model=model, duration_ms=duration_ms, status=status, error_type=error_type,
+        repo_id=repo_id, user_id=user_id, input_tokens=input_tokens, output_tokens=output_tokens,
+        cache_read_tokens=cache_read_tokens, cache_creation_tokens=cache_creation_tokens,
+    )
 
 
 def _record_narrative_error(
@@ -612,15 +632,17 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
         # Cache miss: the page stops here; the fragment request calls again and passes the same guards.
         return {"text": "", "status": "pending"}
     user_prompt = prepared
-    start = time.perf_counter()
-    # 🔴 **실제로 소비된 토큰은 error 경로에서도 보고한다** (backlog R65).
-    # 응답을 받은 뒤 파싱이 실패해도 토큰은 **이미 과금**됐다 — 0 으로 적으면 비용 과소 계상.
-    # 호출 자체가 실패하면 값이 갱신되지 않아 0 이 남고, 그 경우엔 0 이 맞다.
-    # Report tokens actually consumed on the error path too; they are billed once the API responds.
-    _tokens: dict[str, int] = {"input_tokens": 0, "output_tokens": 0}
-    # 호출마다 한 번 정한다 — create 와 비용 행이 같은 판을 적는다 (#1905).
-    # Resolve once per call so the create call and the cost rows name the same model (#1905).
-    model = resolve_model(None, default_value=settings.claude_insight_model)
+    # 🔴 **실제로 소비된 토큰은 error 경로에서도 보고한다** (backlog R65) — 응답이 있으면 `record_response` 가
+    # 그 응답의 토큰을 적는다. 호출 자체가 실패하면 도우미가 0 으로 적는다 — 그 경우엔 0 이 맞다.
+    # 저장값 해석 · effort · 거절 재시도는 도우미가 한다 — create 와 비용 행이 같은 판을 적는다 (#1905).
+    # Tokens actually consumed are reported on the error path too (record_response reads the response); the
+    # helper resolves the stored value and owns effort and the refusal retry (#1905).
+    record = functools.partial(_record_narrative_cost, repo_id=repo_id, user_id=user_id)
+    unfinished = Unfinished()
+    outcome: CallOutcome | None = None
+    # 마지막 응답의 행을 이미 썼는가 — 그 뒤의 실패(부정 캐시 기록 등)가 같은 응답을 또 적지 않게.
+    # Whether the final response's row is written, so a later failure (e.g. the negative cache) never writes it twice.
+    final_written = False
     client = new_async_anthropic(
         api_key=api_key, timeout=60.0, max_retries=2,
         caller="repo_insight", retry_after_cap=ANTHROPIC_RETRY_AFTER_CAP_PAGE_SECONDS,
@@ -630,29 +652,37 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
     deadline = asyncio.timeout(ANTHROPIC_PAGE_DEADLINE_SECONDS)
     try:
         async with deadline:
-            response = await client.messages.create(
-                model=model,
-                max_tokens=_NARRATIVE_MAX_TOKENS,
+            outcome = await create_json_message(
+                client, model_value=None, default_value=settings.claude_insight_model,
+                max_tokens=_NARRATIVE_MAX_TOKENS, system=None,
                 # 🔴 응답 형식을 스키마로 강제 (backlog R51). `data.get("text", raw)` 폴백은 상한이
                 #    아닌 멈춤에만 쓴다 — 상한(max_tokens)에서 멈추면 `_narrative_text` 가 거절한다.
                 # Schema-enforced shape; the raw-text fallback applies only to a non-cap stop
                 # (`_narrative_text` refuses it at max_tokens).
-                output_config={
-                    "format": {
-                        "type": "json_schema",
-                        "schema": {
-                            "type": "object",
-                            "properties": {"text": {"type": "string"}},
-                            "required": ["text"],
-                            "additionalProperties": False,
-                        },
-                    }
+                schema={
+                    "type": "object",
+                    "properties": {"text": {"type": "string"}},
+                    "required": ["text"],
+                    "additionalProperties": False,
                 },
                 messages=[{"role": "user", "content": user_prompt}],
+                record=record, unfinished=unfinished,
             )
-        duration_ms = (time.perf_counter() - start) * 1000
-        input_tokens, output_tokens = extract_anthropic_usage(response)
-        _tokens.update(input_tokens=input_tokens, output_tokens=output_tokens)
+        response = outcome.response
+        duration_ms = (time.perf_counter() - outcome.started) * 1000
+        if outcome.refused:
+            # 거절(사슬 전체) — 본문이 없다. 벤더 쪽 실패라 api_error · 부정 캐시는 refused (#1905).
+            # A refusal by the whole chain has no body: api_error, negative-cached as refused.
+            await record_response(record, response, model=outcome.requested, duration_ms=duration_ms,
+                                  status="refused")
+            final_written = True
+            await run_in_threadpool(
+                _record_narrative_error,
+                db, user_id=user_id, repo_id=repo_id, days=days,
+                language=language, error_type=_REFUSED, now=now,
+            )
+            return {"text": "", "status": "api_error"}
+        _, output_tokens = extract_anthropic_usage(response)
         # 🔴 **추출·파싱을 로그보다 먼저** (backlog R63). 이전에는 `status="success"` 를 먼저
         # 기록하고 그 뒤 파싱이 실패하면 except 가 `status="error"` 를 **또** 남겨,
         # 한 번의 API 호출이 비용 테이블에 **2행**을 만들었다(성공률·비용 집계 왜곡).
@@ -676,17 +706,8 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
         # 지점** 이후에만 찍는다.
         # Log only after the result is fully built: a valid but non-dict JSON made
         # `data.get` raise *after* the success row was already written.
-        # 비용 행 INSERT(WorkerSessionLocal)는 동기 DB 다 — 루프 밖에서 (#1701).
-        # The cost-row INSERT is sync DB work; run it off the loop.
-        await run_in_threadpool(
-            log_claude_api_call,
-            model=model,
-            duration_ms=duration_ms,
-            status="success",
-            repo_id=repo_id,
-            user_id=user_id,
-            **_tokens,
-        )
+        await record_response(record, response, model=outcome.requested, duration_ms=duration_ms,
+                              status="success")
     except Exception as exc:  # pylint: disable=broad-exception-caught  # noqa: BLE001
         # 🔴 **벤더 실패와 우리 코드 버그를 다른 status 로 가른다** (#1458).
         #   try 안에는 API 호출과 **그 뒤의 파싱**이 함께 있다(R63 — 2행 기록을 막느라
@@ -706,18 +727,17 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
         #   error_type 만 `max_tokens` 로 가른다 — 상한은 우리 설정이다.
         # Truncation keeps the existing internal_error status; only error_type says max_tokens.
         status = "api_error" if vendor else "internal_error"
-        duration_ms = (time.perf_counter() - start) * 1000
-        error_type = _log_narrative_failure(exc, status, _tokens["output_tokens"])
-        await run_in_threadpool(
-            log_claude_api_call,
-            model=model,
-            duration_ms=duration_ms,
-            status="error",
-            error_type=error_type,
-            repo_id=repo_id,
-            user_id=user_id,
-            **_tokens,
-        )
+        error_type = _log_narrative_failure(
+            exc, status, extract_anthropic_usage(outcome.response)[1] if outcome is not None else 0)
+        # 응답을 받은 뒤의 실패는 그 응답의 행 · 기한에 걸린 시도는 unfinished 의 행 — 호출 자체의 예외는
+        # 도우미가 이미 적었다. 어느 쪽이든 호출당 1행이다 (R63).
+        # A failure after a response writes that response's row; a deadline writes the unfinished attempt;
+        # an exception from the call itself was already written by the helper. One row per call either way.
+        if outcome is not None and not final_written:
+            await record_response(record, outcome.response, model=outcome.requested,
+                                  duration_ms=(time.perf_counter() - outcome.started) * 1000,
+                                  status="error", error_type=error_type)
+        await unfinished.flush(record, error_type=error_type)
         # 주입된 `now`(운영에선 None → 기록 시점)로 찍는다 — 요청 시작으로 찍으면 부정 캐시 창이 호출 시간만큼 준다.
         # Stamp with the injected `now` (None in production → record time), not the request start.
         await run_in_threadpool(

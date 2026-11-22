@@ -13,10 +13,6 @@ from src.shared.time_utils import to_naive_utc
 # Model-family mapping — same rule as claude_metrics.
 _FAMILIES = ("opus", "sonnet", "haiku")
 
-# 판이 우리 요청을 거부했다(400)는 표식 — 재시작 뒤 모델 카탈로그가 그 판을 다시 실패로 올린다.
-# Marks a model that rejected our request (400); after a restart the model catalog marks it failed again.
-MODEL_REJECTED = "model_rejected"
-
 
 def count_user_calls_since(db: Session, *, user_id: int, since: datetime) -> int:
     """`since`(naive UTC) 이후 이 사용자에게 귀속된 호출 수 — 인사이트 경로만 `user_id` 를 단다(리뷰는 `repo_id`).

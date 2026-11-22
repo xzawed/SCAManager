@@ -29,14 +29,18 @@ from src.constants import (
     AI_RAW_COMMIT_MAX, AI_RAW_DIRECTION_MAX, AI_RAW_TEST_MAX,
 )
 from src.shared.anthropic_caching import first_text_block, build_cached_system_param
+from src.shared.claude_call import CallOutcome, Unfinished, create_json_message, record_response
 from src.shared.claude_metrics import (
     ANTHROPIC_RETRY_AFTER_CAP_PIPELINE_SECONDS, aclose_anthropic_client, extract_anthropic_usage,
     log_claude_api_call, new_async_anthropic,
 )
 from src.shared.feature_kill_switch import is_disabled
-from src.shared.model_catalog import resolve_model
 
 logger = logging.getLogger(__name__)
+
+# 안전 거절(사슬 전체) — 새 상태 없이 api_error 안쪽을 가르는 원인 라벨(우리 소유 닫힌 어휘) (#1905).
+# A refusal by the whole chain: a cause label inside api_error (our closed vocabulary), no new status.
+REFUSED_CAUSE = "refused"
 
 
 @dataclass
@@ -102,7 +106,7 @@ class AiReviewResult:  # pylint: disable=too-many-instance-attributes
     # 유일한 신호는 **문서화된 메시지 접두사**다.
     # 🔴 메시지를 **읽되 저장하지 않는다** — 규칙은 「str(exc) 를 저장하지 마라」이지
     # 「읽지 마라」가 아니다. 프로세스 안에서 접두사를 보고 **우리가 소유한 닫힌
-    # 어휘**의 라벨만 남긴다: spend_limit_org | spend_limit_workspace | None.
+    # 어휘**의 라벨만 남긴다: spend_limit_org | spend_limit_workspace | refused(안전 거절, #1905) | None.
     # 저장되는 값에 벤더 문장은 한 조각도 들어가지 않는다.
     # The four fields above cannot diagnose the incident that motivated them; only the
     # documented message prefix can. Read the message, store a closed-vocabulary label.
@@ -114,7 +118,8 @@ class AiReviewResult:  # pylint: disable=too-many-instance-attributes
     truncated: bool = False
 
 
-async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching + 예외 분기로 인한 누적 (사이클 84 i18n)
+# 다국어 + caching + 예외 분기 + 거절 분기로 인한 누적 (사이클 84 i18n · #1905) / i18n, caching, error and refusal branches
+async def review_code(  # pylint: disable=too-many-locals,too-many-return-statements
     api_key: str,
     commit_message: str,
     patches: list[tuple[str, str]],
@@ -195,9 +200,6 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
         api_key=api_key, timeout=90.0, max_retries=1,
         caller="ai_review", retry_after_cap=ANTHROPIC_RETRY_AFTER_CAP_PIPELINE_SECONDS,
     )
-    # 저장값(auto:<계열> · 판 id · 빈 값)을 부를 판으로 — 검증된 최신 · 내려간 고정 판 옮기기 · 기본값 (#1905).
-    # Resolve the stored value (line, pinned id or blank) to a callable model (#1905).
-    model = resolve_model(model, default_value=settings.claude_review_model)
     # 출력 토큰 상한 — settings 경유 configurable.
     # 구값 1500 은 한국어 리뷰 JSON(~2660 토큰)을 잘라 stop_reason=max_tokens → parse_error 로
     # 출시 이래 ~80% 실패 (운영 DB + 실제 API 재현, 2026-06-18). default 8192.
@@ -206,21 +208,36 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
     # Phase 4 PR-12 — language 별 system prompt (출력 언어 지시 포함).
     # Phase 4 PR-12 — per-language system prompt (with output language directive).
     system_text = get_system_prompt(language)
-    start = time.perf_counter()
+
+    async def _record(*, model: str, duration_ms: float, status: str, error_type: str, input_tokens: int,
+                      output_tokens: int, cache_read_tokens: int, cache_creation_tokens: int) -> None:
+        # 비용 행의 유일한 자리 — 도우미의 앞선 시도 · 취소된 시도 · 마지막 응답이 모두 여기로 (R63).
+        # The single cost-row site: the helper's earlier attempts, a cancelled one and the final response.
+        log_claude_api_call(
+            model=model, repo_id=repo_id, duration_ms=duration_ms, status=status, error_type=error_type,
+            input_tokens=input_tokens, output_tokens=output_tokens,
+            cache_read_tokens=cache_read_tokens, cache_creation_tokens=cache_creation_tokens,
+        )
+
+    unfinished = Unfinished()
+    outcome: CallOutcome | None = None
     # 🔴 **API 호출 1건 = 비용 로그 1행** (backlog R63). 이전에는 `log_claude_api_call` 이
     # try 안에서 `status="success"` 로 **먼저** 불리고, 그 뒤 파싱이 실패하면 except 가
     # `status="error"` 를 **또** 남겼다 — 한 호출이 2행이 되어 성공률·비용 집계가 왜곡됐다
     # (실측: 추출 실패 시 status 시퀀스 `['success', 'error']`).
-    # 그래서 결과를 여기 모아 두고 `finally` 에서 **정확히 한 번** 기록한다.
-    # One API call must yield exactly one cost row; the old code logged success then error.
-    _log: dict[str, object] = {"status": "error", "input_tokens": 0, "output_tokens": 0}
+    # 그래서 마지막 응답의 결과를 여기 모아 두고 `finally` 에서 **정확히 한 번** 기록한다 — 그 앞의 시도(거절 ·
+    # 거부 · 오류)는 도우미가, 취소로 끝난 시도는 `unfinished` 가 같은 `_record` 로 적는다.
+    # One API call must yield exactly one cost row; the old code logged success then error. Earlier attempts
+    # are written by the helper and cancelled ones through `unfinished`, all via the same `_record`.
+    _log: dict[str, object] = {"status": "error"}
     try:
         # 시스템 프롬프트에 cache_control 적용 — 5분 ephemeral 캐시 (공용 헬퍼 경유).
         # `settings.disable_prompt_cache=True` 시 운영 opt-out (cache_control 미적용).
-        # System prompt with cache_control (ephemeral 5-min) via shared helper.
-        # `settings.disable_prompt_cache=True` opts out (cache_control omitted).
-        response = await client.messages.create(
-            model=model,
+        # 저장값(auto:<계열> · 판 id · 빈 값)의 해석 · effort · 서버 대체 · 거절 재시도는 도우미가 한다 (#1905).
+        # System prompt with cache_control (ephemeral 5-min) via shared helper; the helper resolves the stored
+        # value and owns effort, server fallback and the refusal retry (#1905).
+        outcome = await create_json_message(
+            client, model_value=model, default_value=settings.claude_review_model,
             max_tokens=max_output_tokens,
             system=build_cached_system_param(system_text),
             # 🔴 응답 형식을 프롬프트로 부탁하지 않고 스키마로 강제한다 (backlog R51).
@@ -228,32 +245,28 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
             #    점수 범위 이탈은 그대로 열려 있고 아래 `_parse_response`/`_coerce_score`
             #    방어가 계속 맡는다. 즉 스키마는 방어의 대체물이 아니라 재발 동인 제거다.
             # Enforce the response shape via schema; truncation/failure/range guards stay.
-            output_config={
-                "format": {"type": "json_schema", "schema": REVIEW_RESPONSE_SCHEMA}
-            },
+            schema=REVIEW_RESPONSE_SCHEMA,
             messages=[{"role": "user", "content": prompt}],
+            record=_record, unfinished=unfinished,
         )
-        duration_ms = (time.perf_counter() - start) * 1000
+        response = outcome.response
+        _log["duration_ms"] = (time.perf_counter() - outcome.started) * 1000
+        if outcome.refused:
+            # 🔴 본문을 읽기 전에 거절부터 본다 — 거절 응답은 본문이 비어 있다. 리뷰가 없으니 기존 실패
+            #    상태(api_error)로 두고 원인만 가른다: 게이트 · 점수 신뢰 판정 · 알림 문구가 그대로다.
+            # Check the refusal before reading content (a refusal has none); keep the existing failure status.
+            _log["status"] = "refused"
+            return _default_result("api_error", error_derived_cause=REFUSED_CAUSE)
         input_tokens, output_tokens = extract_anthropic_usage(response)
-        # 캐시 토큰 추출 — 관측성용 (Anthropic 응답에 cache_*_input_tokens 필드 존재 시)
-        # Extract cache token counts when present in the response (observability)
-        usage = getattr(response, "usage", None)
-        cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
-        cache_creation = getattr(usage, "cache_creation_input_tokens", 0) or 0
-        _log.update(
-            duration_ms=duration_ms,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            cache_read_tokens=cache_read,
-            cache_creation_tokens=cache_creation,
-        )
         # 🔴 파싱이 끝난 **뒤에** success 로 승격한다 — 추출/파싱 실패는 성공이 아니다.
         result = _parse_response(first_text_block(response))
         _log["status"] = "success"
         result.detected_languages = languages
         result.input_tokens = input_tokens
         result.output_tokens = output_tokens
-        result.used_model = model
+        # 답한 판 — Haiku 거절 뒤 Sonnet · 새 판 거부 뒤 앞 판 · 서버 대체가 답했으면 그 판이다.
+        # The model that answered: Sonnet after a Haiku refusal, the previous one after a rejection, or the fallback.
+        result.used_model = outcome.model
         # 🔴 출력 토큰 절단 감지 — stop_reason=="max_tokens" 면 응답 JSON 이 _REVIEW_MAX_TOKENS
         # 에서 잘림. 대부분 불완전 JSON → parse_error(ai_review_failed 가 차단)지만, 운좋게
         # 유효 JSON(success)이어도 부분 응답이라 점수 인플레 위험 → 명시 로깅 + truncated 마커.
@@ -276,7 +289,6 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
     except Exception as exc:  # pylint: disable=broad-exception-caught  # noqa: BLE001
         # anthropic/httpx 는 다양한 예외를 발생시킬 수 있음 — 모두 graceful fallback
         _log.update(status="error", error_type=type(exc).__name__)
-        _log.setdefault("duration_ms", (time.perf_counter() - start) * 1000)
         logger.exception("AI review failed, using default scores")
         # 🔴 SDK 는 `max_retries=2` 로 5xx/연결/타임아웃을 내부 재시도하고 **마지막**
         #    예외만 올린다. 그래서 여기 남는 것은 마지막 시도의 원인이다 — 그것이
@@ -299,22 +311,21 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
             **_vendor_error_fields(exc),
         )
     finally:
-        # 🔴 비용 로그는 **여기서 한 번만** — 성공·실패 어느 경로든 호출당 1행 (R63).
-        # 🔴 `duration_ms` 는 **명시 인자**로 넘긴다 — `**_log` 안에 숨기면 필수 keyword-only
-        #    인자가 정적으로 보이지 않아 pylint E1125(missing-kwoa)가 뜬다. 형제 호출부
-        #    (`dashboard_service`·`repo_insight_service`)도 이미 명시 인자를 쓴다.
-        #    🔴 런타임 누락은 원래 없었다 — 아래 setdefault 가 호출 직전에 항상 채우고,
-        #    정말 빠졌다면 `TypeError` 로 터진다(조용한 누락이 아니다). 즉 이 변경은
-        #    **동작 보존 + 정적 가시화**이며 관측자는 `test_ai_review_errors.py` 의 duration 3축이다.
-        # Pass duration_ms explicitly; hidden inside **_log it is invisible to static analysis.
-        _log.setdefault("duration_ms", (time.perf_counter() - start) * 1000)
-        duration_ms = _log.pop("duration_ms")
-        log_claude_api_call(
-            model=model,
-            repo_id=repo_id,
-            duration_ms=duration_ms,  # type: ignore[arg-type]
-            **_log,  # type: ignore[arg-type]
-        )
+        # 🔴 마지막 응답의 비용 행은 **여기서 한 번만** — 성공·실패 어느 경로든 응답당 1행 (R63).
+        #    도우미가 예외로 끝낸 시도는 이미 적었고(outcome 없음), 취소(CancelledError)로 끝난 시도는
+        #    `unfinished` 에 남아 여기서 적힌다 — 예전 finally 의 setdefault 가 맡던 취소 경로다.
+        # 🔴 `_record` 는 `duration_ms` 를 **명시 인자**로 넘긴다 — `**` 안에 숨기면 필수 keyword-only
+        #    인자가 정적으로 보이지 않아 pylint E1125(missing-kwoa)가 뜬다.
+        # The final response's row is written here exactly once; raised attempts were written by the helper
+        # and a cancelled one is left in `unfinished` and written here (the old setdefault's cancel path).
+        if outcome is not None:
+            # outcome 과 duration_ms 사이에는 await 가 없다 — outcome 이 있으면 duration_ms 도 있다.
+            # No await between outcome and duration_ms: when there is an outcome there is a duration.
+            await record_response(
+                _record, outcome.response, model=outcome.requested, duration_ms=float(_log["duration_ms"]),
+                status=str(_log["status"]), error_type=str(_log.get("error_type", "")),
+            )
+        await unfinished.flush(_record, error_type=str(_log.get("error_type", "")))
         # 호출당 생성한 AsyncAnthropic httpx 커넥션 풀 해제 — 미종료 시 FD 누수 (WBS P1).
         # Close the per-call AsyncAnthropic httpx pool — leaks FDs/connections if left open.
         await aclose_anthropic_client(client)
