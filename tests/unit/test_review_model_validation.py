@@ -39,7 +39,10 @@ def test_accepted_model_values(value, stored):
 
 
 # witness-corpus: 받지 않는 저장값 — 모르는 계열 · 비어 있는 계열 · 목록에 없는 판 · 다른 회사 모델 · 접두만 같은 이름
-@pytest.mark.parametrize("value", ["auto:gpt", "auto:", "claude-unknown-9", "gpt-4o", "claude-sonnet-5-5-preview"])
+_REJECTED_VALUES = ["auto:gpt", "auto:", "claude-unknown-9", "gpt-4o", "claude-sonnet-5-5-preview"]
+
+
+@pytest.mark.parametrize("value", _REJECTED_VALUES)
 def test_rejected_model_values(value):
     with pytest.raises(ValueError):
         mc.validate_model_value(value)

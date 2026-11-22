@@ -38,7 +38,10 @@ def test_review_effort_takes_the_three_levels_or_blank(sent, stored):
 
 
 # witness-corpus: 화면이 고르지 않는 값 — SDK 에는 있는 단계(max · xhigh) · 모르는 낱말 · 숫자 · 오타
-@pytest.mark.parametrize("sent", ["max", "xhigh", "turbo", "1", "hihg"])
+_NOT_A_UI_LEVEL = ["max", "xhigh", "turbo", "1", "hihg"]
+
+
+@pytest.mark.parametrize("sent", _NOT_A_UI_LEVEL)
 def test_review_effort_rejects_other_values(sent):
     with pytest.raises(ValidationError):
         RepoConfigUpdate(review_effort=sent)

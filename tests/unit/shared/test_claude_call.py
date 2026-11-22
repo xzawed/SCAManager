@@ -14,7 +14,6 @@ import pytest
 from anthropic.types import Message
 from anthropic.types.beta import BetaMessage
 
-from src.config import settings
 from src.shared import claude_call as cc
 from src.shared import model_catalog as mc
 
