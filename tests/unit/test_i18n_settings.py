@@ -86,13 +86,9 @@ def test_keys_no_duplicates():
     assert len(_KEYS) == len(set(_KEYS)), f"_KEYS 중복: {[k for k in set(_KEYS) if _KEYS.count(k) > 1]}"
 
 
-@pytest.mark.parametrize("locale", ["ko", "en", "ja"])
+@pytest.mark.parametrize("locale", _LOCALES)
 def test_the_effort_hint_names_no_model(locale):
     """effort 안내에 판 이름을 박지 않는다 — 가격처럼 판이 바뀌면 낡는다(③b 검토 Minor 6).
     The effort hint names no model; such a copied fact goes stale like the prices did."""
-    import re  # pylint: disable=import-outside-toplevel
-
-    from src.i18n.loader import load_translations  # pylint: disable=import-outside-toplevel
-
-    hint = load_translations(locale)["settings"]["effort_hint"]
+    hint = json.loads((_TRANS_DIR / f"{locale}.json").read_text(encoding="utf-8"))["settings"]["effort_hint"]
     assert not re.search(r"(Haiku|Sonnet|Opus|Fable)\s*\d", hint), hint
