@@ -48,7 +48,9 @@ from src.models.repository import Repository
 from src.models.security_alert_log import SecurityAlertProcessLog
 from src.models.user import User
 from src.repositories import claude_api_cost_repo, insight_narrative_cache_repo, merge_retry_repo
-from src.services import cron_service, db_heartbeat_service, merge_retry_service, model_catalog_service, security_scan_service
+from src.services import (
+    cron_service, db_heartbeat_service, merge_retry_service, model_catalog_service, security_scan_service,
+)
 
 # job 이 읽고 쓰는 테이블이 등록돼야 한다 — 튜플을 **읽어** import 소실을 loud-fail 한다.
 # Tables the jobs touch must be registered; reading the tuple loud-fails a lost import.
