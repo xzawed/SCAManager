@@ -1,0 +1,15 @@
+SCAManager
+Copyright 2026 xzawed
+
+This product is licensed under the Apache License, Version 2.0.
+The full license text is in the LICENSE file at the root of this repository.
+
+Third-party material
+
+The GitLab SAST Semgrep rules under src/analyzer/configs/semgrep/rules/
+are vendored and are not covered by this project's license. They keep
+the license texts that shipped with them:
+
+- src/analyzer/configs/semgrep/rules/mit/LICENSE (MIT, GitLab Inc.)
+- src/analyzer/configs/semgrep/rules/apache-2.0/LICENSE (Apache License 2.0)
+- src/analyzer/configs/semgrep/rules/lgpl-3.0/COPYING.LESSER (LGPL-3.0)

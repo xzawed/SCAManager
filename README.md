@@ -8,7 +8,7 @@
 [![CodeQL](https://github.com/xzawed/SCAManager/actions/workflows/codeql.yml/badge.svg)](https://github.com/xzawed/SCAManager/actions/workflows/codeql.yml)
 [![pylint](https://img.shields.io/badge/pylint-9.99%2F10-brightgreen?style=flat-square&logo=python&logoColor=white)](src/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.165-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-yellow?style=flat-square)](LICENSE)
 
 [🇰🇷 한국어](README.ko.md)
 
@@ -227,4 +227,8 @@ Found a vulnerability? Please open a
 [private advisory](https://github.com/xzawed/SCAManager/security/advisories/new) rather than a
 public issue.
 
-[MIT](LICENSE) © xzawed
+## License
+
+[Apache License 2.0](LICENSE). Copyright 2026 xzawed.
+
+Vendored GitLab SAST Semgrep rules in `src/analyzer/configs/semgrep/rules/` keep their own licenses (MIT, Apache-2.0, LGPL-3.0) and the `LICENSE` / `COPYING.LESSER` files shipped with them.
