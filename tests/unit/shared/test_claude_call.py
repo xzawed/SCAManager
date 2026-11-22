@@ -232,3 +232,12 @@ async def test_effort_goes_only_where_the_listing_says_it_is_supported(rows, mon
     efforts = [call["output_config"].get("effort") for call in client.messages.calls]
     assert efforts == ["low", None, None]
     assert all(call["output_config"]["format"]["type"] == "json_schema" for call in client.messages.calls)
+
+
+async def test_any_call_failure_is_recorded_and_raised(rows):
+    # 우리 쪽 오류(벤더 예외가 아닌 것)도 그 호출의 비용 행 하나를 남기고 그대로 올린다 — 호출부가 예전에 하던 대로.
+    # Our own errors (not vendor exceptions) also leave that call's one cost row and propagate, as callers did.
+    client = _client(plain=[RuntimeError("boom")])
+    with pytest.raises(RuntimeError):
+        await _call(client, rows, "claude-sonnet-5")
+    assert _row_view(rows) == [("claude-sonnet-5", "error", "RuntimeError")]

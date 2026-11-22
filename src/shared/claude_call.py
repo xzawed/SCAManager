@@ -167,7 +167,7 @@ async def create_json_message(client, *, model_value: str | None, default_value:
         try:
             response = await send_once(client, previous, max_tokens=max_tokens, system=system, schema=schema,
                                        messages=messages)
-        except anthropic.APIError as retry_exc:
+        except Exception as retry_exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
             # 앞 판도 실패 = 판 탓이 아니다(지출 한도 같은 계정 쪽) — 표식 없이 첫 오류를 올린다.
             # The previous model failed too: not the model's fault (e.g. a spend limit); raise the first error.
             await _record_failure(record, model, type(exc).__name__, started)
@@ -178,7 +178,9 @@ async def create_json_message(client, *, model_value: str | None, default_value:
         logger.warning("claude model %s rejected the request and %s answered it — %s is marked failed",
                        model, previous, model)
         model, started = previous, retry_started
-    except anthropic.APIError as exc:
+    except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+        # 벤더 예외가 아니어도 그 호출의 비용 행 하나를 남긴다(취소는 BaseException 이라 여기 오지 않는다).
+        # Any failure leaves that call's cost row; cancellation is a BaseException and never lands here.
         await _record_failure(record, model, type(exc).__name__, started)
         raise
     if _refused(response) and mc.line_of(model) == _REFUSAL_RETRY_FROM:
@@ -190,7 +192,7 @@ async def create_json_message(client, *, model_value: str | None, default_value:
         try:
             response = await send_once(client, target, max_tokens=max_tokens, system=system, schema=schema,
                                        messages=messages)
-        except anthropic.APIError as exc:
+        except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
             await _record_failure(record, target, type(exc).__name__, started)
             raise
         model = target
