@@ -143,6 +143,7 @@ def _initial_state() -> _CatalogState:
     )
 
 
+_FALLBACK_IDS = frozenset(entry.id for entry in FALLBACK_CATALOG)
 _STATE = _initial_state()
 _WRITE_LOCK = threading.Lock()
 
@@ -174,6 +175,25 @@ def parse_model_value(value: str | None) -> ModelChoice:
             raise ValueError(f"unknown model line in {text!r}")
         return ModelChoice("auto", line=line)
     return ModelChoice("pinned", model_id=text)
+
+
+def validate_model_value(value: str | None) -> str | None:
+    """저장할 리뷰 모델 값을 검사한다 — `auto:<아는 계열>` · 목록(또는 대체 목록)에 있는 판 id · 빈 값만, 그 밖은 ValueError.
+
+    Check a review-model value before it is stored: auto:<known line>, a listed (or fallback) model id, or blank.
+    날짜 붙은 id 는 별칭으로 찾는다. 돌려주는 값이 저장할 꼴이다(auto 는 정규화 · 판 id 는 앞뒤 공백만 뗀다).
+    A dated id is looked up by its alias; the returned value is what gets stored.
+    """
+    choice = parse_model_value(value)
+    if choice.kind == "default":
+        return None
+    if choice.kind == "auto":
+        return f"{_AUTO_PREFIX}{choice.line}"
+    model_id = choice.model_id or ""
+    known = _STATE.by_id
+    if model_id in known or _DATED_SUFFIX.sub("", model_id) in known or model_id in _FALLBACK_IDS:
+        return model_id
+    raise ValueError(f"unknown model id {model_id[:40]!r}")
 
 
 def _line_from_id(model_id: str) -> str | None:

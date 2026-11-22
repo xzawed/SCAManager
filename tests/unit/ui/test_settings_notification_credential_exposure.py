@@ -204,7 +204,7 @@ _PUBLIC_CONFIG_FIELDS = frozenset({
     "approve_threshold", "reject_threshold", "auto_merge", "merge_threshold",
     "commit_comment", "create_issue", "railway_deploy_alerts",
     "auto_merge_issue_on_failure", "notification_language", "review_model",
-    "disabled_tools",
+    "disabled_tools", "review_effort",
 })
 
 

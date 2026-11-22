@@ -1,6 +1,6 @@
 """Repository and config REST API endpoints (/api/repos/*)."""
 from typing import Annotated, Literal
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator, model_validator
 from src.config import settings
 from src.middleware.rate_limiter import limiter, RATE_LIMIT_API, RATE_LIMIT_HEAVY
@@ -209,10 +209,14 @@ def update_repo_config(request: Request, repo_name: str, body: RepoConfigUpdate)
         current = get_repo_config(db, repo_name)
         merged = {name: getattr(current, name) for name in _config_field_names()}
         merged.update(sent)
-        record = upsert_repo_config(db, RepoConfigData(
-            repo_full_name=repo_name,
-            **merged,
-        ))
+        try:
+            record = upsert_repo_config(db, RepoConfigData(
+                repo_full_name=repo_name,
+                **merged,
+            ))
+        except ValueError as exc:
+            # 저장 검증(문턱 · 리뷰 모델 값)에 걸린 요청 — 입력 탓이라 422 / a save-time validation failure is a 422
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         # 🔴 응답은 **저장된 것**을 돌려준다 — 요청 에코가 아니다. 구판은 보내지 않은
         #    필드까지 기본값으로 에코해 호출자에게 거짓 상태를 보여줬다.
         return {"repo_full_name": record.repo_full_name, **merged}
