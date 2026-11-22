@@ -107,3 +107,26 @@ def test_downgrade_restores_the_old_line_rates(db):
     assert after[4] == pytest.approx((1_000 * 5.0 + 1_000 * 25.0 + 2_000 * 5.0 * 1.25) / 1e6)
     assert after[10] == pytest.approx(1_000_000 * 10.0 * 0.1 / 1e6)
     assert after[7] == 0.002 and after[8] == 0.002  # 대상 밖은 끝까지 그대로 / untouched throughout
+
+
+def test_the_upgrade_and_downgrade_entry_points_use_their_own_rates(db, monkeypatch):
+    # 진입점이 표를 바꿔 잡으면(upgrade 가 옛 요율 · downgrade 가 새 요율) 위 두 시험은 못 본다
+    # The entry points themselves: swapping the tables inside upgrade/downgrade would pass the tests above.
+    from types import SimpleNamespace  # pylint: disable=import-outside-toplevel
+
+    rev = _module()
+    with db.begin() as conn:
+        monkeypatch.setattr(rev, "op", SimpleNamespace(get_bind=lambda: conn))
+        rev.upgrade()
+    assert _costs(db)[1] == pytest.approx((215 * 0.10 + 9 * 0.50) / 1e6)
+    with db.begin() as conn:
+        monkeypatch.setattr(rev, "op", SimpleNamespace(get_bind=lambda: conn))
+        rev.downgrade()
+    assert _costs(db)[1] == pytest.approx((215 * 1.0 + 9 * 5.0) / 1e6)
+
+
+def test_cache_writes_count_toward_the_haiku_tier_in_the_migration():
+    rev = _module()
+    rate = rev.NEW_RATES["claude-haiku-5-5"]
+    assert rev.cost_usd(rate, 60_000, 0, 0, 60_000) == pytest.approx((60_000 * 0.50 + 60_000 * 0.50 * 1.25) / 1e6)
+    assert rev.cost_usd(rate, 100_001, 0, 0, 0) == pytest.approx(100_001 * 0.50 / 1e6)

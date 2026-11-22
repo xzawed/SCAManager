@@ -247,11 +247,12 @@ CLAUDE_MODELS: list[dict] = [
 # 아무것도 바꾸지 않아도 그렇다. 그때 family 요율(sonnet=$2/$10)로 매기면 Sonnet 4.6 호출이
 # **33% 과소 계상**된다. 세대가 오르며 값이 «내렸기» 때문이다.
 #
-# 여기 남기는 것은 «요율뿐» 이다 — `CLAUDE_MODELS`(셀렉터)에는 넣지 않는다. 표에 없는 내린 id 는 같은 계열의
-# 가장 새 판 요율로 «추정» 된다(`claude_metrics.is_estimated_rate`) — 그 요율과 다른 내린 id 는 여기 넣는다.
+# 여기 남기는 것은 «요율뿐» 이다 — `CLAUDE_MODELS`(셀렉터)에는 넣지 않는다. 목록(Models API)에 있는 판은
+# `claude_metrics._LISTED_RATES` 에 두고, 여기는 셀렉터에서 내린 id 만 — 같은 id 를 두 곳에 두지 않는다(시험이 막는다).
+# 어디에도 없는 id 는 같은 계열의 가장 새 판 요율로 «추정» 된다(`claude_metrics.is_estimated_rate`).
 # 화면·기록 모두 `claude_metrics.estimate_claude_cost_usd` 하나로 매긴다.
-# Retired-but-still-stored model ids: rates only, never offered in the selector. An id missing here is estimated
-# with its line's newest rate, so list every retired id whose rate differs from that; one function prices all.
+# Retired-but-still-stored ids: rates only, never offered. Listed models live in claude_metrics._LISTED_RATES; never
+# list an id in both (a test forbids it). An id in neither is estimated from its line's newest rate.
 CLAUDE_RETIRED_MODEL_PRICING: dict[str, dict[str, float]] = {
     "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
 }

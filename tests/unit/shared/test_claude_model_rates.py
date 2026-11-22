@@ -89,3 +89,50 @@ _UNLISTED_MODELS = {
 def test_unlisted_models_are_estimated_at_their_line_newest_rate(model, input_rate):
     assert cm.is_estimated_rate(model)
     assert _cost(model, input_tokens=10_000) == pytest.approx(10_000 * input_rate / 1e6)
+
+
+# 판마다 요율 — 표와 따로 적은 숫자(Anthropic 가격 페이지 · 2026-11-22 확인)로 잠근다. 목록(models=15)에 있는
+# 옛 판도 넣었다 — 표에 없으면 같은 계열의 가장 새 판(Opus 5.5 · Fable 5.2)으로 낮게 «추정» 됐다.
+# Per-model rates pinned to numbers written apart from the table (Anthropic pricing page, checked 2026-11-22),
+# including the older listed models that would otherwise be estimated low from the line's newest model.
+_PRICING_PAGE = [
+    # (판, 입력, 출력, 캐시 읽기) — USD / 1M 토큰 / (model, input, output, cache read) in USD per 1M tokens
+    ("claude-haiku-4-5", 1.0, 5.0, 0.10),
+    ("claude-haiku-5-5", 0.10, 0.50, 0.01),
+    ("claude-sonnet-4-5", 3.0, 15.0, 0.30),
+    ("claude-sonnet-4-6", 3.0, 15.0, 0.30),
+    ("claude-sonnet-5", 2.0, 10.0, 0.20),
+    ("claude-sonnet-5-5", 2.0, 10.0, 0.10),
+    ("claude-opus-4-5", 5.0, 25.0, 0.50),
+    ("claude-opus-4-6", 5.0, 25.0, 0.50),
+    ("claude-opus-4-7", 5.0, 25.0, 0.50),
+    ("claude-opus-4-8", 5.0, 25.0, 0.50),
+    ("claude-opus-5", 5.0, 25.0, 0.50),
+    ("claude-opus-5-5", 4.0, 20.0, 0.20),
+    ("claude-fable-5", 10.0, 50.0, 1.0),
+    ("claude-fable-5-1", 10.0, 50.0, 0.25),
+    ("claude-fable-5-2", 8.0, 40.0, 0.20),
+]
+
+
+@pytest.mark.parametrize(("model", "input_rate", "output_rate", "cache_read_rate"), _PRICING_PAGE)
+def test_listed_model_rates_match_the_pricing_page(model, input_rate, output_rate, cache_read_rate):
+    assert not cm.is_estimated_rate(model), model
+    assert _cost(model, input_tokens=1_000) == pytest.approx(1_000 * input_rate / 1e6)
+    assert _cost(model, output_tokens=1_000) == pytest.approx(1_000 * output_rate / 1e6)
+    assert _cost(model, cache_read=1_000) == pytest.approx(1_000 * cache_read_rate / 1e6)
+    assert _cost(model, cache_creation=1_000) == pytest.approx(1_000 * input_rate * 1.25 / 1e6)
+
+
+def test_haiku_5_5_tier_starts_right_above_100k_and_counts_cache_writes():
+    assert _cost("claude-haiku-5-5", input_tokens=100_001) == pytest.approx(100_001 * 0.50 / 1e6)
+    assert _cost("claude-haiku-5-5", input_tokens=60_000, cache_creation=60_000) == pytest.approx(
+        (60_000 * 0.50 + 60_000 * 0.50 * 1.25) / 1e6)
+
+
+def test_retired_rates_never_shadow_a_listed_rate():
+    # 내린 판 표(constants)와 판 표(claude_metrics)에 같은 id 를 두지 않는다 — 겹치면 한쪽 값(캐시 · 구간)이 조용히 사라진다
+    # The retired table and the listed table never share an id; an overlap silently drops one side's fields.
+    from src.constants import CLAUDE_RETIRED_MODEL_PRICING  # pylint: disable=import-outside-toplevel
+
+    assert not set(CLAUDE_RETIRED_MODEL_PRICING) & set(cm._LISTED_RATES)  # pylint: disable=protected-access

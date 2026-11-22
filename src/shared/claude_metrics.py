@@ -2,18 +2,15 @@
 
 Phase E.2b — Claude API cost/latency/token 추적 기반.
 
-Anthropic API 가격 정책 (USD per 1M tokens, **2026-09 기준**):
-  - Fable : $10 input / $50 output (Fable 5.1 — 최고 난도 추론)
-  - Opus  : $5 input / $25 output  (Opus 5/4.8/4.7 — 2026-07 에 $15/$75 대비 3× 인하)
-  - Sonnet: $2 input / $10 output  ← 기본값 (claude-sonnet-5). 🔴 4.6 세대는 $3/$15 였다 — 세대가
-            오르며 «내렸다». ID 만 올리고 요율을 두면 추정이 50% 과대가 된다.
-  - Haiku : $1 input / $5 output   (Haiku 4.5 — 현행 최신)
+Anthropic API 가격 = 판 단위 표 `_MODEL_RATES`(USD per 1M tokens · Anthropic 가격 페이지 2026-11-22 확인 · #1905 ②).
+  - 표에 없는 판은 같은 계열의 가장 새 판 요율로 «추정» 한다(`is_estimated_rate`) — 계열을 모르면 sonnet.
+  - Haiku 5.5 만 프롬프트 길이 구간이 있다(100K 토큰 초과 시 요청 전체가 높은 요율).
+  - 🔴 세대가 오르며 값이 «내린» 계열이 있다(Sonnet 4.6 $3/$15 → Sonnet 5 $2/$10) — 판 id 로 매긴다.
 
 ⚠️ **정확도 경고**:
   - 가격은 Anthropic 측 변경 가능 — **분기별 (3개월) 재확인 필수**.
   - 추세 추적용 추정이므로 실제 청구 대비 ±10% 오차 허용.
   - 월별 실제 청구액 vs 본 모듈 합계 차이 10% 초과 시 즉시 가격표 갱신.
-  - 미지의 모델 이름은 sonnet 요율로 fallback — typo 시 과소/과대 추정 가능.
 """
 import inspect
 import logging
@@ -202,15 +199,21 @@ class ModelRate:
     tier_output: float | None = None
 
 
-_MODEL_RATES: dict[str, ModelRate] = {
+# 목록(Models API)에 있는 판 — 옛 판도 정확한 요율로(표에 없으면 같은 계열의 가장 새 판으로 낮게 «추정» 된다).
+# Listed models, older ones included: missing ones would be estimated (low) from the line's newest model.
+_LISTED_RATES: dict[str, ModelRate] = {
     "claude-haiku-4-5": ModelRate(1.0, 5.0),
     # Haiku 5.5 — 프롬프트 100K 토큰 이하 $0.10/$0.50, 넘으면 요청 전체 $0.50/$2.50
     # Haiku 5.5: $0.10/$0.50 up to a 100K-token prompt, $0.50/$2.50 for the whole request above it.
     "claude-haiku-5-5": ModelRate(0.10, 0.50, tier_threshold_tokens=100_000, tier_input=0.50, tier_output=2.50),
     # 🔴 Sonnet 5 는 (2.0, 10.0) 이다 — 4.6 세대의 (3.0, 15.0) 이 아니다(2026-09 공식 문서 실측).
     # Sonnet 5 is $2/$10, not the 4.6-generation $3/$15.
+    # Sonnet 4.5 — 폐기 예정(2026-11-30) 이지만 목록에 있다 / deprecated but still listed
+    "claude-sonnet-4-5": ModelRate(3.0, 15.0),
     "claude-sonnet-5": ModelRate(2.0, 10.0),
     "claude-sonnet-5-5": ModelRate(2.0, 10.0, cache_read=0.10),
+    "claude-opus-4-5": ModelRate(5.0, 25.0),
+    "claude-opus-4-6": ModelRate(5.0, 25.0),
     # Opus 4.8 — 서버 대체가 답할 수 있는 판이라 hop 비용 행이 이 이름으로 온다
     # Opus 4.8: a server fallback may answer with it, so hop cost rows can carry this id.
     "claude-opus-4-8": ModelRate(5.0, 25.0),
@@ -219,12 +222,17 @@ _MODEL_RATES: dict[str, ModelRate] = {
     "claude-opus-4-7": ModelRate(5.0, 25.0),
     "claude-opus-5": ModelRate(5.0, 25.0),
     "claude-opus-5-5": ModelRate(4.0, 20.0, cache_read=0.20),
+    "claude-fable-5": ModelRate(10.0, 50.0),
     "claude-fable-5-1": ModelRate(10.0, 50.0, cache_read=0.25),
     "claude-fable-5-2": ModelRate(8.0, 40.0, cache_read=0.20),
-    # 내린 판 — 선택지에는 없지만 저장된 값이 계속 흐른다(`constants.CLAUDE_RETIRED_MODEL_PRICING`)
-    # Retired models: not offered, but stored values still flow.
+}
+# 내린 판(선택지에서 내렸지만 저장된 값이 계속 흐른다 — `constants.CLAUDE_RETIRED_MODEL_PRICING`)을 먼저 펼친다 — 같은 id 가
+# 있으면 위 표가 이긴다(겹침은 test_retired_rates_never_shadow_a_listed_rate 가 막는다).
+# Retired ids are spread first so the listed table wins on an id clash (a test forbids any clash).
+_MODEL_RATES: dict[str, ModelRate] = {
     **{model_id: ModelRate(rates["input"], rates["output"])
        for model_id, rates in CLAUDE_RETIRED_MODEL_PRICING.items()},
+    **_LISTED_RATES,
 }
 _DATED_SUFFIX = re.compile(r"-\d{8}$")
 # 계열을 모르는 판은 sonnet 계열로 보수적으로 추정 / a model of no known line is estimated as sonnet
