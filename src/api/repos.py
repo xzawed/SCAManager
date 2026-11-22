@@ -6,6 +6,7 @@ from src.config import settings
 from src.middleware.rate_limiter import limiter, RATE_LIMIT_API, RATE_LIMIT_HEAVY
 from src.api.auth import require_api_key
 from src.api.deps import get_repo_or_404
+from src.shared.model_catalog import UI_EFFORT_LEVELS
 from src.shared.ssrf import is_safe_webhook_url
 from src.constants import (
     GATE_DEFAULT_APPROVE_THRESHOLD,
@@ -61,10 +62,27 @@ class RepoConfigUpdate(BaseModel):
     # 리포별 Claude 코드리뷰 모델 override (Alembic 0032)
     # NULL = settings.claude_review_model 전역 기본값 사용
     review_model: str | None = None
+    # 리포마다 고르는 리뷰 effort(low · medium · high) — NULL/빈 값 = 운영 변수 CLAUDE_CALL_EFFORT (Alembic 0053)
+    # Per-repo review effort; NULL or blank falls back to CLAUDE_CALL_EFFORT.
+    review_effort: str | None = None
     # per-repo 비활성화 도구 목록 — JSON 배열, 기본값 빈 배열 (Alembic 0036)
     # Per-repo disabled analyzer names — JSON array, defaults to empty list (Alembic 0036)
     disabled_tools: list = Field(default_factory=list)
     # leaderboard_opt_in 폐기 (그룹 60 사용자 결정 정정 — alembic 0025)
+
+    @field_validator("review_effort")
+    @classmethod
+    def validate_review_effort(cls, v):
+        """화면이 고르는 세 단계만 — 빈 값 = 운영 변수로 · 대소문자 · 앞뒤 공백은 접는다(xhigh · max 는 받지 않는다).
+
+        Only the three levels the screen offers; blank means the global setting (xhigh and max are not taken).
+        """
+        if v is None or not v.strip():
+            return None
+        level = v.strip().lower()
+        if level not in UI_EFFORT_LEVELS:
+            raise ValueError(f"review_effort must be one of {sorted(UI_EFFORT_LEVELS)} or blank")
+        return level
 
     @field_validator("notification_language")
     @classmethod
