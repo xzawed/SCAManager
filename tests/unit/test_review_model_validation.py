@@ -1,13 +1,14 @@
 """리뷰 모델 저장값 검증 — 폼 · API 가 함께 지나는 upsert 에서, 값이 바뀔 때만 (Issue #1905 ③a).
 
 Validating the stored review model at the one place the form and the API both pass, only when the value changes.
-받는 값 = `auto:<아는 계열>` · 목록(또는 대체 목록)에 있는 판 id(날짜 붙은 id 는 별칭으로) · 빈 값.
+받는 값 = `auto:<아는 계열>` · 목록(또는 대체 목록)에 있는 판 id(날짜 붙은 id 는 목록에 그 id 가 있을 때만) · 빈 값.
 바뀌지 않은 값은 검증하지 않는다 — 내린 판으로 고정된 리포가 다른 설정을 저장할 때 막히면 안 된다(K10).
 Accepted: auto:<known line>, a listed (or fallback) model id, or blank; an unchanged value is never re-validated.
 """
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 
@@ -20,6 +21,7 @@ from sqlalchemy.orm import sessionmaker  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
 from src.config_manager.manager import RepoConfigData, get_repo_config, upsert_repo_config  # noqa: E402
+from src.constants import CLAUDE_MODELS  # noqa: E402
 from src.database import Base  # noqa: E402
 from src.main import app  # noqa: E402
 from src.models.repo_config import RepoConfig  # noqa: E402
@@ -32,20 +34,43 @@ if any(m.__tablename__ not in Base.metadata.tables for m in _TABLE_MODELS):
 
 @pytest.mark.parametrize(("value", "stored"), [
     ("auto:sonnet", "auto:sonnet"), (" auto:haiku ", "auto:haiku"), ("claude-sonnet-5", "claude-sonnet-5"),
-    ("claude-haiku-4-5-20251001", "claude-haiku-4-5-20251001"), ("", None), (None, None),
+    ("", None), (None, None),
 ])
 def test_accepted_model_values(value, stored):
     assert mc.validate_model_value(value) == stored
 
 
 # witness-corpus: 받지 않는 저장값 — 모르는 계열 · 비어 있는 계열 · 목록에 없는 판 · 다른 회사 모델 · 접두만 같은 이름
-_REJECTED_VALUES = ["auto:gpt", "auto:", "claude-unknown-9", "gpt-4o", "claude-sonnet-5-5-preview"]
+_REJECTED_VALUES = ["auto:gpt", "auto:", "claude-unknown-9", "gpt-4o", "claude-sonnet-5-5-preview",
+                    "claude-sonnet-5-20991231"]
 
 
 @pytest.mark.parametrize("value", _REJECTED_VALUES)
 def test_rejected_model_values(value):
     with pytest.raises(ValueError):
         mc.validate_model_value(value)
+
+
+def test_a_dated_id_is_accepted_only_when_the_catalog_lists_that_id():
+    # 별칭만 아는 날짜 id 는 카탈로그가 찾지 못한다 — effort · 요율 · 해석이 모르는 판으로 본다(Cursor Bugbot · 검토 Minor 4)
+    # A dated id whose alias alone is known is not found by the catalog, so it is refused.
+    listed = mc.ModelEntry(
+        id="claude-haiku-4-5-20251001", line="haiku", display_name="Claude Haiku 4.5",
+        created_at=datetime(2025, 10, 1, tzinfo=timezone.utc), deprecated_at=None, retires_at=None,
+        supports_structured_outputs=True, supports_effort=False, lifecycle="active",
+    )
+    mc.install_snapshot([listed], source="api")
+    assert mc.validate_model_value("claude-haiku-4-5-20251001") == "claude-haiku-4-5-20251001"
+    assert mc.entry_for("claude-haiku-4-5-20251001") is listed
+    with pytest.raises(ValueError):
+        mc.validate_model_value("claude-haiku-4-5-20991231")
+
+
+@pytest.mark.parametrize("value", [model["id"] for model in CLAUDE_MODELS])
+def test_every_form_option_is_accepted_and_found_by_the_catalog(value):
+    # 설정 폼의 선택지는 목록을 못 읽은 때(기본 카탈로그)에도 저장되고, 저장한 판을 카탈로그가 찾는다(effort · 요율 · 해석)
+    # Every settings option saves even with only the fallback catalog, and the catalog finds what was saved.
+    assert mc.entry_for(mc.validate_model_value(value)) is not None
 
 
 @pytest.fixture(name="db")
