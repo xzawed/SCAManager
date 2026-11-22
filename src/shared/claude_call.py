@@ -136,6 +136,7 @@ class _Attempts:
         self._client, self._trace, self._request = client, trace, request
 
     async def send(self, model: str):
+        """한 번 부른다 — 나가 있는 동안은 Unfinished.out 에 남는다 / one call, kept in Unfinished.out while out."""
         self._trace.out = (model, time.perf_counter())
         response = await send_once(self._client, model, **self._request)
         started = self._take_out()[1]
@@ -146,6 +147,7 @@ class _Attempts:
         return out  # type: ignore[return-value]  # send 가 늘 채운 뒤에만 부른다 / only after send set it
 
     async def fail(self, error_type: str) -> None:
+        """나가 있던 호출을 실패 행으로 적는다 / write the call that was out as a failure row."""
         model, started = self._take_out()
         await _record_failure(self.record, model, error_type, _elapsed_ms(started))
 
@@ -155,6 +157,7 @@ class _Attempts:
         self._trace.held = (model, _elapsed_ms(started), error_type)
 
     async def release(self, error_type: str | None = None) -> None:
+        """쥐고 있던 앞 실패를 적는다 — 라벨을 주면 그것으로 / write the held failure, with the given label if any."""
         held, self._trace.held = self._trace.held, None
         model, duration_ms, held_type = held  # type: ignore[misc]  # hold 뒤에만 부른다 / only after hold
         await _record_failure(self.record, model, error_type or held_type, duration_ms)
@@ -229,10 +232,10 @@ async def _after_rejection(attempts: _Attempts, model: str, exc: anthropic.BadRe
     return previous, response, started
 
 
-async def create_json_message(  # pylint: disable=too-many-arguments,too-many-locals  # 호출 꼴 그대로 / the request's shape
-        client, *, model_value: str | None, default_value: str, max_tokens: int,
-                              system: list, schema: dict, messages: list, record: CostRecorder,
-                              unfinished: Unfinished | None = None) -> CallOutcome:
+# 인자는 요청의 꼴 그대로다 / the arguments are the request's own shape
+async def create_json_message(  # pylint: disable=too-many-arguments,too-many-locals
+        client, *, model_value: str | None, default_value: str, max_tokens: int, system: list, schema: dict,
+        messages: list, record: CostRecorder, unfinished: Unfinished | None = None) -> CallOutcome:
     """저장값으로 판을 정해 JSON 응답 하나를 받는다 — 처리하지 않는 예외는 그대로 올린다(호출부의 오류 분류 유지).
 
     Resolve the stored value and get one JSON response; unhandled exceptions propagate (callers keep classifying).
