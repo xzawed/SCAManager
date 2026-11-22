@@ -33,8 +33,10 @@ class TestEstimateCostUsd:
     def test_opus_rates(self):
         # opus: $5/M input, $25/M output (2026-07 기준 — 이전 $15/$75 대비 3× 인하)
         # opus: $5/M input, $25/M output (2026-07 basis — 3× drop from prior $15/$75)
+        # 판 id 로 매긴다 — 표에 없는 일반 id 는 같은 계열의 가장 새 판으로 «추정»(test_claude_model_rates · #1905 ②)
+        # Priced by model id; a generic id missing from the table is estimated (see test_claude_model_rates).
         cost = claude_metrics.estimate_claude_cost_usd(
-            model="claude-opus-4",
+            model="claude-opus-5",
             input_tokens=1_000_000,
             output_tokens=1_000_000,
         )

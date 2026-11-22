@@ -209,9 +209,9 @@ BREAKDOWN_KEY_TEST_COVERAGE = "test_coverage"
 # `claude-haiku-4-5-20251001` 과 같은 모델 · 저장값은 0050 이 옮겼다 · 사용자 11-17 결정). 더 새 세대로 바꾸는 것은
 # 비용 · 품질 결정이라 여기서 하지 않는다. `tests/unit/test_claude_model_catalogue_ids.py` 가 날짜 id 를 막는다.
 # Ids are aliases, never dated snapshots (one model, one name); the stored values were moved by 0050.
-# 🔴 PARITY GUARD: 가격 SSOT = claude_metrics._PRICING_USD_PER_MTOK. 여기 input/output_price 변경 시
+# 🔴 PARITY GUARD: 가격 SSOT = claude_metrics._MODEL_RATES(판 단위). 여기 input/output_price 변경 시
 #   SSOT + i18n model_hint(en/ko/ja) 3곳 동시 수정 의무 (test_pricing_parity.py 가 CI 차단 — 정책 4).
-# 🔴 PARITY GUARD: pricing SSOT = claude_metrics._PRICING_USD_PER_MTOK. Changing input/output_price here
+# 🔴 PARITY GUARD: pricing SSOT = claude_metrics._MODEL_RATES (per model). Changing input/output_price here
 #   requires updating the SSOT + i18n model_hint (en/ko/ja) too; test_pricing_parity.py blocks drift (policy 4).
 CLAUDE_MODELS: list[dict] = [
     {
@@ -247,11 +247,11 @@ CLAUDE_MODELS: list[dict] = [
 # 아무것도 바꾸지 않아도 그렇다. 그때 family 요율(sonnet=$2/$10)로 매기면 Sonnet 4.6 호출이
 # **33% 과소 계상**된다. 세대가 오르며 값이 «내렸기» 때문이다.
 #
-# 여기 남기는 것은 «요율뿐» 이다 — `CLAUDE_MODELS`(셀렉터)에는 넣지 않는다.
-# 계열 요율과 값이 같은 내린 id(예: `claude-opus-4-7` = opus $5/$25)는 넣지 않아도 된다 —
-# 화면·기록 모두 `claude_metrics.estimate_claude_cost_usd` 하나로 매기기 때문이다.
-# Retired-but-still-stored model ids: rates only, never offered in the selector. Only ids whose
-# rate differs from their family's current rate need an entry; one pricing function serves all.
+# 여기 남기는 것은 «요율뿐» 이다 — `CLAUDE_MODELS`(셀렉터)에는 넣지 않는다. 표에 없는 내린 id 는 같은 계열의
+# 가장 새 판 요율로 «추정» 된다(`claude_metrics.is_estimated_rate`) — 그 요율과 다른 내린 id 는 여기 넣는다.
+# 화면·기록 모두 `claude_metrics.estimate_claude_cost_usd` 하나로 매긴다.
+# Retired-but-still-stored model ids: rates only, never offered in the selector. An id missing here is estimated
+# with its line's newest rate, so list every retired id whose rate differs from that; one function prices all.
 CLAUDE_RETIRED_MODEL_PRICING: dict[str, dict[str, float]] = {
     "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
 }

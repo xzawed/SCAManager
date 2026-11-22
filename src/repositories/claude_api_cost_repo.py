@@ -11,7 +11,7 @@ from src.shared.time_utils import to_naive_utc
 
 # 모델 패밀리 매핑 — claude_metrics 와 동일 규칙(sonnet/haiku/opus/other)
 # Model-family mapping — same rule as claude_metrics.
-_FAMILIES = ("opus", "sonnet", "haiku")
+_FAMILIES = ("opus", "sonnet", "haiku", "fable")
 
 
 def count_user_calls_since(db: Session, *, user_id: int, since: datetime) -> int:
@@ -162,7 +162,7 @@ def user_cost_summary(db: Session, *, user_id: int, days: int = 30, now: datetim
     )
     cur = _window_cost_rows(db, owner, cur_since, _now, until_inclusive=True)
     prev = _window_cost_rows(db, owner, prev_since, cur_since, until_inclusive=False)
-    by_model = {"sonnet": 0.0, "haiku": 0.0, "opus": 0.0, "other": 0.0}
+    by_model = {"sonnet": 0.0, "haiku": 0.0, "opus": 0.0, "fable": 0.0, "other": 0.0}
     for model, cost in cur:
         by_model[_family(model)] += float(cost or 0.0)
     total = round(sum(by_model.values()), 6)

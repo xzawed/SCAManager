@@ -171,7 +171,8 @@ def _kpi_cost(db: Session, user_id: int | None, now: datetime) -> dict[str, Any]
     a fixed 30-day window (independent of dashboard_kpi's `days` arg — "this month" is fixed).
     """
     if user_id is None:
-        return {"value": 0.0, "delta": None, "by_model": {"sonnet": 0.0, "haiku": 0.0, "opus": 0.0, "other": 0.0}}
+        return {"value": 0.0, "delta": None,
+                "by_model": {"sonnet": 0.0, "haiku": 0.0, "opus": 0.0, "fable": 0.0, "other": 0.0}}
     from src.services import cost_metrics_service  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
     s = cost_metrics_service.user_cost_summary(db, user_id=user_id, days=30, now=now)
     return {"value": s["total_usd"], "delta": s["delta_usd"], "by_model": s["by_model"]}
