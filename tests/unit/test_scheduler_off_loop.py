@@ -508,7 +508,7 @@ class _AnthropicFake:
     """`async with` 로 쓰는 클라이언트 가짜 — 목록은 바로 주고 create 는 루프에서 await 되는 HTTP 가짜다."""
 
     def __init__(self, w, listing, reply):
-        self.models = SimpleNamespace(list=lambda: _AsyncItems(listing))
+        self.beta = SimpleNamespace(models=SimpleNamespace(list=lambda **_kwargs: _AsyncItems(listing)))
         self.messages = SimpleNamespace(create=_http(w, "anthropic", result=reply))
 
     async def __aenter__(self):

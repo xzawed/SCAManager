@@ -41,9 +41,11 @@ def _d(year: int, month: int, day: int) -> datetime:
 
 
 def _info(model_id, line, created, *, lifecycle="active", deprecated=None, retires=None,
-          effort=True, structured=True, with_capabilities=True):
+          effort=True, structured=True, with_capabilities=True, fallbacks=None):
     fields = {"id": model_id, "type": "model", "display_name": model_id, "created_at": created, "line": line,
               "lifecycle": lifecycle, "deprecated_at": deprecated, "retires_at": retires}
+    if fallbacks is not None:
+        fields["allowed_fallback_models"] = fallbacks
     if with_capabilities:
         fields["capabilities"] = {"effort": {"supported": effort}, "structured_outputs": {"supported": structured}}
     return ModelInfo.construct(**fields)
@@ -82,10 +84,11 @@ def _status_error(cls, code: int):
     return cls("probe failed", response=httpx.Response(code, request=_REQUEST), body=None)
 
 
-def _entry(model_id: str, line: str, *, effort: bool = True, structured: bool = True) -> mc.ModelEntry:
+def _entry(model_id: str, line: str, *, effort: bool = True, structured: bool = True,
+           server_fallback: bool | None = None) -> mc.ModelEntry:
     return mc.ModelEntry(id=model_id, line=line, display_name=model_id, created_at=_d(2026, 10, 1),
-                         deprecated_at=None, retires_at=None,
-                         supports_structured_outputs=structured, supports_effort=effort)
+                         deprecated_at=None, retires_at=None, supports_structured_outputs=structured,
+                         supports_effort=effort, server_fallback=server_fallback)
 
 
 class _AsyncListing:
@@ -122,8 +125,13 @@ class _FakeCreate:
 class _FakeClient:
     def __init__(self, *, listing=(), list_error=None, plain=(), beta=()):
         self.messages = _FakeCreate(plain)
-        self.beta = SimpleNamespace(messages=_FakeCreate(beta))
-        self.models = SimpleNamespace(list=lambda: _AsyncListing(listing, list_error))
+        self.listed_with = []
+
+        def _list(**kwargs):
+            self.listed_with.append(kwargs)
+            return _AsyncListing(listing, list_error)
+
+        self.beta = SimpleNamespace(messages=_FakeCreate(beta), models=SimpleNamespace(list=_list))
 
     async def __aenter__(self):
         return self
@@ -329,36 +337,40 @@ async def test_probe_rejects_model_without_structured_outputs(world):
     assert not client.messages.calls and not client.beta.messages.calls
 
 
-async def test_probe_server_fallback_400_retries_without_fallbacks(world):
-    client = _use(world, _FakeClient(beta=[_status_error(anthropic.BadRequestError, 400)],
-                                     plain=[_message(model="claude-sonnet-5")]))
-    result = await svc.probe_model(_entry("claude-sonnet-5", "sonnet"), api_key="k")
-    assert (result.ok, result.server_fallback_ok) == (True, False)
+async def test_probe_sends_server_fallback_only_where_listed(world):
+    # 시험 호출도 실제 호출과 같은 꼴 — 목록이 대체 판을 적어 둔 판에만 fallbacks="default"
+    # The probe has the real calls' shape: fallbacks="default" only where the listing names fallback models.
+    client = _use(world, _FakeClient(beta=[_beta_message()], plain=[_message(model="claude-sonnet-5")]))
+    assert (await svc.probe_model(_entry("claude-sonnet-5-5", "sonnet", server_fallback=True), api_key="k")).ok
+    assert (await svc.probe_model(_entry("claude-sonnet-5", "sonnet", server_fallback=False), api_key="k")).ok
     assert len(client.beta.messages.calls) == 1
     beta_call = client.beta.messages.calls[0]
-    assert (beta_call["betas"], beta_call["fallbacks"]) == (["server-side-fallback-2026-07-01"], "default")
+    assert (beta_call["model"], beta_call["betas"], beta_call["fallbacks"]) == (
+        "claude-sonnet-5-5", ["server-side-fallback-2026-07-01"], "default")
     assert len(client.messages.calls) == 1
-    plain_call = client.messages.calls[0]
-    assert "fallbacks" not in plain_call and plain_call["model"] == "claude-sonnet-5"
-    assert len(world.cost_rows) == 1
+    assert "fallbacks" not in client.messages.calls[0]
 
 
-async def test_refresh_records_accepted_server_fallback(world, monkeypatch):
-    monkeypatch.setattr(settings, "claude_review_model", "claude-sonnet-5")
-    monkeypatch.setattr(settings, "claude_insight_model", "claude-sonnet-5")
-    _record(world, "claude-sonnet-5")
-    _use(world, _FakeClient(listing=_LISTING, beta=[_beta_message()]))
-    await _refresh(world)
-    assert mc.verified_latest("sonnet") == "claude-sonnet-5-5"
-    assert mc.server_fallback_supported("claude-sonnet-5-5") is True
+async def test_sync_reads_server_fallback_support_from_the_listing(world):
+    client = _use(world, _FakeClient(listing=[
+        _info("claude-sonnet-5-5", "sonnet", _d(2026, 10, 1), fallbacks=["claude-opus-5"]),
+        _info("claude-haiku-5-5", "haiku", _d(2026, 10, 1), fallbacks=[]),
+        _info("claude-opus-5", "opus", _d(2026, 6, 1)),
+    ]))
+    await svc.sync_models(api_key="k")
+    assert {e.id: e.server_fallback for e in mc.snapshot_entries()} == {
+        "claude-sonnet-5-5": True, "claude-haiku-5-5": False, "claude-opus-5": None}
+    # 판마다 allowed_fallback_models 가 오는 것은 서버 대체 헤더를 단 베타 목록뿐이다
+    # Only the beta listing with the server-fallback header returns allowed_fallback_models per model.
+    assert client.listed_with == [{"betas": ["server-side-fallback-2026-07-01"]}]
 
 
 async def test_refused_probe_fails_even_when_a_fallback_answered(world):
     _use(world, _FakeClient(beta=[_beta_message(model="claude-opus-5", fallback_ran=True)],
                             plain=[_message(None, stop_reason="refusal")]))
-    served_by_fallback = await svc.probe_model(_entry("claude-sonnet-5-5", "sonnet"), api_key="k")
+    served_by_fallback = await svc.probe_model(_entry("claude-sonnet-5-5", "sonnet", server_fallback=True),
+                                               api_key="k")
     assert (served_by_fallback.ok, served_by_fallback.reason) == (False, "refusal")
-    assert served_by_fallback.server_fallback_ok is True
     refused = await svc.probe_model(_entry("claude-haiku-5-5", "haiku"), api_key="k")
     assert (refused.ok, refused.reason) == (False, "refusal")
 
@@ -417,8 +429,7 @@ async def test_refresh_reads_the_database_off_the_event_loop(world):
 ])
 async def test_probe_400_is_settled_only_when_the_current_model_passes(world, control_outcome, want_reason, want_rows):
     client = _use(world, _FakeClient(plain=[_status_error(anthropic.BadRequestError, 400), control_outcome]))
-    result = await svc.probe_model(_entry("claude-haiku-5-5", "haiku"), api_key="k",
-                                   control=_entry("claude-haiku-4-5", "haiku", effort=False))
+    result = await svc.probe_model(_entry("claude-haiku-5-5", "haiku"), api_key="k", control="claude-haiku-4-5")
     assert (result.ok, result.reason) == (False, want_reason)
     assert [call["model"] for call in client.messages.calls] == ["claude-haiku-5-5", "claude-haiku-4-5"]
     assert sorted((row["model"], row["status"], row["error_type"]) for row in world.cost_rows) == sorted(want_rows)

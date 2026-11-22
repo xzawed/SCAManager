@@ -16,7 +16,7 @@ import json
 import logging
 import time
 from collections import Counter
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from html import escape
 
@@ -29,6 +29,7 @@ from src.i18n.loader import get_text
 from src.models.repo_config import RepoConfig
 from src.notifier.telegram import telegram_post_message
 from src.repositories import claude_api_cost_repo
+from src.shared import claude_call as cc
 from src.shared import model_catalog as mc
 from src.shared.anthropic_caching import first_text_block
 from src.shared.claude_metrics import (
@@ -41,10 +42,6 @@ from src.shared.off_loop import run_blocking
 
 logger = logging.getLogger(__name__)
 
-# 서버 대체(fallbacks="default")는 계열로 보내 보고, 판이 받지 않으면(400) 대체 없이 한 번 더 부른다.
-# Server-side fallback is tried per line; a model that rejects the parameter (400) is called once more without it.
-_SERVER_FALLBACK_BETA = "server-side-fallback-2026-07-01"
-_SERVER_FALLBACK_LINES = frozenset({"sonnet", "opus", "fable"})
 # 목록 API 의 계열 값 가운데 우리가 따르지 않지만 아는 것 — 경고하지 않는다 / known lines we do not follow
 _OTHER_KNOWN_LINES = frozenset({"mythos"})
 _LIFECYCLES = frozenset({"active", "deprecated", "retired"})
@@ -80,13 +77,10 @@ class ProbeResult:
     """시험 호출 결과 / probe outcome.
 
     reason: ok · rejected · not_found · refusal · bad_output · truncated · no_structured_outputs · transient:<오류>.
-    server_fallback_ok: 서버 대체 인자를 받았는가 — 보내지 않았거나 판정이 안 났으면 None.
-    server_fallback_ok: whether the fallback parameter was accepted; None when not sent or not settled.
     """
 
     ok: bool
     reason: str
-    server_fallback_ok: bool | None
 
 
 @dataclass(frozen=True)
@@ -145,6 +139,9 @@ def _to_entry(info, now: datetime) -> mc.ModelEntry:
     # 계열 값처럼 대소문자 · 앞뒤 공백을 접는다 / fold case and surrounding spaces, as for line values
     lifecycle = str(getattr(info, "lifecycle", None) or "active").strip().lower()
     capabilities = getattr(info, "capabilities", None)
+    # 서버 대체를 받는 판 = 목록이 받을 대체 판을 적어 둔 판(빈 목록 = 안 받음 · 필드 없음 = 모름).
+    # A model takes server fallbacks when the listing names fallback models for it (empty = no; absent = unknown).
+    allowed = getattr(info, "allowed_fallback_models", None)
     return mc.ModelEntry(
         id=info.id,
         # 계열이 없다고 온 판에 id 로 계열을 붙이지 않는다(SDK 계약: line 이 null 이면 id 로 짐작하지 말 것).
@@ -161,6 +158,7 @@ def _to_entry(info, now: datetime) -> mc.ModelEntry:
         # 모르는 lifecycle 값은 후보에서 빼되(active 아님) 고정 판은 옮기지 않는다(retired 아님).
         # An unknown lifecycle value is not a candidate (not active) and does not move pins (not retired).
         lifecycle=lifecycle if lifecycle in _LIFECYCLES else "deprecated",
+        server_fallback=None if allowed is None else bool(allowed),
     )
 
 
@@ -181,7 +179,9 @@ async def sync_models(*, api_key: str) -> bool:
             api_key=api_key, timeout=_LIST_TIMEOUT_SECONDS, max_retries=1, caller="model_catalog",
             retry_after_cap=ANTHROPIC_RETRY_AFTER_CAP_PIPELINE_SECONDS,
         ) as client:
-            infos = [info async for info in client.models.list()]
+            # 베타 목록 + 서버 대체 헤더 — 그래야 판마다 allowed_fallback_models 가 온다.
+            # The beta listing with the server-fallback header returns allowed_fallback_models per model.
+            infos = [info async for info in client.beta.models.list(betas=[cc.SERVER_FALLBACK_BETA])]
         entries = [_to_entry(info, now) for info in infos]
     except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
         # 어떤 실패든 이전 목록으로 계속 부른다 — 목록 동기화가 호출 경로를 멈추면 안 된다.
@@ -208,7 +208,7 @@ def _error_type(reason: str) -> str:
     if reason == "ok":
         return ""
     if reason == "rejected":
-        return claude_api_cost_repo.MODEL_REJECTED
+        return mc.MODEL_REJECTED
     if reason.startswith("transient:"):
         return reason.split(":", 1)[1]
     return f"probe_{reason}"
@@ -288,35 +288,6 @@ def _read_usage(session_factory) -> _Usage:
 
 # ── 시험 호출 / probe ──
 
-def _probe_output_config(entry: mc.ModelEntry) -> dict:
-    output_config: dict = {"format": {"type": "json_schema", "schema": _PROBE_SCHEMA}}
-    if entry.supports_effort:
-        output_config["effort"] = settings.claude_call_effort
-    return output_config
-
-
-async def _send_probe(client, entry: mc.ModelEntry, output_config: dict):
-    server_fallback_ok: bool | None = None
-    if entry.line in _SERVER_FALLBACK_LINES:
-        try:
-            response = await client.beta.messages.create(
-                model=entry.id, max_tokens=_PROBE_MAX_TOKENS, system=_PROBE_SYSTEM, messages=_PROBE_MESSAGES,
-                output_config=output_config, betas=[_SERVER_FALLBACK_BETA], fallbacks="default",
-            )
-            return response, True
-        except anthropic.BadRequestError as exc:
-            # 서버 대체 인자를 받지 않는 판일 수 있다 — 같은 판에 대체 없이 한 번 더 부른다.
-            # The model may not accept the fallback parameter; call it once more without it.
-            logger.info("claude probe: %s rejected the server fallback request (%s) — retrying without it",
-                        entry.id, type(exc).__name__)
-        server_fallback_ok = False
-    response = await client.messages.create(
-        model=entry.id, max_tokens=_PROBE_MAX_TOKENS, system=_PROBE_SYSTEM, messages=_PROBE_MESSAGES,
-        output_config=output_config,
-    )
-    return response, server_fallback_ok
-
-
 def _fallback_served(response) -> bool:
     iterations = getattr(getattr(response, "usage", None), "iterations", None) or []
     return any(getattr(item, "type", None) == "fallback_message" for item in iterations)
@@ -358,7 +329,12 @@ async def _write_cost_row(model_id: str, response, *, ok: bool, error_type: str,
     )
 
 
-async def _control_passes(client, control: mc.ModelEntry | None) -> bool:
+async def _send_probe(client, model: str, *, entry: mc.ModelEntry | None = None):
+    return await cc.send_once(client, model, max_tokens=_PROBE_MAX_TOKENS, system=_PROBE_SYSTEM,
+                              schema=_PROBE_SCHEMA, messages=_PROBE_MESSAGES, entry=entry)
+
+
+async def _control_passes(client, control: str | None) -> bool:
     """후보가 400 이면 지금 판에 같은 꼴을 보낸다 — 지금 판도 실패하면 판이 아니라 계정 · 요청 쪽 문제다(잔액 부족 등).
 
     When the candidate gets a 400, send the same shape to the current model; if that fails too, the cause is the
@@ -369,35 +345,31 @@ async def _control_passes(client, control: mc.ModelEntry | None) -> bool:
     started = time.monotonic()
     response = None
     try:
-        response = await client.messages.create(
-            model=control.id, max_tokens=_PROBE_MAX_TOKENS, system=_PROBE_SYSTEM, messages=_PROBE_MESSAGES,
-            output_config=_probe_output_config(control),
-        )
+        response = await _send_probe(client, control)
         ok = _judge(response) == "ok"
     except anthropic.APIError:
         ok = False
-    await _write_cost_row(control.id, response, ok=ok, error_type="" if ok else _CONTROL_FAILED, started=started)
+    await _write_cost_row(control, response, ok=ok, error_type="" if ok else _CONTROL_FAILED, started=started)
     return ok
 
 
-async def probe_model(entry: mc.ModelEntry, *, api_key: str, control: mc.ModelEntry | None = None) -> ProbeResult:
-    """판 하나에 작은 JSON 요청을 보내 우리 호출 꼴(구조화 출력 · effort · 서버 대체)이 통하는지 본다 — 호출마다 비용 행 1개.
+async def probe_model(entry: mc.ModelEntry, *, api_key: str, control: str | None = None) -> ProbeResult:
+    """판 하나에 작은 JSON 요청을 실제 호출과 같은 꼴(send_once)로 보낸다 — 호출마다 비용 행 1개.
 
-    Send one small JSON request to check our call shape (structured output, effort, server fallback) works on the model.
-    A 400 counts against the model only when the same shape passes on `control` (the current model).
+    Send one small JSON request in the real calls' shape (send_once); one cost row per call.
+    A 400 counts against the model only when the same shape passes on `control` (the current model's id).
     """
     if not entry.supports_structured_outputs:
-        return ProbeResult(ok=False, reason="no_structured_outputs", server_fallback_ok=None)
+        return ProbeResult(ok=False, reason="no_structured_outputs")
     started = time.monotonic()
     response = None
-    server_fallback_ok: bool | None = None
     try:
         async with new_async_anthropic(
             api_key=api_key, timeout=_PROBE_TIMEOUT_SECONDS, max_retries=1, caller="model_probe",
             retry_after_cap=ANTHROPIC_RETRY_AFTER_CAP_PIPELINE_SECONDS,
         ) as client:
             try:
-                response, server_fallback_ok = await _send_probe(client, entry, _probe_output_config(entry))
+                response = await _send_probe(client, entry.id, entry=entry)
                 reason = _judge(response)
             except anthropic.BadRequestError:
                 reason = "rejected" if await _control_passes(client, control) else "transient:BadRequestError"
@@ -406,7 +378,7 @@ async def probe_model(entry: mc.ModelEntry, *, api_key: str, control: mc.ModelEn
     except anthropic.APIError as exc:
         reason = f"transient:{type(exc).__name__}"
     await _write_cost_row(entry.id, response, ok=reason == "ok", error_type=_error_type(reason), started=started)
-    return ProbeResult(ok=reason == "ok", reason=reason, server_fallback_ok=server_fallback_ok)
+    return ProbeResult(ok=reason == "ok", reason=reason)
 
 
 # ── 운영자 알림 / operator alerts ──
@@ -478,18 +450,6 @@ def _current(line: str) -> str:
     return mc.verified_latest(line) or mc.FALLBACK_DEFAULT_BY_LINE[line]
 
 
-def _control_entry(current: str, line: str) -> mc.ModelEntry:
-    """대조 호출용 지금 판 — 별칭으로 찾았어도 부르는 id 는 지금 쓰는 그 글자다.
-
-    The current model for the control call; even when found by alias, the id called is the one in use.
-    """
-    entry = mc.entry_for(current)
-    if entry is not None:
-        return replace(entry, id=current)
-    return mc.ModelEntry(id=current, line=line, display_name=current, created_at=_utcnow(), deprecated_at=None,
-                         retires_at=None, supports_structured_outputs=True, supports_effort=False)
-
-
 async def _advance_line(line: str, *, api_key: str, followers: int) -> tuple[str, str] | None:
     """계열의 새 판이 지금 판보다 새면 시험하고, 통과하면 올린다 — (결과, 값) 또는 None.
 
@@ -502,9 +462,7 @@ async def _advance_line(line: str, *, api_key: str, followers: int) -> tuple[str
     current_entry = mc.entry_for(current)
     if current_entry is not None and current_entry.created_at >= candidate.created_at:
         return None
-    result = await probe_model(candidate, api_key=api_key, control=_control_entry(current, line))
-    if result.server_fallback_ok is not None:
-        mc.set_server_fallback(candidate.id, result.server_fallback_ok)
+    result = await probe_model(candidate, api_key=api_key, control=current)
     language = settings.default_locale
     if result.ok:
         mc.set_verified(line, candidate.id)

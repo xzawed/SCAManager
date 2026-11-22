@@ -21,6 +21,10 @@ from typing import Literal
 logger = logging.getLogger(__name__)
 
 KNOWN_LINES = frozenset({"haiku", "sonnet", "opus", "fable"})
+# 판이 우리 요청을 거부했다(400 — 지금 판은 같은 요청에 답함)는 비용 행 표지 — 재시작 뒤 그 판을 다시 실패로 올린다.
+# Cost-row label for a model that rejected our request (the current model answered the same one); a restart
+# marks it failed again.
+MODEL_REJECTED = "model_rejected"
 
 _AUTO_PREFIX = "auto:"
 _CLAUDE_PREFIX = "claude-"
@@ -58,6 +62,9 @@ class ModelEntry:  # pylint: disable=too-many-instance-attributes
     supports_effort: bool
     # active · deprecated · retired — 내려감 판정은 이것으로만(SDK 계약) / the retirement signal (SDK contract)
     lifecycle: str = "active"
+    # 서버 대체(fallbacks) 를 받는가 — 목록 API 의 allowed_fallback_models(빈 목록 = 안 받음) · None = 모름(보내지 않는다).
+    # Whether the model takes server-side fallbacks: the listing's allowed_fallback_models (empty = no); None = unknown.
+    server_fallback: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -104,9 +111,6 @@ class _CatalogState:
     # 계열 → 검증된 순서(오래된 것 → 새것) / line -> verification order (oldest -> newest)
     verified: Mapping[str, tuple[str, ...]]
     failed: frozenset[str]
-    # 판 → 서버 대체(fallbacks) 인자를 받는가 — 계열이 아니라 판마다 다르다(실측으로만 안다).
-    # model -> whether it accepts the server-side `fallbacks` parameter; known per model, by observation only.
-    server_fallback: Mapping[str, bool]
 
 
 def _index(entries: tuple[ModelEntry, ...]) -> Mapping[str, ModelEntry]:
@@ -123,7 +127,7 @@ def _index(entries: tuple[ModelEntry, ...]) -> Mapping[str, ModelEntry]:
 def _initial_state() -> _CatalogState:
     return _CatalogState(
         entries=FALLBACK_CATALOG, by_id=_index(FALLBACK_CATALOG), source="fallback",
-        verified=MappingProxyType({}), failed=frozenset(), server_fallback=MappingProxyType({}),
+        verified=MappingProxyType({}), failed=frozenset(),
     )
 
 
@@ -193,23 +197,6 @@ def snapshot_entries() -> tuple[ModelEntry, ...]:
 def entry_for(model_id: str) -> ModelEntry | None:
     """지금 목록의 그 판(없으면 None) / the listed entry for an id, or None."""
     return _STATE.by_id.get(model_id)
-
-
-def set_server_fallback(model_id: str, supported: bool) -> None:
-    """판이 서버 대체 인자를 받는지 적는다 — 시험 호출이나 실제 호출에서 본 대로.
-
-    Record whether a model accepts the server-side fallback parameter, as seen in a probe or a real call.
-    """
-    global _STATE  # pylint: disable=global-statement
-    with _WRITE_LOCK:
-        table = dict(_STATE.server_fallback)
-        table[model_id] = supported
-        _STATE = replace(_STATE, server_fallback=MappingProxyType(table))
-
-
-def server_fallback_supported(model_id: str) -> bool | None:
-    """서버 대체 인자를 받는가(모르면 None) / whether it accepts the fallback parameter (None if unknown)."""
-    return _STATE.server_fallback.get(model_id)
 
 
 def snapshot_source() -> str:
