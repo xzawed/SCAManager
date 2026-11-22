@@ -95,9 +95,69 @@ async def record_response(record: CostRecorder, response, *, model: str, duratio
     )
 
 
-async def _record_failure(record: CostRecorder, model: str, error_type: str, started: float) -> None:
-    await record(model=model, duration_ms=(time.perf_counter() - started) * 1000.0, status="error",
-                 error_type=error_type, input_tokens=0, output_tokens=0, cache_read_tokens=0, cache_creation_tokens=0)
+def _elapsed_ms(started: float) -> float:
+    return (time.perf_counter() - started) * 1000.0
+
+
+async def _record_failure(record: CostRecorder, model: str, error_type: str, duration_ms: float) -> None:
+    await record(model=model, duration_ms=duration_ms, status="error", error_type=error_type,
+                 input_tokens=0, output_tokens=0, cache_read_tokens=0, cache_creation_tokens=0)
+
+
+@dataclass
+class Unfinished:
+    """취소(기한 · 바깥 취소)로 끝나 아직 비용 행이 없는 시도 — 호출부가 `flush` 로 자기 라벨을 붙여 적는다.
+
+    Attempts that ended by cancellation (a deadline or an outer cancel) and have no cost row yet; the caller
+    writes them with `flush` and its own label. 예외로 끝난 시도는 도우미가 이미 적었다 / exceptions are written.
+    """
+
+    out: tuple[str, float] | None = None          # 나가 있던 호출 (판, 시작 시각) / the call that was out
+    held: tuple[str, float, str] | None = None    # 다음 시도를 기다리던 앞 실패 (판, ms, 임시 라벨) / held failure
+
+    async def flush(self, record: CostRecorder, *, error_type: str) -> None:
+        """남은 시도를 적고 비운다 — 두 번 불러도 한 번만 적힌다 / write what is left, once."""
+        held, out = self.held, self.out
+        self.held = self.out = None
+        if held is not None:
+            await _record_failure(record, held[0], held[2], held[1])
+        if out is not None:
+            await _record_failure(record, out[0], error_type, _elapsed_ms(out[1]))
+
+
+class _Attempts:
+    """한 번의 create_json_message 안의 시도들 — 예외로 끝나면 바로 적고, 취소로 끝나면 `Unfinished` 에 남는다.
+
+    The attempts of one create_json_message run: written at once when they raise, left in `Unfinished` on cancel.
+    """
+
+    def __init__(self, client, record: CostRecorder, trace: Unfinished, request: dict) -> None:
+        self.record = record
+        self._client, self._trace, self._request = client, trace, request
+
+    async def send(self, model: str):
+        self._trace.out = (model, time.perf_counter())
+        response = await send_once(self._client, model, **self._request)
+        started = self._take_out()[1]
+        return response, started
+
+    def _take_out(self) -> tuple[str, float]:
+        out, self._trace.out = self._trace.out, None
+        return out  # type: ignore[return-value]  # send 가 늘 채운 뒤에만 부른다 / only after send set it
+
+    async def fail(self, error_type: str) -> None:
+        model, started = self._take_out()
+        await _record_failure(self.record, model, error_type, _elapsed_ms(started))
+
+    def hold(self, error_type: str) -> None:
+        """다음 시도 결과에 따라 라벨이 정해지는 실패 — 걸린 시간은 지금 잰다 / label decided by the next attempt."""
+        model, started = self._take_out()
+        self._trace.held = (model, _elapsed_ms(started), error_type)
+
+    async def release(self, error_type: str | None = None) -> None:
+        held, self._trace.held = self._trace.held, None
+        model, duration_ms, held_type = held  # type: ignore[misc]  # hold 뒤에만 부른다 / only after hold
+        await _record_failure(self.record, model, error_type or held_type, duration_ms)
 
 
 async def send_once(client, model: str, *, max_tokens: int, system: list, schema: dict, messages: list,
@@ -143,8 +203,36 @@ def _previous_for(model: str) -> str | None:
     return None if previous == model else previous
 
 
-async def create_json_message(client, *, model_value: str | None, default_value: str, max_tokens: int,
-                              system: list, schema: dict, messages: list, record: CostRecorder) -> CallOutcome:
+async def _after_rejection(attempts: _Attempts, model: str, exc: anthropic.BadRequestError, *,
+                           follows: bool):
+    """새 판(auto)이 400 이면 바로 앞 판에 한 번 더 — 그 판이 답할 때만 새 판을 실패로 적는다.
+
+    An auto-resolved model that 400s is retried once on the previous one; only if that answers is it failed.
+    """
+    previous = _previous_for(model) if follows else None
+    if previous is None:
+        await attempts.fail(type(exc).__name__)
+        raise exc
+    attempts.hold(type(exc).__name__)
+    try:
+        response, started = await attempts.send(previous)
+    except Exception as retry_exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+        # 앞 판도 실패 = 판 탓이 아니다(지출 한도 같은 계정 쪽) — 표식 없이 첫 오류를 올린다.
+        # The previous model failed too: not the model's fault (e.g. a spend limit); raise the first error.
+        await attempts.release()
+        await attempts.fail(type(retry_exc).__name__)
+        raise exc from retry_exc
+    await attempts.release(mc.MODEL_REJECTED)
+    mc.mark_failed(model)
+    logger.warning("claude model %s rejected the request and %s answered it — %s is marked failed",
+                   model, previous, model)
+    return previous, response, started
+
+
+async def create_json_message(  # pylint: disable=too-many-arguments,too-many-locals  # 호출 꼴 그대로 / the request's shape
+        client, *, model_value: str | None, default_value: str, max_tokens: int,
+                              system: list, schema: dict, messages: list, record: CostRecorder,
+                              unfinished: Unfinished | None = None) -> CallOutcome:
     """저장값으로 판을 정해 JSON 응답 하나를 받는다 — 처리하지 않는 예외는 그대로 올린다(호출부의 오류 분류 유지).
 
     Resolve the stored value and get one JSON response; unhandled exceptions propagate (callers keep classifying).
@@ -152,55 +240,40 @@ async def create_json_message(client, *, model_value: str | None, default_value:
       An auto-resolved model that 400s is retried once on the previous model; if that answers, the new one is failed.
     - Haiku 의 거절은 검증된 최신 Sonnet 으로 다시 · 서버 대체는 목록이 허락한 판에만.
       A Haiku refusal is retried on the verified latest Sonnet; server fallback only where the listing allows it.
+    - 비용 행: 예외 · 거절로 끝난 시도는 여기서, 취소로 끝난 시도는 `unfinished` 에, 마지막 응답은 호출부가.
+      Cost rows: raised or refused attempts here, cancelled ones in `unfinished`, the final response by the caller.
     """
+    attempts = _Attempts(client, record, unfinished if unfinished is not None else Unfinished(),
+                         {"max_tokens": max_tokens, "system": system, "schema": schema, "messages": messages})
     model = mc.resolve_model(model_value, default_value=default_value)
-    started = time.perf_counter()
     try:
-        response = await send_once(client, model, max_tokens=max_tokens, system=system, schema=schema,
-                                   messages=messages)
+        response, started = await attempts.send(model)
     except anthropic.BadRequestError as exc:
-        previous = _previous_for(model) if _follows_a_line(model_value, default_value) else None
-        if previous is None:
-            await _record_failure(record, model, type(exc).__name__, started)
-            raise
-        retry_started = time.perf_counter()
-        try:
-            response = await send_once(client, previous, max_tokens=max_tokens, system=system, schema=schema,
-                                       messages=messages)
-        except Exception as retry_exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
-            # 앞 판도 실패 = 판 탓이 아니다(지출 한도 같은 계정 쪽) — 표식 없이 첫 오류를 올린다.
-            # The previous model failed too: not the model's fault (e.g. a spend limit); raise the first error.
-            await _record_failure(record, model, type(exc).__name__, started)
-            await _record_failure(record, previous, type(retry_exc).__name__, retry_started)
-            raise exc from retry_exc
-        await _record_failure(record, model, mc.MODEL_REJECTED, started)
-        mc.mark_failed(model)
-        logger.warning("claude model %s rejected the request and %s answered it — %s is marked failed",
-                       model, previous, model)
-        model, started = previous, retry_started
+        model, response, started = await _after_rejection(
+            attempts, model, exc, follows=_follows_a_line(model_value, default_value))
     except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
         # 벤더 예외가 아니어도 그 호출의 비용 행 하나를 남긴다(취소는 BaseException 이라 여기 오지 않는다).
         # Any failure leaves that call's cost row; cancellation is a BaseException and never lands here.
-        await _record_failure(record, model, type(exc).__name__, started)
+        await attempts.fail(type(exc).__name__)
         raise
     if _refused(response) and mc.line_of(model) == _REFUSAL_RETRY_FROM:
-        await record_response(record, response, model=model,
-                              duration_ms=(time.perf_counter() - started) * 1000.0, status="refused")
-        target = mc.verified_latest(_REFUSAL_RETRY_TO) or mc.FALLBACK_DEFAULT_BY_LINE[_REFUSAL_RETRY_TO]
-        logger.info("claude refusal on %s — retrying on %s", model, target)
-        started = time.perf_counter()
+        await record_response(record, response, model=model, duration_ms=_elapsed_ms(started), status="refused")
+        refused_on = model
+        model = mc.verified_latest(_REFUSAL_RETRY_TO) or mc.FALLBACK_DEFAULT_BY_LINE[_REFUSAL_RETRY_TO]
+        logger.info("claude refusal on %s — retrying on %s", refused_on, model)
         try:
-            response = await send_once(client, target, max_tokens=max_tokens, system=system, schema=schema,
-                                       messages=messages)
+            response, started = await attempts.send(model)
         except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
-            await _record_failure(record, target, type(exc).__name__, started)
+            await attempts.fail(type(exc).__name__)
             raise
-        model = target
-    served = getattr(response, "model", None)
     if _refused(response):
         stop_details = getattr(response, "stop_details", None)
         logger.warning("claude refusal (whole chain) on %s — category=%s", model,
                        getattr(stop_details, "category", None))
-    return CallOutcome(response=response, model=served if isinstance(served, str) and served else model,
-                       requested=model, refused=_refused(response), fallback_served=_fallback_served(response),
-                       started=started)
+    # 응답의 model 은 날짜 붙은 id 일 수 있다 — 서버 대체가 답했을 때만 그쪽을 쓴다.
+    # The response may echo a dated id; take it only when a server fallback answered.
+    fallback = _fallback_served(response)
+    served = getattr(response, "model", None)
+    answered = served if fallback and isinstance(served, str) and served else model
+    return CallOutcome(response=response, model=answered, requested=model, refused=_refused(response),
+                       fallback_served=fallback, started=started)

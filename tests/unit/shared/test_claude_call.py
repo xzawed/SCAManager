@@ -4,6 +4,7 @@ The shared Claude call helper: resolution, effort, server fallback, refusals, Ha
 가짜는 바깥 경계(Anthropic 클라이언트 · 비용 행 기록)에만 둔다 — 응답은 SDK 의 실제 타입으로 만든다.
 Fakes sit only at the outer boundaries; responses are built from the SDK's real types.
 """
+import asyncio
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -55,6 +56,9 @@ def _status_error(cls, code: int):
     return cls("call failed", response=httpx.Response(code, request=_REQUEST), body=None)
 
 
+_HANG = object()  # 응답이 오지 않는 호출 — 기한 · 바깥 취소로만 끝난다 / a call that never answers
+
+
 class _FakeCreate:
     def __init__(self, outcomes):
         self.calls = []
@@ -63,6 +67,8 @@ class _FakeCreate:
     async def create(self, **kwargs):
         self.calls.append(kwargs)
         outcome = self._outcomes.pop(0)
+        if outcome is _HANG:
+            await asyncio.Event().wait()
         if isinstance(outcome, Exception):
             raise outcome
         return outcome
@@ -82,9 +88,20 @@ def rows():
     return SimpleNamespace(rows=collected, record=_record)
 
 
-async def _call(client, rows, value, *, default="claude-sonnet-5"):
+async def _call(client, rows, value, *, default="claude-sonnet-5", unfinished=None):
     return await cc.create_json_message(client, model_value=value, default_value=default, max_tokens=256,
-                                        system=_SYSTEM, schema=_SCHEMA, messages=_MESSAGES, record=rows.record)
+                                        system=_SYSTEM, schema=_SCHEMA, messages=_MESSAGES, record=rows.record,
+                                        unfinished=unfinished)
+
+
+async def _cancel_while_hanging(client, rows, value, unfinished, *, hung_calls: int):
+    task = asyncio.ensure_future(_call(client, rows, value, unfinished=unfinished))
+    while len(client.messages.calls) + len(client.beta.messages.calls) < hung_calls:
+        await asyncio.sleep(0)
+    await asyncio.sleep(0)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
 
 
 def _row_view(rows):
@@ -241,3 +258,110 @@ async def test_any_call_failure_is_recorded_and_raised(rows):
     with pytest.raises(RuntimeError):
         await _call(client, rows, "claude-sonnet-5")
     assert _row_view(rows) == [("claude-sonnet-5", "error", "RuntimeError")]
+
+
+async def test_answered_model_stays_the_called_id_without_a_fallback(rows):
+    # 응답의 model 은 날짜 붙은 id 일 수 있다 — 서버 대체가 답한 때만 응답 쪽을 믿는다.
+    # The response may echo a dated id; only a server-fallback answer takes the response's model.
+    client = _client(plain=[_message(model="claude-sonnet-5-20260401")])
+    outcome = await _call(client, rows, "claude-sonnet-5")
+    assert (outcome.model, outcome.requested) == ("claude-sonnet-5", "claude-sonnet-5")
+
+
+async def test_cancelled_call_is_left_for_the_caller_to_label(rows):
+    # 기한 · 바깥 취소는 도우미가 적지 않는다 — 호출부가 자기 라벨(TimeoutError 등)로 적는다.
+    # Cancellation is not written by the helper; the caller writes it with its own label (e.g. TimeoutError).
+    unfinished = cc.Unfinished()
+    await _cancel_while_hanging(_client(plain=[_HANG]), rows, "claude-sonnet-5", unfinished, hung_calls=1)
+    assert rows.rows == []
+    await unfinished.flush(rows.record, error_type="TimeoutError")
+    assert _row_view(rows) == [("claude-sonnet-5", "error", "TimeoutError")]
+    await unfinished.flush(rows.record, error_type="TimeoutError")
+    assert len(rows.rows) == 1  # 두 번 적지 않는다 / never twice
+
+
+async def test_cancel_during_the_rejection_retry_leaves_both_attempts(rows):
+    mc.set_verified("haiku", "claude-haiku-4-5")
+    mc.set_verified("haiku", "claude-haiku-5-5")
+    unfinished = cc.Unfinished()
+    client = _client(plain=[_status_error(anthropic.BadRequestError, 400), _HANG])
+    await _cancel_while_hanging(client, rows, "auto:haiku", unfinished, hung_calls=2)
+    await unfinished.flush(rows.record, error_type="CancelledError")
+    # 앞 판이 답하지 못했으니 새 판 탓인지 모른다 — 실패 표식을 달지 않는다
+    # The previous model never answered, so the new one is not blamed.
+    assert _row_view(rows) == [("claude-haiku-5-5", "error", "BadRequestError"),
+                               ("claude-haiku-4-5", "error", "CancelledError")]
+    assert not mc.is_failed("claude-haiku-5-5")
+
+
+async def test_cancel_during_the_refusal_retry_keeps_the_refused_row(rows):
+    unfinished = cc.Unfinished()
+    client = _client(plain=[_message(model="claude-haiku-4-5", stop_reason="refusal", text=None), _HANG])
+    await _cancel_while_hanging(client, rows, "claude-haiku-4-5", unfinished, hung_calls=2)
+    await unfinished.flush(rows.record, error_type="CancelledError")
+    assert _row_view(rows) == [("claude-haiku-4-5", "refused", ""), ("claude-sonnet-5", "error", "CancelledError")]
+
+
+async def test_finished_calls_leave_nothing_unfinished(rows):
+    unfinished = cc.Unfinished()
+    await _call(_client(plain=[_message(model="claude-sonnet-5")]), rows, "claude-sonnet-5", unfinished=unfinished)
+    with pytest.raises(anthropic.RateLimitError):
+        await _call(_client(plain=[_status_error(anthropic.RateLimitError, 429)]), rows, "claude-sonnet-5",
+                    unfinished=unfinished)
+    await unfinished.flush(rows.record, error_type="TimeoutError")
+    assert _row_view(rows) == [("claude-sonnet-5", "error", "RateLimitError")]
+
+
+async def test_failure_rows_carry_their_own_elapsed_time(rows):
+    # 앞 실패의 걸린 시간은 그 호출의 것이다 — 뒤 재시도 시간이 섞이지 않는다
+    # An earlier failure's duration is its own; the retry's time is not added to it.
+    mc.set_verified("haiku", "claude-haiku-4-5")
+    mc.set_verified("haiku", "claude-haiku-5-5")
+
+    class _SlowRetry(_FakeCreate):
+        async def create(self, **kwargs):
+            if self.calls:
+                await asyncio.sleep(0.05)
+            return await super().create(**kwargs)
+
+    client = SimpleNamespace(messages=_SlowRetry([_status_error(anthropic.BadRequestError, 400),
+                                                  _message(model="claude-haiku-4-5")]),
+                             beta=SimpleNamespace(messages=_FakeCreate([])))
+    await _call(client, rows, "auto:haiku")
+    (rejected,) = rows.rows
+    assert rejected["error_type"] == "model_rejected" and rejected["duration_ms"] < 40
+
+
+async def test_unreadable_hop_tokens_count_as_zero(rows):
+    response = SimpleNamespace(usage=SimpleNamespace(iterations=[
+        SimpleNamespace(type="message", model="claude-sonnet-5-5", input_tokens="n/a", output_tokens=None,
+                        cache_read_input_tokens=0, cache_creation_input_tokens=0)]))
+    await cc.record_response(rows.record, response, model="claude-sonnet-5-5", duration_ms=1.0, status="success")
+    assert (rows.rows[0]["input_tokens"], rows.rows[0]["output_tokens"]) == (0, 0)
+
+
+async def test_unreadable_stored_value_follows_the_default_line(rows):
+    # 읽을 수 없는 저장값은 기본값으로 — 기본값이 auto 면 새 판 거부 대체도 그대로 돈다
+    # An unreadable stored value falls back to the default; an auto default keeps the rejection fallback.
+    mc.set_verified("haiku", "claude-haiku-4-5")
+    mc.set_verified("haiku", "claude-haiku-5-5")
+    client = _client(plain=[_status_error(anthropic.BadRequestError, 400), _message(model="claude-haiku-4-5")])
+    outcome = await _call(client, rows, "auto:nonsense", default="auto:haiku")
+    assert outcome.model == "claude-haiku-4-5" and mc.is_failed("claude-haiku-5-5")
+
+
+async def test_auto_model_outside_the_known_lines_is_not_retried(rows):
+    mc.set_verified("haiku", "custom-model")
+    client = _client(plain=[_status_error(anthropic.BadRequestError, 400)])
+    with pytest.raises(anthropic.BadRequestError):
+        await _call(client, rows, "auto:haiku")
+    assert len(client.messages.calls) == 1
+    assert _row_view(rows) == [("custom-model", "error", "BadRequestError")]
+
+
+async def test_refusal_retry_failure_is_recorded_and_raised(rows):
+    client = _client(plain=[_message(model="claude-haiku-4-5", stop_reason="refusal", text=None),
+                            _status_error(anthropic.RateLimitError, 429)])
+    with pytest.raises(anthropic.RateLimitError):
+        await _call(client, rows, "claude-haiku-4-5")
+    assert _row_view(rows) == [("claude-haiku-4-5", "refused", ""), ("claude-sonnet-5", "error", "RateLimitError")]
