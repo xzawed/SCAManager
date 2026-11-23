@@ -226,4 +226,4 @@ uvicorn src.main:app --host 0.0.0.0 --port 8000 --proxy-headers
 
 [Apache License 2.0](LICENSE). Copyright 2026 xzawed.
 
-`src/analyzer/configs/semgrep/rules/` 의 벤더 GitLab SAST Semgrep 룰은 원래 라이선스(MIT, Apache-2.0, LGPL-3.0)와 함께 실린 `LICENSE`, `COPYING.LESSER` 를 그대로 둡니다.
+`src/analyzer/configs/semgrep/rules/` 의 벤더 GitLab SAST Semgrep 룰은 원래 라이선스(MIT, Apache-2.0, LGPL-3.0)를 유지합니다. 룰과 함께 받은 `LICENSE` · `COPYING.LESSER` 파일도 그대로 둡니다.
