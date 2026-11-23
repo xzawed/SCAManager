@@ -12,6 +12,7 @@ semgrep 은 subprocess CLI 로만 부르는데 앱과 같은 venv(`requirements.
 2. 이미지는 semgrep 을 `/opt/venv` 가 아닌 자기 venv 에 설치하고 그 `semgrep` 만 PATH 디렉터리에 링크한다.
 3. CI 의 단위 시험 잡도 같다 — 그리고 그 venv 의 bin 을 PATH 에 올리지 않는다(올리면 그 venv 의 python 이 앱 시험을 돈다).
 4. 앱 감사(`-r requirements.txt`)에는 예외가 없고, semgrep 환경은 따로 감사한다(`scripts/semgrep_audit.py`).
+5. 그 감사 예외의 «도달 불가» 전제 — semgrep 호출 꼴(고정) · 룰 경로 패턴의 별 개수.
 """
 from __future__ import annotations
 
@@ -129,17 +130,33 @@ def _pip_audit_calls(job: dict) -> list[list[str]]:
     return calls
 
 
-def _semgrep_argv_lists() -> list[tuple[str, list]]:
-    """`src/` 전체에서 첫 원소가 `"semgrep"` 인 리스트 리터럴(subprocess 인자) — (파일, 원소 값들)."""
+def _semgrep_calls() -> list[tuple[str, ast.List]]:
+    """`src/` 전체에서 첫 원소가 `"semgrep"` 인 리스트 리터럴(subprocess 인자) — (파일, 리스트 노드)."""
     found = []
     for path in sorted((_ROOT / "src").rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if (isinstance(node, ast.List) and node.elts and isinstance(node.elts[0], ast.Constant)
                     and node.elts[0].value == "semgrep"):
-                values = [e.value if isinstance(e, ast.Constant) else None for e in node.elts]
-                found.append((path.relative_to(_ROOT).as_posix(), values))
+                found.append((path.relative_to(_ROOT).as_posix(), node))
     return found
+
+
+def _semgrep_argv_lists() -> list[tuple[str, list]]:
+    """(파일, 원소 값들) — 상수가 아닌 원소는 None."""
+    return [(where, [e.value if isinstance(e, ast.Constant) else None for e in node.elts])
+            for where, node in _semgrep_calls()]
+
+
+# semgrep 호출의 고정 꼴(상수는 값, 나머지는 식의 글자) — 감사 예외의 전제가 이 꼴에 기댄다: 경로 필터 인자
+# (`--include` · `--exclude`)가 없어 wcmatch 패턴은 룰에서만 오고, 대상은 우리가 지은 임시 파일이며, `--trace` · `mcp` 가 없다.
+# 바꾸려면 scripts/semgrep_audit.py 의 예외마다 전제를 다시 본 뒤 이 값을 고친다.
+# The pinned semgrep call (constants by value, the rest as source text). The audit exceptions rely on it:
+# no path-filter flags, the target is our own temp file, no `--trace` or `mcp`. Re-check every exception before changing it.
+_SEMGREP_CALL_SHAPE = [
+    "semgrep", "scan", "f'--config={rules_config()}'", "--json", "--metrics=off", "--disable-version-check",
+    "--timeout", "str(STATIC_ANALYSIS_TIMEOUT)", "ctx.tmp_path",
+]
 
 
 def test_the_semgrep_exception_premises_still_hold():
@@ -147,13 +164,62 @@ def test_the_semgrep_exception_premises_still_hold():
 
     mcp 서버 · 클라이언트 권고는 `semgrep mcp` 에서만, OpenTelemetry 전파 권고는 `--trace` 에서만 닿는다
     (`scripts/semgrep_audit.py` 의 예외 목록). 이 전제가 깨지면 그 예외를 지워야 하는데, 지금까지 그것을 재는 곳이 0이었다(P2-86).
+    wcmatch 권고(CVE-2026-132276)는 우리가 주지 않는 경로 필터 인자와 임시 파일이 아닌 대상에 기대므로, 호출 꼴을 통째로
+    고정한다 — 새 인자는 어떤 것이든 전제를 다시 보게 한다(빠진 인자 목록으로 막으면 목록 밖 인자가 조용히 지나간다).
     """
-    calls = _semgrep_argv_lists()
+    calls = _semgrep_calls()
     assert calls, "src/ 에서 semgrep 호출을 하나도 못 찾았다 — 판정이 공허하다(호출 꼴이 바뀌었는지 볼 것)"
-    for where, argv in calls:
+    for where, node in calls:
+        argv = [e.value if isinstance(e, ast.Constant) else None for e in node.elts]
         assert argv[1:2] == ["scan"], f"{where}: semgrep 을 `scan` 이 아닌 꼴로 부른다 — {argv[:3]}"
         assert "--trace" not in argv, f"{where}: `--trace` — OpenTelemetry 예외 전제가 깨진다"
         assert "mcp" not in argv, f"{where}: `semgrep mcp` — mcp 예외 전제가 깨진다"
+        shape = [e.value if isinstance(e, ast.Constant) else ast.unparse(e) for e in node.elts]
+        assert shape == _SEMGREP_CALL_SHAPE, (
+            f"{where}: semgrep 호출 꼴이 바뀌었다 — scripts/semgrep_audit.py 의 예외 전제를 다시 보고 고정값을 고친다\n"
+            f"  지금 {shape}\n  고정 {_SEMGREP_CALL_SHAPE}"
+        )
+
+
+# 룰 경로 패턴을 읽는 폴더 — 옮겨지면 아래 시험이 «하나도 못 읽었다» 로 red 다
+# The vendored rule folder; if it moves, the test below goes red on "read nothing".
+_RULES_DIR = _ROOT / "src" / "analyzer" / "configs" / "semgrep" / "rules"
+
+
+def _rule_path_globs() -> tuple[int, list[str]]:
+    """(읽은 룰 수, 룰 `paths:` 의 include · exclude 패턴) — semgrep 이 wcmatch 로 대조하는 패턴은 이것뿐이다
+    (semgrep 1.185.0 · 1.186.0 `target_manager.py` 의 `filter_includes` · `filter_excludes`)."""
+    count, globs = 0, []
+    for path in sorted([*_RULES_DIR.rglob("*.yml"), *_RULES_DIR.rglob("*.yaml")]):
+        for rule in (yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get("rules") or []:
+            count += 1
+            paths = rule.get("paths") or {}
+            for key in ("include", "exclude"):
+                globs += [str(p) for p in paths.get(key) or []]
+    return count, globs
+
+
+def _stars_outside_globstar(glob: str) -> int:
+    """경로 globstar(`**`)를 뺀 별 개수 — 권고가 느려지는 것은 이 별이 여럿일 때다."""
+    return glob.replace("**", "").count("*")
+
+
+def test_the_star_count_sees_both_shapes():
+    """두 심음 — globstar 와 별 하나(`**/*.m`)는 하나로, 별 둘(`**/*_*.m`)은 둘로 센다."""
+    assert _stars_outside_globstar("**/*.m") == 1
+    assert _stars_outside_globstar("**/*_*.m") == 2
+
+
+def test_the_rule_path_globs_carry_one_star_at_most():
+    """🔴 wcmatch 예외(CVE-2026-132276) 전제 — 별(`*`)이 여럿인 패턴이어야 느려진다(별 k 개면 O(n^k)).
+
+    semgrep 은 룰 `paths:` 의 include · exclude 만 wcmatch 로 대조하고, 우리는 룰을 고정 묶음으로만 준다. 패턴마다
+    globstar 를 뺀 별이 하나까지면 그 대조는 별 하나의 꼴이다(실측 — scripts/semgrep_audit.py).
+    """
+    count, globs = _rule_path_globs()
+    assert count > 0, f"{_RULES_DIR} 에서 룰을 하나도 못 읽었다 — 판정이 공허하다"
+    many = [g for g in globs if _stars_outside_globstar(g) > 1]
+    assert many == [], f"별이 둘 이상인 룰 경로 패턴 — scripts/semgrep_audit.py 의 CVE-2026-132276 예외를 다시 본다: {many}"
 
 
 def test_the_app_audit_has_no_exceptions_and_semgrep_is_audited_separately():

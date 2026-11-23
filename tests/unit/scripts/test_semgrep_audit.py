@@ -325,6 +325,8 @@ _ALIASES_OF_THE_EXCEPTIONS = {
     "CVE-2026-116684": "GHSA-w4fh-qvv9-3v23",
     "CVE-2026-116685": "GHSA-5h93-6whr-6q8j",
     "CVE-2026-116686": "GHSA-rwrf-2pqf-9j8j",
+    "CVE-2026-115563": "GHSA-qx49-fqc8-xw99",
+    "CVE-2026-132276": "GHSA-53pm-wgxf-c6qf",
 }
 
 
