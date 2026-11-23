@@ -70,7 +70,28 @@ _REPORT_TAIL = 15000
 #    재검토 조건 — 충족되면 세 ID 를 즉시 지운다:
 #      (1) semgrep 이 mcp 핀을 >=1.30.0 으로 올리면(CVE-2026-59951 과 함께 삭제)
 #      (2) 우리가 MCP 클라이언트를 쓰거나 `semgrep mcp`(또는 SDK 의 HTTP 서버 인증)를 띄우게 되면
-# «도달 불가» 전제(앱은 `semgrep scan` 만 · `--trace` · `mcp` 없음)는 tests/unit/scripts/test_semgrep_own_venv.py 가 잰다.
+#
+# CVE-2026-115563 (mcp 1.29.0, 2026-11-23) — 위와 같은 semgrep 정확 핀(`mcp==1.29.0`)이라 **버전 업으로 해결 불가**
+#    (수정판 1.30.0 · 2.2.0). 권고 전제 = SDK 를 HTTP MCP «클라이언트»로 쓰며 `mcp.client.auth` 의 OAuth 공급자
+#    (`OAuthClientProvider` · `ClientCredentialsOAuthProvider` · `PrivateKeyJWTOAuthProvider` · `RFC7523OAuthClientProvider`)를
+#    전송 인증으로 붙일 때만이다. semgrep 1.185.0 · 1.186.0 소스는 `mcp.client` 를 한 번도 import 하지 않고(서버 · 공용 타입만 —
+#    핀을 올리면 다시 잰다), 앱 설치본에는 `mcp` 가 없다.
+#    재검토 조건 — 위 세 ID 의 (1) · (2) 와 같다(함께 지운다).
+#
+# CVE-2026-132276 (wcmatch 8.5.2, 2026-11-23) — semgrep 이 `wcmatch~=8.3` 을 요구해 **버전 업으로 해결 불가**(수정판 11.2).
+#    권고 전제 = 별(`*`)이 여럿인 패턴에 공격자가 고른 긴 이름을 맞춤(별 k 개면 O(n^k)). 우리 사용 방식에선 **도달 불가**:
+#      · semgrep 이 wcmatch 를 부르는 곳은 `target_manager.py` 의 규칙 `paths:` include · exclude 대조 하나다 — 패턴은 우리가
+#        고정한 룰 묶음에서만 오고(`--include` · `--exclude` 를 주지 않는다), 그 묶음의 `paths:` 는 `**/*.m`(별 하나)뿐이다.
+#      · 맞추는 대상은 우리가 지은 임시 파일 경로(`<임시 폴더>/analyze<확장자>`)다 — 바깥이 고르는 것은 확장자 10자까지
+#        (`src/analyzer/io/static.py::temp_suffix`).
+#      · 실측(wcmatch 8.5.2): 우리 패턴 × 지을 수 있는 최악 경로 1,080개의 한 번 대조가 최대 16 µs — 같은 계기에서 권고 PoC
+#        꼴(`*_*_*_*_*.csv`)은 120자에 1.6 s.
+#    재검토 조건 — 충족되면 즉시 지운다:
+#      (1) semgrep 이 wcmatch >=11.2 를 허용하면(그 판으로 semgrep 을 올리고 예외 삭제)
+#      (2) 룰 `paths:` 에 별이 둘 이상인 패턴이 들어오거나, semgrep 에 `--include` · `--exclude` 를 주거나, 분석 대상의
+#          원래 이름을 semgrep 에 넘기게 되면
+# «도달 불가» 전제(앱은 `semgrep scan` 만 · `--trace` · `mcp` · 경로 필터 인자 없음 · 대상 = 임시 파일 · 앱에 `mcp` 없음 ·
+# 룰 `paths:` 패턴은 별 하나까지)는 tests/unit/scripts/test_semgrep_own_venv.py 가 잰다.
 # Exceptions: each needs a reason and a removal condition above; try bumping semgrep first. The reachability
 # premises are measured by test_semgrep_own_venv.py.
 IGNORED_VULNS: tuple[str, ...] = (
@@ -80,6 +101,8 @@ IGNORED_VULNS: tuple[str, ...] = (
     "CVE-2026-116684",
     "CVE-2026-116685",
     "CVE-2026-116686",
+    "CVE-2026-115563",
+    "CVE-2026-132276",
 )
 
 
