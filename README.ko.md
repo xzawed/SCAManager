@@ -8,7 +8,7 @@
 [![CodeQL](https://github.com/xzawed/SCAManager/actions/workflows/codeql.yml/badge.svg)](https://github.com/xzawed/SCAManager/actions/workflows/codeql.yml)
 [![pylint](https://img.shields.io/badge/pylint-9.99%2F10-brightgreen?style=flat-square&logo=python&logoColor=white)](src/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.165-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-yellow?style=flat-square)](LICENSE)
 
 [🇺🇸 English](README.md)
 
@@ -222,4 +222,8 @@ uvicorn src.main:app --host 0.0.0.0 --port 8000 --proxy-headers
 취약점을 발견하셨다면 공개 이슈 대신
 [비공개 advisory](https://github.com/xzawed/SCAManager/security/advisories/new) 로 알려 주세요.
 
-[MIT](LICENSE) © xzawed
+## 라이선스
+
+[Apache License 2.0](LICENSE). Copyright 2026 xzawed.
+
+`src/analyzer/configs/semgrep/rules/` 의 벤더 GitLab SAST Semgrep 룰은 원래 라이선스(MIT, Apache-2.0, LGPL-3.0)를 유지합니다. 룰과 함께 받은 `LICENSE` · `COPYING.LESSER` 파일도 그대로 둡니다.
