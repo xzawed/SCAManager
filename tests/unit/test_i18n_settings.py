@@ -27,6 +27,7 @@ _KEYS = [
     "model_badge_retiring", "model_badge_unverified", "model_badge_failed",
     "effort_label", "effort_low", "effort_medium", "effort_high", "effort_hint",
     "effort_use_global_default", "effort_unlisted",
+    "effort_level_low", "effort_level_medium", "effort_level_high",
     "preset_minimal", "preset_standard", "preset_strict",
     "field_pr_review_comment", "field_commit_comment", "field_create_issue",
     "field_railway_deploy_alerts", "field_approve_mode", "field_auto_merge",

@@ -445,7 +445,7 @@
     "show_value": "값 보이기",
     "save_toast_ok": "✅ 설정이 저장되었습니다.",
     "save_toast_err": "❌ 저장에 실패했습니다. 기준점(승인 ≥ 반려 · 병합 ≥ 반려)과 리뷰 모델 · effort 값을 확인해 주세요.",
-    "model_hint": "AI 리뷰 모델. «최신 …» 을 고르면 그 계열의 새 모델이 시험 호출을 통과할 때 저절로 바뀝니다. 금액은 100만 토큰당 입력 / 출력(USD, Anthropic 공식 요율)이고, (추정)은 모델별 요율이 아직 없어 같은 계열 최신 요율로 셈한 값입니다. 비우면 전역 기본({model}).",
+    "model_hint": "AI 리뷰 모델. «최신 …» 을 고르면 그 계열의 새 모델이 시험 호출을 통과할 때 저절로 바뀝니다. 금액은 100만 토큰당 입력 / 출력(USD, Anthropic 공식 요율)이고, (추정)은 모델별 요율이 아직 없어 같은 계열 최신 요율로 셈한 값입니다. «전역 기본값 사용» 은 {model} 입니다.",
     "model_group_auto": "최신 모델 자동 따라가기",
     "model_group_pinned": "모델 고정",
     "model_auto_option": "최신 {line} — 지금 {name}",
@@ -459,7 +459,10 @@
     "effort_high": "높음 — 깊게 검토",
     "effort_hint": "고른 단계를 모델이 받지 않으면 받는 가장 가까운 아래 단계로 보내고, effort 를 받지 않는 모델에는 보내지 않습니다.",
     "effort_use_global_default": "전역 기본값 사용 ({effort})",
-    "effort_unlisted": "화면에 없는 단계 · 저장값 유지"
+    "effort_unlisted": "화면에 없는 단계 · 저장값 유지",
+    "effort_level_low": "낮음",
+    "effort_level_medium": "보통",
+    "effort_level_high": "높음"
   },
   "settings_page": {
     "title_prefix": "설정",

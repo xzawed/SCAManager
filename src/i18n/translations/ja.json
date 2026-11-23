@@ -445,7 +445,7 @@
     "show_value": "値を表示",
     "save_toast_ok": "✅ 設定が保存されました。",
     "save_toast_err": "❌ 保存に失敗しました。基準点(承認 ≥ 却下・マージ ≥ 却下)とレビューモデル・effort の値を確認してください。",
-    "model_hint": "AIレビューモデル。「最新 …」を選ぶと、その系列の新しいモデルが試験呼び出しに通ったとき自動で切り替わります。金額は100万トークンあたりの入力 / 出力(USD、Anthropic公式料金)で、(推定)はモデル別の料金がまだなく同じ系列の最新料金で計算した値です。空欄でグローバルデフォルト({model})。",
+    "model_hint": "AIレビューモデル。「最新 …」を選ぶと、その系列の新しいモデルが試験呼び出しに通ったとき自動で切り替わります。金額は100万トークンあたりの入力 / 出力(USD、Anthropic公式料金)で、(推定)はモデル別の料金がまだなく同じ系列の最新料金で計算した値です。「グローバルデフォルトを使用」は {model} です。",
     "model_group_auto": "最新モデルに自動追従",
     "model_group_pinned": "モデルを固定",
     "model_auto_option": "最新 {line} — 現在 {name}",
@@ -459,7 +459,10 @@
     "effort_high": "高 — 深くレビュー",
     "effort_hint": "選んだ段階をモデルが受け付けない場合は、受け付ける最も近い下の段階で送り、effort を受け付けないモデルには送りません。",
     "effort_use_global_default": "グローバルデフォルトを使用 ({effort})",
-    "effort_unlisted": "画面にない段階・保存値を維持"
+    "effort_unlisted": "画面にない段階・保存値を維持",
+    "effort_level_low": "低",
+    "effort_level_medium": "中",
+    "effort_level_high": "高"
   },
   "settings_page": {
     "title_prefix": "設定",

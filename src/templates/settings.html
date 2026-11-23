@@ -899,7 +899,12 @@
               <label class="field-label" for="reviewEffortSelect">{{ 'settings.effort_label' | i18n_args(locale | default('ko')) }}</label>
               <select id="reviewEffortSelect" name="review_effort" form="settingsForm" class="field-input" style="max-width:420px;"
                       aria-label="{{ 'settings.effort_label' | i18n_args(locale | default('ko')) }}">
-                <option value="">{{ 'settings.effort_use_global_default' | i18n_args(locale | default('ko'), effort=default_review_effort) }}</option>
+                {# 괄호 안은 운영 변수 원값이 아니라 그 단계의 화면 이름 — 화면이 고르게 하지 않는 단계(max 등)만 원값 #}
+                {# The level's display name, not the raw operator value; only levels the screen does not offer stay raw. #}
+                {% set _effort_names = {'low': 'settings.effort_level_low' | i18n_args(locale | default('ko')),
+                                        'medium': 'settings.effort_level_medium' | i18n_args(locale | default('ko')),
+                                        'high': 'settings.effort_level_high' | i18n_args(locale | default('ko'))} %}
+                <option value="">{{ 'settings.effort_use_global_default' | i18n_args(locale | default('ko'), effort=_effort_names.get(default_review_effort, default_review_effort)) }}</option>
                 {# 🔴 화면에 없는 단계로 저장돼 있으면 그 값을 선택된 채 보여 준다 — 없으면 다른 설정 저장이 조용히 지운다(K10). #}
                 {# A stored level the screen does not offer is shown selected, or saving other settings clears it. #}
                 {% if config.review_effort and config.review_effort not in ('low', 'medium', 'high') %}

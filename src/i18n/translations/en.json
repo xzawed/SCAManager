@@ -445,7 +445,7 @@
     "show_value": "Show value",
     "save_toast_ok": "✅ Settings saved.",
     "save_toast_err": "❌ Save failed. Check the thresholds (approve ≥ reject, merge ≥ reject) and the review model and effort.",
-    "model_hint": "AI review model. «Latest …» switches on its own when a newer model of that line passes its test call. Prices are input / output per 1M tokens (USD, Anthropic's official rates); (estimated) means there is no per-model rate yet, so the line's newest rate is used. Leave empty for the global default ({model}).",
+    "model_hint": "AI review model. «Latest …» switches on its own when a newer model of that line passes its test call. Prices are input / output per 1M tokens (USD, Anthropic's official rates); (estimated) means there is no per-model rate yet, so the line's newest rate is used. «Use global default» means {model}.",
     "model_group_auto": "Follow the latest model",
     "model_group_pinned": "Pin a model",
     "model_auto_option": "Latest {line} — now {name}",
@@ -459,7 +459,10 @@
     "effort_high": "High — reviews more deeply",
     "effort_hint": "If a model does not take the chosen level, the nearest lower level it takes is sent; models that take no effort get none.",
     "effort_use_global_default": "Use global default ({effort})",
-    "effort_unlisted": "not offered here · kept as saved"
+    "effort_unlisted": "not offered here · kept as saved",
+    "effort_level_low": "Low",
+    "effort_level_medium": "Medium",
+    "effort_level_high": "High"
   },
   "settings_page": {
     "title_prefix": "Settings",

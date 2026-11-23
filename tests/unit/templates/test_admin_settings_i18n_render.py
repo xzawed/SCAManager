@@ -613,6 +613,30 @@ def _settings_ctx_146(**overrides) -> dict:
     return base
 
 
+@pytest.mark.parametrize("locale", ["ko", "en", "ja"])
+def test_settings_effort_default_option_names_the_level_in_the_page_language(locale):
+    """🔴 effort «전역 기본값 사용 (…)» 의 괄호에는 운영 변수 원값(`high`)이 아니라 그 단계의 화면 이름이 들어간다.
+
+    11-23 화면 판독(Antigravity)이 ko · ja 화면의 `(high)` 를 짚었다 — 영어 원값이 그대로 보였다.
+    The default line names the level in the page language, not the raw operator value.
+    """
+    out = _render("settings.html", locale=locale, **_settings_ctx_146(default_review_effort="high"))
+    level = get_text("settings.effort_level_high", locale)
+    assert level and level != "settings.effort_level_high", f"{locale}: 단계 이름 키가 없다"
+    want = get_text("settings.effort_use_global_default", locale, effort=level)
+    raw = get_text("settings.effort_use_global_default", locale, effort="high")
+    assert want != raw, f"{locale}: 단계 이름이 원값과 같아 이 시험이 아무것도 재지 못한다"
+    assert f'<option value="">{want}</option>' in out
+    assert f'<option value="">{raw}</option>' not in out
+
+
+def test_settings_effort_default_option_keeps_a_level_the_screen_does_not_offer():
+    """화면이 고르게 하지 않는 단계(운영 변수 `max` 등)는 이름이 없으니 원값 그대로 보인다."""
+    out = _render("settings.html", locale="ko", **_settings_ctx_146(default_review_effort="max"))
+    want = get_text("settings.effort_use_global_default", "ko", effort="max")
+    assert f'<option value="">{want}</option>' in out
+
+
 def test_settings_renders_korean_settings_namespace_keys():
     """settings 네임스페이스 키 (model 카드 + preset 라벨 + JS 필드) 한국어 렌더 검증.
 

@@ -314,8 +314,13 @@ def test_an_unlisted_effort_is_shown_selected_and_posted_back():
 
 @pytest.mark.parametrize("lang", ["ko", "en", "ja"])
 def test_the_global_default_effort_line_names_the_level(lang):
-    """전역 기본값 줄이 지금 단계(운영 변수)를 보인다 / the global-default line names the configured level."""
+    """전역 기본값 줄이 지금 단계(운영 변수)를 그 언어의 단계 이름으로 보인다 — 원값(`high`)이 아니다(11-23 화면 판독).
+
+    The global-default line names the configured level in the page language, not its raw value.
+    """
     from src.config import settings as app_settings  # pylint: disable=import-outside-toplevel
+    from src.i18n.loader import get_text  # pylint: disable=import-outside-toplevel
 
     options = _render_effort(None, lang)
-    assert options[0][0] == "" and app_settings.claude_call_effort in options[0][2], options[0]
+    name = get_text(f"settings.effort_level_{app_settings.claude_call_effort}", lang)
+    assert options[0][0] == "" and name in options[0][2], options[0]
