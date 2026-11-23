@@ -6,10 +6,11 @@ Claude model pricing 3-source parity regression guard (policy 4 — retro 2026-0
 
   1. `src/shared/claude_metrics.py::_MODEL_RATES` — SSOT (실제 비용 계산, 판 id 별 요율 — #1905 ②)
      SSOT — actual cost calculation, one rate per model id.
-  2. `src/constants.py::CLAUDE_MODELS` — 모델 셀렉터 카탈로그 (model-id별 input/output_price)
-     model selector catalog, per model-id input/output_price.
-  3. `src/i18n/translations/{en,ko,ja}.json` `settings.model_hint` — UI 힌트 "$N/1M" (input만 노출) — 선택지 판의 요율
-     UI hint text "$N/1M" (input rate only) — the rate of the selector's model for each line.
+  2. `src/constants.py::CLAUDE_MODELS` — 기본 카탈로그 판의 이름 · 가격 (model-id별 input/output_price)
+     the fallback-catalog models' names and prices.
+  3. `src/i18n/translations/{en,ko,ja}.json` `settings.model_hint` — 가격을 **박지 않는다**(#1905 ③b): 설정 화면
+     선택지가 목록에서 오고 선택지마다 요율표 가격이 붙는다(`claude_metrics.headline_rate`).
+     The hint carries no prices: the selector comes from the listing and shows each option's rate-table price.
 
 배경: #1015 가 (1)만 갱신하고 (2)(3) 을 stale 로 남겨 #1019 split-fix 를 유발 (한 곳만 수정 안티패턴).
 가격 변경 시 3곳 전수 수정 의무 — 본 가드가 turn-0/CI 에서 drift 를 즉시 차단.
@@ -31,13 +32,6 @@ def setup_function():
     load_translations.cache_clear()
 
 
-def _selector_model_of(line: str) -> dict:
-    """그 계열의 선택지 판 — 선택지는 계열마다 하나다 / the selector's model for a line (one per line)."""
-    models = [m for m in CLAUDE_MODELS if line_of(m["id"]) == line]
-    assert len(models) == 1, f"{line} 계열 선택지가 {len(models)}개 — 힌트가 어느 판의 가격인지 모른다"
-    return models[0]
-
-
 def test_constants_catalog_matches_metrics_ssot():
     """constants.CLAUDE_MODELS 각 모델의 (input, output) 가 그 판의 claude_metrics 요율과 일치.
     Every CLAUDE_MODELS entry's (input, output) must equal that model's claude_metrics rate."""
@@ -51,40 +45,24 @@ def test_constants_catalog_matches_metrics_ssot():
 
 
 def test_every_line_has_a_selector_model():
-    """아는 계열마다 선택지 판이 하나 — 힌트가 계열마다 그 판의 가격을 말한다.
-    Every known line has one selector model; the hint states that model's price per line."""
+    """아는 계열마다 기본 카탈로그 대표 판이 하나 / every known line has one fallback-catalog model."""
     assert {line_of(m["id"]) for m in CLAUDE_MODELS} == set(KNOWN_LINES)
 
 
 @pytest.mark.parametrize("locale", ["en", "ko", "ja"])
-def test_i18n_model_hint_input_price_matches_ssot(locale):
-    """각 언어 model_hint 의 'Haiku/Sonnet/Opus $N/1M' input 단가가 SSOT input rate 와 일치.
-    Each locale's model_hint '$N/1M' per family must equal the SSOT input rate."""
-    trans = load_translations(locale)
-    hint = trans.get("settings", {}).get("model_hint", "")
+def test_i18n_model_hint_carries_no_prices(locale):
+    """힌트에 가격을 박지 않는다 — 선택지가 목록에서 오고, 선택지마다 요율표 가격이 붙는다(#1905 ③b).
+    The hint carries no prices: options come from the listing and each shows its rate-table price."""
+    hint = load_translations(locale).get("settings", {}).get("model_hint", "")
     assert hint, f"{locale}.json 에 settings.model_hint 부재 — i18n 키 회귀"
-
-    for family in sorted(KNOWN_LINES):
-        in_rate = _MODEL_RATES[_selector_model_of(family)["id"]].input
-        # 힌트 텍스트에서 'Haiku ... ($N/1M)' 패턴의 N 추출 (family 명은 3 언어 공통 영문).
-        # Extract N from 'Haiku ... ($N/1M)' (family names are English across all 3 locales).
-        match = re.search(rf"{family.capitalize()}[^$]*\$(\d+(?:\.\d+)?)\s*/\s*1M", hint)
-        assert match, (
-            f"{locale} model_hint 에서 {family.capitalize()} '$N/1M' 패턴 미발견 "
-            f"(힌트 구조 변경 시 본 가드·정책 4 재검토): {hint[:80]}"
-        )
-        hint_rate = float(match.group(1))
-        assert hint_rate == in_rate, (
-            f"{locale} model_hint {family} 표기 ${hint_rate}/1M 가 "
-            f"SSOT input=${in_rate} 와 불일치 (3-소스 drift — 가격 변경 시 i18n 3언어 동시 갱신 의무)"
-        )
+    assert not re.search(r"\$\s*\d", hint), (
+        f"{locale} model_hint 에 가격이 박혀 있다 — 선택지 · 요율이 바뀌면 낡는다: {hint[:80]}")
 
 
 # ── 내린 모델 요율 (Grok 반증 01a07e4b — BROKEN 판정에서 드러난 사각) ─────────────
 #
 # `constants.CLAUDE_RETIRED_MODEL_PRICING` — 카탈로그에서 «내렸지만» 여전히 흐르는 id.
-# `RepoConfig.review_model` 은 `String(50)` 이고 저장 시 카탈로그 검증이 없다
-# (`src/api/repos.py::review_model: str | None`·`src/ui/routes/settings.py::review_model=form.get(`).
+# `RepoConfig.review_model` 의 저장 검사(`model_catalog.validate_model_value`)는 값이 바뀔 때만 돈다.
 # 그래서 예전에 저장된 `claude-sonnet-4-6` 은 운영자가 아무것도 안 해도 계속 흐른다 —
 # family 요율(sonnet=$2/$10)로 매기면 그 호출만 33% 과소 계상된다.
 #
@@ -111,9 +89,11 @@ def test_retired_model_rates_are_honored_by_the_recording_path():
 
 
 def test_retired_models_are_not_offered_in_the_selector():
-    """🔴 대조군 — 내린 모델이 «선택지» 로 되살아나면 안 된다(요율만 남긴다)."""
+    """🔴 대조군 — 내린 모델이 기본 카탈로그 «선택지» 로 되살아나면 안 된다(요율만 남긴다)."""
     from src.constants import CLAUDE_RETIRED_MODEL_PRICING  # noqa: PLC0415
+    from src.shared.model_catalog import catalog_choices  # noqa: PLC0415
 
-    offered = {m["id"] for m in CLAUDE_MODELS}
+    _auto, pinned = catalog_choices()
+    offered = {choice.value for choice in pinned} | {m["id"] for m in CLAUDE_MODELS}
     overlap = offered & set(CLAUDE_RETIRED_MODEL_PRICING)
     assert not overlap, f"내린 모델이 셀렉터에 다시 올라와 있다: {sorted(overlap)}"

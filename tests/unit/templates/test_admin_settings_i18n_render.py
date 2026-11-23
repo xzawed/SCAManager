@@ -20,8 +20,8 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from src.i18n.filters import register_i18n_filters
 from src.i18n.loader import get_text
-from src.constants import CLAUDE_MODELS
-from src.ui.routes.settings import renderable_secrets
+from src.config import settings as app_settings
+from src.ui.routes.settings import _model_selector, renderable_secrets
 
 
 def _render(template_name: str, **context) -> str:
@@ -348,7 +348,10 @@ def _settings_ctx(**overrides) -> dict:
         # 🔴 아래 둘은 위 가드가 실측으로 찾아낸 **기존 드리프트**다 — 템플릿이 아직
         #    `{% if %}` 로만 써서 Undefined 가 falsy 로 통과하고 있었을 뿐이다.
         "railway_webhook_unclaimed": False,
-        "claude_models": CLAUDE_MODELS,
+        # 🔴 선택 상자도 **프로덕션 함수로 파생**한다(위 secrets 와 같은 까닭) / derived like `secrets`
+        "model_selector": _model_selector(None),
+        "default_review_model": app_settings.claude_review_model,
+        "default_review_effort": app_settings.claude_call_effort,
         "railway_api_token_set": False,
         "webhook_stale": False,
         "onboarding_needed": False,
@@ -603,19 +606,35 @@ class _CfgWithModel(_Cfg):
         super().__init__(**kwargs)
 
 
-# claude_models — 모델 선택 카드 <option> 렌더용 (settings.html:1082 for 루프)
-# claude_models — feeds the model select card <option> loop (settings.html:1082)
-_CLAUDE_MODELS = [
-    {"id": "claude-sonnet-4-6", "label": "Sonnet 4.6"},
-    {"id": "claude-opus-4-1", "label": "Opus 4.1"},
-]
-
-
 def _settings_ctx_146(**overrides) -> dict:
-    """사이클 146/147 키 렌더에 필요한 model 카드 + claude_models 포함 context."""
-    base = _settings_ctx(config=_CfgWithModel(), claude_models=_CLAUDE_MODELS)
+    """사이클 146/147 키 렌더에 필요한 model 카드 포함 context(선택 상자는 `_settings_ctx` 가 파생)."""
+    base = _settings_ctx(config=_CfgWithModel())
     base.update(overrides)
     return base
+
+
+@pytest.mark.parametrize("locale", ["ko", "en", "ja"])
+def test_settings_effort_default_option_names_the_level_in_the_page_language(locale):
+    """🔴 effort «전역 기본값 사용 (…)» 의 괄호에는 운영 변수 원값(`high`)이 아니라 그 단계의 화면 이름이 들어간다.
+
+    11-23 화면 판독(Antigravity)이 ko · ja 화면의 `(high)` 를 짚었다 — 영어 원값이 그대로 보였다.
+    The default line names the level in the page language, not the raw operator value.
+    """
+    out = _render("settings.html", locale=locale, **_settings_ctx_146(default_review_effort="high"))
+    level = get_text("settings.effort_level_high", locale)
+    assert level and level != "settings.effort_level_high", f"{locale}: 단계 이름 키가 없다"
+    want = get_text("settings.effort_use_global_default", locale, effort=level)
+    raw = get_text("settings.effort_use_global_default", locale, effort="high")
+    assert want != raw, f"{locale}: 단계 이름이 원값과 같아 이 시험이 아무것도 재지 못한다"
+    assert f'<option value="">{want}</option>' in out
+    assert f'<option value="">{raw}</option>' not in out
+
+
+def test_settings_effort_default_option_keeps_a_level_the_screen_does_not_offer():
+    """화면이 고르게 하지 않는 단계(운영 변수 `max` 등)는 이름이 없으니 원값 그대로 보인다."""
+    out = _render("settings.html", locale="ko", **_settings_ctx_146(default_review_effort="max"))
+    want = get_text("settings.effort_use_global_default", "ko", effort="max")
+    assert f'<option value="">{want}</option>' in out
 
 
 def test_settings_renders_korean_settings_namespace_keys():

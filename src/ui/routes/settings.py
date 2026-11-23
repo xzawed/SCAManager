@@ -11,8 +11,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from src.auth.session import CurrentUser, require_login
 from src.config_manager.manager import RepoConfigData, get_repo_config, upsert_repo_config
+from src.config import settings as app_settings
 from src.constants import (
-    CLAUDE_MODELS,
     GATE_DEFAULT_APPROVE_THRESHOLD,
     GATE_DEFAULT_REJECT_THRESHOLD,
     GATE_DEFAULT_MERGE_THRESHOLD,
@@ -28,6 +28,8 @@ from src.github_client.repos import (
 from src.i18n.loader import get_text
 from src.models.repo_config import RepoConfig
 from src.repositories import repo_config_repo
+from src.shared import model_catalog as mc
+from src.shared.claude_metrics import headline_rate
 from src.shared.log_safety import sanitize_for_log
 from src.shared.ssrf import is_safe_webhook_url
 from src.ui._helpers import (
@@ -153,9 +155,6 @@ _SIMPLE_MODE_FIELDS = frozenset({
 PRESERVED_CONFIG_FIELDS: tuple[str, ...] = (
     "notification_language",
     "disabled_tools",
-    # 리뷰 effort — 화면 칸은 ③b 에서 생긴다. 그 전까지 폼은 보내지 않으니 저장값을 보존한다(#1905 ③a).
-    # Review effort: the screen field arrives in ③b; until then the form never posts it, so keep the stored value.
-    "review_effort",
 )
 
 
@@ -188,9 +187,61 @@ def build_repo_config_from_form(db, repo_name: str, form) -> RepoConfigData:
         railway_deploy_alerts=form.get("railway_deploy_alerts") == "on",
         auto_merge_issue_on_failure=form.get("auto_merge_issue_on_failure") == "on",
         review_model=form.get("review_model") or None,
+        # 빈 값 = 운영 변수(CLAUDE_CALL_EFFORT) — 검사는 저장 관문(upsert_repo_config)이 한다(#1905 ③b).
+        # 키가 없으면(effort 칸 이전에 열어 둔 탭) 저장값을 그대로 — 지우지 않는다.
+        # Blank means the global setting; a missing key (a tab older than the field) keeps the stored value.
+        review_effort=form.get("review_effort", current.review_effort) or None,
         # leaderboard_opt_in 폐기 (그룹 60 사용자 결정 정정 — alembic 0025)
         **preserved,
     )
+
+
+def _money(value: float) -> str:
+    # 정수 달러는 그대로($2), 아니면 센트까지($0.10) / whole dollars plain, otherwise to the cent
+    return f"{value:g}" if float(value).is_integer() else f"{value:.2f}"
+
+
+def _price(model_id: str) -> dict:
+    price_in, price_out, estimated = headline_rate(model_id)
+    return {"price_in": _money(price_in), "price_out": _money(price_out), "estimated": estimated}
+
+
+def _model_selector(stored: str | None) -> dict:
+    """설정 화면의 리뷰 모델 선택 상자 — «최신 계열» 넷 · 판 고정 · 고른 값 · 목록에 없는 저장값(K10).
+
+    The settings screen's review-model select: four lines, pinned models, the selected value and an unlisted
+    stored value. 🔴 고른 값은 저장값이 가리키는 **판** 으로 찾는다 — 날짜 붙은 id 로 저장돼 있어도 그 판의 선택지가
+    선택되고, 어느 선택지도 그 판이 아니면 저장값을 그대로 한 줄 더 보여 준다(없으면 다른 설정을 저장하기만 해도
+    고정이 조용히 지워진다 — 회고 2026-09-16 K10). 가격은 요율표 하나에서 읽는다(`headline_rate`).
+    The selection is found by model; a stored value no option names gets its own selected line so that saving
+    other settings never clears it. Prices come from the rate table alone.
+    """
+    auto, pinned = mc.catalog_choices()
+    text = (stored or "").strip()
+    selected, orphan = "", None
+    if text:
+        try:
+            choice = mc.parse_model_value(text)
+        except ValueError:
+            choice = None
+        if choice is not None and choice.kind == "auto":
+            selected = next((c.value for c in auto if c.line == choice.line), "")
+        elif choice is not None and choice.kind == "pinned":
+            entry = mc.entry_for(text)
+            selected = next((c.value for c in pinned
+                             if c.value == text or (entry is not None and mc.entry_for(c.value) is entry)), "")
+        if not selected:
+            # 🔴 원문 그대로 — 공백을 떼어 그리면 저장 관문이 «바뀐 값» 으로 보고 검사해 거부한다(그 리포의 모든 저장이 막혔다).
+            # Keep the exact stored text: a trimmed copy reads as a change and the store's check refuses it.
+            selected, orphan = stored, stored
+    return {
+        "auto": [{"value": c.value, "line": c.line.capitalize(), "name": c.current_name, **_price(c.current_id)}
+                 for c in auto],
+        "pinned": [{"value": c.value, "name": c.name, "retiring": c.retiring, "unverified": c.unverified,
+                    "failed": c.failed, **_price(c.value)} for c in pinned],
+        "selected": selected,
+        "orphan": orphan,
+    }
 
 
 def _detect_initial_mode(config: RepoConfigData, railway_api_token_set: bool) -> str:
@@ -304,7 +355,9 @@ async def repo_settings(  # pylint: disable=too-many-positional-arguments,too-ma
         "onboarding_needed": onboarding_needed,
         "initial_mode": initial_mode,
         "locale": get_locale(request),
-        "claude_models": CLAUDE_MODELS,
+        "model_selector": _model_selector(config.review_model),
+        "default_review_model": app_settings.claude_review_model,
+        "default_review_effort": app_settings.claude_call_effort,
     })
 
 
@@ -367,7 +420,7 @@ async def update_repo_settings(
             # NOSONAR 이유: SonarCloud taint analysis 가 str.replace 기반 커스텀
             # sanitizer 를 인식하지 못함 — log_safety 모듈에서 실제 방어 완료.
             logger.warning(  # NOSONAR python:S5145 — sanitized via log_safety
-                "Invalid threshold values for %s, settings not saved",
+                "Settings for %s not saved — a value failed validation (thresholds, review model or effort)",
                 sanitize_for_log(repo_name),
             )
             return RedirectResponse(

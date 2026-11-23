@@ -23,6 +23,11 @@ _SETTINGS_TMPL = pathlib.Path("src/templates/settings.html")
 _LOCALES = ["ko", "en", "ja"]
 _KEYS = [
     "model_card_title", "use_global_default", "model_retired",
+    "model_group_auto", "model_group_pinned", "model_auto_option", "model_estimated",
+    "model_badge_retiring", "model_badge_unverified", "model_badge_failed",
+    "effort_label", "effort_low", "effort_medium", "effort_high", "effort_hint",
+    "effort_use_global_default", "effort_unlisted",
+    "effort_level_low", "effort_level_medium", "effort_level_high",
     "preset_minimal", "preset_standard", "preset_strict",
     "field_pr_review_comment", "field_commit_comment", "field_create_issue",
     "field_railway_deploy_alerts", "field_approve_mode", "field_auto_merge",
@@ -80,3 +85,11 @@ def test_keys_no_duplicates():
     _KEYS has no duplicates (guards against hand-maintained-list typos).
     """
     assert len(_KEYS) == len(set(_KEYS)), f"_KEYS 중복: {[k for k in set(_KEYS) if _KEYS.count(k) > 1]}"
+
+
+@pytest.mark.parametrize("locale", _LOCALES)
+def test_the_effort_hint_names_no_model(locale):
+    """effort 안내에 판 이름을 박지 않는다 — 가격처럼 판이 바뀌면 낡는다(③b 검토 Minor 6).
+    The effort hint names no model; such a copied fact goes stale like the prices did."""
+    hint = json.loads((_TRANS_DIR / f"{locale}.json").read_text(encoding="utf-8"))["settings"]["effort_hint"]
+    assert not re.search(r"(Haiku|Sonnet|Opus|Fable)\s*\d", hint), hint

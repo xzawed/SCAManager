@@ -136,3 +136,12 @@ def test_retired_rates_never_shadow_a_listed_rate():
     from src.constants import CLAUDE_RETIRED_MODEL_PRICING  # pylint: disable=import-outside-toplevel
 
     assert not set(CLAUDE_RETIRED_MODEL_PRICING) & set(cm._LISTED_RATES)  # pylint: disable=protected-access
+
+
+def test_headline_rate_is_the_base_rate_and_says_when_it_is_estimated():
+    # 화면에 보일 요율 — 구간제 판은 낮은 구간 · 표에 없는 판은 «추정» / the displayed rate: lower tier, estimated flag
+    from src.shared.claude_metrics import headline_rate  # pylint: disable=import-outside-toplevel
+
+    assert headline_rate("claude-haiku-5-5") == (0.10, 0.50, False)
+    assert headline_rate("claude-sonnet-5") == (2.0, 10.0, False)
+    assert headline_rate("claude-sonnet-9-9")[2] is True

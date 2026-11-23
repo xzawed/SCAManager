@@ -209,10 +209,12 @@ BREAKDOWN_KEY_TEST_COVERAGE = "test_coverage"
 # `claude-haiku-4-5-20251001` 과 같은 모델 · 저장값은 0050 이 옮겼다 · 사용자 11-17 결정). 더 새 세대로 바꾸는 것은
 # 비용 · 품질 결정이라 여기서 하지 않는다. `tests/unit/test_claude_model_catalogue_ids.py` 가 날짜 id 를 막는다.
 # Ids are aliases, never dated snapshots (one model, one name); the stored values were moved by 0050.
-# 🔴 PARITY GUARD: 가격 SSOT = claude_metrics._MODEL_RATES(판 단위). 여기 input/output_price 변경 시
-#   SSOT + i18n model_hint(en/ko/ja) 3곳 동시 수정 의무 (test_pricing_parity.py 가 CI 차단 — 정책 4).
-# 🔴 PARITY GUARD: pricing SSOT = claude_metrics._MODEL_RATES (per model). Changing input/output_price here
-#   requires updating the SSOT + i18n model_hint (en/ko/ja) too; test_pricing_parity.py blocks drift (policy 4).
+# 기본 카탈로그(`model_catalog.FALLBACK_CATALOG`)의 계열 대표 판 — 설정 화면 선택지는 이 표가 아니라
+#   `model_catalog.catalog_choices` 에서 오고, 가격은 요율표(`claude_metrics.headline_rate`)에서 읽는다(#1905 ③b).
+# 🔴 PARITY GUARD: 가격 SSOT = claude_metrics._MODEL_RATES(판 단위) — 여기 input/output_price 는 그것과 같아야
+#   한다(test_pricing_parity.py 가 CI 차단 — 정책 4).
+# The fallback catalog's one model per line; the settings selector comes from catalog_choices and reads prices from
+#   the rate table. PARITY GUARD: these prices must equal claude_metrics._MODEL_RATES (test_pricing_parity.py).
 CLAUDE_MODELS: list[dict] = [
     {
         "id": "claude-haiku-4-5",

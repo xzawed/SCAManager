@@ -21,7 +21,6 @@ from sqlalchemy.orm import sessionmaker  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
 from src.config_manager.manager import RepoConfigData, get_repo_config, upsert_repo_config  # noqa: E402
-from src.constants import CLAUDE_MODELS  # noqa: E402
 from src.database import Base  # noqa: E402
 from src.main import app  # noqa: E402
 from src.models.repo_config import RepoConfig  # noqa: E402
@@ -66,11 +65,13 @@ def test_a_dated_id_is_accepted_only_when_the_catalog_lists_that_id():
         mc.validate_model_value("claude-haiku-4-5-20991231")
 
 
-@pytest.mark.parametrize("value", [model["id"] for model in CLAUDE_MODELS])
-def test_every_form_option_is_accepted_and_found_by_the_catalog(value):
-    # 설정 폼의 선택지는 목록을 못 읽은 때(기본 카탈로그)에도 저장되고, 저장한 판을 카탈로그가 찾는다(effort · 요율 · 해석)
-    # Every settings option saves even with only the fallback catalog, and the catalog finds what was saved.
-    assert mc.entry_for(mc.validate_model_value(value)) is not None
+@pytest.mark.parametrize("choice", [*mc.catalog_choices()[0], *mc.catalog_choices()[1]], ids=lambda c: c.value)
+def test_every_form_option_is_accepted_and_found_by_the_catalog(choice):
+    # 설정 화면의 선택지(계열 넷 + 판 고정)는 목록을 못 읽은 때(기본 카탈로그)에도 저장되고, 고정 판은 카탈로그가 찾는다
+    # Every settings option saves even with only the fallback catalog, and the catalog finds each pinned model.
+    assert mc.validate_model_value(choice.value) == choice.value
+    if isinstance(choice, mc.PinnedChoice):
+        assert mc.entry_for(choice.value) is not None
 
 
 @pytest.fixture(name="db")
@@ -145,3 +146,16 @@ def test_the_api_answers_an_invalid_model_with_422():
          patch("src.api.repos.upsert_repo_config", side_effect=ValueError("review_model: unknown value")):
         response = client.put("/api/repos/owner%2Frepo/config", json={"review_model": "auto:gpt"})
     assert response.status_code == 422
+
+
+def test_a_page_save_keeps_an_unlisted_value_with_spaces(db):
+    """🔴 화면이 제출한 값으로 저장해도 목록 밖 저장값(앞뒤 공백 포함)이 거부되지 않는다 — 이전엔 리포 설정 저장이 막혔다."""
+    from src.ui.routes.settings import _model_selector, build_repo_config_from_form  # pylint: disable=import-outside-toplevel
+
+    db.add(RepoConfig(repo_full_name="o/spaced", review_model=" claude-opus-4-7"))
+    db.commit()
+    submitted = _model_selector(" claude-opus-4-7")["selected"]
+    upsert_repo_config(db, build_repo_config_from_form(db, "o/spaced", {"review_model": submitted,
+                                                                         "auto_merge": "on"}))
+    stored = get_repo_config(db, "o/spaced")
+    assert (stored.review_model, stored.auto_merge) == (" claude-opus-4-7", True)

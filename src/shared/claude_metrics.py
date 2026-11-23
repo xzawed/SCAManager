@@ -178,9 +178,9 @@ async def aclose_anthropic_client(client) -> None:
 
 # 판마다 요율 (USD per 1M tokens) — Anthropic 요율(claude-api 참조 2026-11) · 키는 별칭(날짜 접미사 없는 id) (#1905 ②).
 # Per-model rates (USD per 1M tokens), Anthropic pricing as of 2026-11; keys are aliases without a date suffix.
-# 🔴 PARITY GUARD: 이 표가 가격 SSOT 다. 선택지 판(constants.CLAUDE_MODELS)의 가격 · i18n model_hint(en/ko/ja)를
-#   tests/unit/shared/test_pricing_parity.py 가 이 표와 대조한다 — 하나만 고치면 CI 에서 red(정책 4).
-# 🔴 PARITY GUARD: this table is the pricing SSOT; the selector prices and the i18n hint are checked against it.
+# 🔴 PARITY GUARD: 이 표가 가격 SSOT 다. 설정 화면 선택지 가격은 이 표를 `headline_rate` 로 읽고(#1905 ③b),
+#   constants.CLAUDE_MODELS 의 가격은 tests/unit/shared/test_pricing_parity.py 가 이 표와 대조한다(정책 4).
+# 🔴 PARITY GUARD: this table is the pricing SSOT; the settings selector reads it via headline_rate.
 
 
 @dataclass(frozen=True)
@@ -275,6 +275,16 @@ def is_estimated_rate(model: str) -> bool:
     Whether the model is missing from the rate table, i.e. its cost is estimated from the line's newest rate.
     """
     return _rate_for(model)[1]
+
+
+def headline_rate(model: str) -> tuple[float, float, bool]:
+    """화면에 보일 판의 요율 — 100만 토큰당 입력 · 출력(USD, 구간제 판은 낮은 구간)과 «추정» 인가.
+
+    A model's displayed rate: input and output USD per million tokens (the lower tier for tiered models) and
+    whether it is estimated. 설정 화면의 선택지 가격이 이것 하나로 요율표를 읽는다 / the settings selector reads it.
+    """
+    rate, estimated = _rate_for(model)
+    return rate.input, rate.output, estimated
 
 
 # Anthropic prompt caching 가격 정책 (input rate 기준 배수)
