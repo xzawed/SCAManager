@@ -457,7 +457,7 @@
     "effort_low": "낮음 — 빠르고 저렴",
     "effort_medium": "보통",
     "effort_high": "높음 — 깊게 검토",
-    "effort_hint": "모델이 고른 단계를 받지 않으면 받는 가장 가까운 아래 단계로 보내고, effort 를 받지 않는 모델에는 보내지 않습니다.",
+    "effort_hint": "고른 단계를 모델이 받지 않으면 받는 가장 가까운 아래 단계로 보내고, effort 를 받지 않는 모델에는 보내지 않습니다.",
     "effort_use_global_default": "전역 기본값 사용 ({effort})",
     "effort_unlisted": "화면에 없는 단계 · 저장값 유지"
   },

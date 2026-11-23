@@ -457,7 +457,7 @@
     "effort_low": "低 — 速くて安い",
     "effort_medium": "中",
     "effort_high": "高 — 深くレビュー",
-    "effort_hint": "モデルが選んだ段階を受け付けない場合は受け付ける最も近い下の段階で送り、effort を受け付けないモデルには送りません。",
+    "effort_hint": "選んだ段階をモデルが受け付けない場合は、受け付ける最も近い下の段階で送り、effort を受け付けないモデルには送りません。",
     "effort_use_global_default": "グローバルデフォルトを使用 ({effort})",
     "effort_unlisted": "画面にない段階・保存値を維持"
   },
