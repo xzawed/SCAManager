@@ -105,3 +105,8 @@ tmp/
 # 리포 루트 아래 worktree — untracked 노출로 `git add -A` 시 통째 스테이징된다(실측 2026-07-31).
 # 루트 grep 결과도 배로 부풀어 정책 6·16 의 입력이 파괴된다.
 .claude/worktrees/
+
+# Antigravity 위임 플러그인이 세션 시작마다 작업 폴더에 만드는 로컬 산출물 — 이 줄이 있으면 플러그인이 이 파일을 고치지 않는다
+# Local artifacts the Antigravity delegate plugin creates at every session start; with this entry present it leaves this file alone
+.ag-bridge/
+.agent/
