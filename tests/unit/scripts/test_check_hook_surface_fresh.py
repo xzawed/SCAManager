@@ -70,6 +70,26 @@ def test_a_hook_surface_behind_origin_main_is_announced(repo):
     assert "지금 도는 훅" in proc.stdout and ".claude/settings.json" in proc.stdout
 
 
+# witness-corpus: 11-15~21 주 체크아웃이 낡아 적용되지 않은 실제 파일(원장 #1917 P1-2 증거 diff) · 세션 시작 때 읽히는 CLAUDE.md
+_STALE_CHECKOUT_PATHS = ["CLAUDE.md", ".claude/hooks/block_credential_dump.py", "scripts/retro_scope.py"]
+
+
+@pytest.mark.parametrize("rel", _STALE_CHECKOUT_PATHS)
+def test_a_stale_copy_of_a_real_incident_path_is_announced(repo, rel):
+    """🔴 사건 쪽에서 잰다 — 실제로 낡아 꺼져 있던 경로가 origin/main 보다 뒤면 그 경로를 이름으로 알린다."""
+    path = repo / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("old\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "old")
+    path.write_text("new\n", encoding="utf-8")
+    _git(repo, "commit", "-q", "-am", "new")
+    _git(repo, "update-ref", "refs/remotes/origin/main", _git(repo, "rev-parse", "HEAD"))
+    _git(repo, "reset", "-q", "--hard", "HEAD~1")
+    proc = _run(repo)
+    assert proc.returncode == 0 and rel in proc.stdout
+
+
 def test_a_difference_outside_the_hook_surface_is_silent(repo):
     """부정 통제 — 앱 코드만 다르면 훅과 무관하다(작업 중인 main 은 흔하다)."""
     (repo / "src.py").write_text("a = 2\n", encoding="utf-8")

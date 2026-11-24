@@ -203,6 +203,27 @@ def test_after_merge_notes_point_at_the_main_checkout(files, needle):
     assert len(notes) == 1 and needle in notes[0]
 
 
+# witness-corpus: 11-15~21 주 체크아웃이 낡아 4~6일 적용되지 않은 실제 파일(원장 #1917 P1-2 증거 diff) · 세션 시작 때 읽히는 CLAUDE.md
+_STALE_CHECKOUT_PATHS = [
+    ".claude/hooks/block_credential_dump.py",
+    ".claude/workflows/retrospective.mjs",
+    ".claude/hooks/posttool_pytest_smoke.py",
+    "scripts/retro_scope.py",
+    "CLAUDE.md",
+]
+
+
+@pytest.mark.parametrize("path", _STALE_CHECKOUT_PATHS)
+def test_every_path_that_actually_went_stale_gets_a_note(path):
+    """🔴 실제로 낡아 꺼져 있던 경로마다 머지 뒤 안내가 나온다 — 목록이 그 사건을 덮는지 사건 쪽에서 잰다."""
+    assert ma.after_merge_notes([path]), f"{path} 를 바꾼 머지가 주 체크아웃 안내를 내지 않는다"
+
+
+def test_claude_md_needs_a_restart_not_only_a_pull():
+    """CLAUDE.md 는 세션 시작 때 읽힌다 — 당기기만으로는 지금 세션에 안 들어온다."""
+    assert "세션을 다시 시작" in ma.after_merge_notes(["CLAUDE.md"])[0]
+
+
 def test_after_merge_notes_are_silent_outside_the_hook_surface():
     """부정 통제 — 앱 · 문서만 바꾼 머지는 주 체크아웃을 당길 이유가 없다(소음이 되면 아무도 안 읽는다)."""
     assert ma.after_merge_notes(["src/services/x.py", "docs/workflow/verify.md", "tests/unit/scripts/test_x.py"]) == []

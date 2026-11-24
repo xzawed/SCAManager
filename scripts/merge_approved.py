@@ -35,7 +35,9 @@ _TREE = re.compile(r"^[0-9a-f]{40}$")
 # 훅 표면 — 리포 훅 · 설정은 주 체크아웃의 파일로 돈다. 여기를 바꾼 머지는 주 체크아웃을 당겨야 적용된다(원장 #1917 M01)
 # The hook surface runs from the main checkout's files; a merge touching it applies only after that checkout pulls.
 _HOOK_SURFACE = (".claude/", "scripts/")
-_HOOK_REGISTRY = ".claude/settings.json"
+# 세션 시작 때 읽히는 것 — 당겨도 지금 세션에는 안 들어온다(다시 시작해야 한다)
+# Read at session start: pulling is not enough, the session must restart.
+_SESSION_LOADED = (".claude/settings.json", "CLAUDE.md")
 
 
 class CommandFailed(RuntimeError):
@@ -146,9 +148,10 @@ def after_merge_notes(files: list[str]) -> list[str]:
     11-15 ~ 11-21 주 체크아웃이 기능 브랜치에 있어 머지된 훅 · 설정 10 PR 이 4~6일 꺼져 있었다(원장 #1917 P1-2 · P1-3).
     After-merge steps: pull the main checkout for hook-surface changes; restart the session if registration changed.
     """
-    if _HOOK_REGISTRY in files:
-        return ["🔴 훅 등록(.claude/settings.json)이 바뀌었다 — 주 체크아웃을 `git switch main && git pull --ff-only` 로 "
-                "당긴 뒤 세션을 다시 시작해야 적용된다"]
+    loaded = [f for f in _SESSION_LOADED if f in files]
+    if loaded:
+        return [f"🔴 세션 시작 때 읽히는 것({' · '.join(loaded)})이 바뀌었다 — 주 체크아웃을 "
+                "`git switch main && git pull --ff-only` 로 당긴 뒤 세션을 다시 시작해야 적용된다"]
     if any(f.startswith(_HOOK_SURFACE) for f in files):
         return ["훅 · 스크립트(.claude · scripts)가 바뀌었다 — 주 체크아웃을 `git pull --ff-only` 로 당겨야 다음 호출부터 적용된다"]
     return []

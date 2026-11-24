@@ -7,7 +7,7 @@
 - 네트워크를 쓰지 않는다 — 마지막 fetch 의 `origin/main` 과 비교한다(세션 시작을 늦추지 않는다).
 - 늘 exit 0 이다 — 세션 시작 훅이 막히면 세션 자체가 막힌다. 저장소가 아니거나 origin/main 이 없으면 조용하고,
   git 을 못 부르거나 실패하면 «못 쟀다» 한 줄을 찍는다.
-- 비교 범위는 훅 표면(`.claude/` · `scripts/`)뿐이다 — 앱 코드 차이는 훅과 무관하다.
+- 비교 범위는 훅 표면(`.claude/` · `scripts/` · `CLAUDE.md`)뿐이다 — 앱 코드 차이는 훅과 무관하다.
 
 Session start: say so when the hooks running from the main checkout are not main's (branch or stale surface).
 Offline, always exit 0, silent outside a git repository.
@@ -19,7 +19,10 @@ import subprocess  # nosec B404 — 고정 인자의 git 만 부른다 / fixed-a
 import sys
 from pathlib import Path
 
-SURFACE = (".claude", "scripts")
+# 훅 표면 — 주 체크아웃에서 읽혀 세션 동작을 정하는 것: 훅 · 설정 · 스킬 · 워크플로(.claude) · 훅이 부르는 스크립트(scripts) ·
+# 세션 시작 때 읽히는 CLAUDE.md. 앱 코드(src)는 훅이 import 하지 않는다(11-24 실측 — 등록된 훅 스크립트 11개).
+# The hook surface: what the main checkout feeds into a session — .claude, the scripts hooks call, and CLAUDE.md.
+SURFACE = (".claude", "scripts", "CLAUDE.md")
 _BASE_REF = "origin/main"
 
 
