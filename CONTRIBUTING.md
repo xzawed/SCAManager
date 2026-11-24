@@ -8,10 +8,9 @@ Python 3.12, Node.js. PostgreSQL only to run the app; tests use in-memory SQLite
 
 ```bash
 git clone https://github.com/xzawed/SCAManager.git
-cp .env.example .env && pip install -r requirements-dev.txt && npm install
+cp .env.example .env && make install   # app deps · npm · semgrep in its own venv · pre-commit hooks
 openssl rand -hex 32 # put it in .env as SESSION_SECRET — empty, missing or < 32 chars stops at import
 npm run build        # Tailwind; fails quietly, css is gitignored
-pre-commit install   # never pass --hook-type; it drops a stage
 ```
 
 `uvicorn src.main:app --reload` needs `DATABASE_URL`, `TELEGRAM_BOT_TOKEN`,

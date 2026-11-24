@@ -95,14 +95,14 @@ Windows 에서는 `python` 대신 `py -3` 을 쓰시면 됩니다.
 
 ```bash
 git clone https://github.com/xzawed/SCAManager.git && cd SCAManager
-make install         # pip install -r requirements-dev.txt + npm install
+make install         # 앱 의존성 · npm · semgrep 자기 venv · pre-commit 훅
 make css-build       # Tailwind 번들 빌드 (gitignore 대상이라 한 번 만들어 둡니다)
 cp .env.example .env
 make run             # uvicorn :8000, 부팅 시 DB 마이그레이션 실행
 ```
 
-Windows 처럼 `make` 가 없는 환경이라면, 위 타깃은 각각 한두 줄짜리 명령입니다.
-[Makefile](Makefile) 을 열어 네 줄을 순서대로 실행하시고, `python` 은 `py -3` 으로 바꿔 주세요.
+Windows 처럼 `make` 가 없는 환경이라면, 위 타깃은 각각 몇 줄짜리 명령입니다.
+[Makefile](Makefile) 을 열어 순서대로 실행하시고, `python` 은 `py -3` 으로, `.venv-semgrep/bin` 은 `.venv-semgrep\Scripts` 로 바꿔 주세요.
 
 ### `.env` 채우기
 

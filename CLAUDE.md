@@ -47,7 +47,7 @@ py -3 -m pytest e2e/ -p no:asyncio  # E2E (tests/ 와 같이 돌리지 않는다
 `make` 이 없는 환경(Windows 등)에서는 `Makefile` 의 그 타깃 명령을 그대로 친다 — `make X` 실패는 환경 문제다.
 
 최초 설정: `cp .env.example .env` → `.env` 의 `SESSION_SECRET` 에 `openssl rand -hex 32` 값(없거나 32자 미만이면 import 에서 멈춘다)
-→ `py -3 -m pip install -r requirements.txt -r requirements-dev.txt`
+→ `py -3 -m pip install -r requirements-dev.txt` · semgrep 은 자기 venv(`requirements-semgrep.txt` — 그 `semgrep` 만 PATH 에, Makefile `install`)
 → `npm install && npm run build` → `py -3 -m pre_commit install` → `py -3 -m uvicorn src.main:app --reload`
 
 ## 협업 규칙

@@ -56,7 +56,9 @@ PROVISIONED_ANALYZERS: frozenset[str] = frozenset({
     # Dockerfile 직접 설치 / installed explicitly
     "golangci-lint", "hadolint", "ktlint", "tflint",
     # Python 의존성 (requirements.txt)
-    "pylint", "flake8", "bandit", "semgrep", "sqlfluff", "yamllint", "slither",
+    "pylint", "flake8", "bandit", "sqlfluff", "yamllint", "slither",
+    # semgrep — 자기 venv(requirements-semgrep.txt · Dockerfile `/opt/semgrep`) · CLI 만 PATH 에 / its own venv, CLI on PATH
+    "semgrep",
     # npm (package.json)
     "eslint", "tsc",
 })

@@ -1,10 +1,16 @@
 .PHONY: install test test-v test-fast test-slow test-cov test-file test-isolated test-local lint lint-strict lint-js gate run migrate revision review check-memory-refs install-playwright test-e2e test-e2e-headed test-perf perf-report css-install css-build css-dev
 
 # 의존성 설치 (개발 환경 — 테스트/E2E + CSS 빌드 포함)
+# semgrep 은 자기 venv(requirements-semgrep.txt)다 — 앱 venv 에 넣지 않고 `semgrep` 만 PATH 에 링크한다(운영 이미지 · CI 와 같다).
+# pre-commit 훅은 `--hook-type` 없이 설치한다(붙이면 단계 하나가 빠진다).
 # Install dependencies (development environment — includes tests/E2E + CSS build).
+# semgrep gets its own venv and only its entry point is linked onto PATH; hooks install without --hook-type.
 install:
 	pip install -r requirements-dev.txt
 	npm install
+	python -m venv .venv-semgrep && .venv-semgrep/bin/pip install -r requirements-semgrep.txt
+	mkdir -p "$(HOME)/.local/bin" && ln -sf "$(CURDIR)/.venv-semgrep/bin/semgrep" "$(HOME)/.local/bin/semgrep"
+	pre-commit install
 
 # CSS 빌드 (Tailwind v4 — 프로덕션 minified)
 # Build Tailwind v4 CSS (production minified).

@@ -97,15 +97,15 @@ On Windows, use `py -3` in place of `python`.
 
 ```bash
 git clone https://github.com/xzawed/SCAManager.git && cd SCAManager
-make install         # pip install -r requirements-dev.txt + npm install
+make install         # app deps + npm + semgrep in its own venv + pre-commit hooks
 make css-build       # builds the Tailwind bundle (gitignored, so build it once)
 cp .env.example .env
 make run             # uvicorn on :8000, database migrations run at boot
 ```
 
-If `make` is not available — on Windows, for instance — each of those targets is one or two plain
-commands. Open the [Makefile](Makefile), run the four above in order, and substitute `py -3` for
-`python`.
+If `make` is not available — on Windows, for instance — each of those targets is a few plain
+commands. Open the [Makefile](Makefile), run them in order, substitute `py -3` for `python`, and
+read `.venv-semgrep/bin` as `.venv-semgrep\Scripts`.
 
 ### Filling in `.env`
 
