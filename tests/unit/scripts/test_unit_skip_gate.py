@@ -82,10 +82,16 @@ def test_strict_skips_is_wired_into_the_unit_job_as_a_boolean_flag():
 
 
 def test_the_gate_option_and_hook_exist_in_conftest():
-    conftest = (_ROOT / "tests" / "conftest.py").read_text(encoding="utf-8")
-    names = {n.name for n in ast.walk(ast.parse(conftest)) if isinstance(n, ast.FunctionDef)}
+    """옵션 정의와 판정 훅이 실제 코드로 있어야 한다 — 구조(AST)로 읽는다(주석 · docstring 은 통과시키지 못한다)."""
+    tree = ast.parse((_ROOT / "tests" / "conftest.py").read_text(encoding="utf-8"))
+    names = {n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
     assert {"pytest_addoption", "pytest_sessionfinish"} <= names
-    assert '"--strict-skips", action="store_true"' in conftest
+    calls = [n for n in ast.walk(tree)
+             if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "addoption"
+             and n.args and isinstance(n.args[0], ast.Constant) and n.args[0].value == "--strict-skips"]
+    assert len(calls) == 1, "--strict-skips 옵션 정의가 정확히 하나여야 한다"
+    action = {kw.arg: kw.value for kw in calls[0].keywords}.get("action")
+    assert isinstance(action, ast.Constant) and action.value == "store_true", "게이트 플래그가 불리언이 아니다 — 0 으로 끌 수 있다"
 
 
 # ── (3) 허용 목록 ─────────────────────────────────────────────────────────────
@@ -128,11 +134,26 @@ def _job_block(ci: str, name: str) -> str:
     return ci[start:nxt.start() if nxt else len(ci)]
 
 
+def _pytest_args(block: str) -> set[str]:
+    """블록 안 `python -m pytest` 명령(줄 이음 포함)의 인자 — 주석 줄 · 다른 스텝의 글자는 세지 않는다."""
+    args: set[str] = set()
+    lines = block.splitlines()
+    for i, line in enumerate(lines):
+        if not re.match(r"^\s*python -m pytest\b", line):
+            continue
+        cmd, j = line, i
+        while cmd.rstrip().endswith("\\") and j + 1 < len(lines):
+            j += 1
+            cmd = cmd.rstrip()[:-1] + " " + lines[j]
+        args.update(cmd.split()[3:])  # `python -m pytest` 뒤의 인자만
+    return args
+
+
 def test_pg_entries_are_really_run_by_the_pg_job():
-    """🔴 «pg 잡» 이라고 적은 항목은 CI «PG-only tests» 잡의 명령에 실제로 있어야 한다."""
-    block = _job_block(_CI.read_text(encoding="utf-8"), "PG-only tests")
-    assert "python -m pytest" in block, "PG 잡 블록을 잘못 잘랐다 — 못 재면 red"
+    """🔴 «pg 잡» 이라고 적은 항목은 CI «PG-only tests» 잡의 pytest 명령 인자에 실제로 있어야 한다."""
+    args = _pytest_args(_job_block(_CI.read_text(encoding="utf-8"), "PG-only tests"))
+    assert args, "PG 잡의 pytest 명령을 찾지 못했다 — 못 재면 red"
     for entry, comment in _entries():
         if comment.startswith("pg 잡"):
             rel = entry.partition("::")[0]
-            assert rel in block or entry in block, f"«pg 잡» 이라고 적었지만 그 잡이 돌리지 않는다: {entry}"
+            assert rel in args or entry in args, f"«pg 잡» 이라고 적었지만 그 잡이 돌리지 않는다: {entry}"
