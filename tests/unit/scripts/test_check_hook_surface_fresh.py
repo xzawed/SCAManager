@@ -95,6 +95,18 @@ def test_a_vanished_working_directory_never_blocks_the_session(monkeypatch):
     assert fresh.main() == 0
 
 
+def test_git_missing_from_path_is_announced(monkeypatch, capsys):
+    """🔴 git 을 못 부르면(FileNotFoundError) 조용히 넘기지 않는다 — «못 쟀다» 한 줄 · exit 0(Grok `2c797603` 반례)."""
+    import scripts.check_hook_surface_fresh as fresh
+
+    def _no_git(*_args, **_kwargs):
+        raise FileNotFoundError("git")
+
+    monkeypatch.setattr(fresh.subprocess, "run", _no_git)
+    assert fresh.main() == 0
+    assert "못 쟀다" in capsys.readouterr().out
+
+
 def test_a_failing_git_is_announced_not_hidden(monkeypatch, capsys):
     """🔴 못 재면 조용히 넘기지 않는다 — 기준은 있는데 git 이 실패하면 «못 쟀다» 한 줄 · 그래도 exit 0."""
     import scripts.check_hook_surface_fresh as fresh

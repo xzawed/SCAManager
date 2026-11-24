@@ -5,7 +5,8 @@
 몰랐다. 이 스크립트는 그 상태를 한 줄씩 알린다.
 
 - 네트워크를 쓰지 않는다 — 마지막 fetch 의 `origin/main` 과 비교한다(세션 시작을 늦추지 않는다).
-- 늘 exit 0 이다 — 세션 시작 훅이 막히면 세션 자체가 막힌다. git 이 없거나 저장소가 아니면 조용하다.
+- 늘 exit 0 이다 — 세션 시작 훅이 막히면 세션 자체가 막힌다. 저장소가 아니거나 origin/main 이 없으면 조용하고,
+  git 을 못 부르거나 실패하면 «못 쟀다» 한 줄을 찍는다.
 - 비교 범위는 훅 표면(`.claude/` · `scripts/`)뿐이다 — 앱 코드 차이는 훅과 무관하다.
 
 Session start: say so when the hooks running from the main checkout are not main's (branch or stale surface).
@@ -65,13 +66,12 @@ def main() -> int:
         differing = [p for p in _git(root, "diff", "--name-only", _BASE_REF, "--", *SURFACE).splitlines() if p.strip()]
         for line in advice(branch, differing):
             print(line)
-    except (SystemExit, subprocess.SubprocessError):
-        # 🔴 못 재면 조용히 넘기지 않고 알린다 — 세션 시작 훅이라 막지는 않는다(늘 exit 0)
-        # Say that it could not be measured; never block the session.
-        print("⚠️ 훅 최신성을 못 쟀다 — git 이 실패했거나 멈췄다(세션은 그대로 시작한다)")
+    except (SystemExit, subprocess.SubprocessError, OSError):
+        # 🔴 못 재면 조용히 넘기지 않고 알린다 — git 실패 · 시간 초과 · git 을 못 부름 · 작업 디렉터리가 사라짐
+        #    (Grok `2c797603` 반례 둘). 세션 시작 훅이라 막지는 않는다(늘 exit 0).
+        # Say that it could not be measured (git failed, hung, missing, or the cwd vanished); never block the session.
+        print("⚠️ 훅 최신성을 못 쟀다 — git 이 실패했거나 멈췄거나 없다(세션은 그대로 시작한다)")
         return 0
-    except OSError:
-        return 0  # git 이 없거나 작업 디렉터리가 사라졌다 / no git, or the working directory vanished
     return 0
 
 
