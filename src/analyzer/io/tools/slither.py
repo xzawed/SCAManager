@@ -185,8 +185,9 @@ def _matching_solc(content: str, installed) -> str | None:
         # Only ImportError reaches this in practice; the other two are defensive because
         # `is_enabled` is called OUTSIDE the caller's try — an escape would hit the pipeline.
         #
-        # 🔴 실물 pragma 가 있으면 「제약이 있다는 것을 아는데 평가만 못 한」 상태다 — 아래
-        #    「pragma 를 못 읽었다」 갈래와 같다. 여기서 설치본으로 돌리면 못 맞추는 컴파일러가 빈 stdout 을
+        # 🔴 실물 pragma 가 있으면 「제약이 있다는 것을 아는데 평가만 못 한」 상태다 — 라이브러리가 없든
+        #    설치본 판 문자열을 못 읽었든(Grok claim-review `d6001634` 반례) 같다. 아래 「pragma 를 못 읽었다」
+        #    갈래와 같은 상태이고, 여기서 설치본으로 돌리면 못 맞추는 컴파일러가 빈 stdout 을
         #    내 **벽**이 된다(#1857 뒤 운영 이미지가 이 갈래였다 — `requirements.txt` 만 까는 앱 venv 에 없었다).
         #    #1571 계약대로 skip 하고,
         #    `static.py::no_dedicated_observer` 가 그 사실을 기록한다.

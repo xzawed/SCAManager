@@ -471,6 +471,17 @@ def test_no_pragma_still_runs_when_semantic_version_is_missing(monkeypatch):
     assert _enabled_with_pragma(monkeypatch, "contract V {}\n") is True
 
 
+def test_an_unparseable_installed_version_skips_a_real_pragma(monkeypatch):
+    """🔴 설치본 판 문자열을 못 읽어도 평가할 수 없기는 같다 — pragma 가 있으면 skip(Grok `d6001634` 반례를 계약으로)."""
+    src = "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.0;\ncontract V {}\n"
+    assert _enabled_with_pragma(monkeypatch, src, installed=["not.a.version"]) is False
+
+
+def test_an_unparseable_installed_version_still_runs_without_a_pragma(monkeypatch):
+    """🔴 부정 통제 — 같은 상태라도 pragma 가 없으면 제약이 없으니 그 설치본으로 돈다."""
+    assert _enabled_with_pragma(monkeypatch, "contract V {}\n", installed=["not.a.version"]) is True
+
+
 @pytest.mark.parametrize("pragma", ["^0.4.24", "^0.6.0", "0.8.19", ">=0.5.0 <0.6.0"])
 def test_unsatisfiable_pragma_skips_instead_of_walling(monkeypatch, pragma):
     """🔴 핀된 컴파일러가 못 맞추면 실행하지 않는다 — 실행하면 빈 stdout 이 벽이 된다."""
