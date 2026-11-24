@@ -192,6 +192,55 @@ def _main(fake, *extra, approval="머지 승인합니다"):
     return code, "\n".join(lines)
 
 
+@pytest.mark.parametrize(("files", "needle"), [
+    ([".claude/settings.json", "src/x.py"], "세션을 다시 시작"),
+    ([".claude/hooks/block_credential_dump.py"], "git pull --ff-only"),
+    (["scripts/check_main_red.py"], "git pull --ff-only"),
+])
+def test_after_merge_notes_point_at_the_main_checkout(files, needle):
+    """🔴 훅 표면을 바꾼 머지는 주 체크아웃을 당겨야 적용된다 — 11-15~21 10 PR 이 4~6일 꺼져 있었다(원장 #1917 M01)."""
+    notes = ma.after_merge_notes(files)
+    assert len(notes) == 1 and needle in notes[0]
+
+
+# witness-corpus: 11-15~21 창에서 실제로 바뀐 경로 — 주 체크아웃이 낡아 꺼져 있던 훅 표면(원장 #1917 P1-2 증거 diff)과 같은 창의 세션 무관 경로(CI · 운영 이미지 · 앱 · 문서)
+_WINDOW_PATHS = [
+    (".claude/hooks/block_credential_dump.py", True),
+    (".claude/workflows/retrospective.mjs", True),
+    (".claude/hooks/posttool_pytest_smoke.py", True),
+    ("scripts/retro_scope.py", True),
+    ("CLAUDE.md", True),
+    ("requirements-semgrep.txt", False),
+    ("src/config.py", False),
+    (".github/workflows/ci.yml", False),
+    ("docs/workflow/verify.md", False),
+]
+
+
+@pytest.mark.parametrize(("path", "needs_note"), _WINDOW_PATHS)
+def test_window_paths_get_a_note_exactly_when_they_feed_the_session(path, needs_note):
+    """🔴 경계를 사건 쪽에서 잰다 — 세션에 먹히는 경로는 안내가 나오고, 같은 창의 세션 무관 경로는 조용하다."""
+    assert bool(ma.after_merge_notes([path])) is needs_note, path
+
+
+def test_claude_md_needs_a_restart_not_only_a_pull():
+    """CLAUDE.md 는 세션 시작 때 읽힌다 — 당기기만으로는 지금 세션에 안 들어온다."""
+    assert "세션을 다시 시작" in ma.after_merge_notes(["CLAUDE.md"])[0]
+
+
+def test_after_merge_notes_are_silent_outside_the_hook_surface():
+    """부정 통제 — 앱 · 문서만 바꾼 머지는 주 체크아웃을 당길 이유가 없다(소음이 되면 아무도 안 읽는다)."""
+    assert ma.after_merge_notes(["src/services/x.py", "docs/workflow/verify.md", "tests/unit/scripts/test_x.py"]) == []
+
+
+def test_main_prints_the_restart_note_after_merging_a_hook_registration_change():
+    fake = _Fake(view={"state": "OPEN", "isDraft": False, "baseRefName": "main", "headRefOid": _HEAD,
+                       "changedFiles": 1, "files": [{"path": ".claude/settings.json"}]})
+    code, out = _main(fake)
+    assert code == 0, out
+    assert out.index("✅") < out.index("세션을 다시 시작"), "머지 성공 줄 뒤에 와야 한다"
+
+
 def test_main_comments_then_merges_once_at_the_approved_head():
     fake = _Fake()
     code, out = _main(fake)

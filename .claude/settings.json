@@ -23,6 +23,16 @@
             "type": "command",
             "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY ${CLAUDE_PROJECT_DIR:-.}/scripts/check_memory_refs.py --advisory",
             "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY ${CLAUDE_PROJECT_DIR:-.}/scripts/check_hook_surface_fresh.py",
+            "timeout": 15
           },
           {
             "type": "command",

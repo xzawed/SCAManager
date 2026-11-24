@@ -26,7 +26,14 @@ _REQUIRED = (
     "scripts/check_precommit_installed.py",
     # 회고 착수 신호(`--signal`) — 회고 원장 L15 · 사용자 11-15 결정
     "scripts/retro_scope.py",
+    # «지금 도는 훅 ≠ main 의 훅» — 원장 #1917 M01
+    "scripts/check_hook_surface_fresh.py",
 )
+
+# 세션이 «새로 시작한 것처럼» 맥락을 잃는 네 경우 — 오프라인 한 줄 신호는 넷 모두에서 돈다(원장 #1917 P1-1).
+# The four ways a session starts over; offline one-line signals must fire on all of them.
+_EVERY_START = ("startup", "resume", "clear", "compact")
+_ON_EVERY_START = ("scripts/retro_scope.py", "scripts/check_hook_surface_fresh.py")
 
 
 def _settings():
@@ -102,6 +109,20 @@ def test_session_start_matcher_covers_startup():
     assert any("startup" in e.get("matcher", "") for e in entries), (
         "SessionStart matcher 에 startup 없음 — 신규 세션에서 카운터가 안 돈다"
     )
+
+
+@pytest.mark.parametrize("script", _ON_EVERY_START)
+def test_offline_one_line_signals_fire_on_every_session_start(script):
+    """🔴 /clear · 압축 뒤에도 돈다 — 11-23 회고 착수 신호는 resume 에 떴다가 6초 뒤 /clear 로 이어진 세션에
+    전달되지 않았고, 압축 61회 뒤에도 한 번도 다시 돌지 않았다(원장 #1917 P1-1).
+    Signals must also fire after /clear and compaction — the 11-23 signal was lost to a /clear six seconds later.
+    """
+    for entry in _settings().get("hooks", {}).get("SessionStart", []):
+        if any_invokes(session_start_commands({"hooks": {"SessionStart": [entry]}}), script):
+            kinds = set(entry.get("matcher", "").split("|"))
+            assert set(_EVERY_START) <= kinds, f"{script} 의 matcher {entry.get('matcher')!r} 에 빠진 경우가 있다"
+            return
+    pytest.fail(f"{script} 가 SessionStart 훅에 없다")
 
 
 def test_wired_scripts_exist_on_disk():
