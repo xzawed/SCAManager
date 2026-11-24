@@ -550,12 +550,15 @@ jobs:
           TELEGRAM_BOT_TOKEN: "123:ABC"
           TELEGRAM_CHAT_ID: "-100123"
           SESSION_SECRET: "test-session-secret-32-chars-long!"
+        # `--strict-skips` — skip 집합이 tests/SKIP_ALLOWLIST 와 다르면 red(원장 #1917 M06 · 판정 = tests/_skip_gate.py).
+        # The skip set must equal tests/SKIP_ALLOWLIST both ways — #1857 silently skipped 34 tests here.
         run: |
           python -m pytest tests/ \
             --cov=src \
             --cov-report=xml:coverage.xml \
             --cov-report=term-missing \
             --junitxml=pytest-results.xml \
+            --strict-skips \
             -rs -q
 
       # 🔴 P1 역-뮤테이션 게이트 (2026-08-07 다중 관점 진단의 **지배 원인** 직격).

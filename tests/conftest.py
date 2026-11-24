@@ -1,4 +1,6 @@
 import os
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -100,3 +102,52 @@ def _reset_rate_limiter():
 @pytest.fixture
 def client():
     return TestClient(app)
+
+
+# ── skip 집합 게이트 — `pytest tests/` 의 skip 은 커밋된 목록과 양방향으로 같아야 한다 (원장 #1917 M06) ──
+#
+# #1857 뒤 CI 의 이 잡에서 slither pragma 판정 시험 34건이 «semantic_version 부재» 로 skip 이 됐는데
+# 어떤 게이트도 잡지 않았다 — 시험 수 대조는 «본문 + skip == junit» 합만 보았다. e2e 와 같은 관용구
+# (`e2e/conftest.py` 의 `--e2e-strict-skips` · `e2e/SKIP_ALLOWLIST`)로, 숫자가 아니라 **집합**을 본다.
+# 목록 밖 skip 이 생기면 red, 목록에 있는데 skip 되지 않아도 red 다(낡은 예외는 게이트를 넓힌다).
+# 항목은 파라미터를 뗀 nodeid 이고, 줄 주석에 «어디서 도는가» 를 적는다. 판정은 `tests/_skip_gate.py` 의 순수 함수다.
+# opt-in 불리언 플래그(`--strict-skips`)라 로컬 부분 실행에는 영향이 없고 CI 만 건다.
+# Gate the skip *set* of `pytest tests/` against a committed allowlist, both directions (as e2e does).
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--strict-skips", action="store_true",
+        help="skip 집합이 tests/SKIP_ALLOWLIST 와 다르면 세션을 실패시킨다(CI 전용 · 공허화 차단).",
+    )
+
+
+def _where(report, root: Path) -> str:
+    """skip 이 난 자리와 사유(`-rs` 와 같은 줄 번호 · 리포 상대 경로) — 실패 메시지에서 목록 줄로 옮길 수 있게."""
+    longrepr = getattr(report, "longrepr", None)
+    if isinstance(longrepr, tuple) and len(longrepr) == 3:
+        path, lineno, reason = longrepr
+        try:
+            path = Path(path).resolve().relative_to(root).as_posix()
+        except ValueError:
+            path = str(path).replace("\\", "/")
+        return f"{path}:{lineno}: {reason}"
+    return ""
+
+
+def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001  # pylint: disable=unused-argument
+    if not session.config.getoption("--strict-skips"):
+        return
+    from tests._skip_gate import base_nodeid, judge, read_allowlist  # pylint: disable=import-outside-toplevel
+
+    reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+    if reporter is None:
+        return
+    observed: dict[str, str] = {}
+    root = Path(str(session.config.rootpath)).resolve()
+    for report in reporter.stats.get("skipped", []):
+        observed.setdefault(base_nodeid(report.nodeid), _where(report, root))
+    collected = {base_nodeid(item.nodeid) for item in getattr(session, "items", [])}
+    for msg in judge(observed, collected, read_allowlist()):
+        reporter.write_line(msg, red=True)
+        session.exitstatus = 1
