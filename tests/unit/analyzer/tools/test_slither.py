@@ -422,16 +422,10 @@ def test_disabled_when_neither_solc_select_nor_solc_is_present(monkeypatch):
 
 _INSTALLED_0820 = ["0.8.20"]
 
-# 🔴 이 절은 `semantic_version` 을 **실제로** 쓴다. 없으면 판정이 폴백(True)을 타므로
-#    테스트가 「틀린 이유로」 초록/빨강이 된다. 가짜 모듈을 끼우면 NpmSpec 의미론이 아니라
-#    내 가짜를 재게 되므로, 부재 시에는 건너뛴다.
-#    CI 는 Python 3.12 + semgrep(전이 의존 semantic-version~=2.10.0)이라 여기서 돈다 — 실측.
-#    로컬 3.14 에는 semgrep 이 없어 건너뛴다.
-# This block exercises real NpmSpec semantics; a fake module would measure the fake.
-pytestmark_semver = pytest.mark.skipif(
-    importlib.util.find_spec("semantic_version") is None,
-    reason="semantic_version 부재 — pragma 판정이 폴백을 타 측정 불가(CI 3.12 에서 실행)",
-)
+# 🔴 이 절은 `semantic_version` 을 **실제로** 쓴다 — 가짜 모듈을 끼우면 NpmSpec 의미론이 아니라 내 가짜를 잰다.
+#    `requirements.txt` 직접 의존이라 건너뛰지 않는다: 없으면 `test_semantic_version_is_a_declared_runtime_dependency`
+#    와 맞출 수 있는 pragma 시험이 red 다. 예전의 «부재 시 skip» 이 #1857 뒤 CI 에서 이 절 34건을 조용히 껐다.
+# This block exercises real NpmSpec semantics and is never skipped: the dependency is declared, so absence is red.
 
 
 def _enabled_with_pragma(monkeypatch, content: str, installed=None):
@@ -449,7 +443,45 @@ def _enabled_with_pragma(monkeypatch, content: str, installed=None):
     return _SlitherAnalyzer().is_enabled(ctx)
 
 
-@pytestmark_semver
+# ── `semantic_version` 이 빠졌을 때 — 실물 pragma 가 있으면 벽이 아니라 skip (#1857 뒤 운영 경로) ──
+#
+# #1857 이 semgrep 을 다른 venv 로 옮기자, semgrep 전이로만 있던 `semantic_version` 이 앱 환경에서 빠졌다.
+# 폴백은 설치본으로 돌렸고 못 맞추는 pragma 가 빈 stdout(벽)이 됐다. 「pragma 가 있는데 평가를 못 한다」는
+# 읽을 수 없는 pragma 와 같은 상태다 — #1571 계약대로 skip 이고, 조달 축이 그 사실을 기록한다.
+# 이 절은 그 갈래를 `sys.modules` 로 재므로 환경과 무관하게 돈다.
+# With semantic_version missing a real pragma cannot be evaluated: skip like an unreadable pragma (#1571).
+
+
+def test_semantic_version_is_a_declared_runtime_dependency():
+    """🔴 pragma 판정의 실제 의미론은 `semantic_version` 에 있다 — `requirements.txt` 직접 의존이라 없으면 red 다(skip 이 아니다)."""
+    assert importlib.util.find_spec("semantic_version") is not None
+
+
+@pytest.mark.parametrize("pragma", ["^0.4.24", ">=0.5.0 <0.6.0", "^0.8.0", "0.8.20"])
+def test_a_real_pragma_skips_when_semantic_version_is_missing(monkeypatch, pragma):
+    """🔴 평가 수단이 없으면 맞출 수 있는 pragma 도 skip 이다 — 고르지 못한 채 돌리면 못 맞추는 쪽이 벽이 된다."""
+    monkeypatch.setitem(sys.modules, "semantic_version", None)
+    src = f"// SPDX-License-Identifier: MIT\npragma solidity {pragma};\ncontract V {{}}\n"
+    assert _enabled_with_pragma(monkeypatch, src) is False
+
+
+def test_no_pragma_still_runs_when_semantic_version_is_missing(monkeypatch):
+    """🔴 부정 통제 — pragma 가 없으면 제약이 없으니 설치본으로 돈다(skip 하면 Solidity 분석이 사라진다)."""
+    monkeypatch.setitem(sys.modules, "semantic_version", None)
+    assert _enabled_with_pragma(monkeypatch, "contract V {}\n") is True
+
+
+def test_an_unparseable_installed_version_skips_a_real_pragma(monkeypatch):
+    """🔴 설치본 판 문자열을 못 읽어도 평가할 수 없기는 같다 — pragma 가 있으면 skip(Grok `d6001634` 반례를 계약으로)."""
+    src = "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.0;\ncontract V {}\n"
+    assert _enabled_with_pragma(monkeypatch, src, installed=["not.a.version"]) is False
+
+
+def test_an_unparseable_installed_version_still_runs_without_a_pragma(monkeypatch):
+    """🔴 부정 통제 — 같은 상태라도 pragma 가 없으면 제약이 없으니 그 설치본으로 돈다."""
+    assert _enabled_with_pragma(monkeypatch, "contract V {}\n", installed=["not.a.version"]) is True
+
+
 @pytest.mark.parametrize("pragma", ["^0.4.24", "^0.6.0", "0.8.19", ">=0.5.0 <0.6.0"])
 def test_unsatisfiable_pragma_skips_instead_of_walling(monkeypatch, pragma):
     """🔴 핀된 컴파일러가 못 맞추면 실행하지 않는다 — 실행하면 빈 stdout 이 벽이 된다."""
@@ -469,7 +501,6 @@ def test_missing_pragma_still_runs(monkeypatch):
     assert _enabled_with_pragma(monkeypatch, "contract V {}\n") is True
 
 
-@pytestmark_semver
 def test_unreadable_pragma_skips_instead_of_walling(monkeypatch):
     """🔴 「pragma 가 없다」와 「pragma 가 있는데 못 읽었다」는 다르다.
 
@@ -490,7 +521,6 @@ def test_unreadable_pragma_skips_instead_of_walling(monkeypatch):
 #    semantic_version 2.10.0). Solidity 는 둘 다 적법하다. 정규화 없이 「파싱 실패 = skip」
 #    으로 가면 **핀된 컴파일러가 만족하는** 파일까지 전담 관측면을 잃는다 — 아래 4행이 그것이다.
 
-@pytestmark_semver
 @pytest.mark.parametrize("pragma", [
     ">= 0.8.0",        # 연산자 뒤 공백
     "^ 0.8.0",         # 캐럿 뒤 공백
@@ -503,7 +533,6 @@ def test_spellings_npmspec_rejects_but_the_pin_satisfies_still_run(monkeypatch, 
     assert _enabled_with_pragma(monkeypatch, src) is True
 
 
-@pytestmark_semver
 @pytest.mark.parametrize("pragma", [
     ">= 0.4.22 < 0.6.0",  # 연산자 뒤 공백
     ">=0.4.24<0.6.0",     # 절 사이 공백 없음
@@ -518,7 +547,6 @@ def test_spellings_npmspec_rejects_that_the_pin_cannot_satisfy_skip(monkeypatch,
     assert _enabled_with_pragma(monkeypatch, src) is False
 
 
-@pytestmark_semver
 def test_a_bare_version_number_in_a_comment_is_not_a_pragma(monkeypatch):
     """🔴 주석 안의 **맨 버전 숫자**가 판정을 바꾸면 안 된다.
 
@@ -546,7 +574,6 @@ def test_a_bare_version_number_in_a_comment_is_not_a_pragma(monkeypatch):
 # Both directions: a comment must not mask a satisfiable pragma, nor enable an unsatisfiable one.
 
 
-@pytestmark_semver
 def test_a_block_comment_pragma_does_not_mask_the_real_one(monkeypatch):
     """🔴 가림 방향 — 실물 pragma 가 맞출 수 있으면 돈다."""
     src = ("/*\n"
@@ -558,7 +585,6 @@ def test_a_block_comment_pragma_does_not_mask_the_real_one(monkeypatch):
     assert _enabled_with_pragma(monkeypatch, src) is True
 
 
-@pytestmark_semver
 def test_a_block_comment_pragma_does_not_enable_an_unsatisfiable_contract(monkeypatch):
     """🔴 역방향 — 주석이 맞춰도 실물이 못 맞추면 돌지 않는다.
 
@@ -573,7 +599,6 @@ def test_a_block_comment_pragma_does_not_enable_an_unsatisfiable_contract(monkey
     assert _enabled_with_pragma(monkeypatch, src) is False
 
 
-@pytestmark_semver
 def test_a_trailing_block_comment_does_not_win(monkeypatch):
     """🔴 실물 pragma 뒤에 오는 블록주석이 판정을 뒤집지 않는다.
 
@@ -591,7 +616,6 @@ def test_a_trailing_block_comment_does_not_win(monkeypatch):
     assert _enabled_with_pragma(monkeypatch, src) is True
 
 
-@pytestmark_semver
 @pytest.mark.parametrize("comment", [
     "/* pragma solidity ^0.4.24; */",
     " * pragma solidity ^0.4.24;",
@@ -603,7 +627,6 @@ def test_comment_shapes_that_already_missed_keep_missing(monkeypatch, comment):
     assert _enabled_with_pragma(monkeypatch, src) is True
 
 
-@pytestmark_semver
 def test_a_second_block_comment_does_not_swallow_the_real_pragma(monkeypatch):
     """🔴 탐욕 매칭 오답을 잡는다 — `.*?` 를 `.*` 로 바꾸면 두 주석 사이가 통째로 사라진다.
 
@@ -618,7 +641,6 @@ def test_a_second_block_comment_does_not_swallow_the_real_pragma(monkeypatch):
     assert _enabled_with_pragma(monkeypatch, src) is False
 
 
-@pytestmark_semver
 def test_an_unterminated_block_comment_does_not_decide(monkeypatch):
     """🔴 미종결 `/*` 뒤는 전부 주석이다 — 컴파일러가 그렇게 읽는다.
 
@@ -632,7 +654,6 @@ def test_an_unterminated_block_comment_does_not_decide(monkeypatch):
     assert _enabled_with_pragma(monkeypatch, src) is True
 
 
-@pytestmark_semver
 def test_a_block_opener_inside_a_line_comment_does_not_eat_the_pragma(monkeypatch):
     """🔴 줄 주석 안의 `/*` 가 블록 시작으로 읽히면 실물 pragma 가 통째로 사라진다.
 
@@ -647,7 +668,6 @@ def test_a_block_opener_inside_a_line_comment_does_not_eat_the_pragma(monkeypatc
     assert _enabled_with_pragma(monkeypatch, src) is False
 
 
-@pytestmark_semver
 def test_a_line_comment_inside_a_block_comment_is_still_comment(monkeypatch):
     """🔴 부정 통제 — 블록 안의 `//` 가 블록을 조각내면 안 된다."""
     src = ("/* 머리말 // 안쪽 줄주석\n"
@@ -671,7 +691,6 @@ _COMMENT_TOKENS_INSIDE_STRINGS = (
 )
 
 
-@pytestmark_semver
 @pytest.mark.parametrize("src", _COMMENT_TOKENS_INSIDE_STRINGS)
 def test_a_comment_token_inside_a_string_is_a_known_residual(monkeypatch, src):
     """🔴 이 시험은 **옳은 동작이 아니라 알려진 한계**를 고정한다.
@@ -685,7 +704,6 @@ def test_a_comment_token_inside_a_string_is_a_known_residual(monkeypatch, src):
     assert _enabled_with_pragma(monkeypatch, src) is True
 
 
-@pytestmark_semver
 @pytest.mark.parametrize("src,expected", [
     # 실물 배치 — pragma 가 먼저 오므로 뒤쪽 문자열이 판정에 닿지 않는다.
     ('pragma solidity ^0.4.24;\ncontract V { string constant G = "/*"; }\n', False),
@@ -724,7 +742,6 @@ def test_no_installed_compiler_is_still_the_procurement_gate(monkeypatch):
 # 전역 핀에 의존하지 않게 되고, 조달을 넓혔을 때 추가 컴파일러가 놀지 않는다.
 
 
-@pytestmark_semver
 def test_matched_version_is_passed_to_slither(monkeypatch):
     """🔴 고른 컴파일러를 argv 로 넘긴다 — 전역 핀이 없어도 돈다."""
     import types
@@ -801,7 +818,6 @@ def _flattened(*pragmas: str) -> str:
             + chr(10).join(pragmas) + chr(10) + "contract V {}" + chr(10))
 
 
-@pytestmark_semver
 @pytest.mark.parametrize("first,second", [(_P_08, _P_04), (_P_04, _P_08)])
 def test_flattened_pragmas_are_order_independent(monkeypatch, first, second):
     """🔴 **양방향** — 같은 pragma 집합은 순서를 뒤집어도 같은 판정이어야 한다.
@@ -812,7 +828,6 @@ def test_flattened_pragmas_are_order_independent(monkeypatch, first, second):
     assert _enabled_with_pragma(monkeypatch, _flattened(first, second)) is False
 
 
-@pytestmark_semver
 @pytest.mark.parametrize("first,second", [(_P_08, _P_08_RANGE), (_P_08_RANGE, _P_08)])
 def test_compatible_multiple_pragmas_still_run(monkeypatch, first, second):
     """🔴 부정 통제 — 교집합이 비지 않으면 **그대로 돈다.**
@@ -823,14 +838,12 @@ def test_compatible_multiple_pragmas_still_run(monkeypatch, first, second):
     assert _enabled_with_pragma(monkeypatch, _flattened(first, second)) is True
 
 
-@pytestmark_semver
 def test_a_single_pragma_is_unchanged(monkeypatch):
     """회귀 — pragma 가 하나면 옛 동작 그대로다(`#1571` 이 세운 계약)."""
     assert _enabled_with_pragma(monkeypatch, _flattened(_P_08)) is True
     assert _enabled_with_pragma(monkeypatch, _flattened(_P_04)) is False
 
 
-@pytestmark_semver
 def test_a_commented_out_pragma_does_not_join_the_intersection(monkeypatch):
     """🔴 주석 안의 pragma 는 교집합에 **들어가지 않는다** (`#1575` 계약 유지).
 

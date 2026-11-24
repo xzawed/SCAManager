@@ -153,8 +153,8 @@ def _matching_solc(content: str, installed) -> str | None:
     조용히 건너뛰어진다.
 
     🔴 `packaging` 은 쓸 수 없다 — `SpecifierSet("^0.8.0")` 이 `InvalidSpecifier` 다(실측).
-    `semantic_version` 은 semgrep 의 전이 의존이라 프로덕션에 있으나 로컬 3.14 에는 없어
-    **지연 임포트**한다.
+    `semantic_version` 은 `requirements.txt` 의 직접 의존이다 — semgrep 전이로만 있던 것이 #1857 에서
+    앱 venv 에서 빠졌다. 그래도 **지연 임포트**하고, 없으면 아래 except 갈래가 받는다.
 
     Pick the newest installed compiler satisfying EVERY pragma; None when none can.
     """
@@ -185,8 +185,16 @@ def _matching_solc(content: str, installed) -> str | None:
         # Only ImportError reaches this in practice; the other two are defensive because
         # `is_enabled` is called OUTSIDE the caller's try — an escape would hit the pipeline.
         #
-        # 의존 부재는 「못 맞춘다」가 아니다 — 판단하지 못했을 뿐이다.
-        # 그때는 막지 않고 설치본 하나로 돈다. 결과는 실행 후 판정한다.
+        # 🔴 실물 pragma 가 있으면 「제약이 있다는 것을 아는데 평가만 못 한」 상태다 — 라이브러리가 없든
+        #    설치본 판 문자열을 못 읽었든(Grok claim-review `d6001634` 반례) 같다. 아래 「pragma 를 못 읽었다」
+        #    갈래와 같은 상태이고, 여기서 설치본으로 돌리면 못 맞추는 컴파일러가 빈 stdout 을
+        #    내 **벽**이 된다(#1857 뒤 운영 이미지가 이 갈래였다 — `requirements.txt` 만 까는 앱 venv 에 없었다).
+        #    #1571 계약대로 skip 하고,
+        #    `static.py::no_dedicated_observer` 가 그 사실을 기록한다.
+        # A real pragma we cannot evaluate is the unreadable-pragma state below: skip, never the wall.
+        if ranges:
+            return None
+        # pragma 가 없으면 판단 근거가 없다 — 막지 않고 설치본 하나로 돈다. 결과는 실행 후 판정한다.
         # 🔴 이것은 「최신」이 **아니다.** solc-select 1.2.0 정본 실측:
         #      `[f.replace("solc-","") for f in sorted(os.listdir(ARTIFACTS_DIR)) …]`
         #    디렉터리명 **사전순**이라 설치본이 {0.4.24, 0.8.20} 이면 `installed[0]` 은
