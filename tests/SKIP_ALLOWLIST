@@ -1,6 +1,7 @@
 # `pytest tests/ --strict-skips`(CI 단위 잡)에서 skip 이 정당한 시험 — 파라미터를 뗀 nodeid 한 줄에 하나.
-# 줄 주석에 «어디서 도는가» 를 적는다: `pg 잡`(CI «PG-only tests» 가 실 PostgreSQL 로 돌린다) · `로컬 전용`(사유) ·
-# `없음`(어디서도 돌지 않는다 — 사유와 옮길 곳). 목록 밖 skip · 낡은 항목은 둘 다 red 다(tests/conftest.py).
+# 줄 주석에 «어디서 도는가» 를 적는다: `pg 잡`(CI «PG-only tests» 가 실 PostgreSQL 로 돌린다) · `로컬 전용 — 사유`.
+# «어디서도 돌지 않는다» 는 꼬리표가 없다 — 그렇게 적는 것이 가장 쉬운 오답이라(원장 #1917 P2-36) 시험을 도는 자리로 옮긴다.
+# 목록 밖 skip · 낡은 항목은 둘 다 red 다(tests/conftest.py · tests/_skip_gate.py).
 # One parametrization-free nodeid per line; the trailing comment says where the test actually runs.
 
 tests/integration/test_db_heartbeat_postgres.py::test_probe_holds_no_snapshot_between_statements  # pg 잡
@@ -39,4 +40,3 @@ tests/unit/migrations/test_0020_round_trip.py::test_migration_alembic_round_trip
 tests/unit/migrations/test_0020_round_trip.py::test_migrations_idempotent_over_prod_drift_postgres  # pg 잡
 tests/unit/migrations/test_orm_alembic_parity.py::test_orm_metadata_matches_migrations  # pg 잡
 tests/unit/scripts/test_lint_gate_wiring.py::test_no_dangling_memory_references_in_repo  # 로컬 전용 — 메모리 디렉토리는 개발 PC 에만 있다
-tests/unit/analyzer/tools/test_semgrep_scan_completeness.py::test_rule_did_not_finish_kinds_match_semgreps_own_schema  # 없음 — semgrep 이 앱 venv 밖이다(#1857) · 원장 #1917 P2-36 · P2-38 이 옮길 곳을 정한다

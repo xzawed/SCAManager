@@ -14,7 +14,8 @@ from tests._skip_gate import ALLOWLIST, base_nodeid, judge, read_allowlist
 
 _ROOT = Path(__file__).resolve().parents[3]
 _CI = _ROOT / ".github" / "workflows" / "ci.yml"
-_TAGS = ("pg 잡", "로컬 전용", "없음")
+# «어디서도 돌지 않는다» 꼬리표는 두지 않는다 — 그렇게 적는 것이 가장 쉬운 오답이다(원장 #1917 P2-36).
+_TAGS = ("pg 잡", "로컬 전용")
 
 
 # ── (1) 판정 ─────────────────────────────────────────────────────────────────
@@ -117,7 +118,7 @@ def test_every_entry_says_where_it_runs():
     for entry, comment in _entries():
         assert comment.startswith(_TAGS), f"«어디서 도는가» 꼬리표가 없다({'/'.join(_TAGS)}): {entry}"
         if not comment.startswith("pg 잡"):
-            assert "—" in comment, f"«로컬 전용» · «없음» 은 사유를 적는다: {entry}"
+            assert "—" in comment, f"«로컬 전용» 은 사유를 적는다: {entry}"
 
 
 def _job_block(ci: str, name: str) -> str:

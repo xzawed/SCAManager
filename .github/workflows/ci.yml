@@ -541,6 +541,14 @@ jobs:
           done
           echo "✅ 조달 계약 전량 확인 — 위 for 루프가 실제 실행 가능성을 본다"
 
+      # 조달된 semgrep 이 «규칙이 끝까지 못 돎» 에 내는 JSON 이름 — 앱 venv 에는 semgrep 이 없어(#1857) 자기 venv 에서 뽑는다.
+      # 단위 시험 `test_rule_did_not_finish_kinds_match_semgreps_own_schema` 가 이 파일과 대조한다(원장 #1917 M06 P2-36 · P2-38).
+      # Dump the procured semgrep's names from its own venv; the unit test compares against this file.
+      - name: semgrep 스키마 이름 뽑기 (조달된 semgrep venv)
+        run: |
+          "$RUNNER_TEMP/semgrep-venv/bin/python" -c 'import json; from semgrep.semgrep_interfaces import semgrep_output_v1 as s; print(json.dumps(sorted(k.to_json() for k in (s.Timeout, s.OutOfMemory, s.StackOverflow, s.FixpointTimeout, s.MatchingError))))' > "$RUNNER_TEMP/semgrep-rule-did-not-finish.json"
+          cat "$RUNNER_TEMP/semgrep-rule-did-not-finish.json"
+
       - name: Run pytest with coverage (XML for Codecov + SonarCloud)
         env:
           # conftest.py 에서 setdefault 되지만 CI 환경이라 중복 안전
@@ -550,6 +558,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: "123:ABC"
           TELEGRAM_CHAT_ID: "-100123"
           SESSION_SECRET: "test-session-secret-32-chars-long!"
+          SEMGREP_RULE_DID_NOT_FINISH_JSON: ${{ runner.temp }}/semgrep-rule-did-not-finish.json
         # `--strict-skips` — skip 집합이 tests/SKIP_ALLOWLIST 와 다르면 red(원장 #1917 M06 · 판정 = tests/_skip_gate.py).
         # The skip set must equal tests/SKIP_ALLOWLIST both ways — #1857 silently skipped 34 tests here.
         run: |
