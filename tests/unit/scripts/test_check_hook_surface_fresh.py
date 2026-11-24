@@ -83,6 +83,18 @@ def test_not_a_repository_never_blocks_the_session(tmp_path):
     assert proc.returncode == 0 and proc.stdout.strip() == ""
 
 
+def test_a_vanished_working_directory_never_blocks_the_session(monkeypatch):
+    """🔴 세션 시작 훅은 늘 0 — 지워진 작업 디렉터리에서 os.getcwd() 가 예외를 내도(Grok `2c797603` 반례)."""
+    import scripts.check_hook_surface_fresh as fresh
+
+    def _gone():
+        raise FileNotFoundError("cwd was deleted")
+
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+    monkeypatch.setattr(fresh.os, "getcwd", _gone)
+    assert fresh.main() == 0
+
+
 def test_advice_is_empty_when_nothing_is_wrong():
     assert advice("main", []) == []
 

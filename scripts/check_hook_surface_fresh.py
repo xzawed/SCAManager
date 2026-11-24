@@ -40,8 +40,10 @@ def _git(root: str, *args: str) -> subprocess.CompletedProcess:
 
 
 def main() -> int:
-    root = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
     try:
+        # 🔴 try 안이다 — 지워진 작업 디렉터리에서 os.getcwd() 가 FileNotFoundError 를 낸다(Grok `2c797603` 반례)
+        # Inside the try: os.getcwd() raises FileNotFoundError in a deleted working directory.
+        root = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
         head = _git(root, "rev-parse", "--abbrev-ref", "HEAD")
         if head.returncode != 0:
             return 0  # 저장소가 아니다 / not a repository
