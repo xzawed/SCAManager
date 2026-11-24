@@ -95,6 +95,19 @@ def test_a_vanished_working_directory_never_blocks_the_session(monkeypatch):
     assert fresh.main() == 0
 
 
+def test_a_failing_git_is_announced_not_hidden(monkeypatch, capsys):
+    """🔴 못 재면 조용히 넘기지 않는다 — 기준은 있는데 git 이 실패하면 «못 쟀다» 한 줄 · 그래도 exit 0."""
+    import scripts.check_hook_surface_fresh as fresh
+
+    def _fails(*_args):
+        raise SystemExit(2)
+
+    monkeypatch.setattr(fresh, "_has_repo_and_base", lambda _root: True)
+    monkeypatch.setattr(fresh, "_git", _fails)
+    assert fresh.main() == 0
+    assert "못 쟀다" in capsys.readouterr().out
+
+
 def test_advice_is_empty_when_nothing_is_wrong():
     assert advice("main", []) == []
 

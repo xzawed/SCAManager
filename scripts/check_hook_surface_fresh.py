@@ -34,9 +34,24 @@ def advice(branch: str, differing: list[str]) -> list[str]:
     return lines
 
 
-def _git(root: str, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", "-C", root, *args], capture_output=True, text=True, encoding="utf-8",  # nosec B603 B607
+def _git(root: str, *args: str) -> str:
+    """git 을 돌려 stdout — 실패하면 exit 2(리포 가드 관용구 · `test_guard_git_failclosed`). 빈 결과로 숨기지 않는다.
+    Run git and return stdout; exit 2 on failure (the repo's guard idiom) — never hide a failure as an empty result.
+    """
+    proc = subprocess.run(["git", "-C", root, *args], capture_output=True, text=True, encoding="utf-8",  # nosec B603 B607
                           errors="replace", check=False, timeout=10)
+    if proc.returncode != 0:
+        sys.exit(2)
+    return proc.stdout
+
+
+def _has_repo_and_base(root: str) -> bool:
+    """저장소이고 비교 기준(origin/main)이 있는가 — 둘 다 없을 수 있는 정상 상태라 실패로 치지 않는다."""
+    for args in (("rev-parse", "--git-dir"), ("rev-parse", "--verify", "--quiet", _BASE_REF)):
+        probe = subprocess.run(["git", "-C", root, *args], capture_output=True, check=False, timeout=10)  # nosec B603 B607
+        if probe.returncode != 0:
+            return False
+    return True
 
 
 def main() -> int:
@@ -44,17 +59,19 @@ def main() -> int:
         # 🔴 try 안이다 — 지워진 작업 디렉터리에서 os.getcwd() 가 FileNotFoundError 를 낸다(Grok `2c797603` 반례)
         # Inside the try: os.getcwd() raises FileNotFoundError in a deleted working directory.
         root = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
-        head = _git(root, "rev-parse", "--abbrev-ref", "HEAD")
-        if head.returncode != 0:
-            return 0  # 저장소가 아니다 / not a repository
-        if _git(root, "rev-parse", "--verify", "--quiet", _BASE_REF).returncode != 0:
-            return 0  # 비교할 기준이 없다(원격 없음 · fetch 전) / nothing to compare against
-        diff = _git(root, "diff", "--name-only", _BASE_REF, "--", *SURFACE)
-        differing = [p for p in diff.stdout.splitlines() if p.strip()] if diff.returncode == 0 else []
-        for line in advice(head.stdout.strip(), differing):
+        if not _has_repo_and_base(root):
+            return 0  # 저장소가 아니거나 비교 기준이 없다(원격 없음 · fetch 전) / nothing to compare against
+        branch = _git(root, "rev-parse", "--abbrev-ref", "HEAD").strip()
+        differing = [p for p in _git(root, "diff", "--name-only", _BASE_REF, "--", *SURFACE).splitlines() if p.strip()]
+        for line in advice(branch, differing):
             print(line)
-    except (OSError, subprocess.SubprocessError):
-        return 0  # git 이 없거나 멈췄다 — 세션을 막지 않는다 / no git or it hung; never block the session
+    except (SystemExit, subprocess.SubprocessError):
+        # 🔴 못 재면 조용히 넘기지 않고 알린다 — 세션 시작 훅이라 막지는 않는다(늘 exit 0)
+        # Say that it could not be measured; never block the session.
+        print("⚠️ 훅 최신성을 못 쟀다 — git 이 실패했거나 멈췄다(세션은 그대로 시작한다)")
+        return 0
+    except OSError:
+        return 0  # git 이 없거나 작업 디렉터리가 사라졌다 / no git, or the working directory vanished
     return 0
 
 

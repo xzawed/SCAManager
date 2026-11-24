@@ -33,6 +33,7 @@ from scripts.check_dual_import import _git as dual_import_git
 from scripts.check_noqa_sideeffect import _git as noqa_git
 from scripts.check_raw_text_asserts import _git as raw_text_git
 from scripts.check_witness_set_predicates import _git as witness_git
+from scripts.check_hook_surface_fresh import _git as hook_fresh_git
 
 _ROOT = pathlib.Path(__file__).resolve().parents[3]
 
@@ -48,6 +49,9 @@ _GIT_HELPERS = [
     ("check_witness_set_predicates", lambda args: witness_git(*args)),
     ("check_raw_text_asserts", lambda args: raw_text_git(*args)),
     ("check_doc_growth", lambda args: doc_growth_git(*args)),
+    # 세션 시작 훅 — 헬퍼는 exit 2, main() 이 그것을 «못 쟀다» 한 줄로 바꾸고 0 으로 끝낸다(원장 #1917 M01)
+    # A session-start hook: the helper exits 2 and main() turns that into a «could not measure» line, exit 0.
+    ("check_hook_surface_fresh", lambda args: hook_fresh_git(str(_ROOT), *args)),
 ]
 
 
