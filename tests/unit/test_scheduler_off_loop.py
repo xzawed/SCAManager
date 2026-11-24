@@ -308,15 +308,19 @@ async def test_empty_queue_is_one_statement_off_the_loop(world):
 
 
 async def test_sweep_orphans_job_runs_its_db_work_off_the_loop(world, monkeypatch):
+    # 🔴 시드 시각은 이 시험이 도는 순간 기준이다 — 정리 작업은 실제 현재 시각에서 30분을 잰다. 모듈 수준 `_NOW` 로 심으면
+    #    수집 뒤 30분 넘게 걸리는 느린 전체 실행(11-25 로컬 31분 · 2회)에서 «진행 중» 행까지 지워져 거짓 red 가 됐다.
+    # Seed against the time this test runs: the sweep measures 30 minutes from the real clock.
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     with world.factory() as db:
         repo = Repository(full_name=_REPO)
         db.add(repo)
         db.commit()
         for i in range(2):
             db.add(AnalysisAttempt(repo_id=repo.id, commit_sha=f"gone{i}", event="push",
-                                   started_at=_NOW - timedelta(minutes=60 + i)))
+                                   started_at=now - timedelta(minutes=60 + i)))
         db.add(AnalysisAttempt(repo_id=repo.id, commit_sha="inflight", event="push",
-                               started_at=_NOW - timedelta(minutes=1)))
+                               started_at=now - timedelta(minutes=1)))
         db.commit()
     monkeypatch.setattr(cron_service.settings, "telegram_bot_token", "123:ABC")
     monkeypatch.setattr(cron_service.settings, "telegram_chat_id", "-100ops")
