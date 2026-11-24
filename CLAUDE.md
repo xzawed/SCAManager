@@ -6,7 +6,8 @@ GitHub Push/PR → 정적 분석 + AI 리뷰 → 점수·등급 → 알림(Teleg
 
 ## 작업 절차
 
-1. **브랜치** — `git checkout main && git pull && git checkout -b <type>/<scope>`
+1. **브랜치** — 워크트리에서: `git fetch origin && git worktree add ../<폴더> -b <type>/<scope> origin/main`.
+   주 체크아웃은 main 에 두고 머지 뒤 `git pull --ff-only` — 리포 훅 · 설정은 주 체크아웃의 파일로 돈다(어긋나면 세션 시작 때 알린다).
    접두사: `feat/` `fix/` `chore/` `docs/`. **`main` 에 직접 커밋·push 하지 않는다.**
 2. **영역 문서를 연다** — 아래 표에서 건드릴 영역 하나. 세부 절차가 거기 있다.
 3. **테스트 먼저** — 행동 변경은 구현 전에 실패하는 테스트를 쓴다(측정-only 는 기록 테스트 초록 허용).
