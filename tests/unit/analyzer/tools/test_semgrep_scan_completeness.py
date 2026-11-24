@@ -112,15 +112,39 @@ def test_run_raises_when_scanned_paths_are_missing(make_ctx):
             _SemgrepAnalyzer().run(make_ctx("python", "app.py", tmp_path=_TARGET))
 
 
-def test_rule_did_not_finish_kinds_match_semgreps_own_schema():
-    """🔴 «규칙이 끝까지 못 돎» 목록은 설치된 semgrep 의 출력 스키마가 내는 JSON 이름과 같다 — 이름이 바뀌면 여기서 red.
+def _semgrep_did_not_finish_names() -> set[str] | None:
+    """조달된 semgrep 이 «규칙이 끝까지 못 돎» 에 내는 JSON 이름 — 못 재면 None.
 
-    The list equals the JSON names the installed semgrep's output schema emits for those kinds.
+    🔴 앱 venv 에는 semgrep 이 없다(#1857 — 자기 venv). 그래서 CI 는 조달된 semgrep venv 의 python 이 뽑은 파일
+       (`SEMGREP_RULE_DID_NOT_FINISH_JSON` — ci.yml «semgrep 스키마 이름 뽑기» 스텝)로 잰다. 로컬은 import 할 수 있을 때만.
+    The procured semgrep's names, dumped from its own venv in CI; locally only when importable.
     """
-    schema = pytest.importorskip("semgrep.semgrep_interfaces.semgrep_output_v1")
-    from src.analyzer.io.tools.semgrep import _RULE_DID_NOT_FINISH
+    dumped = os.environ.get("SEMGREP_RULE_DID_NOT_FINISH_JSON")
+    if dumped:
+        with open(dumped, encoding="utf-8") as fh:  # 없으면 예외 — CI 에서 덤프가 빠진 것은 red 다
+            return set(json.load(fh))
+    try:
+        from semgrep.semgrep_interfaces import semgrep_output_v1 as schema  # pylint: disable=import-outside-toplevel
+    except ImportError:
+        return None
     kinds = (schema.Timeout, schema.OutOfMemory, schema.StackOverflow, schema.FixpointTimeout, schema.MatchingError)
-    assert _RULE_DID_NOT_FINISH == {kind.to_json() for kind in kinds}
+    return {kind.to_json() for kind in kinds}
+
+
+def test_rule_did_not_finish_kinds_match_semgreps_own_schema():
+    """🔴 «규칙이 끝까지 못 돎» 목록은 조달된 semgrep 의 출력 스키마가 내는 JSON 이름과 같다 — 이름이 바뀌면 여기서 red.
+
+    #1857 뒤 이 시험은 CI 에서 «semgrep import 불가» 로 영구 skip 이었고, 판올림 두 번(1.185.0 · 1.186.0)을 한 번도
+    재지 않았다(원장 #1917 M06 P2-36 · P2-38). 이제 CI 는 조달된 venv 의 덤프로 재고, 그 측정이 빠지면 skip 이 아니라 red 다.
+    The list equals the JSON names the procured semgrep's output schema emits; in CI a missing measurement is red.
+    """
+    names = _semgrep_did_not_finish_names()
+    if names is None:
+        if os.environ.get("CI"):
+            pytest.fail("CI 에서 semgrep 스키마 이름을 못 쟀다 — ci.yml «semgrep 스키마 이름 뽑기» 덤프가 빠졌다")
+        pytest.skip("semgrep 이 이 환경에 없다(앱 venv 밖 · #1857) — CI 는 조달된 semgrep venv 의 덤프로 잰다")
+    from src.analyzer.io.tools.semgrep import _RULE_DID_NOT_FINISH
+    assert _RULE_DID_NOT_FINISH == names
 
 
 @pytest.mark.parametrize("kind", ["Timeout", "Out of memory", "Stack overflow", "Fixpoint timeout",

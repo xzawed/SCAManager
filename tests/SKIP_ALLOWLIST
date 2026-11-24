@@ -1,0 +1,42 @@
+# `pytest tests/ --strict-skips`(CI 단위 잡)에서 skip 이 정당한 시험 — 파라미터를 뗀 nodeid 한 줄에 하나.
+# 줄 주석에 «어디서 도는가» 를 적는다: `pg 잡`(CI «PG-only tests» 가 실 PostgreSQL 로 돌린다) · `로컬 전용 — 사유`.
+# «어디서도 돌지 않는다» 는 꼬리표가 없다 — 그렇게 적는 것이 가장 쉬운 오답이라(원장 #1917 P2-36) 시험을 도는 자리로 옮긴다.
+# 목록 밖 skip · 낡은 항목은 둘 다 red 다(tests/conftest.py · tests/_skip_gate.py).
+# One parametrization-free nodeid per line; the trailing comment says where the test actually runs.
+
+tests/integration/test_db_heartbeat_postgres.py::test_probe_holds_no_snapshot_between_statements  # pg 잡
+tests/integration/test_db_heartbeat_postgres.py::test_probe_takes_no_lock_on_application_tables  # pg 잡
+tests/integration/test_db_heartbeat_postgres.py::test_role_level_read_only_is_never_reset  # pg 잡
+tests/integration/test_db_heartbeat_postgres.py::test_session_read_only_on_the_only_connection_is_healed  # pg 잡
+tests/integration/test_db_heartbeat_postgres.py::test_stalled_probe_transaction_is_cut_after_five_seconds  # pg 잡
+tests/integration/test_observer_role_postgres.py::test_downgrade_is_all_or_nothing_when_drop_role_is_blocked  # pg 잡
+tests/integration/test_observer_role_postgres.py::test_downgrade_tolerates_a_role_it_did_not_create  # pg 잡
+tests/integration/test_observer_role_postgres.py::test_downgrade_tolerates_dependent_grants  # pg 잡
+tests/integration/test_observer_role_postgres.py::test_login_session_gets_the_role_defaults  # pg 잡
+tests/integration/test_observer_role_postgres.py::test_migration_runs_as_a_non_superuser_owner  # pg 잡
+tests/integration/test_observer_role_postgres.py::test_no_write_privilege_anywhere  # pg 잡
+tests/integration/test_observer_role_postgres.py::test_observer_is_refused_by_privilege  # pg 잡
+tests/integration/test_observer_role_postgres.py::test_observer_reads_allowlisted_columns  # pg 잡
+tests/integration/test_observer_role_postgres.py::test_pg_stats_hides_excluded_columns  # pg 잡
+tests/integration/test_observer_role_postgres.py::test_readable_columns_are_exactly_the_allowlist  # pg 잡
+tests/integration/test_observer_role_postgres.py::test_role_attributes_and_defaults  # pg 잡
+tests/integration/test_observer_role_postgres.py::test_row_visibility_comes_from_bypassrls  # pg 잡
+tests/integration/test_observer_role_postgres.py::test_tool_bracket_cannot_be_escaped  # pg 잡
+tests/integration/test_overview_reliable_avg_postgres.py::test_sql_aggregate_equals_the_python_computation  # pg 잡
+tests/integration/test_overview_reliable_avg_postgres.py::test_the_overview_card_aggregates_are_index_only_scans  # pg 잡
+tests/integration/test_overview_reliable_avg_postgres.py::test_the_sample_exercises_both_sides_of_the_filter  # pg 잡
+tests/integration/test_retention_sweep_postgres.py::test_purge_correct_under_non_utc_session_timezone  # pg 잡
+tests/integration/test_retention_sweep_postgres.py::test_purge_expired_deletes_only_past_rows_on_postgres  # pg 잡
+tests/integration/test_retention_sweep_postgres.py::test_purge_terminal_deletes_old_terminal_preserves_pending_on_postgres  # pg 잡
+tests/integration/test_retry_concurrency_postgres.py::test_claim_decision_concurrent_first_writer_wins_invariant  # pg 잡
+tests/integration/test_retry_concurrency_postgres.py::test_concurrent_claim_no_double_processing  # pg 잡
+tests/integration/test_retry_concurrency_postgres.py::test_skip_locked_prevents_concurrent_double_claim  # pg 잡
+tests/integration/test_retry_concurrency_postgres.py::test_stale_claim_recovery  # pg 잡
+tests/integration/test_session_timezone_postgres.py::test_app_connect_args_pin_the_session_to_utc  # pg 잡
+tests/integration/test_session_timezone_postgres.py::test_aware_value_lands_unshifted_in_a_naive_column  # pg 잡
+tests/integration/test_session_timezone_postgres.py::test_the_shift_is_real_without_the_pin  # pg 잡
+tests/unit/migrations/test_0020_round_trip.py::test_migration_0041_force_round_trip_postgres  # pg 잡
+tests/unit/migrations/test_0020_round_trip.py::test_migration_alembic_round_trip  # pg 잡
+tests/unit/migrations/test_0020_round_trip.py::test_migrations_idempotent_over_prod_drift_postgres  # pg 잡
+tests/unit/migrations/test_orm_alembic_parity.py::test_orm_metadata_matches_migrations  # pg 잡
+tests/unit/scripts/test_lint_gate_wiring.py::test_no_dangling_memory_references_in_repo  # 로컬 전용 — 메모리 디렉토리는 개발 PC 에만 있다
