@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.check_hook_surface_fresh import advice
+import scripts.check_hook_surface_fresh as fresh
 
 _SCRIPT = Path(__file__).resolve().parents[3] / "scripts" / "check_hook_surface_fresh.py"
 
@@ -113,8 +113,6 @@ def test_not_a_repository_never_blocks_the_session(tmp_path):
 
 def test_a_vanished_working_directory_never_blocks_the_session(monkeypatch):
     """🔴 세션 시작 훅은 늘 0 — 지워진 작업 디렉터리에서 os.getcwd() 가 예외를 내도(Grok `2c797603` 반례)."""
-    import scripts.check_hook_surface_fresh as fresh
-
     def _gone():
         raise FileNotFoundError("cwd was deleted")
 
@@ -125,8 +123,6 @@ def test_a_vanished_working_directory_never_blocks_the_session(monkeypatch):
 
 def test_git_missing_from_path_is_announced(monkeypatch, capsys):
     """🔴 git 을 못 부르면(FileNotFoundError) 조용히 넘기지 않는다 — «못 쟀다» 한 줄 · exit 0(Grok `2c797603` 반례)."""
-    import scripts.check_hook_surface_fresh as fresh
-
     def _no_git(*_args, **_kwargs):
         raise FileNotFoundError("git")
 
@@ -137,8 +133,6 @@ def test_git_missing_from_path_is_announced(monkeypatch, capsys):
 
 def test_a_failing_git_is_announced_not_hidden(monkeypatch, capsys):
     """🔴 못 재면 조용히 넘기지 않는다 — 기준은 있는데 git 이 실패하면 «못 쟀다» 한 줄 · 그래도 exit 0."""
-    import scripts.check_hook_surface_fresh as fresh
-
     def _fails(*_args):
         raise SystemExit(2)
 
@@ -151,8 +145,6 @@ def test_a_failing_git_is_announced_not_hidden(monkeypatch, capsys):
 
 def test_git_refusing_the_repository_is_announced_not_treated_as_no_repo(repo, monkeypatch, capsys):
     """🔴 git 이 저장소를 거부하면(safe.directory 소유권 — 종료 128) «저장소 아님» 처럼 조용히 넘어가지 않는다(Grok `2c797603`)."""
-    import scripts.check_hook_surface_fresh as fresh
-
     real_run = fresh.subprocess.run
 
     def _refuses(args, *a, **k):
@@ -168,8 +160,6 @@ def test_git_refusing_the_repository_is_announced_not_treated_as_no_repo(repo, m
 
 def test_a_missing_origin_main_stays_silent(repo, monkeypatch, capsys):
     """부정 통제 — origin/main 이 없는 것(종료 1)은 정상 상태다(원격 없음 · fetch 전)."""
-    import scripts.check_hook_surface_fresh as fresh
-
     _git(repo, "update-ref", "-d", "refs/remotes/origin/main")
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(repo))
     assert fresh.main() == 0
@@ -177,15 +167,15 @@ def test_a_missing_origin_main_stays_silent(repo, monkeypatch, capsys):
 
 
 def test_advice_is_empty_when_nothing_is_wrong():
-    assert advice("main", []) == []
+    assert fresh.advice("main", []) == []
 
 
 def test_advice_names_the_branch_and_the_differing_files():
-    lines = advice("fix/y", [".claude/hooks/a.py", "scripts/b.py"])
+    lines = fresh.advice("fix/y", [".claude/hooks/a.py", "scripts/b.py"])
     assert len(lines) == 2
     assert "fix/y" in lines[0]
     assert ".claude/hooks/a.py" in lines[1] and "2 파일" in lines[1]
 
 
 def test_a_detached_head_is_not_main():
-    assert "분리된 HEAD" in advice("HEAD", [])[0]
+    assert "분리된 HEAD" in fresh.advice("HEAD", [])[0]
