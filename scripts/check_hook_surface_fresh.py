@@ -17,6 +17,7 @@ from __future__ import annotations
 import os
 import subprocess  # nosec B404 — 고정 인자의 git 만 부른다 / fixed-argument git only
 import sys
+from pathlib import Path
 
 SURFACE = (".claude", "scripts")
 _BASE_REF = "origin/main"
@@ -46,13 +47,23 @@ def _git(root: str, *args: str) -> str:
     return proc.stdout
 
 
-def _has_repo_and_base(root: str) -> bool:
-    """저장소이고 비교 기준(origin/main)이 있는가 — 둘 다 없을 수 있는 정상 상태라 실패로 치지 않는다."""
-    for args in (("rev-parse", "--git-dir"), ("rev-parse", "--verify", "--quiet", _BASE_REF)):
-        probe = subprocess.run(["git", "-C", root, *args], capture_output=True, check=False, timeout=10)  # nosec B603 B607
-        if probe.returncode != 0:
-            return False
-    return True
+def _inside_repo(root: str) -> bool:
+    """저장소 안인가 — git 에게 묻지 않고 `.git`(폴더 · 워크트리의 파일)을 찾는다.
+
+    git 에게 물으면 «저장소 아님» 과 «git 이 저장소를 거부함»(safe.directory 소유권 · 손상)이 같은 종료 코드 128 이다 —
+    거부를 «저장소 아님» 으로 삼켜 조용히 넘어가지 않게 파일 시스템으로 가른다(Grok `2c797603` 반례 · 로캘 문구 해석 없음).
+    """
+    here = Path(root).resolve()
+    return any((d / ".git").exists() for d in (here, *here.parents))
+
+
+def _has_base(root: str) -> bool:
+    """비교 기준 origin/main 이 있는가 — 0 = 있다 · 1 = 없다(원격 없음 · fetch 전, 정상) · 그 밖 = git 의 거부(못 쟀다 → exit 2)."""
+    probe = subprocess.run(["git", "-C", root, "rev-parse", "--verify", "--quiet", _BASE_REF],  # nosec B603 B607
+                           capture_output=True, check=False, timeout=10)
+    if probe.returncode in (0, 1):
+        return probe.returncode == 0
+    sys.exit(2)
 
 
 def main() -> int:
@@ -60,7 +71,7 @@ def main() -> int:
         # 🔴 try 안이다 — 지워진 작업 디렉터리에서 os.getcwd() 가 FileNotFoundError 를 낸다(Grok `2c797603` 반례)
         # Inside the try: os.getcwd() raises FileNotFoundError in a deleted working directory.
         root = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
-        if not _has_repo_and_base(root):
+        if not _inside_repo(root) or not _has_base(root):
             return 0  # 저장소가 아니거나 비교 기준이 없다(원격 없음 · fetch 전) / nothing to compare against
         branch = _git(root, "rev-parse", "--abbrev-ref", "HEAD").strip()
         differing = [p for p in _git(root, "diff", "--name-only", _BASE_REF, "--", *SURFACE).splitlines() if p.strip()]

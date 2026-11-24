@@ -114,10 +114,38 @@ def test_a_failing_git_is_announced_not_hidden(monkeypatch, capsys):
     def _fails(*_args):
         raise SystemExit(2)
 
-    monkeypatch.setattr(fresh, "_has_repo_and_base", lambda _root: True)
+    monkeypatch.setattr(fresh, "_inside_repo", lambda _root: True)
+    monkeypatch.setattr(fresh, "_has_base", lambda _root: True)
     monkeypatch.setattr(fresh, "_git", _fails)
     assert fresh.main() == 0
     assert "못 쟀다" in capsys.readouterr().out
+
+
+def test_git_refusing_the_repository_is_announced_not_treated_as_no_repo(repo, monkeypatch, capsys):
+    """🔴 git 이 저장소를 거부하면(safe.directory 소유권 — 종료 128) «저장소 아님» 처럼 조용히 넘어가지 않는다(Grok `2c797603`)."""
+    import scripts.check_hook_surface_fresh as fresh
+
+    real_run = fresh.subprocess.run
+
+    def _refuses(args, *a, **k):
+        if "--verify" in args:
+            return subprocess.CompletedProcess(args, 128, b"", b"fatal: detected dubious ownership")
+        return real_run(args, *a, **k)
+
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(repo))
+    monkeypatch.setattr(fresh.subprocess, "run", _refuses)
+    assert fresh.main() == 0
+    assert "못 쟀다" in capsys.readouterr().out
+
+
+def test_a_missing_origin_main_stays_silent(repo, monkeypatch, capsys):
+    """부정 통제 — origin/main 이 없는 것(종료 1)은 정상 상태다(원격 없음 · fetch 전)."""
+    import scripts.check_hook_surface_fresh as fresh
+
+    _git(repo, "update-ref", "-d", "refs/remotes/origin/main")
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(repo))
+    assert fresh.main() == 0
+    assert capsys.readouterr().out.strip() == ""
 
 
 def test_advice_is_empty_when_nothing_is_wrong():
