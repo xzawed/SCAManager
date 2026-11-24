@@ -64,9 +64,9 @@ def _has_base(root: str) -> bool:
     """비교 기준 origin/main 이 있는가 — 0 = 있다 · 1 = 없다(원격 없음 · fetch 전, 정상) · 그 밖 = git 의 거부(못 쟀다 → exit 2)."""
     probe = subprocess.run(["git", "-C", root, "rev-parse", "--verify", "--quiet", _BASE_REF],  # nosec B603 B607
                            capture_output=True, check=False, timeout=10)
-    if probe.returncode in (0, 1):
-        return probe.returncode == 0
-    sys.exit(2)
+    if probe.returncode not in (0, 1):
+        sys.exit(2)
+    return probe.returncode == 0
 
 
 def main() -> int:
