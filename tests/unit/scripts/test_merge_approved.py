@@ -203,20 +203,24 @@ def test_after_merge_notes_point_at_the_main_checkout(files, needle):
     assert len(notes) == 1 and needle in notes[0]
 
 
-# witness-corpus: 11-15~21 주 체크아웃이 낡아 4~6일 적용되지 않은 실제 파일(원장 #1917 P1-2 증거 diff) · 세션 시작 때 읽히는 CLAUDE.md
-_STALE_CHECKOUT_PATHS = [
-    ".claude/hooks/block_credential_dump.py",
-    ".claude/workflows/retrospective.mjs",
-    ".claude/hooks/posttool_pytest_smoke.py",
-    "scripts/retro_scope.py",
-    "CLAUDE.md",
+# witness-corpus: 11-15~21 창에서 실제로 바뀐 경로 — 주 체크아웃이 낡아 꺼져 있던 훅 표면(원장 #1917 P1-2 증거 diff)과 같은 창의 세션 무관 경로(CI · 운영 이미지 · 앱 · 문서)
+_WINDOW_PATHS = [
+    (".claude/hooks/block_credential_dump.py", True),
+    (".claude/workflows/retrospective.mjs", True),
+    (".claude/hooks/posttool_pytest_smoke.py", True),
+    ("scripts/retro_scope.py", True),
+    ("CLAUDE.md", True),
+    ("requirements-semgrep.txt", False),
+    ("src/config.py", False),
+    (".github/workflows/ci.yml", False),
+    ("docs/workflow/verify.md", False),
 ]
 
 
-@pytest.mark.parametrize("path", _STALE_CHECKOUT_PATHS)
-def test_every_path_that_actually_went_stale_gets_a_note(path):
-    """🔴 실제로 낡아 꺼져 있던 경로마다 머지 뒤 안내가 나온다 — 목록이 그 사건을 덮는지 사건 쪽에서 잰다."""
-    assert ma.after_merge_notes([path]), f"{path} 를 바꾼 머지가 주 체크아웃 안내를 내지 않는다"
+@pytest.mark.parametrize(("path", "needs_note"), _WINDOW_PATHS)
+def test_window_paths_get_a_note_exactly_when_they_feed_the_session(path, needs_note):
+    """🔴 경계를 사건 쪽에서 잰다 — 세션에 먹히는 경로는 안내가 나오고, 같은 창의 세션 무관 경로는 조용하다."""
+    assert bool(ma.after_merge_notes([path])) is needs_note, path
 
 
 def test_claude_md_needs_a_restart_not_only_a_pull():

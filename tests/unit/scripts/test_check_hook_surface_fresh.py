@@ -70,13 +70,20 @@ def test_a_hook_surface_behind_origin_main_is_announced(repo):
     assert "지금 도는 훅" in proc.stdout and ".claude/settings.json" in proc.stdout
 
 
-# witness-corpus: 11-15~21 주 체크아웃이 낡아 적용되지 않은 실제 파일(원장 #1917 P1-2 증거 diff) · 세션 시작 때 읽히는 CLAUDE.md
-_STALE_CHECKOUT_PATHS = ["CLAUDE.md", ".claude/hooks/block_credential_dump.py", "scripts/retro_scope.py"]
+# witness-corpus: 11-15~21 창에서 실제로 바뀐 경로 — 주 체크아웃이 낡아 꺼져 있던 훅 표면(원장 #1917 P1-2 증거 diff)과 같은 창의 세션 무관 경로(CI · 운영 이미지 · 앱)
+_WINDOW_PATHS = [
+    ("CLAUDE.md", True),
+    (".claude/hooks/block_credential_dump.py", True),
+    ("scripts/retro_scope.py", True),
+    ("requirements-semgrep.txt", False),
+    (".github/workflows/ci.yml", False),
+    ("src/config.py", False),
+]
 
 
-@pytest.mark.parametrize("rel", _STALE_CHECKOUT_PATHS)
-def test_a_stale_copy_of_a_real_incident_path_is_announced(repo, rel):
-    """🔴 사건 쪽에서 잰다 — 실제로 낡아 꺼져 있던 경로가 origin/main 보다 뒤면 그 경로를 이름으로 알린다."""
+@pytest.mark.parametrize(("rel", "announced"), _WINDOW_PATHS)
+def test_a_stale_window_path_is_announced_exactly_when_it_feeds_the_session(repo, rel, announced):
+    """🔴 경계를 사건 쪽에서 잰다 — 주 체크아웃이 origin/main 보다 뒤일 때 세션에 먹히는 경로만 이름으로 알린다."""
     path = repo / rel
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("old\n", encoding="utf-8")
@@ -87,7 +94,8 @@ def test_a_stale_copy_of_a_real_incident_path_is_announced(repo, rel):
     _git(repo, "update-ref", "refs/remotes/origin/main", _git(repo, "rev-parse", "HEAD"))
     _git(repo, "reset", "-q", "--hard", "HEAD~1")
     proc = _run(repo)
-    assert proc.returncode == 0 and rel in proc.stdout
+    assert proc.returncode == 0
+    assert (rel in proc.stdout) is announced, proc.stdout
 
 
 def test_a_difference_outside_the_hook_surface_is_silent(repo):
