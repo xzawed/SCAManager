@@ -34,6 +34,10 @@ bandit==1.9.4
 #   semgrep 이 같은 venv 에 있을 때는 그 전이 의존으로만 들어와 있었다. 판 = semgrep 1.184.0 과 함께 깔리던 판.
 # ruamel.yaml — the app pre-reads semgrep's vendored rules into one JSON bundle; it used to arrive only via semgrep.
 ruamel.yaml==0.19.1
+# semantic-version — slither pragma 사전 점검이 import 한다(src/analyzer/io/tools/slither.py `_matching_solc`).
+#   semgrep 이 같은 venv 에 있을 때는 그 전이 의존으로만 들어와 있었고 #1857 에서 빠졌다. 판 = 그때 깔리던 판.
+# semantic-version — imported by slither's pragma pre-check; it used to arrive only via semgrep and went missing in #1857.
+semantic-version==2.10.0
 slither-analyzer==0.11.6
 sqlfluff==4.5.0
 jinja2==3.1.6

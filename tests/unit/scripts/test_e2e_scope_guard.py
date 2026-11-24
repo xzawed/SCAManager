@@ -256,7 +256,7 @@ def _never_wakes(node: ast.AST, aliases: set[str]) -> bool:
 
     🔴 이름을 푼다. `_SKIP = pytest.mark.skip(...)` 뒤 `@_SKIP` 은 데코레이터가 `Name` 이라
     속성만 보면 통째로 눈먼다 — 그런데 그것이 **이 리포의 집 스타일**이다
-    (`@_requires_postgres` · `@pytestmark_semver` · `@_SKIP`, 전부 실재).
+    (`@_requires_postgres` · `@_SKIP`, 둘 다 실재).
     🔴 `skipif(True, …)` 도 잡는다 — 형태만 조건부이고 사실은 무조건이다.
     조건이 상수가 아니면(`shutil.which(...) is None` 등) 깨어날 수 있으므로 허용한다.
     Resolve names: the repo's own idiom puts the marker in a module-level constant.
