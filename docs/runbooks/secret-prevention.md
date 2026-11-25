@@ -19,5 +19,5 @@ PR 은 `base..head`(`.github/workflows/ci.yml::base: ${{ github.event.pull_reque
 ## 유출 시
 
 1. 폐기·재발급 → Railway 환경변수 교체(Telegram `@BotFather` `/revoke` · GitHub Tokens · Anthropic Console).
-2. 범위는 커밋 **메시지까지**: `git log --all --format="%H%n%B" -p | grep -oE "[0-9]{8,12}:[A-Za-z0-9_-]{30,}"` (`--format=""`·`-S` 는 메시지 건너뜀). squash 원본은 로컬에 없다: `gh api .../commits/<sha> --jq .commit.message`.
+2. 범위는 커밋 **메시지까지** 재되 값은 열지 않는다(폐기는 1 의 발급처에서): 메시지 `git log --all -E --grep='[0-9]{8,12}:[A-Za-z0-9_-]{30,}' --format=%H` · diff `git log --all -E -G'[0-9]{8,12}:[A-Za-z0-9_-]{30,}' --format=%H` — 둘 다 커밋 목록만 낸다. squash 원본은 로컬에 없다: `gh api .../commits/<sha> --jq .commit.message | grep -cE '…'`(개수만).
 3. 제거 — main 이력은 `git filter-repo --message-callback` 후 `push --force-with-lease`(재clone 공지). 도달 불가 커밋은 GitHub Support "Data removal request"(URL·SHA).

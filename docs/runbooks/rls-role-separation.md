@@ -11,7 +11,7 @@ FORCE = owner-bypass 만 차단(BYPASSRLS 무시) — 실효는 Phase 4.
 
 ## 1. 프로비저닝
 
-두 role 에 `USAGE`·DML·시퀀스 GRANT + `ALTER DEFAULT PRIVILEGES … IN SCHEMA public`(생략 시 신규 테이블 권한 오류) → probe 로 `{host}×{user}×{port}` 확인(redeploy≠검증) → 3 URL 주입 → 재배포 → §3.
+두 role 에 `USAGE`·DML·시퀀스 GRANT + `ALTER DEFAULT PRIVILEGES … IN SCHEMA public`(생략 시 신규 테이블 권한 오류) → 사용자 `!` probe 로 `{host}×{user}×{port}` 확인([railway.md](railway.md) §DB · redeploy≠검증) → 3 URL 주입 → 재배포 → §3.
 
 ## 2. 마이그레이션 credential 게이트 (§6)
 
