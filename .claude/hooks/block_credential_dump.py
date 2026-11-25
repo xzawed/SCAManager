@@ -52,6 +52,7 @@ reports the rest.
 """
 import fnmatch
 import functools
+import hashlib
 import json
 import os
 import re
@@ -101,6 +102,14 @@ _NAMES, _WRITE = "names", "write"
 # The whole stage must be exactly the idiom: -f1-, -f1,2 and --complement still print values.
 _CUT_IDIOM = re.compile(
     r"""\s*cut\s+(?:-d\s*(?P<q1>['"]?)=(?P=q1)\s+-f\s*1|-f\s*1\s+-d\s*(?P<q2>['"]?)=(?P=q2))\s*"""
+)
+# 개수만 내는 wc — 개수 플래그뿐일 때만. `--files0-from=-` 는 stdin 을 파일 이름으로 읽어 오류에 그 줄(값)을 찍는다.
+# A count-only wc: count flags only (`--files0-from=-` reads stdin as file names and echoes them in errors).
+_WC_COUNT_ONLY = re.compile(r"\s*wc(?:\s+(?:-[lcwmL]+|--(?:lines|bytes|words|chars|max-line-length)))*\s*")
+# 줄 머리의 이름만 고르는 grep -o — 패턴이 `^[이름 글자]*=` 꼴(글자 모임에 `=` 이 없다)이고 플래그는 o · i · E · P · w 뿐.
+# `^` 가 없으면 값 속의 `NAME=` 조각까지 고른다. A grep -o that picks only the leading name: `^[name chars]*=`.
+_NAMES_ONLY_GREP = re.compile(
+    r"""\s*grep(?=(?:\s+-[oiEPw]+)*?\s+-[iEPw]*o)(?:\s+-[oiEPw]+)+\s+(?P<q>['"]?)\^\[[A-Za-z0-9_-]+\][*+]=?(?P=q)\s*"""
 )
 # ── `railway variable` 호출을 «토큰으로» 읽는다 — 중화(쓰기 · --kv) 판정 전용 ──────────────────
 # 🔴 정규식은 셸의 따옴표·주석을 모른다. `--service "x set" --kv` 의 `set` 을 하위 명령으로,
@@ -249,6 +258,9 @@ def _railway_inner_lists_environment(stage):
 # Inverted: any .env-like path counts as a read unless the form is known safe.
 _PATHISH = re.compile(r"[^\s'\";|&()<>]+")
 _REDIRECT_TARGET = re.compile(r">>?\s*(['\"]?)[^\s'\";|&()<>]+\1")
+# 출력 리디렉션 통째(앞 fd 번호 · `&>` · `>&2` 포함) — 검색 대상을 셀 때 걷는다. 입력(`<`)은 읽기라 남긴다.
+# A whole output redirection (fd number, &>, >&N); stripped before counting search targets. Input `<` stays.
+_OUTPUT_REDIRECT = re.compile(r"(?:(?<=\s)\d+|&)?>>?(?:&\d+|\s*(['\"]?)[^\s'\";|&()<>]+\1)")
 _DOTENV_TEMPLATES = frozenset({".env.example", ".env.sample", ".env.template"})
 _DOTENV_SAFE_HEADS = frozenset({
     "cp", "mv", "ls", "dir", "rm", "del", "touch", "test", "[", "[[", "stat", "chmod", "attrib",
@@ -588,9 +600,56 @@ def _mentions_dotenv(stage):
     return _has_dotenv_path(_REDIRECT_TARGET.sub(" ", stage))
 
 
+def _pattern_positions(args, valued):
+    """검색 인자에서 «패턴» 자리 — 다음 낱말로 받은 -e/--regexp 의 값, 그것이 없으면 첫 위치 인자. -f(패턴 파일)의
+    값은 파일이라 넣지 않는다. 짧은 옵션 묶음은 `_short_flags` 와 같은 규칙으로 읽는다(`-exclude` = `-e xclude` —
+    패턴이 낱말 안에 있으니 뒤의 위치 인자는 전부 대상이다).
+    Pattern slots in search args: -e/--regexp values given as the next word, else the first positional."""
+    picks, positional, given, take, options_done = [], [], False, None, False
+    for i, w in enumerate(args):
+        if take is not None:
+            if take == "e":
+                picks.append(i)
+            take = None
+            continue
+        if options_done or w == "--":
+            # `--` 뒤는 전부 위치 인자다 — `grep -- -e .env` 의 `-e` 는 패턴 글자, `.env` 는 읽힐 파일이다.
+            # Everything after `--` is positional (`grep -- -e .env` reads .env with the pattern "-e").
+            if options_done:
+                positional.append(i)
+            options_done = True
+            continue
+        if w.startswith("--"):
+            opt = w.split("=", 1)[0]
+            given = given or opt in ("--regexp", "--file")
+            if "=" not in w and w in _GREP_VALUE_OPTIONS:
+                take = "e" if w == "--regexp" else "value"
+            continue
+        if w.startswith("-") and w != "-":
+            for k, ch in enumerate(w[1:], 1):
+                if ch in valued:
+                    given = given or ch in "ef"
+                    take = ch if k == len(w) - 1 else None
+                    break
+            continue
+        positional.append(i)
+    return picks if given else picks + positional[:1]
+
+
+def _without_search_pattern(stage):
+    """검색 명령이면 패턴 인자를 뺀 낱말로 — 패턴은 경로가 아니다(`grep "\\.env" 문서` 는 .env 를 읽지 않는다 ·
+    원장 #1917 P1-5). findstr 은 제 문법이라 그대로 둔다. Drop the pattern argument of a search; it is not a path."""
+    call = _search_call(stage)
+    if call is None or call[0] == "findstr":
+        return stage
+    name, args, before = call
+    drop = set(_pattern_positions(args, _RG_VALUED_SHORTS if name == "rg" else _GREP_VALUED_SHORTS))
+    return " ".join([*before, "grep" if name == "git-grep" else name, *(w for i, w in enumerate(args) if i not in drop)])
+
+
 def _reads_dotenv(stage):
-    """단계가 .env 내용을 출력할 수 있는가 / Can this stage print .env contents?"""
-    if not _mentions_dotenv(stage) or _count_only_grep(stage):
+    """단계가 .env 내용을 출력할 수 있는가 — 검색 패턴은 경로로 보지 않는다 / Can this stage print .env contents?"""
+    if not _mentions_dotenv(_without_search_pattern(stage)) or _count_only_grep(stage):
         return False
     head, words = _command_words(_REDIRECT_TARGET.sub(" ", stage))
     if head in _DOTENV_SAFE_HEADS:
@@ -907,8 +966,10 @@ def _reads_any(_parts):
 
 def _recursive_search_reads_dotenv(stage):
     """재귀 검색이 실제로 읽을 .env 꼴 파일이 검색 대상 아래에 있는가(작업 폴더 후보 전부에서).
+    출력 리디렉션(`2>/dev/null` · `2>&1` · `> 파일`)은 검색 대상이 아니라 먼저 걷는다 — 남기면 «없는 대상» 으로
+    읽혀 막는다(원장 #1917 P1-5).
     Would a recursive search read a .env-like file under its targets (across every cwd candidate)?"""
-    call = _search_call(stage)
+    call = _search_call(_OUTPUT_REDIRECT.sub(" ", stage))
     if call is None:
         return False
     name, args, before = call
@@ -1198,9 +1259,14 @@ _NAIVE_SEGMENT_SPLIT = re.compile("|".join(re.escape(s) for s in _SEGMENT_SEPARA
 
 
 def _quotes_trustworthy(text):
-    """이스케이프 · 주석이 없고 따옴표가 모두 닫혔는가 — 주석 속 홑따옴표(`# it's`)를 따옴표로 읽으면 뒤
-    명령이 묶인다(보안 리뷰 HIGH). No escapes or comments, and every quote closed?"""
-    if "\\" in text or "`" in text or "#" in text:
+    """백틱 · 주석이 없고, 백슬래시가 따옴표 글자 바로 앞에 오지 않으며, 따옴표가 모두 닫혔는가 — 주석 속
+    홑따옴표(`# it's`)를 따옴표로 읽으면 뒤 명령이 묶인다(보안 리뷰 HIGH).
+
+    백슬래시는 따옴표 글자 앞에서만 따옴표 구조를 바꾼다(`\\"` · `\\'` — 셸은 글자로 읽는데 이 분할은 따옴표로 읽어,
+    `echo \\"; env` 의 `; env` 를 앞에 묶는다). `\\|` · `\\.` · `\\*` 같은 정규식 이스케이프는 구조를 바꾸지 않는다 —
+    그것까지 믿지 않으면 큰따옴표 안 교대(`"a\\|b"`)를 단계로 쪼개 «대상 없는 재귀 검색» 으로 오판한다(원장 #1917 P1-5).
+    No backtick or comment, no backslash right before a quote character, and every quote closed?"""
+    if "`" in text or "#" in text or re.search(r"\\['\"]", text):
         return False
     quote = None
     for ch in text:
@@ -1277,6 +1343,13 @@ def _neutralized(stages, i, neutralizers):
             return (call is not None and bool({"--kv", "-k"} & call[1])
                     and "--json" not in call[1])
         return True
+    # 바로 다음 단계가 개수만(grep -c · -q · -l · wc) 내거나, 줄 머리의 이름만(`grep -o '^[A-Z_]*='`) 내면 값이
+    # 나오지 않는다(원장 #1917 P1-5 — `env | grep -c X` · `printenv | grep -o '^[A-Z_]*='` 오탐).
+    # A very next stage that prints only counts, or only the leading names, prints no value.
+    if _NAMES in neutralizers and i + 1 < len(stages):
+        nxt = stages[i + 1]
+        if _count_only_grep(nxt) or _WC_COUNT_ONLY.fullmatch(nxt) or _NAMES_ONLY_GREP.fullmatch(nxt):
+            return True
     return False
 
 
@@ -1307,7 +1380,8 @@ def _decide_segment(segment, marked=None):
             # 🔴 .env 를 다루는 «안전한» 명령도 출력이 다음 단계로 넘어가면 읽기다(`ls .env | xargs cat` ·
             #    `Get-Item .env | Get-Content` — 보안 리뷰 지적). 안전은 파이프라인의 마지막 단계일 때만.
             # A "safe" .env command whose output flows to a next stage is a read; safe only as the last stage.
-            if not hit and matcher is _reads_dotenv and i + 1 < len(stages) and _mentions_dotenv(path_stages[i]):
+            if (not hit and matcher is _reads_dotenv and i + 1 < len(stages)
+                    and _mentions_dotenv(_without_search_pattern(path_stages[i]))):
                 hit = True
             if hit and (commented or not _neutralized(stages, i, neutralizers)):
                 return reason, hint
@@ -1874,9 +1948,32 @@ def decide_mcp_production_access(tool_name):
     return None
 
 
-def _emit_production_deny(tool, reason):
+# 거부 기록 — 회고가 정밀도(오탐)를 센다(원장 #1917 M02 P1-5). 값 · 명령 글자는 남기지 않는다: 시각 · 종류 · 사유 ·
+# 명령 sha256 · 길이만. 기본 자리는 리포 밖 `~/.scamanager/hook-denials.jsonl`, SCAMANAGER_HOOK_LOG 로 바꾼다.
+# Denial records for the retro's precision count: time, kind, reason, command sha256 and length only.
+_DENIAL_LOG_ENV = "SCAMANAGER_HOOK_LOG"
+
+
+def _record_denial(kind, reason, subject):
+    """거부 한 줄을 남긴다 — 못 써도 판정은 그대로다(기록은 계기이지 관문이 아니다).
+    Append one value-free denial record; a write failure never changes the verdict."""
+    path = os.environ.get(_DENIAL_LOG_ENV) or os.path.join(os.path.expanduser("~"), ".scamanager", "hook-denials.jsonl")
+    subject = subject or ""
+    line = json.dumps({"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "kind": kind, "reason": reason,
+                       "sha256": hashlib.sha256(subject.encode("utf-8", "replace")).hexdigest(), "len": len(subject)},
+                      ensure_ascii=True)
+    try:
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
+    except OSError:
+        return  # 기록을 못 써도 판정은 막지도 풀지도 않는다 / logging never decides
+
+
+def _emit_production_deny(tool, reason, subject=""):
     """운영 접근 차단 출력 — 대안(사용자의 `!` 실행 · 자율 읽기)을 늘 함께 알린다.
     Emit the production-access denial, always with the alternative."""
+    _record_denial("production", reason, subject or tool)
     output = {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
@@ -1934,6 +2031,7 @@ def _emit_unjudged(text, why):
     lowered = (text or "").lower()
     marker = next((m for m in _UNJUDGED_MARKERS if m in lowered), None)
     if marker:
+        _record_denial("unjudged", f"판정 불가({why}) · 표지 «{marker}»", text)
         output = {
             "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
@@ -1986,13 +2084,14 @@ def _judge(payload):
         # The credential verdict first (more specific guidance for value leaks); then production access.
         production = None if found else decide_production_access(command)
         if production:
-            return _emit_production_deny(tool, production)
+            return _emit_production_deny(tool, production, command)
     else:
         production = decide_mcp_production_access(tool)
         return _emit_production_deny(tool, production) if production else 0
     if found is None:
         return 0
     reason, hint = found
+    _record_denial("credential", reason, (payload.get("tool_input") or {}).get("command") or tool)
     if hint == _SAFE_CONFIG:
         safe = f"배포 설정은 변수 값을 뺀 읽기로 보세요:\n  {_SAFE_CONFIG}\n\n"
     elif hint == _SAFE_ENV:

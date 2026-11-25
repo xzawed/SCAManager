@@ -16,7 +16,7 @@ description: 5+1 다중 에이전트 회고 실행 (정책 8) — loop-until-dry
    회고는 전용 워크트리(`git worktree add <경로> origin/main`)에서 돌린다 — 다른 세션 · 에이전트와 작업 트리를
    나누면 실측이 섞인다.
 2. `Workflow({ scriptPath: '<repo-abs>/.claude/workflows/retrospective.mjs', args: { scope, context, domains? } })` — 절대경로 필수. `area=<관점>` → `domains` ∈ process/code/docs/decision/tooling.
-3. 반환 `{rounds, findings_total, verdict_coverage, confirmed[], unverified_findings[], scope_drift_during_run, roi}` → `docs/reports/YYYY-MM-DD-retrospective.md` (P0/P1/P2 · ROI · `false_positives` 표). 첫 표에 분석 종료 `head`(main SHA)를 적는다. `verdict_coverage < 1.0` → 재실행/수동 확인. ROI 표에 1단계 출력의 `claim_review`(창의 claim-review 반증률)를 옮긴다 — `null` 이면 «안 쟀다».
+3. 반환 `{rounds, findings_total, verdict_coverage, confirmed[], unverified_findings[], scope_drift_during_run, roi}` → `docs/reports/YYYY-MM-DD-retrospective.md` (P0/P1/P2 · ROI · `false_positives` 표). 첫 표에 분석 종료 `head`(main SHA)를 적는다. `verdict_coverage < 1.0` → 재실행/수동 확인. ROI 표에 1단계 출력의 `claim_review`(창의 claim-review 반증률)를 옮긴다 — `null` 이면 «안 쟀다». 훅 정밀도는 창의 거부 기록(`~/.scamanager/hook-denials.jsonl` — 값 없이 시각 · 종류 · 사유 · 명령 sha256 · 길이)을 세션 기록과 대어 «정직한 명령의 거부» 를 센다.
 4. 확정 목록은 `[WBS]` Issue 하나로 등재한다. fix 는 사용자 결정(자동 수정 금지).
    - 처리 순서는 사용자가 정한다 — «문서 · 절차는 맨 뒤» 같은 부류 정렬을 기본으로 두지 않는다(그 정렬이 절차 묶음을
      한 번도 닫지 못했다). 다음 할 일은 Issue 머리의 «다음» 줄이 갖는다 — 메모리에만 두지 않는다.
