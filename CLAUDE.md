@@ -28,8 +28,8 @@ GitHub Push/PR → 정적 분석 + AI 리뷰 → 점수·등급 → 알림(Teleg
 | `src/worker/pipeline.py` · `src/analyzer/**` · `src/scorer/**` | [pipeline.md](docs/workflow/pipeline.md) |
 | `src/gate/**` · `src/notifier/**` · `src/webhook/**` | [gate-notify.md](docs/workflow/gate-notify.md) |
 | `src/models/**` · `src/repositories/**` · `alembic/**` | [db.md](docs/workflow/db.md) |
-| `Dockerfile` · Railway 대시보드 설정 · `src/config.py` · `.env.example` | [deploy.md](docs/workflow/deploy.md) |
-| `tests/**` · `e2e/**` · `scripts/**` · `.github/workflows/**` | [verify.md](docs/workflow/verify.md) |
+| `Dockerfile` · Railway 대시보드 설정 · `src/config.py` · `.env.example` · `requirements*.txt` | [deploy.md](docs/workflow/deploy.md) |
+| `tests/**` · `e2e/**` · `scripts/**` · `.github/workflows/**` · `.claude/**` | [verify.md](docs/workflow/verify.md) |
 | `src/templates/**` · `src/static/**` · `src/ui/**` · `src/i18n/**` | [ui-i18n.md](docs/workflow/ui-i18n.md) |
 | `src/auth/**` · `src/crypto.py` · `.pre-commit-config.yaml` | [security.md](docs/workflow/security.md) |
 | `src/shared/**` | [security.md](docs/workflow/security.md) + [deploy.md](docs/workflow/deploy.md) |

@@ -117,7 +117,10 @@ def test_a_workflow_edit_parses_yaml_and_runs_no_tests(tmp_path, monkeypatch, ca
 
     assert _run_main(str(bad), monkeypatch, tmp_path) == []
     out = capsys.readouterr().out
-    assert "❌" in out and "YAML" in out, out
+    # ❌ 는 에이전트 맥락 채널(JSON)로 나간다 — 채널 계약 자체는 test_posttool_smoke_channel.py.
+    # A broken workflow goes out on the agent-context channel (JSON); the channel contract lives in the channel test.
+    context = json.loads(out)["hookSpecificOutput"]["additionalContext"]
+    assert context.startswith("❌") and "YAML" in context, out
 
 
 def test_docs_edits_still_do_not_fire(tmp_path, monkeypatch, capsys):
