@@ -415,9 +415,8 @@ def test_a_value_joined_from_resolved_variables_is_measured_whole(tmp_path, monk
 ], ids=["inside-quotes", "argument-of-another-command", "prefix-of-gh", "append", "array", "substitution-with-separator",
         "inside-a-comment"])
 def test_only_assignments_the_shell_keeps_resolve_a_variable(command, tmp_path, monkeypatch, capsys):
-    """🔴 셸 변수를 바꾸는 대입만 변수를 푼다 — 단순 명령이 대입뿐이거나 선언 내장(`export` 등)의 인자일 때. 따옴표 안 글자 ·
-    다른 명령의 인자는 대입이 아니고, 앞붙임 대입(`B=x gh …` — 그 명령의 환경에만 든다) · `+=` · 배열은 값을 모른다.
-    Only assignments that change shell variables resolve a reference.
+    """🔴 대입뿐인 단순 명령만 변수를 푼다. 따옴표 안 글자 · 다른 명령의 인자는 대입이 아니고, 앞붙임 대입(`B=x gh …` — 그
+    명령의 환경에만 든다) · `+=` · 배열은 값을 모른다. / Only assignment-only simple commands resolve a reference.
     """
     monkeypatch.delenv("B", raising=False)
     (tmp_path / "notes.md").write_text("clean", encoding="utf-8")
@@ -427,12 +426,12 @@ def test_only_assignments_the_shell_keeps_resolve_a_variable(command, tmp_path, 
 
 @pytest.mark.parametrize("command", [
     'B="all clean"; gh pr comment 1 --body "$B"',
-    'export B="all clean" && gh pr comment 1 --body "$B"',
+    'B="all clean" && gh pr comment 1 --body "$B"',
     'A=1 B="all clean"; gh pr comment 1 --body "$B"',
     "B=\"all\"' clean'; gh pr comment 1 --body \"$B\"",
     'A=clean; B="$A text"; gh pr comment 1 --body "$B"',
     'B="all clean" # 메모\ngh pr comment 1 --body "$B"',
-], ids=["plain", "export", "two-assignments", "mixed-quotes", "chained", "trailing-comment"])
+], ids=["plain", "and-then", "two-assignments", "mixed-quotes", "chained", "trailing-comment"])
 def test_assignments_the_shell_keeps_do_resolve(command, tmp_path, monkeypatch, capsys):
     """대조군(뒤집기) — 셸 변수를 바꾸는 대입은 값을 풀어 잰다(«대입 꼴이면 무조건 막기» 를 거른다)."""
     assert _hook(monkeypatch, capsys, command, tmp_path) is None
@@ -506,34 +505,27 @@ def test_a_here_string_word_cut_by_a_substitution_is_not_measured(command, tmp_p
     'B=x; printf -v B "%s" y; gh pr comment 1 --body "$B"',
     'B=x; source notes.md; gh pr comment 1 --body "$B"',
     'B=x; cd .; gh pr comment 1 --body "$B"',
+    'declare -u B=x; gh pr comment 1 --body "$B"',
+    'declare "-n" B=HOME; gh pr comment 1 --body "$B"',
+    "declare $'-n' B=HOME; gh pr comment 1 --body \"$B\"",
+    'B=safe; declare B[0]=x; gh pr comment 1 --body "$B"',
+    'B=safe; B[0]=x; gh pr comment 1 --body "$B"',
+    'export B="all clean" && gh pr comment 1 --body "$B"',
+    'B="all clean"; export B; gh pr comment 1 --body "$B"',
 ], ids=["nameref", "nameref-chain", "integer", "typeset-nameref", "local-outside-function", "read-after",
-        "printf-v-after", "source-after", "any-command-in-between"])
+        "printf-v-after", "source-after", "any-command-in-between", "case-changing-declaration", "quoted-option",
+        "ansi-c-option", "subscript-declaration", "subscript-assignment", "export-assignment", "export-name"])
 def test_a_variable_changed_by_anything_but_a_plain_literal_assignment_is_not_measured(command, tmp_path, monkeypatch,
                                                                                        capsys):
-    """🔴 글자 그대로 남는 대입만 값이다 — 참조(`-n`) · 산술(`-i`) 같은 속성, 함수 밖 `local`(실패해 대입하지 않는다)은 값을
-    바꾸거나 대입하지 않는다(Grok 1e0cb615). 대입과 gh 사이에 다른 명령이 돌면(`read B` · `printf -v B` · `source` · 함수 ·
-    어떤 명령이든) 이 검사는 그 명령이 값을 바꿨는지 모른다 — 그때까지의 값을 모두 모르는 것으로 보고 막는다."""
+    """🔴 값은 대입뿐인 단순 명령에서만 얻는다 — 대입과 gh 사이에 그 밖의 명령이 하나라도 돌면 그때까지의 값을 모두 모르는
+    것으로 보고 막는다. 선언 내장(`declare` · `typeset` · `export` · `local`)도 그 «밖의 명령» 이다: 옵션(`-n` 참조 ·
+    `-i` 산술 · `-u` 대소문자)이 값을 바꾸고, 따옴표로 감싼 옵션 · 첨자 대입 · 함수 밖 `local` 처럼 문법 귀퉁이마다 값이
+    갈린다(Grok 1e0cb615 3 · 4차). `read B` · `printf -v B` · `source` · 함수도 마찬가지다 — 무엇이 값을 바꿨는지 모른다.
+    Values come only from assignment-only simple commands; any other command in between, declarations included,
+    makes every value so far unknown."""
     monkeypatch.delenv("B", raising=False)
     (tmp_path / "notes.md").write_text("clean", encoding="utf-8")
     result = _hook(monkeypatch, capsys, command, tmp_path)
-    assert _denied(result) and "못" in _reason(result), result
-
-
-def test_exporting_a_name_keeps_its_literal_value(tmp_path, monkeypatch, capsys):
-    """대조군(뒤집기) — 이름만 넘기는 `export B` · 글자 그대로 남는 선언(`declare -x`)은 값을 바꾸지 않는다
-    («대입 뒤에 무엇이든 오면 막기» 의 오탐을 거른다)."""
-    assert _hook(monkeypatch, capsys, 'B="all clean"; export B; gh pr comment 1 --body "$B"', tmp_path) is None
-    assert _hook(monkeypatch, capsys, 'B=x; declare -rx C="all clean"; gh pr comment 1 --body "$B $C"', tmp_path) is None
-
-
-# witness-corpus: 선언 내장의 옵션 중 값을 글자 그대로 두지 않는 것 — 대소문자 바꿈이라 목록(-x -r -g -t) 밖이다
-_VALUE_CHANGING_DECLARE_FLAGS = ["-l", "-u"]
-
-
-@pytest.mark.parametrize("flag", _VALUE_CHANGING_DECLARE_FLAGS)
-def test_a_declaration_option_outside_the_plain_list_makes_the_value_unknown(flag, tmp_path, monkeypatch, capsys):
-    """🔴 목록에 없는 선언 옵션은 값을 바꿀 수 있다(`declare -u B=x` → `X`) — 글자 그대로라 믿지 않고 막는다."""
-    result = _hook(monkeypatch, capsys, f'declare {flag} B=x; gh pr comment 1 --body "$B"', tmp_path)
     assert _denied(result) and "못" in _reason(result), result
 
 

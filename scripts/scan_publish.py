@@ -123,15 +123,12 @@ _SIMPLE_WORD = re.compile(r"\"[^\"\\]*\"|'[^']*'|[^\s;&|<>()'\"\\]+")
 # A previous pipeline stage that is a bare `cat <<EOF` feeds that heredoc body (measured separately).
 _CAT_HEREDOC_STAGE = re.compile(r"(?:^|[;&|(\n])[ \t]*cat[ \t]+" + re.escape(_HEREDOC_MARK) + r"[ \t]*\|[ \t]*$")
 _GH_SEGMENT = re.compile(r"(?:^|(?<=[\s;&|(]))gh(?:\.exe)?\s+(?P<rest>[^\n;&|]*)")
-# 셸 변수를 바꾸는 대입 — 단순 명령이 대입 낱말뿐이거나(`B=x;` · `A=1 B=2 &&`) 선언 내장 명령의 인자일 때만. 따옴표 안
-# 글자 · 다른 명령의 인자는 대입이 아니고, 앞붙임(`B=x cmd` · `B=x gh …` — 그 명령의 환경에만 든다) · `+=` · 배열은 값을
-# 모른다. 선언 내장은 값이 글자 그대로 남는 옵션(`-x` · `-r` · `-g` · `-t`)일 때만 값을 쓴다 — 참조 `-n` · 산술 `-i` ·
-# 대소문자 `-l`/`-u` 는 값을 바꾼다. 대입과 gh 사이에 그 밖의 명령이 하나라도 돌면(`read B` · `printf -v B` · `source` ·
-# 함수 · 함수 밖 `local` …) 이 검사는 그 명령이 값을 바꿨는지 모른다 — 그때까지의 값을 모두 모르는 것으로 본다.
-# Assignments that change shell variables: assignment-only simple commands or plain declaration-builtin arguments;
-# any other command in between makes every value so far unknown.
-_DECLARATION_BUILTINS = frozenset({"export", "declare", "readonly", "typeset"})
-_PLAIN_DECLARATION_FLAG = re.compile(r"[-+][xrgt]+")
+# 셸 변수를 바꾸는 대입 — 대입 낱말뿐인 단순 명령(`B=x;` · `A=1 B=2 &&`)에서만 값을 얻는다. 따옴표 안 글자 · 다른 명령의
+# 인자는 대입이 아니고, 앞붙임(`B=x cmd` · `B=x gh …` — 그 명령의 환경에만 든다) · `+=` · 배열 · 첨자는 값을 모른다. 대입과
+# gh 사이에 그 밖의 명령이 하나라도 돌면 — 선언 내장(`declare -n/-i/-u` · 따옴표로 감싼 옵션 · 첨자 대입 · 함수 밖 `local`)
+# 과 `read B` · `printf -v B` · `source` · 함수 모두 — 이 검사는 값이 바뀌었는지 모른다: 그때까지의 값을 모두 모르는 것으로 본다.
+# Values come only from assignment-only simple commands; any other command in between (declarations included) makes
+# every value so far unknown.
 _ASSIGNMENT_WORD = re.compile(r"(?P<name>[A-Za-z_]\w*)(?P<append>\+?)=(?P<value>.*)", re.S)
 # 단순 명령의 경계 — `( ) { }` 는 넣지 않는다: `$(…)` · `${…}` 안을 자르면 값의 조각을 값으로 읽는다. 서브셸 · 묶음 안의
 # 대입(`(B=x; …)`)은 명령 낱말 뒤가 되어 값을 모르는 쪽으로 간다(막는다).
@@ -292,15 +289,8 @@ def _assignments(text: str) -> dict[str, str | None]:
             assigned[match.group("name")] = None  # 앞붙임 — 그 명령의 환경에만 든다 / a prefix: that command's env only
         if brk is None:
             continue  # 구분자로 닫히지 않은 머리 — 뒤따르는 명령(gh · heredoc 을 받는 명령) 자신이다 / the following command
-        options = [w for w in command[1:] if w[:1] in "-+"]
-        if command[0] in _DECLARATION_BUILTINS and all(_PLAIN_DECLARATION_FLAG.fullmatch(w) for w in options):
-            for word in command[1:]:
-                match = _ASSIGNMENT_WORD.fullmatch(word)
-                if match is not None:
-                    _record(assigned, match, keeps=True)
-            continue  # 이름만 넘기는 낱말(`export B`)은 값을 바꾸지 않는다 / a bare name keeps its value
-        # 그 밖의 명령 — 내장 · 함수가 값을 바꿨는지 모른다: 그때까지의 값을 모두 모르는 것으로 본다
-        # Any other command may have changed any value (builtins, functions): forget them all.
+        # 그 밖의 명령 — 선언 내장 · 내장 · 함수가 값을 바꿨는지 모른다: 그때까지의 값을 모두 모르는 것으로 본다
+        # Any other command may have changed any value (declarations, builtins, functions): forget them all.
         assigned = dict.fromkeys(assigned)
     return assigned
 
