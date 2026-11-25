@@ -10,7 +10,7 @@ py -3 -m pre_commit install  # 확인: check_precommit_installed.py
 
 **맨 `install` 이 두 타입(pre-commit·commit-msg)을 함께 설치한다** — `.pre-commit-config.yaml::default_install_hook_types:`. `--hook-type` 은 그 값을 덮어 한 타입만 남긴다. `pre-push` 타입은 리포 게이트를 밀어내 금지.
 
-같은 파일의 축: 코드 diff `.pre-commit-config.yaml::id: gitleaks`·`.pre-commit-config.yaml::id: check-secrets-in-diff` / 커밋 메시지 `.pre-commit-config.yaml::id: check-commit-msg-secrets`(Telegram 1종만) / `.env` staged `.pre-commit-config.yaml::id: check-env-not-staged`. 3축 밖(내부 URL+인증정보)은 못 막는다.
+같은 파일의 축: 코드 diff `.pre-commit-config.yaml::id: gitleaks`·`.pre-commit-config.yaml::id: check-secrets-in-diff`·`.pre-commit-config.yaml::id: check-db-url-in-diff`(자격이 든 DB 접속 주소 · docs 포함) / 커밋 메시지 `.pre-commit-config.yaml::id: check-commit-msg-secrets`(Telegram 1종만) / `.env` staged `.pre-commit-config.yaml::id: check-env-not-staged`. 이 밖(DB 가 아닌 내부 URL+인증정보)은 못 막는다. gitleaks 예외는 `.gitleaks.toml` 에 값으로만 더하고, 그 값이 운영 값이 아님을 같은 PR 에 적는다.
 
 ## CI `ci.yml` secret-scan
 

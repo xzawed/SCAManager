@@ -25,7 +25,7 @@ repos:
   # Layer 1-A: gitleaks — 코드 diff + 커밋 메시지 시크릿 탐지
   # Layer 1-A: gitleaks — detects secrets in code diff AND commit messages
   - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.21.2
+    rev: v8.30.1
     hooks:
       - id: gitleaks
         name: "🔐 gitleaks: 시크릿 패턴 스캔 (코드)"
@@ -75,6 +75,18 @@ repos:
           오탐 차단 (예: `_DEFAULT_SESSION_SECRET = "..."` 같은 상수 이름의 접미사
           `SESSION_SECRET = "..."`). 실제 `SESSION_SECRET = "값"` 등 standalone 할당은 계속 탐지
           (2026-06-18 — 정규식 정밀도 향상, 탐지 약화 아님).
+
+      - id: check-db-url-in-diff
+        name: "🔐 자격이 든 DB 접속 주소 차단"
+        language: pygrep
+        entry: "postgres(?:ql)?(?:\\+\\w+)?://[^:/\\s\\\"'@]+:(?!(?:\\$?\\{[^}]*\\}|<[^>]*>|\\*+|x+|\\.\\.\\.)@)[^@\\s\\\"'/]+@(?!(?:localhost|127\\.0\\.0\\.1|host|db|postgres|<[^>]*>|\\$?\\{[^}]*\\}|[^/:?#\\s\\\"',;)>\\]]*\\.example\\.(?:com|org|net))(?::[0-9]*)?(?:,(?:localhost|127\\.0\\.0\\.1|host|db|postgres|<[^>]*>|\\$?\\{[^}]*\\}|[^/:?#\\s\\\"',;)>\\]]*\\.example\\.(?:com|org|net))(?::[0-9]*)?)*(?:[/?#\\\"'\\s;)>\\]]|,(?=[\\s\\\"')]|$)|$))(?:[^/?#\\s\\\"']+|(?=[/?]))"
+        exclude: "^(tests/|e2e/)"
+        stages: [pre-commit]
+        description: |
+          비밀번호가 든 postgres 접속 주소(예: 운영 pooler 주소)가 staged 파일에 있으면 차단.
+          예시 · 로컬 호스트(*.example.com · localhost · 127.0.0.1 · host · db · postgres)와
+          자리표시자(${…} · {…} · <…> · ***)는 통과 — 리포의 예시 줄이 커밋마다 막히지 않게.
+          docs/ 는 제외하지 않는다(문서에 실제 주소가 들어가는 것도 막는다). 시험 = tests/unit/scripts/test_precommit_db_url_pattern.py.
 
       # Layer 1-D: docs/repo 정합 가드 (stdlib 스크립트 — 회고 WF-2/3/5, 2026-06-23)
       # Layer 1-D: docs/repo integrity guards (stdlib scripts — retro WF-2/3/5)

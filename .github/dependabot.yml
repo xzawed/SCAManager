@@ -123,3 +123,19 @@ updates:
         update-types:
           - "minor"
           - "patch"
+
+  # pre-commit 훅 판(1층 비밀값 스캐너 gitleaks 포함) — 판이 멈추면 새 키 꼴 규칙을 못 받는다(회고 원장 #1917 M02 P2-7)
+  # pre-commit hook revisions, including the layer-1 secret scanner (gitleaks): a frozen rev misses new key rules
+  - package-ecosystem: "pre-commit"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "ci"
+    groups:
+      pre-commit-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"

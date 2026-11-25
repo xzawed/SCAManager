@@ -28,6 +28,8 @@ prod 판정 = `ENVIRONMENT=production` 이거나 `APP_BASE_URL` 이 https (`src/
 
 1. 훅 설치 — `git config --unset-all core.hooksPath` 후 `py -3 -m pre_commit install`. `--hook-type pre-push` 는 붙이지 않는다(리포 자체 push 게이트를 밀어낸다).
 2. 코드에는 `settings.<field>` 만 쓴다 — 리터럴 대입은 `.pre-commit-config.yaml::id: check-secrets-in-diff` 가 차단.
+   push 때의 2층(GitHub push protection)은 공급자 꼴(Anthropic 키 등)을 막고, DB 접속 주소 같은 일반 꼴은 저장소 설정의
+   non-provider patterns 가 켜져 있을 때만 막는다 — 그 앞의 1층 `.pre-commit-config.yaml::id: check-db-url-in-diff` 가 커밋 때 막는다.
 3. 커밋 메시지에는 토큰 대신 `<REDACTED>` (`.pre-commit-config.yaml::id: check-commit-msg-secrets`).
 4. 유출 시: 발급처에서 즉시 회전 → `trufflehog git file://. --only-verified` 로 잔존 확인 → 이력에 남았으면 `git filter-repo` 후 force push.
 
