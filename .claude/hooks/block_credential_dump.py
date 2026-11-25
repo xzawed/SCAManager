@@ -41,6 +41,14 @@ The same hook enforces that prior approval: production is judged by action (rail
 the production container, runs with production variables, deploy/variable/environment changes and the
 changing or SQL MCP tools are denied — the user runs them with `!`). Kept in this file to avoid a second
 hook process per shell call; it reuses the same parser.
+
+🔴 판정하지 못한 호출 — 훅 프로세스가 시작하지 못하거나 · 0/2 밖의 코드로 끝나거나 · 시간을 넘기면 settings 의
+`onFailure: "block"` 이 그 호출을 막는다. 판정 중 예외 · JSON 객체가 아닌 입력은 «판정 불가» 로 받아 운영 · 자격 표지
+(`_UNJUDGED_MARKERS`)가 있는 호출만 deny 하고, 나머지는 막지 않되 판정 불가를 알린다(`_emit_unjudged` ·
+시험 = `test_credential_hook_failure_contract.py`).
+Unjudged calls: a hook process that cannot start, exits outside 0/2 or times out is blocked by
+`onFailure: "block"`; an exception in the verdict or a non-object payload denies only marked calls and
+reports the rest.
 """
 import fnmatch
 import functools
@@ -1906,15 +1914,66 @@ def _make_stdout_safe():
         pass  # 캡처된 stream 등 reconfigure 미지원 — 무시 / captured streams: ignore
 
 
+# 판정 불가일 때 막는 표지 — 운영 · 자격에 닿을 수 있는 글자다. 판정이 예외로 끝났거나 입력이 JSON 객체가 아닐 때만 쓴다.
+# 부분문자열로 넓게 잡는다 — 틀리면 막는 쪽이고, 막힌 호출은 사유를 보고 사용자 `!` 로 돌린다.
+# Markers that deny a call the verdict could not judge (it raised, or the payload was not a JSON object).
+# Matched as substrings on purpose: a false hit denies, and the denied call goes to the user's `!`.
+#   운영 = railway · supabase · psql · pg_dump · postgres · observe_db · database_url,
+#   자격 = env(`.env` · printenv · `Env:` · environ 을 함께 덮는다) · secret · token · password · credential.
+_UNJUDGED_MARKERS = ("railway", "supabase", "psql", "pg_dump", "postgres", "observe_db", "database_url",
+                     "env", "secret", "token", "password", "credential")
+
+
+def _emit_unjudged(text, why):
+    """판정 불가 — 운영 · 자격 표지가 있으면 deny, 없으면 막지 않고 에이전트(additionalContext) · 사람(systemMessage)에게 알린다.
+
+    훅 고장 하나로 모든 셸이 막히지 않게 표지로 가른다. 훅 프로세스 자체가 죽거나 시간을 넘기면 settings 의
+    `onFailure: "block"` 이 그 호출을 막는다. `why` 에는 예외의 이름만 싣는다 — 예외 메시지는 명령 글자를 담을 수 있다.
+    The verdict could not be reached: deny when the text carries a production/credential marker, else only say so.
+    """
+    lowered = (text or "").lower()
+    marker = next((m for m in _UNJUDGED_MARKERS if m in lowered), None)
+    if marker:
+        output = {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": (
+                    f"[판정 불가] credential · 운영 접근 훅이 이 호출을 판정하지 못했다({why}) — "
+                    f"운영 · 자격 표지 «{marker}» 가 있어 막는다.\n\n"
+                    "→ 사용자에게 이 명령과 목적을 보여 주고 `! <명령>` 으로 실행해 달라고 요청하거나, "
+                    "훅(.claude/hooks/block_credential_dump.py)을 워크트리에서 고친 뒤 다시 시도하세요."
+                ),
+            }
+        }
+    else:
+        note = (f"⚠️ credential · 운영 접근 훅이 이 호출을 판정하지 못했다({why}) — 운영 · 자격 표지가 없어 막지 않았다. "
+                "훅(.claude/hooks/block_credential_dump.py)을 고쳐야 한다.")
+        output = {"systemMessage": note,
+                  "hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": note}}
+    print(json.dumps(output, ensure_ascii=True))
+    return 0
+
+
 def main():
     _make_stdout_safe()
+    raw = sys.stdin.read()
     try:
-        payload = json.load(sys.stdin)
-    except (json.JSONDecodeError, ValueError):
-        # 입력이 깨져도 작업을 막지 않는다 — 이 훅은 advisory 성격의 안전망이다.
-        # Never block on malformed input; this hook is a safety net, not a gate on correctness.
-        return 0
+        payload = json.loads(raw)
+    except ValueError:  # JSONDecodeError 포함 / includes JSONDecodeError
+        payload = None
+    if not isinstance(payload, dict):
+        return _emit_unjudged(raw, "입력이 JSON 객체가 아니다")
+    try:
+        return _judge(payload)
+    except Exception as exc:  # pylint: disable=broad-exception-caught  # 판정 불가는 표지로 가른다 / unjudged → markers
+        subject = json.dumps([payload.get("tool_name"), payload.get("tool_input")], ensure_ascii=False, default=str)
+        return _emit_unjudged(subject, type(exc).__name__)
 
+
+def _judge(payload):
+    """판정 본체 — 출력(deny JSON)을 내고 0 을 돌려준다. 예외는 main() 이 «판정 불가» 로 받는다.
+    The verdict proper; main() turns any exception into an unjudged outcome."""
     tool = payload.get("tool_name") or ""
     if _MCP_DUMP_TOOLS.fullmatch(tool):
         found = ("Railway MCP list_variables — 서비스 변수 값(KEY=VALUE) 덤프", _SAFE_IDIOM)

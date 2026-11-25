@@ -49,7 +49,8 @@
           {
             "type": "command",
             "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY ${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/block_credential_dump.py",
-            "timeout": 10
+            "timeout": 10,
+            "onFailure": "block"
           }
         ]
       },
