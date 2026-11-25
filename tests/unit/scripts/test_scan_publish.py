@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from ruamel.yaml import YAML
 
 import scripts.scan_publish as scan
 
@@ -173,6 +174,13 @@ def test_unreadable_hook_input_is_denied(monkeypatch, capsys):
     monkeypatch.setattr(sys, "stdin", io.StringIO("not json"))
     assert scan.main(["--hook"]) == 0
     assert _denied(json.loads(capsys.readouterr().out))
+
+
+def test_the_db_url_shape_is_the_same_expression_as_the_commit_hook():
+    """DB 주소 꼴은 커밋 훅(`check-db-url-in-diff`)과 같은 식이다 — 두 벌이 갈라지면 한쪽만 고쳐진다."""
+    config = YAML(typ="safe", pure=True).load((_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8"))
+    entries = [h["entry"] for repo in config["repos"] for h in repo.get("hooks", []) if h.get("id") == "check-db-url-in-diff"]
+    assert entries == [scan._KINDS["db-url-with-password"]], "커밋 훅과 게시 전 검사의 DB 주소 식이 갈라졌다"
 
 
 def _publish_handlers():

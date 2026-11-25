@@ -89,6 +89,8 @@
    출력을 JSON 으로 파싱해 채널까지 단언한다.
 3. 운영 MCP 허용 목록(`.claude/hooks/block_credential_dump.py::_PROD_RAILWAY_MCP_READS = frozenset` · 그 Supabase 짝)을 바꾸면
    문서가 처방한 MCP 도구 이름을 `git grep -n "MCP" -- docs/` 로 모아 목록과 대조한다.
+4. 공개 쓰기(gh 의 Issue · PR 본문 · 댓글 · 릴리스 노트)는 `scripts/scan_publish.py` 가 훅으로 먼저 잰다 — 비밀값 · 개인정보 꼴이
+   있으면 막고 종류 · 개수만 알린다. 본문 파일 경로는 그대로 적는다(명령 치환 · 정의 안 된 변수는 못 재서 막는다).
 
 ### side-effect-only ORM import
 
