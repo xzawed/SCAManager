@@ -122,7 +122,11 @@ _SIMPLE_WORD = re.compile(r"\"[^\"\\]*\"|'[^']*'|[^\s;&|<>()'\"\\]+")
 # `cat <<EOF | gh … -` — 파이프 앞 단계가 heredoc 하나만 받는 cat 이면 stdin 은 그 heredoc 본문이다(따로 잰다).
 # A previous pipeline stage that is a bare `cat <<EOF` feeds that heredoc body (measured separately).
 _CAT_HEREDOC_STAGE = re.compile(r"(?:^|[;&|(\n])[ \t]*cat[ \t]+" + re.escape(_HEREDOC_MARK) + r"[ \t]*\|[ \t]*$")
-_GH_SEGMENT = re.compile(r"(?:^|(?<=[\s;&|(]))gh(?:\.exe)?\s+(?P<rest>[^\n;&|]*)")
+# gh 호출의 시작. 끝은 그 자리부터 따옴표를 가린 글자에서 첫 구분자(`\n` · `;` · `&` · `|`)까지다 — 따옴표 안의 `|`
+# (jq 필터 · 검색어)는 구분자가 아니다. 앞쪽 글자의 따옴표 상태에 휘둘리지 않게 gh 자리부터 새로 가린다.
+# Where a gh call starts; it ends at the first unquoted separator, masked afresh from the gh position.
+_GH_START = re.compile(r"(?:^|(?<=[\s;&|(]))gh(?:\.exe)?\s+")
+_UNQUOTED_SEGMENT = re.compile(r"[^\n;&|]*")
 # 셸 변수를 바꾸는 대입 — 대입 낱말뿐인 단순 명령(`B=x;` · `A=1 B=2 &&`)에서만 값을 얻는다. 따옴표 안 글자 · 다른 명령의
 # 인자는 대입이 아니고, 앞붙임(`B=x cmd` · `B=x gh …` — 그 명령의 환경에만 든다) · `+=` · 배열 · 첨자는 값을 모른다. 대입과
 # gh 사이에 그 밖의 명령이 하나라도 돌면 — 선언 내장(`declare -n/-i/-u` · 따옴표로 감싼 옵션 · 첨자 대입 · 함수 밖 `local`)
@@ -511,8 +515,9 @@ def judge_command(command: str, cwd: str | None, shell: str) -> tuple[dict[str, 
     stripped = _join_continuations(_HEREDOC.sub(
         lambda m: (_HEREDOC_MARK if m.group("fd") in (None, "0") else _OTHER_FD_HEREDOC_MARK) + m.group("tail"), command))
     _add(counts, count_kinds(stripped, skip=("local-home-path",)))
-    for seg in _GH_SEGMENT.finditer(stripped):
-        rest = seg.group("rest")
+    for seg in _GH_START.finditer(stripped):
+        tail = stripped[seg.end():]
+        rest = tail[:_UNQUOTED_SEGMENT.match(_mask_quoted(tail)).end()]
         words = _split(rest, shell)
         if words is None:
             unread.append("(gh 명령을 낱말로 나누지 못했다)")

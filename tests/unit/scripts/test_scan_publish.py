@@ -587,6 +587,42 @@ def test_an_unlisted_wrapper_is_not_trusted_to_pass_arguments_through(wrapper, t
     assert _denied(result) and "못" in _reason(result), result
 
 
+@pytest.mark.parametrize("command", [
+    "gh api repos/o/r/pulls -q '.[] | .number'",
+    "gh pr list --json number --jq '.[] | .number'",
+    'gh search issues "a && b" --limit 5',
+    "gh pr view 1 --json body,title --jq '.body; .title'",
+    "gh api repos/o/r/deployments -q '.[] | \"\\(.id) \\(.sha)\"' | head -3",
+], ids=["api-jq-pipe", "jq-pipe", "quoted-and", "quoted-semicolon", "jq-pipe-then-real-pipe"])
+def test_a_read_with_a_quoted_separator_stays_silent(command, tmp_path, monkeypatch, capsys):
+    """🔴 따옴표 안의 `|` · `&&` · `;` 는 명령 구분자가 아니다 — jq 필터의 파이프에서 gh 명령을 자르면 낱말로 못 나눠 정직한
+    읽기를 «못 잰 본문» 으로 막았다(#1928 머지 직후 이 세션에서 실측). 따옴표 밖의 진짜 파이프에서는 그대로 끊는다.
+    A separator inside quotes does not end the gh command."""
+    assert _hook(monkeypatch, capsys, command, tmp_path) is None
+
+
+@pytest.mark.parametrize("value, why", [
+    ("a | b && c; d", ""),
+    (f"a | see {_HOME}", "local-home-path 1"),
+    ("a | $UNSET_BODY_FOR_TEST", "못"),
+    ("line one\nline two", ""),
+], ids=["clean", "home-path-after-pipe", "variable-after-pipe", "multi-line"])
+def test_a_quoted_separator_does_not_cut_a_published_value(value, why, tmp_path, monkeypatch, capsys):
+    """🔴 게시될 글은 따옴표 안 구분자 · 줄바꿈 뒤까지 끝까지 잰다 — 깨끗하면 통과, 그 뒤의 홈 경로 · 변수도 판정한다."""
+    monkeypatch.delenv("UNSET_BODY_FOR_TEST", raising=False)
+    result = _hook(monkeypatch, capsys, f'gh pr comment 1 --body "{value}"', tmp_path)
+    if why:
+        assert _denied(result) and why in _reason(result), result
+    else:
+        assert result is None, result
+
+
+def test_an_unclosed_quote_after_gh_is_not_measured(tmp_path, monkeypatch, capsys):
+    """대조군 — 따옴표가 닫히지 않으면 gh 명령의 끝을 모른다: 못 잰 것으로 막는다(구분자를 따옴표 안으로 삼켜 통과시키지 않는다)."""
+    result = _hook(monkeypatch, capsys, "gh pr comment 1 --body \"a | b; gh pr comment 2 --body-file x.md", tmp_path)
+    assert _denied(result) and "못" in _reason(result), result
+
+
 def test_only_assignments_before_the_gh_call_count(tmp_path, monkeypatch, capsys):
     """변수는 gh 호출 **앞**의 대입으로만 푼다 — 뒤의 대입이 다른 파일을 가리켜도 앞 값을 쓴다(보안 검토 ④)."""
     (tmp_path / "dirty").mkdir()
