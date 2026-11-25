@@ -74,6 +74,9 @@ _MUST_BLOCK = {
     "pipe-inside-parameter-expansion": "printenv ${UNSET:-|} grep -c SOME_KEY",
     "count-stage-with-leading-junk": "env | } grep -c SOME_KEY",
     "count-stage-reading-a-file-too": "env | grep -c SOME_KEY .env",
+    # Grok 반례(따옴표 신뢰) — 큰따옴표 안 `$(…)` 의 파이프는 분할기가 못 보지만, 치환 안 글자는 따로 떼어 판정한다.
+    # Grok counterexample: a pipe inside "$(…)" is invisible to the splitter, but substitution bodies are judged on their own.
+    "pipe-inside-quoted-command-substitution": 'echo "$(env | grep SOME_KEY)"',
 }
 
 
