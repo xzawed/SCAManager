@@ -209,9 +209,11 @@ class _SemgrepAnalyzer:
     #    `paths.scanned` 가 비고 errors 도 없이 종료 0 이다(회고 원장 R-8). 돌리면 «이슈 0건 · 완전» 이 되므로 돌리지 않는다 — 그 파일에 다른 분석기가 없으면
     #    `uncovered_language` 로 드러난다. 🔴 원래 이름이 아니라 **semgrep 이 받는 임시 파일**로 판정한다 — python 은 shebang
     #    스크립트도 `.py` 로 받아 semgrep 이 훑는다(자동 보안 리뷰 지적). 실물 대조 = `test_semgrep_vendored_rules.py`.
+    # 🔴 끝이 점인 이름의 확장자는 판에 따라 두 꼴이다 — `Path("x.").suffix` 가 3.12 는 `""`, 3.14 는 `"."` 다. 둘 다 덮는다.
     # Temp-file extensions semgrep never targets (measured). Judge the path semgrep receives, not the original name:
-    # python files always get `.py`, so an extensionless python script is still scanned.
-    _UNTARGETED_SUFFIXES: frozenset[str] = frozenset({"", ".sc", ".tmp"})
+    # python files always get `.py`, so an extensionless python script is still scanned. A trailing-dot name renders
+    # as "" on 3.12 and "." on 3.14 — both are listed.
+    _UNTARGETED_SUFFIXES: frozenset[str] = frozenset({"", ".", ".sc", ".tmp"})
 
     def supports(self, ctx: AnalyzeContext) -> bool:
         """Semgrep 지원 언어이고 semgrep 이 그 임시 파일을 대상으로 삼는지 확인."""

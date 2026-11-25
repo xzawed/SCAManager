@@ -93,6 +93,31 @@ def test_supports_keeps_files_semgrep_scans(make_ctx, filename, language):
     assert _SemgrepAnalyzer().supports(_routed_ctx(make_ctx, filename, language)) is True
 
 
+# 임시 확장자가 «맨 점» 뿐인 원래 이름들 — `splitext` 가 `('deploy', '.')` 를 주고 정제가 점만 남긴다.
+# Original names whose temp extension is a bare dot: splitext yields '.' and the sanitiser keeps just that dot.
+_BARE_DOT_NAMES = ("deploy.", "a..", "x.?")
+
+
+def test_untargeted_suffixes_covers_both_renderings_of_a_bare_dot():
+    """🔴 맨 점으로 끝나는 임시 이름의 `Path.suffix` 는 판에 따라 `''`(3.12) 또는 `'.'`(3.14) 다 — 한쪽만
+    덮으면 올린 판에서 semgrep 이 끝내 안 훑는 파일을 돌려 «이슈 0건 · 완전» 으로 보고한다.
+    The same temp name renders as '' on 3.12 and '.' on 3.14; the set must cover both renderings.
+    """
+    from src.analyzer.io.tools.semgrep import _SemgrepAnalyzer
+    assert {"", "."}.issubset(_SemgrepAnalyzer._UNTARGETED_SUFFIXES), (
+        "맨 점 임시 이름이 판에 따라 두 꼴로 보인다 — 집합이 둘 다 덮어야 한다")
+
+
+@pytest.mark.parametrize("filename", _BARE_DOT_NAMES)
+def test_supports_skips_temp_names_ending_in_a_bare_dot(make_ctx, filename):
+    """🔴 임시 확장자가 맨 점뿐인 이름은 어느 판에서도 돌리지 않는다 — 정제가 점만 남기는 `x.?` · 점이
+    겹친 `a..` 까지(기존 시료가 한 번도 준 적 없는 입력)."""
+    from src.analyzer.io.static import temp_suffix
+    from src.analyzer.io.tools.semgrep import _SemgrepAnalyzer
+    assert temp_suffix(filename, "javascript") == ".", "전제 붕괴 — 이 이름의 임시 확장자가 맨 점이 아니다"
+    assert _SemgrepAnalyzer().supports(_routed_ctx(make_ctx, filename, "javascript")) is False
+
+
 def test_run_raises_when_target_was_not_scanned(make_ctx):
     """🔴 종료 0 · errors 0 이어도 `paths.scanned` 가 비면 semgrep 이 대상을 훑지 않은 것이다 — 미분석(R-8).
 
