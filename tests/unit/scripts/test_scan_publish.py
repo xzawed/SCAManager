@@ -617,6 +617,20 @@ def test_a_quoted_separator_does_not_cut_a_published_value(value, why, tmp_path,
         assert result is None, result
 
 
+@pytest.mark.parametrize("between", ["git status; ", "echo hi && ", "cd . ; "], ids=["git", "echo", "cd"])
+def test_a_body_file_path_variable_survives_unrelated_commands(between, tmp_path, monkeypatch, capsys):
+    """🔴 본문 파일 **경로**의 변수는 대입 뒤에 다른 명령이 돌아도 마지막 글자 대입으로 푼다 — 게시되는 것은 그 경로에서
+    읽은 파일이고 그 파일을 잰다. 게시될 글 자체의 변수(«사이에 명령이 돌면 모름»)와 규칙이 다르다. `S=…; git push …;
+    gh … --body-file "$S/x"` 가 «못 읽은 본문» 으로 막히던 오탐(#1928 머지 직후 실측).
+    A path variable resolves from the last literal assignment even after unrelated commands: the file read is measured."""
+    (tmp_path / "note.md").write_text(_PLANTED["email"], encoding="utf-8")
+    command = f'S="{tmp_path.as_posix()}"; {between}gh pr edit 1 --body-file "$S/note.md"'
+    result = _hook(monkeypatch, capsys, command, tmp_path)
+    assert _denied(result) and "email 1" in _reason(result), result
+    (tmp_path / "note.md").write_text("clean", encoding="utf-8")
+    assert _hook(monkeypatch, capsys, command, tmp_path) is None
+
+
 def test_an_unclosed_quote_after_gh_is_not_measured(tmp_path, monkeypatch, capsys):
     """대조군 — 따옴표가 닫히지 않으면 gh 명령의 끝을 모른다: 못 잰 것으로 막는다(구분자를 따옴표 안으로 삼켜 통과시키지 않는다)."""
     result = _hook(monkeypatch, capsys, "gh pr comment 1 --body \"a | b; gh pr comment 2 --body-file x.md", tmp_path)

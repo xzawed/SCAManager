@@ -275,10 +275,13 @@ def _expand_text(text: str, assigned: dict[str, str | None]) -> str | None:
     return expanded
 
 
-def _assignments(text: str) -> dict[str, str | None]:
+def _assignments(text: str, *, forget: bool = True) -> dict[str, str | None]:
     """`text`(gh 호출 앞 글자)에서 셸 변수를 바꾼 글자 대입 — 이름 → 값, 값을 모르면 None. 구분자로 끝나지 않은 마지막
     단순 명령은 뒤따르는 명령의 앞붙임이다. 값은 그때까지의 대입으로 푼다(`A=x; B="$A y"`).
-    Literal assignments that change shell variables in `text`; None when the value is unknown.
+
+    `forget=False` 는 본문 파일 **경로**용이다 — 사이에 다른 명령이 돌아도 · 앞붙임이 있어도 이름마다 마지막 글자 대입을
+    쓴다. 게시되는 것은 그 경로에서 읽은 파일이라 그 파일을 잰다. 게시될 글 자체(기본값)는 사이 명령에서 모두 잊는다.
+    Literal assignments that change shell variables; `forget=False` (paths) keeps the last literal value per name.
     """
     masked = _mask_quoted(text)
     assigned: dict[str, str | None] = {}
@@ -299,6 +302,8 @@ def _assignments(text: str) -> dict[str, str | None]:
             for match in leading:
                 _record(assigned, match, keeps=brk is not None)
             continue
+        if not forget:
+            continue  # 경로용 — 앞붙임 · 사이 명령은 마지막 글자 대입을 지우지 않는다 / paths keep the last literal value
         for match in leading:
             assigned[match.group("name")] = None  # 앞붙임 — 그 명령의 환경에만 든다 / a prefix: that command's env only
         if brk is None:
@@ -440,7 +445,8 @@ def _word_at(text: str, pos: int) -> str | None:
     return match.group(0) if end == len(text) or text[end] in " \t\n;&|<>" else None
 
 
-def _measure_stdin(rest: str, before: str, assigned: dict[str, str | None], base: Path | None,
+def _measure_stdin(rest: str, before: str, assigned: dict[str, str | None], path_assigned: dict[str, str | None],
+                   base: Path | None,
                    counts: dict[str, int], unread: list[str]) -> None:
     """stdin 본문(`-`)을 잰다 — 출처가 정확히 하나일 때만: fd 0 의 heredoc(본문은 따로 잰다) · here-string 낱말 · `<` 파일,
     또는 출처가 없고 파이프 앞 단계가 `cat <<EOF |` 일 때. 출처가 여럿(덮어쓰기) · `<&` 복제 · 못 읽은 heredoc · 모르는 출처는
@@ -479,7 +485,7 @@ def _measure_stdin(rest: str, before: str, assigned: dict[str, str | None], base
         unread.append("(stdin 이 다른 fd 에서 오거나 파일 이름을 못 풀었다)")
         return
     raw = _unquote(word)
-    text = _read(_resolve(raw, assigned, base))
+    text = _read(_resolve(raw, path_assigned, base))
     if text is None:
         unread.append(raw)
         return
@@ -523,14 +529,15 @@ def judge_command(command: str, cwd: str | None, shell: str) -> tuple[dict[str, 
             unread.append("(gh 명령을 낱말로 나누지 못했다)")
             continue
         before = stripped[:seg.start()]
-        assigned = _assignments(before)
+        assigned = _assignments(before)  # 게시될 글 — 사이 명령에서 잊는다 / published text: forgets on commands
+        path_assigned = _assignments(before, forget=False)  # 경로 — 마지막 글자 대입 / paths: last literal value
         base: Path | None = Path(cwd or os.getcwd())
         if _UNMODELLED_DIR_CHANGE.search(before):
             base = None
         else:
             cds = [_unquote(m.group(1)) for m in _CD.finditer(before)]
             if cds:
-                base = _resolve(cds[-1], assigned, base)
+                base = _resolve(cds[-1], path_assigned, base)
         paths, texts = _targets(words)
         if (paths or texts) and not _runs_gh_directly(before):
             # 게시하는 gh 를 다른 명령(`xargs` · `find -exec` · 목록 밖 감싸기)이 돌린다 — 인자가 바뀌어 실행될 수 있다
@@ -555,14 +562,14 @@ def judge_command(command: str, cwd: str | None, shell: str) -> tuple[dict[str, 
                 continue
             _add(counts, _count_value(expanded, expanded=expanded != text))
         if "-" in paths:
-            _measure_stdin(rest, before, assigned, base, counts, unread)
+            _measure_stdin(rest, before, assigned, path_assigned, base, counts, unread)
         for raw in paths:
             if raw is None:
                 unread.append("(값이 빠진 본문 파일 플래그 — 다른 명령이 덧붙인 파일이 게시될 수 있다)")
                 continue
             if raw == "-":
                 continue  # stdin — 위에서 한 번 잰다 / measured once above
-            text = _read(_resolve(raw, assigned, base))
+            text = _read(_resolve(raw, path_assigned, base))
             if text is None:
                 unread.append(raw)
                 continue
