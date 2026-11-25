@@ -50,6 +50,9 @@ _MUST_PASS = [
     "postgresql://postgres:postgres@postgres:5432/db",
     'f"postgresql://{ROLE}.{ref}:{password}@{host}:{PORT}/postgres"',
     "postgresql://localhost/db",
+    "postgres://user:password@db.example.com?x=1",
+    "postgresql://user:pw@localhost?sslmode=disable",
+    "(postgresql://u:p@localhost)",
 ]
 
 
