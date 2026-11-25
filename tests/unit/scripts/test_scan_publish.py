@@ -199,6 +199,139 @@ def test_a_published_value_built_by_command_substitution_is_denied(command, tmp_
     assert _denied(result) and "못" in _reason(result), result
 
 
+@pytest.mark.parametrize("command, tool", [
+    ('BODY=$(cat notes.md) && gh pr create --title t --body "$BODY"', "Bash"),
+    ('gh pr create --title t --body "$UNSET_BODY_FOR_TEST"', "Bash"),
+    ('gh issue comment 1 --body "${UNSET_BODY_FOR_TEST}"', "Bash"),
+    ('B=ok; gh issue comment 1 --body "${B:-fallback}"', "Bash"),
+    ('read -r B < notes.md; gh pr comment 2 --body "$B"', "Bash"),
+    ('gh api repos/o/r/issues -f body="$UNSET_BODY_FOR_TEST"', "Bash"),
+    ('gh gist create notes.md -d "$UNSET_BODY_FOR_TEST"', "Bash"),
+    ('gh gist edit abc123 --desc "$UNSET_BODY_FOR_TEST"', "Bash"),
+    ('gh pr merge 3 --squash --subject "$UNSET_BODY_FOR_TEST"', "Bash"),
+    ("$b = Get-Content notes.md -Raw; gh pr create --title t --body $b", "PowerShell"),
+], ids=["assigned-from-substitution", "unassigned", "braced", "parameter-expansion", "read-builtin",
+        "api-field", "gist-create-description", "gist-edit-description", "merge-subject", "powershell-variable"])
+def test_a_published_value_from_a_variable_it_cannot_resolve_is_denied(command, tool, tmp_path, monkeypatch, capsys):
+    """🔴 게시될 인라인 글(`--body` · `--title` · api 필드 · gist 설명 · 머지 제목)이 변수면, 같은 명령 안의 글자 대입으로
+    풀리지 않는 한 그 값을 잴 수 없다 — 막는다. 본문 파일 경로의 변수와 같은 계약이다(못 재면 막는다).
+    A published inline value that is a variable is unmeasurable unless a literal assignment in the same command resolves it.
+    """
+    monkeypatch.delenv("UNSET_BODY_FOR_TEST", raising=False)
+    (tmp_path / "notes.md").write_text("clean", encoding="utf-8")
+    result = _hook(monkeypatch, capsys, command, tmp_path, tool=tool)
+    assert _denied(result) and "못" in _reason(result), result
+
+
+def test_a_published_value_from_the_environment_is_not_trusted(tmp_path, monkeypatch, capsys):
+    """🔴 훅의 환경은 명령이 도는 셸의 환경이 아니다(셸 프로필이 덮을 수 있다) — 게시될 글의 변수는 환경에서 풀지 않는다.
+    The hook's environment is not the shell's; a published value is never resolved from it.
+    """
+    monkeypatch.setenv("PUB_BODY_FOR_TEST", "all clean")
+    result = _hook(monkeypatch, capsys, 'gh pr comment 1 --body "$PUB_BODY_FOR_TEST"', tmp_path)
+    assert _denied(result) and "못" in _reason(result), result
+
+
+def test_a_published_value_from_a_literal_assignment_is_measured(tmp_path, monkeypatch, capsys):
+    """대조군(뒤집기) — 같은 명령 안의 글자 대입으로 풀리는 변수는 그 값을 잰다: 깨끗하면 통과, 홈 경로가 있으면 그 꼴로 막는다.
+    «변수면 무조건 막기» 는 앞쪽을, «명령 글자만 재기»(홈 경로는 명령 글자에서 세지 않는다) 는 뒤쪽을 틀린다.
+    """
+    assert _hook(monkeypatch, capsys, 'B="all clean"; gh pr comment 3 --body "$B"', tmp_path) is None
+    result = _hook(monkeypatch, capsys, f'B="log at {_HOME}"; gh pr comment 3 --body "$B"', tmp_path)
+    assert _denied(result) and "local-home-path 1" in _reason(result), result
+
+
+# witness-corpus: 게시될 글이 아닌 값을 받는 gh 플래그 — 그 값이 변수여도 게시되지 않으니 막지 않는다
+_NOT_PUBLISHED_FLAGS = ["--base", "--head", "-R", "--label", "--search", "--jq"]
+
+
+@pytest.mark.parametrize("flag", _NOT_PUBLISHED_FLAGS)
+def test_a_variable_in_a_flag_that_is_not_published_stays_silent(flag, tmp_path, monkeypatch, capsys):
+    """대조군 — 게시될 글이 아닌 플래그의 변수는 재지 않는다(«`$` 가 든 gh 명령은 막기» 같은 싼 판정을 거른다)."""
+    monkeypatch.delenv("UNSET_BODY_FOR_TEST", raising=False)
+    command = f'gh pr create {flag} "$UNSET_BODY_FOR_TEST" --body-file - <<\'EOF\'\nclean body\nEOF'
+    assert _hook(monkeypatch, capsys, command, tmp_path) is None
+
+
+def test_a_dollar_that_is_not_a_variable_name_is_plain_text(tmp_path, monkeypatch, capsys):
+    """대조군 — `$5` · 홀로 선 `$` 는 변수 이름이 아니다. 게시될 글에 `$` 가 들었다고 막지 않는다."""
+    assert _hook(monkeypatch, capsys, 'gh pr comment 3 --body "costs $5 or 5 $ total"', tmp_path) is None
+
+
+def test_arguments_after_a_heredoc_marker_on_the_same_line_are_judged(tmp_path, monkeypatch, capsys):
+    """🔴 heredoc 여는 줄의 나머지(`<<'EOF' --title …`)도 gh 의 인자다 — 본문과 함께 걷어 내면 그 글을 재지 못한다.
+    Words after the heredoc operator on the same line are still gh arguments.
+    """
+    monkeypatch.delenv("UNSET_BODY_FOR_TEST", raising=False)
+    tail_var = "gh pr create --body-file - <<'EOF' --title \"$UNSET_BODY_FOR_TEST\"\nclean body\nEOF"
+    result = _hook(monkeypatch, capsys, tail_var, tmp_path)
+    assert _denied(result) and "못" in _reason(result), result
+    tail_home = f"gh pr create --body-file - <<'EOF' --title \"see {_HOME}\"\nclean body\nEOF"
+    result = _hook(monkeypatch, capsys, tail_home, tmp_path)
+    assert _denied(result) and "local-home-path 1" in _reason(result), result
+    assert _hook(monkeypatch, capsys, "gh pr create --body-file - <<'EOF' --title ok\nclean body\nEOF", tmp_path) is None
+
+
+@pytest.mark.parametrize("word, denied, why", [
+    ('"$UNSET_BODY_FOR_TEST"', True, "못"),
+    (f'"see {_HOME}"', True, "local-home-path 1"),
+    ('"all clean"', False, ""),
+    ("'literal $UNSET_BODY_FOR_TEST'", False, ""),
+], ids=["variable", "home-path", "clean", "single-quoted-literal"])
+def test_a_here_string_body_is_measured(word, denied, why, tmp_path, monkeypatch, capsys):
+    """🔴 here-string(`<<< 낱말`)은 heredoc 이 아니다 — 그 낱말이 본문이다. 작은따옴표면 펼치지 않는다(글자 그대로)."""
+    monkeypatch.delenv("UNSET_BODY_FOR_TEST", raising=False)
+    result = _hook(monkeypatch, capsys, f"gh pr comment 1 --body-file - <<< {word}", tmp_path)
+    assert _denied(result) is denied and why in (_reason(result) if result else ""), result
+
+
+@pytest.mark.parametrize("body, prefix, denied", [
+    ("notes: $(cat notes.md)", "", True),
+    ("hi $UNSET_BODY_FOR_TEST", "", True),
+    ("hi `cat notes.md`", "", True),
+    ("hi $B", "B=ok; ", False),
+    ("plain text, costs $5", "", False),
+], ids=["command-substitution", "unset-variable", "backtick", "literal-assignment", "no-reference"])
+def test_an_unquoted_heredoc_body_is_judged_after_expansion(body, prefix, denied, tmp_path, monkeypatch, capsys):
+    """🔴 따옴표 없는 끝 표시(`<<EOF`)의 본문은 bash 가 펼친다 — 펼친 값을 못 재면 막는다. 인라인 글과 같은 규칙이다."""
+    monkeypatch.delenv("UNSET_BODY_FOR_TEST", raising=False)
+    (tmp_path / "notes.md").write_text("clean", encoding="utf-8")
+    result = _hook(monkeypatch, capsys, f"{prefix}gh pr create --title t --body-file - <<EOF\n{body}\nEOF", tmp_path)
+    assert _denied(result) is denied, result
+
+
+def test_a_cat_heredoc_piped_into_gh_is_measured(tmp_path, monkeypatch, capsys):
+    """파이프 앞 단계가 heredoc 하나만 받는 `cat` 이면 stdin 은 그 heredoc 본문이다 — 깨끗하면 통과, 꼴이 있으면 막는다.
+    앞 단계에 다른 인자가 붙으면(`cat <<EOF 파일`) 본문이 어디서 오는지 모르니 막는다.
+    """
+    clean = "cat <<'EOF' | gh pr create --title t --body-file -\nclean body\nEOF"
+    assert _hook(monkeypatch, capsys, clean, tmp_path) is None
+    dirty = f"cat <<'EOF' | gh pr create --title t --body-file -\nsee {_HOME}\nEOF"
+    result = _hook(monkeypatch, capsys, dirty, tmp_path)
+    assert _denied(result) and "local-home-path 1" in _reason(result), result
+    (tmp_path / "notes.md").write_text("clean", encoding="utf-8")
+    mixed = "cat <<'EOF' notes.md | gh pr create --title t --body-file -\nclean body\nEOF"
+    assert _denied(_hook(monkeypatch, capsys, mixed, tmp_path))
+
+
+def test_a_quoted_heredoc_body_is_literal(tmp_path, monkeypatch, capsys):
+    """대조군(뒤집기) — 끝 표시에 따옴표가 있으면 bash 는 본문을 펼치지 않는다. 같은 본문이 `<<EOF` 에서는 막히고 여기선 통과한다."""
+    monkeypatch.delenv("UNSET_BODY_FOR_TEST", raising=False)
+    for quote in ("'", '"'):
+        command = f"gh pr create --title t --body-file - <<{quote}EOF{quote}\nhi $UNSET_BODY_FOR_TEST and $(not run)\nEOF"
+        assert _hook(monkeypatch, capsys, command, tmp_path) is None, quote
+
+
+@pytest.mark.parametrize("command", [
+    "gh pr create --title t --body-file - <<\\EOF\nbody\nEOF",
+    "gh pr create --title t --body-file - <<'END-OF'\nbody\nEND-OF",
+], ids=["backslash-delimiter", "dashed-delimiter"])
+def test_a_heredoc_the_scanner_cannot_parse_is_denied(command, tmp_path, monkeypatch, capsys):
+    """🔴 이 검사가 끝 표시를 못 읽는 heredoc 이 본문(stdin)이면 그 본문을 잰 적이 없다 — 막는다(못 재면 red)."""
+    result = _hook(monkeypatch, capsys, command, tmp_path)
+    assert _denied(result) and "못" in _reason(result), result
+
+
 def test_only_assignments_before_the_gh_call_count(tmp_path, monkeypatch, capsys):
     """변수는 gh 호출 **앞**의 대입으로만 푼다 — 뒤의 대입이 다른 파일을 가리켜도 앞 값을 쓴다(보안 검토 ④)."""
     (tmp_path / "dirty").mkdir()

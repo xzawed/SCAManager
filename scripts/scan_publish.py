@@ -6,7 +6,8 @@
 - 파일 검사: `py -3 scripts/scan_publish.py <파일>...` — 파일마다 꼴별 개수를 찍고, 하나라도 있으면 exit 1.
 - 훅: `.claude/settings.json` PreToolUse(`if: Bash(gh *)` · `PowerShell(gh *)` — gh 명령에만 뜬다 · `onFailure: "block"`).
   명령 글자 전체와 그 명령이 가리키는 본문 파일(`--body-file` · `-F` · `--notes-file` · api 의 `key=@파일` · `--input`)을 재고,
-  꼴이 있으면 deny 한다(종류 · 개수만 알린다). 경로를 못 풀거나 파일을 못 읽으면 막는다(못 재면 red).
+  꼴이 있으면 deny 한다(종류 · 개수만 알린다). 경로를 못 풀거나 파일을 못 읽으면 막는다(못 재면 red). 게시될 인라인 글
+  (`--body` · `--title` · api 필드 · gist 설명 · 머지 제목)의 변수도 같은 명령 안의 글자 대입으로 못 풀면 막는다.
 
 꼴(`_KINDS`)은 이름 · 개수로만 쓰인다 — 맞은 글자는 어디에도 찍지 않는다. 시험 = `tests/unit/scripts/test_scan_publish.py`.
 Count secret / personal-data shapes before a public write; values are never printed.
@@ -90,9 +91,22 @@ def _summary(counts: dict[str, int]) -> str:
 # --- 훅: gh 명령이 가리키는 본문 ------------------------------------------------------------------------------
 # --- hook: the bodies a gh command points at ---
 
-# heredoc 본문은 게시될 글이다 — 따로 꺼내 재고, 낱말로 나눌 때는 걷어 낸다(그 안의 따옴표가 나누기를 깨뜨린다).
-# Heredoc bodies are published text: scan them separately and drop them before splitting.
-_HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_]\w*)\1[^\n]*\n(?P<body>.*?)\n[ \t]*\2[ \t]*(?=\n|$)", re.S)
+# heredoc 본문은 게시될 글이다 — 따로 꺼내 재고, 낱말로 나눌 때는 본문 · 끝 표시만 표지로 바꾼다(그 안의 따옴표가 나누기를
+# 깨뜨린다). 여는 줄의 나머지(`<<'EOF' --title …` · `| gh …`)는 그 명령의 인자 · 다음 단계라 남긴다. 끝 표시에 따옴표가
+# 없으면 bash 가 본문을 펼친다 — 인라인 글과 같은 규칙으로 판정한다.
+# Heredoc bodies are published text: scan them separately; replace only body + terminator with a marker (the rest of the
+# operator line is still arguments / the next pipeline stage). An unquoted delimiter means bash expands the body.
+_HEREDOC = re.compile(r"<<-?[ \t]*(?P<quote>['\"]?)(?P<delim>[A-Za-z_]\w*)(?P=quote)(?P<tail>[^\n]*)\n(?P<body>.*?)"
+                      r"\n[ \t]*(?P=delim)[ \t]*(?=\n|$)", re.S)
+_HEREDOC_MARK = "<<\0heredoc\0"
+# 이 검사가 끝 표시를 못 읽어 남은 heredoc 연산자 — here-string(`<<<`) · 표지는 아니다.
+# A heredoc operator left unparsed — neither a here-string (`<<<`) nor the marker.
+_UNPARSED_HEREDOC = re.compile(r"(?<!<)<<(?![<\0])")
+# here-string — `<<< 낱말` 의 낱말이 stdin 본문이다. / A here-string's word is the stdin body.
+_HERE_STRING = re.compile(r"<<<[ \t]*(\"[^\"]*\"|'[^']*'|[^\s;&|<>()]+)")
+# `cat <<EOF | gh … -` — 파이프 앞 단계가 heredoc 하나만 받는 cat 이면 stdin 은 그 heredoc 본문이다(따로 잰다).
+# A previous pipeline stage that is a bare `cat <<EOF` feeds that heredoc body (measured separately).
+_CAT_HEREDOC_STAGE = re.compile(r"(?:^|[;&|(\n])[ \t]*cat[ \t]+" + re.escape(_HEREDOC_MARK) + r"[ \t]*\|[ \t]*$")
 _GH_SEGMENT = re.compile(r"(?:^|(?<=[\s;&|(]))gh(?:\.exe)?\s+(?P<rest>[^\n;&|]*)")
 _ASSIGN = re.compile(r"(?:^|(?<=[\s;&|]))([A-Za-z_]\w*)=(\"[^\"]*\"|'[^']*'|[^\s;&|]*)")
 _CD = re.compile(r"(?:^|(?<=[\s;&|]))cd\s+(\"[^\"]*\"|'[^']*'|[^\s;&|()]+)")
@@ -103,12 +117,18 @@ _UNMODELLED_DIR_CHANGE = re.compile(
     r"|(?:^|(?<=[\s;&|]))cd\s+-(?=\s|$)|\(\s*cd\s")
 _INPUT_REDIRECT = re.compile(r"(?<![<\d])<(?!<)\s*(\"[^\"]*\"|'[^']*'|[^\s;&|<>()]+)")
 _VAR = re.compile(r"\$(?:\{(\w+)\}|(\w+))")
-# 본문 파일을 받는 플래그(api 밖) · 게시될 글을 받는 플래그 · api 필드 플래그 · gist 에서 값을 받는(파일이 아닌) 플래그.
-# Body-file flags (outside api), published-text flags, api field flags, gist flags whose value is not a file.
+# 게시될 인라인 글 안의 셸 변수 참조 — 이름 꼴(`$NAME`)과 `${…}` 전부. `$5` · 홀로 선 `$` 는 변수 이름이 아니다.
+# Shell variable references in published inline text: `$NAME` and any `${…}`; `$5` or a lone `$` is not a name.
+_TEXT_VAR = re.compile(r"\$(?:\{(?P<braced>[^}]*)\}|(?P<bare>[A-Za-z_]\w*))")
+_NAME = re.compile(r"[A-Za-z_]\w*")
+# 본문 파일을 받는 플래그(api 밖) · 게시될 글을 받는 플래그(`--subject` 는 `gh pr merge` 의 squash 제목) · api 필드 플래그 ·
+# gist 에서 게시될 글을 받는 플래그 · gist 에서 값을 받는(파일이 아닌) 플래그.
+# Body-file flags (outside api), published-text flags, api field flags, gist text flags, gist flags whose value is not a file.
 _BODY_FILE_FLAGS = ("--body-file", "-F", "--notes-file")
-_TEXT_FLAGS = ("--body", "-b", "--title", "-t", "--notes", "-n")
+_TEXT_FLAGS = ("--body", "-b", "--title", "-t", "--notes", "-n", "--subject")
 _API_FIELD_FLAGS = ("-F", "--field", "-f", "--raw-field")
-_GIST_VALUE_FLAGS = ("-d", "--desc", "-f", "--filename")
+_GIST_TEXT_FLAGS = ("-d", "--desc")
+_GIST_VALUE_FLAGS = _GIST_TEXT_FLAGS + ("-f", "--filename")
 
 
 def _unquote(word: str) -> str:
@@ -158,9 +178,13 @@ def _targets(words: list[str]) -> tuple[list[str], list[str]]:
         elif group == "gist" and action == "create":
             if i >= 2 and flag is None:
                 paths.append(word)
+            elif flag in _GIST_TEXT_FLAGS:
+                texts.append(value)
             skip_next = _takes_separate_value(word, flag, _GIST_VALUE_FLAGS)
         elif group == "gist" and action == "edit" and flag in ("--add", "-a"):
             paths.append(value)
+        elif group == "gist" and action == "edit" and flag in _GIST_TEXT_FLAGS:
+            texts.append(value)
         elif flag in _BODY_FILE_FLAGS:
             paths.append(value)
         elif flag in _TEXT_FLAGS:
@@ -181,6 +205,28 @@ def _resolve(path: str, assigned: dict[str, str], base: Path | None) -> Path | N
     return base / p if base is not None else None
 
 
+def _expand_text(text: str, assigned: dict[str, str]) -> str | None:
+    """게시될 인라인 글의 변수를 같은 명령 안의 글자 대입으로만 푼다 — 그 밖의 변수 · 매개변수 확장 · 치환이 남으면 None.
+
+    훅의 환경은 명령이 도는 셸의 환경이 아니다(셸 프로필이 덮을 수 있다) — 그래서 게시될 글은 환경에서 풀지 않는다.
+    Resolve variables in published inline text from literal assignments in the same command only; otherwise None.
+    """
+    unresolved = False
+
+    def _sub(match: re.Match[str]) -> str:
+        nonlocal unresolved
+        name = match.group("braced") if match.group("braced") is not None else match.group("bare")
+        if not _NAME.fullmatch(name) or name not in assigned:
+            unresolved = True
+            return ""
+        return assigned[name]
+
+    expanded = _TEXT_VAR.sub(_sub, text)
+    if unresolved or _TEXT_VAR.search(expanded) or "$(" in expanded or "`" in expanded:
+        return None
+    return expanded
+
+
 def _read(path: Path | None) -> str | None:
     try:
         if path is None or path.stat().st_size > _MAX_BYTES:
@@ -194,14 +240,24 @@ def judge_command(command: str, cwd: str | None, shell: str) -> tuple[dict[str, 
     """gh 명령 → (꼴별 개수, 못 잰 것들). 명령 글자 · heredoc · 인라인 본문 · 본문 파일을 잰다.
 
     명령 글자 전체에서는 홈 경로 꼴만 빼고 잰다 — 거기 든 경로는 본문 파일 · cd 같은 로컬 인자다. 홈 경로는 게시될 글
-    (heredoc 본문 · 인라인 본문 · 본문 파일)에서만 센다.
+    (heredoc 본문 · 인라인 본문 · 본문 파일)에서만 센다. 인라인 본문의 변수는 같은 명령 안의 글자 대입으로 풀어 잰다 —
+    그 값은 명령 글자(대입)에 있으니 홈 경로만 더 센다. 못 풀면 못 잰 것이다.
     A gh command → (per-kind counts, what could not be measured).
     """
     counts = count_kinds(command, skip=("local-home-path",))
+    unread: list[str] = []
     for heredoc in _HEREDOC.finditer(command):
-        _add(counts, count_kinds(heredoc.group("body"), only=("local-home-path",)))
-    stripped = _HEREDOC.sub("<<", command)
-    unread = []
+        body: str | None = heredoc.group("body")
+        if not heredoc.group("quote"):
+            # 따옴표 없는 끝 표시 — bash 가 펼친다. 그 앞의 글자 대입으로만 풀고, 못 풀면 못 잰 것이다.
+            # Unquoted delimiter: bash expands the body; resolve only from earlier literal assignments.
+            earlier = {m.group(1): _unquote(m.group(2)) for m in _ASSIGN.finditer(command[:heredoc.start()])}
+            body = None if ("$(" in body or "`" in body) else _expand_text(body, earlier)
+            if body is None:
+                unread.append("(따옴표 없는 heredoc 본문이 펼쳐진다 — 펼친 값을 못 잰다)")
+                continue
+        _add(counts, count_kinds(body, only=("local-home-path",)))
+    stripped = _HEREDOC.sub(lambda m: _HEREDOC_MARK + m.group("tail"), command)
     for seg in _GH_SEGMENT.finditer(stripped):
         rest = seg.group("rest")
         words = _split(rest, shell)
@@ -221,15 +277,36 @@ def judge_command(command: str, cwd: str | None, shell: str) -> tuple[dict[str, 
         for text in texts:
             if "$(" in text or "`" in text:
                 unread.append("(인라인 본문이 명령 치환이다)")
-            else:
-                _add(counts, count_kinds(text, only=("local-home-path",)))
+                continue
+            expanded = _expand_text(text, assigned)
+            if expanded is None:
+                unread.append("(인라인 본문의 변수를 같은 명령 안의 대입으로 풀지 못했다)")
+                continue
+            _add(counts, count_kinds(expanded, only=("local-home-path",)))
         for raw in paths:
             if raw == "-":
-                if "<<" in rest:
-                    continue  # heredoc — 위에서 잰다 / measured above
+                # stdin 의 출처를 모두 잰다 — heredoc 표지 · 앞 단계 `cat <<EOF` 는 위에서, here-string 낱말은 여기서,
+                # `<` 파일은 아래에서. 셋 다 없으면 어디서 오는지 모른다.
+                # Measure every stdin source; with none, the body comes from somewhere unknown.
+                measured = _HEREDOC_MARK in rest or _CAT_HEREDOC_STAGE.search(before) is not None
+                for here in _HERE_STRING.finditer(rest):
+                    measured = True
+                    word = here.group(1)
+                    if word.startswith("'"):
+                        _add(counts, count_kinds(_unquote(word), only=("local-home-path",)))
+                        continue
+                    text = None if ("$(" in word or "`" in word) else _expand_text(_unquote(word), assigned)
+                    if text is None:
+                        unread.append("(here-string 본문을 못 잰다)")
+                    else:
+                        _add(counts, count_kinds(text, only=("local-home-path",)))
+                if _UNPARSED_HEREDOC.search(rest):
+                    unread.append("(heredoc 끝 표시를 읽지 못했다)")
+                    continue
                 redirect = _INPUT_REDIRECT.search(rest)
                 if redirect is None:
-                    unread.append("(stdin 본문 — 어디서 오는지 모른다)")
+                    if not measured:
+                        unread.append("(stdin 본문 — 어디서 오는지 모른다)")
                     continue
                 raw = _unquote(redirect.group(1))
             text = _read(_resolve(raw, assigned, base))
@@ -265,8 +342,8 @@ def _hook() -> int:
         lines.append(f"비밀값 · 개인정보 꼴: {_summary(counts)} (값은 열지 않는다)")
         lines.append("→ 본문에서 그 부분을 지우거나 가린 뒤 다시 올린다. 확인: py -3 scripts/scan_publish.py <본문 파일>")
     if unread:
-        lines.append(f"못 읽은 본문 {len(unread)}개 — 경로를 못 풀었거나(명령 치환 · 정의 안 된 변수) 파일을 못 읽었다. "
-                     "경로를 그대로 적어 다시 시도한다(못 재면 막는다).")
+        lines.append(f"못 읽은 본문 {len(unread)}개 — 경로 · 인라인 글의 변수를 못 풀었거나(명령 치환 · 같은 명령 안에서 대입하지 "
+                     "않은 변수) 파일을 못 읽었다. 경로 · 글을 그대로 적거나 본문 파일로 다시 시도한다(못 재면 막는다).")
     return _deny("\n".join(lines))
 
 
