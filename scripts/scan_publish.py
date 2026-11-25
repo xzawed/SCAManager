@@ -92,18 +92,30 @@ def _summary(counts: dict[str, int]) -> str:
 # --- hook: the bodies a gh command points at ---
 
 # heredoc 본문은 게시될 글이다 — 따로 꺼내 재고, 낱말로 나눌 때는 본문 · 끝 표시만 표지로 바꾼다(그 안의 따옴표가 나누기를
-# 깨뜨린다). 여는 줄의 나머지(`<<'EOF' --title …` · `| gh …`)는 그 명령의 인자 · 다음 단계라 남긴다. 끝 표시에 따옴표가
-# 없으면 bash 가 본문을 펼친다 — 인라인 글과 같은 규칙으로 판정한다.
-# Heredoc bodies are published text: scan them separately; replace only body + terminator with a marker (the rest of the
-# operator line is still arguments / the next pipeline stage). An unquoted delimiter means bash expands the body.
-_HEREDOC = re.compile(r"<<-?[ \t]*(?P<quote>['\"]?)(?P<delim>[A-Za-z_]\w*)(?P=quote)(?P<tail>[^\n]*)\n(?P<body>.*?)"
-                      r"\n[ \t]*(?P=delim)[ \t]*(?=\n|$)", re.S)
-_HEREDOC_MARK = "<<\0heredoc\0"
+# 깨뜨린다). 여는 줄의 나머지(`<<'EOF' --title …` · `| gh …`)는 그 명령의 인자 · 다음 단계라 남긴다. 끝 표시는 bash 처럼
+# 낱말 전체(`END-MARK` 는 `END` 가 아니다)가 그 줄에 정확히 있어야 끝난다(`<<-` 만 앞 탭을 허용). fd 접두(`3<<`)가 0 이
+# 아니면 stdin 이 아니다. 끝 표시에 따옴표가 없으면 bash 가 본문을 펼친다 — 인라인 글과 같은 규칙으로 판정한다.
+# Heredoc bodies are published text: replace only body + terminator with a marker (the rest of the operator line is still
+# arguments / the next stage). The terminator is the whole word alone on its line (only `<<-` strips leading tabs);
+# a non-zero fd prefix is not stdin; an unquoted delimiter means bash expands the body.
+_HEREDOC = re.compile(
+    r"(?:(?:(?<=[\s;&|(])|^)(?P<fd>\d+))?(?<!<)<<(?!<)(?P<dash>-)?[ \t]*(?P<quote>['\"]?)(?P<delim>[A-Za-z_]\w*)"
+    r"(?P=quote)(?=[\s;&|<>()]|$)(?P<tail>[^\n]*)\n(?:(?P<body>.*?)\n)??(?(dash)\t*)(?P=delim)(?=\n|$)", re.S | re.M)
+_HEREDOC_MARK = "<<\0heredoc\0"            # fd 0 의 heredoc / a heredoc on stdin
+_OTHER_FD_HEREDOC_MARK = "\0fd-heredoc\0"  # 다른 fd 의 heredoc — stdin 이 아니다 / a heredoc on another fd
 # 이 검사가 끝 표시를 못 읽어 남은 heredoc 연산자 — here-string(`<<<`) · 표지는 아니다.
 # A heredoc operator left unparsed — neither a here-string (`<<<`) nor the marker.
 _UNPARSED_HEREDOC = re.compile(r"(?<!<)<<(?![<\0])")
-# here-string — `<<< 낱말` 의 낱말이 stdin 본문이다. / A here-string's word is the stdin body.
-_HERE_STRING = re.compile(r"<<<[ \t]*(\"[^\"]*\"|'[^']*'|[^\s;&|<>()]+)")
+# stdin 연산자 — 따옴표를 가린 글자에서 찾는다. 숫자 접두는 낱말 머리일 때만 fd 다(`x3<f` 의 3 은 낱말 글자).
+# stdin operators, searched in quote-masked text; a digit prefix is an fd only at the start of a word.
+_FD_PREFIX = r"(?:(?:(?<=[\s;&|(])|^)(?P<fd>\d+)|(?<![<>&]))"
+_HERE_STRING_OP = re.compile(_FD_PREFIX + r"<<<[ \t]*", re.M)
+_STDIN_REDIRECT_OP = re.compile(_FD_PREFIX + r"(?<!<)<(?P<op>[&>]?)(?![<(])[ \t]*", re.M)
+# 셸 낱말 하나(붙어 있는 따옴표 조각을 이은 것)와 그 조각들. / One shell word (adjacent quoted pieces joined) and its pieces.
+_SHELL_WORD = re.compile(r"(?:'[^']*'|\$'(?:[^'\\]|\\.)*'|\"(?:[^\"\\]|\\.)*\"|\\.|[^\s;&|<>()'\"\\])+", re.S)
+_WORD_PIECE = re.compile(r"'(?P<single>[^']*)'|\$'(?P<ansi>(?:[^'\\]|\\.)*)'|\"(?P<double>(?:[^\"\\]|\\.)*)\""
+                         r"|\\(?P<escaped>.)|(?P<bare>[^\s;&|<>()'\"\\]+)", re.S)
+_SIMPLE_WORD = re.compile(r"\"[^\"\\]*\"|'[^']*'|[^\s;&|<>()'\"\\]+")
 # `cat <<EOF | gh … -` — 파이프 앞 단계가 heredoc 하나만 받는 cat 이면 stdin 은 그 heredoc 본문이다(따로 잰다).
 # A previous pipeline stage that is a bare `cat <<EOF` feeds that heredoc body (measured separately).
 _CAT_HEREDOC_STAGE = re.compile(r"(?:^|[;&|(\n])[ \t]*cat[ \t]+" + re.escape(_HEREDOC_MARK) + r"[ \t]*\|[ \t]*$")
@@ -115,7 +127,6 @@ _CD = re.compile(r"(?:^|(?<=[\s;&|]))cd\s+(\"[^\"]*\"|'[^']*'|[^\s;&|()]+)")
 _UNMODELLED_DIR_CHANGE = re.compile(
     r"(?i)(?:^|(?<=[\s;&|(]))(?:pushd|popd|set-location|push-location|pop-location|sl|chdir)(?=\s|$)"
     r"|(?:^|(?<=[\s;&|]))cd\s+-(?=\s|$)|\(\s*cd\s")
-_INPUT_REDIRECT = re.compile(r"(?<![<\d])<(?!<)\s*(\"[^\"]*\"|'[^']*'|[^\s;&|<>()]+)")
 _VAR = re.compile(r"\$(?:\{(\w+)\}|(\w+))")
 # 게시될 인라인 글 안의 셸 변수 참조 — 이름 꼴(`$NAME`)과 `${…}` 전부. `$5` · 홀로 선 `$` 는 변수 이름이 아니다.
 # Shell variable references in published inline text: `$NAME` and any `${…}`; `$5` or a lone `$` is not a name.
@@ -227,6 +238,61 @@ def _expand_text(text: str, assigned: dict[str, str]) -> str | None:
     return expanded
 
 
+def _count_value(value: str, expanded: bool) -> dict[str, int]:
+    """게시될 값의 꼴 — 글자 그대로면 홈 경로만 더 센다(나머지 꼴은 명령 글자에서 이미 쟀다). 변수를 풀어 달라졌으면 모든 꼴을
+    다시 잰다 — 조각마다는 꼴이 아니어도 이은 값은 꼴일 수 있다(그때 개수는 겹쳐 셀 수 있다 · 막는 판정은 같다).
+    A literal value adds home paths only; an expanded value is re-counted for every kind (joined pieces may form a shape).
+    """
+    return count_kinds(value) if expanded else count_kinds(value, only=("local-home-path",))
+
+
+def _mask_quoted(text: str) -> str:
+    """따옴표 안 글자(따옴표 · 이스케이프 포함)를 같은 길이의 `_` 로 가린다 — 연산자는 따옴표 밖에서만 찾는다(위치는 원문과 같다).
+    Mask quoted and escaped characters with `_`, keeping positions, so operators are found outside quotes only.
+    """
+    out: list[str] = []
+    quote: str | None = None
+    escaped = False
+    for ch in text:
+        if escaped:
+            escaped = False
+        elif ch == "\\" and quote != "'":
+            escaped = True
+        elif quote:
+            quote = None if ch == quote else quote
+        elif ch in "'\"":
+            quote = ch
+        else:
+            out.append(ch)
+            continue
+        out.append("_")
+    return "".join(out)
+
+
+def _word_value(word: str, assigned: dict[str, str]) -> tuple[str, bool] | None:
+    """셸 낱말 하나의 값과 «변수를 풀었는가» — 작은따옴표 조각은 글자 그대로, 나머지는 같은 명령 안의 글자 대입으로만 푼다.
+    `$'…'`(펼쳐 봐야 안다) · 치환 · 못 푼 변수 · 조각으로 다 덮이지 않는 낱말은 None.
+    The value of one shell word and whether it was expanded; single-quoted pieces are literal.
+    """
+    out, pos, expanded = [], 0, False
+    for piece in _WORD_PIECE.finditer(word):
+        if piece.start() != pos or piece.group("ansi") is not None:
+            return None
+        pos = piece.end()
+        if piece.group("single") is not None:
+            out.append(piece.group("single"))
+        elif piece.group("escaped") is not None:
+            out.append(piece.group("escaped"))
+        else:
+            text = piece.group("double") if piece.group("double") is not None else piece.group("bare")
+            value = None if ("$(" in text or "`" in text) else _expand_text(text, assigned)
+            if value is None:
+                return None
+            expanded = expanded or value != text
+            out.append(value)
+    return ("".join(out), expanded) if pos == len(word) else None
+
+
 def _read(path: Path | None) -> str | None:
     try:
         if path is None or path.stat().st_size > _MAX_BYTES:
@@ -234,6 +300,54 @@ def _read(path: Path | None) -> str | None:
         return path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return None
+
+
+def _measure_stdin(rest: str, before: str, assigned: dict[str, str], base: Path | None,
+                   counts: dict[str, int], unread: list[str]) -> None:
+    """stdin 본문(`-`)을 잰다 — 출처가 정확히 하나일 때만: fd 0 의 heredoc(본문은 따로 잰다) · here-string 낱말 · `<` 파일,
+    또는 출처가 없고 파이프 앞 단계가 `cat <<EOF |` 일 때. 출처가 여럿(덮어쓰기) · `<&` 복제 · 못 읽은 heredoc · 모르는 출처는
+    못 잰 것이다. 연산자는 따옴표를 가린 글자에서 찾는다(`--title '<<<x'` 는 연산자가 아니다).
+    Measure a stdin body only from exactly one known source; several, `<&`, unparsed heredocs or unknown sources are unread.
+    """
+    masked = _mask_quoted(rest)
+    if _UNPARSED_HEREDOC.search(masked):
+        unread.append("(heredoc 끝 표시를 읽지 못했다)")
+        return
+    sources: list[tuple[str, str | None]] = [("heredoc", None)] * masked.count(_HEREDOC_MARK)
+    for op in _HERE_STRING_OP.finditer(masked):
+        if op.group("fd") in (None, "0"):
+            word = _SHELL_WORD.match(rest, op.end())
+            sources.append(("here-string", word.group(0) if word else None))
+    for op in _STDIN_REDIRECT_OP.finditer(masked):
+        if op.group("fd") in (None, "0"):
+            word = _SHELL_WORD.match(rest, op.end())
+            sources.append(("dup" if op.group("op") == "&" else "file", word.group(0) if word else None))
+    if not sources:
+        if _CAT_HEREDOC_STAGE.search(before) is None:
+            unread.append("(stdin 본문 — 어디서 오는지 모른다)")
+        return
+    if len(sources) > 1:
+        unread.append("(stdin 출처가 여럿이다 — 어느 것이 본문인지 모른다)")
+        return
+    kind, word = sources[0]
+    if kind == "heredoc":
+        return  # 본문은 judge_command 머리에서 잰다 / measured at the top of judge_command
+    if kind == "here-string":
+        value = _word_value(word, assigned) if word else None
+        if value is None:
+            unread.append("(here-string 본문을 못 잰다)")
+        else:
+            _add(counts, _count_value(*value))
+        return
+    if kind == "dup" or not word or not _SIMPLE_WORD.fullmatch(word):
+        unread.append("(stdin 이 다른 fd 에서 오거나 파일 이름을 못 풀었다)")
+        return
+    raw = _unquote(word)
+    text = _read(_resolve(raw, assigned, base))
+    if text is None:
+        unread.append(raw)
+        return
+    _add(counts, count_kinds(text))
 
 
 def judge_command(command: str, cwd: str | None, shell: str) -> tuple[dict[str, int], list[str]]:
@@ -247,17 +361,20 @@ def judge_command(command: str, cwd: str | None, shell: str) -> tuple[dict[str, 
     counts = count_kinds(command, skip=("local-home-path",))
     unread: list[str] = []
     for heredoc in _HEREDOC.finditer(command):
-        body: str | None = heredoc.group("body")
-        if not heredoc.group("quote"):
-            # 따옴표 없는 끝 표시 — bash 가 펼친다. 그 앞의 글자 대입으로만 풀고, 못 풀면 못 잰 것이다.
-            # Unquoted delimiter: bash expands the body; resolve only from earlier literal assignments.
-            earlier = {m.group(1): _unquote(m.group(2)) for m in _ASSIGN.finditer(command[:heredoc.start()])}
-            body = None if ("$(" in body or "`" in body) else _expand_text(body, earlier)
-            if body is None:
-                unread.append("(따옴표 없는 heredoc 본문이 펼쳐진다 — 펼친 값을 못 잰다)")
-                continue
-        _add(counts, count_kinds(body, only=("local-home-path",)))
-    stripped = _HEREDOC.sub(lambda m: _HEREDOC_MARK + m.group("tail"), command)
+        body = heredoc.group("body") or ""
+        if heredoc.group("quote"):
+            _add(counts, _count_value(body, expanded=False))
+            continue
+        # 따옴표 없는 끝 표시 — bash 가 펼친다. 그 앞의 글자 대입으로만 풀고, 못 풀면 못 잰 것이다.
+        # Unquoted delimiter: bash expands the body; resolve only from earlier literal assignments.
+        earlier = {m.group(1): _unquote(m.group(2)) for m in _ASSIGN.finditer(command[:heredoc.start()])}
+        value = None if ("$(" in body or "`" in body) else _expand_text(body, earlier)
+        if value is None:
+            unread.append("(따옴표 없는 heredoc 본문이 펼쳐진다 — 펼친 값을 못 잰다)")
+            continue
+        _add(counts, _count_value(value, expanded=value != body))
+    stripped = _HEREDOC.sub(lambda m: (_HEREDOC_MARK if m.group("fd") in (None, "0") else _OTHER_FD_HEREDOC_MARK)
+                            + m.group("tail"), command)
     for seg in _GH_SEGMENT.finditer(stripped):
         rest = seg.group("rest")
         words = _split(rest, shell)
@@ -282,33 +399,12 @@ def judge_command(command: str, cwd: str | None, shell: str) -> tuple[dict[str, 
             if expanded is None:
                 unread.append("(인라인 본문의 변수를 같은 명령 안의 대입으로 풀지 못했다)")
                 continue
-            _add(counts, count_kinds(expanded, only=("local-home-path",)))
+            _add(counts, _count_value(expanded, expanded=expanded != text))
+        if "-" in paths:
+            _measure_stdin(rest, before, assigned, base, counts, unread)
         for raw in paths:
             if raw == "-":
-                # stdin 의 출처를 모두 잰다 — heredoc 표지 · 앞 단계 `cat <<EOF` 는 위에서, here-string 낱말은 여기서,
-                # `<` 파일은 아래에서. 셋 다 없으면 어디서 오는지 모른다.
-                # Measure every stdin source; with none, the body comes from somewhere unknown.
-                measured = _HEREDOC_MARK in rest or _CAT_HEREDOC_STAGE.search(before) is not None
-                for here in _HERE_STRING.finditer(rest):
-                    measured = True
-                    word = here.group(1)
-                    if word.startswith("'"):
-                        _add(counts, count_kinds(_unquote(word), only=("local-home-path",)))
-                        continue
-                    text = None if ("$(" in word or "`" in word) else _expand_text(_unquote(word), assigned)
-                    if text is None:
-                        unread.append("(here-string 본문을 못 잰다)")
-                    else:
-                        _add(counts, count_kinds(text, only=("local-home-path",)))
-                if _UNPARSED_HEREDOC.search(rest):
-                    unread.append("(heredoc 끝 표시를 읽지 못했다)")
-                    continue
-                redirect = _INPUT_REDIRECT.search(rest)
-                if redirect is None:
-                    if not measured:
-                        unread.append("(stdin 본문 — 어디서 오는지 모른다)")
-                    continue
-                raw = _unquote(redirect.group(1))
+                continue  # stdin — 위에서 한 번 잰다 / measured once above
             text = _read(_resolve(raw, assigned, base))
             if text is None:
                 unread.append(raw)

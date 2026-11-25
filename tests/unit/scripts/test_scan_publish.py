@@ -332,6 +332,78 @@ def test_a_heredoc_the_scanner_cannot_parse_is_denied(command, tmp_path, monkeyp
     assert _denied(result) and "못" in _reason(result), result
 
 
+_UNIX_HOME = "/" + "home/alice"
+
+
+@pytest.mark.parametrize("command", [
+    f"gh pr create --body-file - <<EOF\nhello\n EOF\n{_UNIX_HOME}\nEOF",
+    f"gh pr create --body-file - <<EOF\nhello\n\tEOF\n{_UNIX_HOME}\nEOF",
+    f"gh pr create --body-file - <<-EOF\nhello\n EOF\n{_UNIX_HOME}\nEOF",
+    f"gh pr create --body-file - <<EOF\nhello\nEOF \n{_UNIX_HOME}\nEOF",
+    f"gh pr create --body-file - <<END-MARK\nhello\nEND\n{_UNIX_HOME}\nEND-MARK",
+    f"gh pr create --body-file - <<END.X\nhello\nEND\n{_UNIX_HOME}\nEND.X",
+    f"gh pr create --body-file - <<E'O'F\nhello\nE\n{_UNIX_HOME}\nEOF",
+], ids=["space-before-terminator", "tab-before-terminator-without-dash", "space-under-dash",
+        "space-after-terminator", "dashed-word", "dotted-word", "quoted-piece-word"])
+def test_a_heredoc_ends_only_where_bash_ends_it(command, tmp_path, monkeypatch, capsys):
+    """🔴 끝 표시는 bash 처럼 낱말 전체 · 그 줄 정확히여야 한다(`<<-` 만 앞 탭을 허용) — 더 일찍 끝내면 진짜 본문의 뒤쪽을
+    재지 않는다(Grok 22637c93). 끝을 못 찾으면 못 잰 본문이라 막는다.
+    The terminator must be the whole word on a line of its own (only `<<-` strips leading tabs), as in bash.
+    """
+    assert _denied(_hook(monkeypatch, capsys, command, tmp_path))
+
+
+def test_a_heredoc_under_dash_may_indent_its_terminator_with_tabs(tmp_path, monkeypatch, capsys):
+    """대조군 — `<<-` 는 끝 표시 앞 탭을 허용한다. 깨끗하면 통과, 본문의 홈 경로는 센다."""
+    assert _hook(monkeypatch, capsys, "gh pr create --body-file - <<-EOF\n\tclean\n\tEOF", tmp_path) is None
+    result = _hook(monkeypatch, capsys, f"gh pr create --body-file - <<-EOF\n\t{_UNIX_HOME}/x\n\tEOF", tmp_path)
+    assert _denied(result) and "local-home-path 1" in _reason(result), result
+
+
+@pytest.mark.parametrize("command", [
+    "echo hello | gh pr create --body-file - 3<<'EOF'\ndecoy\nEOF",
+    "gh pr create --body-file - 3<<'EOF'\ndecoy\nEOF",
+    "gh pr create --body-file - <<'EOF' 0<notes.md\ndecoy\nEOF",
+    "gh pr create --body-file - <<<'clean' 0<notes.md",
+    "gh pr create --body-file - <<<'clean' <&3",
+    "gh pr create --body-file - <<<'clean' <>notes.md",
+    "gh pr create --body-file - --title '<<<clean'",
+    'gh pr create --body-file - --title "x < notes.md"',
+], ids=["fd3-heredoc-with-pipe", "fd3-heredoc-only", "heredoc-then-fd0-file", "here-string-then-fd0-file",
+        "here-string-then-dup", "here-string-then-read-write", "quoted-here-string-operator",
+        "quoted-redirect-operator"])
+def test_stdin_is_measured_only_from_exactly_one_known_source(command, tmp_path, monkeypatch, capsys):
+    """🔴 stdin 본문은 출처가 정확히 하나(fd 0 의 heredoc · here-string · `<` 파일)일 때만 잰다 — 다른 fd 의 heredoc,
+    `0<` · `<&` · `<>` 덮어쓰기, 따옴표 안의 연산자 글자는 stdin 이 아니다. 여럿이면 어느 것이 본문인지 모르니 막는다.
+    """
+    (tmp_path / "notes.md").write_text("clean", encoding="utf-8")
+    result = _hook(monkeypatch, capsys, command, tmp_path)
+    assert _denied(result) and "못" in _reason(result), result
+
+
+@pytest.mark.parametrize("word, why", [
+    (f"'safe'\"{_UNIX_HOME}\"", "local-home-path 1"),
+    ("'x'\"$UNSET_BODY_FOR_TEST\"", "못"),
+    ("$'\\x2fhome/alice'", "못"),
+], ids=["quoted-pieces-joined", "variable-in-second-piece", "ansi-c-quoting"])
+def test_a_here_string_word_is_read_whole(word, why, tmp_path, monkeypatch, capsys):
+    """🔴 here-string 낱말은 붙어 있는 따옴표 조각 전부가 한 낱말이다 — 첫 조각만 재면 나머지가 빠진다(Grok 22637c93).
+    `$'…'` 는 펼쳐 봐야 값을 알 수 있어 못 잰 것으로 본다.
+    """
+    monkeypatch.delenv("UNSET_BODY_FOR_TEST", raising=False)
+    result = _hook(monkeypatch, capsys, f"gh pr create --body-file - <<<{word}", tmp_path)
+    assert _denied(result) and why in _reason(result), result
+
+
+def test_a_value_joined_from_resolved_variables_is_measured_whole(tmp_path, monkeypatch, capsys):
+    """🔴 글자 대입으로 풀린 조각을 이어 붙인 값은 모든 꼴로 다시 잰다 — 조각마다는 꼴이 아니어도 이은 값은 꼴일 수 있다."""
+    command = f'A=sk-ant-; B={"Zz9" * 10}; gh pr comment 1 --body "$A$B"'
+    result = _hook(monkeypatch, capsys, command, tmp_path)
+    assert _denied(result) and "anthropic-key" in _reason(result), result
+    here = f'A=sk-ant-; B={"Zz9" * 10}; gh pr create --body-file - <<<"$A$B"'
+    assert _denied(_hook(monkeypatch, capsys, here, tmp_path))
+
+
 def test_only_assignments_before_the_gh_call_count(tmp_path, monkeypatch, capsys):
     """변수는 gh 호출 **앞**의 대입으로만 푼다 — 뒤의 대입이 다른 파일을 가리켜도 앞 값을 쓴다(보안 검토 ④)."""
     (tmp_path / "dirty").mkdir()
