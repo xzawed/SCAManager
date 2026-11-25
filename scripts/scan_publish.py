@@ -40,7 +40,7 @@ _KINDS = {
     "private-key": r"-----BEGIN [A-Z ]*PRIVATE KEY-----",
     "assigned-secret": r"(?i)\b(?:SECRET|TOKEN|PASSWORD|API_KEY|ENCRYPTION_KEY)[A-Z_]*\s*[=:]\s*[\"']?[A-Za-z0-9+/_-]{24,}",
     # 사람 주소 — 공개용 주소(noreply · 예시 · git SSH)는 아래 `_PUBLIC_EMAIL` 이 뺀다.
-    "email": r"(?<![\w.+:/%-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\b",
+    "email": r"(?<![\w.+%-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\b",
     # 개인 홈 경로(사용자 이름이 든다) — CI 러너 경로는 사람 것이 아니다.
     "local-home-path": r"(?i)\b[A-Z]:[\\/]+Users[\\/]+[^\\/\s\"'`]+|/Users/[^/\s\"'`]+|/home/(?!runner/)[^/\s\"'`]+",
 }
@@ -53,17 +53,31 @@ _PUBLIC_EMAIL = re.compile(r"(?i)^(?:noreply@anthropic\.com|[^@]+@users\.noreply
 _MAX_BYTES = 2_000_000
 
 
-def count_kinds(text: str, skip: tuple[str, ...] = ()) -> dict[str, int]:
+# URL 의 사용자 자리(`scheme://user:pass@` · `scheme://user@`) 바로 뒤의 `…@호스트` 는 사람 주소가 아니다.
+# The `…@host` right after a URL user-info is not a personal address.
+_URL_USERINFO_BEFORE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://[^\s/@]*$")
+
+
+def count_kinds(text: str, only: tuple[str, ...] | None = None, skip: tuple[str, ...] = ()) -> dict[str, int]:
     """꼴별 개수(0 은 뺀다) — 맞은 글자는 돌려주지 않는다. / Per-kind counts, zeros omitted; never the matches."""
+    text = text or ""
     counts = {}
     for kind, rx in _COMPILED.items():
-        if kind in skip:
+        if kind in skip or (only is not None and kind not in only):
             continue
-        hits = rx.findall(text or "") if kind != "email" else [
-            m.group(0) for m in rx.finditer(text or "") if not _PUBLIC_EMAIL.match(m.group(0))]
+        if kind == "email":
+            hits = [m for m in rx.finditer(text) if not _PUBLIC_EMAIL.match(m.group(0))
+                    and not _URL_USERINFO_BEFORE.search(text[max(0, m.start() - 300):m.start()])]
+        else:
+            hits = rx.findall(text)
         if hits:
             counts[kind] = len(hits)
     return counts
+
+
+def _add(total: dict[str, int], more: dict[str, int]) -> None:
+    for kind, n in more.items():
+        total[kind] = total.get(kind, 0) + n
 
 
 def _summary(counts: dict[str, int]) -> str:
@@ -73,17 +87,25 @@ def _summary(counts: dict[str, int]) -> str:
 # --- 훅: gh 명령이 가리키는 본문 ------------------------------------------------------------------------------
 # --- hook: the bodies a gh command points at ---
 
-# heredoc 본문은 명령 글자 검사에서 이미 잰다 — 낱말로 나눌 때는 걷어 낸다(그 안의 따옴표가 나누기를 깨뜨린다).
-# Heredoc bodies are covered by the full-text scan; drop them before splitting (their quotes break shlex).
-_HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_]\w*)\1[^\n]*\n.*?\n[ \t]*\2[ \t]*(?=\n|$)", re.S)
+# heredoc 본문은 게시될 글이다 — 따로 꺼내 재고, 낱말로 나눌 때는 걷어 낸다(그 안의 따옴표가 나누기를 깨뜨린다).
+# Heredoc bodies are published text: scan them separately and drop them before splitting.
+_HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_]\w*)\1[^\n]*\n(?P<body>.*?)\n[ \t]*\2[ \t]*(?=\n|$)", re.S)
 _GH_SEGMENT = re.compile(r"(?:^|(?<=[\s;&|(]))gh(?:\.exe)?\s+(?P<rest>[^\n;&|]*)")
 _ASSIGN = re.compile(r"(?:^|(?<=[\s;&|]))([A-Za-z_]\w*)=(\"[^\"]*\"|'[^']*'|[^\s;&|]*)")
-_CD = re.compile(r"(?:^|(?<=[\s;&|(]))cd\s+(\"[^\"]*\"|'[^']*'|[^\s;&|]+)")
+_CD = re.compile(r"(?:^|(?<=[\s;&|]))cd\s+(\"[^\"]*\"|'[^']*'|[^\s;&|()]+)")
+# 디렉터리를 바꾸지만 이 검사가 따라가지 못하는 꼴 — 그 뒤의 상대 경로 본문은 못 잰다(절대 경로를 요구한다).
+# Directory changes this scanner does not model; a relative body path after one is unmeasurable.
+_UNMODELLED_DIR_CHANGE = re.compile(
+    r"(?i)(?:^|(?<=[\s;&|(]))(?:pushd|popd|set-location|push-location|pop-location|sl|chdir)(?=\s|$)"
+    r"|(?:^|(?<=[\s;&|]))cd\s+-(?=\s|$)|\(\s*cd\s")
+_INPUT_REDIRECT = re.compile(r"(?<![<\d])<(?!<)\s*(\"[^\"]*\"|'[^']*'|[^\s;&|<>()]+)")
 _VAR = re.compile(r"\$(?:\{(\w+)\}|(\w+))")
-# 본문 파일을 받는 플래그 — api 밖(issue · pr · release …)에서. api 는 `key=@파일` 필드와 `--input` 을 본다.
-# Flags taking a body file outside `gh api`; for api, `key=@file` fields and `--input`.
+# 본문 파일을 받는 플래그(api 밖) · 게시될 글을 받는 플래그 · api 필드 플래그 · gist 에서 값을 받는(파일이 아닌) 플래그.
+# Body-file flags (outside api), published-text flags, api field flags, gist flags whose value is not a file.
 _BODY_FILE_FLAGS = ("--body-file", "-F", "--notes-file")
+_TEXT_FLAGS = ("--body", "-b", "--title", "-t", "--notes", "-n")
 _API_FIELD_FLAGS = ("-F", "--field", "-f", "--raw-field")
+_GIST_VALUE_FLAGS = ("-d", "--desc", "-f", "--filename")
 
 
 def _unquote(word: str) -> str:
@@ -98,64 +120,120 @@ def _split(rest: str, shell: str) -> list[str] | None:
     return [_unquote(w) for w in words] if shell == "powershell" else words
 
 
-def _body_paths(words: list[str]) -> list[str]:
-    """한 gh 호출의 낱말 → 본문 파일 경로들(`-` 은 stdin 이라 뺀다). / Body-file paths of one gh call ('-' = stdin)."""
-    group = words[0] if words else ""
-    paths = []
+def _flag_value(words: list[str], i: int) -> tuple[str | None, str]:
+    """`--flag=값` · `--flag 값` · `-F값` · `-F 값` 을 (플래그, 값) 으로 맞춘다. / Normalize the four flag spellings."""
+    word, nxt = words[i], (words[i + 1] if i + 1 < len(words) else "")
+    if word.startswith("--"):
+        flag, eq, value = word.partition("=")
+        return flag, (value if eq else nxt)
+    if len(word) >= 2 and word[0] == "-" and word[1].isalpha():
+        return word[:2], (word[2:].removeprefix("=") if len(word) > 2 else nxt)
+    return None, ""
+
+
+def _takes_separate_value(word: str, flag: str | None, value_flags: tuple[str, ...]) -> bool:
+    """이 낱말이 값을 다음 낱말로 받는 플래그인가(`-d 설명` · `--desc 설명`). / Does the value follow as the next word?"""
+    return flag in value_flags and "=" not in word and (word.startswith("--") or len(word) == 2)
+
+
+def _targets(words: list[str]) -> tuple[list[str], list[str]]:
+    """한 gh 호출 → (본문 파일 경로들 — `-` 는 stdin, 게시될 인라인 글들). / (body paths, '-' = stdin; inline texts)."""
+    group, action = (words + ["", ""])[:2]
+    paths, texts = [], []
+    skip_next = False
     for i, word in enumerate(words):
-        flag, _, inline = word.partition("=")
-        value = inline if inline and flag.startswith("--") else (words[i + 1] if i + 1 < len(words) else "")
+        if skip_next:
+            skip_next = False
+            continue
+        flag, value = _flag_value(words, i)
         if group == "api":
-            if flag in _API_FIELD_FLAGS and "=@" in value:
-                paths.append(value.split("=@", 1)[1])
+            if flag in _API_FIELD_FLAGS and "=" in value:
+                field_value = value.split("=", 1)[1]
+                (paths if field_value.startswith("@") else texts).append(field_value.removeprefix("@"))
             elif flag == "--input":
                 paths.append(value)
+        elif group == "gist" and action == "create":
+            if i >= 2 and flag is None:
+                paths.append(word)
+            skip_next = _takes_separate_value(word, flag, _GIST_VALUE_FLAGS)
+        elif group == "gist" and action == "edit" and flag in ("--add", "-a"):
+            paths.append(value)
         elif flag in _BODY_FILE_FLAGS:
             paths.append(value)
-    return [p for p in paths if p and p != "-"]
+        elif flag in _TEXT_FLAGS:
+            texts.append(value)
+    return [p for p in paths if p], texts
 
 
-def _resolve(path: str, assigned: dict[str, str], base: Path) -> Path | None:
-    """같은 명령 안의 대입 · 환경 변수로 경로를 푼다 — 명령 치환 · 못 푼 변수는 None. / Expand vars; None if unresolvable."""
+def _resolve(path: str, assigned: dict[str, str], base: Path | None) -> Path | None:
+    """대입 · 환경 변수로 경로를 푼다 — 명령 치환 · 못 푼 변수 · 기준을 모르는 상대 경로는 None. / Unresolvable → None."""
     if "$(" in path or "`" in path:
         return None
     expanded = _VAR.sub(lambda m: assigned.get(m.group(1) or m.group(2), os.environ.get(m.group(1) or m.group(2), "\0")), path)
     if "\0" in expanded or "$" in expanded:
         return None
     p = Path(os.path.expanduser(expanded))
-    return p if p.is_absolute() else base / p
+    if p.is_absolute():
+        return p
+    return base / p if base is not None else None
+
+
+def _read(path: Path | None) -> str | None:
+    try:
+        if path is None or path.stat().st_size > _MAX_BYTES:
+            return None
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
 
 
 def judge_command(command: str, cwd: str | None, shell: str) -> tuple[dict[str, int], list[str]]:
-    """gh 명령 → (꼴별 개수, 못 잰 본문 경로들). 명령 글자 전체 + 가리키는 본문 파일을 잰다.
-    A gh command → (per-kind counts, body paths that could not be read)."""
-    # 명령 글자에서는 홈 경로 꼴을 재지 않는다 — 거기 든 경로는 본문 파일 · cd 같은 로컬 인자이고 게시되지 않는다.
-    # (본문 파일 안의 홈 경로는 아래에서 잰다.) / Home paths in the command are local arguments, not published text.
+    """gh 명령 → (꼴별 개수, 못 잰 것들). 명령 글자 · heredoc · 인라인 본문 · 본문 파일을 잰다.
+
+    명령 글자 전체에서는 홈 경로 꼴만 빼고 잰다 — 거기 든 경로는 본문 파일 · cd 같은 로컬 인자다. 홈 경로는 게시될 글
+    (heredoc 본문 · 인라인 본문 · 본문 파일)에서만 센다.
+    A gh command → (per-kind counts, what could not be measured).
+    """
     counts = count_kinds(command, skip=("local-home-path",))
+    for heredoc in _HEREDOC.finditer(command):
+        _add(counts, count_kinds(heredoc.group("body"), only=("local-home-path",)))
     stripped = _HEREDOC.sub("<<", command)
-    assigned = {m.group(1): _unquote(m.group(2)) for m in _ASSIGN.finditer(stripped)}
     unread = []
     for seg in _GH_SEGMENT.finditer(stripped):
-        words = _split(seg.group("rest"), shell)
+        rest = seg.group("rest")
+        words = _split(rest, shell)
         if words is None:
             unread.append("(gh 명령을 낱말로 나누지 못했다)")
             continue
-        cds = [_unquote(m.group(1)) for m in _CD.finditer(stripped[:seg.start()])]
-        base = Path(cwd or os.getcwd())
-        if cds:
-            cd_dir = _resolve(cds[-1], assigned, base)
-            base = cd_dir if cd_dir is not None else base
-        for raw in _body_paths(words):
-            path = _resolve(raw, assigned, base)
-            try:
-                if path is None or path.stat().st_size > _MAX_BYTES:
-                    raise OSError("unresolved or too large")
-                text = path.read_text(encoding="utf-8", errors="replace")
-            except OSError:
+        before = stripped[:seg.start()]
+        assigned = {m.group(1): _unquote(m.group(2)) for m in _ASSIGN.finditer(before)}
+        base: Path | None = Path(cwd or os.getcwd())
+        if _UNMODELLED_DIR_CHANGE.search(before):
+            base = None
+        else:
+            cds = [_unquote(m.group(1)) for m in _CD.finditer(before)]
+            if cds:
+                base = _resolve(cds[-1], assigned, base)
+        paths, texts = _targets(words)
+        for text in texts:
+            if "$(" in text or "`" in text:
+                unread.append("(인라인 본문이 명령 치환이다)")
+            else:
+                _add(counts, count_kinds(text, only=("local-home-path",)))
+        for raw in paths:
+            if raw == "-":
+                if "<<" in rest:
+                    continue  # heredoc — 위에서 잰다 / measured above
+                redirect = _INPUT_REDIRECT.search(rest)
+                if redirect is None:
+                    unread.append("(stdin 본문 — 어디서 오는지 모른다)")
+                    continue
+                raw = _unquote(redirect.group(1))
+            text = _read(_resolve(raw, assigned, base))
+            if text is None:
                 unread.append(raw)
                 continue
-            for kind, n in count_kinds(text).items():
-                counts[kind] = counts.get(kind, 0) + n
+            _add(counts, count_kinds(text))
     return counts, unread
 
 

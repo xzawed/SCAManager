@@ -134,7 +134,8 @@ _NOT_BODY_FLAGS = ["--title", "-t", "--base", "-R", "--label", "--json"]
 @pytest.mark.parametrize("flag", _NOT_BODY_FLAGS)
 def test_non_body_flags_are_not_read_as_files(flag, tmp_path, monkeypatch, capsys):
     """대조군 — 본문 파일이 아닌 플래그의 값은 파일로 읽지 않는다(읽으려 들면 «못 읽었다» 로 막혔을 것이다)."""
-    assert _hook(monkeypatch, capsys, f"gh pr create {flag} no-such-file.md --body-file -", tmp_path) is None
+    command = f"gh pr create {flag} no-such-file.md --body-file - <<'EOF'\nclean body\nEOF"
+    assert _hook(monkeypatch, capsys, command, tmp_path) is None
 
 
 def test_an_inline_body_is_scanned_from_the_command_text(tmp_path, monkeypatch, capsys):
@@ -151,6 +152,81 @@ def test_an_inline_body_is_scanned_from_the_command_text(tmp_path, monkeypatch, 
 def test_a_body_file_that_cannot_be_read_is_denied(command, tmp_path, monkeypatch, capsys):
     """🔴 못 재면 막는다 — 없는 파일 · 풀지 못한 변수 · 명령 치환 경로."""
     monkeypatch.delenv("UNDEFINED_VAR_FOR_TEST", raising=False)
+    result = _hook(monkeypatch, capsys, command, tmp_path)
+    assert _denied(result) and "못" in _reason(result), result
+
+
+@pytest.mark.parametrize("template", [
+    "cat {d}/note.md | gh pr create --body-file -",
+    "gh issue comment 1 --body-file - < {d}/note.md",
+    "gh api repos/o/r/issues/1/comments -F body=@- < {d}/note.md",
+], ids=["piped-stdin", "redirected-stdin", "api-field-stdin"])
+def test_a_stdin_body_is_measured_or_denied(template, tmp_path, monkeypatch, capsys):
+    """🔴 본문이 stdin(`-`)이면 — `<` 로 받은 파일은 재고, 파이프처럼 모르는 곳에서 오면 못 재서 막는다(보안 검토 ①)."""
+    (tmp_path / "note.md").write_text(_PLANTED["email"], encoding="utf-8")
+    assert _denied(_hook(monkeypatch, capsys, template.format(d=tmp_path.as_posix()), tmp_path))
+
+
+def test_a_heredoc_stdin_body_is_measured_from_the_command(tmp_path, monkeypatch, capsys):
+    """대조군 — heredoc 본문은 명령 글자에 있어 잰다. 깨끗하면 통과, 꼴이 있으면 막는다."""
+    clean = "gh pr create --body-file - <<'EOF'\nit's a clean body\nEOF"
+    assert _hook(monkeypatch, capsys, clean, tmp_path) is None
+    dirty = f"gh pr create --body-file - <<'EOF'\nsee {_HOME}\nEOF"
+    assert _denied(_hook(monkeypatch, capsys, dirty, tmp_path))
+
+
+@pytest.mark.parametrize("template", [
+    "gh pr create -F{d}/note.md",
+    "gh pr create --body-file={d}/note.md",
+    "gh gist create {d}/note.md --public",
+    "gh gist edit abc123 --add {d}/note.md",
+], ids=["attached-short-flag", "long-flag-equals", "gist-create-positional", "gist-edit-add"])
+def test_other_ways_of_naming_a_body_file_are_read(template, tmp_path, monkeypatch, capsys):
+    """붙여 쓴 짧은 플래그 · `--flag=값` · gist 파일도 읽는다(보안 검토 ② ③)."""
+    (tmp_path / "note.md").write_text(_PLANTED["github-token"], encoding="utf-8")
+    result = _hook(monkeypatch, capsys, template.format(d=tmp_path.as_posix()), tmp_path)
+    assert _denied(result) and "github-token 1" in _reason(result), result
+
+
+@pytest.mark.parametrize("command", [
+    'gh pr create --body "$(cat notes.md)"',
+    "gh issue comment 1 -b `cat notes.md`",
+    'gh api repos/o/r/issues -f body="$(cat notes.md)"',
+], ids=["body-substitution", "backtick", "api-field-substitution"])
+def test_a_published_value_built_by_command_substitution_is_denied(command, tmp_path, monkeypatch, capsys):
+    """본문 값이 명령 치환이면 그 결과를 잴 수 없다 — 막는다(보안 검토 ②)."""
+    result = _hook(monkeypatch, capsys, command, tmp_path)
+    assert _denied(result) and "못" in _reason(result), result
+
+
+def test_only_assignments_before_the_gh_call_count(tmp_path, monkeypatch, capsys):
+    """변수는 gh 호출 **앞**의 대입으로만 푼다 — 뒤의 대입이 다른 파일을 가리켜도 앞 값을 쓴다(보안 검토 ④)."""
+    (tmp_path / "dirty").mkdir()
+    (tmp_path / "clean").mkdir()
+    (tmp_path / "dirty" / "n.md").write_text(_PLANTED["email"], encoding="utf-8")
+    (tmp_path / "clean" / "n.md").write_text("ok", encoding="utf-8")
+    command = f'S="{(tmp_path / "dirty").as_posix()}"; gh pr create --body-file "$S/n.md"; S="{(tmp_path / "clean").as_posix()}"'
+    assert _denied(_hook(monkeypatch, capsys, command, tmp_path))
+
+
+def test_a_home_path_in_an_inline_body_is_caught(tmp_path, monkeypatch, capsys):
+    """인라인 본문 · 제목 안의 홈 경로는 잡는다 — 명령의 파일 인자로 쓴 경로만 빼고(보안 검토 ⑤)."""
+    result = _hook(monkeypatch, capsys, f'gh pr comment 3 --body "log at {_HOME}"', tmp_path)
+    assert _denied(result) and "local-home-path 1" in _reason(result), result
+
+
+def test_a_mailto_address_is_caught_but_url_credentials_are_not_double_counted():
+    """`mailto:` 주소도 사람 주소다. DB 주소의 `비밀번호@호스트` 는 이메일로 다시 세지 않는다(보안 검토 ⑥)."""
+    assert scan.count_kinds(f"write mailto:{_EMAIL}") == {"email": 1}
+    assert scan.count_kinds(_DB_URL) == {"db-url-with-password": 1}
+
+
+@pytest.mark.parametrize("prefix", ["pushd {d} && ", "Set-Location {d}; ", "(cd {d} && true); ", "cd - && "],
+                         ids=["pushd", "set-location", "subshell-cd", "cd-dash"])
+def test_a_relative_body_path_after_an_unmodelled_directory_change_is_denied(prefix, tmp_path, monkeypatch, capsys):
+    """디렉터리를 모르는 방법으로 바꿨으면 상대 경로는 못 잰다 — 막고 절대 경로를 요구한다(보안 검토 ⑦)."""
+    (tmp_path / "note.md").write_text("clean", encoding="utf-8")
+    command = prefix.format(d=tmp_path.as_posix()) + "gh pr create --body-file note.md"
     result = _hook(monkeypatch, capsys, command, tmp_path)
     assert _denied(result) and "못" in _reason(result), result
 
