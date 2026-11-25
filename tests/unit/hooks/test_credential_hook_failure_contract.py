@@ -132,7 +132,9 @@ def test_a_production_mcp_call_is_denied_when_its_verdict_raises(monkeypatch, ca
     ('"cat .env"', "deny"),
     ("[1, 2, 3]", None),
     ("null", None),
-], ids=["list-marked", "string-marked", "list-plain", "null"])
+    ("[" * 100_000, None),
+    ('["railway", ' + "[" * 100_000, "deny"),
+], ids=["list-marked", "string-marked", "list-plain", "null", "deep-nesting", "deep-nesting-marked"])
 def test_a_payload_that_is_not_an_object_is_unjudged(payload_text, decision, monkeypatch, capsys):
     """🔴 JSON 이지만 객체가 아닌 입력은 판정 불가다 — 예전처럼 속성 오류로 죽지 않고, 표지로 가른다."""
     result = _main(monkeypatch, capsys, payload_text)

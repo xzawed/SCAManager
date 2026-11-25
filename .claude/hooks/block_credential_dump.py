@@ -1960,7 +1960,7 @@ def main():
     raw = sys.stdin.read()
     try:
         payload = json.loads(raw)
-    except ValueError:  # JSONDecodeError 포함 / includes JSONDecodeError
+    except (ValueError, RecursionError):  # JSONDecodeError 포함 · 아주 깊은 중첩은 RecursionError / deep nesting
         payload = None
     if not isinstance(payload, dict):
         return _emit_unjudged(raw, "입력이 JSON 객체가 아니다")
