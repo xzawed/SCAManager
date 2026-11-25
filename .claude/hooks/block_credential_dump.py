@@ -294,10 +294,24 @@ def _railway_inner_lists_environment(stage):
 #    - 바로 다음 단계의 `cut -d= -f1`(이름만) — 중화 판정이 맡는다
 # Inverted: any .env-like path counts as a read unless the form is known safe.
 _PATHISH = re.compile(r"[^\s'\";|&()<>]+")
-_REDIRECT_TARGET = re.compile(r">>?\s*(['\"]?)[^\s'\";|&()<>]+\1")
+# 쓰기 리디렉션의 대상 — 이스케이프한 `\>`(글자) · 읽기-쓰기 `<>`(읽는다)의 `>` 는 아니다(AntiGravity 2차).
+# A write redirection target; an escaped `\>` (a literal) and the read-write `<>` (it reads) are not writes.
+_REDIRECT_TARGET = re.compile(r"(?<![\\<])>>?\s*(['\"]?)[^\s'\";|&()<>]+\1")
 # 출력 리디렉션 통째(앞 fd 번호 · `&>` · `>&2` 포함) — 검색 대상을 셀 때 걷는다. 입력(`<`)은 읽기라 남긴다.
 # A whole output redirection (fd number, &>, >&N); stripped before counting search targets. Input `<` stays.
-_OUTPUT_REDIRECT = re.compile(r"(?:(?<=\s)\d+|&)?>>?(?:&\d+|\s*(['\"]?)[^\s'\";|&()<>]+\1)")
+_OUTPUT_REDIRECT = re.compile(r"(?:(?<=\s)\d+|&)?(?<![\\<])>>?(?:&\d+|\s*(['\"]?)[^\s'\";|&()<>]+\1)")
+# 토큰 앞에 붙은 입력 리디렉션 연산자(`<` · `0<` · `<>` · `<<<`) / an input-redirect operator attached to a token
+_INPUT_REDIRECT_PREFIX = re.compile(r"^\d*<+>?")
+# 백슬래시 — 짝(`\\`)이거나 따옴표 글자 앞이 아닌 것. 따옴표 앞의 것(`\"`)은 셸의 이스케이프라 / 로 바꾸지 않는다.
+# A backslash pair, or a backslash not before a quote; `\"` is a shell escape and stays.
+_SLASHABLE = re.compile(r"\\\\|\\(?!['\"])")
+
+
+def _slashed(text):
+    """백슬래시를 / 로(Windows 경로) — 따옴표 글자 앞의 것(`\\"`)은 셸의 이스케이프라 남긴다. 그것까지 바꾸면
+    `-e "K=\\"" .env -e "S=\\""` 의 따옴표 짝이 뒤집혀 .env 가 따옴표 안으로 삼켜진다(AntiGravity 2차).
+    Backslashes become slashes, except a shell escape before a quote character (it would flip quote parity)."""
+    return _SLASHABLE.sub(lambda m: "/" * len(m.group()), text)
 _DOTENV_TEMPLATES = frozenset({".env.example", ".env.sample", ".env.template"})
 _DOTENV_SAFE_HEADS = frozenset({
     "cp", "mv", "ls", "dir", "rm", "del", "touch", "test", "[", "[[", "stat", "chmod", "attrib",
@@ -424,7 +438,7 @@ def _path_tokens(text):
     are dropped only for commands that really have such options.
     따옴표 안 글롭 글자의 표지(`_mark_quoted_literals`)는 글자 그대로의 패턴(`[*]`)으로 읽는다.
     Quoted-glob sentinels are read as literal patterns (`[*]`)."""
-    text = text.replace("\\", "/")
+    text = _slashed(text)
     try:
         toks = shlex.split(text, posix=True)
     except ValueError:
@@ -438,6 +452,9 @@ def _path_tokens(text):
             skip = False
             continue
         tok = _TOKEN_WRAPPERS.sub("", raw.strip("`")).translate(_SENTINEL_LITERALS)
+        # 붙여 쓴 입력 리디렉션(`<.env.local` · `0<.env` · `<>.env`)은 그 파일을 읽는다 — 연산자를 걷고 이름을 본다
+        # (AntiGravity 2차 — `<.env` 는 끝 글자 덕에 우연히 걸렸다). An attached input redirect reads its file.
+        tok = _INPUT_REDIRECT_PREFIX.sub("", tok)
         name, eq, value = tok.partition("=")
         low = name.lower()
         if low in excludes:
@@ -697,13 +714,14 @@ def _without_search_pattern(stage):
     - 입력 리디렉션이 없을 때만 — `grep <.env KEY` 의 `<.env` 는 패턴 자리에 선 읽기다. 출력 리디렉션은 먼저 걷는다.
     - 빈 낱말을 버리지 않는다 — `grep "" .env` 의 패턴은 빈 낱말이고, 버리면 .env 가 패턴 자리로 밀린다.
     - 남는 낱말이 다시 이어 붙여도 같은 낱말일 때만 — `--label "x >"` 를 풀어 쓰면 `> .env` 가 쓰기로 읽힌다.
+    - 따옴표를 믿을 수 있을 때만(`\\"` · 백틱 · `#` 이 없다) — 따옴표 짝을 잘못 읽으면 .env 가 «패턴» 안으로 삼켜진다.
     findstr 은 제 문법이라 그대로 둔다. Drop the pattern argument of a search only when certain; otherwise return
     the stage unchanged so the original (fail-closed) verdict applies."""
     text = _OUTPUT_REDIRECT.sub(" ", stage)
-    if "<" in text:
+    if "<" in text or not _quotes_trustworthy(text):
         return stage
     try:
-        words = shlex.split(text.replace("\\", "/"), posix=True)
+        words = shlex.split(_slashed(text), posix=True)
     except ValueError:
         return stage
     name = _command_name(words[0]) if words else ""
@@ -764,17 +782,15 @@ _WALK_SKIP = frozenset({".git", "node_modules", ".venv", "venv", "__pycache__", 
 _SEARCH_COMMANDS = frozenset({"grep", "egrep", "fgrep", "rgrep", "rg", "findstr"})
 
 
-def _plain_words(text, keep_empty=False):
-    """shlex 낱말 — 백슬래시는 / 로, 괄호 · 치환 껍데기는 벗기고 껍데기뿐이던 것은 뺀다. keep_empty 면 따옴표로 준 빈
-    낱말(`""`)은 남긴다 — 검색 인자의 자리를 셀 때 그것도 한 자리다(`grep -rn "" . 문서` 의 `.` 은 대상이다).
-    shlex words with backslashes as slashes and grouping/substitution wrappers peeled; keep_empty keeps quoted
-    empty words, which still occupy an argument slot."""
-    text = text.replace("\\", "/")
+def _plain_words(text):
+    """shlex 낱말 — 백슬래시는 / 로(따옴표 앞 이스케이프는 남긴다), 괄호 · 치환 껍데기는 벗기고 빈 것은 뺀다.
+    shlex words with backslashes as slashes and grouping/substitution wrappers peeled."""
+    text = _slashed(text)
     try:
         toks = shlex.split(text, posix=True)
     except ValueError:
         toks = text.split()
-    return [w for t, w in ((t, _TOKEN_WRAPPERS.sub("", t.strip("`"))) for t in toks) if w or (keep_empty and not t)]
+    return [w for w in (_TOKEN_WRAPPERS.sub("", t.strip("`")) for t in toks) if w]
 
 
 def _command_name(word):
@@ -836,7 +852,7 @@ def _dotenv_files(target, recursive=True):
 def _search_call(stage):
     """단계 안의 검색 명령 → (이름, 인자, 앞 낱말들). `git … grep` 은 git 의 하위 명령이라 «git-grep» 으로 낸다.
     The search command in a stage as (name, args, preceding words); `git … grep` is reported as git-grep."""
-    words = _plain_words(stage, keep_empty=True)
+    words = _plain_words(stage)
     for k, word in enumerate(words):
         name = _command_name(word)
         if name not in _SEARCH_COMMANDS:
@@ -846,9 +862,15 @@ def _search_call(stage):
     return None
 
 
-def _search_targets(words):
-    """패턴 다음의 위치 인자 = 검색 대상. -e · -f 로 패턴을 주면 첫 위치 인자부터 대상이다.
-    Positional arguments after the pattern; with -e/-f every positional argument is a target."""
+# 따옴표로 준, 껍데기 글자뿐인 낱말(`""` · `"()"` · `"{}"`) — 낱말 나누기가 벗겨 버려 패턴 자리를 셀 수 없다.
+# A quoted word of wrapper characters only; peeling erases it, so the pattern slot cannot be counted.
+_WRAPPER_ONLY_QUOTED = re.compile(r"""(["'])[$<>@(){}`]*\1""")
+
+
+def _search_targets(words, every_positional=False):
+    """패턴 다음의 위치 인자 = 검색 대상. -e · -f 로 패턴을 주면 첫 위치 인자부터 대상이다. every_positional 이면
+    패턴 자리를 모르니 위치 인자 전부를 대상으로 본다(막는 쪽).
+    Positional arguments after the pattern; with -e/-f, or when the pattern slot is unknown, every positional."""
     positional, skip, pattern_given = [], False, False
     for w in words:
         if skip:
@@ -860,7 +882,7 @@ def _search_targets(words):
             pattern_given = pattern_given or w.startswith(("--regexp=", "--file="))
         else:
             positional.append(w)
-    return positional if pattern_given else positional[1:]
+    return positional if pattern_given or every_positional else positional[1:]
 
 
 def _recurse_value(value):
@@ -976,6 +998,10 @@ def _rg_reads(parts, globs, no_ignore, hidden, ignored=frozenset()):
     return (hidden or not name.startswith(".")) and (no_ignore or tuple(parts) not in ignored)
 
 
+# 대상 폴더 바로 아래의 있을 리 없는 이름 — 이것까지 무시되면 폴더 자체가 무시된 것이다 / a name no folder holds
+_GIT_IGNORE_SENTINEL = "scamanager-hook-ignore-probe-3f9c"
+
+
 def _git_ignored_parts(target, hits):
     """대상 폴더 아래 .env 꼴 파일 가운데 git 이 무시하는 것 — `git check-ignore --no-index`(추적 여부와 상관없이 규칙만,
     rg 와 같다)로 묻는다. 그 파일이 있는 작업 폴더 후보 모두에서 무시될 때만 무시로 본다. git 이 없거나 · 저장소 밖이거나
@@ -990,10 +1016,15 @@ def _git_ignored_parts(target, hits):
             continue
         try:
             done = subprocess.run(["git", "-C", root, "check-ignore", "--no-index", "-z", "--stdin"],
-                                  input="".join(p + "\0" for p in present).encode("utf-8"), env=env,
-                                  capture_output=True, timeout=2, check=False)
+                                  input="".join(p + "\0" for p in [*present, _GIT_IGNORE_SENTINEL]).encode("utf-8"),
+                                  env=env, capture_output=True, timeout=2, check=False)
             listed = set(done.stdout.decode("utf-8", "replace").split("\0")) if done.returncode in (0, 1) else set()
         except (OSError, subprocess.SubprocessError):
+            listed = set()
+        # 없는 이름(표지)까지 무시되면 대상 폴더 자체(또는 그 위)가 무시된 것이다 — rg 는 이름을 준 폴더 안을 그래도
+        # 읽으므로 git 의 답을 믿지 않는다(AntiGravity 2차 — `rg KEY secrets` 에 `.gitignore` 의 `secrets/`).
+        # If even a made-up name is ignored, the root itself is ignored; rg still searches a folder it is given.
+        if _GIT_IGNORE_SENTINEL in listed:
             listed = set()
         checked.update(present)
         unignored.update(p for p in present if p not in listed)
@@ -1114,7 +1145,11 @@ def _recursive_search_reads_dotenv(stage):
     # A prefix that changes directory (env -C / --chdir) leaves the cwd unknown: fail closed.
     if any(w == "-C" or w.startswith("--chdir") for w in before):
         return True
-    for target in _search_targets(args) or ["."]:
+    # 따옴표로 준 빈 패턴 · 껍데기뿐인 패턴(`""` · `"()"`)은 낱말 나누기에서 사라져 `.` 이 패턴 자리로 밀린다
+    # (`grep -rn "{}" . 문서` 의 `.` 은 대상이다 · main 때부터 · AntiGravity 2차) — 그러면 위치 인자 전부를 대상으로 본다.
+    # A quoted empty / wrapper-only pattern vanishes in word splitting; then every positional is a target.
+    every = bool(_WRAPPER_ONLY_QUOTED.search(stage))
+    for target in _search_targets(args, every_positional=every) or ["."]:
         files = _dotenv_files(target)
         if files is None:
             return True

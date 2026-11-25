@@ -119,6 +119,19 @@ _MUST_BLOCK = {
     "check-ignore-echoing-dotenv-from-stdin": "git check-ignore --stdin -n -v < .env",
     # 빈 패턴이 빠지면 재귀 검색의 첫 대상이 «패턴» 이 된다(main 때부터) / an empty pattern shifted the first target.
     "recursive-empty-pattern-over-dotenv-folder": 'grep -rn "" . docs/',
+    # AntiGravity 2차 — 붙여 쓴 입력 리디렉션 뒤 .env.* · 따옴표 앞 백슬래시(`\"`)를 / 로 바꿔 뒤집힌 따옴표 짝 ·
+    # 재귀 검색의 껍데기뿐인 패턴 · 이스케이프한 `\>` 와 읽기-쓰기 `<>` 는 쓰기 리디렉션이 아니다.
+    # AntiGravity round 2: unspaced `<.env.*`, quote parity flipped by `\"`, wrapper-only recursive patterns, `\>` and `<>`.
+    "unspaced-stdin-redirect-dotenv-local": "grep <.env.local KEY",
+    "fd-stdin-redirect-dotenv-production": "grep 0<.env.production KEY",
+    "cat-unspaced-stdin-dotenv-local": "cat <.env.local",
+    "show-ref-unspaced-stdin-dotenv-local": "git show-ref --exclude-existing <.env.local",
+    "escaped-quotes-swallow-dotenv": 'grep -e "KEY=\\"" .env -e "SECRET=\\""',
+    "recursive-escaped-quotes-swallow-target": 'grep -rn -e "KEY\\"" . -e "SECRET\\"" docs/',
+    "recursive-wrapper-only-pattern": 'grep -rn -E "()" . docs/',
+    "recursive-brace-pattern": 'grep -rn "{}" . docs/',
+    "escaped-redirect-is-literal": "grep KEY\\> .env",
+    "read-write-redirect-reads": "cat <>.env",
 }
 
 
@@ -228,6 +241,18 @@ def test_rg_hidden_reads_only_the_dotenv_files_git_does_not_ignore(tmp_path):
     assert _verdict("rg --hidden SYNTHETIC .", tmp_path) is None
     (tmp_path / ".env.production").write_text("SYNTHETIC_KEY=x\n", encoding="utf-8")
     assert _verdict("rg --hidden SYNTHETIC .", tmp_path) is not None
+
+
+def test_rg_reads_inside_an_ignored_folder_it_is_pointed_at(tmp_path):
+    """🔴 rg 는 이름을 준 폴더 안을 그 폴더가 gitignore 돼 있어도 읽는다 — git 은 그 안의 파일을 «무시됨» 으로 답하므로
+    대상 폴더 자체가 무시되면 git 의 답을 믿지 않는다(AntiGravity 2차). 대조군: 저장소 루트의 `rg KEY .` 은 무시된
+    폴더로 내려가지 않는다. rg searches inside an ignored folder it is pointed at, though git reports its files ignored."""
+    _git_repo(tmp_path, ["secrets/"])
+    (tmp_path / "secrets").mkdir()
+    (tmp_path / "secrets" / "prod.env").write_text("SYNTHETIC_KEY=x\n", encoding="utf-8")
+    assert _verdict("rg SYNTHETIC secrets", tmp_path) is not None
+    assert _verdict("rg SYNTHETIC .", tmp_path / "secrets") is not None
+    assert _verdict("rg SYNTHETIC .", tmp_path) is None
 
 
 def test_rg_outside_a_git_repository_honours_no_gitignore(tmp_path, monkeypatch):
