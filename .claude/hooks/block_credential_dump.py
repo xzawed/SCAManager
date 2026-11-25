@@ -303,7 +303,10 @@ _DOTENV_SAFE_HEADS = frozenset({
     "test-path", "copy-item", "move-item", "remove-item", "new-item", "get-item", "get-childitem",
     "set-content", "add-content", "out-file",
 })
-_GIT_SAFE_SUBCOMMANDS = frozenset({"check-ignore", "ls-files", "status"})
+# 파일 내용을 내지 않는 git 하위 명령 — 상태 확인과, ref 이름 · 패턴만 받는 명령(branch · for-each-ref · show-ref:
+# `git branch --list "x/*"` 의 글롭은 ref 이름과 맞출 뿐 파일을 읽지 않는다). tag 는 `-F 파일` 로 파일을 읽고, ls-remote 는
+# `--upload-pack` 으로 명령을 돌리므로 넣지 않는다. / git subcommands that print no file contents.
+_GIT_SAFE_SUBCOMMANDS = frozenset({"check-ignore", "ls-files", "status", "branch", "for-each-ref", "show-ref"})
 # 글롭 값을 받는 옵션. 제외 글롭의 값만 경로 후보에서 뺀다 — 포함 글롭(`--include=.env` · `-Filter .env`)의
 # 값은 그 파일을 읽겠다는 뜻이라 후보로 남긴다(보안 리뷰 HIGH). rg 의 -g/--glob/--iglob 은 `!` 가 붙으면 제외.
 # 🔴 `-exclude` 는 PowerShell 매개변수다 — grep 에선 `-e xclude`(패턴) 라 뒤 토큰이 읽을 파일이 된다(14차 HIGH).

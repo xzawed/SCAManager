@@ -49,6 +49,11 @@ _MUST_PASS = {
     "printenv-names-only": "printenv | grep -o '^[A-Z_]*='",
     "git-grep-escaped-glob-pattern": 'git grep -n -E "req\\*|\\.claude/\\*\\*" -- docs/',
     "git-grep-escaped-glob-pattern-piped": 'git grep -n -E "req\\*|\\.claude/\\*\\*" -- docs/ src/ | head',
+    # 11-26 세션에서 막힌 정직한 명령 — ref 이름 패턴만 받는 git 하위 명령은 파일을 읽지도 값을 내지도 않는다.
+    # Denied in the 11-26 session: git subcommands that take only ref-name patterns read no file and print no value.
+    "git-branch-list-glob": 'git branch --list "grok/*"',
+    "git-for-each-ref-glob": "git for-each-ref --format='%(refname:short)' 'refs/heads/grok/*'",
+    "git-show-ref-glob": 'git show-ref "grok/*"',
 }
 
 # 같은 꼴의 위험한 짝 — 값이 나온다(또는 나올 수 있다).
@@ -90,6 +95,63 @@ def test_honest_shapes_that_were_denied_now_pass(name, workdir):
 def test_their_dangerous_twins_are_still_denied(name, workdir):
     """대조군(뒤집기) — 같은 꼴의 위험한 짝은 그대로 막는다. «검색이면 통과» 같은 싼 완화는 여기서 걸린다."""
     assert _verdict(_MUST_BLOCK[name], workdir) is not None, name
+
+
+# witness-corpus: 덤프 뒤 «개수만 · 아무것도 안 냄» 단계 가운데 판정식(grep -c/-q/-l · wc 개수 플래그) 밖의 꼴
+_UNLISTED_COUNT_ONLY_STAGES = ["awk 'END {print NR}'", "tail -n 0", "wc -l --", "wc --lines -- -"]
+
+
+@pytest.mark.parametrize("stage", _UNLISTED_COUNT_ONLY_STAGES)
+def test_an_unlisted_count_only_stage_does_not_neutralize_a_dump(stage, workdir):
+    """🔴 목록 밖의 «개수만» 단계는 덤프를 중화하지 않는다 — 값을 안 낸다고 판정식이 확인하지 못한 꼴은 막는다
+    (fail-closed · 드문 오탐). An unlisted count-only stage does not neutralize an env dump."""
+    assert _verdict(f"env | {stage}", workdir) is not None
+
+
+# witness-corpus: 검색 명령의 긴 옵션 가운데 카탈로그(_KNOWN_SEARCH_LONGS) 밖의 것 — 값을 받는지 모른다
+_UNLISTED_SEARCH_LONGS = ["--devices skip", "--directories skip", "--exclude-from list.txt"]
+
+
+@pytest.mark.parametrize("option", _UNLISTED_SEARCH_LONGS)
+def test_an_unknown_long_option_keeps_the_pattern_as_a_path(option, workdir):
+    """🔴 모르는 긴 옵션이 있으면 어느 낱말이 패턴인지 모른다 — 패턴의 `\\.env` 도 경로로 보고 막는다(fail-closed)."""
+    assert _verdict(f'grep {option} -n "\\.env" docs/a.md', workdir) is not None
+
+
+# witness-corpus: 출력 리디렉션 문법 가운데 판정식(_OUTPUT_REDIRECT) 밖의 꼴 — 검색 대상에서 걷어 내지 못한다
+_UNLISTED_OUTPUT_REDIRECTS = [">| out.txt", "2>&-"]
+
+
+@pytest.mark.parametrize("redirect", _UNLISTED_OUTPUT_REDIRECTS)
+def test_an_unlisted_output_redirect_fails_closed(redirect, workdir):
+    """대조군 — 판정식이 모르는 리디렉션은 걷지 않아 막는 쪽으로 간다(.env 없는 폴더라도 · 드문 오탐)."""
+    assert _verdict(f"grep -rn foo docs/ {redirect}", workdir) is not None
+
+
+# witness-corpus: 파이프처럼 보이지만 파이프가 아닌 `|` 가운데 판정식(`${` · `$'`) 밖의 꼴 — 산술 OR
+_UNLISTED_NON_PIPE_BARS = ["$((1|2))", "$((0|1))"]
+
+
+@pytest.mark.parametrize("bar", _UNLISTED_NON_PIPE_BARS)
+def test_a_bar_inside_arithmetic_does_not_neutralize_a_dump(bar, workdir):
+    """🔴 산술 안의 `|` 는 파이프가 아니다 — 그 뒤를 «개수만» 단계로 읽어 덤프를 중화하지 않는다(단계 통째 일치가 막는다)."""
+    assert _verdict(f"printenv {bar} grep -c SOME_KEY", workdir) is not None
+
+
+# witness-corpus: ref 이름만 다루는 git 하위 명령 가운데 목록 밖 — ls-remote(`--upload-pack` 이 명령을 돌린다) · describe
+_UNLISTED_GIT_REF_COMMANDS = ['ls-remote origin "grok/*"', 'describe --all "grok/*"']
+
+
+@pytest.mark.parametrize("command", _UNLISTED_GIT_REF_COMMANDS)
+def test_an_unlisted_git_subcommand_with_a_glob_stays_denied(command, workdir):
+    """대조군(뒤집기) — 목록에 넣은 ref 명령(branch · for-each-ref · show-ref)만 풀린다. 목록 밖은 글롭이 있으면 그대로 막는다
+    («git 이면 통과» 같은 싼 완화를 거른다)."""
+    assert _verdict(f"git {command}", workdir) is not None
+
+
+def test_a_file_reading_option_of_a_ref_command_is_still_denied(workdir):
+    """대조군 — ref 명령이라도 파일을 읽는 옵션은 그대로 막는다(`git tag -F .env` 는 .env 를 태그 메시지로 읽는다)."""
+    assert _verdict("git tag -a v9 -F .env", workdir) is not None
 
 
 def _run_main(monkeypatch, capsys, payload):
