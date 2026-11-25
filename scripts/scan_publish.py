@@ -134,6 +134,11 @@ _ASSIGNMENT_WORD = re.compile(r"(?P<name>[A-Za-z_]\w*)(?P<append>\+?)=(?P<value>
 # 대입(`(B=x; …)`)은 명령 낱말 뒤가 되어 값을 모르는 쪽으로 간다(막는다).
 # Simple-command breaks; `( ) { }` are left out so `$(…)` / `${…}` are never cut (subshell assignments become unknown).
 _COMMAND_BREAK = re.compile(r"&&|\|\||[;&|\n]")
+# gh 앞(같은 단순 명령 안)에 와도 인자를 그대로 넘기는 낱말 — 대입과 이 앞붙임 · 키워드뿐이면 gh 가 명령 자리에 있다. 그 밖
+# (`xargs` · `find -exec` · 목록 밖 감싸기)이면 다른 명령이 gh 를 돌리며 인자를 바꿀 수 있다.
+# Words that pass arguments through unchanged before gh; anything else means another command runs gh.
+_TRANSPARENT_PREFIXES = frozenset({"env", "time", "nohup", "command", "exec", "if", "then", "else", "elif", "do",
+                                   "while", "until", "!", "{", "("})
 _CD = re.compile(r"(?:^|(?<=[\s;&|]))cd\s+(\"[^\"]*\"|'[^']*'|[^\s;&|()]+)")
 # 디렉터리를 바꾸지만 이 검사가 따라가지 못하는 꼴 — 그 뒤의 상대 경로 본문은 못 잰다(절대 경로를 요구한다).
 # Directory changes this scanner does not model; a relative body path after one is unmeasurable.
@@ -167,9 +172,10 @@ def _split(rest: str, shell: str) -> list[str] | None:
     return [_unquote(w) for w in words] if shell == "powershell" else words
 
 
-def _flag_value(words: list[str], i: int) -> tuple[str | None, str]:
-    """`--flag=값` · `--flag 값` · `-F값` · `-F 값` 을 (플래그, 값) 으로 맞춘다. / Normalize the four flag spellings."""
-    word, nxt = words[i], (words[i + 1] if i + 1 < len(words) else "")
+def _flag_value(words: list[str], i: int) -> tuple[str | None, str | None]:
+    """`--flag=값` · `--flag 값` · `-F값` · `-F 값` 을 (플래그, 값) 으로 맞춘다. 값을 다음 낱말로 받는데 다음 낱말이 없으면
+    값은 None — 그 값은 다른 명령(`xargs`)이 덧붙일 수 있다. / Normalize the four flag spellings; a missing value is None."""
+    word, nxt = words[i], (words[i + 1] if i + 1 < len(words) else None)
     if word.startswith("--"):
         flag, eq, value = word.partition("=")
         return flag, (value if eq else nxt)
@@ -183,10 +189,12 @@ def _takes_separate_value(word: str, flag: str | None, value_flags: tuple[str, .
     return flag in value_flags and "=" not in word and (word.startswith("--") or len(word) == 2)
 
 
-def _targets(words: list[str]) -> tuple[list[str], list[str]]:
-    """한 gh 호출 → (본문 파일 경로들 — `-` 는 stdin, 게시될 인라인 글들). / (body paths, '-' = stdin; inline texts)."""
+def _targets(words: list[str]) -> tuple[list[str | None], list[str | None]]:
+    """한 gh 호출 → (본문 파일 경로들 — `-` 는 stdin, 게시될 인라인 글들). 값이 빠진 플래그는 None 이다(못 잰 것).
+    (body paths, '-' = stdin; inline texts); None marks a flag whose value is missing."""
     group, action = (words + ["", ""])[:2]
-    paths, texts = [], []
+    paths: list[str | None] = []
+    texts: list[str | None] = []
     skip_next = False
     for i, word in enumerate(words):
         if skip_next:
@@ -194,7 +202,9 @@ def _targets(words: list[str]) -> tuple[list[str], list[str]]:
             continue
         flag, value = _flag_value(words, i)
         if group == "api":
-            if flag in _API_FIELD_FLAGS and "=" in value:
+            if flag in _API_FIELD_FLAGS and value is None:
+                texts.append(None)
+            elif flag in _API_FIELD_FLAGS and "=" in value:
                 field_value = value.split("=", 1)[1]
                 (paths if field_value.startswith("@") else texts).append(field_value.removeprefix("@"))
             elif flag == "--input":
@@ -213,7 +223,7 @@ def _targets(words: list[str]) -> tuple[list[str], list[str]]:
             paths.append(value)
         elif flag in _TEXT_FLAGS:
             texts.append(value)
-    return [p for p in paths if p], texts
+    return [p for p in paths if p != ""], texts
 
 
 def _resolve(path: str, assigned: dict[str, str | None], base: Path | None) -> Path | None:
@@ -295,6 +305,16 @@ def _assignments(text: str) -> dict[str, str | None]:
     return assigned
 
 
+def _runs_gh_directly(before: str) -> bool:
+    """gh 가 단순 명령의 명령 자리에 있는가 — 같은 단순 명령 안의 앞 낱말이 대입 · 투명한 앞붙임뿐이면 참.
+    Is gh in command position, preceded only by assignments and pass-through prefixes in its simple command?"""
+    masked = _mask_quoted(before)
+    breaks = list(_COMMAND_BREAK.finditer(masked))
+    start = breaks[-1].end() if breaks else 0
+    words = [before[start + m.start():start + m.end()] for m in re.finditer(r"\S+", masked[start:])]
+    return all(w in _TRANSPARENT_PREFIXES or _ASSIGNMENT_WORD.fullmatch(w) for w in words)
+
+
 def _record(assigned: dict[str, str | None], match: re.Match[str], *, keeps: bool) -> None:
     """대입 낱말 하나를 기록한다 — 셸 변수에 글자 그대로 남는 대입만 값을 쓰고(그때까지의 대입으로 푼다), 나머지는 None.
     Record one assignment word: a value only when it stays literal in the shell variable, else None."""
@@ -308,6 +328,44 @@ def _count_value(value: str, expanded: bool) -> dict[str, int]:
     A literal value adds home paths only; an expanded value is re-counted for every kind (joined pieces may form a shape).
     """
     return count_kinds(value) if expanded else count_kinds(value, only=("local-home-path",))
+
+
+def _join_continuations(text: str) -> str:
+    """bash 처럼 작은따옴표 밖의 `\\`+줄바꿈(줄 이음)을 지운다 — 쪼갠 대입 값 · 경로 · 키는 이어진 값으로 쓰인다.
+    이스케이프한 백슬래시(`\\\\`) 뒤의 줄바꿈은 진짜 줄바꿈이다. heredoc 본문은 이 함수에 오기 전에 걷는다.
+    Remove backslash-newline outside single quotes, as bash does; heredoc bodies are stripped before this."""
+    out: list[str] = []
+    i, single = 0, False
+    while i < len(text):
+        ch = text[i]
+        if single:
+            single = ch != "'"
+        elif ch == "\\" and i + 1 < len(text):
+            if text[i + 1] != "\n":
+                out.append(text[i:i + 2])  # 이스케이프 두 글자 그대로 / an escape pair, kept
+            i += 2
+            continue
+        elif ch == "'" and not _inside_double_quotes(out):
+            single = True
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def _inside_double_quotes(prefix: list[str]) -> bool:
+    """지금까지 쓴 글자가 큰따옴표 안에서 끝나는가 — 작은따옴표 · 이스케이프를 따라 센다. / Is the prefix inside "…"?"""
+    quote: str | None = None
+    escaped = False
+    for ch in "".join(prefix):
+        if escaped:
+            escaped = False
+        elif ch == "\\" and quote != "'":
+            escaped = True
+        elif quote:
+            quote = None if ch == quote else quote
+        elif ch in "'\"":
+            quote = ch
+    return quote == '"'
 
 
 def _mask_quoted(text: str) -> str:
@@ -427,29 +485,32 @@ def _measure_stdin(rest: str, before: str, assigned: dict[str, str | None], base
 def judge_command(command: str, cwd: str | None, shell: str) -> tuple[dict[str, int], list[str]]:
     """gh 명령 → (꼴별 개수, 못 잰 것들). 명령 글자 · heredoc · 인라인 본문 · 본문 파일을 잰다.
 
-    명령 글자 전체에서는 홈 경로 꼴만 빼고 잰다 — 거기 든 경로는 본문 파일 · cd 같은 로컬 인자다. 홈 경로는 게시될 글
-    (heredoc 본문 · 인라인 본문 · 본문 파일)에서만 센다. 인라인 본문의 변수는 같은 명령 안의 글자 대입으로 풀어 잰다 —
-    그 값은 명령 글자(대입)에 있으니 홈 경로만 더 센다. 못 풀면 못 잰 것이다.
+    heredoc 본문은 걷어 따로 모든 꼴로 재고, 남은 명령 글자는 bash 처럼 줄 이음(`\\`+줄바꿈)을 이은 뒤 잰다 — 명령 글자에서는
+    홈 경로 꼴만 빼고 잰다(거기 든 경로는 본문 파일 · cd 같은 로컬 인자다). 홈 경로는 게시될 글(heredoc 본문 · 인라인 본문 ·
+    본문 파일)에서만 센다. 인라인 본문의 변수는 대입뿐인 단순 명령의 글자 값으로 풀어 잰다 — 그 값은 명령 글자에 있으니
+    홈 경로만 더 센다. 못 풀면 못 잰 것이다.
     A gh command → (per-kind counts, what could not be measured).
     """
-    counts = count_kinds(command, skip=("local-home-path",))
     unread: list[str] = []
+    counts: dict[str, int] = {}
     for heredoc in _HEREDOC.finditer(command):
         body = heredoc.group("body") or ""
         if heredoc.group("quote"):
-            _add(counts, _count_value(body, expanded=False))
+            _add(counts, count_kinds(body))  # 글자 그대로 게시된다 / published verbatim
             continue
         # 따옴표 없는 끝 표시 — bash 가 `\`+줄바꿈을 지운 뒤 펼친다. 그 앞의 글자 대입으로만 풀고, 못 풀면 못 잰 것이다.
         # Unquoted delimiter: bash joins line continuations, then expands; resolve only from earlier literal assignments.
         body = re.sub(r"\\([\\\n])", lambda m: "" if m.group(1) == "\n" else "\\\\", body)
-        earlier = _assignments(_HEREDOC.sub(lambda m: _HEREDOC_MARK + m.group("tail"), command[:heredoc.start()]))
+        earlier = _assignments(_join_continuations(_HEREDOC.sub(lambda m: _HEREDOC_MARK + m.group("tail"),
+                                                                command[:heredoc.start()])))
         value = None if ("$(" in body or "`" in body) else _expand_text(body, earlier)
         if value is None:
             unread.append("(따옴표 없는 heredoc 본문이 펼쳐진다 — 펼친 값을 못 잰다)")
             continue
-        _add(counts, _count_value(value, expanded=value != body))
-    stripped = _HEREDOC.sub(lambda m: (_HEREDOC_MARK if m.group("fd") in (None, "0") else _OTHER_FD_HEREDOC_MARK)
-                            + m.group("tail"), command)
+        _add(counts, count_kinds(value))
+    stripped = _join_continuations(_HEREDOC.sub(
+        lambda m: (_HEREDOC_MARK if m.group("fd") in (None, "0") else _OTHER_FD_HEREDOC_MARK) + m.group("tail"), command))
+    _add(counts, count_kinds(stripped, skip=("local-home-path",)))
     for seg in _GH_SEGMENT.finditer(stripped):
         rest = seg.group("rest")
         words = _split(rest, shell)
@@ -466,7 +527,15 @@ def judge_command(command: str, cwd: str | None, shell: str) -> tuple[dict[str, 
             if cds:
                 base = _resolve(cds[-1], assigned, base)
         paths, texts = _targets(words)
+        if (paths or texts) and not _runs_gh_directly(before):
+            # 게시하는 gh 를 다른 명령(`xargs` · `find -exec` · 목록 밖 감싸기)이 돌린다 — 인자가 바뀌어 실행될 수 있다
+            # Another command runs a publishing gh call; its arguments may be rewritten.
+            unread.append("(gh 를 다른 명령이 인자로 받아 돌린다 — 인자가 바뀌어 실행될 수 있다)")
+            continue
         for text in texts:
+            if text is None:
+                unread.append("(값이 빠진 플래그 — 다른 명령이 덧붙인 값이 게시될 수 있다)")
+                continue
             if "$(" in text or "`" in text:
                 unread.append("(인라인 본문이 명령 치환이다)")
                 continue
@@ -483,6 +552,9 @@ def judge_command(command: str, cwd: str | None, shell: str) -> tuple[dict[str, 
         if "-" in paths:
             _measure_stdin(rest, before, assigned, base, counts, unread)
         for raw in paths:
+            if raw is None:
+                unread.append("(값이 빠진 본문 파일 플래그 — 다른 명령이 덧붙인 파일이 게시될 수 있다)")
+                continue
             if raw == "-":
                 continue  # stdin — 위에서 한 번 잰다 / measured once above
             text = _read(_resolve(raw, assigned, base))

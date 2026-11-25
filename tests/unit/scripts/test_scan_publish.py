@@ -529,6 +529,64 @@ def test_a_variable_changed_by_anything_but_a_plain_literal_assignment_is_not_me
     assert _denied(result) and "못" in _reason(result), result
 
 
+_SPLIT_HOME = f"{_UNIX_HOME[:3]}\\\n{_UNIX_HOME[3:]}"
+
+
+@pytest.mark.parametrize("command, why", [
+    (f'B={_SPLIT_HOME}; gh pr comment 1 --body "$B"', "local-home-path 1"),
+    ('B=$\\\nHOME; gh pr comment 1 --body "$B"', "못"),
+    ("B=sk-ant-" + "Zz9" * 4 + "\\\n" + "Zz9" * 4 + '; gh pr comment 1 --body "$B"', "anthropic-key"),
+    (f'B="{_SPLIT_HOME}"; gh pr comment 1 --body "$B"', "local-home-path 1"),
+    (f'B={_SPLIT_HOME}; gh pr create --body-file - <<<"$B"', "local-home-path 1"),
+    (f'A={_UNIX_HOME[:3]}\\\nme; B="$A/alice"; gh pr comment 1 --body "$B"', "local-home-path 1"),
+], ids=["assigned-path", "assigned-variable", "assigned-key", "double-quoted", "here-string", "chained"])
+def test_line_continuations_are_joined_before_judging(command, why, tmp_path, monkeypatch, capsys):
+    """🔴 작은따옴표 밖의 `\\`+줄바꿈은 bash 가 지운다(줄 이음) — 명령 글자 전체를 이은 뒤 판정한다: 쪼갠 대입 값 · 키 · 경로가
+    이어진 값으로 게시된다(Grok 1e0cb615 5차). / Line continuations are joined across the whole command before judging."""
+    result = _hook(monkeypatch, capsys, command, tmp_path)
+    assert _denied(result) and why in _reason(result), result
+
+
+def test_a_line_continuation_inside_single_quotes_is_literal(tmp_path, monkeypatch, capsys):
+    """대조군(뒤집기) — 작은따옴표 안의 `\\`+줄바꿈은 글자 그대로다. 같은 쪼갠 경로가 여기선 경로가 아니다."""
+    assert _hook(monkeypatch, capsys, f"B='{_SPLIT_HOME}'; gh pr comment 1 --body \"$B\"", tmp_path) is None
+
+
+@pytest.mark.parametrize("command", [
+    "echo x | xargs gh pr comment 1 --body",
+    "echo x | xargs gh pr create --title t --body-file",
+    "echo x | xargs -I V gh pr comment 1 --body V",
+    "find . -name n.md -exec gh pr comment 1 --body-file {} +",
+    "gh pr comment 1 --title t --body",
+], ids=["xargs-appends-the-body", "xargs-appends-the-body-file", "xargs-placeholder", "find-exec", "missing-value"])
+def test_gh_run_by_another_command_or_missing_a_value_is_not_measured(command, tmp_path, monkeypatch, capsys):
+    """🔴 값이 빠진 플래그(명령 끝의 `--body`)는 다른 명령(xargs)이 덧붙인 값을 게시한다. gh 가 다른 명령의 인자로 돌면
+    (`xargs` · `find -exec`) 인자가 바뀌어 실행된다 — 둘 다 잰 것이 게시되는 것이 아니니 막는다."""
+    result = _hook(monkeypatch, capsys, command, tmp_path)
+    assert _denied(result) and "못" in _reason(result), result
+
+
+@pytest.mark.parametrize("prefix", ["", "time ", "env GH_REPO=o/r ", "if ", "B=x && ", "nohup "],
+                         ids=["bare", "time", "env", "if", "after-and", "nohup"])
+def test_gh_behind_a_transparent_prefix_is_judged_as_usual(prefix, tmp_path, monkeypatch, capsys):
+    """대조군(뒤집기) — 인자를 그대로 넘기는 앞붙임(`time` · `env NAME=값` · `nohup` · 키워드)은 gh 를 그대로 돌린다: 깨끗한 본문은
+    통과한다(«gh 앞에 무엇이든 있으면 막기» 를 거른다)."""
+    command = f"{prefix}gh pr comment 1 --body-file - <<'EOF'\nclean body\nEOF"
+    assert _hook(monkeypatch, capsys, command, tmp_path) is None
+
+
+# witness-corpus: gh 를 인자로 받아 돌리는 감싸기 명령 중 목록 밖 — 인자를 그대로 넘겨도 이 검사는 모르니 막는다(오탐)
+_UNLISTED_WRAPPERS = ["nice", "stdbuf -oL"]
+
+
+@pytest.mark.parametrize("wrapper", _UNLISTED_WRAPPERS)
+def test_an_unlisted_wrapper_is_not_trusted_to_pass_arguments_through(wrapper, tmp_path, monkeypatch, capsys):
+    """🔴 목록에 없는 감싸기 명령은 인자를 바꾸는지 모른다 — 그대로 넘기는 것(`nice`)이라도 막는다(fail-closed · 드문 오탐)."""
+    command = f"{wrapper} gh pr comment 1 --body-file - <<'EOF'\nclean body\nEOF"
+    result = _hook(monkeypatch, capsys, command, tmp_path)
+    assert _denied(result) and "못" in _reason(result), result
+
+
 def test_only_assignments_before_the_gh_call_count(tmp_path, monkeypatch, capsys):
     """변수는 gh 호출 **앞**의 대입으로만 푼다 — 뒤의 대입이 다른 파일을 가리켜도 앞 값을 쓴다(보안 검토 ④)."""
     (tmp_path / "dirty").mkdir()
