@@ -38,6 +38,10 @@ _MUST_BLOCK = [
     f"postgresql://postgres.abcdefghijkl:{_FAKE}@aws-1-ap-northeast-2.pooler.supabase.com:5432/postgres",
     f"postgres://app:{_FAKE}@db.internal.corp:6543/app",
     f"DATABASE_URL=postgresql+psycopg2://scam_app:{_FAKE}@prod-db.example.net.evil.io/db",
+    f"postgresql://u:{_FAKE}@localhost,prod.internal:5432/db",
+    f"postgresql://u:{_FAKE}@a.example.com,prod.internal/db",
+    f"postgresql://u:{_FAKE}@?host=prod.db.net",
+    f"postgresql://u:{_FAKE}@/db?host=prod",
 ]
 
 # witness-corpus: 같은 «postgres 주소 + 자격» 꼴이지만 막지 않아야 할 예시 · 로컬 · 자리표시자 줄(검사 집합 밖의 값)
@@ -53,6 +57,7 @@ _MUST_PASS = [
     "postgres://user:password@db.example.com?x=1",
     "postgresql://user:pw@localhost?sslmode=disable",
     "(postgresql://u:p@localhost)",
+    "see postgresql://u:p@localhost, then the docs",
 ]
 
 
