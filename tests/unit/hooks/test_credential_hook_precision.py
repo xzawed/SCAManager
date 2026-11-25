@@ -71,6 +71,9 @@ _MUST_BLOCK = {
     "abbreviated-regexp-separate": "grep --reg KEY .env",
     "unknown-long-option-keeps-positionals": "grep --some-new-flag KEY .env",
     "escaped-pipe-is-not-a-pipe": "printenv \\| grep -c SOME_KEY",
+    "pipe-inside-parameter-expansion": "printenv ${UNSET:-|} grep -c SOME_KEY",
+    "count-stage-with-leading-junk": "env | } grep -c SOME_KEY",
+    "count-stage-reading-a-file-too": "env | grep -c SOME_KEY .env",
 }
 
 

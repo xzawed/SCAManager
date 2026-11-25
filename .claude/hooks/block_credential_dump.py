@@ -103,6 +103,13 @@ _NAMES, _WRITE = "names", "write"
 _CUT_IDIOM = re.compile(
     r"""\s*cut\s+(?:-d\s*(?P<q1>['"]?)=(?P=q1)\s+-f\s*1|-f\s*1\s+-d\s*(?P<q2>['"]?)=(?P=q2))\s*"""
 )
+# 개수만 내는 grep 단계 — cut 관용구처럼 **단계 통째** 가 이 꼴일 때만: 안전한 플래그(개수 c · 존재 q · 이름 l 중 하나는
+# 반드시)와 패턴 하나, 파일 · 앞뒤 군더더기 없음(`} grep -c K` · `grep -c K .env` 는 아니다 — 커밋 보안 검토).
+# A count-only grep stage, matched whole like the cut idiom: safe flags (one of c/q/l required), one pattern, no files.
+_COUNT_ONLY_GREP_STAGE = re.compile(
+    r"""\s*grep(?:\s+-(?=[A-Za-z]*[cql])[EFGPiwxvnHhsIcql]+|\s+-[EFGPiwxvnHhsI]+)*?(?:\s+-(?=[A-Za-z]*[cql])[EFGPiwxvnHhsIcql]+)"""
+    r"""(?:\s+-[EFGPiwxvnHhsIcql]+)*(?:\s+(?:'[^']*'|"[^"$`\\]*"|[^\s'"|;&<>()$`{}\\]+))?\s*"""
+)
 # 개수만 내는 wc — 개수 플래그뿐일 때만. `--files0-from=-` 는 stdin 을 파일 이름으로 읽어 오류에 그 줄(값)을 찍는다.
 # A count-only wc: count flags only (`--files0-from=-` reads stdin as file names and echoes them in errors).
 _WC_COUNT_ONLY = re.compile(r"\s*wc(?:\s+(?:-[lcwmL]+|--(?:lines|bytes|words|chars|max-line-length)))*\s*")
@@ -1381,6 +1388,10 @@ def _neutralized(stages, i, neutralizers):
     # An escaped `\|` is not a pipe: the shell runs `printenv '|' grep -c KEY` and prints KEY's value.
     if (len(stage) - len(stage.rstrip("\\"))) % 2 == 1:
         return False
+    # `${X:-|}` · `$'…'` 안의 `|` 도 셸에겐 파이프가 아니다 — 확장 · ANSI 문자열이 든 덤프 단계는 중화하지 않는다(커밋 보안 검토).
+    # A `|` inside `${…}` or `$'…'` is not a pipe either: never neutralize a dump stage holding one.
+    if "${" in stage or "$'" in stage:
+        return False
     is_variable = _WRITE in neutralizers  # railway variable 항목만 쓰기 중화를 가진다
     call = _railway_variable_call(stage) if is_variable else None
     # 한 단계에 railway variable 호출이 둘 이상이면 쓰기로 덮지 않는다 / never excuse two calls in one stage
@@ -1401,7 +1412,7 @@ def _neutralized(stages, i, neutralizers):
     # A very next stage that prints only counts, or only the leading names, prints no value.
     if _NAMES in neutralizers and i + 1 < len(stages):
         nxt = stages[i + 1]
-        if _count_only_grep(nxt) or _WC_COUNT_ONLY.fullmatch(nxt) or _names_only_grep(nxt):
+        if _COUNT_ONLY_GREP_STAGE.fullmatch(nxt) or _WC_COUNT_ONLY.fullmatch(nxt) or _names_only_grep(nxt):
             return True
     return False
 
