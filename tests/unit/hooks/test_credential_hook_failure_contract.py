@@ -62,7 +62,9 @@ def _main(monkeypatch, capsys, payload_text):
 
 
 def _bash(command):
-    return json.dumps({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(_ROOT)})
+    # cwd 는 넣지 않는다 — 판정 불가 표지는 받은 글자 전체에서 찾으므로, 시험을 도는 경로 이름이 결과를 바꾸면 안 된다.
+    # No cwd: the unjudged markers scan the whole payload, so the checkout path must not change the outcome.
+    return json.dumps({"tool_name": "Bash", "tool_input": {"command": command}})
 
 
 def _explode(*_args, **_kwargs):
@@ -138,6 +140,19 @@ def test_a_production_mcp_call_is_denied_when_its_verdict_raises(monkeypatch, ca
 def test_a_payload_that_is_not_an_object_is_unjudged(payload_text, decision, monkeypatch, capsys):
     """🔴 JSON 이지만 객체가 아닌 입력은 판정 불가다 — 예전처럼 속성 오류로 죽지 않고, 표지로 가른다."""
     result = _main(monkeypatch, capsys, payload_text)
+    assert result is not None, "판정 불가가 조용히 지나갔다"
+    assert _decision(result) == decision, result
+
+
+@pytest.mark.parametrize(("tool_input", "decision"), [
+    ("cat .env", "deny"),
+    ([1, 2], None),
+    ({"command": ["railway", "up"]}, "deny"),
+], ids=["string-marked", "list-plain", "command-list-marked"])
+def test_a_malformed_tool_input_is_unjudged(tool_input, decision, monkeypatch, capsys):
+    """객체이지만 꼴이 어긋난 입력(tool_input 이 글자 · 목록)도 판정 불가로 받는다 — 표지는 받은 글자 그대로에서 찾는다."""
+    payload = json.dumps({"tool_name": "Bash", "tool_input": tool_input})
+    result = _main(monkeypatch, capsys, payload)
     assert result is not None, "판정 불가가 조용히 지나갔다"
     assert _decision(result) == decision, result
 

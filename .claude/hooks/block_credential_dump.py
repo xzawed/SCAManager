@@ -1967,8 +1967,9 @@ def main():
     try:
         return _judge(payload)
     except Exception as exc:  # pylint: disable=broad-exception-caught  # 판정 불가는 표지로 가른다 / unjudged → markers
-        subject = json.dumps([payload.get("tool_name"), payload.get("tool_input")], ensure_ascii=False, default=str)
-        return _emit_unjudged(subject, type(exc).__name__)
+        # 표지는 받은 글자 그대로에서 찾는다 — 여기서 다시 직렬화하면 그 자체가 또 죽을 수 있다(깊은 중첩).
+        # Scan the text as received; re-serializing here could fail again (deep nesting).
+        return _emit_unjudged(raw, type(exc).__name__)
 
 
 def _judge(payload):
