@@ -42,6 +42,8 @@ _MUST_BLOCK = [
     f"postgresql://u:{_FAKE}@a.example.com,prod.internal/db",
     f"postgresql://u:{_FAKE}@?host=prod.db.net",
     f"postgresql://u:{_FAKE}@/db?host=prod",
+    f"postgresql://u:{_FAKE}@localhost:5432,prod.internal/db",
+    f"postgresql://u:{_FAKE}@db.example.com:5432,prod.internal:6543/db",
 ]
 
 # witness-corpus: 같은 «postgres 주소 + 자격» 꼴이지만 막지 않아야 할 예시 · 로컬 · 자리표시자 줄(검사 집합 밖의 값)
@@ -58,6 +60,7 @@ _MUST_PASS = [
     "postgresql://user:pw@localhost?sslmode=disable",
     "(postgresql://u:p@localhost)",
     "see postgresql://u:p@localhost, then the docs",
+    "postgresql://u:pw@localhost:5432,127.0.0.1:5433/db",
 ]
 
 
