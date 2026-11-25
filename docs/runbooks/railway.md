@@ -7,9 +7,9 @@
 - `GET /health`=`{"status":"ok"}`, 내부 상태 미노출(`tests/unit/test_main.py`).
 
 ## DB
-- 호스트 = pooler(`*.pooler.supabase.com`, MCP `get_project` 재도출) — egress IPv4-only, direct `db.<ref>`(IPv6-only) 불가.
+- 호스트 = pooler(`*.pooler.supabase.com` — `aws-N` 접두는 프로젝트마다 다르다 · 정본은 Supabase 대시보드 Connect, 사용자 확인) — egress IPv4-only, direct `db.<ref>`(IPv6-only) 불가.
 - `getaddrinfo`→호스트 / `Tenant or user not found`→user 접미사 `postgres.<ref>` / `password authentication failed`→credential / `Network unreachable`→IPv6.
-- 비밀번호는 gitignore 된 로컬 파일, 1회성 psycopg2 probe 로 {host}×{user}×{port} 전수(`connect_timeout=8`·스크럽·삭제). `select 1` 전 확정 보고 금지.
+- 연결 확인은 사용자가 `!` 로 돌린다 — 에이전트는 {host}×{user}×{port} 전수 probe(`connect_timeout=8` · 출력은 위 오류 분류만 · 비밀번호와 접속 주소는 찍지 않는다)를 만들어 건네고 결과를 받는다. 에이전트 몫은 관측 역할 읽기(`scripts/observe_db.py`)와 배포 · 로그 · 상태 읽기다. `select 1` 전 확정 보고 금지.
 - `DB_FORCE_IPV4=true`(`src/database.py::_ipv4_connect_args(url:`)는 dual-stack 선호만 교정, IPv6-only 엔 no-op. 최후엔 유료 IPv4 add-on.
 
 ## cron·스케일·변수

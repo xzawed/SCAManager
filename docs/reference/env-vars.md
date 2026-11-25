@@ -79,5 +79,6 @@
 |`OPERATIONS_DASHBOARD_DISABLED`|0|/admin/operations 503|
 |**로컬 전용**|
 | `SKIP_MAIN_RED_CHECK` | 미설정 | main CI red 관측 생략 |
+|`OBSERVER_DATABASE_URL`|미설정|운영 DB 관측 역할(읽기 전용) — `scripts/observe_db.py` · PC `.env` 만|
 |`PERF_PROD_URL`|운영 URL|perf_measure.py|
 |`PERF_API_KEY`||X-Api-Key|
