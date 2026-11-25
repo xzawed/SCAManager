@@ -1,0 +1,10 @@
+# gitleaks 설정 — 기본 규칙을 그대로 쓰고 리포 고유 예외만 더한다(회고 원장 #1917 M02 P2-7).
+# gitleaks config: the default rules plus this repo's exceptions only.
+# 시험 = tests/unit/scripts/test_precommit_db_url_pattern.py · 예외를 더하면 그 값이 운영 값이 아님을 같은 PR 에 적는다.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "시험 픽스처의 더미 SESSION_SECRET — 0123456789abcdef 두 번(32자 · 운영 값 아님)"
+regexes = ['''^0123456789abcdef0123456789abcdef$''']
