@@ -14,6 +14,7 @@ Count secret / personal-data shapes before a public write; values are never prin
 """
 from __future__ import annotations
 
+import itertools
 import json
 import os
 import re
@@ -99,16 +100,18 @@ def _summary(counts: dict[str, int]) -> str:
 # arguments / the next stage). The terminator is the whole word alone on its line (only `<<-` strips leading tabs);
 # a non-zero fd prefix is not stdin; an unquoted delimiter means bash expands the body.
 _HEREDOC = re.compile(
-    r"(?:(?:(?<=[\s;&|(])|^)(?P<fd>\d+))?(?<!<)<<(?!<)(?P<dash>-)?[ \t]*(?P<quote>['\"]?)(?P<delim>[A-Za-z_]\w*)"
-    r"(?P=quote)(?=[\s;&|<>()]|$)(?P<tail>[^\n]*)\n(?:(?P<body>.*?)\n)??(?(dash)\t*)(?P=delim)(?=\n|$)", re.S | re.M)
+    r"(?:(?:(?<=[\s;&|(])|^)(?P<fd>\d+|\{[A-Za-z_]\w*\}))?(?<!<)<<(?!<)(?P<dash>-)?[ \t]*(?P<quote>['\"]?)"
+    r"(?P<delim>[A-Za-z_]\w*)(?P=quote)(?=[\s;&|<>()]|$)(?P<tail>[^\n]*)\n(?:(?P<body>.*?)\n)??(?(dash)\t*)(?P=delim)"
+    r"(?=\n|$)", re.S | re.M)
 _HEREDOC_MARK = "<<\0heredoc\0"            # fd 0 의 heredoc / a heredoc on stdin
 _OTHER_FD_HEREDOC_MARK = "\0fd-heredoc\0"  # 다른 fd 의 heredoc — stdin 이 아니다 / a heredoc on another fd
 # 이 검사가 끝 표시를 못 읽어 남은 heredoc 연산자 — here-string(`<<<`) · 표지는 아니다.
 # A heredoc operator left unparsed — neither a here-string (`<<<`) nor the marker.
 _UNPARSED_HEREDOC = re.compile(r"(?<!<)<<(?![<\0])")
-# stdin 연산자 — 따옴표를 가린 글자에서 찾는다. 숫자 접두는 낱말 머리일 때만 fd 다(`x3<f` 의 3 은 낱말 글자).
-# stdin operators, searched in quote-masked text; a digit prefix is an fd only at the start of a word.
-_FD_PREFIX = r"(?:(?:(?<=[\s;&|(])|^)(?P<fd>\d+)|(?<![<>&]))"
+# stdin 연산자 — 따옴표를 가린 글자에서 찾는다. 숫자 · `{이름}` 접두는 낱말 머리일 때만 fd 다(`x3<f` 의 3 은 낱말 글자).
+# `{이름}<…` 은 새 fd 를 열어 이름에 담는다 — stdin 이 아니다.
+# stdin operators, searched in quote-masked text; a digit or `{name}` prefix is an fd only at the start of a word.
+_FD_PREFIX = r"(?:(?:(?<=[\s;&|(])|^)(?P<fd>\d+|\{[A-Za-z_]\w*\})|(?<![<>&}]))"
 _HERE_STRING_OP = re.compile(_FD_PREFIX + r"<<<[ \t]*", re.M)
 _STDIN_REDIRECT_OP = re.compile(_FD_PREFIX + r"(?<!<)<(?P<op>[&>]?)(?![<(])[ \t]*", re.M)
 # 셸 낱말 하나(붙어 있는 따옴표 조각을 이은 것)와 그 조각들. / One shell word (adjacent quoted pieces joined) and its pieces.
@@ -120,7 +123,15 @@ _SIMPLE_WORD = re.compile(r"\"[^\"\\]*\"|'[^']*'|[^\s;&|<>()'\"\\]+")
 # A previous pipeline stage that is a bare `cat <<EOF` feeds that heredoc body (measured separately).
 _CAT_HEREDOC_STAGE = re.compile(r"(?:^|[;&|(\n])[ \t]*cat[ \t]+" + re.escape(_HEREDOC_MARK) + r"[ \t]*\|[ \t]*$")
 _GH_SEGMENT = re.compile(r"(?:^|(?<=[\s;&|(]))gh(?:\.exe)?\s+(?P<rest>[^\n;&|]*)")
-_ASSIGN = re.compile(r"(?:^|(?<=[\s;&|]))([A-Za-z_]\w*)=(\"[^\"]*\"|'[^']*'|[^\s;&|]*)")
+# 셸 변수를 바꾸는 대입 — 단순 명령이 대입 낱말뿐이거나(`B=x;` · `A=1 B=2 &&`) 선언 내장 명령의 인자일 때만. 따옴표 안
+# 글자 · 다른 명령의 인자는 대입이 아니고, 앞붙임(`B=x cmd` · `B=x gh …` — 그 명령의 환경에만 든다) · `+=` · 배열은 값을
+# 모른다. Assignments that change shell variables: assignment-only simple commands or declaration-builtin arguments.
+_DECLARATION_BUILTINS = frozenset({"export", "declare", "local", "readonly", "typeset"})
+_ASSIGNMENT_WORD = re.compile(r"(?P<name>[A-Za-z_]\w*)(?P<append>\+?)=(?P<value>.*)", re.S)
+# 단순 명령의 경계 — `( ) { }` 는 넣지 않는다: `$(…)` · `${…}` 안을 자르면 값의 조각을 값으로 읽는다. 서브셸 · 묶음 안의
+# 대입(`(B=x; …)`)은 명령 낱말 뒤가 되어 값을 모르는 쪽으로 간다(막는다).
+# Simple-command breaks; `( ) { }` are left out so `$(…)` / `${…}` are never cut (subshell assignments become unknown).
+_COMMAND_BREAK = re.compile(r"&&|\|\||[;&|\n]")
 _CD = re.compile(r"(?:^|(?<=[\s;&|]))cd\s+(\"[^\"]*\"|'[^']*'|[^\s;&|()]+)")
 # 디렉터리를 바꾸지만 이 검사가 따라가지 못하는 꼴 — 그 뒤의 상대 경로 본문은 못 잰다(절대 경로를 요구한다).
 # Directory changes this scanner does not model; a relative body path after one is unmeasurable.
@@ -203,11 +214,19 @@ def _targets(words: list[str]) -> tuple[list[str], list[str]]:
     return [p for p in paths if p], texts
 
 
-def _resolve(path: str, assigned: dict[str, str], base: Path | None) -> Path | None:
-    """대입 · 환경 변수로 경로를 푼다 — 명령 치환 · 못 푼 변수 · 기준을 모르는 상대 경로는 None. / Unresolvable → None."""
+def _resolve(path: str, assigned: dict[str, str | None], base: Path | None) -> Path | None:
+    """대입 · 환경 변수로 경로를 푼다 — 명령 치환 · 못 푼 변수(값을 모르는 대입 포함) · 기준을 모르는 상대 경로는 None.
+    Resolve a path from assignments and the environment; unresolvable → None."""
     if "$(" in path or "`" in path:
         return None
-    expanded = _VAR.sub(lambda m: assigned.get(m.group(1) or m.group(2), os.environ.get(m.group(1) or m.group(2), "\0")), path)
+
+    def _lookup(match: re.Match[str]) -> str:
+        name = match.group(1) or match.group(2)
+        if name in assigned:
+            return assigned[name] if assigned[name] is not None else "\0"
+        return os.environ.get(name, "\0")
+
+    expanded = _VAR.sub(_lookup, path)
     if "\0" in expanded or "$" in expanded:
         return None
     p = Path(os.path.expanduser(expanded))
@@ -216,26 +235,59 @@ def _resolve(path: str, assigned: dict[str, str], base: Path | None) -> Path | N
     return base / p if base is not None else None
 
 
-def _expand_text(text: str, assigned: dict[str, str]) -> str | None:
-    """게시될 인라인 글의 변수를 같은 명령 안의 글자 대입으로만 푼다 — 그 밖의 변수 · 매개변수 확장 · 치환이 남으면 None.
+def _expand_text(text: str, assigned: dict[str, str | None]) -> str | None:
+    """게시될 인라인 글의 변수를 셸 변수를 바꾼 글자 대입으로만 푼다 — 그 밖의 변수 · 값을 모르는 대입 · 매개변수 확장 ·
+    치환(`$(…)` · 백틱 · 산술 `$[…]`)이 남으면 None.
 
     훅의 환경은 명령이 도는 셸의 환경이 아니다(셸 프로필이 덮을 수 있다) — 그래서 게시될 글은 환경에서 풀지 않는다.
-    Resolve variables in published inline text from literal assignments in the same command only; otherwise None.
+    Resolve variables in published inline text from literal assignments only; otherwise None.
     """
     unresolved = False
 
     def _sub(match: re.Match[str]) -> str:
         nonlocal unresolved
         name = match.group("braced") if match.group("braced") is not None else match.group("bare")
-        if not _NAME.fullmatch(name) or name not in assigned:
+        value = assigned.get(name) if _NAME.fullmatch(name) else None
+        if value is None:
             unresolved = True
             return ""
-        return assigned[name]
+        return value
 
     expanded = _TEXT_VAR.sub(_sub, text)
-    if unresolved or _TEXT_VAR.search(expanded) or "$(" in expanded or "`" in expanded:
+    if unresolved or _TEXT_VAR.search(expanded) or any(s in expanded for s in ("$(", "$[", "`")):
         return None
     return expanded
+
+
+def _assignments(text: str) -> dict[str, str | None]:
+    """`text`(gh 호출 앞 글자)에서 셸 변수를 바꾼 글자 대입 — 이름 → 값, 값을 모르면 None. 구분자로 끝나지 않은 마지막
+    단순 명령은 뒤따르는 명령의 앞붙임이다. 값은 그때까지의 대입으로 푼다(`A=x; B="$A y"`).
+    Literal assignments that change shell variables in `text`; None when the value is unknown.
+    """
+    masked = _mask_quoted(text)
+    assigned: dict[str, str | None] = {}
+    start = 0
+    for brk in [*_COMMAND_BREAK.finditer(masked), None]:
+        end = brk.start() if brk else len(text)
+        words = [text[start + m.start():start + m.end()] for m in re.finditer(r"\S+", masked[start:end])]
+        start = brk.end() if brk else len(text)
+        # `#` 로 시작하는 낱말부터 줄 끝까지는 주석이다 / from a word starting with `#` to the line end is a comment
+        words = list(itertools.takewhile(lambda w: not w.startswith("#"), words))
+        if not words:
+            continue
+        declaration = words[0] in _DECLARATION_BUILTINS
+        matches = [_ASSIGNMENT_WORD.fullmatch(w) for w in (words[1:] if declaration else words)]
+        leading: list[re.Match[str]] = []
+        for match in matches:
+            if match is None and not declaration:
+                break  # 명령 낱말 — 앞의 대입은 그 명령의 앞붙임이다 / a command word: earlier ones are prefixes
+            if match is not None:
+                leading.append(match)
+        keeps = declaration or (len(leading) == len(words) and brk is not None)
+        for match in leading:
+            value = _word_value(match.group("value"), assigned) if keeps and not match.group("append") else None
+            assigned[match.group("name")] = value[0] if value else None
+    return assigned
 
 
 def _count_value(value: str, expanded: bool) -> dict[str, int]:
@@ -269,11 +321,13 @@ def _mask_quoted(text: str) -> str:
     return "".join(out)
 
 
-def _word_value(word: str, assigned: dict[str, str]) -> tuple[str, bool] | None:
-    """셸 낱말 하나의 값과 «변수를 풀었는가» — 작은따옴표 조각은 글자 그대로, 나머지는 같은 명령 안의 글자 대입으로만 푼다.
-    `$'…'`(펼쳐 봐야 안다) · 치환 · 못 푼 변수 · 조각으로 다 덮이지 않는 낱말은 None.
+def _word_value(word: str, assigned: dict[str, str | None]) -> tuple[str, bool] | None:
+    """셸 낱말 하나의 값과 «변수를 풀었는가» — 작은따옴표 조각은 글자 그대로, 나머지는 셸 변수를 바꾼 글자 대입으로만 푼다.
+    `$'…'`(펼쳐 봐야 안다) · 머리의 `~`(홈 경로로 펼쳐진다) · 치환 · 못 푼 변수 · 조각으로 다 덮이지 않는 낱말은 None.
     The value of one shell word and whether it was expanded; single-quoted pieces are literal.
     """
+    if word.startswith("~"):
+        return None
     out, pos, expanded = [], 0, False
     for piece in _WORD_PIECE.finditer(word):
         if piece.start() != pos or piece.group("ansi") is not None:
@@ -365,9 +419,10 @@ def judge_command(command: str, cwd: str | None, shell: str) -> tuple[dict[str, 
         if heredoc.group("quote"):
             _add(counts, _count_value(body, expanded=False))
             continue
-        # 따옴표 없는 끝 표시 — bash 가 펼친다. 그 앞의 글자 대입으로만 풀고, 못 풀면 못 잰 것이다.
-        # Unquoted delimiter: bash expands the body; resolve only from earlier literal assignments.
-        earlier = {m.group(1): _unquote(m.group(2)) for m in _ASSIGN.finditer(command[:heredoc.start()])}
+        # 따옴표 없는 끝 표시 — bash 가 `\`+줄바꿈을 지운 뒤 펼친다. 그 앞의 글자 대입으로만 풀고, 못 풀면 못 잰 것이다.
+        # Unquoted delimiter: bash joins line continuations, then expands; resolve only from earlier literal assignments.
+        body = re.sub(r"\\([\\\n])", lambda m: "" if m.group(1) == "\n" else "\\\\", body)
+        earlier = _assignments(_HEREDOC.sub(lambda m: _HEREDOC_MARK + m.group("tail"), command[:heredoc.start()]))
         value = None if ("$(" in body or "`" in body) else _expand_text(body, earlier)
         if value is None:
             unread.append("(따옴표 없는 heredoc 본문이 펼쳐진다 — 펼친 값을 못 잰다)")
@@ -382,7 +437,7 @@ def judge_command(command: str, cwd: str | None, shell: str) -> tuple[dict[str, 
             unread.append("(gh 명령을 낱말로 나누지 못했다)")
             continue
         before = stripped[:seg.start()]
-        assigned = {m.group(1): _unquote(m.group(2)) for m in _ASSIGN.finditer(before)}
+        assigned = _assignments(before)
         base: Path | None = Path(cwd or os.getcwd())
         if _UNMODELLED_DIR_CHANGE.search(before):
             base = None
@@ -394,6 +449,11 @@ def judge_command(command: str, cwd: str | None, shell: str) -> tuple[dict[str, 
         for text in texts:
             if "$(" in text or "`" in text:
                 unread.append("(인라인 본문이 명령 치환이다)")
+                continue
+            if text.startswith("~"):
+                # 낱말 머리의 `~` 는 홈 경로로 펼쳐진다 — 따옴표가 걷힌 뒤라 `"~/x"` 도 같이 막는다(드문 오탐).
+                # A leading `~` expands to the home path; quotes are already gone, so `"~/x"` is denied too.
+                unread.append("(인라인 본문이 ~ 로 시작한다 — 홈 경로로 펼쳐질 수 있다)")
                 continue
             expanded = _expand_text(text, assigned)
             if expanded is None:

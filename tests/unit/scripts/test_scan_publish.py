@@ -404,6 +404,85 @@ def test_a_value_joined_from_resolved_variables_is_measured_whole(tmp_path, monk
     assert _denied(_hook(monkeypatch, capsys, here, tmp_path))
 
 
+@pytest.mark.parametrize("command", [
+    'echo " B=x"; gh pr comment 1 --body "$B"',
+    'echo B=x; gh pr comment 1 --body "$B"',
+    'B=x gh pr comment 1 --body "$B"',
+    'B=ok; B+=x; gh pr comment 1 --body "$B"',
+    'B=(a b); gh pr comment 1 --body "$B"',
+    'B=$(cat notes.md; true) && gh pr comment 1 --body "$B"',
+    '# B=x\ngh pr comment 1 --body "$B"',
+], ids=["inside-quotes", "argument-of-another-command", "prefix-of-gh", "append", "array", "substitution-with-separator",
+        "inside-a-comment"])
+def test_only_assignments_the_shell_keeps_resolve_a_variable(command, tmp_path, monkeypatch, capsys):
+    """🔴 셸 변수를 바꾸는 대입만 변수를 푼다 — 단순 명령이 대입뿐이거나 선언 내장(`export` 등)의 인자일 때. 따옴표 안 글자 ·
+    다른 명령의 인자는 대입이 아니고, 앞붙임 대입(`B=x gh …` — 그 명령의 환경에만 든다) · `+=` · 배열은 값을 모른다.
+    Only assignments that change shell variables resolve a reference.
+    """
+    monkeypatch.delenv("B", raising=False)
+    (tmp_path / "notes.md").write_text("clean", encoding="utf-8")
+    result = _hook(monkeypatch, capsys, command, tmp_path)
+    assert _denied(result) and "못" in _reason(result), result
+
+
+@pytest.mark.parametrize("command", [
+    'B="all clean"; gh pr comment 1 --body "$B"',
+    'export B="all clean" && gh pr comment 1 --body "$B"',
+    'A=1 B="all clean"; gh pr comment 1 --body "$B"',
+    "B=\"all\"' clean'; gh pr comment 1 --body \"$B\"",
+    'A=clean; B="$A text"; gh pr comment 1 --body "$B"',
+    'B="all clean" # 메모\ngh pr comment 1 --body "$B"',
+], ids=["plain", "export", "two-assignments", "mixed-quotes", "chained", "trailing-comment"])
+def test_assignments_the_shell_keeps_do_resolve(command, tmp_path, monkeypatch, capsys):
+    """대조군(뒤집기) — 셸 변수를 바꾸는 대입은 값을 풀어 잰다(«대입 꼴이면 무조건 막기» 를 거른다)."""
+    assert _hook(monkeypatch, capsys, command, tmp_path) is None
+
+
+@pytest.mark.parametrize("op", ["{myfd}<<'EOF'\ndecoy\nEOF", "{myfd}<<<'clean'", "{myfd}<notes.md", "{myfd}<>notes.md"],
+                         ids=["heredoc", "here-string", "file", "read-write"])
+def test_a_named_fd_redirection_is_not_stdin(op, tmp_path, monkeypatch, capsys):
+    """🔴 `{이름}<…` 은 새 fd 를 열어 그 번호를 이름에 담는다 — stdin 은 파이프 그대로다(Grok 22637c93 2차)."""
+    (tmp_path / "notes.md").write_text("clean", encoding="utf-8")
+    result = _hook(monkeypatch, capsys, f"echo hi | gh pr create --body-file - {op}", tmp_path)
+    assert _denied(result) and "못" in _reason(result), result
+
+
+@pytest.mark.parametrize("body, why", [
+    ("$\\\nHOME", "못"),
+    ("$\\\n(printf x)", "못"),
+    (f"{_UNIX_HOME[:3]}\\\n{_UNIX_HOME[3:]}", "local-home-path 1"),
+], ids=["variable-split", "substitution-split", "home-path-split"])
+def test_an_unquoted_heredoc_is_judged_after_line_continuations_are_joined(body, why, tmp_path, monkeypatch, capsys):
+    """🔴 따옴표 없는 heredoc 은 bash 가 `\\`+줄바꿈을 지운 뒤 펼친다 — 쪼갠 `$`+`HOME` · `$`+`(…)` · 경로도 이어서 판정한다."""
+    monkeypatch.delenv("HOME_FOR_NOTHING", raising=False)
+    result = _hook(monkeypatch, capsys, f"gh pr create --body-file - <<EOF\n{body}\nEOF", tmp_path)
+    assert _denied(result) and why in _reason(result), result
+
+
+def test_a_quoted_heredoc_keeps_line_continuations_literal(tmp_path, monkeypatch, capsys):
+    """대조군(뒤집기) — 따옴표 있는 끝 표시면 `\\`+줄바꿈도 글자 그대로다. 같은 쪼갠 경로가 여기선 경로가 아니다."""
+    body = f"{_UNIX_HOME[:3]}\\\n{_UNIX_HOME[3:]}"
+    assert _hook(monkeypatch, capsys, f"gh pr create --body-file - <<'EOF'\n{body}\nEOF", tmp_path) is None
+
+
+@pytest.mark.parametrize("command", [
+    "gh pr create --body-file - <<<~",
+    "gh pr create --body-file - <<<~/notes",
+    "gh pr comment 1 --body ~/notes",
+    'B=~/notes; gh pr comment 1 --body "$B"',
+], ids=["here-string-tilde", "here-string-tilde-path", "inline-tilde", "assigned-tilde"])
+def test_a_word_starting_with_a_tilde_is_not_measured(command, tmp_path, monkeypatch, capsys):
+    """🔴 낱말 머리의 `~` 는 bash 가 홈 경로(사용자 이름이 든다)로 펼친다 — 펼친 값을 재지 않으니 막는다(Grok 22637c93 2차).
+    인라인 글은 따옴표가 걷힌 뒤라 `"~/x"` 도 같이 막는다(드문 오탐)."""
+    result = _hook(monkeypatch, capsys, command, tmp_path)
+    assert _denied(result) and "못" in _reason(result), result
+
+
+def test_a_tilde_inside_a_word_is_plain_text(tmp_path, monkeypatch, capsys):
+    """대조군 — 낱말 가운데의 `~` 는 펼쳐지지 않는다."""
+    assert _hook(monkeypatch, capsys, 'gh pr comment 1 --body "a~b and c ~d"', tmp_path) is None
+
+
 def test_only_assignments_before_the_gh_call_count(tmp_path, monkeypatch, capsys):
     """변수는 gh 호출 **앞**의 대입으로만 푼다 — 뒤의 대입이 다른 파일을 가리켜도 앞 값을 쓴다(보안 검토 ④)."""
     (tmp_path / "dirty").mkdir()
