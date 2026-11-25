@@ -12,6 +12,7 @@ import hashlib
 import io
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -54,6 +55,11 @@ _MUST_PASS = {
     "git-branch-list-glob": 'git branch --list "grok/*"',
     "git-for-each-ref-glob": "git for-each-ref --format='%(refname:short)' 'refs/heads/grok/*'",
     "git-show-ref-glob": 'git show-ref "grok/*"',
+    # 패턴 자리를 엄격히 짚은 뒤에도 남아야 하는 정직한 꼴 — 출력 리디렉션 · rg · 다음 단계로 넘기기.
+    # Honest shapes that must survive the stricter pattern slot: output redirects, rg, piping onward.
+    "pattern-mentions-dotenv-recursive-stderr": 'grep -rn "\\.env" docs/ 2>/dev/null',
+    "rg-pattern-mentions-dotenv": 'rg -n "\\.env" docs',
+    "pattern-mentions-dotenv-piped": 'grep -n "\\.env" docs/a.md | head -5',
 }
 
 # 같은 꼴의 위험한 짝 — 값이 나온다(또는 나올 수 있다).
@@ -82,6 +88,37 @@ _MUST_BLOCK = {
     # Grok 반례(따옴표 신뢰) — 큰따옴표 안 `$(…)` 의 파이프는 분할기가 못 보지만, 치환 안 글자는 따로 떼어 판정한다.
     # Grok counterexample: a pipe inside "$(…)" is invisible to the splitter, but substitution bodies are judged on their own.
     "pipe-inside-quoted-command-substitution": 'echo "$(env | grep SOME_KEY)"',
+    # AntiGravity 교차 검토 반례 — 패턴 자리를 잘못 짚으면 .env 가 «패턴» 으로 빠진다: 빈 낱말 · 껍데기뿐인 패턴 ·
+    # 빈 옵션 값 · 붙여 쓴 입력 리디렉션 · 명령 자리가 아닌 검색어 · 공백이나 리디렉션을 품은 옵션 값.
+    # AntiGravity counterexamples: a misplaced pattern slot drops .env as "the pattern".
+    "empty-pattern-then-dotenv": 'grep "" .env',
+    "empty-pattern-line-numbers": "grep -n '' .env",
+    "rg-empty-pattern": 'rg "" .env',
+    "empty-regexp-value": 'grep -e "" .env',
+    "wrapper-only-pattern": 'grep -E "()" .env',
+    "empty-option-value": 'grep --label "" KEY .env',
+    "rg-empty-replace-value": 'rg -r "" "API_KEY=" .env',
+    "unspaced-stdin-redirect": "grep <.env KEY",
+    "fd-stdin-redirect": "grep 0<.env KEY",
+    "search-word-as-argument-of-git-diff": "git diff rg .env",
+    "search-word-as-argument-of-cat": "cat ./rg .env",
+    "search-word-as-argument-of-head": "head -n 20 grep .env",
+    "search-word-then-piped-onward": "ls grep .env | xargs cat",
+    "option-value-holding-a-redirect": 'grep --label "x >" KEY .env',
+    "option-value-holding-an-exclude": 'grep --label "x --exclude" KEY .env',
+    # 이름만 · 개수만 중화의 틈 — printenv 에 이름을 주면 «값» 한 줄만 낸다(`cut` 은 main 때부터 샜다) · 믿을 수 없는
+    # 따옴표 · extglob 안의 `|` 는 파이프가 아니다. Names-only needs KEY=VALUE lines; untrusted quotes or extglob are no pipe.
+    "printenv-one-value-names-only": "printenv SOME_KEY | grep -o '^[A-Za-z0-9_-]*='",
+    "printenv-one-value-cut": "printenv SOME_KEY | cut -d= -f1",
+    "untrusted-quotes-spoof-a-count-stage": "printenv SECRET_KEY '\\\"|wc -l|'",
+    "untrusted-quotes-spoof-a-cut-stage": "printenv SECRET_KEY '\\\"|cut -d= -f1|'",
+    "extglob-bar-is-not-a-pipe": "printenv SECRET_KEY @(a|wc -l|b)",
+    # 내용을 안 낸다던 git 하위 명령도 stdin 을 받으면 그 줄을 낸다(Grok · AntiGravity 공통 · check-ignore 는 main 때부터).
+    # "Content-free" git subcommands echo stdin lines: show-ref --exclude-existing, check-ignore --stdin -n -v.
+    "show-ref-filtering-dotenv-from-stdin": "git show-ref --exclude-existing < .env",
+    "check-ignore-echoing-dotenv-from-stdin": "git check-ignore --stdin -n -v < .env",
+    # 빈 패턴이 빠지면 재귀 검색의 첫 대상이 «패턴» 이 된다(main 때부터) / an empty pattern shifted the first target.
+    "recursive-empty-pattern-over-dotenv-folder": 'grep -rn "" . docs/',
 }
 
 
@@ -95,6 +132,14 @@ def test_honest_shapes_that_were_denied_now_pass(name, workdir):
 def test_their_dangerous_twins_are_still_denied(name, workdir):
     """대조군(뒤집기) — 같은 꼴의 위험한 짝은 그대로 막는다. «검색이면 통과» 같은 싼 완화는 여기서 걸린다."""
     assert _verdict(_MUST_BLOCK[name], workdir) is not None, name
+
+
+def test_the_dangerous_twins_are_denied_in_powershell_mode_too(workdir):
+    """PowerShell 이 기본 셸이다 — 셸 모드(글롭 · 따옴표 해석)가 갈라도 위험한 짝은 다 막는다(AntiGravity 교차 검토).
+    PowerShell is the default shell; every dangerous twin stays denied in that mode as well."""
+    allowed = [name for name, command in sorted(_MUST_BLOCK.items())
+               if hook.decide_with_hint(command, str(workdir), "powershell") is None]
+    assert not allowed, allowed
 
 
 # witness-corpus: 덤프 뒤 «개수만 · 아무것도 안 냄» 단계 가운데 판정식(grep -c/-q/-l · wc 개수 플래그) 밖의 꼴
@@ -154,6 +199,47 @@ def test_a_file_reading_option_of_a_ref_command_is_still_denied(workdir):
     assert _verdict("git tag -a v9 -F .env", workdir) is not None
 
 
+def _git_repo(path, ignored):
+    """임시 git 저장소 — .gitignore 에 `ignored` 이름들 / a scratch repository ignoring the given names."""
+    subprocess.run(["git", "init", "-q", str(path)], check=True)
+    (path / ".gitignore").write_text("".join(f"{name}\n" for name in ignored), encoding="utf-8")
+
+
+def test_rg_reads_a_dotenv_that_git_does_not_ignore(tmp_path):
+    """🔴 rg 는 숨김 · .gitignore 파일을 건너뛸 뿐이다 — 무시되지 않은 prod.env 는 기본값으로도 읽는다(Grok 반례
+    `rg -e .env -e SYNTHETIC .`). 무시 여부는 가정하지 않고 git 에 묻는다.
+    rg skips only hidden and ignored files; an unignored prod.env is read by default, so ask git."""
+    _git_repo(tmp_path, [".env"])
+    (tmp_path / ".env").write_text("SYNTHETIC_KEY=x\n", encoding="utf-8")
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "prod.env").write_text("SYNTHETIC_KEY=x\n", encoding="utf-8")
+    for command in ("rg -e .env -e SYNTHETIC .", "rg SYNTHETIC ."):
+        assert _verdict(command, tmp_path) is not None, command
+    # 대조군 — git 이 무시하는 파일은 rg 도 건너뛴다 / control: files git ignores are skipped
+    (tmp_path / ".gitignore").write_text(".env\nprod.env\n", encoding="utf-8")
+    assert _verdict("rg SYNTHETIC .", tmp_path) is None
+
+
+def test_rg_hidden_reads_only_the_dotenv_files_git_does_not_ignore(tmp_path):
+    """--hidden 은 숨김 파일을 열 뿐 .gitignore 는 지킨다 — 무시된 .env 는 통과(이 리포의 꼴), 무시되지 않은
+    .env.production 은 막는다. --hidden still honours .gitignore."""
+    _git_repo(tmp_path, [".env"])
+    (tmp_path / ".env").write_text("SYNTHETIC_KEY=x\n", encoding="utf-8")
+    assert _verdict("rg --hidden SYNTHETIC .", tmp_path) is None
+    (tmp_path / ".env.production").write_text("SYNTHETIC_KEY=x\n", encoding="utf-8")
+    assert _verdict("rg --hidden SYNTHETIC .", tmp_path) is not None
+
+
+def test_rg_outside_a_git_repository_honours_no_gitignore(tmp_path, monkeypatch):
+    """저장소 밖의 rg 는 .gitignore 를 보지 않는다 — 거기 적혀 있어도 prod.env 를 읽는다(막는 쪽). 위 폴더가 우연히
+    저장소여도 시험이 흔들리지 않게 git 이 tmp_path 위로 올라가지 못하게 한다.
+    Outside a repository rg ignores .gitignore, so a listed prod.env is still read."""
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path.parent))
+    (tmp_path / ".gitignore").write_text("prod.env\n", encoding="utf-8")
+    (tmp_path / "prod.env").write_text("SYNTHETIC_KEY=x\n", encoding="utf-8")
+    assert _verdict("rg SYNTHETIC .", tmp_path) is not None
+
+
 def _run_main(monkeypatch, capsys, payload):
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
     assert hook.main() == 0
@@ -179,6 +265,22 @@ def test_every_denial_leaves_a_value_free_record(tmp_path, monkeypatch, capsys):
     assert first["sha256"] == hashlib.sha256(secret_looking.encode("utf-8")).hexdigest()
     assert first["len"] == len(secret_looking)
     assert "SYNTHETIC_MARKER_123" not in log.read_text(encoding="utf-8"), "명령 글자가 기록에 남았다"
+
+
+def test_a_production_denial_record_keeps_no_command_word(tmp_path, monkeypatch, capsys):
+    """🔴 운영 거부 사유는 명령 낱말(하위 명령 자리에 온 값 · 둘째 낱말)을 품는다 — 기록에는 정적인 범주만 남긴다
+    (AntiGravity 반례: `railway --token 값 status` 의 값이 사유째 기록됐다). 안내문(에이전트에게 보이는 사유)은 그대로다.
+    Production reasons embed command words; the record keeps only the static category."""
+    log = tmp_path / "denials.jsonl"
+    monkeypatch.setenv("SCAMANAGER_HOOK_LOG", str(log))
+    for command in ("railway --token SYNTHETIC_MARKER_123 status", "railway service --token SYNTHETIC_MARKER_123 list",
+                    "railway domain SYNTHETIC_MARKER_123"):
+        out = _run_main(monkeypatch, capsys, {"tool_name": "Bash", "tool_input": {"command": command}})
+        assert '"permissionDecision": "deny"' in out, command
+    records = _records(log)
+    assert [r["kind"] for r in records] == ["production"] * 3, records
+    assert all(r["reason"] for r in records), records
+    assert "synthetic_marker_123" not in log.read_text(encoding="utf-8").lower(), "명령 낱말이 기록에 남았다"
 
 
 def test_a_pass_leaves_no_record_and_a_broken_log_never_changes_the_verdict(tmp_path, monkeypatch, capsys):

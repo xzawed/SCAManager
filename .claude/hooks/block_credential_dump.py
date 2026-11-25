@@ -57,6 +57,7 @@ import json
 import os
 import re
 import shlex
+import subprocess
 import sys
 import time
 
@@ -683,15 +684,40 @@ def _pattern_positions(args, valued):
     return picks if given else picks + positional[:1]
 
 
+# 패턴을 뺀 뒤 다시 이어 붙여도 같은 낱말로 읽히는 인자 — 공백 · 따옴표 · 리디렉션 · 파이프 · 묶음 · 치환 · 주석 글자가 없다.
+# An argument that reads back as the same word after re-joining: no whitespace, quote, redirect, pipe, grouping,
+# substitution or comment character.
+_REJOINABLE_ARG = re.compile(r"[^\s'\"<>|;&()$`{}#]+")
+
+
 def _without_search_pattern(stage):
     """검색 명령이면 패턴 인자를 뺀 낱말로 — 패턴은 경로가 아니다(`grep "\\.env" 문서` 는 .env 를 읽지 않는다 ·
-    원장 #1917 P1-5). findstr 은 제 문법이라 그대로 둔다. Drop the pattern argument of a search; it is not a path."""
-    call = _search_call(stage)
-    if call is None or call[0] == "findstr":
+    원장 #1917 P1-5). 🔴 확신할 때만 뺀다 — 그 밖은 단계를 그대로 돌려줘 원래 판정(막는 쪽)을 받는다(AntiGravity 교차 검토):
+    - 검색 명령이 명령 자리(첫 낱말 · `git grep`)에 있을 때만 — `git diff rg .env` 의 rg 는 인자다.
+    - 입력 리디렉션이 없을 때만 — `grep <.env KEY` 의 `<.env` 는 패턴 자리에 선 읽기다. 출력 리디렉션은 먼저 걷는다.
+    - 빈 낱말을 버리지 않는다 — `grep "" .env` 의 패턴은 빈 낱말이고, 버리면 .env 가 패턴 자리로 밀린다.
+    - 남는 낱말이 다시 이어 붙여도 같은 낱말일 때만 — `--label "x >"` 를 풀어 쓰면 `> .env` 가 쓰기로 읽힌다.
+    findstr 은 제 문법이라 그대로 둔다. Drop the pattern argument of a search only when certain; otherwise return
+    the stage unchanged so the original (fail-closed) verdict applies."""
+    text = _OUTPUT_REDIRECT.sub(" ", stage)
+    if "<" in text:
         return stage
-    name, args, before = call
+    try:
+        words = shlex.split(text.replace("\\", "/"), posix=True)
+    except ValueError:
+        return stage
+    name = _command_name(words[0]) if words else ""
+    if name in _SEARCH_COMMANDS and name != "findstr":
+        head, args = words[:1], words[1:]
+    elif name == "git" and len(words) > 1 and words[1] == "grep":
+        name, head, args = "git-grep", words[:2], words[2:]
+    else:
+        return stage
     drop = set(_pattern_positions(args, _RG_VALUED_SHORTS if name == "rg" else _GREP_VALUED_SHORTS))
-    return " ".join([*before, "grep" if name == "git-grep" else name, *(w for i, w in enumerate(args) if i not in drop)])
+    kept = [*head, *(w for i, w in enumerate(args) if i not in drop)]
+    if not drop or not all(_REJOINABLE_ARG.fullmatch(w) for w in kept):
+        return stage
+    return " ".join(kept)
 
 
 def _reads_dotenv(stage):
@@ -701,7 +727,10 @@ def _reads_dotenv(stage):
     head, words = _command_words(_REDIRECT_TARGET.sub(" ", stage))
     if head in _DOTENV_SAFE_HEADS:
         return False
-    return not (head == "git" and words and words[0].lower() in _GIT_SAFE_SUBCOMMANDS)
+    # 내용을 안 내는 git 하위 명령도 stdin 으로 받은 줄은 낸다 — `show-ref --exclude-existing` 은 ref 가 아닌 줄을,
+    # `check-ignore --stdin -n -v` 는 모든 줄을 찍는다(Grok · AntiGravity 교차 검토). 입력 리디렉션이 있으면 면제하지 않는다.
+    # Even content-free git subcommands echo lines read from stdin; no exemption with an input redirect.
+    return not (head == "git" and words and words[0].lower() in _GIT_SAFE_SUBCOMMANDS and "<" not in stage)
 
 
 # ── 재귀 검색 · 나열 파이프라인이 .env 를 읽는가 (회고 원장 R-4) ─────────────────────────────
@@ -735,15 +764,17 @@ _WALK_SKIP = frozenset({".git", "node_modules", ".venv", "venv", "__pycache__", 
 _SEARCH_COMMANDS = frozenset({"grep", "egrep", "fgrep", "rgrep", "rg", "findstr"})
 
 
-def _plain_words(text):
-    """shlex 낱말 — 백슬래시는 / 로, 괄호 · 치환 껍데기는 벗기고 빈 것은 뺀다.
-    shlex words with backslashes as slashes and grouping/substitution wrappers peeled."""
+def _plain_words(text, keep_empty=False):
+    """shlex 낱말 — 백슬래시는 / 로, 괄호 · 치환 껍데기는 벗기고 껍데기뿐이던 것은 뺀다. keep_empty 면 따옴표로 준 빈
+    낱말(`""`)은 남긴다 — 검색 인자의 자리를 셀 때 그것도 한 자리다(`grep -rn "" . 문서` 의 `.` 은 대상이다).
+    shlex words with backslashes as slashes and grouping/substitution wrappers peeled; keep_empty keeps quoted
+    empty words, which still occupy an argument slot."""
     text = text.replace("\\", "/")
     try:
         toks = shlex.split(text, posix=True)
     except ValueError:
         toks = text.split()
-    return [w for w in (_TOKEN_WRAPPERS.sub("", t.strip("`")) for t in toks) if w]
+    return [w for t, w in ((t, _TOKEN_WRAPPERS.sub("", t.strip("`"))) for t in toks) if w or (keep_empty and not t)]
 
 
 def _command_name(word):
@@ -805,7 +836,7 @@ def _dotenv_files(target, recursive=True):
 def _search_call(stage):
     """단계 안의 검색 명령 → (이름, 인자, 앞 낱말들). `git … grep` 은 git 의 하위 명령이라 «git-grep» 으로 낸다.
     The search command in a stage as (name, args, preceding words); `git … grep` is reported as git-grep."""
-    words = _plain_words(stage)
+    words = _plain_words(stage, keep_empty=True)
     for k, word in enumerate(words):
         name = _command_name(word)
         if name not in _SEARCH_COMMANDS:
@@ -922,13 +953,14 @@ def _include_glob_hits(glob, parts):
     return fnmatch.fnmatchcase(rel, glob) or (glob.startswith("**/") and fnmatch.fnmatchcase(rel, glob[3:]))
 
 
-def _rg_reads(parts, globs, no_ignore, hidden):
+def _rg_reads(parts, globs, no_ignore, hidden, ignored=frozenset()):
     """rg 가 그 파일을 읽는가 — 포함 글롭이 맞으면 무시 · 숨김 규칙을 넘어 읽고(재정의가 가장 먼저), 포함 글롭이
-    있는데 안 맞으면 안 읽는다. 제외 글롭이 이름에 맞으면 안 읽는다. 그 밖은 무시 해제일 때만, 숨김(점으로 시작)은
-    숨김 포함일 때만 읽는다. 숨김 폴더는 숨김 포함이거나 그 폴더를 집는 포함 글롭이 있을 때만 내려간다.
-    .env 꼴은 .gitignore 에 있다고 본다(가정 — 아니면 rg 기본값도 읽는다).
-    Would rg read this file? Include globs override ignore and hidden rules; .env-like files are assumed
-    to be gitignored."""
+    있는데 안 맞으면 안 읽는다. 제외 글롭이 이름에 맞으면 안 읽는다. 그 밖은 숨김(점으로 시작)이면 숨김 포함일 때만,
+    git 이 무시하는 파일(`ignored` — 호출자가 git 에 물어 넘긴다)이면 무시 해제일 때만 읽는다. 숨김 폴더는 숨김 포함이거나
+    그 폴더를 집는 포함 글롭이 있을 때만 내려간다. .env 꼴이 .gitignore 에 있다고 가정하지 않는다 — 무시되지 않은
+    prod.env 는 rg 기본값도 읽는다(Grok 교차 검토 반례 `rg -e .env -e KEY .`).
+    Would rg read this file? Include globs override ignore and hidden rules; otherwise hidden files need --hidden
+    and files git ignores (as git reports them) need --no-ignore."""
     *dirs, name = parts
     includes = [g for g in globs if not g.startswith("!")]
     excludes = [g[1:] for g in globs if g.startswith("!")]
@@ -941,7 +973,31 @@ def _rg_reads(parts, globs, no_ignore, hidden):
         return False
     if any("/" not in g and fnmatch.fnmatchcase(name, g) for g in excludes):
         return False
-    return no_ignore and (hidden or not name.startswith("."))
+    return (hidden or not name.startswith(".")) and (no_ignore or tuple(parts) not in ignored)
+
+
+def _git_ignored_parts(target, hits):
+    """대상 폴더 아래 .env 꼴 파일 가운데 git 이 무시하는 것 — `git check-ignore --no-index`(추적 여부와 상관없이 규칙만,
+    rg 와 같다)로 묻는다. 그 파일이 있는 작업 폴더 후보 모두에서 무시될 때만 무시로 본다. git 이 없거나 · 저장소 밖이거나
+    (rg 도 저장소 밖에서는 .gitignore 를 보지 않는다) · 2초를 넘기거나 · 파일 대상(rg 는 이름을 준 파일을 무시 규칙과
+    상관없이 읽는다)이면 무시 안 됨 — 막는 쪽.
+    Hits git ignores in every cwd candidate holding them; anything unknown counts as not ignored (fail closed)."""
+    env = {k: v for k, v in os.environ.items() if k not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE")}
+    checked, unignored = set(), set()
+    for root in dict.fromkeys(os.path.normpath(r) for r in _resolve_all(target) if os.path.isdir(r)):
+        present = ["/".join(parts) for parts in hits if os.path.exists(os.path.join(root, *parts))]
+        if not present:
+            continue
+        try:
+            done = subprocess.run(["git", "-C", root, "check-ignore", "--no-index", "-z", "--stdin"],
+                                  input="".join(p + "\0" for p in present).encode("utf-8"), env=env,
+                                  capture_output=True, timeout=2, check=False)
+            listed = set(done.stdout.decode("utf-8", "replace").split("\0")) if done.returncode in (0, 1) else set()
+        except (OSError, subprocess.SubprocessError):
+            listed = set()
+        checked.update(present)
+        unignored.update(p for p in present if p not in listed)
+    return frozenset(parts for parts in hits if "/".join(parts) in checked - unignored)
 
 
 # 값을 받는 짧은 옵션 글자 — 묶음에서 이 글자 뒤는 그 값이다(grep 도움말 · rg 도움말).
@@ -1033,6 +1089,7 @@ def _recursive_search_reads_dotenv(stage):
     name, args, before = call
     if name == "findstr":
         return _findstr_reads_dotenv(args)
+    ask_git = False  # rg 가 git 의 무시 규칙을 따르는가 — rg 갈래가 정한다 / does rg follow git's ignore rules here?
     if name == "git-grep":
         # git grep 은 기본으로 추적 파일만 본다. --no-index(--exclude-standard 없이)와 --no-exclude-standard 는
         # .gitignore 를 무시한다(git 문서). git grep searches tracked files unless .gitignore is switched off.
@@ -1046,6 +1103,7 @@ def _recursive_search_reads_dotenv(stage):
         no_ignore = u_count >= 1 or any(w.startswith("--no-ignore") for w in args)
         hidden = u_count >= 2 or "--hidden" in args or any(re.match(r"-[A-Za-z]*\.", w) for w in args)
         reads = functools.partial(_rg_reads, globs=_rg_globs(args), no_ignore=no_ignore, hidden=hidden)
+        ask_git = not no_ignore
     else:
         if not _grep_is_recursive(name, args):
             return False
@@ -1058,7 +1116,15 @@ def _recursive_search_reads_dotenv(stage):
         return True
     for target in _search_targets(args) or ["."]:
         files = _dotenv_files(target)
-        if files is None or any(reads(parts) for parts in files):
+        if files is None:
+            return True
+        hits = [parts for parts in files if reads(parts)]
+        # rg 는 git 이 무시하는 파일을 건너뛴다 — 가정하지 않고 git 에 물어, 무시되는 것만 뺀다(무시 해제면 묻지 않는다).
+        # rg skips what git ignores: ask git and drop only the ignored hits (not needed with --no-ignore).
+        if hits and ask_git:
+            ignored = _git_ignored_parts(target, hits)
+            hits = [parts for parts in hits if reads(parts, ignored=ignored)]
+        if hits:
             return True
     return False
 
@@ -1374,11 +1440,12 @@ def _split_unquoted(text, separators):
     return parts
 
 
-# 🔴 리디렉션(`>&2` · `> 파일` · `<`)과 명령·프로세스 치환(`$(` · `<(` · `>(`)이 든 단계는 중화하지 않는다 —
-#    출력이 cut 을 비켜 가거나 쓰기 명령 안에서 읽기가 돈다(보안 리뷰 지적).
-# A stage with redirection or substitution is never neutralized: output can bypass the cut, or a read
-# can run inside a write.
-_UNREADABLE_STAGE = re.compile(r"[<>]|\$\(")
+# 🔴 리디렉션(`>&2` · `> 파일` · `<`)과 괄호(명령·프로세스 치환 `$(` · `<(` · `>(` · 서브셸 · extglob `@(a|b)`)가 든
+#    단계는 중화하지 않는다 — 출력이 cut 을 비켜 가거나 쓰기 명령 안에서 읽기가 돌고, extglob 안의 `|` 는 파이프가
+#    아니다(보안 리뷰 · AntiGravity 교차 검토).
+# A stage with redirection or any parenthesis (substitution, subshell, extglob) is never neutralized: output can
+# bypass the cut, a read can run inside a write, and a `|` inside `@(a|b)` is no pipe.
+_UNREADABLE_STAGE = re.compile(r"[<>()]")
 
 
 def _neutralized(stages, i, neutralizers):
@@ -1401,22 +1468,32 @@ def _neutralized(stages, i, neutralizers):
     single = len(re.findall(_RW + r"\s+(?:variables?|vars?)\b", stage, re.IGNORECASE)) == 1
     if is_variable and single and call is not None and call[0]:
         return True
-    # 🔴 이름만 자르는 cut 은 덤프 **바로 다음** 단계여야 한다 — 사이 단계(`tee /dev/stderr` 등)가 값을
-    #    복제할 수 있다. railway variable 은 KEY=VALUE(--kv · -k, --json 없음) 출력일 때만 — 토큰으로 본다.
-    # The names-only cut must be the very next stage (a stage in between, e.g. tee, can copy values).
-    # For railway variable it needs KEY=VALUE output (--kv/-k without --json), read as tokens.
-    if _NAMES in neutralizers and i + 1 < len(stages) and _CUT_IDIOM.fullmatch(stages[i + 1]):
-        if is_variable:
-            return (call is not None and bool({"--kv", "-k"} & call[1])
-                    and "--json" not in call[1])
+    if _NAMES not in neutralizers or i + 1 >= len(stages):
+        return False
+    nxt = stages[i + 1]
+    # 바로 다음 단계가 개수만(grep -c · -q · -l · wc) 내면 값이 나오지 않는다(원장 #1917 P1-5 — `env | grep -c X` 오탐).
+    # A very next stage that prints only counts prints no value.
+    if _COUNT_ONLY_GREP_STAGE.fullmatch(nxt) or _WC_COUNT_ONLY.fullmatch(nxt):
         return True
-    # 바로 다음 단계가 개수만(grep -c · -q · -l · wc) 내거나, 줄 머리의 이름만(`grep -o '^[A-Z_]*='`) 내면 값이
-    # 나오지 않는다(원장 #1917 P1-5 — `env | grep -c X` · `printenv | grep -o '^[A-Z_]*='` 오탐).
-    # A very next stage that prints only counts, or only the leading names, prints no value.
-    if _NAMES in neutralizers and i + 1 < len(stages):
-        nxt = stages[i + 1]
-        if _COUNT_ONLY_GREP_STAGE.fullmatch(nxt) or _WC_COUNT_ONLY.fullmatch(nxt) or _names_only_grep(nxt):
-            return True
+    # 🔴 이름만 자르는 단계(cut 관용구 · `grep -o '^[A-Z_]*='`)는 덤프 **바로 다음** 이고 덤프가 KEY=VALUE 줄을 낼 때만 —
+    #    사이 단계(`tee /dev/stderr` 등)는 값을 복제하고, `printenv 이름` 은 값만 내서 «`=` 앞» 이 곧 값이다(AntiGravity
+    #    교차 검토 — cut 은 main 때부터 샜다). railway variable 은 KEY=VALUE(--kv · -k, --json 없음) 출력일 때만 — 토큰으로 본다.
+    # A names-only stage must be the very next one and the dump must print KEY=VALUE lines (printenv NAME prints the
+    # bare value). For railway variable it needs --kv/-k without --json, read as tokens.
+    if not (_CUT_IDIOM.fullmatch(nxt) or _names_only_grep(nxt)) or _prints_bare_values(stage):
+        return False
+    if is_variable:
+        return call is not None and bool({"--kv", "-k"} & call[1]) and "--json" not in call[1]
+    return True
+
+
+def _prints_bare_values(stage):
+    """덤프 단계가 KEY=VALUE 가 아니라 값만 내는가 — `printenv 이름…` 은 그 변수들의 값만 한 줄씩 낸다.
+    Does the dump print bare values (printenv with names) instead of KEY=VALUE lines?"""
+    words = _plain_words(stage)
+    for k, word in enumerate(words):
+        if _command_name(word) == "printenv":
+            return any(not w.startswith("-") for w in words[k + 1:])
     return False
 
 
@@ -1430,9 +1507,12 @@ def _decide_segment(segment, marked=None):
     if len(path_stages) != len(stages):
         path_stages = stages  # 나뉨이 어긋나면 표지를 쓰지 않는다 / never trust a misaligned split
     # 🔴 `#` 이 있으면 그 뒤가 주석일 수 있다 — `--kv # | cut -d= -f1` 의 cut 은 실행되지 않는다(Grok G1).
-    #    단계 분해는 주석을 모르므로, `#` 이 든 세그먼트에서는 어떤 중화도 인정하지 않는다.
-    # A `#` may start a comment («--kv # | cut» never runs the cut), so no neutralizer counts there.
-    commented = "#" in segment
+    #    단계 분해는 주석을 모르므로, `#` 이 든 세그먼트에서는 어떤 중화도 인정하지 않는다. 따옴표를 믿을 수 없을
+    #    때(`\"` · 백틱)도 같다 — 분할이 따옴표 안의 `|` 로 나눠, `printenv K '\"|wc -l|'` 의 wc 는 printenv 의 인자일
+    #    뿐이다(AntiGravity 교차 검토).
+    # A `#` may start a comment («--kv # | cut» never runs the cut), and untrusted quotes split on quoted bars:
+    # no neutralizer counts in either case.
+    unneutralizable = "#" in segment or not _quotes_trustworthy(segment)
     # 나열 → 내용 읽기 파이프라인(`Get-ChildItem [-Recurse] | Select-String`) — 단계 하나로는 안 보인다.
     # A listing piped into a content reader is only visible across stages.
     if len(stages) > 1 and _listing_pipeline_reads_dotenv(stages):
@@ -1450,7 +1530,7 @@ def _decide_segment(segment, marked=None):
             if (not hit and matcher is _reads_dotenv and i + 1 < len(stages)
                     and _mentions_dotenv(_without_search_pattern(path_stages[i]))):
                 hit = True
-            if hit and (commented or not _neutralized(stages, i, neutralizers)):
+            if hit and (unneutralizable or not _neutralized(stages, i, neutralizers)):
                 return reason, hint
     return None
 
@@ -2040,7 +2120,10 @@ def _record_denial(kind, reason, subject):
 def _emit_production_deny(tool, reason, subject=""):
     """운영 접근 차단 출력 — 대안(사용자의 `!` 실행 · 자율 읽기)을 늘 함께 알린다.
     Emit the production-access denial, always with the alternative."""
-    _record_denial("production", reason, subject or tool)
+    # 기록에는 « — » 뒤의 정적 범주만 — 앞쪽은 명령 낱말(하위 명령 자리에 온 값 · 둘째 낱말)을 품는다(AntiGravity 교차
+    # 검토: `railway --token 값 status` 의 값이 사유째 남았다). 에이전트에게 보이는 사유는 그대로 둔다.
+    # The record keeps only the static category after « — »; the part before it embeds command words.
+    _record_denial("production", reason.rpartition(" — ")[2], subject or tool)
     output = {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
