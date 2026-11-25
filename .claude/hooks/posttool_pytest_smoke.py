@@ -13,9 +13,15 @@ Retro 2026-07-18 P1 theme C: the old hook ran the full suite in a 60s timeout �
 swallow → false-green. Scoping to the affected subarea makes the signal actually finish.
 
 🔴 이 훅은 **best-effort 조기 실패 탐지** — 전체 게이트가 아니다. 전체 게이트는 push-time(6-step ②)로
-위임된다. 비차단(advisory·항상 exit 0) — 결과는 배너(✅/❌)로 가시화, edit 을 막지 않음.
+위임된다. 비차단(advisory·항상 exit 0) — edit 을 막지 않는다.
 This hook is best-effort early-failure detection, NOT the full gate (that stays at push-time 6-step ②).
-Non-blocking (always exit 0); the result is shown via a ✅/❌ banner.
+Non-blocking (always exit 0).
+
+🔴 출력 채널 — PostToolUse 의 plain stdout 은 에이전트에게 가지 않는다(디버그 로그 · 세션 기록에만 남는다).
+   ❌(실패) · ⚠️(미완)는 JSON 한 개로 낸다 — `hookSpecificOutput.additionalContext`(에이전트) · `systemMessage`(사람).
+   ✅ · ℹ️ 는 plain stdout 에만 둔다 — 편집마다 맥락에 더하면 경고가 죽는다. 시험 = `test_posttool_smoke_channel.py`.
+Output channel: plain PostToolUse stdout never reaches the agent, so ❌/⚠️ go out as one JSON object
+(additionalContext for the agent, systemMessage for the person); ✅/ℹ️ stay in plain stdout.
 
 사용법 / Usage: PostToolUse 훅 (stdin 으로 tool_input JSON 수신).
 """
@@ -28,6 +34,13 @@ from pathlib import Path
 # 스코프 실행 타임아웃(초) — 서브영역 단위라 대개 <30s. 훅 자체는 settings.json timeout 이 상한.
 # Scoped-run timeout (s) — a subarea usually runs in <30s; settings.json timeout bounds the hook.
 _RUN_TIMEOUT = 75
+
+# 에이전트에게 넘기는 출력 끝 줄 수 · 줄 길이 상한 — `-q -x` 출력은 FAILED(ERROR) 줄 · 멈춤 줄 · 건수 줄로 끝난다.
+# 맥락은 비용이라 배너 + 이 세 줄만 넘긴다.
+# How many trailing output lines (and how wide) reach the agent: `-q -x` ends with the FAILED/ERROR, stop and count lines.
+_AGENT_LINES = 3
+_AGENT_WIDTH = 300
+_SCOPE_NOTE = "best-effort 조기탐지 (전체 게이트 = push 전 단위 전체)"
 
 
 def _norm(path):
@@ -96,20 +109,38 @@ def tests_naming(path, repo):
     return out
 
 
-def _workflow_banner(path):
-    """워크플로 편집 배너 — YAML 파싱만 본다. 깨지면 ❌, 성하면 «단언 0건» 을 밝힌다(거짓 ✅ 금지).
-    Workflow banner: parse only; ❌ on a broken file, otherwise say no assertions ran."""
+def _workflow_check(path):
+    """워크플로 편집 판정 — (에이전트에게 알릴 것인가, 배너). YAML 파싱만 본다.
+
+    깨지면 ❌ · 파서가 없어 못 쟀으면 ⚠️ — 둘 다 알린다. 성하면 «단언 0건» 을 밝히는 ℹ️ 이고 알리지 않는다(거짓 ✅ 금지).
+    Workflow check: (notify the agent?, banner). ❌ when broken, ⚠️ when unparsed for lack of a parser, else ℹ️.
+    """
     try:
         from ruamel.yaml import YAML  # pylint: disable=import-outside-toplevel  # 워크플로 편집 때만 / only on workflow edits
         from ruamel.yaml.error import YAMLError  # pylint: disable=import-outside-toplevel
     except ImportError:
-        return "ℹ️ 워크플로는 스모크 밖 (단언 0건 — YAML 파서가 없다 · push 게이트가 돈다)"
+        return True, "⚠️ 워크플로 YAML 을 못 쟀다 (파서 ruamel.yaml 이 없다 · push 게이트가 돈다)"
     try:
         YAML(typ="safe", pure=True).load(Path(_norm(path)).read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, YAMLError) as exc:
         first = (str(exc).splitlines() or [type(exc).__name__])[0]
-        return f"❌ 워크플로 YAML 파싱 실패 — {first[:160]}"
-    return "ℹ️ YAML 파싱만 확인 (단언 0건 — 이 워크플로를 읽는 시험은 75 초 벽을 넘어 push 게이트가 돈다)"
+        return True, f"❌ 워크플로 YAML 파싱 실패 — {first[:160]}"
+    return False, "ℹ️ YAML 파싱만 확인 (단언 0건 — 이 워크플로를 읽는 시험은 75 초 벽을 넘어 push 게이트가 돈다)"
+
+
+def agent_message(banner_line, tail):
+    """에이전트 · 사람에게 보낼 글 — 배너 한 줄 + 출력의 끝 `_AGENT_LINES` 줄(줄마다 `_AGENT_WIDTH` 자까지).
+    The text for the agent and the person: the banner plus the last few output lines, each clipped."""
+    lines = [line[:_AGENT_WIDTH] for line in (tail or "").splitlines() if line.strip()]
+    return "\n".join([banner_line, *lines[-_AGENT_LINES:]])
+
+
+def _emit(message):
+    """에이전트 맥락(additionalContext)과 사람(systemMessage)에게 — stdout 전체가 이 JSON 한 개여야 읽힌다.
+    Send to the agent's context and the person; Claude Code reads the fields only when stdout is exactly this JSON."""
+    print(json.dumps({"systemMessage": message,
+                      "hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": message}},
+                     ensure_ascii=True))
 
 
 def is_watched_file(path):
@@ -259,7 +290,9 @@ def _run(cmd, cwd):
             cmd, capture_output=True, text=True, check=False, cwd=cwd,
             timeout=_RUN_TIMEOUT, encoding="utf-8", errors="replace",
         )
-        tail = "\n".join((r.stdout or "").splitlines()[-8:])
+        # stdout 이 비면 stderr — pytest 사용 오류(인자 · 플러그인)는 stderr 로만 나온다.
+        # Fall back to stderr: pytest usage errors print only there.
+        tail = "\n".join((r.stdout or r.stderr or "").splitlines()[-8:])
         return r.returncode, tail
     except subprocess.TimeoutExpired:
         return None, f"⏱️ 스모크 타임아웃({_RUN_TIMEOUT}s) — 전체 게이트는 push-time 에 실행 / smoke timed out"
@@ -282,7 +315,12 @@ def main():
     # Entry point must gate on is_watched_file (src+alembic+scripts), NOT is_src_file; the D11
     # extension was dead in the runtime path because main() still short-circuited on is_src_file.
     if is_workflow_file(path):
-        print(f"{_workflow_banner(path)} — best-effort 조기탐지 (전체 게이트=push-time 6-step ②)")
+        notify, banner = _workflow_check(path)
+        line = f"{banner} — {_SCOPE_NOTE}"
+        if notify:
+            _emit(line)
+        else:
+            print(line)
         return 0
     named = is_named_file(path)
     if not (is_watched_file(path) or named):
@@ -306,9 +344,14 @@ def main():
         scope, cmd = "tests/unit (collect)", [*base, "tests/unit", "--co"]
 
     rc, tail = _run(cmd, cwd=str(repo))
-    print(f"{_banner(rc, asserted)} [{scope}] — best-effort 조기탐지 (전체 게이트=push-time 6-step ②)")
-    if rc != 0 and tail:
-        print(tail)
+    line = f"{_banner(rc, asserted)} [{scope}] — {_SCOPE_NOTE}"
+    if rc != 0:
+        # ❌(rc ≠ 0) · ⚠️(rc None — 타임아웃 · 실행 오류) — 에이전트가 알아야 할 결과다.
+        # A failure or an unfinished run: the agent has to see it.
+        _emit(agent_message(line, tail))
+    else:
+        # ✅ · ℹ️ — 세션 기록(plain stdout)에만 남긴다. / Pass or collect-only: keep it out of the context.
+        print(line)
     return 0  # 비차단 advisory / non-blocking advisory
 
 

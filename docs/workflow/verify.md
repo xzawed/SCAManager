@@ -79,6 +79,16 @@
 - 단위 수는 문서에 적지 않는다 — PR 본문 첫 줄(`pytest tests/unit → N passed / M skipped`)만 고친다.
 - 되돌림 판정 불가 → PR 본문 `reverse-mutation-not-applicable: <사유 16자 이상>`. 통과하되 계수된다.
 
+### 훅 · 설정 · 스킬 (`.claude/**`)
+
+1. 위협 모형은 «실수하는 정직한 세션» 이다 — 그런 세션이 칠 만한 꼴을 막고, 임의 코드 실행은 범위 밖이다
+   (`.claude/hooks/block_credential_dump.py` 머리 docstring). 막는 훅은 `deny` 만 낸다 — bypass 모드에서는 `ask` 가 창 없이 통과한다.
+2. 에이전트에게 알릴 것은 stdout 전체를 JSON 한 개로 낸다 — `hookSpecificOutput.additionalContext`(에이전트) ·
+   `systemMessage`(사람). PreToolUse · PostToolUse 의 plain stdout 은 디버그 로그로만 간다. 시험(`tests/unit/hooks/`)은
+   출력을 JSON 으로 파싱해 채널까지 단언한다.
+3. 운영 MCP 허용 목록(`.claude/hooks/block_credential_dump.py::_PROD_RAILWAY_MCP_READS = frozenset` · 그 Supabase 짝)을 바꾸면
+   문서가 처방한 MCP 도구 이름을 `git grep -n "MCP" -- docs/` 로 모아 목록과 대조한다.
+
 ### side-effect-only ORM import
 
 `# noqa: F401` 단독은 flake8 전용 — CodeQL `py/unused-import` 가 발화한다.
