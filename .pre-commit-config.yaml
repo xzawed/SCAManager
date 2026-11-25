@@ -179,7 +179,7 @@ repos:
   # Layer 1-C: 기본 코드 품질 훅
   # Layer 1-C: Basic code quality hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       # 🔴 자동 수정 훅은 **vendor·수정금지 파일**을 건드리면 안 된다.
       #   `alembic/versions/**` 는 CLAUDE.md 수정 금지 파일 · `src/static/vendor/**` 는
