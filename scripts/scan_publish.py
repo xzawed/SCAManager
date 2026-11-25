@@ -125,8 +125,13 @@ _CAT_HEREDOC_STAGE = re.compile(r"(?:^|[;&|(\n])[ \t]*cat[ \t]+" + re.escape(_HE
 _GH_SEGMENT = re.compile(r"(?:^|(?<=[\s;&|(]))gh(?:\.exe)?\s+(?P<rest>[^\n;&|]*)")
 # 셸 변수를 바꾸는 대입 — 단순 명령이 대입 낱말뿐이거나(`B=x;` · `A=1 B=2 &&`) 선언 내장 명령의 인자일 때만. 따옴표 안
 # 글자 · 다른 명령의 인자는 대입이 아니고, 앞붙임(`B=x cmd` · `B=x gh …` — 그 명령의 환경에만 든다) · `+=` · 배열은 값을
-# 모른다. Assignments that change shell variables: assignment-only simple commands or declaration-builtin arguments.
-_DECLARATION_BUILTINS = frozenset({"export", "declare", "local", "readonly", "typeset"})
+# 모른다. 선언 내장은 값이 글자 그대로 남는 옵션(`-x` · `-r` · `-g` · `-t`)일 때만 값을 쓴다 — 참조 `-n` · 산술 `-i` ·
+# 대소문자 `-l`/`-u` 는 값을 바꾼다. 대입과 gh 사이에 그 밖의 명령이 하나라도 돌면(`read B` · `printf -v B` · `source` ·
+# 함수 · 함수 밖 `local` …) 이 검사는 그 명령이 값을 바꿨는지 모른다 — 그때까지의 값을 모두 모르는 것으로 본다.
+# Assignments that change shell variables: assignment-only simple commands or plain declaration-builtin arguments;
+# any other command in between makes every value so far unknown.
+_DECLARATION_BUILTINS = frozenset({"export", "declare", "readonly", "typeset"})
+_PLAIN_DECLARATION_FLAG = re.compile(r"[-+][xrgt]+")
 _ASSIGNMENT_WORD = re.compile(r"(?P<name>[A-Za-z_]\w*)(?P<append>\+?)=(?P<value>.*)", re.S)
 # 단순 명령의 경계 — `( ) { }` 는 넣지 않는다: `$(…)` · `${…}` 안을 자르면 값의 조각을 값으로 읽는다. 서브셸 · 묶음 안의
 # 대입(`(B=x; …)`)은 명령 낱말 뒤가 되어 값을 모르는 쪽으로 간다(막는다).
@@ -275,19 +280,36 @@ def _assignments(text: str) -> dict[str, str | None]:
         words = list(itertools.takewhile(lambda w: not w.startswith("#"), words))
         if not words:
             continue
-        declaration = words[0] in _DECLARATION_BUILTINS
-        matches = [_ASSIGNMENT_WORD.fullmatch(w) for w in (words[1:] if declaration else words)]
-        leading: list[re.Match[str]] = []
-        for match in matches:
-            if match is None and not declaration:
-                break  # 명령 낱말 — 앞의 대입은 그 명령의 앞붙임이다 / a command word: earlier ones are prefixes
-            if match is not None:
-                leading.append(match)
-        keeps = declaration or (len(leading) == len(words) and brk is not None)
+        leading = list(itertools.takewhile(bool, (_ASSIGNMENT_WORD.fullmatch(w) for w in words)))
+        command = words[len(leading):]
+        if not command:
+            # 대입뿐인 단순 명령 — 구분자로 끝나야 셸 변수다(끝나지 않았으면 뒤따르는 gh 의 앞붙임)
+            # An assignment-only command; without a closing break it prefixes the gh call that follows.
+            for match in leading:
+                _record(assigned, match, keeps=brk is not None)
+            continue
         for match in leading:
-            value = _word_value(match.group("value"), assigned) if keeps and not match.group("append") else None
-            assigned[match.group("name")] = value[0] if value else None
+            assigned[match.group("name")] = None  # 앞붙임 — 그 명령의 환경에만 든다 / a prefix: that command's env only
+        if brk is None:
+            continue  # 구분자로 닫히지 않은 머리 — 뒤따르는 명령(gh · heredoc 을 받는 명령) 자신이다 / the following command
+        options = [w for w in command[1:] if w[:1] in "-+"]
+        if command[0] in _DECLARATION_BUILTINS and all(_PLAIN_DECLARATION_FLAG.fullmatch(w) for w in options):
+            for word in command[1:]:
+                match = _ASSIGNMENT_WORD.fullmatch(word)
+                if match is not None:
+                    _record(assigned, match, keeps=True)
+            continue  # 이름만 넘기는 낱말(`export B`)은 값을 바꾸지 않는다 / a bare name keeps its value
+        # 그 밖의 명령 — 내장 · 함수가 값을 바꿨는지 모른다: 그때까지의 값을 모두 모르는 것으로 본다
+        # Any other command may have changed any value (builtins, functions): forget them all.
+        assigned = dict.fromkeys(assigned)
     return assigned
+
+
+def _record(assigned: dict[str, str | None], match: re.Match[str], *, keeps: bool) -> None:
+    """대입 낱말 하나를 기록한다 — 셸 변수에 글자 그대로 남는 대입만 값을 쓰고(그때까지의 대입으로 푼다), 나머지는 None.
+    Record one assignment word: a value only when it stays literal in the shell variable, else None."""
+    value = _word_value(match.group("value"), assigned) if keeps and not match.group("append") else None
+    assigned[match.group("name")] = value[0] if value else None
 
 
 def _count_value(value: str, expanded: bool) -> dict[str, int]:
@@ -356,7 +378,17 @@ def _read(path: Path | None) -> str | None:
         return None
 
 
-def _measure_stdin(rest: str, before: str, assigned: dict[str, str], base: Path | None,
+def _word_at(text: str, pos: int) -> str | None:
+    """`pos` 에서 시작하는 셸 낱말 — 낱말 뒤가 공백 · 연산자 · 끝이 아니면(`$(…)` · `$((…))` 로 이어지면) 그 조각은 낱말이
+    아니라 None. / The shell word at `pos`; None when it runs on into something this scanner does not read."""
+    match = _SHELL_WORD.match(text, pos)
+    if match is None:
+        return None
+    end = match.end()
+    return match.group(0) if end == len(text) or text[end] in " \t\n;&|<>" else None
+
+
+def _measure_stdin(rest: str, before: str, assigned: dict[str, str | None], base: Path | None,
                    counts: dict[str, int], unread: list[str]) -> None:
     """stdin 본문(`-`)을 잰다 — 출처가 정확히 하나일 때만: fd 0 의 heredoc(본문은 따로 잰다) · here-string 낱말 · `<` 파일,
     또는 출처가 없고 파이프 앞 단계가 `cat <<EOF |` 일 때. 출처가 여럿(덮어쓰기) · `<&` 복제 · 못 읽은 heredoc · 모르는 출처는
@@ -370,12 +402,10 @@ def _measure_stdin(rest: str, before: str, assigned: dict[str, str], base: Path 
     sources: list[tuple[str, str | None]] = [("heredoc", None)] * masked.count(_HEREDOC_MARK)
     for op in _HERE_STRING_OP.finditer(masked):
         if op.group("fd") in (None, "0"):
-            word = _SHELL_WORD.match(rest, op.end())
-            sources.append(("here-string", word.group(0) if word else None))
+            sources.append(("here-string", _word_at(rest, op.end())))
     for op in _STDIN_REDIRECT_OP.finditer(masked):
         if op.group("fd") in (None, "0"):
-            word = _SHELL_WORD.match(rest, op.end())
-            sources.append(("dup" if op.group("op") == "&" else "file", word.group(0) if word else None))
+            sources.append(("dup" if op.group("op") == "&" else "file", _word_at(rest, op.end())))
     if not sources:
         if _CAT_HEREDOC_STAGE.search(before) is None:
             unread.append("(stdin 본문 — 어디서 오는지 모른다)")
