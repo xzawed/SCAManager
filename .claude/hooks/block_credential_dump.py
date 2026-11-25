@@ -108,9 +108,38 @@ _CUT_IDIOM = re.compile(
 _WC_COUNT_ONLY = re.compile(r"\s*wc(?:\s+(?:-[lcwmL]+|--(?:lines|bytes|words|chars|max-line-length)))*\s*")
 # 줄 머리의 이름만 고르는 grep -o — 패턴이 `^[이름 글자]*=` 꼴(글자 모임에 `=` 이 없다)이고 플래그는 o · i · E · P · w 뿐.
 # `^` 가 없으면 값 속의 `NAME=` 조각까지 고른다. A grep -o that picks only the leading name: `^[name chars]*=`.
+#   끝의 `=` 를 요구하고, 글자 모임은 펼쳐서 이름 글자(영문 · 숫자 · `_` · `-`)뿐인지 본다 — `[0-z]` 같은 범위는 `=` 를
+#   품어 값 조각까지 고른다(커밋 보안 검토 HIGH).
+#   The trailing `=` is required and the class is expanded: a range such as `[0-z]` spans `=` and picks value pieces.
 _NAMES_ONLY_GREP = re.compile(
-    r"""\s*grep(?=(?:\s+-[oiEPw]+)*?\s+-[iEPw]*o)(?:\s+-[oiEPw]+)+\s+(?P<q>['"]?)\^\[[A-Za-z0-9_-]+\][*+]=?(?P=q)\s*"""
+    r"""\s*grep(?=(?:\s+-[oiEPw]+)*?\s+-[iEPw]*o)(?:\s+-[oiEPw]+)+\s+(?P<q>['"]?)\^\[(?P<body>[A-Za-z0-9_-]+)\][*+]=(?P=q)\s*"""
 )
+_NAME_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-")
+
+
+def _class_chars(body):
+    """글자 모임 본문의 글자 집합 — `X-Y` 범위를 펼친다(앞뒤 `-` 는 글자). 거꾸로 된 범위는 None.
+    Characters of a bracket-class body with X-Y ranges expanded; None for a reversed range."""
+    chars, i = set(), 0
+    while i < len(body):
+        if i + 2 < len(body) and body[i + 1] == "-":
+            lo, hi = ord(body[i]), ord(body[i + 2])
+            if lo > hi:
+                return None
+            chars.update(chr(c) for c in range(lo, hi + 1))
+            i += 3
+        else:
+            chars.add(body[i])
+            i += 1
+    return chars
+
+
+def _names_only_grep(stage):
+    """줄 머리의 이름만 고르는 grep -o 인가 — 모임을 펼친 글자가 이름 글자뿐일 때만.
+    Is this a grep -o that keeps only the leading name (class expands to name characters only)?"""
+    m = _NAMES_ONLY_GREP.fullmatch(stage)
+    chars = _class_chars(m.group("body")) if m else None
+    return chars is not None and chars <= _NAME_CHARS
 # ── `railway variable` 호출을 «토큰으로» 읽는다 — 중화(쓰기 · --kv) 판정 전용 ──────────────────
 # 🔴 정규식은 셸의 따옴표·주석을 모른다. `--service "x set" --kv` 의 `set` 을 하위 명령으로,
 #    `# --set` 주석을 쓰기로, `--service "--kv x"` 의 `--kv` 를 KV 출력으로 읽었다(Grok G1 반례).
@@ -621,9 +650,17 @@ def _pattern_positions(args, valued):
             continue
         if w.startswith("--"):
             opt = w.split("=", 1)[0]
-            given = given or opt in ("--regexp", "--file")
+            # GNU 는 겹치지 않는 앞부분도 받는다(`--reg` = `--regexp`) — 그 꼴도 패턴을 준 것으로 본다(커밋 보안 검토 HIGH).
+            # GNU accepts unambiguous prefixes (--reg = --regexp); treat them as giving the pattern.
+            full = next((f for f in ("--regexp", "--file") if len(opt) >= 5 and f.startswith(opt)), None)
+            if full:
+                given = True
+                take = ("e" if full == "--regexp" else "value") if "=" not in w else None
+                continue
+            if opt not in _KNOWN_SEARCH_LONGS:
+                return []  # 모르는 긴 옵션 — 어느 낱말이 패턴인지 모른다: 아무것도 빼지 않는다 / unknown: drop nothing
             if "=" not in w and w in _GREP_VALUE_OPTIONS:
-                take = "e" if w == "--regexp" else "value"
+                take = "value"
             continue
         if w.startswith("-") and w != "-":
             for k, ch in enumerate(w[1:], 1):
@@ -670,6 +707,17 @@ _GREP_VALUE_OPTIONS = frozenset({"-e", "-f", "-m", "-A", "-B", "-C", "-d", "-D",
                                  "--max-count", "--context", "--after-context", "--before-context",
                                  "--exclude", "--include", "--exclude-dir", "--label", "-g", "--glob",
                                  "--iglob", "-t", "-T", "--type", "--type-not", "-j", "--threads"})
+# 패턴 자리를 셀 때 아는 긴 옵션 — 이 밖의 긴 옵션이 있으면 패턴을 빼지 않는다(값을 받는지 모른다).
+# Long options known when locating the pattern; any other long option means nothing is dropped.
+_KNOWN_SEARCH_LONGS = _GREP_VALUE_OPTIONS | {
+    "--count", "--ignore-case", "--no-ignore-case", "--line-number", "--recursive", "--dereference-recursive",
+    "--extended-regexp", "--fixed-strings", "--perl-regexp", "--basic-regexp", "--word-regexp", "--line-regexp",
+    "--files-with-matches", "--files-without-match", "--only-matching", "--quiet", "--silent", "--no-messages",
+    "--with-filename", "--no-filename", "--invert-match", "--color", "--colour", "--null", "--null-data", "--text",
+    "--binary-files", "--hidden", "--no-ignore", "--files", "--smart-case", "--case-sensitive", "--no-heading",
+    "--heading", "--column", "--count-matches", "--max-depth", "--follow", "--untracked", "--no-index", "--cached",
+    "--exclude-standard", "--no-exclude-standard", "--and", "--or", "--not", "--all-match", "--name-only",
+    "--full-name"}
 _WALK_SKIP = frozenset({".git", "node_modules", ".venv", "venv", "__pycache__", ".mypy_cache",
                         ".pytest_cache", ".ruff_cache", ".tox"})
 # 검색 명령 — 단계의 첫 낱말이 아니어도 찾는다(env · timeout · sudo · if · do · ! 같은 접두 뒤, 14차 반영 중 실측).
@@ -1328,6 +1376,11 @@ def _neutralized(stages, i, neutralizers):
     stage = stages[i]
     if _UNREADABLE_STAGE.search(stage):
         return False
+    # 이 단계와 다음 단계를 가른 `|` 가 이스케이프(`\|`)였으면 파이프가 아니다 — 셸은 `printenv \| grep -c KEY` 를
+    # `printenv '|' grep -c KEY` 로 돌려 KEY 의 값을 찍는다(커밋 보안 검토). 다음 단계로는 무엇도 중화하지 않는다.
+    # An escaped `\|` is not a pipe: the shell runs `printenv '|' grep -c KEY` and prints KEY's value.
+    if (len(stage) - len(stage.rstrip("\\"))) % 2 == 1:
+        return False
     is_variable = _WRITE in neutralizers  # railway variable 항목만 쓰기 중화를 가진다
     call = _railway_variable_call(stage) if is_variable else None
     # 한 단계에 railway variable 호출이 둘 이상이면 쓰기로 덮지 않는다 / never excuse two calls in one stage
@@ -1348,7 +1401,7 @@ def _neutralized(stages, i, neutralizers):
     # A very next stage that prints only counts, or only the leading names, prints no value.
     if _NAMES in neutralizers and i + 1 < len(stages):
         nxt = stages[i + 1]
-        if _count_only_grep(nxt) or _WC_COUNT_ONLY.fullmatch(nxt) or _NAMES_ONLY_GREP.fullmatch(nxt):
+        if _count_only_grep(nxt) or _WC_COUNT_ONLY.fullmatch(nxt) or _names_only_grep(nxt):
             return True
     return False
 

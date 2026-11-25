@@ -63,6 +63,14 @@ _MUST_BLOCK = {
     "safe-dotenv-command-piped-onward": "ls .env | xargs cat",
     "end-of-options-makes-dotenv-a-file": "grep -- -e .env",
     "wc-reading-stdin-as-file-names": "env | wc --files0-from=-",
+    # 커밋 보안 검토(자동)가 짚은 반례 — 글자 모임 범위가 `=` 를 품음 · 줄인 긴 옵션 · 이스케이프한 파이프.
+    # Counterexamples from the automated commit review: a class range spanning `=`, abbreviated long options, an escaped pipe.
+    "names-only-class-range-spans-equals": "printenv | grep -o '^[0-z]*='",
+    "names-only-without-trailing-equals": "printenv | grep -o '^[0-z]*'",
+    "abbreviated-regexp-attached": "grep --regex=KEY .env",
+    "abbreviated-regexp-separate": "grep --reg KEY .env",
+    "unknown-long-option-keeps-positionals": "grep --some-new-flag KEY .env",
+    "escaped-pipe-is-not-a-pipe": "printenv \\| grep -c SOME_KEY",
 }
 
 
