@@ -49,21 +49,21 @@
           {
             "type": "command",
             "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY ${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/block_credential_dump.py",
-            "timeout": 10,
+            "timeout": 30,
             "onFailure": "block"
           },
           {
             "type": "command",
             "if": "Bash(gh *)",
             "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY ${CLAUDE_PROJECT_DIR:-.}/scripts/scan_publish.py --hook",
-            "timeout": 10,
+            "timeout": 30,
             "onFailure": "block"
           },
           {
             "type": "command",
             "if": "PowerShell(gh *)",
             "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY ${CLAUDE_PROJECT_DIR:-.}/scripts/scan_publish.py --hook",
-            "timeout": 10,
+            "timeout": 30,
             "onFailure": "block"
           }
         ]

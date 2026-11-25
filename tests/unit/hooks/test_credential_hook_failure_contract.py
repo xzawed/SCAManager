@@ -46,6 +46,22 @@ def test_the_credential_hook_blocks_the_call_when_it_cannot_run(tool):
     assert all(h.get("onFailure") == "block" for h in hooks), hooks
 
 
+_BLOCKING_HOOK_MIN_TIMEOUT = 30
+
+
+def test_every_blocking_hook_has_room_to_finish_under_load():
+    """🔴 `onFailure: "block"` 인 훅은 시간 제한이 넉넉해야 한다 — 시간을 넘기면 그 호출이 막힌다. PC 가 바쁠 때(다른 빌드 ·
+    시험이 CPU 를 다 쓸 때) 10초로는 훅이 시작조차 못 끝내 모든 셸 호출이 막혔다(11-25 실측). 대조군: 막지 않는 편집 훅은 여기서 안 본다.
+    A blocking hook needs a generous timeout: under load a 10 s limit blocked every shell call."""
+    settings = json.loads(_SETTINGS.read_text(encoding="utf-8"))
+    blocking = [h for entry in settings["hooks"]["PreToolUse"] for h in entry.get("hooks", [])
+                if h.get("onFailure") == "block"]
+    assert blocking, "막는 훅이 하나도 없다 — 이 판정이 빈 집합 위에서 초록이 된다"
+    short = [(h.get("command", "")[-60:], h.get("timeout")) for h in blocking
+             if (h.get("timeout") or 0) < _BLOCKING_HOOK_MIN_TIMEOUT]
+    assert short == [], short
+
+
 def test_the_edit_hook_keeps_its_loud_fail_open():
     """대조군 — 편집 훅은 `onFailure` 를 두지 않는다(사용자 결정 R31: 알리고 통과). 위 단언이 «모든 훅에 block» 같은
     싼 처방으로 초록이 되지 않게 한다."""

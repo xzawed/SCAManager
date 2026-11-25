@@ -84,6 +84,7 @@
 1. 위협 모형은 «실수하는 정직한 세션» 이다 — 그런 세션이 칠 만한 꼴을 막고, 임의 코드 실행은 범위 밖이다
    (`.claude/hooks/block_credential_dump.py` 머리 docstring). 막는 훅은 `deny` 만 낸다 — bypass 모드에서는 `ask` 가 창 없이 통과한다.
    막는 훅 항목에는 `"onFailure": "block"` 을 둔다 — 훅이 시작하지 못하거나 죽거나 시간을 넘기면 그 호출을 막는다.
+   그래서 시간 제한은 30초 이상으로 둔다 — PC 가 바쁘면 훅 시작만으로 10초를 넘겨 모든 셸 호출이 막힌다.
 2. 에이전트에게 알릴 것은 stdout 전체를 JSON 한 개로 낸다 — `hookSpecificOutput.additionalContext`(에이전트) ·
    `systemMessage`(사람). PreToolUse · PostToolUse 의 plain stdout 은 디버그 로그로만 간다. 시험(`tests/unit/hooks/`)은
    출력을 JSON 으로 파싱해 채널까지 단언한다.
