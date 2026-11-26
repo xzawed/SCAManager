@@ -519,6 +519,11 @@ _USER_ONLY_SCRIPTS = [
     ("Bash", 'MSG="(wip) rotate" py -3 scripts/observer_setup.py'),
     ("Bash", "python -mscripts.observer_setup"),
     ("Bash", "py -3 -mscripts.backfill_repository_user_id --apply"),
+    # 배열 덮기는 코드 자리의 괄호만 센다 — 주석 · 따옴표 속 괄호가 뒤 case 갈래 `)` 까지 덮어 명령을 가리면 안 된다 · 치환을
+    # 값으로 둔 앞 대입 뒤 / array blanking counts code parentheses only; a substitution-valued prefix assignment
+    ("Bash", '# 배열 예: arr=(\npy -3 scripts/observer_setup.py\ncase "$x" in b) echo ok;; esac'),
+    ("Bash", 'arr=("(" a); py -3 scripts/observer_setup.py; case "$x" in b) echo ok;; esac'),
+    ("Bash", "STAMP=$(date +%s) py -3 scripts/observer_setup.py"),
 ]
 
 
