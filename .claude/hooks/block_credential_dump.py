@@ -71,11 +71,17 @@ _MCP_DUMP_TOOLS = re.compile(r"mcp__.*railway.*__list_variables")
 # railway 낱말 — 경로 · 대소문자 · npm shim 확장자(.cmd .exe .ps1) · 따옴표와 무관하게 본다(보안 리뷰 지적).
 # PowerShell 은 명령 이름 대소문자를 가리지 않고, Windows 의 npm 설치본은 railway.cmd / railway.ps1 shim 이다.
 # The railway word regardless of path, case, npm shim extension or quotes.
-_RW = r"\brailway(?:\.(?:cmd|exe|ps1))?[\"']?"
+# 패키지 실행기로 부른 꼴(`npx @railway/cli variables` · `pnpm dlx @railway/cli@4 …`)도 같은 실행 파일이다 — `railway` 바로
+# 뒤에 공백을 요구해 그 꼴의 변수 덤프가 판정을 비켜 갔다(워크플로 wf_8b259a5e-212 C3 렌즈 · main 때부터).
+# The package-runner spelling is the same executable; requiring whitespace right after `railway` let its dump through.
+_RW = r"(?:@railway/cli(?:@[\w.^~-]+)?|\brailway(?:\.(?:cmd|exe|ps1))?)[\"']?"
 
 
 def _is_railway(tok):
-    """토큰이 railway 실행 파일인가(경로 · 확장자 · 대소문자 무관) / Is this token the railway executable?"""
+    """토큰이 railway 실행 파일인가(경로 · 확장자 · 대소문자 · 패키지 실행기 이름 `@railway/cli` 무관) /
+    Is this token the railway executable (path, extension, case or the `@railway/cli` package name aside)?"""
+    if tok.lower().startswith("@railway/cli"):
+        return True
     base = tok.replace("\\", "/").rsplit("/", 1)[-1].lower()
     for ext in (".cmd", ".exe", ".ps1"):
         if base.endswith(ext):
@@ -208,13 +214,18 @@ _LISTING_PREFIXES = frozenset({"command", "builtin", "exec", "sudo", "nohup", "t
 _ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*")
 
 
-def _command_words(stage):
+def _command_words(stage, ps_literal=False):
     """명령 자리의 (첫 낱말 소문자, 나머지 낱말) — 앞쪽 대입 · 실행 접두어 · 괄호 · 경로 · .exe 를 걷어 낸다.
-    (head lower-cased, rest) at the command position; assignments, prefixes, parens, paths and .exe stripped."""
+    ps_literal 이면 PowerShell 에서 백슬래시를 글자로 읽는다 — 감사 채널의 스크립트 경로(`scripts\\observe_db.py`) 전용이다.
+    판정에 쓰면 안 된다: 낱말의 백슬래시를 모두 바꾸면 find 의 정규식 이스케이프(`\\.`)가 `/.` 가 되어 .env 를 고르는 find 가
+    통과했다(워크플로 wf_8b259a5e-212 C3 렌즈).
+    (head lower-cased, rest) at the command position; assignments, prefixes, parens, paths and .exe stripped.
+    ps_literal reads PowerShell backslashes literally, for the audit's script paths only — never for verdicts."""
+    text = _ps_literal_backslashes(stage) if ps_literal else stage
     try:
-        toks = shlex.split(_ps_literal_backslashes(stage), posix=True)
+        toks = shlex.split(text, posix=True)
     except ValueError:
-        toks = stage.split()
+        toks = text.split()
     words = [w for w in (t.strip("(){}") for t in toks) if w]
     i = 0
     while i < len(words) and (words[i].lower() in _LISTING_PREFIXES or _ASSIGNMENT.fullmatch(words[i])):
@@ -321,8 +332,9 @@ def _slashed(text):
 def _ps_literal_backslashes(text):
     """PowerShell 에서는 백슬래시가 이스케이프가 아니다 — shlex(Bash 규칙)에 넘기기 전에 / 로 바꿔 따옴표 짝 · 경로를
     지킨다(`"docs\\"` 는 그 셸에서 닫힌 문자열 · `scripts\\x.py` 는 경로). Bash 모드는 그대로 — 그 셸에서는 이스케이프다.
-    낱말 나누기 셋(`_slashed` · `_command_words` · `_railway_variable_call`)이 이 한 규칙을 쓴다(교차 검토 3 · 5차).
-    In PowerShell a backslash is never an escape; Bash text is returned unchanged."""
+    쓰는 곳은 `_slashed` · `_railway_variable_call` 과 감사 채널의 `_command_words(ps_literal=True)` 다 — 판정용 명령 자리
+    해석에는 쓰지 않는다(find 정규식 이스케이프가 바뀐다 · 워크플로 C3).
+    In PowerShell a backslash is never an escape; Bash text is returned unchanged. Not used for verdict tokenizing."""
     return text.replace("\\", "/") if _CONTEXT["shell"] == "powershell" else text
 
 
@@ -1762,7 +1774,12 @@ _PROD_SCAN_HEADS = frozenset({
     "if", "then", "else", "elif", "do", "while", "until", "!",
     "timeout", "gtimeout", "nice", "ionice", "stdbuf", "winpty", "unbuffer", "xargs", "watch", "setsid", "flock",
     "elseif", "foreach", "for", "switch", "try", "finally", "start-process", "saps", "start",
+    # 파이프라인 · 측정 블록 — `1..3 | ForEach-Object { railway up }` · `% { … }` · `Measure-Command { … }` 의 블록은 돈다
+    # (워크플로 wf_8b259a5e-212 · main 때부터 막히지 않았다) / pipeline and timing blocks run their body
+    "foreach-object", "%", "measure-command",
 })
+# 시간 제한 · 반복 머리 뒤에 오는 셸 래퍼 — `timeout 60 bash -c "railway up"` 의 안쪽 글자도 판정한다 / wrappers after scan heads
+_PROD_WRAPPER_HEADS = _PROD_SHELL_WRAPPERS | _PROD_PS_WRAPPERS | frozenset({"cmd", "env", "invoke-expression", "iex"})
 _PROD_MAX_DEPTH = 4
 # 읽기 MCP 도구 — Railway 는 이것만 통과(허용 목록). Supabase 는 SQL · 마이그레이션 · 배포 · 브랜치 조작을 막는다
 # (어느 프로젝트를 가리키는지 훅은 모른다 — DB 를 바꾸거나 SQL 을 도는 도구는 운영 DB 접근으로 본다).
@@ -1789,7 +1806,11 @@ _PROD_CHANNEL_SCRIPTS = {"observe_db.py": "observe_db", "railway_redeploy.py": "
                          "railway_config.py": "railway_config", "observer_setup.py": "observer_setup",
                          "backfill_repository_user_id.py": "backfill_repository_user_id",
                          "perf_measure.py": "perf_measure"}
-_PROD_SCRIPT_FLAGS = ("--check", "--restart", "--apply", "--audit", "--local-only", "--prod-only")
+_PROD_SCRIPT_FLAGS = ("--check", "--restart", "--log-errors", "--apply", "--audit", "--prod-only")
+# 운영에 닿지 않는 호출 — 도움말, 로컬만 재는 perf_measure. 감사 기록에 올리지 않는다 / calls that never reach production
+_PROD_SCRIPT_NO_REACH = ("--help", "-h")
+# 값을 받는 python 인터프리터 옵션 — 그 값(`-X utf8` 의 utf8)은 스크립트 이름이 아니다 / interpreter options taking a value
+_PYTHON_VALUE_OPTIONS = ("-X", "-W")
 _PYTHON_HEAD = re.compile(r"py|python(?:3(?:\.\d+)?)?")
 _PROD_SAFE_READS = "railway deployment list --json · railway logs <id> · railway status · railway metrics"
 _PROD_SAFE_REDEPLOY = "py -3 scripts/railway_redeploy.py [--restart]"
@@ -1855,7 +1876,9 @@ def _prod_classify(args, channels=None):
     option values are not the second word. With channels, the allowed call's static channel is appended."""
 
     def allow(*words):
-        if channels is not None:
+        # 도움말은 운영에 닿지 않는다 — 감사 기록에 올리지 않는다(교차 검토: 다른 명령의 인자인 `railway` 가 «도움말» 로 남았다)
+        # help never reaches production, so it is not audited
+        if channels is not None and "help" not in words:
             channels.append(" ".join(("railway", *words)))
         return None
 
@@ -1901,18 +1924,22 @@ def _prod_script_channel(head, rest):
     if not _PYTHON_HEAD.fullmatch(head):
         return None
     k = 0
-    while k < len(rest) and rest[k].startswith("-") and rest[k] != "-m":
-        k += 1  # `py -3` · `python -u` 의 인터프리터 옵션 / interpreter options
+    while k < len(rest) and rest[k].startswith("-") and rest[k] not in ("-m", "-c"):
+        # `py -3` · `python -u` 의 인터프리터 옵션 — `-X utf8` · `-W ignore` 는 값까지(교차 검토: utf8 을 스크립트로 읽었다)
+        # interpreter options; -X / -W take a value
+        k += 2 if rest[k] in _PYTHON_VALUE_OPTIONS else 1
     if k + 1 < len(rest) and rest[k] == "-m":
-        name = rest[k + 1].rsplit(".", 1)[-1] + ".py"  # `python -m scripts.observe_db`
-    elif k < len(rest):
-        name = rest[k].replace("\\", "/").rsplit("/", 1)[-1].lower()
+        name, args = rest[k + 1].rsplit(".", 1)[-1] + ".py", rest[k + 2:]  # `python -m scripts.observe_db`
+    elif k < len(rest) and rest[k] != "-c":
+        name, args = rest[k].replace("\\", "/").rsplit("/", 1)[-1].lower(), rest[k + 1:]
     else:
-        return None
+        return None  # 인터프리터만 · `-c` 의 글자 코드는 스크립트가 아니다 / no script (bare interpreter or -c code)
     channel = _PROD_CHANNEL_SCRIPTS.get(name)
-    if channel is None:
+    if channel is None or any(flag in args for flag in _PROD_SCRIPT_NO_REACH):
         return None
-    return " ".join([channel, *(flag for flag in _PROD_SCRIPT_FLAGS if flag in rest[k + 1:])])
+    if channel == "perf_measure" and "--local-only" in args:
+        return None  # 로컬만 잰다 — 운영에 닿지 않는다 / local only
+    return " ".join([channel, *(flag for flag in _PROD_SCRIPT_FLAGS if flag in args)])
 
 
 def _prod_railway_args(head, rest):
@@ -1974,7 +2001,8 @@ def _prod_unwrap(head, rest):
         return _prod_shell_scan(rest)[0]
     if head == "cmd":
         for k, word in enumerate(rest):
-            if word.lower() in ("/c", "/k", "/r"):
+            # Git Bash 는 `//c` 로 써야 `/c` 로 넘긴다(워크플로 반례 `cmd //c railway up`) / Git Bash spells /c as //c
+            if word.lower() in ("/c", "/k", "/r", "//c", "//k", "//r"):
                 return " ".join(rest[k + 1:])
         return None
     if head in _PROD_PS_WRAPPERS:
@@ -2049,28 +2077,49 @@ def _prod_reads_stdin(head, rest):
 
 
 def _prod_find_heredoc(line):
-    """따옴표 밖의 heredoc 연산자 — 따옴표 안의 `<<'EOF'` 는 글자다(자동 보안 리뷰 11-11: 그것을 heredoc 으로 읽으면
-    다음 줄의 실제 명령이 «본문» 으로 빠진다). `<<<` 는 heredoc 이 아니다.
-    The heredoc operator outside quotes (a quoted one would swallow the real commands that follow)."""
-    quote, i = None, 0
+    """heredoc 연산자와, 그것을 받는 명령이 시작하는 자리 — (match, 자리) 또는 None. 따옴표 안의 `<<'EOF'` 는 글자다(자동
+    보안 리뷰 11-11: 그것을 heredoc 으로 읽으면 다음 줄의 실제 명령이 «본문» 으로 빠진다). 다만 명령 치환 `$(` 안은 다시 명령이라
+    큰따옴표 속이라도 heredoc 이다 — `git commit -m "$(cat <<'EOF'` 의 본문은 글자 데이터다(교차 검토: 그 줄들을 명령으로 읽어
+    커밋 메시지 속 낱말을 운영 호출로 적었다). 받는 명령은 그 `$(` 뒤에서 찾는다 — `"$(bash <<'EOF'` 는 본문을 돌린다.
+    `<<<` 는 heredoc 이 아니다.
+    The heredoc operator and where its receiving command starts; inside `$(` it is a heredoc even within double
+    quotes, and the receiver is found after that `$(`."""
+    contexts, i = [], 0  # 열린 맥락 — "'" · '"' · "(" · ("$(", 그 몸이 시작하는 자리) / open contexts
     while i < len(line):
         ch = line[i]
-        if quote:
-            if ch == quote:
-                quote = None
-            elif ch == "\\" and quote == '"':
+        top = contexts[-1] if contexts else None
+        if top == "'":
+            if ch == "'":
+                contexts.pop()
+        elif top == '"':
+            if ch == '"':
+                contexts.pop()
+            elif ch == "\\":
                 i += 1
+            elif line.startswith("$(", i):
+                contexts.append(("$(", i + 2))
+                i += 2
+                continue
         elif ch in "'\"":
-            quote = ch
+            contexts.append(ch)
         elif ch == "\\":
             i += 1
+        elif line.startswith("$(", i):
+            contexts.append(("$(", i + 2))
+            i += 2
+            continue
+        elif ch == "(":
+            contexts.append("(")
+        elif ch == ")" and top is not None:
+            contexts.pop()
         elif line.startswith("<<<", i):
             i += 3
             continue
         elif line.startswith("<<", i):
             match = _PROD_HEREDOC.match(line, i)
             if match:
-                return match
+                starts = [c[1] for c in contexts if isinstance(c, tuple)]
+                return match, (starts[-1] if starts else 0)
         i += 1
     return None
 
@@ -2096,12 +2145,17 @@ def _prod_substitutions(text):
             i += 1
         elif ch == "\\" and not powershell:
             i += 2
-        elif text.startswith(openers, i):
-            depth, j = 1, i + 2
+        elif ch == "`" and powershell:
+            i += 2  # PowerShell 이스케이프 — `` `$( `` 는 글자다 / a backtick escapes the next character
+        elif text.startswith(openers, i) or (powershell and ch == "(" and quote is None):
+            # PowerShell 의 따옴표 밖 괄호(`Write-Output (railway redeploy -y)` · `[void](railway up)`)는 하위 식이라 돈다
+            # (워크플로 wf_8b259a5e-212 · main 때부터 막히지 않았다) / PowerShell parentheses outside quotes run
+            width = 2 if text.startswith(openers, i) else 1
+            depth, j = 1, i + width
             while j < len(text) and depth:
                 depth += {"(": 1, ")": -1}.get(text[j], 0)
                 j += 1
-            bodies.append(text[i + 2: j - 1 if depth == 0 else j])
+            bodies.append(text[i + width: j - 1 if depth == 0 else j])
             i = j
         elif ch == "`" and not powershell:
             end = text.find("`", i + 1)
@@ -2128,10 +2182,11 @@ def _prod_without_heredoc_data(text):
         # PowerShell here-string(`@'…'@` 글자 · `@"…"@` 는 `$(…)` 가 돈다) — 닫는 줄은 `'@` · `"@` 로 시작한다
         # PowerShell here-strings: @'…'@ is literal, @"…"@ still runs $(…); the closing line starts with '@ or "@
         here = _PROD_PS_HERESTRING.search(line) if powershell else None
-        match = None if here else _prod_find_heredoc(line)
+        found = None if here else _prod_find_heredoc(line)
+        match, receiver_start = found if found else (None, 0)
         if not here and not match:
             continue
-        runs = (_prod_runs_text(_prod_receiver(line[:(here or match).start()]))
+        runs = (_prod_runs_text(_prod_receiver(line[receiver_start:(here or match).start()]))
                 or (match is not None and _prod_pipes_into_runner(line[match.end():])))
         body = []
         while i < len(lines) and not (lines[i].startswith(here.group(1) + "@") if here
@@ -2166,45 +2221,109 @@ def _prod_decide_text(text, depth, channels=None):
         reason = _prod_decide_text(body, depth + 1, channels)
         if reason:
             return reason
-    for segment in _split_segments(text):
-        stages = _split_stages(segment)
-        for index, stage in enumerate(stages):
-            head, rest = _command_words(stage)
-            head = _prod_head(head)
-            if not head:
-                continue
-            if index and _prod_reads_stdin(head, rest):
-                # 앞 단계가 내보내는 글자가 이 명령의 입력이라 실행된다 — 앞 단계의 낱말을 명령으로 본다(자동 보안 리뷰
-                # 11-11: `echo "railway up" | bash`). 파일을 내보내는 앞 단계(`cat x.sh | bash`)는 스크립트 파일 부류다.
-                # Text from earlier stages is executed here, so judge their words as commands.
-                # 낱말 하나씩과 이어 붙인 인자 전체 — `echo railway up | bash` 는 따옴표 없이 두 낱말로 넘긴다
-                # each word and the joined arguments (`echo railway up | bash` passes two unquoted words)
-                for earlier in stages[:index]:
-                    first, more = _command_words(earlier)
-                    pieces = [first, *more, " ".join(more)]
-                    for n, piece in enumerate(pieces):
-                        # 채널은 이어 붙인 인자(마지막 조각)에서만 센다 — 낱말 하나(`railway`)는 판정용이라 «도움말» 로 잘못 남는다
-                        # channels only from the joined arguments; a lone word would be recorded as "help"
-                        reason = _prod_decide_text(piece, depth + 1, channels if n == len(pieces) - 1 else None)
-                        if reason:
-                            return reason
-            args = _prod_railway_args(head, rest)
-            if args is None and head in _PROD_SCAN_HEADS:
-                first = next((k for k, word in enumerate(rest) if _is_railway(word)), None)
-                args = rest[first + 1:] if first is not None else None
-            if args is not None:
-                reason = _prod_classify(args, channels)
-                if reason:
-                    return reason
-                continue
-            script = _prod_script_channel(head, rest)
-            if script and channels is not None:
-                channels.append(script)
-            inner = _prod_unwrap(head, rest)
-            reason = _prod_decide_text(inner, depth + 1, channels) if inner else None
-            if reason:
-                return reason
+    quoted_lines = _prod_lines_opening_in_quotes(text) if channels is not None else frozenset()
+    for number, line in enumerate(text.split("\n")):
+        # 여는 따옴표 안에서 시작하는 줄(따옴표 안 여러 줄 글자 — 커밋 메시지 등)은 명령이 아니다. 판정은 그 줄도 그대로 보지만
+        # 감사 채널은 세지 않는다(교차 검토: 커밋 메시지 속 낱말을 운영 호출로 적었다).
+        # A line that starts inside an open quote is text: still judged, never counted as an audit channel.
+        line_channels = None if number in quoted_lines else channels
+        for segment in _split_segments(line):
+            stages = _split_stages(segment)
+            for index, stage in enumerate(stages):
+                stage = _prod_without_ps_assignment(stage)
+                head, rest = _command_words(stage)
+                head = _prod_head(head)
+                if not head:
+                    continue
+                if index and _prod_reads_stdin(head, rest):
+                    # 앞 단계가 내보내는 글자가 이 명령의 입력이라 실행된다 — 앞 단계의 낱말을 명령으로 본다(자동 보안 리뷰
+                    # 11-11: `echo "railway up" | bash`). 파일을 내보내는 앞 단계(`cat x.sh | bash`)는 스크립트 파일 부류다.
+                    # Text from earlier stages is executed here, so judge their words as commands.
+                    # 낱말 하나씩과 이어 붙인 인자 전체 — `echo railway up | bash` 는 따옴표 없이 두 낱말로 넘긴다
+                    # each word and the joined arguments (`echo railway up | bash` passes two unquoted words)
+                    for earlier in stages[:index]:
+                        first, more = _command_words(earlier)
+                        pieces = [first, *more, " ".join(more)]
+                        for n, piece in enumerate(pieces):
+                            # 채널은 이어 붙인 인자(마지막 조각)에서만 센다 / channels only from the joined arguments
+                            reason = _prod_decide_text(piece, depth + 1, line_channels if n == len(pieces) - 1 else None)
+                            if reason:
+                                return reason
+                args = _prod_railway_args(head, rest)
+                wrapped = None
+                if args is None and head in _PROD_SCAN_HEADS:
+                    first = next((k for k, word in enumerate(rest) if _is_railway(word)), None)
+                    args = rest[first + 1:] if first is not None else None
+                    if args is None:
+                        # 시간 제한 · 반복 머리 뒤의 셸 래퍼(`timeout 60 bash -c "railway up"`) — 그 안쪽 글자도 판정한다
+                        # (워크플로 wf_8b259a5e-212 · main 때부터 막히지 않았다) / a shell wrapper after a scan head
+                        k = next((k for k, word in enumerate(rest)
+                                  if _prod_head(_command_name(word)) in _PROD_WRAPPER_HEADS), None)
+                        wrapped = _prod_unwrap(_prod_head(_command_name(rest[k])), rest[k + 1:]) if k is not None else None
+                if args is not None:
+                    reason = _prod_classify(args, line_channels)
+                    if reason:
+                        return reason
+                    continue
+                script = _prod_stage_script_channel(stage)
+                if script and line_channels is not None:
+                    line_channels.append(script)
+                for inner in (_prod_unwrap(head, rest), wrapped):
+                    reason = _prod_decide_text(inner, depth + 1, line_channels) if inner else None
+                    if reason:
+                        return reason
     return None
+
+
+# PowerShell 대입 — `$x = 명령` 의 오른쪽 명령은 돈다(출력이 변수로 갈 뿐이다) / a PowerShell assignment still runs its command
+_PS_ASSIGNMENT = re.compile(r"^\s*\$[\w:]+\s*[-+*/]?=(?!=)\s*")
+
+
+def _prod_without_ps_assignment(stage):
+    """PowerShell 대입의 왼쪽(`$x =`)을 걷는다 — 오른쪽 명령을 머리로 본다(워크플로 wf_8b259a5e-212 · main 때부터
+    `$x = railway up` 이 막히지 않았다). Bash 는 그대로 — `$x = …` 는 Bash 에서 대입이 아니다.
+    Strip a PowerShell assignment target so the right-hand command is the head; Bash text is unchanged."""
+    return _PS_ASSIGNMENT.sub("", stage, count=1) if _CONTEXT["shell"] == "powershell" else stage
+
+
+def _prod_stage_script_channel(stage):
+    """단계 안 운영 채널 스크립트 호출의 감사 채널 — 머리가 python 이거나, 시간 제한 · 반복 · 조건 머리 뒤의 첫 python 낱말부터
+    (교차 검토: `timeout 120 py …` · `if py … --check; then …` 가 기록되지 않았다). PowerShell 은 백슬래시를 글자로 읽는다.
+    The audit channel of a production-channel script in this stage: python at the head, or after a scan head."""
+    head, rest = _command_words(stage, ps_literal=True)
+    head = _prod_head(head)
+    channel = _prod_script_channel(head, rest)
+    if channel is None and head in _PROD_SCAN_HEADS:
+        k = next((k for k, word in enumerate(rest) if _PYTHON_HEAD.fullmatch(_prod_head(_command_name(word)))), None)
+        channel = _prod_script_channel(_prod_head(_command_name(rest[k])), rest[k + 1:]) if k is not None else None
+    return channel
+
+
+def _prod_lines_opening_in_quotes(text):
+    """여는 따옴표 안에서 시작하는 줄 번호 — 따옴표 안 여러 줄 글자(커밋 메시지 등)는 명령이 아니다. 감사 채널 전용이다 —
+    거부 판정은 그 줄도 그대로 본다(막는 쪽). Line numbers that start inside an open quote; for the audit only."""
+    escape = "`" if _CONTEXT["shell"] == "powershell" else "\\"
+    inside, quote, number, i = set(), None, 0, 0
+    while i < len(text):
+        ch = text[i]
+        if ch == escape and quote != "'" and i + 1 < len(text):
+            if text[i + 1] == "\n":
+                number += 1
+                if quote:
+                    inside.add(number)
+            i += 2
+            continue
+        if ch == "\n":
+            number += 1
+            if quote:
+                inside.add(number)
+        elif quote:
+            if ch == quote:
+                quote = None
+        elif ch in "'\"":
+            quote = ch
+        i += 1
+    return inside
 
 
 def decide_production_access(command, shell=None, channels=None):

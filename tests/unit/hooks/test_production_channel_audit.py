@@ -72,6 +72,15 @@ _ALLOWED = {
     "python -m scripts.backfill_repository_user_id --apply": ["backfill_repository_user_id --apply"],
     "python scripts/perf_measure.py --prod-only": ["perf_measure --prod-only"],
     "Railway.EXE status": ["railway status"],
+    # 교차 검토(하위 에이전트 · 워크플로 wf_8b259a5e-212) 반례 — 시간 제한 · 반복문 · 조건문 안의 스크립트, 값을 받는
+    # 인터프리터 옵션(`-X utf8`), 로그만 읽는 재배포 스크립트 / scripts under wrappers, loops, conditionals; -X values.
+    'timeout 120 python scripts/observe_db.py "SELECT 1"': ["observe_db"],
+    'for i in 1 2; do py -3 scripts/observe_db.py "SELECT 1"; done': ["observe_db"],
+    "if py -3 scripts/railway_redeploy.py --check; then py -3 scripts/railway_redeploy.py --restart; fi":
+        ["railway_redeploy --check", "railway_redeploy --restart"],
+    'py -3 -X utf8 scripts/observe_db.py "SELECT 1"': ["observe_db"],
+    'python -W ignore scripts/observe_db.py "SELECT 1"': ["observe_db"],
+    "py -3 scripts/railway_redeploy.py --log-errors": ["railway_redeploy --log-errors"],
 }
 
 
@@ -104,7 +113,15 @@ def test_an_allowed_production_mcp_read_is_audited_too(logs, monkeypatch, capsys
 
 # 계기 뒤집기 `cheap\claimed` — 운영 낱말을 «언급» 만 하는 명령: 검색 · 스크립트 파일 읽기 · echo. 실행이 아니다.
 # Mention-only commands: a search, reading the script file, echo. None of them runs a production channel.
-_MENTIONS = ['grep -n "railway status" docs/a.md', "cat scripts/observe_db.py", "echo railway logs"]
+_MENTIONS = ['grep -n "railway status" docs/a.md', "cat scripts/observe_db.py", "echo railway logs",
+             # 교차 검토 반례 — 커밋 메시지(따옴표 안 명령 치환 속 heredoc · 따옴표 안 여러 줄)의 언급, 다른 명령의 인자인
+             # `railway`, 운영에 닿지 않는 도움말 · 로컬 측정 / mentions in commit messages, arguments, help, local runs
+             "git commit -m \"$(cat <<'EOF'\nfix: x\n\nrailway status is a read\nEOF\n)\"",
+             'git commit -m "docs: line one\nrailway logs is read-only"',
+             "git ls-files | xargs grep -l railway",
+             "if command -v railway; then echo ok; fi",
+             "py -3 scripts/observe_db.py --help",
+             "python scripts/perf_measure.py --local-only"]
 
 
 @pytest.mark.parametrize("command", _MENTIONS)
@@ -157,12 +174,61 @@ def test_an_unrelated_command_leaves_no_record(logs, monkeypatch, capsys):
     assert not audit.exists() and not denials.exists()
 
 
-def test_powershell_production_reads_are_audited(logs, monkeypatch, capsys):
+# PowerShell 의 운영 채널 호출 — 대입(`$x = …`) · ForEach-Object · 괄호 하위 식 · 백슬래시 경로 · 블록 안 스크립트.
+# PowerShell production-channel calls: assignment, ForEach-Object, subexpressions, backslash paths, scripts in blocks.
+_POWERSHELL_ALLOWED = {
+    'railway status; py -3 scripts\\observe_db.py "SELECT 1"': ["railway status", "observe_db"],
+    "$s = railway status": ["railway status"],
+    "$deps = railway deployment list --json | ConvertFrom-Json": ["railway deployment list"],
+    "1..3 | ForEach-Object { railway logs }": ["railway logs"],
+    '$r = py -3 scripts\\observe_db.py "SELECT 1"': ["observe_db"],
+    "$id = (railway deployment list --json | ConvertFrom-Json)[0].id; railway logs $id":
+        ["railway deployment list", "railway logs"],
+    'foreach ($q in $queries) { py -3 scripts\\observe_db.py $q }': ["observe_db"],
+}
+
+
+@pytest.mark.parametrize("command", sorted(_POWERSHELL_ALLOWED))
+def test_powershell_production_reads_are_audited(command, logs, monkeypatch, capsys):
     """PowerShell(기본 셸)에서도 같다 / the same in PowerShell, the default shell."""
     work, audit, _ = logs
-    assert _run(monkeypatch, capsys, _shell("railway status; py -3 scripts\\observe_db.py \"SELECT 1\"", work,
-                                            tool="PowerShell")) == ""
-    assert [r["channels"] for r in _records(audit)] == [["railway status", "observe_db"]]
+    assert _run(monkeypatch, capsys, _shell(command, work, tool="PowerShell")) == ""
+    assert [r["channels"] for r in _records(audit)] == [_POWERSHELL_ALLOWED[command]]
+
+
+# 교차 검토가 짚은 막히지 않던 운영 변경(main 때부터) — PowerShell 대입 · ForEach-Object · `%` · 괄호 하위 식 · Measure-Command,
+# 시간 제한 안의 셸 래퍼, Git Bash 의 `cmd //c`, 따옴표 안 명령 치환 속 셸 heredoc. Production changes that slipped through.
+_UNBLOCKED_PRODUCTION_WRITES = [
+    ("PowerShell", "$x = railway up"),
+    ("PowerShell", "1..3 | ForEach-Object { railway up }"),
+    ("PowerShell", "1..3 | % { railway up }"),
+    ("PowerShell", "Write-Output (railway redeploy -y)"),
+    ("PowerShell", "[void](railway up)"),
+    ("PowerShell", "Measure-Command { railway redeploy }"),
+    ("Bash", 'timeout 60 bash -c "railway up"'),
+    ("Bash", "cmd //c railway up"),
+    ("Bash", "x=$(bash <<'EOF'\nrailway up\nEOF\n)"),
+    ("Bash", "git commit -m \"$(bash <<'EOF'\nrailway up\nEOF\n)\""),
+]
+
+
+@pytest.mark.parametrize("tool,command", _UNBLOCKED_PRODUCTION_WRITES)
+def test_a_production_change_inside_a_wrapper_or_assignment_is_denied(tool, command, logs, monkeypatch, capsys):
+    """🔴 운영 변경은 대입 · 블록 · 하위 식 · 래퍼 · heredoc 안에서도 막는다 — 감사 기록도 남지 않는다.
+    A production change is denied inside assignments, blocks, subexpressions, wrappers and heredocs."""
+    work, audit, _ = logs
+    assert '"permissionDecision": "deny"' in _run(monkeypatch, capsys, _shell(command, work, tool=tool)), command
+    assert not audit.exists()
+
+
+def test_a_powershell_find_regex_escape_keeps_its_meaning(logs, monkeypatch, capsys):
+    """회귀 잠금(워크플로 C3 반례) — PowerShell 에서 명령 낱말의 백슬래시를 모두 / 로 바꾸면 find 의 정규식 `\\.` 가
+    `/.` 가 되어 .env 를 고르는 find 가 통과했다. 명령 자리 해석은 main 과 같게 둔다.
+    Regression lock: rewriting every backslash turned find's regex escape into a path and let a .env read through."""
+    work, _, _ = logs
+    (work / ".env").write_text("SYNTHETIC_KEY=x\n", encoding="utf-8")
+    out = _run(monkeypatch, capsys, _shell("find . -regex '.*/\\.env$' -exec cat {} +", work, tool="PowerShell"))
+    assert '"permissionDecision": "deny"' in out
 
 
 def test_a_broken_audit_log_never_changes_the_verdict(tmp_path, monkeypatch, capsys):
