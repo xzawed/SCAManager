@@ -2282,7 +2282,12 @@ def decide_production_access(command, shell=None, channels=None):
         _CONTEXT["shell"] = shell
     reason = _prod_decide_text(command or "", 0)
     if reason is None and channels is not None:
-        _audit_text(command or "", 0, channels)
+        try:
+            _audit_text(command or "", 0, channels)
+        except Exception as exc:  # pylint: disable=broad-exception-caught  # 감사는 판정을 바꾸지 않는다 / never the verdict
+            # 죽음이 main() 의 «판정 불가» 로 올라가면 railway 가 든 허용 명령이 막힌다 — 값 없는 실패 표지만 남긴다.
+            # Raised to main() it would deny an allowed command; leave a value-free failure marker instead.
+            channels.append(f"audit-error {type(exc).__name__}")
     return reason
 
 

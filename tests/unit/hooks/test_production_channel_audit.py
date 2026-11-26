@@ -389,6 +389,20 @@ def test_powershell_railway_variable_idioms_keep_mains_verdict(command, verdict,
     assert denied == (verdict == "deny"), command
 
 
+def test_an_audit_failure_never_changes_the_verdict(logs, monkeypatch, capsys):
+    """🔴 감사는 판정을 바꾸지 않는다 — 감사 순회가 죽어도 허용은 허용이고, 기록에는 값 없는 실패 표지만 남는다(죽음이
+    main() 의 «판정 불가» 로 올라가면 railway 가 든 명령은 막혔다). An audit crash leaves the verdict alone."""
+    work, audit, denials = logs
+
+    def broken(*_args, **_kwargs):
+        raise RuntimeError(_MARKER)
+
+    monkeypatch.setattr(hook, "_audit_text", broken)
+    assert _run(monkeypatch, capsys, _shell("railway status", work)) == ""
+    assert [r["channels"] for r in _records(audit)] == [["audit-error RuntimeError"]]
+    assert _MARKER not in audit.read_text(encoding="utf-8") and not denials.exists()
+
+
 def test_a_bracket_heavy_powershell_command_is_judged_quickly(logs, monkeypatch, capsys):
     """회귀 잠금(넷째 워크플로 패스) — 감사의 PowerShell 대입 정규식이 괄호 무리마다 두 배로 되짚어, 괄호 31 무리 명령이 훅
     시간 제한(30초 · 넘으면 막음)을 넘겼다. A bracket-heavy PowerShell command must not hit the hook timeout."""
