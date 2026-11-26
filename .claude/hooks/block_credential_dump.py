@@ -1578,12 +1578,13 @@ def _neutralized(stages, i, neutralizers):
     call = _railway_variable_call(stage) if is_variable else None
     # 한 단계에 railway variable 호출이 둘 이상이면 쓰기로 덮지 않는다 / never excuse two calls in one stage
     single = len(re.findall(_RW + r"\s+(?:variables?|vars?)\b", stage, re.IGNORECASE)) == 1
-    if is_variable and single and call is not None and call[0]:
+    as_main = _railway_variable_call(stage, main_reading=True) if is_variable else None
+    if is_variable and single and call is not None and call[0] and as_main is not None and as_main[0]:
         # 쓰기는 운영 판정이 막는다 — main 의 읽기(Bash 이스케이프)로도 쓰기일 때만 덤프 판정을 비킨다. PowerShell 의 전체 경로
         # `railway.cmd` 는 백슬래시를 글자로 읽으면 쓰기지만 main 의 운영 판정은 railway 로 못 알아봐, 비키면 변수 쓰기가
-        # 통과했다(검증 검토). A write is excused only when main's reading sees the same write.
-        as_main = _railway_variable_call(stage, main_reading=True)
-        return as_main is not None and as_main[0]
+        # 통과했다(검증 검토). 비키지 않으면 아래 개수만 · 이름만 중화로 내려간다(main 처럼 — 넷째 워크플로 패스).
+        # A write is excused only when main's reading sees the same write; otherwise fall through as main did.
+        return True
     if _NAMES not in neutralizers or i + 1 >= len(stages):
         return False
     nxt = stages[i + 1]
@@ -1599,8 +1600,23 @@ def _neutralized(stages, i, neutralizers):
     if not (_CUT_IDIOM.fullmatch(nxt) or _names_only_grep(nxt)) or _prints_bare_values(stage):
         return False
     if is_variable:
+        if _CONTEXT["shell"] == "powershell" and call != as_main and not _ps_plain(stage):
+            # 두 읽기가 갈리는데 PowerShell 변수 · 배열 · 굽은 따옴표가 있으면 셸이 인자를 바꾼다(`$s = '--set'` · `a,--set` ·
+            # ‘--json’) — main 의 읽기로 판정한다(넷째 워크플로 패스). PowerShell syntax may rewrite the arguments.
+            call = as_main
         return call is not None and bool({"--kv", "-k"} & call[1]) and "--json" not in call[1]
     return True
+
+
+# PowerShell 이 인자를 바꾸는 글자 — 변수 · 스플랫 · 하위 식 · 배열 · 이스케이프 · 굽은 따옴표
+# characters through which PowerShell rewrites arguments
+_PS_ARG_SYNTAX = frozenset("$@,`\u2018\u2019\u201c\u201d")
+
+
+def _ps_plain(stage):
+    """단계에 PowerShell 이 인자를 바꾸는 글자가 없는가 — 패키지 이름 `@railway/cli` 의 `@` 는 세지 않는다(스플랫 `@이름` ·
+    `@(…)` 만 인자를 넣는다). Does the stage hold no argument-rewriting PowerShell syntax (the package name aside)?"""
+    return not any(ch in _PS_ARG_SYNTAX for ch in stage.replace("@railway/cli", ""))
 
 
 def _prints_bare_values(stage):
@@ -2283,7 +2299,7 @@ def _audit_text(text, depth, channels):
     Collect the channels of production-channel calls at command positions in an allowed command; never a verdict."""
     if depth > _PROD_MAX_DEPTH or not text.strip():
         return
-    text = _audit_without_heredoc_data(text)
+    text = _audit_joined_lines(_audit_without_heredoc_data(text))
     mask = _audit_mask(text)
     for start, body in _audit_substitutions(text):
         if mask[start:start + 1] in ("c", "d"):
@@ -2296,9 +2312,31 @@ def _audit_text(text, depth, channels):
             for index, (stage_at, stage) in enumerate(_audit_parts(stages, segment)):
                 if seg_at is None or stage_at is None:
                     continue
-                at = line_start + seg_at + stage_at + len(stage) - len(stage.lstrip())
-                if mask[at:at + 1] == "c":
-                    _audit_stage(stage, stages[:index], depth, channels)
+                begin = line_start + seg_at + stage_at
+                at = begin + len(stage) - len(stage.lstrip())
+                if mask[at:at + 1] != "c":
+                    continue
+                # 단계의 주석 글자는 낱말이 아니다 — `--check  # 다음엔 --restart` 의 `--restart` 를 플래그로 세었다(넷째 패스)
+                # comment characters are not words of the stage
+                code = "".join(ch for ch, state in zip(stage, mask[begin:begin + len(stage)]) if state != "m")
+                called = index == 0 and _audit_call_operator(line[:seg_at])
+                _audit_stage(code, stages[:index], depth, channels, called)
+
+
+def _audit_joined_lines(text):
+    """줄 잇기(Bash `\\` · PowerShell 백틱 + 줄바꿈)를 이어 한 줄로 — 다음 줄의 플래그가 그 명령의 것이다(넷째 워크플로 패스:
+    `--apply` 를 다음 줄에 쓰면 채널에서 빠졌다). 이스케이프 글자가 짝수 개면 잇지 않는다.
+    Join line continuations so a flag on the next line belongs to its command."""
+    escape = "`" if _CONTEXT["shell"] == "powershell" else "\\"
+    pattern = re.escape(escape)
+    return re.sub(f"(?<!{pattern})((?:{pattern}{pattern})*){pattern}\n", lambda m: m.group(1) + " ", text)
+
+
+def _audit_call_operator(before):
+    """PowerShell 호출 연산자 `&` 바로 뒤의 조각인가 — 분할기가 `&` 에서 나눠 `& 'C:\\…\\railway.cmd' status` 의 따옴표 경로가
+    조각 첫머리에 온다. Is this segment right after PowerShell's call operator?"""
+    tail = before.rstrip()
+    return _CONTEXT["shell"] == "powershell" and tail.endswith("&") and not tail.endswith("&&")
 
 
 def _audit_parts(parts, text):
@@ -2317,21 +2355,22 @@ def _audit_parts(parts, text):
     return located
 
 
-def _audit_stage(stage, earlier, depth, channels):
+def _audit_stage(stage, earlier, depth, channels, called=False):
     """단계 하나의 감사 — 대입 · case 패턴 · 훑는 머리를 벗긴 명령 자리에서 railway 읽기 · 운영 채널 스크립트 · 래퍼 안을 본다.
-    Audit one stage at its command position (assignment, case pattern and scan heads peeled off)."""
-    stage = _audit_without_prefix(stage)
+    called 는 PowerShell 호출 연산자 `&` 뒤의 조각이다. Audit one stage at its command position."""
+    stage = _audit_without_prefix(stage, called)
     if stage is None:
         return
     head, rest = _audit_peel(stage)
     if not head:
         return
     if earlier and _prod_reads_stdin(head, rest):
-        # 앞 단계가 내보내는 글자를 이 명령이 돌린다 — `echo railway status | bash` · `"railway status" | iex`
-        # earlier stages' text is executed here
+        # 앞 단계가 내보내는 글자를 이 명령이 돌린다 — `echo railway status | bash` · `printf '%s\\n' 'railway status' | bash` ·
+        # `"railway status" | iex`. 낱말 하나씩과 이어 붙인 인자 전체를 본다. Earlier stages' text is executed here.
         for prior in earlier:
             first, more = _command_words(prior, ps_literal=True)
-            _audit_text(" ".join(more) if more else first, depth + 1, channels)
+            for piece in dict.fromkeys([first, *more, " ".join(more)]):
+                _audit_text(piece, depth + 1, channels)
     args = _prod_railway_args(head, rest)
     if args is not None:
         _prod_classify(args, channels)
@@ -2349,19 +2388,25 @@ def _audit_stage(stage, earlier, depth, channels):
 
 
 # PowerShell 대입 — `$x = 명령` · 형 제약 `[string]$x = 명령` 의 오른쪽 명령은 돈다 / an assignment still runs its command
-_PS_ASSIGNMENT = re.compile(r"^\s*(?:\[[\w.\[\], ]*\]\s*)*\$[\w:]+\s*[-+*/]?=(?!=)\s*")
+# 형 제약은 `[string]` · `[int[]]` · `[System.String]` 꼴만 — 괄호가 든 글자 무리를 겹쳐 세면 무리마다 되짚기가 두 배가 돼
+# 괄호 31 무리 명령이 훅 시간 제한을 넘겼다(넷째 워크플로 패스). Type constraints only as `[name]` / `[name[]]` (no backtracking).
+_PS_ASSIGNMENT = re.compile(r"^\s*(?:\[[\w.]+(?:\[\])?\]\s*)*\$[\w:]+\s*[-+*/]?=(?!=)\s*")
 # Bash case 갈래 — `case x in` 머리와 `prod)` · `a|b)` 패턴 / a Bash case head and arm pattern
-_AUDIT_CASE_HEAD = re.compile(r"^\s*case\s+.+?\s+in\s+")
+_AUDIT_CASE_HEAD = re.compile(r"^\s*case\s+\S+\s+in\s+")
 _AUDIT_CASE_PATTERN = re.compile(r"^\s*\(?[^\s()|;]+(?:\s*\|\s*[^\s()|;]+)*\)\s*")
 
 
-def _audit_without_prefix(stage):
+def _audit_without_prefix(stage, called=False):
     """명령 자리 앞의 것을 걷는다 — PowerShell 대입의 왼쪽, Bash case 머리 · 갈래 패턴. PowerShell 에서 블록 · 괄호 식으로
-    시작하는 단계는 None(그 몸은 블록 순회가 본다 — `$who = (railway whoami).Trim()` 의 괄호 몸).
-    Strip what precedes the command position; None for a PowerShell stage that starts with a block or parentheses."""
+    시작하는 단계는 None(그 몸은 블록 순회가 본다 — `$who = (railway whoami).Trim()` 의 괄호 몸), 따옴표 글자로 시작하는 단계도
+    None 이다 — 호출 연산자 `&` 없이는 글자 식이다(`$s = 'scripts\\railway_redeploy.py'` 를 직접 돌린 스크립트로 적었다 — 넷째 패스).
+    Strip what precedes the command position; None for a PowerShell stage that is a block, parentheses or a string."""
     if _CONTEXT["shell"] == "powershell":
         stage = _PS_ASSIGNMENT.sub("", stage, count=1)
-        return None if stage.lstrip().startswith(("{", "(", "@(", "$(", "@{")) else stage
+        head = stage.lstrip()
+        if head.startswith(("{", "(", "@(", "$(", "@{")) or (head[:1] in ("'", '"') and not called):
+            return None
+        return stage
     return _AUDIT_CASE_PATTERN.sub("", _AUDIT_CASE_HEAD.sub("", stage, count=1), count=1)
 
 
@@ -2423,7 +2468,8 @@ def _audit_peel(stage):
     아니다. The (head, rest) at a stage's command position, nested scan heads peeled."""
     words = _audit_words(stage)
     while words:
-        head, rest = _prod_head(_command_name(words[0])), words[1:]
+        # 따옴표 친 Windows 경로(`"C:\\…\\python.exe"`)의 백슬래시도 구분자다(넷째 워크플로 패스) / backslashes separate too
+        head, rest = _prod_head(_command_name(words[0].replace("\\", "/"))), words[1:]
         if head not in _PROD_SCAN_HEADS:
             return head, rest
         if _CONTEXT["shell"] == "powershell" and head in _PS_BLOCK_KEYWORDS:
@@ -2531,6 +2577,8 @@ def _audit_without_heredoc_data(text):
         line = lines[i]
         i += 1
         here = _PROD_PS_HERESTRING.search(line) if powershell else None
+        if here and _audit_quoted_at(line, here.start()):
+            here = None  # `Select-String -Pattern '@'` 의 `@'` 는 글자다(넷째 워크플로 패스) / quoted text, not an opener
         found = None if here else _audit_find_heredoc(line)
         match, inner = found if found else (None, None)
         if not here and not match:
@@ -2566,6 +2614,17 @@ def _audit_without_heredoc_data(text):
         elif not literal:
             kept.extend(found_body for _, found_body in _audit_substitutions("\n".join(body), string_body=True))
     return "\n".join(kept)
+
+
+def _audit_quoted_at(line, position):
+    """그 자리가 PowerShell 따옴표 안인가 / is the position inside a PowerShell quote?"""
+    quote = None
+    for ch in line[:position]:
+        if quote:
+            quote = None if ch == quote else quote
+        elif ch in ("'", '"'):
+            quote = ch
+    return quote is not None
 
 
 # PowerShell 주석이 시작될 수 있는 앞 글자(낱말 시작) / characters after which `#` begins a PowerShell comment
@@ -2682,7 +2741,7 @@ _PS_DEFINES_BLOCK = re.compile(
 def _ps_block_runs(text, start):
     """그 블록이 쓰인 자리에서 도는가 — 정의만 하는 스크립트 블록(`$sb = { … }` · `function f { … }`)이면 False. 해시
     테이블 `@{ … }` 과 괄호 `( … )` 는 만들 때 돈다. Does the block at start run where it is written?"""
-    before = text[:start].rstrip(" \t\n")
+    before = text[max(0, start - 300):start].rstrip(" \t\n")
     return not (text[start] == "{" and not before.endswith("@") and _PS_DEFINES_BLOCK.search(before))
 
 

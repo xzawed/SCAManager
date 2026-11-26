@@ -108,6 +108,13 @@ _ALLOWED = {
     "x=$(cat <<'EOF'\nbody\nEOF)\nrailway status": ["railway status"],
     "x=$(bash <<'EOF'\nrailway status\nEOF\n)": ["railway status"],
     "cat > notes.md <<END-NOTES\nhello\nEND-NOTES\nrailway status": ["railway status"],
+    # 넷째 워크플로 패스(wf_410501e1-acb) — 줄 잇기 뒤 플래그 · 주석 속 플래그 이름 · 따옴표 친 Windows 인터프리터 경로 ·
+    # printf 로 넘긴 명령 / a flag after a line continuation, flag names in a comment, a quoted Windows interpreter path
+    "py -3 scripts/backfill_repository_user_id.py \\\n  --apply": ["backfill_repository_user_id --apply"],
+    "py -3 scripts/railway_redeploy.py --check  # if green, --restart next": ["railway_redeploy --check"],
+    'py -3 scripts/observe_db.py "SELECT 1"  # -h shows the options': ["observe_db"],
+    '"C:\\Users\\me\\venv312\\Scripts\\python.exe" -B scripts/observe_db.py "SELECT 3"': ["observe_db"],
+    "printf '%s\\n' 'railway status' | bash": ["railway status"],
 }
 
 
@@ -163,6 +170,7 @@ _MENTIONS = ['grep -n "railway status" docs/a.md', "cat scripts/observe_db.py", 
              "NOTES=$(cat <<'EOF'\nrailway status was green\nEOF)\necho \"$NOTES\"",
              "cat > notes.txt <<\\EOF\nrailway status looked fine\nEOF",
              "cat > notes.txt <<\\EOF\n$(railway status)\nEOF",  # `<<\\EOF` 본문의 치환은 글자다 / literal body
+             "py -3 scripts/perf_measure.py \\\n  --local-only",  # 줄 잇기 뒤 로컬 측정 / local-only after a continuation
              "echo done \\; railway status",
              # 셋째 패스가 짚은 새 거부(C3) — 판정은 main 그대로라 통과한다 / new false denials of the third pass, now main's
              "if npm ls -g @railway/cli >/dev/null 2>&1; then echo installed; fi",
@@ -253,6 +261,13 @@ _POWERSHELL_ALLOWED = {
     "$who = (railway whoami).Trim()": ["railway whoami"],
     # 주석 속 짝 없는 괄호가 뒤 블록을 삼키지 않는다 / an unbalanced bracket in a comment does not swallow later blocks
     "Write-Host x # note (\n1..2 | % { railway status }": ["railway status"],
+    # 넷째 워크플로 패스 — 백틱 줄 잇기 · 주석 속 플래그 · 호출 연산자 · 따옴표 안의 `@'` 는 here-string 이 아니다
+    # a backtick continuation, flags in a comment, the call operator, `@'` inside quotes is not a here-string
+    "py -3 scripts\\railway_redeploy.py `\n    --check": ["railway_redeploy --check"],
+    "py -3 scripts\\backfill_repository_user_id.py  # dry run first, --apply later": ["backfill_repository_user_id"],
+    'py -3 scripts\\observe_db.py "SELECT 2"  # -h lists options': ["observe_db"],
+    "& 'C:\\x\\railway.cmd' status": ["railway status"],
+    "Get-Content docs\\a.md | Select-String -Pattern '@'\nrailway status": ["railway status"],
 }
 
 
@@ -269,6 +284,11 @@ _POWERSHELL_MENTIONS = ["Get-ChildItem | % { Select-String -Path $_ -Pattern rai
                         "function Get-DeployStatus {\n    railway status --json\n}",
                         "<#\nrailway logs --deployment X\n#>\nGet-Date",
                         "$sb = { Write-Output $(railway status) }",  # 정의만 한 블록 속 치환 / a substitution in it
+                        # 넷째 워크플로 패스 — 따옴표로 시작하는 문장은 글자 식이다(`&` 가 없으면 부르지 않는다)
+                        # a statement that starts with a quoted string is an expression, not a call
+                        "$script = 'scripts\\railway_redeploy.py'",
+                        '$target = "scripts\\railway_redeploy.py"; git log --oneline -5 -- $target',
+                        "'scripts/observe_db.py' | ForEach-Object { py -3 -m py_compile $_ }",
                         # 셋째 패스가 짚은 새 거부(C3) — 판정은 main 그대로라 통과한다 / now main's verdict
                         "@'\n## 요약\n- 허용된 운영 채널 호출을 값 없이 기록한다\n'@ | Set-Content -Encoding utf8 pr-body.md\n"
                         "gh pr create --base main --title 'feat(hooks): 운영 채널 감사 기록 (railway 읽기 · 운영 스크립트)' "
@@ -343,6 +363,39 @@ def test_a_full_path_railway_variable_write_in_powershell_stays_denied(logs, mon
     command = "C:\\Users\\x\\AppData\\Roaming\\npm\\railway.cmd variables --set FOO=bar"
     assert '"permissionDecision": "deny"' in _run(monkeypatch, capsys, _shell(command, work, tool="PowerShell"))
     assert not audit.exists()
+
+
+# PowerShell 변수 · 배열 · 굽은 따옴표는 shlex 가 모르는 인자를 만든다 — 백슬래시 경로의 «이름만» 관용구에 `--set` ·
+# `--json` 을 숨기면 main 은 막았고(경로를 못 읽어서) 글자 읽기는 이름만으로 비켰다(넷째 워크플로 패스). 개수만 내는
+# 단계는 main 처럼 통과한다. PowerShell variables, arrays and curly quotes smuggle flags past the names-only excuse.
+_POWERSHELL_VARIABLE_VERDICTS = [
+    ("$s = '--set'; C:\\x\\railway.cmd variables $s K=V --kv | cut -d= -f1", "deny"),
+    ("C:\\x\\railway.cmd variables --kv --service api,--set,K=V | cut -d= -f1", "deny"),
+    ("C:\\x\\railway.cmd variables --kv \u2018--set\u2019 K=V | cut -d= -f1", "deny"),
+    ("$f = '--json'; C:\\x\\railway.cmd variables $f --kv | cut -d= -f1", "deny"),
+    ("railway variables --kv --environment prod\\ set | wc -l", "allow"),
+    ("railway variables --kv --service api\\ set | cut -d= -f1", "allow"),
+    ("C:\\x\\railway.cmd variables --kv | cut -d= -f1", "allow"),
+]
+
+
+@pytest.mark.parametrize("command,verdict", _POWERSHELL_VARIABLE_VERDICTS)
+def test_powershell_railway_variable_idioms_keep_mains_verdict(command, verdict, logs, monkeypatch, capsys):
+    """🔴 이름만 관용구를 글자로 읽어 푸는 것은 PowerShell 이 셸 문법으로 인자를 바꾸지 않을 때만 — 그 밖은 main 의 판정.
+    The names-only relaxation applies only when PowerShell syntax cannot change the arguments."""
+    work, _, _ = logs
+    denied = '"permissionDecision": "deny"' in _run(monkeypatch, capsys, _shell(command, work, tool="PowerShell"))
+    assert denied == (verdict == "deny"), command
+
+
+def test_a_bracket_heavy_powershell_command_is_judged_quickly(logs, monkeypatch, capsys):
+    """회귀 잠금(넷째 워크플로 패스) — 감사의 PowerShell 대입 정규식이 괄호 무리마다 두 배로 되짚어, 괄호 31 무리 명령이 훅
+    시간 제한(30초 · 넘으면 막음)을 넘겼다. A bracket-heavy PowerShell command must not hit the hook timeout."""
+    import time
+    work, _, _ = logs
+    started = time.monotonic()
+    _run(monkeypatch, capsys, _shell("[a]" * 40, work, tool="PowerShell"))
+    assert time.monotonic() - started < 5, "감사 정규식이 되짚기로 느려졌다"
 
 
 def test_a_powershell_find_regex_escape_keeps_its_meaning(logs, monkeypatch, capsys):
