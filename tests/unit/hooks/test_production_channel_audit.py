@@ -658,6 +658,7 @@ _USER_ONLY_SCRIPTS = [
     # 묶음 끝이 heredoc 이 아닌 `./x.py)` 는 case 깊이를 탄다 — esac 에서 되돌리고 주석 속 case … in 은 세지 않는다
     # a group closing on `./x.py)` still rides the case depth: esac resets it, a comment does not count
     ("Bash", "case \"$x\" in a) echo a;; esac\n(cd /f/repo && ./scripts/observer_setup.py)"),
+    ("Bash", "case \"$x\" in a) echo a;; esac\n(\n  cd /f/repo\n  ./scripts/observer_setup.py)"),  # 줄 처음의 묶음 끝
     ("Bash", "# 예: case \"$x\" in a) …\n(cd /f/repo && ./scripts/observer_setup.py)"),
     ("Bash", "{ cd /f/proj && bash; } <<'EOF'\npy -3 scripts/observer_setup.py\nEOF"),
     ("Bash", "{ eval \"$(cat)\"; } <<'EOF'\npy -3 scripts/observer_setup.py\nEOF"),
