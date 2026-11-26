@@ -606,6 +606,7 @@ _USER_ONLY_SCRIPTS = [
     ("Bash", 'echo "py -3 scripts/observer_setup.py" | eval "$(cat)"'),
     ("Bash", "cat <<'EOF' | timeout 60 bash -c \"$(cat)\"\npy -3 scripts/observer_setup.py\nEOF"),
     ("PowerShell", "Start-Process py -ArgumentList @(\n  '-3'\n  'scripts/observer_setup.py'\n)"),
+    ("PowerShell", "Start-Process pwsh -ArgumentList @(\n  '-NoProfile'\n  '-Command'\n  'py -3 scripts/observer_setup.py'\n)"),
     # 앞 case 가 esac 로 끝난 뒤의 묶음 끝 `bash)` 는 갈래 패턴이 아니다 / after esac, `bash)` closes a group
     ("Bash", "case \"$x\" in a) echo a;; esac\n(cd sub && bash) <<'EOF'\npy -3 scripts/observer_setup.py\nEOF"),
 ]
