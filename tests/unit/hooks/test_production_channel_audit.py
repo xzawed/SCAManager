@@ -801,6 +801,8 @@ _USER_ONLY_SCRIPTS = [
     ("PowerShell", "@'\ncd /d C:\\repo && echo In repo\nif exist scripts\\observer_setup.py (py -3 scripts\\observer_setup.py --host db)\n'@ | cmd"),
     ("Bash", 'out=$(\n  echo x\n  { case "$1" in dev) echo dev ;; prod) py -3 scripts/observer_setup.py ;; esac; }\n)'),  # 묶음 `{` 뒤
     ("PowerShell", 'cmd /c "py -3 scripts/observer_setup.py --host db.pooler.supabase.com"'),  # 뗀 읽기 / the stripped reading
+    ("Bash", "cmd <<'EOF'\ncd \"C:\\x\npy -3 scripts\\observer_setup.py\nEOF"),  # cmd 의 `\"` 는 줄 끝에서 풀린다 / quotes reset per line
+    ("Bash", 'cmd //c "git commit -m \\"it\'s done\\" & py -3 scripts/observer_setup.py"'),  # 겹따옴표 속 `\'` 는 글자
     # 치환 몸의 case 는 `&&` · `||` · then · do · else 뒤도 / case inside a body after && || then do else
     ("Bash", 'out=$(cd /tmp && case "$1" in dev) echo dev;; prod) py -3 scripts/observer_setup.py;; esac)'),
     ("Bash", 'out=$(false || case "$1" in dev) echo dev;; prod) py -3 scripts/observer_setup.py;; esac)'),
