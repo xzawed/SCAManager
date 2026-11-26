@@ -67,6 +67,10 @@ _ALLOWED = {
     f'py -3 scripts/observe_db.py "SELECT {_MARKER} FROM t"': ["observe_db"],
     "py -3 scripts/railway_redeploy.py --check": ["railway_redeploy --check"],
     "python scripts/railway_config.py": ["railway_config"],
+    # 사용자 몫인데 훅이 막지 않는 운영 DB 스크립트 — 에이전트가 돌리면 기록에 남아야 회고가 본다 / user-run DB scripts
+    f"py -3 scripts/observer_setup.py --host {_MARKER} --ref r1": ["observer_setup"],
+    "python -m scripts.backfill_repository_user_id --apply": ["backfill_repository_user_id --apply"],
+    "python scripts/perf_measure.py --prod-only": ["perf_measure --prod-only"],
     "Railway.EXE status": ["railway status"],
 }
 
@@ -109,6 +113,31 @@ def test_a_mention_of_a_production_channel_is_not_audited(command, logs, monkeyp
     work, audit, denials = logs
     assert _run(monkeypatch, capsys, _shell(command, work)) == ""
     assert not audit.exists() and not denials.exists()
+
+
+# witness-corpus: python 으로 도는 리포 스크립트 가운데 운영에 닿지 않는 것(sqlite · 로컬 계측) — 감사 채널 목록 밖
+_UNLISTED_REPO_SCRIPTS = ["py -3 scripts/retro_scope.py --json", "python scripts/analyzer_oracle.py",
+                          "py -3 scripts/capture_readme_hero.py"]
+
+
+@pytest.mark.parametrize("command", _UNLISTED_REPO_SCRIPTS)
+def test_a_repo_script_that_never_reaches_production_is_not_audited(command, logs, monkeypatch, capsys):
+    """대조군 — 목록 밖 리포 스크립트는 운영 채널이 아니다(통과 · 기록 없음) / not a production channel."""
+    work, audit, denials = logs
+    assert _run(monkeypatch, capsys, _shell(command, work)) == ""
+    assert not audit.exists() and not denials.exists()
+
+
+# witness-corpus: 운영 MCP 도구 가운데 읽기 목록 밖(배포 · SQL) — 감사가 아니라 거부 기록으로 간다
+_UNLISTED_PRODUCTION_MCP_TOOLS = ["mcp__railway__deploy", "mcp__supabase__execute_sql"]
+
+
+@pytest.mark.parametrize("tool", _UNLISTED_PRODUCTION_MCP_TOOLS)
+def test_a_production_mcp_tool_outside_the_read_list_is_denied_not_audited(tool, logs, monkeypatch, capsys):
+    """읽기 목록 밖 운영 MCP 도구는 막히고 감사 기록에는 오르지 않는다 / denied, never audited."""
+    _, audit, denials = logs
+    assert '"permissionDecision": "deny"' in _run(monkeypatch, capsys, {"tool_name": tool, "tool_input": {}})
+    assert not audit.exists() and [r["kind"] for r in _records(denials)] == ["production"]
 
 
 def test_a_denied_production_call_goes_to_the_denial_log_only(logs, monkeypatch, capsys):

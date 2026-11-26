@@ -1781,11 +1781,15 @@ _PROD_SUPABASE_MCP_READS = frozenset({
 # 감사 기록에 그대로 적어도 되는 railway 낱말 — 이 밖의 하위 명령 자리 낱말은 «?» 로 적는다(명령에서 온 글자다).
 # railway words safe to write into the audit record; any other word in the subcommand slot is written as "?".
 _PROD_KNOWN_WORDS = _PROD_READ_SUBCOMMANDS | frozenset(_PROD_READ_PAIRS) | frozenset(_PROD_REASONS) | _VARIABLE_ALIASES
-# python 으로 돌리는 운영 채널 스크립트(관측 역할 DB 읽기 · 조건부 재배포 · 배포 설정 읽기) → 감사 기록의 채널 이름.
-# 인자(SQL · 서비스 이름)는 채널에 넣지 않고 고정 플래그만 붙인다. Repo scripts that reach production when run by python.
+# python 으로 돌리면 운영에 닿는 리포 스크립트 → 감사 기록의 채널 이름. 정책이 에이전트에게 허용한 것(관측 역할 DB 읽기 ·
+# 조건부 재배포 · 배포 설정 읽기)과, 사용자 몫인데 훅이 막지 않는 것(관측 역할 설정 · 백필 — 에이전트가 돌리면 회고가 봐야
+# 한다) · 운영 측정을 함께 둔다. 인자(SQL · 호스트 · 서비스 이름)는 채널에 넣지 않고 아래 고정 플래그만 붙인다.
+# Repo scripts that reach production when run by python; only the fixed flags below are appended, never arguments.
 _PROD_CHANNEL_SCRIPTS = {"observe_db.py": "observe_db", "railway_redeploy.py": "railway_redeploy",
-                         "railway_config.py": "railway_config"}
-_PROD_SCRIPT_FLAGS = ("--check", "--restart")
+                         "railway_config.py": "railway_config", "observer_setup.py": "observer_setup",
+                         "backfill_repository_user_id.py": "backfill_repository_user_id",
+                         "perf_measure.py": "perf_measure"}
+_PROD_SCRIPT_FLAGS = ("--check", "--restart", "--apply", "--audit", "--local-only", "--prod-only")
 _PYTHON_HEAD = re.compile(r"py|python(?:3(?:\.\d+)?)?")
 _PROD_SAFE_READS = "railway deployment list --json · railway logs <id> · railway status · railway metrics"
 _PROD_SAFE_REDEPLOY = "py -3 scripts/railway_redeploy.py [--restart]"
