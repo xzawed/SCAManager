@@ -118,6 +118,9 @@ _ALLOWED = {
     'py -3 scripts/observe_db.py "SELECT 1"  # -h shows the options': ["observe_db"],
     '"C:\\Users\\me\\venv312\\Scripts\\python.exe" -B scripts/observe_db.py "SELECT 3"': ["observe_db"],
     "printf '%s\\n' 'railway status' | bash": ["railway status"],
+    # 둘째 적대 패스(wf_150f221f-097) — 치환 몸 속 따옴표 안 `)` 는 몸을 닫지 않는다 / a quoted `)` does not close the body
+    "echo \"now: $(railway status | sed -n 's/^Service: \\([^)]*\\).*/\\1/p'; railway whoami)\"":
+        ["railway status", "railway whoami"],
 }
 
 
@@ -188,7 +191,21 @@ _MENTIONS = ['grep -n "railway status" docs/a.md', "cat scripts/observe_db.py", 
              "timeout 60 bash -c 'if grep -q railway notes.md; then echo yes; fi'",
              "MSG=$(cat <<'EOF'\nIf railway up fails, retry by hand\nEOF)\ngit commit -m \"$MSG\"",
              "cat > notes.md <<END-NOTES\nIf railway up fails, retry by hand\nEND-NOTES",
-             "NOTES=$(cat <<'EOF'\nrailway up was run by the user\nEOF)\necho \"$NOTES\""]
+             "NOTES=$(cat <<'EOF'\nrailway up was run by the user\nEOF)\necho \"$NOTES\"",
+             # 둘째 적대 패스(wf_150f221f-097)의 새 거부 — 갈래 패턴의 `|` · 배열 원소 · 따옴표 속 `| bash` 가 든 제목 뒤
+             # heredoc 본문 · `[[ … && … ]]` · 문법만 보는 `bash -n` · 큰따옴표 속 `<(` · 스크립트 파일을 받은 셸의 heredoc
+             'case "$f" in scripts/observer_setup.py|scripts/backfill_repository_user_id.py) echo skip ;; *) echo check ;; esac',
+             'files=(scripts/railway_config.py scripts/observer_setup.py); for f in "${files[@]}"; do wc -l "$f"; done',
+             "gh pr create --title 'fix(hooks): `… | xargs -n1 bash -n` 을 실행으로 읽지 않는다 (원장 #1917 P1-19)' "
+             + "--body-file - <<'EOF'\n## Summary\n- `railway up` · `railway redeploy` 는 그대로 막는다\nEOF",
+             "gh release create v1.4.0 --title 'v1.4.0 — curl … | sh 설치 (#1917)' --notes-file - <<'EOF'\n"
+             + "- observer 설정: `py -3 scripts/observer_setup.py --host <host>` (사용자)\nEOF",
+             "gh pr create --title 'fix(hooks): … | timeout 60 bash 오독 (#1917)' --body \"$(cat <<'EOF'\n## 변경\n"
+             + "1) 사용자 몫 스크립트: `py -3 scripts/observer_setup.py`\n2) 그 밖은 그대로\nEOF\n)\"",
+             "[[ -f /tmp/stamp && scripts/observer_setup.py -nt /tmp/stamp ]] && echo changed",
+             "printf '%s\\n' 'railway up' | bash -n 2>/dev/null && echo syntax-ok",
+             'git commit -m "fix(hooks): <(py -3 scripts/observer_setup.py) 프로세스 치환 표기"',
+             "timeout 60 bash ./scripts/render.sh <<'EOF'\nrailway up 은 사용자 몫\nEOF"]
 
 
 @pytest.mark.parametrize("command", _MENTIONS)
@@ -319,7 +336,19 @@ _POWERSHELL_MENTIONS = ["Get-ChildItem | % { Select-String -Path $_ -Pattern rai
                         "Write-Output (switch ($t) { railway { 'r' } default { 'l' } })",
                         "Set-Item -Path function:Deploy -Value { railway up }",
                         "$h = @{ railway =1 }",
-                        "Start-Process -WorkingDirectory C:\\work\\railway pwsh"]
+                        "Start-Process -WorkingDirectory C:\\work\\railway pwsh",
+                        # 둘째 적대 패스(wf_150f221f-097) — 띄어 쓴 배열의 도움말 · 줄인 값 매개변수 · class 상속 · 정의 블록 속
+                        # "$( )" · 큰따옴표 속 `@(` · 겹친 홑따옴표 · 백틱으로 이스케이프한 따옴표 뒤 here-string
+                        "Start-Process py -ArgumentList '-3', 'scripts/observer_setup.py', '--help' -NoNewWindow -Wait",
+                        "Start-Process -FilePath py -ArgumentList '-3', 'scripts\\observer_setup.py', '-h' -Wait",
+                        "Start-Process railway -ArgumentList 'up', '--help' -NoNewWindow -Wait",
+                        "Start-Process -WorkingDir C:\\work\\railway notepad",
+                        "class Deployer : Object {\n  [void] Run() { railway up }\n}",
+                        'function Setup { Write-Host "$(py -3 scripts/observer_setup.py)" }',
+                        'git commit -m "docs: @(py -3 scripts/observer_setup.py) 는 사용자 몫"',
+                        "$r = Invoke-Expression 'Write-Host ''build ok; railway up is user-only'''",
+                        "Start-Process pwsh -ArgumentList '-NoProfile -Command \"Write-Host ''note; railway up''\"'",
+                        "gh pr create --title \"Support 4`\" displays\" --body @'\nit's done\nrailway up\n'@"]
 
 
 @pytest.mark.parametrize("command", _POWERSHELL_MENTIONS)
@@ -396,6 +425,15 @@ _PRODUCTION_WRITES = [
     ("Bash", 'case "$ENV" in\n  prod ) railway up ;;\nesac'),
     ("Bash", "# 본문은 <<'EOF' heredoc 으로 넘긴다\nrailway up"),
     ("Bash", "echo railway up 2>&1 | bash"),  # 재지정의 `&` 는 구분자가 아니다 — main 은 거기서 나눠 놓쳤다
+    # 둘째 적대 패스(wf_150f221f-097) 고침의 대조군 — 갈래 · 배열 · `[[ ]]` 뒤 · 몸 속 따옴표 괄호 · `|&` 로 받는 셸 ·
+    # 띄어 쓴 배열 · 겹친 따옴표 / controls for that pass's fixes; `|& bash` was missed by main too
+    ("Bash", 'case "$env" in prod|production) railway up ;; esac'),
+    ("Bash", 'svc=(api worker); for s in "${svc[@]}"; do railway redeploy --service "$s" -y; done'),
+    ("Bash", '[[ -n "$CI" ]] && railway up'),
+    ("Bash", "x=$(echo 'a)b'; railway up)"),
+    ("Bash", "cat <<'EOF' |& bash\nrailway up\nEOF"),
+    ("PowerShell", "Start-Process railway -ArgumentList 'up', '--detach' -NoNewWindow -Wait"),
+    ("PowerShell", "$r = Invoke-Expression 'railway up; Write-Host ''done'''"),
 ]
 
 
@@ -427,6 +465,7 @@ _USER_ONLY_SCRIPTS = [
     ("PowerShell", "Start-Process py -ArgumentList 'scripts\\backfill_repository_user_id.py','--apply' -Wait -NoNewWindow"),
     ("PowerShell", 'Start-Process -FilePath python -ArgumentList "scripts\\observer_setup.py --host h --ref r" -Wait'),
     ("Bash", "python -um scripts.observer_setup"),  # 묶은 짧은 옵션 / clustered short options
+    ("PowerShell", "Start-Process py -ArgumentList '-3', 'scripts/observer_setup.py' -Wait"),  # 띄어 쓴 배열
 ]
 
 
@@ -480,6 +519,44 @@ def test_powershell_railway_variable_idioms_keep_mains_verdict(command, verdict,
     work, _, _ = logs
     denied = '"permissionDecision": "deny"' in _run(monkeypatch, capsys, _shell(command, work, tool="PowerShell"))
     assert denied == (verdict == "deny"), command
+
+
+# witness-corpus: 손으로 적은 이름 목록 밖의 같은 PowerShell 매개변수 — 문서 별칭(-RSO · -RunAs · -proga) · 앞부분 줄임 · 붙여 쓴 값
+_POWERSHELL_PARAMETER_SPELLINGS = {
+    "Start-Process -RSO out.txt railway up -Wait": True,  # -RSO = -RedirectStandardOutput — 값을 받는다
+    "Start-Process -Arg up -File railway -Wait": True,  # -Arg · -File = -ArgumentList · -FilePath 의 앞부분
+    "Start-Process -FilePath:railway -ArgumentList:up": True,  # 붙여 쓴 값 / colon-attached values
+    "Start-Process -RunAs $cred railway up": True,  # -RunAs = -Credential
+    'Invoke-Expression -ErrorA Stop "railway up"': True,  # -ErrorA = -ErrorAction 의 앞부분
+    'Invoke-Expression -proga SilentlyContinue "railway up"': True,  # -proga = -ProgressAction
+    'Invoke-Expression -Command:"railway up"': True,
+    "Start-Process -Work C:\\railway notepad": False,  # -Work = -WorkingDirectory — 그 경로는 실행 파일이 아니다
+    "Start-Process -RSO railway.log notepad readme.md": False,
+    'Invoke-Expression -ErrorA Stop "Write-Host railway up"': False,
+}
+# witness-corpus: Bash 의 같은 꼴 — 목록 밖 긴 옵션(sudo --user · time --output) · 표준 출력과 오류를 함께 넘기는 파이프 `|&`
+_BASH_OPTION_SPELLINGS = {
+    "sudo --user deploy railway up": True,
+    "time --output t.log railway up": True,
+    'echo "railway up" |& bash': True,
+    "printf 'railway redeploy -y\\n' |& sh": True,
+    "git log --oneline |& grep railway": False,
+    "py -3 scripts/backfill_repository_user_id.py --ap": True,  # argparse 줄임 — 목록 글자 `--apply` 가 없다
+    "py -3 scripts/observer_setup.py --he": False,  # 도움말 줄임 / an abbreviated --help
+    "py -3 scripts/observer_setup.py -h": False,
+}
+
+
+@pytest.mark.parametrize("tool,command,denied",
+                         [("PowerShell", c, d) for c, d in _POWERSHELL_PARAMETER_SPELLINGS.items()]
+                         + [("Bash", c, d) for c, d in _BASH_OPTION_SPELLINGS.items()])
+def test_an_option_spelled_outside_the_listed_names_reads_like_the_listed_name(tool, command, denied, logs,
+                                                                               monkeypatch, capsys):
+    """🔴 매개변수 · 옵션 목록은 손으로 적었다 — PowerShell 바인더처럼 별칭 · 유일한 앞부분 · 붙여 쓴 값을 풀고, Bash 의 긴
+    옵션 · `|&` 도 같은 자리로 읽는다. Option spellings outside the hand-written lists read like the listed names."""
+    work, _, _ = logs
+    verdict = '"permissionDecision": "deny"' in _run(monkeypatch, capsys, _shell(command, work, tool=tool))
+    assert verdict == denied, command
 
 
 def test_script_option_table_matches_each_scripts_argparse():
