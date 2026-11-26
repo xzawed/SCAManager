@@ -3070,11 +3070,12 @@ def _cmd_calls(text):
     새로 센다)마다 `_cmd_call` 로 바꾼다(아홉째 워크플로 패스: cmd 는 stdin 을 줄마다 읽는데 첫 줄만 바꿨다). cmd 의 `&` 는 그대로
     둔다 — PowerShell 규칙에서도 명령 자리 밖의 `&` 는 문장 끝이다. cmd 의 `;` 도 그대로다 — 자식(`bash -c '…; …'`)이 받는다.
     cmd text rewritten statement by statement for a PowerShell-rules walk."""
-    out, piece, quoted, i = [], [], False, 0
+    out, piece, quoted, depth, i = [], [], False, 0, 0  # depth — 열린 블록 수, 문장 · 줄을 넘는다(열두째 워크플로 패스)
     while i < len(text):
         ch = text[i]
         if ch == "\n":
-            out.append(_cmd_call("".join(piece)) + "\n")
+            line, depth = _cmd_call("".join(piece), depth)
+            out.append(line + "\n")
             piece, quoted, i = [], False, i + 1
             continue
         if ch == '"':
@@ -3083,12 +3084,13 @@ def _cmd_calls(text):
             sep = text[i:i + 2] if text[i:i + 2] in ("&&", "||") else ch
             # cmd 의 `&` 는 `;` 로 — PowerShell 규칙은 `=` 뒤의 `&` 를 호출 연산자로 읽는다(`set X= & railway up` — 열째 워크플로
             # 패스) / cmd's `&` as `;`: after `=` PowerShell rules read `&` as the call operator
-            out.append(_cmd_call("".join(piece)) + (";" if sep == "&" else sep))
+            line, depth = _cmd_call("".join(piece), depth)
+            out.append(line + (";" if sep == "&" else sep))
             piece, i = [], i + len(sep)
             continue
         piece.append(ch)
         i += 1
-    out.append(_cmd_call("".join(piece)))
+    out.append(_cmd_call("".join(piece), depth)[0])
     return "".join(out)
 
 
@@ -3097,21 +3099,42 @@ _CMD_COMMENT = re.compile(r"(?i)(?:rem|::)")
 _CMD_TEXT_STATEMENT = re.compile(r"(?i)(?:echo|set|title)")
 
 
-def _cmd_call(statement):
+def _cmd_call(statement, depth=0):
     """cmd 문장 하나를 PowerShell 규칙으로 걸을 꼴로 — 앞 `@`(되풀이 끄기)는 떼고, 주석(`rem` · `::`)은 빼고, 인자가 글자인 명령
     (echo · set · title)의 인자는 홑따옴표 글자로, 따옴표로 시작하는 머리는 호출 연산자 꼴(`& "C:\\…\\railway.cmd" up`)로 둔다
     (여덟째 · 아홉째 워크플로 패스: echo 의 괄호 · `;` · 중괄호와 `::` · `@echo` · `set X=(…)` · `title` 을 PowerShell 식으로 읽었다).
-    One cmd statement rewritten for a PowerShell-rules walk."""
+    블록 안(depth)의 문장이면 글자는 블록을 닫는 `)` 까지다. (바꾼 글자, 문장 뒤의 블록 깊이)를 돌려준다.
+    One cmd statement rewritten for a PowerShell-rules walk, and the block depth after it."""
     stripped = statement.strip()
     if stripped.startswith("@"):
         stripped = stripped[1:].lstrip()
     if _CMD_COMMENT.match(stripped):
-        return ""
+        return "", depth
     text = _CMD_TEXT_STATEMENT.match(stripped)
     if text:
-        return stripped[:text.end()] + _cmd_literal(stripped[text.end():])
-    stripped = _cmd_block_text(stripped)
-    return " & " + stripped if stripped.startswith('"') else stripped
+        end = _cmd_text_end(stripped, text.end(), depth)
+        rest, depth = _cmd_block_text(stripped[end:], depth)
+        return stripped[:text.end()] + _cmd_literal(stripped[text.end():end]) + rest, depth
+    stripped, depth = _cmd_block_text(stripped, depth)
+    close = stripped.find('"', 1) if stripped.startswith('"') else -1
+    if close > 0:
+        # 따옴표 친 머리는 호출 — cmd 에서 그 글자는 펼치지 않으므로 PowerShell 홑따옴표로(`"…$(…)…"` 를 하위 식으로 읽었다)
+        # a quoted head is a call; cmd does not expand it, so it becomes a single-quoted PowerShell string
+        stripped = " & '" + stripped[1:close].replace("'", "''") + "'" + stripped[close + 1:]
+    return _cmd_closed_quotes(stripped), depth
+
+
+def _cmd_closed_quotes(statement):
+    """문장 끝에서 짝 없는 따옴표를 닫는다 — cmd 에서 `'` 는 글자이고 `"` 는 줄 끝에서 풀리는데, PowerShell 규칙에서는 뒤 문장 ·
+    뒤 줄까지 문자열로 덮는다(`cd it's here & railway up` — 열두째 패스 고침을 짚다 드러났다).
+    Close an unpaired quote at the end of a statement so it cannot cover later statements under PowerShell rules."""
+    single, double = 0, False
+    for ch in statement:
+        if ch == '"':
+            double = not double
+        elif ch == "'" and not double:
+            single += 1
+    return statement + ("'" if single % 2 else "") + ('"' if double else "")
 
 
 def _cmd_literal(text):
@@ -3129,22 +3152,27 @@ _CMD_BLOCK_TEXT = re.compile(
     + _CMD_OPERAND + r")\s+)@?(?:echo|set|title)")
 
 
-def _cmd_block_text(statement):
+def _cmd_text_end(statement, start, depth):
+    """글자 인자의 끝 — 블록 안이면 따옴표 밖 `)` 앞, 아니면 문장 끝 / where a text argument ends."""
+    end, quote = start, None
+    while end < len(statement) and (quote or not (depth and statement[end] == ")")):
+        quote = (None if statement[end] == quote else quote) if quote else ('"' if statement[end] == '"' else None)
+        end += 1
+    return end
+
+
+def _cmd_block_text(statement, depth=0):
     """블록 문장 안 echo · set · title 의 인자를 글자로 — 블록 안이면(`if … (echo …)` · `(… & echo …)`) 블록을 닫는 따옴표 밖
     `)` 까지, 블록 밖의 `do echo` · `else echo` · `if … echo` 는 문장 끝까지(열째 · 열한째 워크플로 패스: `(echo built; railway up
     is next)` 의 `;` 를 PowerShell 문장 구분으로 읽었고, 블록 밖 echo 를 첫 `)` 에서 끊었다). 따옴표(겹 · 홑 — 홑따옴표 글자는
-    자식 셸 몫이다) 속은 건너뛴다. Text of echo/set/title in a cmd block statement."""
-    out, i, quote, depth = [], 0, None, 0
+    자식 셸 몫이다) 속은 건너뛴다. (바꾼 글자, 블록 깊이)를 돌려준다. Text of echo/set/title in a cmd statement."""
+    out, i, quote = [], 0, None
     while i < len(statement):
         ch = statement[i]
         found = None if quote else _CMD_BLOCK_TEXT.match(statement, i)
         if found:
-            opens = ch == "("
-            depth += opens
-            end, inner = found.end(), None
-            while end < len(statement) and (inner or not (depth and statement[end] == ")")):
-                inner = (None if statement[end] == inner else inner) if inner else ('"' if statement[end] == '"' else None)
-                end += 1
+            depth += ch == "("
+            end = _cmd_text_end(statement, found.end(), depth)
             out.append(statement[i:found.end()] + _cmd_literal(statement[found.end():end]))
             i = end
             continue
@@ -3156,7 +3184,7 @@ def _cmd_block_text(statement):
             depth = depth + 1 if ch == "(" else max(0, depth - 1)
         out.append(ch)
         i += 1
-    return "".join(out)
+    return "".join(out), depth
 
 
 def _audit_unwrap(head, rest):
@@ -3172,14 +3200,12 @@ def _audit_unwrap(head, rest):
                 inner = " ".join(f'"{arg}"' if not arg or (any(ch in arg for ch in " \t") and '"' not in arg) else arg
                                  for arg in rest[k + 1:])
                 last = inner.rfind('"')
-                kept = inner[1:last] if inner.startswith('"') and last > 0 else ""
-                if inner.startswith('"') and last > 0 and not (
-                        inner.count('"') == 2 and " " in kept and not any(ch in kept for ch in "&<>()@^|")
-                        and kept.lower().endswith((".exe", ".cmd", ".bat", ".com"))):
-                    # cmd /c 는 명령줄이 따옴표로 시작하면 첫 · 마지막 따옴표를 떼고 돈다 — 따옴표가 둘뿐이고 사이에 공백이 있고
-                    # 특수 문자가 없고 실행 파일 이름이면 그대로 둔다(cmd /? — `/c "railway up"` · 여섯째 패스 고침의 회귀)
-                    # cmd /c strips the first and the last quote unless they quote one executable path with spaces
-                    inner = inner[1:last] + inner[last + 1:]
+                if inner.startswith('"') and last > 0:
+                    # cmd /c 는 명령줄이 따옴표로 시작하면 첫 · 마지막 따옴표를 떼고 돈다 — 따옴표 둘이 있는 실행 파일 이름을
+                    # 감싸면 그대로 둔다(cmd /?). 파일이 있는지는 글자로 알 수 없으니 두 읽기를 다 걷는다(`/c "railway up"` ·
+                    # 여섯째 패스 고침의 회귀, `/c "railway run deploy.bat"` · 열두째 워크플로 패스)
+                    # cmd /c strips the outer quotes unless they name an existing executable — walk both readings
+                    return _cmd_calls(inner[1:last] + inner[last + 1:]) + "\n" + _cmd_calls(inner)
                 return _cmd_calls(inner)
         return None
     if head == "eval":
@@ -3499,8 +3525,8 @@ def _audit_substitutions(text, string_body=False):
 # 둘째 줄 case 와 `;;` 없는 마지막 갈래 뒤 esac 를 놓쳤다). case 는 같은 줄의 `… in` 까지가 머리다(주제에 겹친 치환이 올 수
 # 있다 — 열한째 워크플로 패스: `then case prod below` 같은 낱말이 없는 case 를 열었다).
 # a case head or esac at a command position inside a substitution body
-_BODY_CASE_WORD = re.compile(r"(?:(?<=[\n;&|(){])|(?<=\bthen)|(?<=\bdo)|(?<=\belse))[ \t]*(case)[ \t]+[^\n]*?[ \t]in(?=\s|$)"
-                             r"|(?<=[\n;])[ \t]*(esac)(?=[\s;&|)]|$)")  # esac 는 `;;` · 줄바꿈 뒤에만 온다 / only after ;; or a newline
+_BODY_CASE_WORD = re.compile(r"(?:(?<=[\n;&|(){])|(?<=\bthen)|(?<=\bdo)|(?<=\belse))[ \t]*(case)(?=[ \t]+[^\n]*?[ \t]in(?:\s|$))"
+                             r"|(?<=[\n;&])[ \t]*(esac)(?=[\s;&|)]|$)")  # esac 는 `;;` · `;&` · 줄바꿈 뒤 / after ;; ;& or a newline
 
 
 @functools.lru_cache(maxsize=8)

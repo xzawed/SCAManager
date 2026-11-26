@@ -269,6 +269,8 @@ _MENTIONS = ['grep -n "railway status" docs/a.md', "cat scripts/observe_db.py", 
              "cmd //c 'if errorlevel 1 echo build failed (exit 1); see railway logs; railway up skipped'",  # 블록 밖 echo
              "cmd //c 'for %f in (a b) do @echo %f; railway up later'",
              'cmd //c \'if exist "C:\\Program Files\\nodejs\\railway.cmd" echo railway CLI found; railway up is next\'',
+             "cmd //c 'if exist x (echo $(railway up) is literal)'",  # 둔 읽기의 따옴표 머리는 글자 / a literal quoted head
+             'cmd //c "cd it\'s here & echo railway up later"',
              'case "$1" in\n  a) echo "(x) esac done" ;;\n  scripts/observer_setup.py) echo "user-only" ;;\nesac',
              'case "$1" in\n  start) echo starting ;;   # (nested case ends with) esac\n'
              + '  stop|scripts/observer_setup.py) echo stop ;;\nesac']
@@ -637,6 +639,18 @@ _PRODUCTION_WRITES = [
     ("Bash", 'x="$(case "$1" in\n  deploy) railway up --detach ;;\n  # handle the else case\n  *) echo skip ;;\nesac)"'),
     ("Bash", 'x=$(case "$1" in\n  dev) echo dev ;;  # if not dev then case prod below\n  prod) railway redeploy --yes ;;\nesac)'),
     ("Bash", 'x="$(case "$1" in a) echo then esac;; prod) railway up;; esac)"'),
+    # 열두째 적대 패스(wf_f25c2229-9b3) — 따옴표 친 cmd /c 줄은 두 읽기를 다 걷는다, cmd 블록 깊이는 문장 · 줄을 넘는다, 치환 몸의
+    # case 머리는 글자를 먹지 않고 esac 는 `;&` 뒤도 온다
+    # both readings of a quoted cmd /c line; block depth across statements; a zero-width case head; esac after `;&`
+    ("Bash", 'cmd //c "railway run deploy.bat"'),
+    ("Bash", 'cmd //c "if exist .git (git pull & if errorlevel 1 echo pull failed) else (railway up)"'),
+    ("Bash", 'cmd //c "if exist x (cd y & echo done) else (railway up)"'),
+    ("Bash", 'cmd //c "if exist x (echo a) else (railway up)"'),
+    ("Bash", "cmd <<'EOF'\nif exist dist (\n  echo found (ok)\n  railway up\n)\nEOF"),
+    ("Bash", 'x=$(case "$1" in a) echo a ;; b) railway up ;& esac)'),
+    ("Bash", 'x=$(echo "or else case in point"; case "$1" in a) echo a;; b) railway up;; esac)'),
+    ("Bash", 'cmd //c "cd it\'s here & railway up"'),  # cmd 의 `\'` 는 글자 — 뒤 문장을 덮지 않는다 / a literal apostrophe
+    ("Bash", 'cmd //c "echo \'quoted & text\' & railway up"'),
     ("Bash", 'cmd //c "if exist deploy-set.flag (railway up)"'),  # 조건 속 `set` 은 명령이 아니다 / not a command word
 ]
 
@@ -786,6 +800,7 @@ _USER_ONLY_SCRIPTS = [
     ("Bash", 'r=$(if true\nthen\n  case "$1" in\n    p) py -3 scripts/observer_setup.py ;;\n  esac\nfi)'),  # 줄 처음 then 뒤
     ("PowerShell", "@'\ncd /d C:\\repo && echo In repo\nif exist scripts\\observer_setup.py (py -3 scripts\\observer_setup.py --host db)\n'@ | cmd"),
     ("Bash", 'out=$(\n  echo x\n  { case "$1" in dev) echo dev ;; prod) py -3 scripts/observer_setup.py ;; esac; }\n)'),  # 묶음 `{` 뒤
+    ("PowerShell", 'cmd /c "py -3 scripts/observer_setup.py --host db.pooler.supabase.com"'),  # 뗀 읽기 / the stripped reading
     # 치환 몸의 case 는 `&&` · `||` · then · do · else 뒤도 / case inside a body after && || then do else
     ("Bash", 'out=$(cd /tmp && case "$1" in dev) echo dev;; prod) py -3 scripts/observer_setup.py;; esac)'),
     ("Bash", 'out=$(false || case "$1" in dev) echo dev;; prod) py -3 scripts/observer_setup.py;; esac)'),
