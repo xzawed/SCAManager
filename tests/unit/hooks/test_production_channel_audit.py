@@ -229,7 +229,22 @@ _MENTIONS = ['grep -n "railway status" docs/a.md', "cat scripts/observe_db.py", 
              'case "$1" in\n  # every arm ends with ;; and the block ends with esac\n'
              + '  scripts/observer_setup.py) echo "user-only script" ;;\n  *) echo other ;;\nesac',
              'for f in scripts/*.sh scripts/*.py; do\n  case "$f" in\n    *.sh) grep -cw esac "$f" ;;\n'
-             + '    scripts/observer_setup.py|scripts/backfill_repository_user_id.py) echo "skip $f" ;;\n  esac\ndone']
+             + '    scripts/observer_setup.py|scripts/backfill_repository_user_id.py) echo "skip $f" ;;\n  esac\ndone',
+             # 여덟째 적대 패스(wf_13faf998-b43) — cmd 의 echo 인자 · `;` 는 글자, 다른 셸이 받는 본문은 그 셸의 규칙, 치환 속
+             # case 패턴의 `)`, 따옴표 · 주석 속 esac
+             # cmd echo text and `;`, a body under its receiver's rules, an arm pattern inside `$( )`, esac in quotes
+             'cmd //c "echo Deploy blocked (railway up needs approval) > NOTE.txt"',
+             'cmd //c "echo (py -3 scripts\\observer_setup.py) is user-only"',
+             'cmd //c "echo build;railway up"',
+             "printf 'echo (railway up) later\\n' | cmd",
+             "cat <<'EOF' | powershell -NoProfile -Command -\n'scripts\\observer_setup.py' | Test-Path\nEOF",
+             "pwsh -NoProfile -Command - <<'EOF'\n$s = @(\n  'scripts/observer_setup.py'\n)\n$s | Test-Path\nEOF",
+             'kind=$(case "$f" in */observer_setup.py) echo user;; *) echo agent;; esac)',
+             'kind=$(case "$f" in a) (echo a);; */observer_setup.py) echo user;; esac)',
+             'cmd //c "ECHO (railway up) stays manual"',
+             'case "$1" in\n  a) echo "(x) esac done" ;;\n  scripts/observer_setup.py) echo "user-only" ;;\nesac',
+             'case "$1" in\n  start) echo starting ;;   # (nested case ends with) esac\n'
+             + '  stop|scripts/observer_setup.py) echo stop ;;\nesac']
 
 
 @pytest.mark.parametrize("command", _MENTIONS)
@@ -326,6 +341,12 @@ _POWERSHELL_ALLOWED = {
     # `;` 는 줄을 나누지 않는다) / expanded before the call; its `;` does not split the line
     "Start-Process pwsh -ArgumentList @('-NoExit', '-Command', \"Write-Host $(git rev-parse HEAD; railway status)\")":
         ["railway status"],
+    # 여덟째 적대 패스(wf_13faf998-b43) — 명령 자리의 `&` 는 호출 연산자다(그 밖은 배경 실행 · 문장 끝)
+    # `&` at a command position calls; elsewhere it backgrounds and ends the statement
+    '$s = & "C:\\x\\railway.cmd" status': ["railway status"],
+    '(& "C:\\x\\railway.cmd" status)': ["railway status"],
+    'if ($true) { & "C:\\x\\railway.cmd" status }': ["railway status"],
+    '"x" | & "C:\\x\\railway.cmd" status': ["railway status"],
 }
 
 
@@ -407,7 +428,14 @@ _POWERSHELL_MENTIONS = ["Get-ChildItem | % { Select-String -Path $_ -Pattern rai
                         + "'''git commit -m \"docs: never run \\\"railway status; railway up\\\" from agents\"'''",
                         "Start-Process bash -ArgumentList '-c', '''tools=(railway gh git); for t in \"${tools[@]}\"; do command -v \"$t\"; done'''",
                         "Start-Process pwsh -ArgumentList '-NoProfile', '-Command', '\"Write-Host \"\"Steps: build; railway up (by the user)\"\"\"'",
-                        "Start-Process bash -ArgumentList '-c', '\"git commit -m \"\"docs: build; railway up stays manual\"\"\"'"]
+                        "Start-Process bash -ArgumentList '-c', '\"git commit -m \"\"docs: build; railway up stays manual\"\"\"'",
+                        # 여덟째 적대 패스(wf_13faf998-b43) — cmd 의 echo 인자는 글자, bash 가 받는 here-string 은 Bash 규칙
+                        # cmd echo text is literal; a here-string bash receives follows Bash rules
+                        'cmd /c "echo Deploy blocked (railway up needs approval)"',
+                        "bash -c @'\nfiles=(scripts/observer_setup.py scripts/observe_db.py)\nwc -l \"${files[@]}\"\n'@",
+                        "@'\nfiles=(\n  scripts/observer_setup.py\n  scripts/observe_db.py\n)\nwc -l \"${files[@]}\"\n'@ | bash",
+                        "bash -c @'\nfor s in observer_setup.py backfill_repository_user_id.py; do\n  case \"$s\" in\n"
+                        + "    observer_setup.py) echo \"observer: user-only\" ;;\n    *) echo \"$s\" ;;\n  esac\ndone\n'@"]
 
 
 @pytest.mark.parametrize("command", _POWERSHELL_MENTIONS)
@@ -672,6 +700,23 @@ _USER_ONLY_SCRIPTS = [
      + '  fix) py -3 scripts/backfill_repository_user_id.py --apply ;;\nesac'),
     ("PowerShell", "Start-Process cmd -ArgumentList '/c', 'cd /d C:\\repo &&', '\"C:\\Python312\\python.exe\"', "
      + "'scripts\\observer_setup.py'"),
+    # 여덟째 적대 패스(wf_13faf998-b43) — PowerShell 7 의 `&` 뒤 문장, cmd 가 stdin · heredoc 으로 받는 글자, 다른 셸이 받는
+    # 본문, 따옴표 · 주석 속 esac 뒤의 갈래
+    # the statement after PowerShell 7's `&`, text cmd reads, a body another shell runs, arms after a quoted esac
+    ("Bash", 'pwsh -NoProfile -Command "Set-Location F:/proj & py -3 scripts/backfill_repository_user_id.py --apply"'),
+    ("Bash", 'echo "npm run build & py -3 scripts/observer_setup.py" | pwsh -c -'),
+    ("PowerShell", "Set-Location F:\\proj & py -3 scripts\\observer_setup.py"),
+    ("Bash", "echo '\"C:\\Python312\\python.exe\" scripts\\observer_setup.py' | cmd"),
+    ("Bash", "cmd <<'EOF'\n\"C:\\Python312\\python.exe\" scripts\\observer_setup.py\nEOF"),
+    ("PowerShell", "@'\n\"C:\\Python312\\python.exe\" scripts\\observer_setup.py\n'@ | cmd"),
+    ("PowerShell", "bash -c @'\nfiles=(a b)\npy -3 scripts/observer_setup.py\n'@"),
+    ("Bash", "pwsh -NoProfile -Command - <<'EOF'\nSet-Location F:/proj\npy -3 scripts/observer_setup.py\nEOF"),
+    ("Bash", 'case "$1" in\n  a) echo "(x) esac done" ;;\n  b) py -3 scripts/observer_setup.py ;;\nesac'),
+    ("Bash", 'case "$1" in\n  start) echo starting ;;   # (nested case ends with) esac\n'
+     + '  deploy) py -3 scripts/observer_setup.py ;;\nesac'),
+    ("Bash", 'case "$1" in\n  a) msg="first line\n) esac\n"; echo "$msg" ;;\n  b) py -3 scripts/observer_setup.py ;;\nesac'),
+    ("Bash", 'x=$(case "$1" in a) echo a;; b) py -3 scripts/observer_setup.py;; esac)'),
+    ("Bash", 'y=$(echo showcase ")"; py -3 scripts/observer_setup.py)'),
 ]
 
 

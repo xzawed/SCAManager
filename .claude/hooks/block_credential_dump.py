@@ -2325,7 +2325,12 @@ def _command_walk(text, depth, channels):
     단계는 명령이 아니다. The reason for a production change at a command position, else None (channels collected)."""
     if depth > _PROD_MAX_DEPTH or not text.strip():
         return None
-    text = _audit_joined_lines(_audit_without_heredoc_data(text))
+    foreign = []  # 다른 셸이 받는 heredoc · here-string 본문 / bodies another shell receives
+    text = _audit_joined_lines(_audit_without_heredoc_data(text, foreign))
+    for shell, body in foreign:
+        reason = _walk_as(shell, body, depth + 1, channels)
+        if reason:
+            return reason
     mask = _audit_mask(text)
     substitutions = _audit_substitutions(text)
     for start, body in substitutions:
@@ -2343,7 +2348,7 @@ def _command_walk(text, depth, channels):
         # 따옴표 안에서 잘랐다(워크플로 패스 wf_f44bc84a-458). Split only at separators standing in code positions.
         for seg_at, segment in _code_split(line, line_start, mask, _segment_separators()):
             cut = _case_prefix(segment, case_depth > 0, _arm_start(line[:seg_at]))  # 패턴의 `|` 는 파이프가 아니다
-            case_depth = _case_depth(segment, case_depth)
+            case_depth = _case_depth(segment, case_depth, mask[line_start + seg_at:line_start + seg_at + len(segment)])
             seg_at, segment = seg_at + cut, segment[cut:]
             stages = _code_split(segment, line_start + seg_at, mask, ("|&", "|"))
             for index, (stage_at, stage) in enumerate(stages):
@@ -2498,8 +2503,10 @@ def _arm_start(before):
 
 
 def _segment_separators():
-    """명령 구분자 — PowerShell 의 `&` 는 호출 연산자라 구분자가 아니다 / command separators (PowerShell's `&` calls)."""
-    return ("&&", "||", ";") if _CONTEXT["shell"] == "powershell" else ("&&", "||", ";", "&")
+    """명령 구분자 — PowerShell 의 `&` 는 명령 자리에서는 호출 연산자이고 그 밖에서는 배경 실행 · 문장 끝이다(PowerShell 7 —
+    여덟째 워크플로 패스: `Set-Location x & py -3 scripts/…` 의 뒤 문장을 놓쳤다). 가르는 일은 `_code_split` 이 한다.
+    Command separators; in PowerShell `&` is the call operator at a command position, else a statement end."""
+    return ("&&", "||", ";", "&")
 
 
 def _code_split(text, base, mask, separators):
@@ -2513,6 +2520,10 @@ def _code_split(text, base, mask, separators):
             sep = next((each for each in separators if text.startswith(each, i)), None)
             if sep == "&" and ((i and text[i - 1] in "<>|") or text.startswith("&>", i)):
                 sep = None  # 재지정 · 표준 출력과 오류를 함께 넘기는 파이프 `|&` / a redirection or the `|&` pipe
+            if sep == "&" and _CONTEXT["shell"] == "powershell":
+                before = text[begin:i].rstrip()
+                if not before or before[-1] in "=({|":
+                    sep = None  # 명령 자리의 호출 연산자 / the call operator at a command position
             if sep in ("|", "|&") and (text.startswith("||", i) or (i and text[i - 1] == "|")):
                 sep = None  # `||` 는 세그먼트 구분자다 / `||` separates segments
         if sep:
@@ -2550,6 +2561,8 @@ def _command_stage(stage, earlier, depth, channels):
             for piece in dict.fromkeys([first, *more, joined, _escaped_lines(first), _escaped_lines(joined)]):
                 if piped == "after-first":
                     piece = piece.split("\n", 1)[1] if "\n" in piece else ""  # 첫 줄은 eval 의 인자 / the first line is data
+                if head == "cmd":
+                    piece = _cmd_calls(piece)  # cmd 가 stdin 으로 받는 글자도 cmd 규칙으로(여덟째 워크플로 패스)
                 reason = _walk_as(_inner_shell(head), piece, depth + 1, channels)
                 if reason:
                     return reason
@@ -2637,11 +2650,16 @@ _CASE_WORDS = re.compile(r"(?:^|[;&|({)])\s*(?:(?:then|do|else)\s+)*(?:(case)\s+
                          r"|(esac)(?=[\s;&|)}]|$))")
 
 
-def _case_depth(text, depth):
+def _case_depth(text, depth, mask=None):
     """text 를 지난 뒤의 case 깊이 — 명령 자리의 `case 낱말 in` 에서 늘고 `esac` 에서 준다(다섯째 워크플로 패스: 앞 case 뒤의
     묶음 끝 `bash)` 를 갈래로 지웠다). 명령 자리가 아닌 낱말(`# just in case` · `grep -w esac`)은 세지 않는다(여섯째 워크플로 패스).
+    따옴표 · 주석 속 낱말(`echo "(x) esac"` · `# (old) esac`)도 세지 않는다(여덟째 워크플로 패스 — `)` 뒤를 세면서 드러났다).
     The case depth after text: a command-position `case WORD in` opens one, `esac` closes one."""
-    for found in _CASE_WORDS.finditer(text):
+    mask = _audit_mask(text) if mask is None else mask
+    # 따옴표 문자는 남긴다 — 여는 따옴표는 'c', 닫는 따옴표는 따옴표 안 상태라 둘 다 남겨야 `"xx"` 가 한 낱말이다
+    # keep the quote characters: the closing one carries the quoted state
+    code = "".join(ch if state == "c" or ch in "\"'" else "x" for ch, state in zip(text, mask))
+    for found in _CASE_WORDS.finditer(code):
         depth = depth + 1 if found.group(1) else max(0, depth - 1)
     return depth
 _AUDIT_CASE_PATTERN = re.compile(r"^\s*\(?\s*" + _CASE_PATTERN_WORD + r"(?:\s*\|\s*" + _CASE_PATTERN_WORD
@@ -3054,15 +3072,20 @@ def _cmd_calls(text):
             out.append(_cmd_call("".join(piece)) + (";" if sep == "&" else sep))
             piece, i = [], i + len(sep)
             continue
-        piece.append(ch)
+        piece.append(" " if ch == ";" and not quoted else ch)  # cmd 의 `;` 는 낱말 구분이다 / an argument delimiter
         i += 1
     out.append(_cmd_call("".join(piece)))
     return "".join(out)
 
 
 def _cmd_call(statement):
-    """따옴표로 시작하는 cmd 문장 머리를 PowerShell 호출 연산자 꼴로 / a quoted statement head as a PowerShell call."""
-    return " & " + statement.lstrip() if statement.lstrip().startswith('"') else statement
+    """따옴표로 시작하는 cmd 문장 머리를 PowerShell 호출 연산자 꼴로 — echo 의 인자는 글자라 그 괄호를 PowerShell 하위 식으로
+    읽지 않게 지운다(여덟째 워크플로 패스: `echo (railway up needs approval)` 를 막았다).
+    A quoted statement head as a PowerShell call; echo text loses its parentheses."""
+    stripped = statement.lstrip()
+    if stripped.lower().split(None, 1)[:1] == ["echo"]:  # cmd 은 대소문자를 가리지 않는다 / case-insensitive
+        return statement.replace("(", " ").replace(")", " ")
+    return " & " + stripped if stripped.startswith('"') else statement
 
 
 def _audit_unwrap(head, rest):
@@ -3238,18 +3261,21 @@ def _audit_reads_body(head, rest):
 
 def _audit_pipes_into_runner(text):
     """heredoc · here-string 뒤의 같은 파이프라인 단계가 글자를 명령으로 읽는가(`cat <<'EOF' | bash` · `|& bash` ·
-    `'@ | iex`) — 코드 자리의 구분자로만 나눈다. Does a later stage of the same pipeline read the text as commands?"""
+    `'@ | iex`) — 코드 자리의 구분자로만 나눈다. 그 단계의 머리, 아니면 None.
+    The head of a later stage of the same pipeline that reads the text as commands, or None."""
     mask = _audit_mask(text)
     seg_at, segment = _code_split(text, 0, mask, _segment_separators())[0]
     later = [_audit_stage_head(stage) for _, stage in _code_split(segment, seg_at, mask, ("|&", "|"))[1:]]
-    return any(_audit_reads_body(head, rest) or _runs_piped_text(head, rest) for head, rest in later)
+    return next((head for head, rest in later if _audit_reads_body(head, rest) or _runs_piped_text(head, rest)), None)
 
 
-def _audit_without_heredoc_data(text):
+def _audit_without_heredoc_data(text, foreign=None):
     """감사용 heredoc · here-string 데이터 빼기 — 판정 쪽(`_prod_without_heredoc_data`, main 그대로)보다 정밀하다. 큰따옴표 속
     명령 치환 안의 heredoc 도 heredoc 이고, 치환 안이면 `EOF)` 로 붙여 쓴 줄에서 닫히며(bash 5.3), 닫는 줄이 없으면 끝까지
     데이터다. 본문을 돌리는 받는 명령(앞부분 전체의 마지막 명령 · 치환 몸의 첫 명령 · 뒤 파이프)이면 본문을 남긴다.
     here-string 을 여는 `@'` · `@"` 는 걷는다 — 남기면 닫히지 않은 따옴표로 보여 뒤가 모두 따옴표 안이 된다(워크플로 셋째 패스).
+    본문을 받는 셸이 지금 셸과 다르면(`bash -c @'…'@` · `pwsh -Command - <<'EOF'` · cmd) 그 본문은 foreign 에 (셸, 글자)로 넘겨
+    받는 셸의 규칙으로 따로 걷게 한다(여덟째 워크플로 패스: 바깥 셸 규칙으로 걸어 Bash 배열 · case 패턴을 머리로 읽었다).
     Drop heredoc and here-string data for the audit, more precisely than the verdict side."""
     powershell = _CONTEXT["shell"] == "powershell"
     lines = text.split("\n")
@@ -3274,9 +3300,12 @@ def _audit_without_heredoc_data(text):
         prefix = line[:start].rstrip()
         grouped = prefix.endswith((")", "}"))
         receiver = _audit_receiver(prefix[:-1] if grouped else line[:start], case_depth > 0)
-        runs = (_audit_reads_body(*receiver) or (grouped and _runs_piped_text(*receiver))
-                or (inner is not None and _audit_reads_body(*_audit_receiver(line[inner:start])))
-                or (match is not None and _audit_pipes_into_runner(line[match.end():])))
+        runner = receiver[0] if _audit_reads_body(*receiver) or (grouped and _runs_piped_text(*receiver)) else None
+        if runner is None and inner is not None:
+            inner_receiver = _audit_receiver(line[inner:start])
+            runner = inner_receiver[0] if _audit_reads_body(*inner_receiver) else None
+        if runner is None and match is not None:
+            runner = _audit_pipes_into_runner(line[match.end():])
         case_depth = _case_depth(line[:start], case_depth)  # heredoc 줄의 case 머리도 센다(다섯째 워크플로 패스)
         body, closing = [], None
         delimiter = match.group(2).lstrip("\\") if match else None
@@ -3296,10 +3325,15 @@ def _audit_without_heredoc_data(text):
         i += 1  # 닫는 줄 / the closing line
         if closing:
             kept.append(closing)  # 닫는 글자 뒤(`)"` · `| iex`)는 명령이다 / what follows the closing mark is a command
-            runs = runs or _audit_pipes_into_runner(closing)
+            runner = runner or _audit_pipes_into_runner(closing)
         literal = here.group(1) == "'" if here else bool(match.group(1)) or match.group(2).startswith("\\")
-        if runs:
-            kept.extend(body)
+        if runner:
+            shell = _inner_shell(runner)
+            if foreign is not None and (shell != _CONTEXT["shell"] or runner == "cmd"):
+                joined = "\n".join(body)
+                foreign.append((shell, _cmd_calls(joined) if runner == "cmd" else joined))
+            else:
+                kept.extend(body)
         elif not literal:
             kept.extend(_live_bodies("\n".join(body), powershell))
     return "\n".join(kept)
@@ -3379,12 +3413,16 @@ def _audit_substitutions(text, string_body=False):
     return bodies
 
 
+# 치환 몸 안의 case · esac 낱말 / case and esac words inside a substitution body
+_CASE_KEYWORD_AT = re.compile(r"(?:case|esac)(?=[\s;)]|$)")
+
+
 def _audit_paren_end(text, start, escape):
     """치환 몸이 끝난 다음 자리와 닫혔는가 — 몸 속 따옴표 · 이스케이프 안의 괄호는 세지 않는다(`sed 's/\\([^)]*\\)/'` 의 `)`
     가 몸을 일찍 닫아 남은 `railway whoami)` 를 알 수 없는 하위 명령으로 막았다 — 워크플로 패스 wf_150f221f-097). 따옴표가
     닫히지 않으면 괄호만 센다. The end of a substitution body, quote-aware; parentheses only when a quote stays open."""
     for aware in (True, False):
-        depth, j, quote = 1, start, None
+        depth, j, quote, cases = 1, start, None, []  # cases — 열린 case 마다 그 안의 짝 괄호 수 / per open case
         while j < len(text) and depth:
             ch = text[j]
             if aware and quote:
@@ -3394,10 +3432,29 @@ def _audit_paren_end(text, start, escape):
             if aware and ch == escape:
                 j += 2
                 continue
+            word = _CASE_KEYWORD_AT.match(text, j) if aware and (j == 0 or text[j - 1] in " \t\n;(|&") else None
+            if word:
+                # `$(case "$f" in */x.py) …;; esac)` — 갈래 패턴의 `)` 가 몸을 닫지 않게(여덟째 워크플로 패스)
+                # an arm pattern's `)` must not close the substitution body
+                if word.group(0) == "case":
+                    cases.append(0)
+                elif cases:
+                    cases.pop()
+                j = word.end()
+                continue
             if aware and ch in ("'", '"'):
                 quote = ch
-            else:
-                depth += {"(": 1, ")": -1}.get(ch, 0)
+            elif ch == "(":
+                depth += 1
+                if aware and cases:
+                    cases[-1] += 1
+            elif ch == ")":
+                if aware and cases and cases[-1] == 0:
+                    pass  # 갈래 패턴을 닫는 괄호 / closes an arm pattern
+                else:
+                    depth -= 1
+                    if aware and cases:
+                        cases[-1] -= 1
             j += 1
         if depth == 0 or not aware:
             return j, depth == 0
