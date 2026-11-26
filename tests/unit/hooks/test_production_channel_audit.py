@@ -743,6 +743,10 @@ _USER_ONLY_SCRIPTS = [
     ("Bash", 'echo "cases=$(grep -c case x.sh) esacs=$(grep -c esac x.sh)"; py -3 scripts/observer_setup.py; echo "1) done"'),
     ("Bash", 'git commit -m "wip:\nhandle prod"; case "$1" in\n  prod) bash <<\'EOF\'\npy -3 scripts/observer_setup.py\nEOF\n'
      + '  ;;\nesac'),  # 여러 줄 메시지가 닫히는 줄의 case 머리 / a case head on the line that ends a multi-line message
+    # cmd 의 따옴표는 줄마다 새로 센다 · 따옴표 속 case 머리는 (전체를 보는) 줄 순회에서 세지 않는다
+    # cmd quotes reset per line; a quoted case head does not count in the full-text walk
+    ("Bash", "cmd <<'EOF'\necho \"unclosed\necho hi & \"C:\\Python312\\python.exe\" scripts\\observer_setup.py\nEOF"),
+    ("Bash", 'echo "note; case $x in"\n(\n  cd /f/repo\n  ./scripts/observer_setup.py)'),
 ]
 
 

@@ -3091,8 +3091,8 @@ def _cmd_calls(text):
 
 
 # cmd 의 주석 줄 · 인자가 글자인 명령(cmd 은 대소문자를 가리지 않는다) / cmd comments and builtins whose arguments are text
-_CMD_COMMENT = re.compile(r"(?i)(?:rem(?![\w-])|::)")
-_CMD_TEXT_STATEMENT = re.compile(r"(?i)(?:echo|set|title)(?![\w-])")
+_CMD_COMMENT = re.compile(r"(?i)(?:rem|::)")
+_CMD_TEXT_STATEMENT = re.compile(r"(?i)(?:echo|set|title)")
 
 
 def _cmd_call(statement):
