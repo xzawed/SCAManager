@@ -190,7 +190,8 @@ def test_a_mention_of_a_production_channel_is_not_audited(command, logs, monkeyp
 
 # witness-corpus: python 으로 도는 리포 스크립트 가운데 운영에 닿지 않는 것(sqlite · 로컬 계측) — 감사 채널 목록 밖
 _UNLISTED_REPO_SCRIPTS = ["py -3 scripts/retro_scope.py --json", "python scripts/analyzer_oracle.py",
-                          "py -3 scripts/capture_readme_hero.py"]
+                          "py -3 scripts/capture_readme_hero.py", "py -3 scripts/pre_push_gate.py",
+                          "python scripts/e2e_budget.py"]
 
 
 @pytest.mark.parametrize("command", _UNLISTED_REPO_SCRIPTS)
