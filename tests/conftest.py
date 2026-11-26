@@ -63,6 +63,7 @@ os.environ["ANTHROPIC_BASE_URL"] = "http://127.0.0.1:1"
 _HOOK_LOG_DIR = tempfile.mkdtemp(prefix="scam-hook-log-")
 atexit.register(shutil.rmtree, _HOOK_LOG_DIR, True)
 os.environ["SCAMANAGER_HOOK_LOG"] = os.path.join(_HOOK_LOG_DIR, "hook-denials.jsonl")
+os.environ["SCAMANAGER_HOOK_AUDIT_LOG"] = os.path.join(_HOOK_LOG_DIR, "hook-production-allows.jsonl")
 
 from src.main import app
 from src.ui.routes import add_repo as _add_repo_module

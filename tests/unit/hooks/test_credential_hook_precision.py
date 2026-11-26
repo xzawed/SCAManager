@@ -71,6 +71,8 @@ _MUST_PASS = {
     "brace-pattern-over-a-clean-folder": 'grep -rn "{}" docs/',
     # rg 의 `-r`(바꿀 글자)은 값을 받는다 — 빈 값도 검색 대상이 아니다(4차). rg's -r takes a value, even an empty one.
     "rg-empty-replacement": 'rg -uu -r "" -e KEY src/',
+    # 위 npx 변수 덤프의 짝 — 이름만 자르는 관용구는 패키지 실행기로 불러도 통과한다 / its names-only twin passes.
+    "npx-railway-variables-names-only": "npx @railway/cli variables --kv | cut -d= -f1",
 }
 
 # 같은 꼴의 위험한 짝 — 값이 나온다(또는 나올 수 있다).
@@ -148,6 +150,9 @@ _MUST_BLOCK = {
     "recursive-unquoted-brace-pattern": "grep -rn {} . docs/",
     "unspaced-redirect-after-a-word": "cat<.env.local",
     "unspaced-redirect-after-an-option": "grep -i<.env KEY",
+    # 워크플로 wf_8b259a5e-212 C3 렌즈(main 때부터) — 패키지 실행기로 부른 railway 의 변수 덤프는 `railway` 바로 뒤에
+    # 공백이 없어 덤프 판정을 비켜 갔다. A railway variable dump through a package runner slipped past the dump check.
+    "npx-railway-variables-dump": "npx @railway/cli variables",
 }
 
 
@@ -187,6 +192,14 @@ def test_a_powershell_backslash_is_never_an_escape(workdir):
     for command in ('rg "KEY" "docs\\"', 'cd "docs\\" ; rg KEY .', 'rg -n "\\.env" "docs\\"',
                     'grep -rn -E "foo|bar" "docs\\"'):
         assert hook.decide_with_hint(command, str(workdir), "powershell") is None, command
+
+
+def test_powershell_railway_variables_quoting_cannot_fake_kv_output(workdir):
+    """PowerShell 에서 `"x\\"` 는 닫힌 문자열이다 — 중화 판정이 Bash 규칙으로 `\\"` 를 이스케이프로 읽으면
+    `-e " --kv \\"` 안의 `--kv` 를 플래그로 보고 cut 중화를 준다(AntiGravity 5차 LOW). 그 셸에서 그것은 `-e` 의 값이다.
+    In PowerShell `"x\\"` is a closed string, so the quoted `--kv` is -e's value, not a flag: no neutralization."""
+    command = 'railway variables -s "x\\" -e " --kv \\" | cut -d= -f1'
+    assert hook.decide_with_hint(command, str(workdir), "powershell") is not None
 
 
 def test_a_cd_into_a_substitution_is_an_unknown_folder(workdir):
