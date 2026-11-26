@@ -271,6 +271,9 @@ _MENTIONS = ['grep -n "railway status" docs/a.md', "cat scripts/observe_db.py", 
              'cmd //c \'if exist "C:\\Program Files\\nodejs\\railway.cmd" echo railway CLI found; railway up is next\'',
              "cmd //c 'if exist x (echo $(railway up) is literal)'",  # 둔 읽기의 따옴표 머리는 글자 / a literal quoted head
              'cmd //c "cd it\'s here & echo railway up later"',
+             # 블록을 닫은 `)` 뒤를 cmd 는 이어 읽지 못한다 — 그 줄은 돌지 않는다 / a syntax error after a closing parenthesis
+             "timeout 60 cmd <<'EOF'\nif exist dist (\n  echo built (ok); railway up later\n)\nEOF",
+             'cmd //c "if exist dist (echo built (ok) (railway up))"',
              'case "$1" in\n  a) echo "(x) esac done" ;;\n  scripts/observer_setup.py) echo "user-only" ;;\nesac',
              'case "$1" in\n  start) echo starting ;;   # (nested case ends with) esac\n'
              + '  stop|scripts/observer_setup.py) echo stop ;;\nesac']
@@ -803,6 +806,11 @@ _USER_ONLY_SCRIPTS = [
     ("PowerShell", 'cmd /c "py -3 scripts/observer_setup.py --host db.pooler.supabase.com"'),  # 뗀 읽기 / the stripped reading
     ("Bash", "cmd <<'EOF'\ncd \"C:\\x\npy -3 scripts\\observer_setup.py\nEOF"),  # cmd 의 `\"` 는 줄 끝에서 풀린다 / quotes reset per line
     ("Bash", 'cmd //c "git commit -m \\"it\'s done\\" & py -3 scripts/observer_setup.py"'),  # 겹따옴표 속 `\'` 는 글자
+    # 열셋째 적대 패스(wf_69a39851-109) — 블록을 닫은 echo 글자 뒤 · 홑따옴표 속 `"` 가 뒤 줄을 덮지 않는다
+    # an apostrophe after an echo that closed its block, a double quote inside single quotes
+    ("Bash", "cmd <<'EOF'\nif exist .venv (\n  echo venv found (skipping create) - it's ready\n) else (\n  py -3 -m venv .venv\n)\n"
+     + "py -3 scripts\\observer_setup.py --host db.example.com\nEOF"),
+    ("Bash", "cmd <<'EOF'\nsed 's/\"//g' a.txt\npy -3 scripts\\observer_setup.py\nEOF"),
     # 치환 몸의 case 는 `&&` · `||` · then · do · else 뒤도 / case inside a body after && || then do else
     ("Bash", 'out=$(cd /tmp && case "$1" in dev) echo dev;; prod) py -3 scripts/observer_setup.py;; esac)'),
     ("Bash", 'out=$(false || case "$1" in dev) echo dev;; prod) py -3 scripts/observer_setup.py;; esac)'),

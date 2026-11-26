@@ -3113,8 +3113,11 @@ def _cmd_call(statement, depth=0):
     text = _CMD_TEXT_STATEMENT.match(stripped)
     if text:
         end = _cmd_text_end(stripped, text.end(), depth)
+        head = stripped[:text.end()] + _cmd_literal(stripped[text.end():end])
+        if end < len(stripped) and not _CMD_BLOCK_CONTINUES.match(stripped, end + 1):
+            return _cmd_closed_quotes(head + ")" + _cmd_literal(stripped[end + 1:])), max(0, depth - 1)
         rest, depth = _cmd_block_text(stripped[end:], depth)
-        return stripped[:text.end()] + _cmd_literal(stripped[text.end():end]) + rest, depth
+        return _cmd_closed_quotes(head + rest), depth
     stripped, depth = _cmd_block_text(stripped, depth)
     close = stripped.find('"', 1) if stripped.startswith('"') else -1
     if close > 0:
@@ -3126,15 +3129,16 @@ def _cmd_call(statement, depth=0):
 
 def _cmd_closed_quotes(statement):
     """문장 끝에서 짝 없는 따옴표를 닫는다 — cmd 에서 `'` 는 글자이고 `"` 는 줄 끝에서 풀리는데, PowerShell 규칙에서는 뒤 문장 ·
-    뒤 줄까지 문자열로 덮는다(`cd it's here & railway up` — 열두째 패스 고침을 짚다 드러났다).
-    Close an unpaired quote at the end of a statement so it cannot cover later statements under PowerShell rules."""
-    single, double = 0, False
+    뒤 줄까지 문자열로 덮는다(`cd it's here & railway up` — 열두째 패스 고침을 짚다 드러났다). 열린 따옴표는 PowerShell 규칙으로
+    잰다 — 홑따옴표 안 `"` 는 글자다(열셋째 워크플로 패스: `sed 's/"//g'` 에 따옴표를 덧붙여 열어 두었다).
+    Close the quote PowerShell rules leave open at the end of a statement."""
+    quote = None
     for ch in statement:
-        if ch == '"':
-            double = not double
-        elif ch == "'" and not double:
-            single += 1
-    return statement + ("'" if single % 2 else "") + ('"' if double else "")
+        if quote:
+            quote = None if ch == quote else quote
+        elif ch in "'\"":
+            quote = ch
+    return statement + (quote or "")
 
 
 def _cmd_literal(text):
@@ -3150,6 +3154,12 @@ _CMD_BLOCK_TEXT = re.compile(
     r"(?i)(?:\(\s*|\b(?:do|else)\s+|\bif\s+(?:/i\s+)?(?:not\s+)?(?:(?:exist|defined|errorlevel)\s+" + _CMD_OPERAND
     + r"|" + _CMD_OPERAND + r"\s*==\s*" + _CMD_OPERAND + r"|" + _CMD_OPERAND + r"\s+(?:equ|neq|lss|leq|gtr|geq)\s+"
     + _CMD_OPERAND + r")\s+)@?(?:echo|set|title)")
+
+
+# 블록을 닫는 `)` 뒤에 cmd 가 이어 읽는 꼴 — 끝 · else · 다른 `)` · 재지정. 그 밖은 구문 오류다(열셋째 워크플로 패스: `(echo built
+# (ok); railway up later)` 의 `;` 뒤를 명령으로 읽었는데 cmd 는 그 줄을 «예기치 않은» 으로 버린다)
+# what cmd can read after a block-closing parenthesis; anything else is a syntax error
+_CMD_BLOCK_CONTINUES = re.compile(r"(?i)\s*(?:$|else\b|[)<>]|\d>)")
 
 
 def _cmd_text_end(statement, start, depth):
@@ -3174,6 +3184,10 @@ def _cmd_block_text(statement, depth=0):
             depth += ch == "("
             end = _cmd_text_end(statement, found.end(), depth)
             out.append(statement[i:found.end()] + _cmd_literal(statement[found.end():end]))
+            if end < len(statement) and not _CMD_BLOCK_CONTINUES.match(statement, end + 1):
+                # 블록을 닫은 `)` 뒤를 cmd 는 이어 읽지 못한다 — 구문 오류라 돌지 않는다 / a syntax error never runs
+                out.append(")" + _cmd_literal(statement[end + 1:]))
+                return "".join(out), max(0, depth - 1)
             i = end
             continue
         if quote:
