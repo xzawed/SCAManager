@@ -2459,12 +2459,13 @@ def _command_stage(stage, earlier, depth, channels):
     stage = _audit_without_prefix(stage)
     if stage is None:
         return None
-    head, rest, via_xargs = _audit_peel(stage)
+    head, rest = _audit_peel(stage)
     if not head:
         return None
-    # xargs 는 앞 단계 글자를 stdin 이 아니라 인자로 넘긴다(`… | xargs -n1 bash -n` 을 앞 단계 글자의 실행으로 읽었다)
-    # xargs passes the earlier stage's text as arguments, not as stdin
-    if earlier and not via_xargs and _audit_reads_commands(head, rest):
+    # xargs 를 거친 셸도 같이 본다 — 앞 단계 글자가 인자로 가도 bash 는 그 이름을 PATH 에서 찾아 돌린다(`echo railway up |
+    # xargs bash` = `bash railway up` = npm 심 실행). 문법만 보는 `xargs -n1 bash -n` 은 `_audit_reads_commands` 가 뺀다.
+    # a shell behind xargs counts too: bash looks its script name up on PATH
+    if earlier and _audit_reads_commands(head, rest):
         # 앞 단계가 내보내는 글자를 이 명령이 돌린다 — `echo railway status | bash` · `printf '%s\\n' 'railway status' | bash` ·
         # `"railway status" | iex`. 낱말 하나씩과 이어 붙인 인자 전체를 본다. Earlier stages' text is executed here.
         for prior in earlier:
@@ -2510,15 +2511,17 @@ def _user_only_script(channel):
 # 형 제약은 `[string]` · `[int[]]` · `[System.String]` 꼴만 — 괄호가 든 글자 무리를 겹쳐 세면 무리마다 되짚기가 두 배가 돼
 # 괄호 31 무리 명령이 훅 시간 제한을 넘겼다(넷째 워크플로 패스). Type constraints only as `[name]` / `[name[]]` (no backtracking).
 _PS_ASSIGNMENT = re.compile(r"^\s*(?:\[[\w.]+(?:\[\])?\]\s*)*\$[\w:]+\s*[-+*/]?=(?!=)\s*")
-# Bash case 갈래 — `case x in` 머리와 `prod)` · `a|b)` 패턴 / a Bash case head and arm pattern
-_AUDIT_CASE_HEAD = re.compile(r"^\s*case\s+\S+\s+in\s+")
+# Bash case 갈래 — `case x in` 머리(묶음 `(` · `{` 와 then · do · else 뒤도)와 `prod)` · `a|b)` 패턴
+# a Bash case head (also after a group opener or then/do/else) and arm pattern
+_AUDIT_CASE_HEAD = re.compile(r"^\s*(?:(?:[({]|then|do|else)\s+|\(\s*)*case\s+\S+\s+in\s+")
 _AUDIT_CASE_PATTERN = re.compile(r"^\s*\(?\s*[^\s()|;]+(?:\s*\|\s*[^\s()|;]+)*\s*\)\s*")
 
 
 def _audit_without_prefix(stage):
     """명령 자리 앞의 것을 걷는다 — PowerShell 대입의 왼쪽과 호출 연산자 `&`(그 뒤의 따옴표 경로도 명령이다 — `& 'C:\\…\\
-    railway.cmd' up`), Bash case 머리 · 갈래 패턴. PowerShell 에서 블록 · 괄호 식으로 시작하는 단계는 None(그 몸은 블록 순회가
-    본다), `&` 없이 따옴표 글자로 시작하는 단계도 None 이다 — 글자 식이다(`$s = 'scripts\\railway_redeploy.py'` — 넷째 패스).
+    railway.cmd' up`). PowerShell 에서 블록 · 괄호 식으로 시작하는 단계는 None(그 몸은 블록 순회가 본다), `&` 없이 따옴표
+    글자로 시작하는 단계도 None 이다 — 글자 식이다(`$s = 'scripts\\railway_redeploy.py'` — 넷째 패스). Bash case 머리 · 갈래
+    패턴은 세그먼트를 단계로 나누기 전에 걷었다(`_case_prefix`).
     Strip what precedes the command position; None for a PowerShell block, parenthesised expression or string."""
     if _CONTEXT["shell"] == "powershell":
         stage = _PS_ASSIGNMENT.sub("", stage, count=1)
@@ -2527,8 +2530,7 @@ def _audit_without_prefix(stage):
             return head[1:]  # 호출 연산자 / the call operator
         if head.startswith(("{", "(", "@(", "$(", "@{")) or head[:1] in ("'", '"'):
             return None
-        return stage
-    return _AUDIT_CASE_PATTERN.sub("", _AUDIT_CASE_HEAD.sub("", stage, count=1), count=1)
+    return stage
 
 
 # PowerShell 의 블록 낱말 — 뒤는 조건 · 블록이라 명령 자리가 아니다(블록 몸은 블록 순회가 본다) / PowerShell block keywords
@@ -2663,37 +2665,36 @@ def _audit_command_index(head, rest):
 
 
 def _audit_peel(stage):
-    """단계의 명령 자리 (머리, 나머지, xargs 를 거쳤는가) — 훑는 머리를 겹쳐도 벗긴다(`if timeout 60 railway status` —
+    """단계의 명령 자리 (머리, 나머지) — 훑는 머리를 겹쳐도 벗긴다(`if timeout 60 railway status` —
     셋째 패스). watch 와 `flock … -c` 는 셸 글자를 돌리므로 (`sh`, [`-c`, 글자]) 로 낸다 — `-c` 없는 flock 은 낱말을 바로
     실행한다(그것을 셸 글자로 이어 커밋 메시지 속 `;` 뒤를 명령으로 읽었다). PowerShell Start-Process 는 실행 파일과
     `-ArgumentList` 를 펼친다. PowerShell 의 블록 낱말 뒤는 명령 자리가 아니다.
-    The (head, rest, via_xargs) at a stage's command position, nested scan heads and Start-Process peeled."""
-    words, via_xargs = _audit_words(stage), False
+    The (head, rest) at a stage's command position, nested scan heads and Start-Process peeled."""
+    words = _audit_words(stage)
     while words:
         # 따옴표 친 Windows 경로(`"C:\\…\\python.exe"`)의 백슬래시도 구분자다(넷째 워크플로 패스) / backslashes separate too
         head, rest = _prod_head(_command_name(words[0].replace("\\", "/"))), words[1:]
         if head in _PS_START_HEADS:
             command, args = _audit_start_process(rest)
             if command is None:
-                return "", [], via_xargs
+                return "", []
             words = [command, *args]
             continue
         if head not in _PROD_SCAN_HEADS:
-            return head, rest, via_xargs
+            return head, rest
         if _CONTEXT["shell"] == "powershell" and head in _PS_BLOCK_KEYWORDS:
-            return "", [], via_xargs
+            return "", []
         if head == "flock":
             shell_text = _flock_shell_text(rest)
             if shell_text is not None:
-                return "sh", ["-c", shell_text], via_xargs
+                return "sh", ["-c", shell_text]
         k = _audit_command_index(head, rest)
         if k is None:
-            return "", [], via_xargs
+            return "", []
         if head == "watch":
-            return "sh", ["-c", " ".join(rest[k:])], via_xargs
-        via_xargs = via_xargs or head == "xargs"
+            return "sh", ["-c", " ".join(rest[k:])]
         words = rest[k:]
-    return "", [], via_xargs
+    return "", []
 
 
 def _flock_shell_text(rest):
@@ -2877,8 +2878,7 @@ def _audit_receiver(prefix):
     걸었다). The (head, rest) of the command that receives a heredoc, split at code positions only."""
     mask = _audit_mask(prefix)
     seg_at, segment = _code_split(prefix, 0, mask, _segment_separators())[-1]
-    head, rest, _ = _audit_peel(_code_split(segment, seg_at, mask, ("|&", "|"))[-1][1])
-    return head, rest
+    return _audit_peel(_code_split(segment, seg_at, mask, ("|&", "|"))[-1][1])
 
 
 def _audit_reads_commands(head, rest):
@@ -2900,7 +2900,7 @@ def _audit_pipes_into_runner(text):
     `'@ | iex`) — 코드 자리의 구분자로만 나눈다. Does a later stage of the same pipeline read the text as commands?"""
     mask = _audit_mask(text)
     seg_at, segment = _code_split(text, 0, mask, _segment_separators())[0]
-    return any(_audit_reads_body(*_audit_peel(stage)[:2])
+    return any(_audit_reads_body(*_audit_peel(stage))
                for _, stage in _code_split(segment, seg_at, mask, ("|&", "|"))[1:])
 
 

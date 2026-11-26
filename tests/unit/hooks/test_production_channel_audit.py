@@ -195,6 +195,7 @@ _MENTIONS = ['grep -n "railway status" docs/a.md', "cat scripts/observe_db.py", 
              # 둘째 적대 패스(wf_150f221f-097)의 새 거부 — 갈래 패턴의 `|` · 배열 원소 · 따옴표 속 `| bash` 가 든 제목 뒤
              # heredoc 본문 · `[[ … && … ]]` · 문법만 보는 `bash -n` · 큰따옴표 속 `<(` · 스크립트 파일을 받은 셸의 heredoc
              'case "$f" in scripts/observer_setup.py|scripts/backfill_repository_user_id.py) echo skip ;; *) echo check ;; esac',
+             'if true; then case "$f" in scripts/observer_setup.py|*.sh) echo skip ;; esac; fi',
              'files=(scripts/railway_config.py scripts/observer_setup.py); for f in "${files[@]}"; do wc -l "$f"; done',
              "gh pr create --title 'fix(hooks): `… | xargs -n1 bash -n` 을 실행으로 읽지 않는다 (원장 #1917 P1-19)' "
              + "--body-file - <<'EOF'\n## Summary\n- `railway up` · `railway redeploy` 는 그대로 막는다\nEOF",
@@ -432,6 +433,9 @@ _PRODUCTION_WRITES = [
     ("Bash", '[[ -n "$CI" ]] && railway up'),
     ("Bash", "x=$(echo 'a)b'; railway up)"),
     ("Bash", "cat <<'EOF' |& bash\nrailway up\nEOF"),
+    ("Bash", "( case $e in prod) railway up ;; esac )"),  # 묶음 안의 case 머리 / a case head inside a group
+    ("Bash", "{ case $e in prod|production) railway up ;; esac; }"),
+    ("Bash", "echo railway up | xargs bash"),  # bash 는 `railway` 를 PATH 에서 찾아 돌린다 / bash finds it on PATH
     ("PowerShell", "Start-Process railway -ArgumentList 'up', '--detach' -NoNewWindow -Wait"),
     ("PowerShell", "$r = Invoke-Expression 'railway up; Write-Host ''done'''"),
 ]
@@ -530,6 +534,7 @@ _POWERSHELL_PARAMETER_SPELLINGS = {
     'Invoke-Expression -ErrorA Stop "railway up"': True,  # -ErrorA = -ErrorAction 의 앞부분
     'Invoke-Expression -proga SilentlyContinue "railway up"': True,  # -proga = -ProgressAction
     'Invoke-Expression -Command:"railway up"': True,
+    'Invoke-Expression -wa SilentlyContinue "railway up"': True,  # -wa = -WarningAction 별칭 — 앞부분으로는 -WarningVariable 과 겹친다
     "Start-Process -Work C:\\railway notepad": False,  # -Work = -WorkingDirectory — 그 경로는 실행 파일이 아니다
     "Start-Process -RSO railway.log notepad readme.md": False,
     'Invoke-Expression -ErrorA Stop "Write-Host railway up"': False,
