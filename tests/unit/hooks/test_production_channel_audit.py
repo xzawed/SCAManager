@@ -500,11 +500,8 @@ _PRODUCTION_WRITES = [
     ("PowerShell", "Start-Process pwsh '-NoProfile', '-Command', 'railway up'"),
     ("PowerShell", '"git status`nrailway up" | iex'),
     ("PowerShell", "$r = (iex @'\nrailway up\n'@)"),
-    ("PowerShell", "pwsh -NoProfile -Command @'\nrailway up\n'@"),
     ("Bash", "timeout 600 env -u PGPASSWORD bash <<'EOF'\nrailway up\nEOF"),
-    ("Bash", "(cd /repo && bash) <<'EOF'\nrailway up\nEOF"),
     ("Bash", "( cd /repo; sh ) <<'EOF'\nrailway up\nEOF"),
-    ("Bash", "cat > notes.md <<EOF\nsee <(echo $(railway up))\nEOF"),
     ("PowerShell", "Start-Process railway -ArgumentList 'up', '--detach' -NoNewWindow -Wait"),
     ("PowerShell", "$r = Invoke-Expression 'railway up; Write-Host ''done'''"),
 ]
@@ -566,6 +563,11 @@ _USER_ONLY_SCRIPTS = [
     ("Bash", "nice -n 10 env -C /repo py -3 scripts/observer_setup.py --host db.internal"),
     ("Bash", "timeout 600 env -u PGPASSWORD py -3 scripts/backfill_repository_user_id.py --apply"),
     ("Bash", "timeout 600 nohup py -3 scripts/observer_setup.py --host db.internal"),  # 훑는 머리 뒤 실행 접두어
+    # main 이 이미 막는 railway 본문으로는 이 순회의 판정식을 가를 수 없다 — 사용자 몫 스크립트로 잠근다: `-Command` 값인
+    # here-string · 묶음 끝 `bash)` · 본문 `<( )` 안의 `$( )` / locked with user-only scripts, which main does not deny
+    ("PowerShell", "pwsh -NoProfile -Command @'\npy -3 scripts/observer_setup.py --host db.internal\n'@"),
+    ("Bash", "(cd /repo && bash) <<'EOF'\npy -3 scripts/observer_setup.py --host db.internal\nEOF"),
+    ("Bash", "cat > notes.md <<EOF\nsee <(echo $(py -3 scripts/observer_setup.py --host db.internal))\nEOF"),
 ]
 
 
