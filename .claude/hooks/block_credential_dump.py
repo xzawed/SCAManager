@@ -170,7 +170,7 @@ def _railway_variable_call(stage):
     if "`" in stage:
         return None
     try:
-        toks = shlex.split(stage, comments=True, posix=True)
+        toks = shlex.split(_ps_literal_backslashes(stage), comments=True, posix=True)
     except ValueError:
         return None
     for i in range(len(toks) - 1):
@@ -212,7 +212,7 @@ def _command_words(stage):
     """명령 자리의 (첫 낱말 소문자, 나머지 낱말) — 앞쪽 대입 · 실행 접두어 · 괄호 · 경로 · .exe 를 걷어 낸다.
     (head lower-cased, rest) at the command position; assignments, prefixes, parens, paths and .exe stripped."""
     try:
-        toks = shlex.split(stage, posix=True)
+        toks = shlex.split(_ps_literal_backslashes(stage), posix=True)
     except ValueError:
         toks = stage.split()
     words = [w for w in (t.strip("(){}") for t in toks) if w]
@@ -314,8 +314,16 @@ def _slashed(text):
     뒤집힌다(3차). Backslashes become slashes; in Bash a backslash before a quote is an escape and stays, in
     PowerShell a backslash is never an escape."""
     if _CONTEXT["shell"] == "powershell":
-        return text.replace("\\", "/")
+        return _ps_literal_backslashes(text)
     return _SLASHABLE.sub(lambda m: "/" * len(m.group()), text)
+
+
+def _ps_literal_backslashes(text):
+    """PowerShell 에서는 백슬래시가 이스케이프가 아니다 — shlex(Bash 규칙)에 넘기기 전에 / 로 바꿔 따옴표 짝 · 경로를
+    지킨다(`"docs\\"` 는 그 셸에서 닫힌 문자열 · `scripts\\x.py` 는 경로). Bash 모드는 그대로 — 그 셸에서는 이스케이프다.
+    낱말 나누기 셋(`_slashed` · `_command_words` · `_railway_variable_call`)이 이 한 규칙을 쓴다(교차 검토 3 · 5차).
+    In PowerShell a backslash is never an escape; Bash text is returned unchanged."""
+    return text.replace("\\", "/") if _CONTEXT["shell"] == "powershell" else text
 
 
 def _unquoted_lt(text):
@@ -1770,6 +1778,15 @@ _PROD_SUPABASE_MCP_READS = frozenset({
     "get_publishable_keys", "query_logs", "list_branches", "list_edge_functions", "get_edge_function",
     "generate_typescript_types", "list_notebooks", "get_notebook", "authenticate", "complete_authentication",
 })
+# 감사 기록에 그대로 적어도 되는 railway 낱말 — 이 밖의 하위 명령 자리 낱말은 «?» 로 적는다(명령에서 온 글자다).
+# railway words safe to write into the audit record; any other word in the subcommand slot is written as "?".
+_PROD_KNOWN_WORDS = _PROD_READ_SUBCOMMANDS | frozenset(_PROD_READ_PAIRS) | frozenset(_PROD_REASONS) | _VARIABLE_ALIASES
+# python 으로 돌리는 운영 채널 스크립트(관측 역할 DB 읽기 · 조건부 재배포 · 배포 설정 읽기) → 감사 기록의 채널 이름.
+# 인자(SQL · 서비스 이름)는 채널에 넣지 않고 고정 플래그만 붙인다. Repo scripts that reach production when run by python.
+_PROD_CHANNEL_SCRIPTS = {"observe_db.py": "observe_db", "railway_redeploy.py": "railway_redeploy",
+                         "railway_config.py": "railway_config"}
+_PROD_SCRIPT_FLAGS = ("--check", "--restart")
+_PYTHON_HEAD = re.compile(r"py|python(?:3(?:\.\d+)?)?")
 _PROD_SAFE_READS = "railway deployment list --json · railway logs <id> · railway status · railway metrics"
 _PROD_SAFE_REDEPLOY = "py -3 scripts/railway_redeploy.py [--restart]"
 _PROD_SAFE_DB_READ = 'py -3 scripts/observe_db.py "SELECT ..."'
@@ -1824,21 +1841,28 @@ def _prod_positionals(tokens):
     return out
 
 
-def _prod_classify(args):
+def _prod_classify(args, channels=None):
     """railway 인자 → None(읽기 · 도움말) 또는 운영 접근 사유 / None for reads and help, else the reason.
     🔴 Grok 반례(11-11) 세 가지를 막는다: 하위 명령 앞 `--` 는 옵션 끝일 뿐이다(`railway -- redeploy` 도 재배포),
     안쪽 명령의 `--version` 은 railway 의 도움말이 아니다(`railway ssh node --version` 은 운영에서 node 를 돈다),
     `-s api` 같은 옵션 값은 둘째 낱말이 아니다(`railway domain -s api list` 는 읽기).
+    channels 를 주면 허용한 호출의 채널(`railway logs` 처럼 고정 어휘만 — 인자는 넣지 않는다)을 거기 더한다(감사 기록).
     Grok counterexamples: a leading `--` only ends options; the inner command's --version is not railway's;
-    option values are not the second word."""
+    option values are not the second word. With channels, the allowed call's static channel is appended."""
+
+    def allow(*words):
+        if channels is not None:
+            channels.append(" ".join(("railway", *words)))
+        return None
+
     k, lead = 0, []
     while k < len(args) and args[k].startswith("-"):
         lead.append(args[k])
         k += 2 if args[k] in _PROD_VALUE_OPTIONS else 1
     if any(word in _PROD_HELP_FLAGS for word in lead):
-        return None
+        return allow("help")
     if k >= len(args):
-        return None  # `railway` 홀로 · 옵션만 = 도움말 / bare railway prints help
+        return allow("help")  # `railway` 홀로 · 옵션만 = 도움말 / bare railway prints help
     sub = args[k].lower()
     rest = args[k + 1:]
     if sub in _PROD_INNER_COMMAND:
@@ -1854,16 +1878,37 @@ def _prod_classify(args):
         positions = _prod_positionals(rest)
         help_zone = rest
     if any(word in _PROD_HELP_FLAGS for word in help_zone):
-        return None
+        return allow(sub if sub in _PROD_KNOWN_WORDS else "?", "help")
     if sub in _PROD_READ_SUBCOMMANDS:
-        return None
+        return allow(sub)
     if sub in _VARIABLE_ALIASES:
-        return f"railway {sub} — 서비스 변수 변경" if _prod_variable_writes(args[k:]) else None
+        return f"railway {sub} — 서비스 변수 변경" if _prod_variable_writes(args[k:]) else allow("variables")
     pair = _PROD_READ_PAIRS.get(sub)
     if pair is not None:
         second = rest[positions[0]].lower() if positions else ""
-        return None if second in pair else f"railway {sub} {second}".rstrip() + " — 운영 상태 변경"
+        return allow(sub, second) if second in pair else f"railway {sub} {second}".rstrip() + " — 운영 상태 변경"
     return f"railway {sub} — {_PROD_REASONS.get(sub, '운영 접근(허용 목록 밖)')}"
+
+
+def _prod_script_channel(head, rest):
+    """python 으로 돌린 운영 채널 스크립트의 감사 채널(`observe_db` · `railway_redeploy --check` …) — 아니면 None.
+    스크립트 파일을 읽기만 하는 명령(`cat scripts/observe_db.py`)은 python 이 아니라 해당하지 않는다. 인자(SQL)는 넣지 않는다.
+    The audit channel of a production-channel script run by python, or None; arguments are never included."""
+    if not _PYTHON_HEAD.fullmatch(head):
+        return None
+    k = 0
+    while k < len(rest) and rest[k].startswith("-") and rest[k] != "-m":
+        k += 1  # `py -3` · `python -u` 의 인터프리터 옵션 / interpreter options
+    if k + 1 < len(rest) and rest[k] == "-m":
+        name = rest[k + 1].rsplit(".", 1)[-1] + ".py"  # `python -m scripts.observe_db`
+    elif k < len(rest):
+        name = rest[k].replace("\\", "/").rsplit("/", 1)[-1].lower()
+    else:
+        return None
+    channel = _PROD_CHANNEL_SCRIPTS.get(name)
+    if channel is None:
+        return None
+    return " ".join([channel, *(flag for flag in _PROD_SCRIPT_FLAGS if flag in rest[k + 1:])])
 
 
 def _prod_railway_args(head, rest):
@@ -2102,16 +2147,19 @@ def _prod_without_heredoc_data(text):
     return "\n".join(kept)
 
 
-def _prod_decide_text(text, depth):
+def _prod_decide_text(text, depth, channels=None):
     """세그먼트 · 실제로 도는 치환 · 래퍼 안까지 railway 호출을 찾아 판정한다. heredoc 데이터와 홑따옴표 글자는
     실행이 아니라서 보지 않는다 — 처음 판은 `<<'EOF'` 본문의 백틱을 치환으로 읽어 PR 본문을 막았다(원장 R-5 부류).
+    channels 를 주면 허용한 운영 채널 호출(railway 읽기 · 운영 채널 스크립트)의 채널을 거기 모은다 — 같은 순회라 판정과
+    어긋나지 않는다(감사 기록 · 원장 #1917 M02 P2-3 ②).
     Judge every railway call in segments, substitutions that run and known wrappers; heredoc data and
-    single-quoted text are not invocations (the first version blocked a PR-body heredoc)."""
+    single-quoted text are not invocations (the first version blocked a PR-body heredoc). With channels, the
+    allowed production-channel calls found on the same walk are collected for the audit record."""
     if depth > _PROD_MAX_DEPTH or not text.strip():
         return None
     text = _prod_without_heredoc_data(text)
     for body in _prod_substitutions(text):
-        reason = _prod_decide_text(body, depth + 1)
+        reason = _prod_decide_text(body, depth + 1, channels)
         if reason:
             return reason
     for segment in _split_segments(text):
@@ -2129,8 +2177,11 @@ def _prod_decide_text(text, depth):
                 # each word and the joined arguments (`echo railway up | bash` passes two unquoted words)
                 for earlier in stages[:index]:
                     first, more = _command_words(earlier)
-                    for piece in [first, *more, " ".join(more)]:
-                        reason = _prod_decide_text(piece, depth + 1)
+                    pieces = [first, *more, " ".join(more)]
+                    for n, piece in enumerate(pieces):
+                        # 채널은 이어 붙인 인자(마지막 조각)에서만 센다 — 낱말 하나(`railway`)는 판정용이라 «도움말» 로 잘못 남는다
+                        # channels only from the joined arguments; a lone word would be recorded as "help"
+                        reason = _prod_decide_text(piece, depth + 1, channels if n == len(pieces) - 1 else None)
                         if reason:
                             return reason
             args = _prod_railway_args(head, rest)
@@ -2138,27 +2189,31 @@ def _prod_decide_text(text, depth):
                 first = next((k for k, word in enumerate(rest) if _is_railway(word)), None)
                 args = rest[first + 1:] if first is not None else None
             if args is not None:
-                reason = _prod_classify(args)
+                reason = _prod_classify(args, channels)
                 if reason:
                     return reason
                 continue
+            script = _prod_script_channel(head, rest)
+            if script and channels is not None:
+                channels.append(script)
             inner = _prod_unwrap(head, rest)
-            reason = _prod_decide_text(inner, depth + 1) if inner else None
+            reason = _prod_decide_text(inner, depth + 1, channels) if inner else None
             if reason:
                 return reason
     return None
 
 
-def decide_production_access(command, shell=None):
+def decide_production_access(command, shell=None, channels=None):
     """명령이 운영에 닿는가 — 사유 또는 None. 세그먼트 · 명령 치환 · 알려진 래퍼 안까지 본다.
-    railway 를 «언급» 만 하는 명령(`grep "railway ssh"`)은 명령 자리가 아니라 통과한다.
+    railway 를 «언급» 만 하는 명령(`grep "railway ssh"`)은 명령 자리가 아니라 통과한다. channels(목록)를 주면 허용한
+    운영 채널 호출의 채널을 거기 더한다(감사 기록).
     🔴 위협 모형은 credential 판정과 같다 — 정직한 세션이 칠 만한 꼴을 막는다. 스크립트 파일 안의 호출 ·
     인코딩된 명령 같은 의도적 우회는 글자 훅 밖이다(원장 R-3 부류).
     Does the command touch production? Mentions are not invocations. Same threat model as the credential
     verdict: honest shapes are covered; calls inside script files or encoded commands are out of reach."""
     if shell is not None:
         _CONTEXT["shell"] = shell
-    return _prod_decide_text(command or "", 0)
+    return _prod_decide_text(command or "", 0, channels)
 
 
 def decide_mcp_production_access(tool_name):
@@ -2175,18 +2230,33 @@ def decide_mcp_production_access(tool_name):
     return None
 
 
+def _mcp_production_channel(tool_name):
+    """허용된 운영 MCP 읽기 도구의 감사 채널(`Railway MCP get_logs`) — 운영 MCP 가 아니면 None. 도구 이름은 하네스가
+    정한 고정 이름이라 그대로 적고, 도구 입력(배포 ID 등)은 적지 않는다.
+    The audit channel of an allowed production MCP read; tool names are fixed identifiers, inputs are never written."""
+    if not tool_name.startswith("mcp__") or "__" not in tool_name[5:]:
+        return None
+    server, tool = tool_name[5:].rsplit("__", 1)
+    server = server.lower()
+    if "railway" in server and tool in _PROD_RAILWAY_MCP_READS:
+        return f"Railway MCP {tool}"
+    if "supabase" in server and tool in _PROD_SUPABASE_MCP_READS:
+        return f"Supabase MCP {tool}"
+    return None
+
+
 # 거부 기록 — 회고가 정밀도(오탐)를 센다(원장 #1917 M02 P1-5). 값 · 명령 글자는 남기지 않는다: 시각 · 종류 · 사유 ·
 # 명령 sha256 · 길이만. 기본 자리는 리포 밖 `~/.scamanager/hook-denials.jsonl`, SCAMANAGER_HOOK_LOG 로 바꾼다.
 # Denial records for the retro's precision count: time, kind, reason, command sha256 and length only.
 _DENIAL_LOG_ENV = "SCAMANAGER_HOOK_LOG"
 
 
-def _record_denial(kind, reason, subject):
-    """거부 한 줄을 남긴다 — 못 써도 판정은 그대로다(기록은 계기이지 관문이 아니다).
-    Append one value-free denial record; a write failure never changes the verdict."""
-    path = os.environ.get(_DENIAL_LOG_ENV) or os.path.join(os.path.expanduser("~"), ".scamanager", "hook-denials.jsonl")
+def _append_record(env_name, file_name, fields, subject):
+    """값 없는 기록 한 줄 — 시각 · fields · 명령 sha256 · 길이. 못 써도 판정은 그대로다(기록은 계기이지 관문이 아니다).
+    Append one value-free record (time, fields, command sha256 and length); a write failure never changes the verdict."""
+    path = os.environ.get(env_name) or os.path.join(os.path.expanduser("~"), ".scamanager", file_name)
     subject = subject or ""
-    line = json.dumps({"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "kind": kind, "reason": reason,
+    line = json.dumps({"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), **fields,
                        "sha256": hashlib.sha256(subject.encode("utf-8", "replace")).hexdigest(), "len": len(subject)},
                       ensure_ascii=True)
     try:
@@ -2195,6 +2265,24 @@ def _record_denial(kind, reason, subject):
             fh.write(line + "\n")
     except OSError:
         return  # 기록을 못 써도 판정은 막지도 풀지도 않는다 / logging never decides
+
+
+def _record_denial(kind, reason, subject):
+    """거부 한 줄 / one denial record."""
+    _append_record(_DENIAL_LOG_ENV, "hook-denials.jsonl", {"kind": kind, "reason": reason}, subject)
+
+
+# 감사 기록 — 허용된 운영 채널 호출(railway 읽기 · 운영 MCP 읽기 도구 · 운영 채널 스크립트). 회고가 «읽기 전용 확인» 같은
+# 서술을 이 기계 기록과 대 본다(원장 #1917 M02 P2-3 ②). 거부 기록과 같은 값 없는 꼴이고 채널은 고정 어휘뿐이다. 기본 자리는
+# 리포 밖 `~/.scamanager/hook-production-allows.jsonl`, SCAMANAGER_HOOK_AUDIT_LOG 로 바꾼다. 막힌 호출은 거부 기록에만 간다.
+# Audit records of allowed production-channel calls, so a retro can check narratives against them; value-free.
+_AUDIT_LOG_ENV = "SCAMANAGER_HOOK_AUDIT_LOG"
+
+
+def _record_allowed(channels, subject):
+    """허용된 운영 채널 호출 한 줄(채널은 겹치지 않게) / one audit record of an allowed production-channel call."""
+    _append_record(_AUDIT_LOG_ENV, "hook-production-allows.jsonl",
+                   {"kind": "production-allowed", "channels": list(dict.fromkeys(channels))}, subject)
 
 
 def _emit_production_deny(tool, reason, subject=""):
@@ -2310,14 +2398,24 @@ def _judge(payload):
         command = (payload.get("tool_input") or {}).get("command") or ""
         found = decide_with_hint(command, payload.get("cwd"),
                                  "powershell" if tool == "PowerShell" else "bash")
-        # credential 판정이 먼저(값 노출엔 더 구체적인 안내가 있다) — 통과한 명령만 운영 접근을 본다
-        # The credential verdict first (more specific guidance for value leaks); then production access.
-        production = None if found else decide_production_access(command)
+        # credential 판정이 먼저(값 노출엔 더 구체적인 안내가 있다) — 통과한 명령만 운영 접근을 본다. 같은 순회에서
+        # 허용한 운영 채널 호출을 모아 감사 기록으로 남긴다(원장 #1917 M02 P2-3 ②).
+        # The credential verdict first (more specific guidance for value leaks); then production access, whose
+        # walk also collects the allowed production-channel calls for the audit record.
+        channels = []
+        production = None if found else decide_production_access(command, channels=channels)
         if production:
             return _emit_production_deny(tool, production, command)
+        if found is None and channels:
+            _record_allowed(channels, command)
     else:
         production = decide_mcp_production_access(tool)
-        return _emit_production_deny(tool, production) if production else 0
+        if production:
+            return _emit_production_deny(tool, production)
+        channel = _mcp_production_channel(tool)
+        if channel:
+            _record_allowed([channel], tool)
+        return 0
     if found is None:
         return 0
     reason, hint = found

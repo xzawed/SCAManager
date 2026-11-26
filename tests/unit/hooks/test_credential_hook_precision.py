@@ -189,6 +189,14 @@ def test_a_powershell_backslash_is_never_an_escape(workdir):
         assert hook.decide_with_hint(command, str(workdir), "powershell") is None, command
 
 
+def test_powershell_railway_variables_quoting_cannot_fake_kv_output(workdir):
+    """PowerShell 에서 `"x\\"` 는 닫힌 문자열이다 — 중화 판정이 Bash 규칙으로 `\\"` 를 이스케이프로 읽으면
+    `-e " --kv \\"` 안의 `--kv` 를 플래그로 보고 cut 중화를 준다(AntiGravity 5차 LOW). 그 셸에서 그것은 `-e` 의 값이다.
+    In PowerShell `"x\\"` is a closed string, so the quoted `--kv` is -e's value, not a flag: no neutralization."""
+    command = 'railway variables -s "x\\" -e " --kv \\" | cut -d= -f1'
+    assert hook.decide_with_hint(command, str(workdir), "powershell") is not None
+
+
 def test_a_cd_into_a_substitution_is_an_unknown_folder(workdir):
     """🔴 cd 의 대상이 치환 · 괄호(`$( … )` · `( … )`)면 셸만 아는 폴더다 — 낱말 나누기가 껍데기를 빈 낱말로 남겨
     «지금 폴더» 로 풀리면 이동을 놓치고, 깨끗한 하위 폴더에서 시작한 재귀 검색이 위 폴더의 .env 를 읽는다
