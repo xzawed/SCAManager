@@ -221,7 +221,15 @@ _MENTIONS = ['grep -n "railway status" docs/a.md', "cat scripts/observe_db.py", 
              "timeout 60 bash -c \"$(cat)\" <<'EOF'\nrailway up\nEOF",
              'declare -A s; s[setup]=scripts/observer_setup.py; s[db]=scripts/observe_db.py; echo "${s[setup]}"',
              # 파이프 뒤 `$(cat)` 이 인자의 일부면 데이터다(명령 글자 전체일 때만 돈다) / part of an argument is data
-             "echo \"py -3 scripts/observer_setup.py\" | bash -c 'gh issue comment 1 --body \"$(cat)\"'"]
+             "echo \"py -3 scripts/observer_setup.py\" | bash -c 'gh issue comment 1 --body \"$(cat)\"'",
+             # 여섯째 적대 패스(wf_5fb5a833-51c) — 앞 묶음 뒤 같은 명령의 heredoc · `eval echo` · 주석 · 인자 속 esac
+             # a group earlier on the line, `eval echo`, esac in a comment or as an argument
+             "(cd /f/proj) ; eval \"$(cat)\" <<'EOF'\nrailway up\nEOF",
+             'echo "railway up" | eval echo "$(cat)"',
+             'case "$1" in\n  # every arm ends with ;; and the block ends with esac\n'
+             + '  scripts/observer_setup.py) echo "user-only script" ;;\n  *) echo other ;;\nesac',
+             'for f in scripts/*.sh scripts/*.py; do\n  case "$f" in\n    *.sh) grep -cw esac "$f" ;;\n'
+             + '    scripts/observer_setup.py|scripts/backfill_repository_user_id.py) echo "skip $f" ;;\n  esac\ndone']
 
 
 @pytest.mark.parametrize("command", _MENTIONS)
@@ -390,7 +398,9 @@ _POWERSHELL_MENTIONS = ["Get-ChildItem | % { Select-String -Path $_ -Pattern rai
                         "Start-Process pwsh -ArgumentList @(\n  '-NoExit',\n  '-Command',\n"
                         + "  \"Get-Content -Wait app.log | Select-String 'ERROR|railway up'\"\n)",
                         "Start-Process pwsh -ArgumentList \"-NoProfile -Command Get-Content app.log | Select-String 'ERROR|railway up'\"",
-                        "$v = (pwsh -v) + @'\nrailway up\n'@"]
+                        "$v = (pwsh -v) + @'\nrailway up\n'@",
+                        # 여섯째 적대 패스 — cmd 는 겹따옴표 글자를 남겨 그 안의 `&&` 는 글자다 / cmd keeps the quotes
+                        "Start-Process cmd -ArgumentList '/c', 'echo \"deploy with: npm run build && railway up\" > plan.txt'"]
 
 
 @pytest.mark.parametrize("command", _POWERSHELL_MENTIONS)
@@ -525,6 +535,17 @@ _PRODUCTION_WRITES = [
     ("Bash", "for i in 1 2 3; do env RETRY=$i nohup bash -c 'railway redeploy -y' && break; sleep 10; done"),
     ("Bash", "timeout 600 env X=1 nohup bash <<'EOF'\nrailway up\nEOF"),
     ("Bash", "for s in api; do env X=1 nohup npx @railway/cli redeploy -y; done"),
+    # 여섯째 적대 패스(wf_5fb5a833-51c) — 받는 프로그램마다의 명령줄 규칙: Git Bash 는 홑따옴표로 묶고, pwsh 는 진짜 `/"` 를
+    # 글자로 두며, cmd 는 `\"` 를 이스케이프로 읽지 않는다 / each receiving program's command-line rules
+    ("PowerShell", "Start-Process bash -ArgumentList \"-c 'railway up'\""),
+    ("PowerShell", "Start-Process bash -ArgumentList '-c', \"'railway up'\""),
+    ("PowerShell", "saps bash -Args \"-c 'railway up'\""),
+    ("PowerShell", "Start-Process bash -ArgumentList @(\n  '-c'\n  \"'railway up'\"\n)"),
+    ("PowerShell", "Start-Process pwsh -ArgumentList '-NoProfile', '-Command', 'Set-Location \"F:/proj/\"; railway up'"),
+    ("PowerShell", "Start-Process cmd -ArgumentList '/c', 'cd /d \"F:\\proj\\\" && railway up'"),
+    # cmd /c 는 따옴표로 시작하는 명령줄의 첫 · 마지막 따옴표를 뗀다 / cmd /c strips the outer quotes
+    ("PowerShell", 'Start-Process cmd -ArgumentList "/c `"railway up`""'),
+    ("PowerShell", 'cmd /c "`"railway`" up"'),
 ]
 
 
@@ -609,6 +630,17 @@ _USER_ONLY_SCRIPTS = [
     ("PowerShell", "Start-Process pwsh -ArgumentList @(\n  '-NoProfile'\n  '-Command'\n  'py -3 scripts/observer_setup.py'\n)"),
     # 앞 case 가 esac 로 끝난 뒤의 묶음 끝 `bash)` 는 갈래 패턴이 아니다 / after esac, `bash)` closes a group
     ("Bash", "case \"$x\" in a) echo a;; esac\n(cd sub && bash) <<'EOF'\npy -3 scripts/observer_setup.py\nEOF"),
+    # 여섯째 적대 패스(wf_5fb5a833-51c) — Git Bash 의 홑따옴표 · 주석 · 따옴표 속 case 낱말 · 묶음 `{ …; }` 이 받는 heredoc ·
+    # 같은 줄 esac 뒤 · 인자 배열 따옴표 속 줄바꿈 / single quotes for Git Bash, case words in comments and quotes, groups
+    ("PowerShell", "Start-Process bash -ArgumentList \"-c 'py -3 scripts/observer_setup.py'\" -Wait"),
+    ("Bash", "# just in case\n(cd /tmp && bash) <<'EOF'\npy -3 scripts/observer_setup.py\nEOF"),
+    ("Bash", "git commit -m \"fix: trim input (edge case)\"\n(cd /tmp && bash) <<'EOF'\npy -3 scripts/observer_setup.py\nEOF"),
+    ("Bash", "# worst case\n(cd /f/repo && ./scripts/observer_setup.py)"),
+    ("Bash", "# 예: case \"$x\" in a) …\n(cd /tmp && bash) <<'EOF'\npy -3 scripts/observer_setup.py\nEOF"),  # 주석 속 case … in
+    ("Bash", "{ cd /f/proj && bash; } <<'EOF'\npy -3 scripts/observer_setup.py\nEOF"),
+    ("Bash", "{ eval \"$(cat)\"; } <<'EOF'\npy -3 scripts/observer_setup.py\nEOF"),
+    ("Bash", "case \"$x\" in a) echo a;;\nesac; (cd /tmp && bash) <<'EOF'\npy -3 scripts/observer_setup.py\nEOF"),
+    ("PowerShell", "Start-Process pwsh -ArgumentList @(\n  '-Command'\n  \"Set-Location F:/proj\npy -3 scripts/observer_setup.py\"\n)"),
 ]
 
 
