@@ -209,6 +209,9 @@ _POWERSHELL_ALLOWED = {
     # 한 줄 if/else 의 두 블록은 둘 다 코드다(최종 워크플로 패스) / both blocks of a one-line if/else are code
     "if ($x) { railway status } else { railway logs }": ["railway status", "railway logs"],
     "[string]$s = railway status --service x": ["railway status"],  # 형 제약이 붙은 대입 / a typed assignment
+    # here-string 을 여는 줄 뒤의 호출 — 본문이 빠진 뒤 `@"` 가 따옴표를 열면 다음 줄이 따옴표 안으로 보인다
+    # a call after a here-string: its dangling opener must not open a quote once the body is gone
+    "$sql = @\"\nSELECT 1\n\"@\npy -3 scripts\\observe_db.py $sql": ["observe_db"],
 }
 
 
@@ -216,7 +219,9 @@ _POWERSHELL_ALLOWED = {
 # 아무 `railway` 낱말이나 호출로 읽었다). PowerShell mentions: a search term in a block, parentheses in a comment.
 _POWERSHELL_MENTIONS = ["Get-ChildItem | % { Select-String -Path $_ -Pattern railway }",
                         "Write-Host done # see (railway status) docs",
-                        "$sb = { railway logs --deployment x }"]  # 블록을 정의만 한다 — 돌지 않는다 / only defined
+                        "$sb = { railway logs --deployment x }",  # 블록을 정의만 한다 — 돌지 않는다 / only defined
+                        # here-string 본문의 괄호는 글자다 — `$(…)` 만 돈다 / parentheses in a here-string body are text
+                        "Write-Output @\"\nUse (railway up) to deploy\n\"@"]
 
 
 @pytest.mark.parametrize("command", _POWERSHELL_MENTIONS)
