@@ -1776,7 +1776,7 @@ _PROD_SCAN_HEADS = frozenset({
     "elseif", "foreach", "for", "switch", "try", "finally", "start-process", "saps", "start",
     # 파이프라인 · 측정 블록 — `1..3 | ForEach-Object { railway up }` · `% { … }` · `Measure-Command { … }` 의 블록은 돈다
     # (워크플로 wf_8b259a5e-212 · main 때부터 막히지 않았다) / pipeline and timing blocks run their body
-    "foreach-object", "%", "measure-command",
+    "foreach-object", "%", "measure-command", "start-job", "invoke-command", "icm",
 })
 # 시간 제한 · 반복 머리 뒤에 오는 셸 래퍼 — `timeout 60 bash -c "railway up"` 의 안쪽 글자도 판정한다 / wrappers after scan heads
 _PROD_WRAPPER_HEADS = _PROD_SHELL_WRAPPERS | _PROD_PS_WRAPPERS | frozenset({"cmd", "env", "invoke-expression", "iex"})
@@ -2294,6 +2294,9 @@ def _prod_stage_script_channel(stage):
     The audit channel of a production-channel script in this stage: python at the head, or after a scan head."""
     head, rest = _command_words(stage, ps_literal=True)
     head = _prod_head(head)
+    if head in _PROD_CHANNEL_SCRIPTS:
+        # 실행 비트로 직접 돌린 스크립트(`./scripts/railway_config.py`) — 머리가 곧 스크립트다 / run directly via its shebang
+        return _prod_script_channel("python", [head, *rest])
     channel = _prod_script_channel(head, rest)
     if channel is None and head in _PROD_SCAN_HEADS:
         k = next((k for k, word in enumerate(rest) if _PYTHON_HEAD.fullmatch(_prod_head(_command_name(word)))), None)

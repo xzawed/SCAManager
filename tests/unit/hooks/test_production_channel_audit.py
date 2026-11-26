@@ -81,6 +81,7 @@ _ALLOWED = {
     'py -3 -X utf8 scripts/observe_db.py "SELECT 1"': ["observe_db"],
     'python -W ignore scripts/observe_db.py "SELECT 1"': ["observe_db"],
     "py -3 scripts/railway_redeploy.py --log-errors": ["railway_redeploy --log-errors"],
+    "./scripts/railway_config.py": ["railway_config"],  # 실행 비트로 직접 돌린 스크립트 / run directly via its shebang
 }
 
 
@@ -188,6 +189,7 @@ _POWERSHELL_ALLOWED = {
     "$id = (railway deployment list --json | ConvertFrom-Json)[0].id; railway logs $id":
         ["railway deployment list", "railway logs"],
     'foreach ($q in $queries) { py -3 scripts\\observe_db.py $q }': ["observe_db"],
+    "Start-Job { railway logs } | Receive-Job -Wait": ["railway logs"],
 }
 
 
@@ -208,6 +210,8 @@ _UNBLOCKED_PRODUCTION_WRITES = [
     ("PowerShell", "Write-Output (railway redeploy -y)"),
     ("PowerShell", "[void](railway up)"),
     ("PowerShell", "Measure-Command { railway redeploy }"),
+    ("PowerShell", "Start-Job { railway up } | Receive-Job -Wait"),
+    ("PowerShell", "Invoke-Command -ScriptBlock { railway redeploy }"),
     ("Bash", 'timeout 60 bash -c "railway up"'),
     ("Bash", "cmd //c railway up"),
     ("Bash", "x=$(bash <<'EOF'\nrailway up\nEOF\n)"),
