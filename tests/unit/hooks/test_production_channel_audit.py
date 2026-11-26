@@ -219,6 +219,7 @@ _POWERSHELL_ALLOWED = {
 # 아무 `railway` 낱말이나 호출로 읽었다). PowerShell mentions: a search term in a block, parentheses in a comment.
 _POWERSHELL_MENTIONS = ["Get-ChildItem | % { Select-String -Path $_ -Pattern railway }",
                         "Write-Host done # see (railway status) docs",
+                        "Write-Host done # never here (railway up)",  # 주석 속 쓰기도 글자다 — main 처럼 통과
                         "$sb = { railway logs --deployment x }",  # 블록을 정의만 한다 — 돌지 않는다 / only defined
                         # here-string 본문의 괄호는 글자다 — `$(…)` 만 돈다 / parentheses in a here-string body are text
                         "Write-Output @\"\nUse (railway up) to deploy\n\"@"]
