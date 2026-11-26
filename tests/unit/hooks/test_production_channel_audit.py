@@ -67,9 +67,9 @@ _ALLOWED = {
     f'py -3 scripts/observe_db.py "SELECT {_MARKER} FROM t"': ["observe_db"],
     "py -3 scripts/railway_redeploy.py --check": ["railway_redeploy --check"],
     "python scripts/railway_config.py": ["railway_config"],
-    # 사용자 몫인데 훅이 막지 않는 운영 DB 스크립트 — 에이전트가 돌리면 기록에 남아야 회고가 본다 / user-run DB scripts
-    f"py -3 scripts/observer_setup.py --host {_MARKER} --ref r1": ["observer_setup"],
-    "python -m scripts.backfill_repository_user_id --apply": ["backfill_repository_user_id --apply"],
+    # backfill 의 건식 실행(기본 — SQL 만 출력)은 막지 않고 기록한다. `--apply` 와 observer_setup 은 아래 거부 목록
+    # the backfill dry run (its default) is allowed and audited; --apply and observer_setup are denied below
+    "python -m scripts.backfill_repository_user_id": ["backfill_repository_user_id"],
     "python scripts/perf_measure.py --prod-only": ["perf_measure --prod-only"],
     "Railway.EXE status": ["railway status"],
     # 교차 검토(하위 에이전트 · 워크플로 wf_8b259a5e-212) 반례 — 시간 제한 · 반복문 · 조건문 안의 스크립트, 값을 받는
@@ -110,7 +110,7 @@ _ALLOWED = {
     "cat > notes.md <<END-NOTES\nhello\nEND-NOTES\nrailway status": ["railway status"],
     # 넷째 워크플로 패스(wf_410501e1-acb) — 줄 잇기 뒤 플래그 · 주석 속 플래그 이름 · 따옴표 친 Windows 인터프리터 경로 ·
     # printf 로 넘긴 명령 / a flag after a line continuation, flag names in a comment, a quoted Windows interpreter path
-    "py -3 scripts/backfill_repository_user_id.py \\\n  --apply": ["backfill_repository_user_id --apply"],
+    "py -3 scripts/railway_redeploy.py \\\n  --restart": ["railway_redeploy --restart"],
     "py -3 scripts/railway_redeploy.py --check  # if green, --restart next": ["railway_redeploy --check"],
     'py -3 scripts/observe_db.py "SELECT 1"  # -h shows the options': ["observe_db"],
     '"C:\\Users\\me\\venv312\\Scripts\\python.exe" -B scripts/observe_db.py "SELECT 3"': ["observe_db"],
@@ -163,6 +163,7 @@ _MENTIONS = ['grep -n "railway status" docs/a.md', "cat scripts/observe_db.py", 
              "if grep -q railway docs; then echo found; fi",
              "echo done # ran `railway status` earlier",
              "py -3 scripts/railway_redeploy.py --he",  # 줄인 --help / an abbreviated --help
+             "py -3 scripts/observer_setup.py --help",  # 사용자 몫 스크립트의 도움말 / help of a user-only script
              # 셋째 워크플로 패스 — 본문에 큰따옴표가 든 커밋 메시지 heredoc · `EOF)` 로 붙여 쓴 heredoc · `<<\\EOF` ·
              # 이스케이프된 구분자 / a commit-message heredoc with a quote in it, a glued `EOF)`, `<<\\EOF`, an escaped `;`
              "git commit -m \"$(cat <<'EOF'\nfix(hooks): treat \"$(cat <<'EOF' bodies as data\n\n"
@@ -298,7 +299,8 @@ _POWERSHELL_MENTIONS = ["Get-ChildItem | % { Select-String -Path $_ -Pattern rai
                         "$counts = @{ 'railway' = 0; 'supabase' = 0 }",
                         "$hasRailway = 'railway' -in $tools",
                         "if (Test-Path C:\\Users\\me\\AppData\\Roaming\\npm\\railway.cmd) { Write-Host 'installed' }",
-                        "$versions = @{ railway = '4.10'; node = '22' }"]
+                        "$versions = @{ railway = '4.10'; node = '22' }",
+                        "@{ railway = 1; up = 2 } | ConvertTo-Json"]  # 해시 테이블 키는 명령이 아니다 / keys, not calls
 
 
 @pytest.mark.parametrize("command", _POWERSHELL_MENTIONS)
@@ -317,43 +319,73 @@ def test_powershell_production_reads_are_audited(command, logs, monkeypatch, cap
     assert [r["channels"] for r in _records(audit)] == [_POWERSHELL_ALLOWED[command]]
 
 
-# 운영 변경 — 감사 채널에 오르지 않는다(채널은 읽기 · 운영 채널 스크립트뿐이다). 판정은 main 그대로라 이 가운데 main 이
-# 놓치는 꼴(PowerShell 대입 · 블록 · 하위 식 · 전체 경로 · 시간 제한 뒤 래퍼 · `cmd //c` · watch · 닫는 줄이 붙은 heredoc …)은
-# 아직 통과한다 — 원장 #1917 의 후속 항목이 판정을 고친다. 값은 그 명령 안에서 함께 기록될 읽기 채널이다.
-# Production changes never become audit channels; the verdict stays main's (the follow-up closes these gaps).
+# 운영 변경 — main 의 판정 순회가 놓치던 꼴까지 명령 자리 순회가 막는다(원장 #1917 P1-19 — PowerShell 대입 · 블록 · 하위 식
+# · 전체 경로, 시간 제한 뒤 래퍼, `cmd //c`, heredoc 받는 명령 · 산술 · 붙여 쓴 `EOF)` · 하이픈 구분자, watch · flock, case
+# 갈래, 겹친 훑는 머리 뒤 패키지 실행기). 막힌 호출은 감사 기록에 오르지 않는다.
+# Production changes main's walk missed are denied by the command-position walk, and never audited.
 _PRODUCTION_WRITES = [
-    ("PowerShell", "$x = railway up", []),
-    ("PowerShell", "1..3 | ForEach-Object { railway up }", []),
-    ("PowerShell", "1..3 | % { railway up }", []),
-    ("PowerShell", "Write-Output (railway redeploy -y)", []),
-    ("PowerShell", "[void](railway up)", []),
-    ("PowerShell", "Measure-Command { railway redeploy }", []),
-    ("PowerShell", "Start-Job { railway up } | Receive-Job -Wait", []),
-    ("PowerShell", "Invoke-Command -ScriptBlock { railway redeploy }", []),
-    ("PowerShell", "C:\\Users\\x\\AppData\\Roaming\\npm\\railway.cmd variables --set FOO=bar", []),
-    ("PowerShell", "C:\\tools\\railway.cmd up", []),
-    ("PowerShell", 'cmd /c "C:\\tools\\railway.cmd up"', []),
-    ("PowerShell", "if ($x) { railway status } else { railway up }", ["railway status"]),
-    ("PowerShell", "[string]$s = railway up", []),
-    ("Bash", 'timeout 60 bash -c "railway up"', []),
-    ("Bash", "cmd //c railway up", []),
-    ("Bash", "x=$(bash <<'EOF'\nrailway up\nEOF\n)", []),
-    ("Bash", "git commit -m \"$(bash <<'EOF'\nrailway up\nEOF\n)\"", []),
-    ("Bash", "x=$(cat <<'EOF'\nbody\nEOF)\nrailway up", []),
-    ("Bash", "echo $(( 1 << n ))\nrailway up\nn", []),
-    ("Bash", "watch -n 30 'railway up'", []),
-    ("Bash", "flock /tmp/x -c 'railway up'", []),
-    ("Bash", "railway status; timeout 60 bash -c \"railway redeploy -y\"", ["railway status"]),
+    ("PowerShell", "$x = railway up"),
+    ("PowerShell", "1..3 | ForEach-Object { railway up }"),
+    ("PowerShell", "1..3 | % { railway up }"),
+    ("PowerShell", "Write-Output (railway redeploy -y)"),
+    ("PowerShell", "[void](railway up)"),
+    ("PowerShell", "Measure-Command { railway redeploy }"),
+    ("PowerShell", "Start-Job { railway up } | Receive-Job -Wait"),
+    ("PowerShell", "Invoke-Command -ScriptBlock { railway redeploy }"),
+    ("PowerShell", "C:\\Users\\x\\AppData\\Roaming\\npm\\railway.cmd variables --set FOO=bar"),
+    ("PowerShell", "C:\\tools\\railway.cmd up"),
+    ("PowerShell", 'cmd /c "C:\\tools\\railway.cmd up"'),
+    ("PowerShell", "if ($x) { railway status } else { railway up }"),
+    ("PowerShell", "[string]$s = railway up"),
+    ("PowerShell", "[int[]]$a = railway up"),
+    ("PowerShell", "& 'C:\\x\\railway.cmd' up"),
+    ("PowerShell", "try { railway status } catch { railway redeploy -y }"),
+    ("PowerShell", "foreach ($s in 1..2) { railway up }"),
+    ("Bash", 'timeout 60 bash -c "railway up"'),
+    ("Bash", "cmd //c railway up"),
+    ("Bash", "x=$(bash <<'EOF'\nrailway up\nEOF\n)"),
+    ("Bash", "git commit -m \"$(bash <<'EOF'\nrailway up\nEOF\n)\""),
+    ("Bash", "x=$(cat <<'EOF'\nbody\nEOF)\nrailway up"),
+    ("Bash", "echo $(( 1 << n ))\nrailway up\nn"),
+    ("Bash", "cat > notes.md <<END-NOTES\nhello\nEND-NOTES\nrailway up"),
+    ("Bash", "watch -n 30 'railway up'"),
+    ("Bash", "flock /tmp/x -c 'railway up'"),
+    ("Bash", 'case "$ENVN" in prod) railway up ;; esac'),
+    ("Bash", "timeout 60 npx @railway/cli up"),
+    ("Bash", "railway status; timeout 60 bash -c \"railway redeploy -y\""),
 ]
 
 
-@pytest.mark.parametrize("tool,command,reads", _PRODUCTION_WRITES)
-def test_a_production_change_never_becomes_an_audit_channel(tool, command, reads, logs, monkeypatch, capsys):
-    """🔴 감사 채널은 읽기뿐이다 — 운영 변경은 막히든(거부 기록) 판정이 놓치든 채널로 적히지 않는다.
-    Audit channels are reads only: a production change is never written as a channel, denied or not."""
+@pytest.mark.parametrize("tool,command", _PRODUCTION_WRITES)
+def test_a_production_change_is_denied_and_never_audited(tool, command, logs, monkeypatch, capsys):
+    """🔴 운영 변경은 대입 · 블록 · 하위 식 · 래퍼 · heredoc 안에서도 막는다 — 감사 기록에는 오르지 않는다(채널은 읽기뿐).
+    A production change is denied in every shape above and never becomes an audit channel."""
     work, audit, _ = logs
-    _run(monkeypatch, capsys, _shell(command, work, tool=tool))
-    assert [channel for record in _records(audit) for channel in record["channels"]] == reads, command
+    assert '"permissionDecision": "deny"' in _run(monkeypatch, capsys, _shell(command, work, tool=tool)), command
+    assert not audit.exists(), command
+
+
+# 사용자 몫 운영 스크립트 — 관측 역할 비밀번호 설정 · backfill 적용(11-26 사용자 결정 · 원장 P1-19). 도움말과 backfill
+# 건식 실행은 막지 않는다. User-only production scripts are denied; help and the backfill dry run are not.
+_USER_ONLY_SCRIPTS = [
+    ("Bash", f"py -3 scripts/observer_setup.py --host {_MARKER} --ref r1"),
+    ("Bash", "py -3 scripts/observer_setup.py"),
+    ("PowerShell", "py -3 scripts\\observer_setup.py"),
+    ("Bash", "python -m scripts.backfill_repository_user_id --apply"),
+    ("Bash", "py -3 scripts/backfill_repository_user_id.py \\\n  --apply"),
+    ("Bash", "timeout 600 py -3 scripts/backfill_repository_user_id.py --apply"),
+    ("Bash", "py -3 scripts/backfill_repository_user_id.py --app"),  # argparse 줄임 / an abbreviation
+]
+
+
+@pytest.mark.parametrize("tool,command", _USER_ONLY_SCRIPTS)
+def test_a_user_only_production_script_is_denied(tool, command, logs, monkeypatch, capsys):
+    """🔴 사용자가 `!` 로 돌리는 운영 스크립트는 막는다 — 거부 기록에 인자는 남지 않는다.
+    A script the user runs with `!` is denied; its arguments never reach the denial record."""
+    work, audit, denials = logs
+    assert '"permissionDecision": "deny"' in _run(monkeypatch, capsys, _shell(command, work, tool=tool)), command
+    assert not audit.exists() and denials.exists()
+    assert _MARKER not in denials.read_text(encoding="utf-8")
 
 
 def test_a_full_path_railway_variable_write_in_powershell_stays_denied(logs, monkeypatch, capsys):
@@ -367,15 +399,18 @@ def test_a_full_path_railway_variable_write_in_powershell_stays_denied(logs, mon
 
 
 # PowerShell 변수 · 배열 · 굽은 따옴표는 shlex 가 모르는 인자를 만든다 — 백슬래시 경로의 «이름만» 관용구에 `--set` ·
-# `--json` 을 숨기면 main 은 막았고(경로를 못 읽어서) 글자 읽기는 이름만으로 비켰다(넷째 워크플로 패스). 개수만 내는
-# 단계는 main 처럼 통과한다. PowerShell variables, arrays and curly quotes smuggle flags past the names-only excuse.
+# `--json` 을 숨기면 main 은 막았고(경로를 못 읽어서) 글자 읽기는 이름만으로 비켰다(넷째 워크플로 패스). PowerShell 의
+# `prod\ set` 은 두 낱말이라 `set` 이 하위 명령 자리에 선 변수 쓰기 꼴이다 — main 은 Bash 읽기로 서비스 이름에 붙여 통과시켰고
+# 명령 자리 순회가 막는다(원장 P1-19). PowerShell variables, arrays and curly quotes smuggle flags past the names-only
+# excuse; in PowerShell `prod\ set` is two words, a variable-write shape the command-position walk denies.
 _POWERSHELL_VARIABLE_VERDICTS = [
     ("$s = '--set'; C:\\x\\railway.cmd variables $s K=V --kv | cut -d= -f1", "deny"),
     ("C:\\x\\railway.cmd variables --kv --service api,--set,K=V | cut -d= -f1", "deny"),
     ("C:\\x\\railway.cmd variables --kv \u2018--set\u2019 K=V | cut -d= -f1", "deny"),
     ("$f = '--json'; C:\\x\\railway.cmd variables $f --kv | cut -d= -f1", "deny"),
-    ("railway variables --kv --environment prod\\ set | wc -l", "allow"),
-    ("railway variables --kv --service api\\ set | cut -d= -f1", "allow"),
+    ("railway variables --kv --environment prod\\ set | wc -l", "deny"),
+    ("railway variables --kv --service api\\ set | cut -d= -f1", "deny"),
+    ("railway variables --kv --environment prod | wc -l", "allow"),  # 개수만 — main 처럼 / a count only, as on main
     ("C:\\x\\railway.cmd variables --kv | cut -d= -f1", "allow"),
     ("npx @railway/cli variables --kv | cut -d= -f1", "allow"),  # 패키지 이름의 `@` 는 스플랫이 아니다 / not a splat
 ]
@@ -390,18 +425,18 @@ def test_powershell_railway_variable_idioms_keep_mains_verdict(command, verdict,
     assert denied == (verdict == "deny"), command
 
 
-def test_an_audit_failure_never_changes_the_verdict(logs, monkeypatch, capsys):
-    """🔴 감사는 판정을 바꾸지 않는다 — 감사 순회가 죽어도 허용은 허용이고, 기록에는 값 없는 실패 표지만 남는다(죽음이
-    main() 의 «판정 불가» 로 올라가면 railway 가 든 명령은 막혔다). An audit crash leaves the verdict alone."""
+def test_a_command_walk_failure_is_unjudged(logs, monkeypatch, capsys):
+    """🔴 명령 자리 순회는 판정이다(원장 P1-19) — 죽으면 main 순회처럼 «판정 불가» 로 가서 운영 표지가 있는 호출은 막힌다.
+    감사 기록은 남지 않고, 거부 기록에 예외 글자는 없다. A crash in the command-position walk is unjudged."""
     work, audit, denials = logs
 
     def broken(*_args, **_kwargs):
         raise RuntimeError(_MARKER)
 
-    monkeypatch.setattr(hook, "_audit_text", broken)
-    assert _run(monkeypatch, capsys, _shell("railway status", work)) == ""
-    assert [r["channels"] for r in _records(audit)] == [["audit-error RuntimeError"]]
-    assert _MARKER not in audit.read_text(encoding="utf-8") and not denials.exists()
+    monkeypatch.setattr(hook, "_command_walk", broken)
+    assert '"permissionDecision": "deny"' in _run(monkeypatch, capsys, _shell("railway status", work))
+    assert not audit.exists() and denials.exists()
+    assert _MARKER not in denials.read_text(encoding="utf-8")
 
 
 def test_a_bracket_heavy_powershell_command_is_judged_quickly(logs, monkeypatch, capsys):

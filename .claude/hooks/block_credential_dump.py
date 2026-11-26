@@ -2272,8 +2272,10 @@ def _prod_decide_text(text, depth):
 
 def decide_production_access(command, shell=None, channels=None):
     """명령이 운영에 닿는가 — 사유 또는 None. 세그먼트 · 명령 치환 · 알려진 래퍼 안까지 본다.
-    railway 를 «언급» 만 하는 명령(`grep "railway ssh"`)은 명령 자리가 아니라 통과한다. channels(목록)를 주면 허용한
-    명령 안의 운영 채널 호출을 감사 순회(`_audit_text`)로 거기 더한다 — 판정에는 쓰지 않는다(원장 #1917 M02 P2-3 ②).
+    railway 를 «언급» 만 하는 명령(`grep "railway ssh"`)은 명령 자리가 아니라 통과한다. 판정은 main 그대로의 순회
+    (`_prod_decide_text`)와 명령 자리 순회(`_command_walk`) 둘 중 하나라도 막으면 막는다 — 뒤의 것이 main 순회가 놓치던
+    PowerShell 대입 · 블록 · 하위 식 · 전체 경로, 시간 제한 뒤 래퍼, `cmd //c`, heredoc 받는 명령 등을 본다(원장 #1917 P1-19).
+    channels(목록)를 주면 허용한 명령 안의 운영 채널 호출을 거기 더한다(감사 기록 · P2-3 ②).
     🔴 위협 모형은 credential 판정과 같다 — 정직한 세션이 칠 만한 꼴을 막는다. 스크립트 파일 안의 호출 ·
     인코딩된 명령 같은 의도적 우회는 글자 훅 밖이다(원장 R-3 부류).
     Does the command touch production? Mentions are not invocations. Same threat model as the credential
@@ -2281,34 +2283,34 @@ def decide_production_access(command, shell=None, channels=None):
     if shell is not None:
         _CONTEXT["shell"] = shell
     reason = _prod_decide_text(command or "", 0)
-    if reason is None and channels is not None:
-        try:
-            _audit_text(command or "", 0, channels)
-        except Exception as exc:  # pylint: disable=broad-exception-caught  # 감사는 판정을 바꾸지 않는다 / never the verdict
-            # 죽음이 main() 의 «판정 불가» 로 올라가면 railway 가 든 허용 명령이 막힌다 — 값 없는 실패 표지만 남긴다.
-            # Raised to main() it would deny an allowed command; leave a value-free failure marker instead.
-            channels.append(f"audit-error {type(exc).__name__}")
+    if reason is None:
+        # 명령 자리 순회는 판정이다 — 죽으면 main 순회처럼 main() 의 «판정 불가»(표지 있는 호출만 막음)로 간다.
+        # The command-position walk is part of the verdict; a crash is unjudged, like one in main's walk.
+        reason = _command_walk(command or "", 0, [] if channels is None else channels)
     return reason
 
 
-# ── 감사 순회 — 허용된 운영 채널 호출의 채널만 모은다(원장 #1917 M02 P2-3 ②) ──────────────────────────────────
-# 판정은 위 순회(main 그대로)가 한다. 이 순회는 그 판정이 허용한 명령에만 돌고 결과는 감사 기록뿐이다 — 판정 순회를 고쳐
-# 감사를 얹었더니 고칠 때마다 main 이 막던 꼴을 풀거나 언급을 새로 막았다(워크플로 적대 패스 세 번). 판정 순회의 구멍
-# (PowerShell 블록 · 대입 · 전체 경로 · 시간 제한 뒤 래퍼 등)은 원장의 후속 항목이다.
-# The audit walk only collects channels for commands the walk above (main's, unchanged) already allowed.
+# ── 명령 자리 순회 — 위 순회(main 그대로)가 허용한 명령을 명령 자리에서 다시 본다 ──────────────────────────────
+# 운영 변경 · 사용자 몫 스크립트면 사유를 돌려주고(판정 — 원장 #1917 P1-19), 허용이면 운영 채널 호출의 채널을 모은다(감사
+# 기록 — P2-3 ②). main 순회는 바꾸지 않고 이것을 더하기만 한다 — main 순회를 고쳐 구멍을 막았을 때는 고칠 때마다 main 이 막던
+# 꼴을 풀거나 언급을 새로 막았다(P2-3 ② 의 워크플로 적대 패스 세 번). 아래 `_audit_*` 도우미는 이 순회의 것이다.
+# The command-position walk re-reads what main's walk allowed: it returns a reason for production changes and
+# user-only scripts (verdict) and collects channels otherwise (audit). Main's walk is unchanged; this only adds.
 
 
-def _audit_text(text, depth, channels):
-    """허용된 명령 안에서 명령 자리에 선 운영 채널 호출의 채널을 channels 에 더한다 — railway 읽기(쓰기는 적지 않는다) ·
-    운영 채널 스크립트. 따옴표 · 주석 · heredoc 데이터 · 정의만 한 PowerShell 블록 안에서 시작하는 단계는 세지 않는다.
-    Collect the channels of production-channel calls at command positions in an allowed command; never a verdict."""
+def _command_walk(text, depth, channels):
+    """명령 자리에 선 운영 호출을 본다 — 운영 변경 · 사용자 몫 스크립트면 그 사유, 아니면 None 이고 railway 읽기 · 운영
+    채널 스크립트의 채널을 channels 에 더한다. 따옴표 · 주석 · heredoc 데이터 · 정의만 한 PowerShell 블록 안에서 시작하는
+    단계는 명령이 아니다. The reason for a production change at a command position, else None (channels collected)."""
     if depth > _PROD_MAX_DEPTH or not text.strip():
-        return
+        return None
     text = _audit_joined_lines(_audit_without_heredoc_data(text))
     mask = _audit_mask(text)
     for start, body in _audit_substitutions(text):
         if mask[start:start + 1] in ("c", "d"):
-            _audit_text(body, depth + 1, channels)
+            reason = _command_walk(body, depth + 1, channels)
+            if reason:
+                return reason
     offset = 0
     for line in text.split("\n"):
         line_start, offset = offset, offset + len(line) + 1
@@ -2325,7 +2327,10 @@ def _audit_text(text, depth, channels):
                 # comment characters are not words of the stage
                 code = "".join(ch for ch, state in zip(stage, mask[begin:begin + len(stage)]) if state != "m")
                 called = index == 0 and _audit_call_operator(line[:seg_at])
-                _audit_stage(code, stages[:index], depth, channels, called)
+                reason = _command_stage(code, stages[:index], depth, channels, called)
+                if reason:
+                    return reason
+    return None
 
 
 def _audit_joined_lines(text):
@@ -2360,36 +2365,54 @@ def _audit_parts(parts, text):
     return located
 
 
-def _audit_stage(stage, earlier, depth, channels, called=False):
-    """단계 하나의 감사 — 대입 · case 패턴 · 훑는 머리를 벗긴 명령 자리에서 railway 읽기 · 운영 채널 스크립트 · 래퍼 안을 본다.
-    called 는 PowerShell 호출 연산자 `&` 뒤의 조각이다. Audit one stage at its command position."""
+def _command_stage(stage, earlier, depth, channels, called=False):
+    """단계 하나 — 대입 · case 패턴 · 훑는 머리를 벗긴 명령 자리에서 railway 호출 · 운영 채널 스크립트 · 래퍼 안을 본다.
+    운영 변경 · 사용자 몫 스크립트면 사유를 돌려준다. called 는 PowerShell 호출 연산자 `&` 뒤의 조각이다.
+    One stage at its command position: the reason for a production change or a user-only script, else None."""
     stage = _audit_without_prefix(stage, called)
     if stage is None:
-        return
+        return None
     head, rest = _audit_peel(stage)
     if not head:
-        return
+        return None
     if earlier and _prod_reads_stdin(head, rest):
         # 앞 단계가 내보내는 글자를 이 명령이 돌린다 — `echo railway status | bash` · `printf '%s\\n' 'railway status' | bash` ·
         # `"railway status" | iex`. 낱말 하나씩과 이어 붙인 인자 전체를 본다. Earlier stages' text is executed here.
         for prior in earlier:
             first, more = _command_words(prior, ps_literal=True)
             for piece in dict.fromkeys([first, *more, " ".join(more)]):
-                _audit_text(piece, depth + 1, channels)
+                reason = _command_walk(piece, depth + 1, channels)
+                if reason:
+                    return reason
     args = _prod_railway_args(head, rest)
     if args is not None:
-        _prod_classify(args, channels)
-        return
+        if _CONTEXT["shell"] == "powershell" and args[:1] == ["="]:
+            return None  # `railway = 1` — 해시 테이블 키 · 이름 대입이지 호출이 아니다 / a hashtable key, not a call
+        return _prod_classify(args, channels)
     if head in _PROD_CHANNEL_SCRIPTS:
         script = _prod_script_channel("python", [head, *rest])  # `./scripts/x.py` — 머리가 곧 스크립트다 / run directly
     else:
         script = _prod_script_channel(head, rest)
     if script:
+        reason = _user_only_script(script)
+        if reason:
+            return reason
         channels.append(script)
-        return
+        return None
     inner = _audit_unwrap(head, rest)
-    if inner:
-        _audit_text(inner, depth + 1, channels)
+    return _command_walk(inner, depth + 1, channels) if inner else None
+
+
+def _user_only_script(channel):
+    """사용자가 `!` 로 돌리는 운영 스크립트인가 — 관측 역할 비밀번호 설정(`observer_setup`, 도움말 말고 모두) · backfill
+    적용(`--apply`). 건식 실행은 막지 않는다(11-26 사용자 결정 · 원장 #1917 P1-19). 채널 낱말로 가른다.
+    The reason when the channel is a user-only production script run (observer_setup; backfill with --apply)."""
+    words = channel.split()
+    if words[0] == "observer_setup":
+        return "observer_setup — 관측 역할 비밀번호 설정(사용자 몫)"
+    if words[0] == "backfill_repository_user_id" and "--apply" in words[1:]:
+        return "backfill_repository_user_id --apply — 운영 DB 쓰기(사용자 몫)"
+    return None
 
 
 # PowerShell 대입 — `$x = 명령` · 형 제약 `[string]$x = 명령` 의 오른쪽 명령은 돈다 / an assignment still runs its command
