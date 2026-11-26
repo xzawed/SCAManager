@@ -376,6 +376,7 @@ _POWERSHELL_VARIABLE_VERDICTS = [
     ("railway variables --kv --environment prod\\ set | wc -l", "allow"),
     ("railway variables --kv --service api\\ set | cut -d= -f1", "allow"),
     ("C:\\x\\railway.cmd variables --kv | cut -d= -f1", "allow"),
+    ("npx @railway/cli variables --kv | cut -d= -f1", "allow"),  # 패키지 이름의 `@` 는 스플랫이 아니다 / not a splat
 ]
 
 
