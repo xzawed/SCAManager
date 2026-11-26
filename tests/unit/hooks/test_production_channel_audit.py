@@ -166,7 +166,7 @@ _MENTIONS = ['grep -n "railway status" docs/a.md', "cat scripts/observe_db.py", 
              # 셋째 워크플로 패스 — 본문에 큰따옴표가 든 커밋 메시지 heredoc · `EOF)` 로 붙여 쓴 heredoc · `<<\\EOF` ·
              # 이스케이프된 구분자 / a commit-message heredoc with a quote in it, a glued `EOF)`, `<<\\EOF`, an escaped `;`
              "git commit -m \"$(cat <<'EOF'\nfix(hooks): treat \"$(cat <<'EOF' bodies as data\n\n"
-             "railway logs inside such a body is not a call\nEOF\n)\"",
+             + "railway logs inside such a body is not a call\nEOF\n)\"",
              "NOTES=$(cat <<'EOF'\nrailway status was green\nEOF)\necho \"$NOTES\"",
              "cat > notes.txt <<\\EOF\nrailway status looked fine\nEOF",
              "cat > notes.txt <<\\EOF\n$(railway status)\nEOF",  # `<<\\EOF` 본문의 치환은 글자다 / literal body
@@ -292,8 +292,8 @@ _POWERSHELL_MENTIONS = ["Get-ChildItem | % { Select-String -Path $_ -Pattern rai
                         "'scripts/observe_db.py' | ForEach-Object { py -3 -m py_compile $_ }",
                         # 셋째 패스가 짚은 새 거부(C3) — 판정은 main 그대로라 통과한다 / now main's verdict
                         "@'\n## 요약\n- 허용된 운영 채널 호출을 값 없이 기록한다\n'@ | Set-Content -Encoding utf8 pr-body.md\n"
-                        "gh pr create --base main --title 'feat(hooks): 운영 채널 감사 기록 (railway 읽기 · 운영 스크립트)' "
-                        "--body-file pr-body.md",
+                        + "gh pr create --base main --title 'feat(hooks): 운영 채널 감사 기록 (railway 읽기 · 운영 스크립트)' "
+                        + "--body-file pr-body.md",
                         "git log --oneline -20 | ForEach-Object { if ($_ -match 'railway') { $_ } }",
                         "$counts = @{ 'railway' = 0; 'supabase' = 0 }",
                         "$hasRailway = 'railway' -in $tools",
