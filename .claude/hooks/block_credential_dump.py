@@ -3081,7 +3081,9 @@ def _cmd_calls(text):
             quoted = not quoted
         if not quoted and ch in "&|":
             sep = text[i:i + 2] if text[i:i + 2] in ("&&", "||") else ch
-            out.append(_cmd_call("".join(piece)) + sep)
+            # cmd 의 `&` 는 `;` 로 — PowerShell 규칙은 `=` 뒤의 `&` 를 호출 연산자로 읽는다(`set X= & railway up` — 열째 워크플로
+            # 패스) / cmd's `&` as `;`: after `=` PowerShell rules read `&` as the call operator
+            out.append(_cmd_call("".join(piece)) + (";" if sep == "&" else sep))
             piece, i = [], i + len(sep)
             continue
         piece.append(ch)
@@ -3107,8 +3109,48 @@ def _cmd_call(statement):
         return ""
     text = _CMD_TEXT_STATEMENT.match(stripped)
     if text:
-        return stripped[:text.end()] + " '" + stripped[text.end():].replace("'", "''") + "'"
+        return stripped[:text.end()] + _cmd_literal(stripped[text.end():])
+    stripped = _cmd_block_text(stripped)
     return " & " + stripped if stripped.startswith('"') else stripped
+
+
+def _cmd_literal(text):
+    """cmd 글자를 PowerShell 홑따옴표 글자로 / cmd text as one PowerShell single-quoted string."""
+    return " '" + text.replace("'", "''") + "'"
+
+
+# 블록 안 · do · else · if 조건 뒤의 인자가 글자인 명령 — 조건 뒤는 공백, 명령 낱말 뒤는 낱말 경계(`if exist
+# scripts\observer_setup.py (…)` 의 `set` 을 명령으로 읽고 뒤 블록을 덮었다 — 열째 패스 고침의 회귀)
+# a text-argument builtin opening a block or after do / else / an if test, as a whole word
+_CMD_BLOCK_TEXT = re.compile(
+    r"(?i)(?:\(\s*|\b(?:do|else)\s+|\bif\s+(?:/i\s+)?(?:not\s+)?(?:(?:exist|defined|errorlevel)\s+\S+|\S+\s*==\s*\S+"
+    r"|\S+\s+(?:equ|neq|lss|leq|gtr|geq)\s+\S+)\s+)(?:echo|set|title)\b")
+
+
+def _cmd_block_text(statement):
+    """블록(`if … (echo …)` · `do (echo …)` · `else echo …`) 안 echo · set · title 의 인자를 블록을 닫는 `)` 까지 글자로 —
+    cmd 는 블록 안에서 따옴표 밖 `)` 에서 블록을 닫는다(열째 워크플로 패스: `(echo built; railway up is next)` 의 `;` 를 PowerShell
+    문장 구분으로 읽었다). 따옴표(겹 · 홑 — 홑따옴표 글자는 자식 셸 몫이다) 속은 건너뛴다.
+    Text of echo/set/title inside a block, up to the block's closing parenthesis."""
+    out, i, quote = [], 0, None
+    while i < len(statement):
+        ch = statement[i]
+        found = None if quote else _CMD_BLOCK_TEXT.match(statement, i)
+        if found:
+            end, inner = found.end(), None
+            while end < len(statement) and (inner or statement[end] != ")"):
+                inner = (None if statement[end] == inner else inner) if inner else ('"' if statement[end] == '"' else None)
+                end += 1
+            out.append(statement[i:found.end()] + _cmd_literal(statement[found.end():end]))
+            i = end
+            continue
+        if quote:
+            quote = None if ch == quote else quote
+        elif ch in "\"'":
+            quote = ch
+        out.append(ch)
+        i += 1
+    return "".join(out)
 
 
 def _audit_unwrap(head, rest):
@@ -3439,6 +3481,19 @@ def _audit_substitutions(text, string_body=False):
     return bodies
 
 
+# 치환 몸 속 명령 자리의 case · esac — 줄 처음 · `;` `&` `|` `(` `)` `{` · then · do · else 뒤(열째 워크플로 패스: 여러 줄 몸의
+# 둘째 줄 case 와 `;;` 없는 마지막 갈래 뒤 esac 를 놓쳤다). `case 낱말 in` 꼴은 따지지 않는다 — 주제에 겹친 치환이 올 수 있다.
+# a case or esac keyword at a command position inside a substitution body
+_BODY_CASE_WORD = re.compile(r"(?:(?<=[\n;&|(){])|(?<=\bthen)|(?<=\bdo)|(?<=\belse))[ \t]*(case|esac)(?=[\s;&|)]|$)")
+
+
+@functools.lru_cache(maxsize=8)
+def _body_case_words(text):
+    """text 속 명령 자리 case · esac 의 {자리: 낱말} — 치환마다 남은 글자를 다시 훑지 않게 글자마다 한 번(열째 워크플로 패스의
+    시간 측정: 치환 2000개에서 제곱으로 늘었다). Command-position case/esac positions, computed once per text."""
+    return {found.start(1): found.group(1) for found in _BODY_CASE_WORD.finditer(text)}
+
+
 def _audit_paren_end(text, start, escape):
     """치환 몸이 끝난 다음 자리와 닫혔는가 — 몸 속 따옴표 · 이스케이프 안의 괄호는 세지 않는다(`sed 's/\\([^)]*\\)/'` 의 `)`
     가 몸을 일찍 닫아 남은 `railway whoami)` 를 알 수 없는 하위 명령으로 막았다 — 워크플로 패스 wf_150f221f-097). 따옴표가
@@ -3447,8 +3502,7 @@ def _audit_paren_end(text, start, escape):
         # 몸 속 명령 자리의 case · esac(`_CASE_WORDS` — 몸을 여는 `(` 부터) — 갈래 패턴의 `)` 가 몸을 닫지 않게(여덟째 워크플로
         # 패스), 인자 속 낱말(`grep -c case`)은 세지 않는다(아홉째 워크플로 패스)
         # command-position case/esac inside the body, so an arm pattern's `)` does not close it
-        found = _CASE_WORDS.finditer(text, start - 1) if aware else ()
-        words = {match.start(match.lastindex): match.group(match.lastindex) for match in found}
+        words = _body_case_words(text) if aware else {}
         depth, j, quote, cases = 1, start, None, []  # cases — 열린 case 마다 그 안의 짝 괄호 수 / per open case
         while j < len(text) and depth:
             ch = text[j]

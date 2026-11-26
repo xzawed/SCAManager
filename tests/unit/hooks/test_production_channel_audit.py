@@ -246,12 +246,24 @@ _MENTIONS = ['grep -n "railway status" docs/a.md', "cat scripts/observe_db.py", 
              # cmd comments, `@`, set, title and echo braces; a case word as an argument
              "cmd <<'EOF'\n:: (railway up is manual)\ngit status\nEOF",
              "cmd <<'EOF'\nrem (railway up is manual)\ngit status\nEOF",
+             "cmd <<'EOF'\nREM (railway up is manual)\ngit status\nEOF",
              "cmd <<'EOF'\n@echo Step 2 (railway up) is for the user\nEOF",
              "cmd <<'EOF'\nset NOTE=(railway up later)\necho %NOTE%\nEOF",
              "cmd <<'EOF'\ntitle Deploy helper (railway CLI)\ndir\nEOF",
              'cmd //c "echo {railway up} later"',
              'kind=$(case "$f" in */observer_setup.py) echo because;; *) echo other;; esac)',
              'kind=$(case "$f" in */observer_setup.py) cases=1;; *) echo other;; esac)',
+             # 열째 적대 패스(wf_149fff06-860) — cmd 블록 · do · else · if 조건 뒤 echo · set 의 `;` 는 글자, 여러 줄 치환 몸의 case
+             # `;` in echo/set text of a cmd block, after do / else / an if test; case in a multi-line substitution body
+             'cmd //c "if exist dist (echo dist found; railway up stays user-only) else (echo no dist)"',
+             'cmd //c "for %f in (api web) do echo %f; railway up --service %f"',
+             'cmd //c "if exist dist (echo ok) else echo missing; railway up needs dist"',
+             'cmd //c "if exist dist echo built; railway up next"',
+             'cmd //c "if exist dist (set MSG=built; railway up next)"',
+             'cmd //c "dir dist >nul 2>&1 && (echo built; railway up is next)"',
+             "cmd //c 'if exist dist (echo \"step 2) build; railway up later\")'",
+             'kind=$(\n  # classify\n  case "$1" in\n    *.md) echo docs ;;\n    observer_setup.py) echo user-only ;;\n  esac\n)',
+             'kind=$(\n  f="${1##*/}"\n  case "$f" in\n    observer_setup.py) echo user-only ;;\n    *) echo other ;;\n  esac\n)',
              'case "$1" in\n  a) echo "(x) esac done" ;;\n  scripts/observer_setup.py) echo "user-only" ;;\nesac',
              'case "$1" in\n  start) echo starting ;;   # (nested case ends with) esac\n'
              + '  stop|scripts/observer_setup.py) echo stop ;;\nesac']
@@ -603,6 +615,16 @@ _PRODUCTION_WRITES = [
     ("Bash", 'cmd //c "C:\\\\Users\\\\me\\\\AppData\\\\Roaming\\\\npm\\\\railway.cmd up"'),  # cmd 글자의 백슬래시는 글자다
     ("PowerShell", "Start-Process cmd -ArgumentList '/c echo hi & railway up'"),  # cmd 의 `&` 는 문장 구분이다
     ("Bash", 'cmd //c "@railway up"'),  # cmd 의 `@` 는 되풀이를 끌 뿐이다 / `@` only turns echoing off
+    # 열째 적대 패스(wf_149fff06-860) — 여러 줄 치환 몸의 둘째 줄 case · `;;` 없는 마지막 갈래 뒤 esac · 줄 끝 주석, `=` 로 끝나는
+    # cmd 문장 뒤의 `&`, 홑따옴표 속 블록은 자식 셸 몫
+    # case on a later line of a multi-line body, esac after an arm without `;;`, `&` after `=`, a block inside single quotes
+    ("Bash", 'out=$(case "$1" in\n  dev) echo "skip dev" ;;\n  prod) railway up --detach\nesac)'),
+    ("Bash", 'log=$(\n  echo "target: $1"\n  case "$1" in\n    dev) echo "dev only" ;;\n    prod) railway up --detach ;;\n  esac\n)'),
+    ("Bash", 'x=$(case "$1" in\n  a) echo a ;;  # first\n  b) railway redeploy --yes ;;  # second\nesac)'),
+    ("Bash", 'cmd //c "npm config set registry= & railway up"'),
+    ("Bash", "cmd //c \"bash -c '(echo hi; railway up)'\""),
+    ("Bash", 'cmd //c "if exist deploy-set.flag (railway up)"'),  # 조건 속 `set` 은 명령이 아니다 / not a command word
+    ("Bash", 'cmd //c "for %f in (a) do (setup_check.cmd & railway up)"'),
 ]
 
 
@@ -746,7 +768,11 @@ _USER_ONLY_SCRIPTS = [
     # cmd 의 따옴표는 줄마다 새로 센다 · 따옴표 속 case 머리는 (전체를 보는) 줄 순회에서 세지 않는다
     # cmd quotes reset per line; a quoted case head does not count in the full-text walk
     ("Bash", "cmd <<'EOF'\necho \"unclosed\necho hi & \"C:\\Python312\\python.exe\" scripts\\observer_setup.py\nEOF"),
-    ("Bash", 'echo "note; case $x in"\n(\n  cd /f/repo\n  ./scripts/observer_setup.py)'),
+    ("Bash", 'echo "note; case $x in it"\n(\n  cd /f/repo\n  ./scripts/observer_setup.py)'),
+    ("Bash", 'x=$(case $(basename "$(pwd)") in\n  app) py -3 scripts/observer_setup.py ;;\nesac)'),  # 겹친 치환 주제
+    ("Bash", 'r=$(if true\nthen\n  case "$1" in\n    p) py -3 scripts/observer_setup.py ;;\n  esac\nfi)'),  # 줄 처음 then 뒤
+    ("PowerShell", "@'\ncd /d C:\\repo && echo In repo\nif exist scripts\\observer_setup.py (py -3 scripts\\observer_setup.py --host db)\n'@ | cmd"),
+    ("Bash", 'out=$(\n  echo x\n  { case "$1" in dev) echo dev ;; prod) py -3 scripts/observer_setup.py ;; esac; }\n)'),  # 묶음 `{` 뒤
 ]
 
 
