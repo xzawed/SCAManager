@@ -637,6 +637,10 @@ _USER_ONLY_SCRIPTS = [
     ("Bash", "git commit -m \"fix: trim input (edge case)\"\n(cd /tmp && bash) <<'EOF'\npy -3 scripts/observer_setup.py\nEOF"),
     ("Bash", "# worst case\n(cd /f/repo && ./scripts/observer_setup.py)"),
     ("Bash", "# 예: case \"$x\" in a) …\n(cd /tmp && bash) <<'EOF'\npy -3 scripts/observer_setup.py\nEOF"),  # 주석 속 case … in
+    # 묶음 끝이 heredoc 이 아닌 `./x.py)` 는 case 깊이를 탄다 — esac 에서 되돌리고 주석 속 case … in 은 세지 않는다
+    # a group closing on `./x.py)` still rides the case depth: esac resets it, a comment does not count
+    ("Bash", "case \"$x\" in a) echo a;; esac\n(cd /f/repo && ./scripts/observer_setup.py)"),
+    ("Bash", "# 예: case \"$x\" in a) …\n(cd /f/repo && ./scripts/observer_setup.py)"),
     ("Bash", "{ cd /f/proj && bash; } <<'EOF'\npy -3 scripts/observer_setup.py\nEOF"),
     ("Bash", "{ eval \"$(cat)\"; } <<'EOF'\npy -3 scripts/observer_setup.py\nEOF"),
     ("Bash", "case \"$x\" in a) echo a;;\nesac; (cd /tmp && bash) <<'EOF'\npy -3 scripts/observer_setup.py\nEOF"),

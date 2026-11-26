@@ -2343,7 +2343,7 @@ def _command_walk(text, depth, channels):
         # 따옴표 안에서 잘랐다(워크플로 패스 wf_f44bc84a-458). Split only at separators standing in code positions.
         for seg_at, segment in _code_split(line, line_start, mask, _segment_separators()):
             cut = _case_prefix(segment, case_depth > 0)  # 갈래 패턴의 `|` 는 파이프가 아니다 / a case pattern's `|` is not a pipe
-            case_depth = _case_depth(segment, case_depth, mask[line_start + seg_at:line_start + seg_at + len(segment)])
+            case_depth = _case_depth(segment, case_depth)
             seg_at, segment = seg_at + cut, segment[cut:]
             stages = _code_split(segment, line_start + seg_at, mask, ("|&", "|"))
             for index, (stage_at, stage) in enumerate(stages):
@@ -2601,13 +2601,11 @@ _CASE_WORDS = re.compile(r"(?:^|[;&|({])\s*(?:(?:then|do|else)\s+)*(?:(case)\s+"
                          r"|(esac)(?=[\s;&|)}]|$))")
 
 
-def _case_depth(text, depth, mask=None):
-    """text 를 지난 뒤의 case 깊이 — 코드 자리의 `case 낱말 in` 에서 늘고 `esac` 에서 준다(다섯째 워크플로 패스: 앞 case 뒤의
-    묶음 끝 `bash)` 를 갈래로 지웠다). 주석 · 따옴표 속 낱말(`# just in case`)은 세지 않는다(여섯째 워크플로 패스).
-    The case depth after text: a code-position `case WORD in` opens one, `esac` closes one."""
-    mask = _audit_mask(text) if mask is None else mask
-    code = "".join(ch if state == "c" or ch in "\"'" else "x" for ch, state in zip(text, mask))
-    for found in _CASE_WORDS.finditer(code):
+def _case_depth(text, depth):
+    """text 를 지난 뒤의 case 깊이 — 명령 자리의 `case 낱말 in` 에서 늘고 `esac` 에서 준다(다섯째 워크플로 패스: 앞 case 뒤의
+    묶음 끝 `bash)` 를 갈래로 지웠다). 명령 자리가 아닌 낱말(`# just in case` · `grep -w esac`)은 세지 않는다(여섯째 워크플로 패스).
+    The case depth after text: a command-position `case WORD in` opens one, `esac` closes one."""
+    for found in _CASE_WORDS.finditer(text):
         depth = depth + 1 if found.group(1) else max(0, depth - 1)
     return depth
 _AUDIT_CASE_PATTERN = re.compile(r"^\s*\(?\s*" + _CASE_PATTERN_WORD + r"(?:\s*\|\s*" + _CASE_PATTERN_WORD
@@ -3177,11 +3175,11 @@ def _audit_without_heredoc_data(text):
         start = (here or match).start()
         kept.append(line[:start] if here else line)
         # 묶음(`( … )` · `{ …; }`)이 받으면 heredoc 은 묶음의 stdin 이라 안쪽 마지막 명령이 받고, 그 `$(cat)` 도 그것을 읽는다
-        # (다섯째 · 여섯째 워크플로 패스) — 받는 명령 앞의 같은 줄 `esac` 도 센다
-        # a group passes the heredoc to its last command (and to a `$(cat)` inside); a same-line esac counts too
+        # (다섯째 · 여섯째 워크플로 패스)
+        # a group passes the heredoc to its last command (and to a `$(cat)` inside)
         prefix = line[:start].rstrip()
         grouped = prefix.endswith((")", "}"))
-        receiver = _audit_receiver(prefix[:-1] if grouped else line[:start], _case_depth(line[:start], case_depth) > 0)
+        receiver = _audit_receiver(prefix[:-1] if grouped else line[:start], case_depth > 0)
         runs = (_audit_reads_body(*receiver) or (grouped and _runs_piped_text(*receiver))
                 or (inner is not None and _audit_reads_body(*_audit_receiver(line[inner:start])))
                 or (match is not None and _audit_pipes_into_runner(line[match.end():])))
