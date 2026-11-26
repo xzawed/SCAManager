@@ -684,8 +684,12 @@ def test_cd_inside_a_subshell_cannot_make_the_search_lenient(tmp_path):
 
 def test_rg_reads_a_non_hidden_dotenv_once_ignore_rules_are_off(tmp_path):
     """rg -u(무시 해제)는 숨김이 아닌 .env 꼴(prod.env)을 읽는다 — 숨김까지 풀어야만 읽는다고 보면 놓친다(14차).
-    .env 꼴은 .gitignore 에 있다고 보므로 rg 기본값 · 그 파일을 못 집는 포함 글롭은 통과(대조군).
-    rg -u reads a non-hidden .env-like file; plain rg and a non-matching include glob pass (controls)."""
+    git 이 그 파일을 무시하는 저장소에서는 rg 기본값 · 그 파일을 못 집는 포함 글롭은 통과(대조군 — 무시 여부는
+    git 에 묻는다. 무시되지 않은 prod.env 는 rg 기본값도 읽는다: test_credential_hook_precision).
+    rg -u reads a non-hidden .env-like file; inside a repository that ignores it, plain rg and a non-matching
+    include glob pass (controls)."""
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / ".gitignore").write_text("prod.env\n", encoding="utf-8")
     (tmp_path / "prod.env").write_text("PLANT=1\n", encoding="utf-8")
     (tmp_path / "app.py").write_text("X = 1\n", encoding="utf-8")
     decision, _ = _decide("rg -u KEY .", cwd=tmp_path)

@@ -52,10 +52,12 @@ reports the rest.
 """
 import fnmatch
 import functools
+import hashlib
 import json
 import os
 import re
 import shlex
+import subprocess
 import sys
 import time
 
@@ -102,6 +104,50 @@ _NAMES, _WRITE = "names", "write"
 _CUT_IDIOM = re.compile(
     r"""\s*cut\s+(?:-d\s*(?P<q1>['"]?)=(?P=q1)\s+-f\s*1|-f\s*1\s+-d\s*(?P<q2>['"]?)=(?P=q2))\s*"""
 )
+# 개수만 내는 grep 단계 — cut 관용구처럼 **단계 통째** 가 이 꼴일 때만: 안전한 플래그(개수 c · 존재 q · 이름 l 중 하나는
+# 반드시)와 패턴 하나, 파일 · 앞뒤 군더더기 없음(`} grep -c K` · `grep -c K .env` 는 아니다 — 커밋 보안 검토).
+# A count-only grep stage, matched whole like the cut idiom: safe flags (one of c/q/l required), one pattern, no files.
+_COUNT_ONLY_GREP_STAGE = re.compile(
+    r"""\s*grep(?:\s+-(?=[A-Za-z]*[cql])[EFGPiwxvnHhsIcql]+|\s+-[EFGPiwxvnHhsI]+)*?(?:\s+-(?=[A-Za-z]*[cql])[EFGPiwxvnHhsIcql]+)"""
+    r"""(?:\s+-[EFGPiwxvnHhsIcql]+)*(?:\s+(?:'[^']*'|"[^"$`\\]*"|[^\s'"|;&<>()$`{}\\]+))?\s*"""
+)
+# 개수만 내는 wc — 개수 플래그뿐일 때만. `--files0-from=-` 는 stdin 을 파일 이름으로 읽어 오류에 그 줄(값)을 찍는다.
+# A count-only wc: count flags only (`--files0-from=-` reads stdin as file names and echoes them in errors).
+_WC_COUNT_ONLY = re.compile(r"\s*wc(?:\s+(?:-[lcwmL]+|--(?:lines|bytes|words|chars|max-line-length)))*\s*")
+# 줄 머리의 이름만 고르는 grep -o — 패턴이 `^[이름 글자]*=` 꼴(글자 모임에 `=` 이 없다)이고 플래그는 o · i · E · P · w 뿐.
+# `^` 가 없으면 값 속의 `NAME=` 조각까지 고른다. A grep -o that picks only the leading name: `^[name chars]*=`.
+#   끝의 `=` 를 요구하고, 글자 모임은 펼쳐서 이름 글자(영문 · 숫자 · `_` · `-`)뿐인지 본다 — `[0-z]` 같은 범위는 `=` 를
+#   품어 값 조각까지 고른다(커밋 보안 검토 HIGH).
+#   The trailing `=` is required and the class is expanded: a range such as `[0-z]` spans `=` and picks value pieces.
+_NAMES_ONLY_GREP = re.compile(
+    r"""\s*grep(?=(?:\s+-[oiEPw]+)*?\s+-[iEPw]*o)(?:\s+-[oiEPw]+)+\s+(?P<q>['"]?)\^\[(?P<body>[A-Za-z0-9_-]+)\][*+]=(?P=q)\s*"""
+)
+_NAME_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-")
+
+
+def _class_chars(body):
+    """글자 모임 본문의 글자 집합 — `X-Y` 범위를 펼친다(앞뒤 `-` 는 글자). 거꾸로 된 범위는 None.
+    Characters of a bracket-class body with X-Y ranges expanded; None for a reversed range."""
+    chars, i = set(), 0
+    while i < len(body):
+        if i + 2 < len(body) and body[i + 1] == "-":
+            lo, hi = ord(body[i]), ord(body[i + 2])
+            if lo > hi:
+                return None
+            chars.update(chr(c) for c in range(lo, hi + 1))
+            i += 3
+        else:
+            chars.add(body[i])
+            i += 1
+    return chars
+
+
+def _names_only_grep(stage):
+    """줄 머리의 이름만 고르는 grep -o 인가 — 모임을 펼친 글자가 이름 글자뿐일 때만.
+    Is this a grep -o that keeps only the leading name (class expands to name characters only)?"""
+    m = _NAMES_ONLY_GREP.fullmatch(stage)
+    chars = _class_chars(m.group("body")) if m else None
+    return chars is not None and chars <= _NAME_CHARS
 # ── `railway variable` 호출을 «토큰으로» 읽는다 — 중화(쓰기 · --kv) 판정 전용 ──────────────────
 # 🔴 정규식은 셸의 따옴표·주석을 모른다. `--service "x set" --kv` 의 `set` 을 하위 명령으로,
 #    `# --set` 주석을 쓰기로, `--service "--kv x"` 의 `--kv` 를 KV 출력으로 읽었다(Grok G1 반례).
@@ -248,14 +294,67 @@ def _railway_inner_lists_environment(stage):
 #    - 바로 다음 단계의 `cut -d= -f1`(이름만) — 중화 판정이 맡는다
 # Inverted: any .env-like path counts as a read unless the form is known safe.
 _PATHISH = re.compile(r"[^\s'\";|&()<>]+")
-_REDIRECT_TARGET = re.compile(r">>?\s*(['\"]?)[^\s'\";|&()<>]+\1")
+# 쓰기 리디렉션의 대상 — 이스케이프한 `\>`(글자) · 읽기-쓰기 `<>`(읽는다)의 `>` 는 아니다(AntiGravity 2차).
+# A write redirection target; an escaped `\>` (a literal) and the read-write `<>` (it reads) are not writes.
+_REDIRECT_TARGET = re.compile(r"(?<![\\<])>>?\s*(['\"]?)[^\s'\";|&()<>]+\1")
+# 출력 리디렉션 통째(앞 fd 번호 · `&>` · `>&2` 포함) — 검색 대상을 셀 때 걷는다. 입력(`<`)은 읽기라 남긴다.
+# A whole output redirection (fd number, &>, >&N); stripped before counting search targets. Input `<` stays.
+_OUTPUT_REDIRECT = re.compile(r"(?:(?<=\s)\d+|&)?(?<![\\<])>>?(?:&\d+|\s*(['\"]?)[^\s'\";|&()<>]+\1)")
+# 입력 리디렉션이 읽는 낱말(`<` · `<>` 바로 뒤 · 따옴표로 감싸도) / the word an input redirection reads
+_REDIRECT_READ_TARGET = re.compile(r"""<>?\s*(['"]?)([^\s'"<>|;&()]+)\1""")
+# 백슬래시 — 짝(`\\`)이거나 따옴표 글자 앞이 아닌 것. 따옴표 앞의 것(`\"`)은 Bash 의 이스케이프라 / 로 바꾸지 않는다.
+# A backslash pair, or a backslash not before a quote; in Bash `\"` is an escape and stays.
+_SLASHABLE = re.compile(r"\\\\|\\(?!['\"])")
+
+
+def _slashed(text):
+    """백슬래시를 / 로(Windows 경로). Bash 에서는 따옴표 글자 앞의 것(`\\"`)이 이스케이프라 남긴다 — 바꾸면
+    `-e "K=\\"" .env -e "S=\\""` 의 따옴표 짝이 뒤집혀 .env 가 따옴표 안으로 삼켜진다(AntiGravity 2차). PowerShell 의
+    백슬래시는 이스케이프가 아니라(백틱이 이스케이프다) 전부 바꾼다 — 남기면 `"docs\\" , .env , "src\\"` 의 짝이 거꾸로
+    뒤집힌다(3차). Backslashes become slashes; in Bash a backslash before a quote is an escape and stays, in
+    PowerShell a backslash is never an escape."""
+    if _CONTEXT["shell"] == "powershell":
+        return text.replace("\\", "/")
+    return _SLASHABLE.sub(lambda m: "/" * len(m.group()), text)
+
+
+def _unquoted_lt(text):
+    """따옴표 밖 `<` 의 자리 — 따옴표를 믿을 수 없으면 모든 `<`(막는 쪽). Positions of `<` outside quotes."""
+    if not _quotes_trustworthy(text):
+        return [i for i, ch in enumerate(text) if ch == "<"]
+    found, quote = [], None
+    for i, ch in enumerate(text):
+        if quote:
+            quote = None if ch == quote else quote
+        elif ch in "'\"":
+            quote = ch
+        elif ch == "<":
+            found.append(i)
+    return found
+
+
+def _input_redirect_targets(text):
+    """따옴표 밖 입력 리디렉션(`<` · `0<` · `<>` — 붙여 써도: `cat<.env.local` · `grep -i<.env K`)이 읽는 낱말.
+    `<<` · `<<<`(글자를 넘긴다) · `<(`(프로세스 치환 — 안쪽은 따로 판정한다)은 아니다. 따옴표 안의 `<`(`'<.env.local'`
+    패턴)는 리디렉션이 아니다(교차 검토 2 · 3차). Words read by unquoted input redirections, attached or not."""
+    targets = []
+    for i in _unquoted_lt(text):
+        if text.startswith(("<<", "<("), i) or (i and text[i - 1] == "<"):
+            continue
+        m = _REDIRECT_READ_TARGET.match(text, i)
+        if m:
+            targets.append(m.group(2))
+    return targets
 _DOTENV_TEMPLATES = frozenset({".env.example", ".env.sample", ".env.template"})
 _DOTENV_SAFE_HEADS = frozenset({
     "cp", "mv", "ls", "dir", "rm", "del", "touch", "test", "[", "[[", "stat", "chmod", "attrib",
     "test-path", "copy-item", "move-item", "remove-item", "new-item", "get-item", "get-childitem",
     "set-content", "add-content", "out-file",
 })
-_GIT_SAFE_SUBCOMMANDS = frozenset({"check-ignore", "ls-files", "status"})
+# 파일 내용을 내지 않는 git 하위 명령 — 상태 확인과, ref 이름 · 패턴만 받는 명령(branch · for-each-ref · show-ref:
+# `git branch --list "x/*"` 의 글롭은 ref 이름과 맞출 뿐 파일을 읽지 않는다). tag 는 `-F 파일` 로 파일을 읽고, ls-remote 는
+# `--upload-pack` 으로 명령을 돌리므로 넣지 않는다. / git subcommands that print no file contents.
+_GIT_SAFE_SUBCOMMANDS = frozenset({"check-ignore", "ls-files", "status", "branch", "for-each-ref", "show-ref"})
 # 글롭 값을 받는 옵션. 제외 글롭의 값만 경로 후보에서 뺀다 — 포함 글롭(`--include=.env` · `-Filter .env`)의
 # 값은 그 파일을 읽겠다는 뜻이라 후보로 남긴다(보안 리뷰 HIGH). rg 의 -g/--glob/--iglob 은 `!` 가 붙으면 제외.
 # 🔴 `-exclude` 는 PowerShell 매개변수다 — grep 에선 `-e xclude`(패턴) 라 뒤 토큰이 읽을 파일이 된다(14차 HIGH).
@@ -372,7 +471,7 @@ def _path_tokens(text):
     are dropped only for commands that really have such options.
     따옴표 안 글롭 글자의 표지(`_mark_quoted_literals`)는 글자 그대로의 패턴(`[*]`)으로 읽는다.
     Quoted-glob sentinels are read as literal patterns (`[*]`)."""
-    text = text.replace("\\", "/")
+    text = _slashed(text)
     try:
         toks = shlex.split(text, posix=True)
     except ValueError:
@@ -584,18 +683,105 @@ def _has_dotenv_path(text):
 
 
 def _mentions_dotenv(stage):
-    """쓰기 대상을 뺀 나머지에 .env 꼴 경로가 있는가 / A .env-like path outside write targets?"""
-    return _has_dotenv_path(_REDIRECT_TARGET.sub(" ", stage))
+    """쓰기 대상을 뺀 나머지에 .env 꼴 경로가 있는가 — 따옴표 밖 입력 리디렉션이 읽는 낱말(붙여 쓴 `cat<.env.local` 도)을
+    더해 본다(낱말 나누기는 `<` 에서 끊지 않는다 · AntiGravity 2 · 3차).
+    A .env-like path outside write targets, plus what unquoted input redirections read (attached ones too)."""
+    return (_has_dotenv_path(_REDIRECT_TARGET.sub(" ", stage))
+            or any(_has_dotenv_path(target) for target in _input_redirect_targets(stage)))
+
+
+def _pattern_positions(args, valued):
+    """검색 인자에서 «패턴» 자리 — 다음 낱말로 받은 -e/--regexp 의 값, 그것이 없으면 첫 위치 인자. -f(패턴 파일)의
+    값은 파일이라 넣지 않는다. 짧은 옵션 묶음은 `_short_flags` 와 같은 규칙으로 읽는다(`-exclude` = `-e xclude` —
+    패턴이 낱말 안에 있으니 뒤의 위치 인자는 전부 대상이다).
+    Pattern slots in search args: -e/--regexp values given as the next word, else the first positional."""
+    picks, positional, given, take, options_done = [], [], False, None, False
+    for i, w in enumerate(args):
+        if take is not None:
+            if take == "e":
+                picks.append(i)
+            take = None
+            continue
+        if options_done or w == "--":
+            # `--` 뒤는 전부 위치 인자다 — `grep -- -e .env` 의 `-e` 는 패턴 글자, `.env` 는 읽힐 파일이다.
+            # Everything after `--` is positional (`grep -- -e .env` reads .env with the pattern "-e").
+            if options_done:
+                positional.append(i)
+            options_done = True
+            continue
+        if w.startswith("--"):
+            opt = w.split("=", 1)[0]
+            # GNU 는 겹치지 않는 앞부분도 받는다(`--reg` = `--regexp`) — 그 꼴도 패턴을 준 것으로 본다(커밋 보안 검토 HIGH).
+            # GNU accepts unambiguous prefixes (--reg = --regexp); treat them as giving the pattern.
+            full = next((f for f in ("--regexp", "--file") if len(opt) >= 5 and f.startswith(opt)), None)
+            if full:
+                given = True
+                take = ("e" if full == "--regexp" else "value") if "=" not in w else None
+                continue
+            if opt not in _KNOWN_SEARCH_LONGS:
+                return []  # 모르는 긴 옵션 — 어느 낱말이 패턴인지 모른다: 아무것도 빼지 않는다 / unknown: drop nothing
+            if "=" not in w and w in _GREP_VALUE_OPTIONS:
+                take = "value"
+            continue
+        if w.startswith("-") and w != "-":
+            for k, ch in enumerate(w[1:], 1):
+                if ch in valued:
+                    given = given or ch in "ef"
+                    take = ch if k == len(w) - 1 else None
+                    break
+            continue
+        positional.append(i)
+    return picks if given else picks + positional[:1]
+
+
+# 패턴을 뺀 뒤 다시 이어 붙여도 같은 낱말로 읽히는 인자 — 공백 · 따옴표 · 리디렉션 · 파이프 · 묶음 · 치환 · 주석 글자가 없다.
+# An argument that reads back as the same word after re-joining: no whitespace, quote, redirect, pipe, grouping,
+# substitution or comment character.
+_REJOINABLE_ARG = re.compile(r"[^\s'\"<>|;&()$`{}#]+")
+
+
+def _without_search_pattern(stage):
+    """검색 명령이면 패턴 인자를 뺀 낱말로 — 패턴은 경로가 아니다(`grep "\\.env" 문서` 는 .env 를 읽지 않는다 ·
+    원장 #1917 P1-5). 🔴 확신할 때만 뺀다 — 그 밖은 단계를 그대로 돌려줘 원래 판정(막는 쪽)을 받는다(AntiGravity 교차 검토):
+    - 검색 명령이 명령 자리(첫 낱말 · `git grep`)에 있을 때만 — `git diff rg .env` 의 rg 는 인자다.
+    - 입력 리디렉션이 없을 때만 — `grep <.env KEY` 의 `<.env` 는 패턴 자리에 선 읽기다. 출력 리디렉션은 먼저 걷는다.
+    - 빈 낱말을 버리지 않는다 — `grep "" .env` 의 패턴은 빈 낱말이고, 버리면 .env 가 패턴 자리로 밀린다.
+    - 남는 낱말이 다시 이어 붙여도 같은 낱말일 때만 — `--label "x >"` 를 풀어 쓰면 `> .env` 가 쓰기로 읽힌다.
+    - 따옴표를 믿을 수 있을 때만(`\\"` · 백틱 · `#` 이 없다) — 따옴표 짝을 잘못 읽으면 .env 가 «패턴» 안으로 삼켜진다.
+    findstr 은 제 문법이라 그대로 둔다. Drop the pattern argument of a search only when certain; otherwise return
+    the stage unchanged so the original (fail-closed) verdict applies."""
+    text = _OUTPUT_REDIRECT.sub(" ", stage)
+    if not _quotes_trustworthy(text) or _unquoted_lt(text):
+        return stage
+    try:
+        words = shlex.split(_slashed(text), posix=True)
+    except ValueError:
+        return stage
+    name = _command_name(words[0]) if words else ""
+    if name in _SEARCH_COMMANDS and name != "findstr":
+        head, args = words[:1], words[1:]
+    elif name == "git" and len(words) > 1 and words[1] == "grep":
+        name, head, args = "git-grep", words[:2], words[2:]
+    else:
+        return stage
+    drop = set(_pattern_positions(args, _RG_VALUED_SHORTS if name == "rg" else _GREP_VALUED_SHORTS))
+    kept = [*head, *(w for i, w in enumerate(args) if i not in drop)]
+    if not drop or not all(_REJOINABLE_ARG.fullmatch(w) for w in kept):
+        return stage
+    return " ".join(kept)
 
 
 def _reads_dotenv(stage):
-    """단계가 .env 내용을 출력할 수 있는가 / Can this stage print .env contents?"""
-    if not _mentions_dotenv(stage) or _count_only_grep(stage):
+    """단계가 .env 내용을 출력할 수 있는가 — 검색 패턴은 경로로 보지 않는다 / Can this stage print .env contents?"""
+    if not _mentions_dotenv(_without_search_pattern(stage)) or _count_only_grep(stage):
         return False
     head, words = _command_words(_REDIRECT_TARGET.sub(" ", stage))
     if head in _DOTENV_SAFE_HEADS:
         return False
-    return not (head == "git" and words and words[0].lower() in _GIT_SAFE_SUBCOMMANDS)
+    # 내용을 안 내는 git 하위 명령도 stdin 으로 받은 줄은 낸다 — `show-ref --exclude-existing` 은 ref 가 아닌 줄을,
+    # `check-ignore --stdin -n -v` 는 모든 줄을 찍는다(Grok · AntiGravity 교차 검토). 입력 리디렉션이 있으면 면제하지 않는다.
+    # Even content-free git subcommands echo lines read from stdin; no exemption with an input redirect.
+    return not (head == "git" and words and words[0].lower() in _GIT_SAFE_SUBCOMMANDS and "<" not in stage)
 
 
 # ── 재귀 검색 · 나열 파이프라인이 .env 를 읽는가 (회고 원장 R-4) ─────────────────────────────
@@ -611,6 +797,22 @@ _GREP_VALUE_OPTIONS = frozenset({"-e", "-f", "-m", "-A", "-B", "-C", "-d", "-D",
                                  "--max-count", "--context", "--after-context", "--before-context",
                                  "--exclude", "--include", "--exclude-dir", "--label", "-g", "--glob",
                                  "--iglob", "-t", "-T", "--type", "--type-not", "-j", "--threads"})
+# rg 만의 값 옵션(rg 도움말) — grep 의 `-E` 는 플래그지만 rg 의 `-E` 는 인코딩 값을 받는다. `-r ""`(바꿀 글자)의 빈 값이
+# 검색 대상으로 읽혔다(교차 검토 4차). rg-only options that take a value; rg's -E takes an encoding, grep's -E does not.
+_RG_VALUE_OPTIONS = _GREP_VALUE_OPTIONS | {"-r", "--replace", "-E", "--encoding", "-M", "--max-columns", "--max-depth",
+                                           "--max-filesize", "--path-separator", "--pre", "--pre-glob", "--sort",
+                                           "--sortr", "--colors", "--engine", "--type-add", "--ignore-file"}
+# 패턴 자리를 셀 때 아는 긴 옵션 — 이 밖의 긴 옵션이 있으면 패턴을 빼지 않는다(값을 받는지 모른다).
+# Long options known when locating the pattern; any other long option means nothing is dropped.
+_KNOWN_SEARCH_LONGS = _GREP_VALUE_OPTIONS | {
+    "--count", "--ignore-case", "--no-ignore-case", "--line-number", "--recursive", "--dereference-recursive",
+    "--extended-regexp", "--fixed-strings", "--perl-regexp", "--basic-regexp", "--word-regexp", "--line-regexp",
+    "--files-with-matches", "--files-without-match", "--only-matching", "--quiet", "--silent", "--no-messages",
+    "--with-filename", "--no-filename", "--invert-match", "--color", "--colour", "--null", "--null-data", "--text",
+    "--binary-files", "--hidden", "--no-ignore", "--files", "--smart-case", "--case-sensitive", "--no-heading",
+    "--heading", "--column", "--count-matches", "--max-depth", "--follow", "--untracked", "--no-index", "--cached",
+    "--exclude-standard", "--no-exclude-standard", "--and", "--or", "--not", "--all-match", "--name-only",
+    "--full-name"}
 _WALK_SKIP = frozenset({".git", "node_modules", ".venv", "venv", "__pycache__", ".mypy_cache",
                         ".pytest_cache", ".ruff_cache", ".tox"})
 # 검색 명령 — 단계의 첫 낱말이 아니어도 찾는다(env · timeout · sudo · if · do · ! 같은 접두 뒤, 14차 반영 중 실측).
@@ -618,15 +820,27 @@ _WALK_SKIP = frozenset({".git", "node_modules", ".venv", "venv", "__pycache__", 
 _SEARCH_COMMANDS = frozenset({"grep", "egrep", "fgrep", "rgrep", "rg", "findstr"})
 
 
-def _plain_words(text):
-    """shlex 낱말 — 백슬래시는 / 로, 괄호 · 치환 껍데기는 벗기고 빈 것은 뺀다.
-    shlex words with backslashes as slashes and grouping/substitution wrappers peeled."""
-    text = text.replace("\\", "/")
+def _plain_words(text, keep_slots=False):
+    """shlex 낱말 — 백슬래시는 / 로(Bash 의 따옴표 앞 이스케이프는 남긴다), 괄호 · 치환 껍데기는 벗기고 껍데기뿐이던
+    낱말은 뺀다. keep_slots 면 앞뒤 끝(묶음 `( … )` · `{ …`)의 것만 빼고 가운데 것은 빈 낱말로 남긴다 — 검색 인자의
+    자리를 셀 때 `""` · `"{}"` · 따옴표 없는 `{}` 도 한 자리다(`grep -rn "{}" . 문서` 의 `.` 은 대상이다 · 교차 검토
+    2 · 3차). 그 밖의 호출처(cd 추적 등)는 빈 낱말을 받지 않는다 — `cd $( … )` 의 빈 낱말이 «지금 폴더» 로 풀렸다(4차).
+    shlex words with wrappers peeled and wrapper-only words dropped; keep_slots keeps the middle ones as empty
+    words so a search argument slot is never lost. Other callers (cd tracking) never see empty words."""
+    text = _slashed(text)
     try:
         toks = shlex.split(text, posix=True)
     except ValueError:
         toks = text.split()
-    return [w for w in (_TOKEN_WRAPPERS.sub("", t.strip("`")) for t in toks) if w]
+    words = [_TOKEN_WRAPPERS.sub("", t.strip("`")) for t in toks]
+    if not keep_slots:
+        return [w for w in words if w]
+    start, end = 0, len(words)
+    while start < end and not words[start]:
+        start += 1
+    while end > start and not words[end - 1]:
+        end -= 1
+    return words[start:end]
 
 
 def _command_name(word):
@@ -655,7 +869,8 @@ def _dotenv_files(target, recursive=True):
     """대상(파일 · 폴더 · 와일드카드) 아래 .env 꼴 파일의 상대 경로 조각들 — 작업 폴더 후보 전부에서. 셀 수 없으면
     None(막는 쪽): 셸만 아는 경로 · 모르는 작업 폴더 · 어느 후보에도 없는 대상 · 너무 큰 폴더.
     .env-like files under the target across every cwd candidate, or None when they cannot be enumerated."""
-    if _unresolvable(target):
+    # 빈 대상(`grep -rn K "" 문서` 의 `""`)은 «지금 폴더» 가 아니다 — 셈하지 않고 막는 쪽 / an empty target is not the cwd
+    if not target or _unresolvable(target):
         return None
     if any(ch in target for ch in "*?["):
         matches = _glob_matches(target)
@@ -688,7 +903,7 @@ def _dotenv_files(target, recursive=True):
 def _search_call(stage):
     """단계 안의 검색 명령 → (이름, 인자, 앞 낱말들). `git … grep` 은 git 의 하위 명령이라 «git-grep» 으로 낸다.
     The search command in a stage as (name, args, preceding words); `git … grep` is reported as git-grep."""
-    words = _plain_words(stage)
+    words = _plain_words(stage, keep_slots=True)
     for k, word in enumerate(words):
         name = _command_name(word)
         if name not in _SEARCH_COMMANDS:
@@ -698,14 +913,16 @@ def _search_call(stage):
     return None
 
 
-def _search_targets(words):
-    """패턴 다음의 위치 인자 = 검색 대상. -e · -f 로 패턴을 주면 첫 위치 인자부터 대상이다.
+def _search_targets(words, value_options=None):
+    """패턴 다음의 위치 인자 = 검색 대상. -e · -f 로 패턴을 주면 첫 위치 인자부터 대상이다. value_options 는 값을
+    받는 옵션(기본 grep · rg 공통 — rg 는 `_RG_VALUE_OPTIONS`).
     Positional arguments after the pattern; with -e/-f every positional argument is a target."""
+    value_options = _GREP_VALUE_OPTIONS if value_options is None else value_options
     positional, skip, pattern_given = [], False, False
     for w in words:
         if skip:
             skip = False
-        elif w in _GREP_VALUE_OPTIONS:
+        elif w in value_options:
             skip = True
             pattern_given = pattern_given or w in ("-e", "-f", "--regexp", "--file")
         elif w.startswith("-"):
@@ -805,13 +1022,14 @@ def _include_glob_hits(glob, parts):
     return fnmatch.fnmatchcase(rel, glob) or (glob.startswith("**/") and fnmatch.fnmatchcase(rel, glob[3:]))
 
 
-def _rg_reads(parts, globs, no_ignore, hidden):
+def _rg_reads(parts, globs, no_ignore, hidden, ignored=frozenset()):
     """rg 가 그 파일을 읽는가 — 포함 글롭이 맞으면 무시 · 숨김 규칙을 넘어 읽고(재정의가 가장 먼저), 포함 글롭이
-    있는데 안 맞으면 안 읽는다. 제외 글롭이 이름에 맞으면 안 읽는다. 그 밖은 무시 해제일 때만, 숨김(점으로 시작)은
-    숨김 포함일 때만 읽는다. 숨김 폴더는 숨김 포함이거나 그 폴더를 집는 포함 글롭이 있을 때만 내려간다.
-    .env 꼴은 .gitignore 에 있다고 본다(가정 — 아니면 rg 기본값도 읽는다).
-    Would rg read this file? Include globs override ignore and hidden rules; .env-like files are assumed
-    to be gitignored."""
+    있는데 안 맞으면 안 읽는다. 제외 글롭이 이름에 맞으면 안 읽는다. 그 밖은 숨김(점으로 시작)이면 숨김 포함일 때만,
+    git 이 무시하는 파일(`ignored` — 호출자가 git 에 물어 넘긴다)이면 무시 해제일 때만 읽는다. 숨김 폴더는 숨김 포함이거나
+    그 폴더를 집는 포함 글롭이 있을 때만 내려간다. .env 꼴이 .gitignore 에 있다고 가정하지 않는다 — 무시되지 않은
+    prod.env 는 rg 기본값도 읽는다(Grok 교차 검토 반례 `rg -e .env -e KEY .`).
+    Would rg read this file? Include globs override ignore and hidden rules; otherwise hidden files need --hidden
+    and files git ignores (as git reports them) need --no-ignore."""
     *dirs, name = parts
     includes = [g for g in globs if not g.startswith("!")]
     excludes = [g[1:] for g in globs if g.startswith("!")]
@@ -824,7 +1042,40 @@ def _rg_reads(parts, globs, no_ignore, hidden):
         return False
     if any("/" not in g and fnmatch.fnmatchcase(name, g) for g in excludes):
         return False
-    return no_ignore and (hidden or not name.startswith("."))
+    return (hidden or not name.startswith(".")) and (no_ignore or tuple(parts) not in ignored)
+
+
+# 대상 폴더 바로 아래의 있을 리 없는 이름 — 이것까지 무시되면 폴더 자체가 무시된 것이다 / a name no folder holds
+_GIT_IGNORE_SENTINEL = "scamanager-hook-ignore-probe-3f9c"
+
+
+def _git_ignored_parts(target, hits):
+    """대상 폴더 아래 .env 꼴 파일 가운데 git 이 무시하는 것 — `git check-ignore --no-index`(추적 여부와 상관없이 규칙만,
+    rg 와 같다)로 묻는다. 그 파일이 있는 작업 폴더 후보 모두에서 무시될 때만 무시로 본다. git 이 없거나 · 저장소 밖이거나
+    (rg 도 저장소 밖에서는 .gitignore 를 보지 않는다) · 2초를 넘기거나 · 파일 대상(rg 는 이름을 준 파일을 무시 규칙과
+    상관없이 읽는다)이면 무시 안 됨 — 막는 쪽.
+    Hits git ignores in every cwd candidate holding them; anything unknown counts as not ignored (fail closed)."""
+    env = {k: v for k, v in os.environ.items() if k not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE")}
+    checked, unignored = set(), set()
+    for root in dict.fromkeys(os.path.normpath(r) for r in _resolve_all(target) if os.path.isdir(r)):
+        present = ["/".join(parts) for parts in hits if os.path.exists(os.path.join(root, *parts))]
+        if not present:
+            continue
+        try:
+            done = subprocess.run(["git", "-C", root, "check-ignore", "--no-index", "-z", "--stdin"],
+                                  input="".join(p + "\0" for p in [*present, _GIT_IGNORE_SENTINEL]).encode("utf-8"),
+                                  env=env, capture_output=True, timeout=2, check=False)
+            listed = set(done.stdout.decode("utf-8", "replace").split("\0")) if done.returncode in (0, 1) else set()
+        except (OSError, subprocess.SubprocessError):
+            listed = set()
+        # 없는 이름(표지)까지 무시되면 대상 폴더 자체(또는 그 위)가 무시된 것이다 — rg 는 이름을 준 폴더 안을 그래도
+        # 읽으므로 git 의 답을 믿지 않는다(AntiGravity 2차 — `rg KEY secrets` 에 `.gitignore` 의 `secrets/`).
+        # If even a made-up name is ignored, the root itself is ignored; rg still searches a folder it is given.
+        if _GIT_IGNORE_SENTINEL in listed:
+            listed = set()
+        checked.update(present)
+        unignored.update(p for p in present if p not in listed)
+    return frozenset(parts for parts in hits if "/".join(parts) in checked - unignored)
 
 
 # 값을 받는 짧은 옵션 글자 — 묶음에서 이 글자 뒤는 그 값이다(grep 도움말 · rg 도움말).
@@ -907,13 +1158,16 @@ def _reads_any(_parts):
 
 def _recursive_search_reads_dotenv(stage):
     """재귀 검색이 실제로 읽을 .env 꼴 파일이 검색 대상 아래에 있는가(작업 폴더 후보 전부에서).
+    출력 리디렉션(`2>/dev/null` · `2>&1` · `> 파일`)은 검색 대상이 아니라 먼저 걷는다 — 남기면 «없는 대상» 으로
+    읽혀 막는다(원장 #1917 P1-5).
     Would a recursive search read a .env-like file under its targets (across every cwd candidate)?"""
-    call = _search_call(stage)
+    call = _search_call(_OUTPUT_REDIRECT.sub(" ", stage))
     if call is None:
         return False
     name, args, before = call
     if name == "findstr":
         return _findstr_reads_dotenv(args)
+    ask_git = False  # rg 가 git 의 무시 규칙을 따르는가 — rg 갈래가 정한다 / does rg follow git's ignore rules here?
     if name == "git-grep":
         # git grep 은 기본으로 추적 파일만 본다. --no-index(--exclude-standard 없이)와 --no-exclude-standard 는
         # .gitignore 를 무시한다(git 문서). git grep searches tracked files unless .gitignore is switched off.
@@ -927,6 +1181,7 @@ def _recursive_search_reads_dotenv(stage):
         no_ignore = u_count >= 1 or any(w.startswith("--no-ignore") for w in args)
         hidden = u_count >= 2 or "--hidden" in args or any(re.match(r"-[A-Za-z]*\.", w) for w in args)
         reads = functools.partial(_rg_reads, globs=_rg_globs(args), no_ignore=no_ignore, hidden=hidden)
+        ask_git = not no_ignore
     else:
         if not _grep_is_recursive(name, args):
             return False
@@ -937,9 +1192,17 @@ def _recursive_search_reads_dotenv(stage):
     # A prefix that changes directory (env -C / --chdir) leaves the cwd unknown: fail closed.
     if any(w == "-C" or w.startswith("--chdir") for w in before):
         return True
-    for target in _search_targets(args) or ["."]:
+    for target in _search_targets(args, _RG_VALUE_OPTIONS if name == "rg" else None) or ["."]:
         files = _dotenv_files(target)
-        if files is None or any(reads(parts) for parts in files):
+        if files is None:
+            return True
+        hits = [parts for parts in files if reads(parts)]
+        # rg 는 git 이 무시하는 파일을 건너뛴다 — 가정하지 않고 git 에 물어, 무시되는 것만 뺀다(무시 해제면 묻지 않는다).
+        # rg skips what git ignores: ask git and drop only the ignored hits (not needed with --no-ignore).
+        if hits and ask_git:
+            ignored = _git_ignored_parts(target, hits)
+            hits = [parts for parts in hits if reads(parts, ignored=ignored)]
+        if hits:
             return True
     return False
 
@@ -1198,9 +1461,16 @@ _NAIVE_SEGMENT_SPLIT = re.compile("|".join(re.escape(s) for s in _SEGMENT_SEPARA
 
 
 def _quotes_trustworthy(text):
-    """이스케이프 · 주석이 없고 따옴표가 모두 닫혔는가 — 주석 속 홑따옴표(`# it's`)를 따옴표로 읽으면 뒤
-    명령이 묶인다(보안 리뷰 HIGH). No escapes or comments, and every quote closed?"""
-    if "\\" in text or "`" in text or "#" in text:
+    """백틱 · 주석이 없고, 백슬래시가 따옴표 글자 바로 앞에 오지 않으며, 따옴표가 모두 닫혔는가 — 주석 속
+    홑따옴표(`# it's`)를 따옴표로 읽으면 뒤 명령이 묶인다(보안 리뷰 HIGH).
+
+    백슬래시는 따옴표 글자 앞에서만 따옴표 구조를 바꾼다(`\\"` · `\\'` — 셸은 글자로 읽는데 이 분할은 따옴표로 읽어,
+    `echo \\"; env` 의 `; env` 를 앞에 묶는다). `\\|` · `\\.` · `\\*` 같은 정규식 이스케이프는 구조를 바꾸지 않는다 —
+    그것까지 믿지 않으면 큰따옴표 안 교대(`"a\\|b"`)를 단계로 쪼개 «대상 없는 재귀 검색» 으로 오판한다(원장 #1917 P1-5).
+    PowerShell 의 백슬래시는 이스케이프가 아니라(백틱이 이스케이프다) 그 셸에서는 `\\"` 를 따지지 않는다 — `"docs\\"`
+    는 거기서 닫힌 문자열이다(교차 검토 4차).
+    No backtick or comment, no backslash right before a quote character (Bash only), and every quote closed?"""
+    if "`" in text or "#" in text or (_CONTEXT["shell"] != "powershell" and re.search(r"\\['\"]", text)):
         return False
     quote = None
     for ch in text:
@@ -1250,11 +1520,12 @@ def _split_unquoted(text, separators):
     return parts
 
 
-# 🔴 리디렉션(`>&2` · `> 파일` · `<`)과 명령·프로세스 치환(`$(` · `<(` · `>(`)이 든 단계는 중화하지 않는다 —
-#    출력이 cut 을 비켜 가거나 쓰기 명령 안에서 읽기가 돈다(보안 리뷰 지적).
-# A stage with redirection or substitution is never neutralized: output can bypass the cut, or a read
-# can run inside a write.
-_UNREADABLE_STAGE = re.compile(r"[<>]|\$\(")
+# 🔴 리디렉션(`>&2` · `> 파일` · `<`)과 괄호(명령·프로세스 치환 `$(` · `<(` · `>(` · 서브셸 · extglob `@(a|b)`)가 든
+#    단계는 중화하지 않는다 — 출력이 cut 을 비켜 가거나 쓰기 명령 안에서 읽기가 돌고, extglob 안의 `|` 는 파이프가
+#    아니다(보안 리뷰 · AntiGravity 교차 검토).
+# A stage with redirection or any parenthesis (substitution, subshell, extglob) is never neutralized: output can
+# bypass the cut, a read can run inside a write, and a `|` inside `@(a|b)` is no pipe.
+_UNREADABLE_STAGE = re.compile(r"[<>()]")
 
 
 def _neutralized(stages, i, neutralizers):
@@ -1262,21 +1533,47 @@ def _neutralized(stages, i, neutralizers):
     stage = stages[i]
     if _UNREADABLE_STAGE.search(stage):
         return False
+    # 이 단계와 다음 단계를 가른 `|` 가 이스케이프(`\|`)였으면 파이프가 아니다 — 셸은 `printenv \| grep -c KEY` 를
+    # `printenv '|' grep -c KEY` 로 돌려 KEY 의 값을 찍는다(커밋 보안 검토). 다음 단계로는 무엇도 중화하지 않는다.
+    # An escaped `\|` is not a pipe: the shell runs `printenv '|' grep -c KEY` and prints KEY's value.
+    if (len(stage) - len(stage.rstrip("\\"))) % 2 == 1:
+        return False
+    # `${X:-|}` · `$'…'` 안의 `|` 도 셸에겐 파이프가 아니다 — 확장 · ANSI 문자열이 든 덤프 단계는 중화하지 않는다(커밋 보안 검토).
+    # A `|` inside `${…}` or `$'…'` is not a pipe either: never neutralize a dump stage holding one.
+    if "${" in stage or "$'" in stage:
+        return False
     is_variable = _WRITE in neutralizers  # railway variable 항목만 쓰기 중화를 가진다
     call = _railway_variable_call(stage) if is_variable else None
     # 한 단계에 railway variable 호출이 둘 이상이면 쓰기로 덮지 않는다 / never excuse two calls in one stage
     single = len(re.findall(_RW + r"\s+(?:variables?|vars?)\b", stage, re.IGNORECASE)) == 1
     if is_variable and single and call is not None and call[0]:
         return True
-    # 🔴 이름만 자르는 cut 은 덤프 **바로 다음** 단계여야 한다 — 사이 단계(`tee /dev/stderr` 등)가 값을
-    #    복제할 수 있다. railway variable 은 KEY=VALUE(--kv · -k, --json 없음) 출력일 때만 — 토큰으로 본다.
-    # The names-only cut must be the very next stage (a stage in between, e.g. tee, can copy values).
-    # For railway variable it needs KEY=VALUE output (--kv/-k without --json), read as tokens.
-    if _NAMES in neutralizers and i + 1 < len(stages) and _CUT_IDIOM.fullmatch(stages[i + 1]):
-        if is_variable:
-            return (call is not None and bool({"--kv", "-k"} & call[1])
-                    and "--json" not in call[1])
+    if _NAMES not in neutralizers or i + 1 >= len(stages):
+        return False
+    nxt = stages[i + 1]
+    # 바로 다음 단계가 개수만(grep -c · -q · -l · wc) 내면 값이 나오지 않는다(원장 #1917 P1-5 — `env | grep -c X` 오탐).
+    # A very next stage that prints only counts prints no value.
+    if _COUNT_ONLY_GREP_STAGE.fullmatch(nxt) or _WC_COUNT_ONLY.fullmatch(nxt):
         return True
+    # 🔴 이름만 자르는 단계(cut 관용구 · `grep -o '^[A-Z_]*='`)는 덤프 **바로 다음** 이고 덤프가 KEY=VALUE 줄을 낼 때만 —
+    #    사이 단계(`tee /dev/stderr` 등)는 값을 복제하고, `printenv 이름` 은 값만 내서 «`=` 앞» 이 곧 값이다(AntiGravity
+    #    교차 검토 — cut 은 main 때부터 샜다). railway variable 은 KEY=VALUE(--kv · -k, --json 없음) 출력일 때만 — 토큰으로 본다.
+    # A names-only stage must be the very next one and the dump must print KEY=VALUE lines (printenv NAME prints the
+    # bare value). For railway variable it needs --kv/-k without --json, read as tokens.
+    if not (_CUT_IDIOM.fullmatch(nxt) or _names_only_grep(nxt)) or _prints_bare_values(stage):
+        return False
+    if is_variable:
+        return call is not None and bool({"--kv", "-k"} & call[1]) and "--json" not in call[1]
+    return True
+
+
+def _prints_bare_values(stage):
+    """덤프 단계가 KEY=VALUE 가 아니라 값만 내는가 — `printenv 이름…` 은 그 변수들의 값만 한 줄씩 낸다.
+    Does the dump print bare values (printenv with names) instead of KEY=VALUE lines?"""
+    words = _plain_words(stage)
+    for k, word in enumerate(words):
+        if _command_name(word) == "printenv":
+            return any(not w.startswith("-") for w in words[k + 1:])
     return False
 
 
@@ -1290,9 +1587,12 @@ def _decide_segment(segment, marked=None):
     if len(path_stages) != len(stages):
         path_stages = stages  # 나뉨이 어긋나면 표지를 쓰지 않는다 / never trust a misaligned split
     # 🔴 `#` 이 있으면 그 뒤가 주석일 수 있다 — `--kv # | cut -d= -f1` 의 cut 은 실행되지 않는다(Grok G1).
-    #    단계 분해는 주석을 모르므로, `#` 이 든 세그먼트에서는 어떤 중화도 인정하지 않는다.
-    # A `#` may start a comment («--kv # | cut» never runs the cut), so no neutralizer counts there.
-    commented = "#" in segment
+    #    단계 분해는 주석을 모르므로, `#` 이 든 세그먼트에서는 어떤 중화도 인정하지 않는다. 따옴표를 믿을 수 없을
+    #    때(`\"` · 백틱)도 같다 — 분할이 따옴표 안의 `|` 로 나눠, `printenv K '\"|wc -l|'` 의 wc 는 printenv 의 인자일
+    #    뿐이다(AntiGravity 교차 검토).
+    # A `#` may start a comment («--kv # | cut» never runs the cut), and untrusted quotes split on quoted bars:
+    # no neutralizer counts in either case.
+    unneutralizable = "#" in segment or not _quotes_trustworthy(segment)
     # 나열 → 내용 읽기 파이프라인(`Get-ChildItem [-Recurse] | Select-String`) — 단계 하나로는 안 보인다.
     # A listing piped into a content reader is only visible across stages.
     if len(stages) > 1 and _listing_pipeline_reads_dotenv(stages):
@@ -1307,9 +1607,10 @@ def _decide_segment(segment, marked=None):
             # 🔴 .env 를 다루는 «안전한» 명령도 출력이 다음 단계로 넘어가면 읽기다(`ls .env | xargs cat` ·
             #    `Get-Item .env | Get-Content` — 보안 리뷰 지적). 안전은 파이프라인의 마지막 단계일 때만.
             # A "safe" .env command whose output flows to a next stage is a read; safe only as the last stage.
-            if not hit and matcher is _reads_dotenv and i + 1 < len(stages) and _mentions_dotenv(path_stages[i]):
+            if (not hit and matcher is _reads_dotenv and i + 1 < len(stages)
+                    and _mentions_dotenv(_without_search_pattern(path_stages[i]))):
                 hit = True
-            if hit and (commented or not _neutralized(stages, i, neutralizers)):
+            if hit and (unneutralizable or not _neutralized(stages, i, neutralizers)):
                 return reason, hint
     return None
 
@@ -1874,9 +2175,35 @@ def decide_mcp_production_access(tool_name):
     return None
 
 
-def _emit_production_deny(tool, reason):
+# 거부 기록 — 회고가 정밀도(오탐)를 센다(원장 #1917 M02 P1-5). 값 · 명령 글자는 남기지 않는다: 시각 · 종류 · 사유 ·
+# 명령 sha256 · 길이만. 기본 자리는 리포 밖 `~/.scamanager/hook-denials.jsonl`, SCAMANAGER_HOOK_LOG 로 바꾼다.
+# Denial records for the retro's precision count: time, kind, reason, command sha256 and length only.
+_DENIAL_LOG_ENV = "SCAMANAGER_HOOK_LOG"
+
+
+def _record_denial(kind, reason, subject):
+    """거부 한 줄을 남긴다 — 못 써도 판정은 그대로다(기록은 계기이지 관문이 아니다).
+    Append one value-free denial record; a write failure never changes the verdict."""
+    path = os.environ.get(_DENIAL_LOG_ENV) or os.path.join(os.path.expanduser("~"), ".scamanager", "hook-denials.jsonl")
+    subject = subject or ""
+    line = json.dumps({"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "kind": kind, "reason": reason,
+                       "sha256": hashlib.sha256(subject.encode("utf-8", "replace")).hexdigest(), "len": len(subject)},
+                      ensure_ascii=True)
+    try:
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
+    except OSError:
+        return  # 기록을 못 써도 판정은 막지도 풀지도 않는다 / logging never decides
+
+
+def _emit_production_deny(tool, reason, subject=""):
     """운영 접근 차단 출력 — 대안(사용자의 `!` 실행 · 자율 읽기)을 늘 함께 알린다.
     Emit the production-access denial, always with the alternative."""
+    # 기록에는 « — » 뒤의 정적 범주만 — 앞쪽은 명령 낱말(하위 명령 자리에 온 값 · 둘째 낱말)을 품는다(AntiGravity 교차
+    # 검토: `railway --token 값 status` 의 값이 사유째 남았다). 에이전트에게 보이는 사유는 그대로 둔다.
+    # The record keeps only the static category after « — »; the part before it embeds command words.
+    _record_denial("production", reason.rpartition(" — ")[2], subject or tool)
     output = {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
@@ -1934,6 +2261,7 @@ def _emit_unjudged(text, why):
     lowered = (text or "").lower()
     marker = next((m for m in _UNJUDGED_MARKERS if m in lowered), None)
     if marker:
+        _record_denial("unjudged", f"판정 불가({why}) · 표지 «{marker}»", text)
         output = {
             "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
@@ -1986,13 +2314,14 @@ def _judge(payload):
         # The credential verdict first (more specific guidance for value leaks); then production access.
         production = None if found else decide_production_access(command)
         if production:
-            return _emit_production_deny(tool, production)
+            return _emit_production_deny(tool, production, command)
     else:
         production = decide_mcp_production_access(tool)
         return _emit_production_deny(tool, production) if production else 0
     if found is None:
         return 0
     reason, hint = found
+    _record_denial("credential", reason, (payload.get("tool_input") or {}).get("command") or tool)
     if hint == _SAFE_CONFIG:
         safe = f"배포 설정은 변수 값을 뺀 읽기로 보세요:\n  {_SAFE_CONFIG}\n\n"
     elif hint == _SAFE_ENV:

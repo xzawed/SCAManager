@@ -1,4 +1,7 @@
+import atexit
 import os
+import shutil
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -54,6 +57,12 @@ for _name in ("OPENAI_API_KEY", "TELEGRAM_WEBHOOK_SECRET", "API_KEY", "INTERNAL_
 # 벨트+멜빵 — 키가 어떤 경로로든 살아나도 Anthropic 호출이 기계 밖으로 나가지 않는다.
 # Belt and braces: even if a key survives, Anthropic calls cannot leave the machine.
 os.environ["ANTHROPIC_BASE_URL"] = "http://127.0.0.1:1"
+# credential 훅의 거부 기록(원장 #1917 M02 P1-5)이 시험 중 실제 홈(~/.scamanager)에 쌓이면 회고의 정밀도 계산이 오염된다 —
+# 실행마다 버리는 임시 자리로 돌린다. subprocess 로 돌리는 훅도 이 환경을 물려받는다.
+# Keep the hook's denial log out of the real home during tests (subprocess hooks inherit this).
+_HOOK_LOG_DIR = tempfile.mkdtemp(prefix="scam-hook-log-")
+atexit.register(shutil.rmtree, _HOOK_LOG_DIR, True)
+os.environ["SCAMANAGER_HOOK_LOG"] = os.path.join(_HOOK_LOG_DIR, "hook-denials.jsonl")
 
 from src.main import app
 from src.ui.routes import add_repo as _add_repo_module
