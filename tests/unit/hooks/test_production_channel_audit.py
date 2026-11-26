@@ -341,6 +341,7 @@ _PRODUCTION_WRITES = [
     ("PowerShell", "& 'C:\\x\\railway.cmd' up"),
     ("PowerShell", "try { railway status } catch { railway redeploy -y }"),
     ("PowerShell", "foreach ($s in 1..2) { railway up }"),
+    ("PowerShell", "'$x = railway up' | Invoke-Expression"),  # 앞 단계 글자를 돌린다 — main 은 대입 머리를 못 봤다
     ("Bash", 'timeout 60 bash -c "railway up"'),
     ("Bash", "cmd //c railway up"),
     ("Bash", "x=$(bash <<'EOF'\nrailway up\nEOF\n)"),
