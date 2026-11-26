@@ -190,6 +190,9 @@ _POWERSHELL_ALLOWED = {
         ["railway deployment list", "railway logs"],
     'foreach ($q in $queries) { py -3 scripts\\observe_db.py $q }': ["observe_db"],
     "Start-Job { railway logs } | Receive-Job -Wait": ["railway logs"],
+    # 전체 경로 railway 의 읽기 · 이름만 관용구는 통과하고 기록된다 / full-path reads and the names idiom pass and are audited
+    "C:\\Users\\x\\AppData\\Roaming\\npm\\railway.cmd status": ["railway status"],
+    "C:\\Users\\x\\AppData\\Roaming\\npm\\railway.cmd variables --kv | cut -d= -f1": ["railway variables"],
 }
 
 
@@ -212,6 +215,11 @@ _UNBLOCKED_PRODUCTION_WRITES = [
     ("PowerShell", "Measure-Command { railway redeploy }"),
     ("PowerShell", "Start-Job { railway up } | Receive-Job -Wait"),
     ("PowerShell", "Invoke-Command -ScriptBlock { railway redeploy }"),
+    # PowerShell 의 전체 경로 railway — 백슬래시를 이스케이프로 읽어 운영 판정이 railway 를 못 알아봤다(main 때부터 · 변수 쓰기는
+    # credential 층이 «덤프» 로 우연히 막고 있었다 · 워크플로 C3 재검토). A full-path railway in PowerShell was unrecognised.
+    ("PowerShell", "C:\\Users\\x\\AppData\\Roaming\\npm\\railway.cmd variables --set FOO=bar"),
+    ("PowerShell", "C:\\tools\\railway.cmd up"),
+    ("PowerShell", 'cmd /c "C:\\tools\\railway.cmd up"'),
     ("Bash", 'timeout 60 bash -c "railway up"'),
     ("Bash", "cmd //c railway up"),
     ("Bash", "x=$(bash <<'EOF'\nrailway up\nEOF\n)"),

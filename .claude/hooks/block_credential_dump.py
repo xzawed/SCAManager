@@ -2038,7 +2038,7 @@ def _prod_receiver(prefix):
     """heredoc 을 받는 명령의 첫 낱말 / the head of the command that receives a heredoc."""
     segments = _split_segments(prefix) or [""]
     stages = _split_stages(segments[-1]) or [""]
-    return _prod_head(_command_words(stages[-1])[0])
+    return _prod_head(_command_words(stages[-1], ps_literal=True)[0])
 
 
 def _prod_runs_text(head):
@@ -2050,7 +2050,7 @@ def _prod_runs_text(head):
 def _prod_pipes_into_runner(text):
     """뒤 파이프 단계가 글자를 실행하는 명령인가 — `cat <<'EOF' | bash` · `'@ | iex` 는 글자 heredoc 이라도 돈다
     (Grok 3차 반례 · Claude 확인). Does a later pipeline stage execute the text?"""
-    return any(_prod_runs_text(_prod_head(_command_words(stage)[0])) for stage in _split_stages(text)[1:])
+    return any(_prod_runs_text(_prod_head(_command_words(stage, ps_literal=True)[0])) for stage in _split_stages(text)[1:])
 
 
 def _prod_reads_stdin(head, rest):
@@ -2233,7 +2233,10 @@ def _prod_decide_text(text, depth, channels=None):
             stages = _split_stages(segment)
             for index, stage in enumerate(stages):
                 stage = _prod_without_ps_assignment(stage)
-                head, rest = _command_words(stage)
+                # 운영 순회는 PowerShell 백슬래시를 글자로 읽는다 — `C:\…\railway.cmd up` 을 railway 로 알아본다(워크플로 C3
+                # 재검토 · main 때부터). credential 층의 해석은 그대로다(find 정규식 이스케이프).
+                # The production walk reads PowerShell backslashes literally; the credential layer does not.
+                head, rest = _command_words(stage, ps_literal=True)
                 head = _prod_head(head)
                 if not head:
                     continue
@@ -2244,7 +2247,7 @@ def _prod_decide_text(text, depth, channels=None):
                     # 낱말 하나씩과 이어 붙인 인자 전체 — `echo railway up | bash` 는 따옴표 없이 두 낱말로 넘긴다
                     # each word and the joined arguments (`echo railway up | bash` passes two unquoted words)
                     for earlier in stages[:index]:
-                        first, more = _command_words(earlier)
+                        first, more = _command_words(earlier, ps_literal=True)
                         pieces = [first, *more, " ".join(more)]
                         for n, piece in enumerate(pieces):
                             # 채널은 이어 붙인 인자(마지막 조각)에서만 센다 / channels only from the joined arguments
