@@ -262,6 +262,7 @@ _UNBLOCKED_PRODUCTION_WRITES = [
     ("Bash", "git commit -m \"$(cat <<'EOF'\nmsg\nEOF)\"\nrailway up"),
     ("Bash", "x=$(cat <<'EOF'\nbody\nEOF)\nrailway up"),
     ("Bash", "echo \"$(( 1 << n ))\"\nrailway up\nn"),
+    ("Bash", "echo $(( 1 << n ))\nrailway up\nn"),  # 따옴표 없는 산술 — main 은 `<< n` 을 heredoc 으로 읽었다
     ("PowerShell", "if ($x) { railway status } else { railway up }"),
     # watch · flock -c 는 인자 글자를 셸로 돌린다 · 형 제약이 붙은 대입(main 때부터) / shell text of watch and flock -c,
     # typed PowerShell assignments
