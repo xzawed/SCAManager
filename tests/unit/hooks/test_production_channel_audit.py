@@ -101,6 +101,13 @@ _ALLOWED = {
     "# it's a read-only check\nDEP=$(railway status --json | jq -r .id)\necho \"$DEP\"": ["railway status"],
     'case "$ENVN" in prod) railway status ;; esac': ["railway status"],
     "echo $'it\\'s'; railway status": ["railway status"],
+    # 감사 heredoc 잠금 — 산술 안 `<<` · `EOF)` 로 닫힌 뒤의 호출 · 치환 안 받는 명령(bash) · 하이픈 구분자 뒤의 호출
+    # audit heredoc locks: arithmetic, a call after a glued `EOF)`, a bash receiver inside $(, a hyphenated delimiter
+    "echo $(( 1 << n ))\nrailway status\nn": ["railway status"],
+    'echo "$(( n << shift ))"\nrailway status': ["railway status"],
+    "x=$(cat <<'EOF'\nbody\nEOF)\nrailway status": ["railway status"],
+    "x=$(bash <<'EOF'\nrailway status\nEOF\n)": ["railway status"],
+    "cat > notes.md <<END-NOTES\nhello\nEND-NOTES\nrailway status": ["railway status"],
 }
 
 
@@ -155,6 +162,7 @@ _MENTIONS = ['grep -n "railway status" docs/a.md', "cat scripts/observe_db.py", 
              "railway logs inside such a body is not a call\nEOF\n)\"",
              "NOTES=$(cat <<'EOF'\nrailway status was green\nEOF)\necho \"$NOTES\"",
              "cat > notes.txt <<\\EOF\nrailway status looked fine\nEOF",
+             "cat > notes.txt <<\\EOF\n$(railway status)\nEOF",  # `<<\\EOF` 본문의 치환은 글자다 / literal body
              "echo done \\; railway status",
              # 셋째 패스가 짚은 새 거부(C3) — 판정은 main 그대로라 통과한다 / new false denials of the third pass, now main's
              "if npm ls -g @railway/cli >/dev/null 2>&1; then echo installed; fi",
@@ -243,6 +251,8 @@ _POWERSHELL_ALLOWED = {
     "foreach ($id in @('a','b'))\n{ railway logs --deployment $id }": ["railway logs"],
     '"railway status" | Invoke-Expression': ["railway status"],
     "$who = (railway whoami).Trim()": ["railway whoami"],
+    # 주석 속 짝 없는 괄호가 뒤 블록을 삼키지 않는다 / an unbalanced bracket in a comment does not swallow later blocks
+    "Write-Host x # note (\n1..2 | % { railway status }": ["railway status"],
 }
 
 
@@ -258,6 +268,7 @@ _POWERSHELL_MENTIONS = ["Get-ChildItem | % { Select-String -Path $_ -Pattern rai
                         "$check = { railway whoami; railway status }",
                         "function Get-DeployStatus {\n    railway status --json\n}",
                         "<#\nrailway logs --deployment X\n#>\nGet-Date",
+                        "$sb = { Write-Output $(railway status) }",  # 정의만 한 블록 속 치환 / a substitution in it
                         # 셋째 패스가 짚은 새 거부(C3) — 판정은 main 그대로라 통과한다 / now main's verdict
                         "@'\n## 요약\n- 허용된 운영 채널 호출을 값 없이 기록한다\n'@ | Set-Content -Encoding utf8 pr-body.md\n"
                         "gh pr create --base main --title 'feat(hooks): 운영 채널 감사 기록 (railway 읽기 · 운영 스크립트)' "
