@@ -35,12 +35,13 @@ cannot be enumerated by a text hook; prior approval of production access covers 
 🔴 운영 접근(회고 2026-11-06 원장 L02, P0) — 같은 훅이 그 «사전 승인» 을 기계로 집행한다. 운영은 SQL 동사가
 아니라 행위로 가른다: railway 는 읽기(배포 목록 · 로그 · 상태 · 지표 · 도움말)만 통과시키는 허용 목록이고,
 운영 컨테이너 코드 실행 · 운영 변수를 넣은 실행 · 배포 · 변수 · 환경 변경과 Railway · Supabase MCP 의 변경 ·
-SQL 도구는 막는다 — 사용자가 `!` 로 직접 실행한다. 훅을 하나 더 띄우지 않고 이 파일에 둔 것은 셸 명령마다
+SQL 도구, 사용자 몫 스크립트(관측 역할 설정 `observer_setup` · 운영 DB 쓰기 `backfill_repository_user_id --apply`)는
+막는다 — 사용자가 `!` 로 직접 실행한다. 훅을 하나 더 띄우지 않고 이 파일에 둔 것은 셸 명령마다
 드는 훅 고정 비용 때문이다(회고 L11) — 해석기(세그먼트 · 단계 · 명령 자리)도 같이 쓴다.
 The same hook enforces that prior approval: production is judged by action (railway reads only; code in
-the production container, runs with production variables, deploy/variable/environment changes and the
-changing or SQL MCP tools are denied — the user runs them with `!`). Kept in this file to avoid a second
-hook process per shell call; it reuses the same parser.
+the production container, runs with production variables, deploy/variable/environment changes, the
+changing or SQL MCP tools and the user-only scripts are denied — the user runs them with `!`). Kept in
+this file to avoid a second hook process per shell call; it reuses the same parser.
 
 🔴 판정하지 못한 호출 — 훅 프로세스가 시작하지 못하거나 · 0/2 밖의 코드로 끝나거나 · 시간을 넘기면 settings 의
 `onFailure: "block"` 이 그 호출을 막는다. 판정 중 예외 · JSON 객체가 아닌 입력은 «판정 불가» 로 받아 운영 · 자격 표지
