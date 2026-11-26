@@ -816,6 +816,7 @@ _USER_ONLY_SCRIPTS = [
     ("Bash", 'x="$(echo a  # see (notes\n)"; py -3 scripts/observer_setup.py'),
     ("Bash", 'x="$(echo "(" ${#a})"; py -3 scripts/observer_setup.py'),
     ("Bash", "timeout 60 cmd <<'EOF'\nif exist dist (\n  echo built) else (py -3 scripts\\observer_setup.py)\nEOF"),  # 줄을 넘는 블록
+    ("Bash", "cmd //c \"if exist x (bash -c '(echo hi; py -3 scripts/observer_setup.py)')\""),  # 블록 안 홑따옴표는 자식 셸 몫
     # 치환 몸의 case 는 `&&` · `||` · then · do · else 뒤도 / case inside a body after && || then do else
     ("Bash", 'out=$(cd /tmp && case "$1" in dev) echo dev;; prod) py -3 scripts/observer_setup.py;; esac)'),
     ("Bash", 'out=$(false || case "$1" in dev) echo dev;; prod) py -3 scripts/observer_setup.py;; esac)'),
