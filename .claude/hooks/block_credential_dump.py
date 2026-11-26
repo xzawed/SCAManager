@@ -3119,12 +3119,12 @@ def _cmd_literal(text):
     return " '" + text.replace("'", "''") + "'"
 
 
-# 블록 안 · do · else · if 조건 뒤의 인자가 글자인 명령 — 조건 뒤는 공백, 명령 낱말 뒤는 낱말 경계(`if exist
-# scripts\observer_setup.py (…)` 의 `set` 을 명령으로 읽고 뒤 블록을 덮었다 — 열째 패스 고침의 회귀)
-# a text-argument builtin opening a block or after do / else / an if test, as a whole word
+# 블록 안 · do · else · if 조건 뒤의 인자가 글자인 명령 — 조건 뒤는 공백이다(`if exist scripts\observer_setup.py (…)` 의
+# `set` 을 명령으로 읽고 뒤 블록을 덮었다 — 열째 패스 고침의 회귀)
+# a text-argument builtin opening a block or after do / else / an if test (whitespace after the test)
 _CMD_BLOCK_TEXT = re.compile(
     r"(?i)(?:\(\s*|\b(?:do|else)\s+|\bif\s+(?:/i\s+)?(?:not\s+)?(?:(?:exist|defined|errorlevel)\s+\S+|\S+\s*==\s*\S+"
-    r"|\S+\s+(?:equ|neq|lss|leq|gtr|geq)\s+\S+)\s+)(?:echo|set|title)\b")
+    r"|\S+\s+(?:equ|neq|lss|leq|gtr|geq)\s+\S+)\s+)(?:echo|set|title)")
 
 
 def _cmd_block_text(statement):

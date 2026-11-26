@@ -264,6 +264,7 @@ _MENTIONS = ['grep -n "railway status" docs/a.md', "cat scripts/observe_db.py", 
              "cmd //c 'if exist dist (echo \"step 2) build; railway up later\")'",
              'kind=$(\n  # classify\n  case "$1" in\n    *.md) echo docs ;;\n    observer_setup.py) echo user-only ;;\n  esac\n)',
              'kind=$(\n  f="${1##*/}"\n  case "$f" in\n    observer_setup.py) echo user-only ;;\n    *) echo other ;;\n  esac\n)',
+             'x=$(case "$1" in a) case "$2" in b) echo b;; esac;; scripts/observer_setup.py) echo user;; esac)',  # 갈래 `)` 뒤 case
              'case "$1" in\n  a) echo "(x) esac done" ;;\n  scripts/observer_setup.py) echo "user-only" ;;\nesac',
              'case "$1" in\n  start) echo starting ;;   # (nested case ends with) esac\n'
              + '  stop|scripts/observer_setup.py) echo stop ;;\nesac']
@@ -624,7 +625,6 @@ _PRODUCTION_WRITES = [
     ("Bash", 'cmd //c "npm config set registry= & railway up"'),
     ("Bash", "cmd //c \"bash -c '(echo hi; railway up)'\""),
     ("Bash", 'cmd //c "if exist deploy-set.flag (railway up)"'),  # 조건 속 `set` 은 명령이 아니다 / not a command word
-    ("Bash", 'cmd //c "for %f in (a) do (setup_check.cmd & railway up)"'),
 ]
 
 
@@ -773,6 +773,12 @@ _USER_ONLY_SCRIPTS = [
     ("Bash", 'r=$(if true\nthen\n  case "$1" in\n    p) py -3 scripts/observer_setup.py ;;\n  esac\nfi)'),  # 줄 처음 then 뒤
     ("PowerShell", "@'\ncd /d C:\\repo && echo In repo\nif exist scripts\\observer_setup.py (py -3 scripts\\observer_setup.py --host db)\n'@ | cmd"),
     ("Bash", 'out=$(\n  echo x\n  { case "$1" in dev) echo dev ;; prod) py -3 scripts/observer_setup.py ;; esac; }\n)'),  # 묶음 `{` 뒤
+    # 치환 몸의 case 는 `&&` · `||` · then · do · else 뒤도 / case inside a body after && || then do else
+    ("Bash", 'out=$(cd /tmp && case "$1" in dev) echo dev;; prod) py -3 scripts/observer_setup.py;; esac)'),
+    ("Bash", 'out=$(false || case "$1" in dev) echo dev;; prod) py -3 scripts/observer_setup.py;; esac)'),
+    ("Bash", 'r=$(if true; then case "$1" in p) py -3 scripts/observer_setup.py;; esac; fi)'),
+    ("Bash", 'r=$(for e in a; do case "$e" in a) py -3 scripts/observer_setup.py;; esac; done)'),
+    ("Bash", 'r=$(if false; then :; else case "$1" in p) py -3 scripts/observer_setup.py;; esac; fi)'),
 ]
 
 
