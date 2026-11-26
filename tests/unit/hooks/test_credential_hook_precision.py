@@ -60,6 +60,15 @@ _MUST_PASS = {
     "pattern-mentions-dotenv-recursive-stderr": 'grep -rn "\\.env" docs/ 2>/dev/null',
     "rg-pattern-mentions-dotenv": 'rg -n "\\.env" docs',
     "pattern-mentions-dotenv-piped": 'grep -n "\\.env" docs/a.md | head -5',
+    # 따옴표를 모르는 글자 휴리스틱이 막았던 정직한 꼴(교차 검토 3차) — 패턴 속 빈 따옴표 · `'\''` 관용구 ·
+    # 이스케이프한 따옴표 · `<` 로 시작하는 따옴표 안 패턴 · 깨끗한 폴더의 `{}` 검색.
+    # Honest shapes a quote-blind text heuristic denied (round 3).
+    "nested-empty-quotes-in-pattern": "rg 'default=\"\"' src/",
+    "nested-single-quotes-in-pattern": "grep -rn \"x == ''\" src/",
+    "single-quote-escape-idiom": "grep -rn 'don'\\''t' docs/",
+    "escaped-quotes-in-recursive-pattern": 'grep -rn "\\"quoted\\"" docs/',
+    "quoted-pattern-starting-with-redirect": "grep -n '<.env.local' docs/a.md",
+    "brace-pattern-over-a-clean-folder": 'grep -rn "{}" docs/',
 }
 
 # 같은 꼴의 위험한 짝 — 값이 나온다(또는 나올 수 있다).
@@ -132,6 +141,11 @@ _MUST_BLOCK = {
     "recursive-brace-pattern": 'grep -rn "{}" . docs/',
     "escaped-redirect-is-literal": "grep KEY\\> .env",
     "read-write-redirect-reads": "cat <>.env",
+    # 3차(AntiGravity · Grok) — 따옴표 없는 `{}` 도 낱말 나누기에서 사라졌다 · 낱말 바로 뒤에 붙은 `<` 도 리디렉션이다.
+    # Round 3: an unquoted `{}` vanished too; a `<` glued right after a word is still a redirection.
+    "recursive-unquoted-brace-pattern": "grep -rn {} . docs/",
+    "unspaced-redirect-after-a-word": "cat<.env.local",
+    "unspaced-redirect-after-an-option": "grep -i<.env KEY",
 }
 
 
@@ -147,12 +161,27 @@ def test_their_dangerous_twins_are_still_denied(name, workdir):
     assert _verdict(_MUST_BLOCK[name], workdir) is not None, name
 
 
+# Bash 의 `\"` 이스케이프에 기대는 짝 — PowerShell 의 백슬래시는 이스케이프가 아니라(`"K=\"` 는 거기서 닫힌 문자열)
+# 그 셸에서는 .env 가 패턴 문자열 안에 든다. Twins that rely on Bash's `\"` escape; in PowerShell `\` is literal.
+_BASH_ESCAPE_ONLY = frozenset({"escaped-quotes-swallow-dotenv", "recursive-escaped-quotes-swallow-target"})
+
+
 def test_the_dangerous_twins_are_denied_in_powershell_mode_too(workdir):
     """PowerShell 이 기본 셸이다 — 셸 모드(글롭 · 따옴표 해석)가 갈라도 위험한 짝은 다 막는다(AntiGravity 교차 검토).
     PowerShell is the default shell; every dangerous twin stays denied in that mode as well."""
     allowed = [name for name, command in sorted(_MUST_BLOCK.items())
-               if hook.decide_with_hint(command, str(workdir), "powershell") is None]
+               if name not in _BASH_ESCAPE_ONLY and hook.decide_with_hint(command, str(workdir), "powershell") is None]
     assert not allowed, allowed
+
+
+def test_a_powershell_backslash_is_never_an_escape(workdir):
+    """🔴 PowerShell 에서 `\\` 는 경로 구분자다 — Bash 처럼 `\\"` 를 이스케이프로 읽으면 `"docs\\" , .env , "src\\"` 의
+    따옴표 짝이 뒤집혀 .env 가 문자열 안으로 삼켜지고(구멍), 끝이 `\\` 인 폴더(`"docs\\"`)는 낱말 나누기가 깨져 막힌다
+    (오탐 · AntiGravity 3차). In PowerShell a backslash is a path separator, never an escape."""
+    for command in ('Get-Content "docs\\" , .env , "src\\"', 'Select-String -Path "docs\\" , ".env" , "src\\" -Pattern KEY'):
+        assert hook.decide_with_hint(command, str(workdir), "powershell") is not None, command
+    for command in ('rg "KEY" "docs\\"', 'cd "docs\\" ; rg KEY .'):
+        assert hook.decide_with_hint(command, str(workdir), "powershell") is None, command
 
 
 # witness-corpus: 덤프 뒤 «개수만 · 아무것도 안 냄» 단계 가운데 판정식(grep -c/-q/-l · wc 개수 플래그) 밖의 꼴

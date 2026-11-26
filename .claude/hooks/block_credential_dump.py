@@ -300,18 +300,51 @@ _REDIRECT_TARGET = re.compile(r"(?<![\\<])>>?\s*(['\"]?)[^\s'\";|&()<>]+\1")
 # 출력 리디렉션 통째(앞 fd 번호 · `&>` · `>&2` 포함) — 검색 대상을 셀 때 걷는다. 입력(`<`)은 읽기라 남긴다.
 # A whole output redirection (fd number, &>, >&N); stripped before counting search targets. Input `<` stays.
 _OUTPUT_REDIRECT = re.compile(r"(?:(?<=\s)\d+|&)?(?<![\\<])>>?(?:&\d+|\s*(['\"]?)[^\s'\";|&()<>]+\1)")
-# 토큰 앞에 붙은 입력 리디렉션 연산자(`<` · `0<` · `<>` · `<<<`) / an input-redirect operator attached to a token
-_INPUT_REDIRECT_PREFIX = re.compile(r"^\d*<+>?")
-# 백슬래시 — 짝(`\\`)이거나 따옴표 글자 앞이 아닌 것. 따옴표 앞의 것(`\"`)은 셸의 이스케이프라 / 로 바꾸지 않는다.
-# A backslash pair, or a backslash not before a quote; `\"` is a shell escape and stays.
+# 입력 리디렉션이 읽는 낱말(`<` · `<>` 바로 뒤 · 따옴표로 감싸도) / the word an input redirection reads
+_REDIRECT_READ_TARGET = re.compile(r"""<>?\s*(['"]?)([^\s'"<>|;&()]+)\1""")
+# 백슬래시 — 짝(`\\`)이거나 따옴표 글자 앞이 아닌 것. 따옴표 앞의 것(`\"`)은 Bash 의 이스케이프라 / 로 바꾸지 않는다.
+# A backslash pair, or a backslash not before a quote; in Bash `\"` is an escape and stays.
 _SLASHABLE = re.compile(r"\\\\|\\(?!['\"])")
 
 
 def _slashed(text):
-    """백슬래시를 / 로(Windows 경로) — 따옴표 글자 앞의 것(`\\"`)은 셸의 이스케이프라 남긴다. 그것까지 바꾸면
-    `-e "K=\\"" .env -e "S=\\""` 의 따옴표 짝이 뒤집혀 .env 가 따옴표 안으로 삼켜진다(AntiGravity 2차).
-    Backslashes become slashes, except a shell escape before a quote character (it would flip quote parity)."""
+    """백슬래시를 / 로(Windows 경로). Bash 에서는 따옴표 글자 앞의 것(`\\"`)이 이스케이프라 남긴다 — 바꾸면
+    `-e "K=\\"" .env -e "S=\\""` 의 따옴표 짝이 뒤집혀 .env 가 따옴표 안으로 삼켜진다(AntiGravity 2차). PowerShell 의
+    백슬래시는 이스케이프가 아니라(백틱이 이스케이프다) 전부 바꾼다 — 남기면 `"docs\\" , .env , "src\\"` 의 짝이 거꾸로
+    뒤집힌다(3차). Backslashes become slashes; in Bash a backslash before a quote is an escape and stays, in
+    PowerShell a backslash is never an escape."""
+    if _CONTEXT["shell"] == "powershell":
+        return text.replace("\\", "/")
     return _SLASHABLE.sub(lambda m: "/" * len(m.group()), text)
+
+
+def _unquoted_lt(text):
+    """따옴표 밖 `<` 의 자리 — 따옴표를 믿을 수 없으면 모든 `<`(막는 쪽). Positions of `<` outside quotes."""
+    if not _quotes_trustworthy(text):
+        return [i for i, ch in enumerate(text) if ch == "<"]
+    found, quote = [], None
+    for i, ch in enumerate(text):
+        if quote:
+            quote = None if ch == quote else quote
+        elif ch in "'\"":
+            quote = ch
+        elif ch == "<":
+            found.append(i)
+    return found
+
+
+def _input_redirect_targets(text):
+    """따옴표 밖 입력 리디렉션(`<` · `0<` · `<>` — 붙여 써도: `cat<.env.local` · `grep -i<.env K`)이 읽는 낱말.
+    `<<` · `<<<`(글자를 넘긴다) · `<(`(프로세스 치환 — 안쪽은 따로 판정한다)은 아니다. 따옴표 안의 `<`(`'<.env.local'`
+    패턴)는 리디렉션이 아니다(교차 검토 2 · 3차). Words read by unquoted input redirections, attached or not."""
+    targets = []
+    for i in _unquoted_lt(text):
+        if text.startswith(("<<", "<("), i) or (i and text[i - 1] == "<"):
+            continue
+        m = _REDIRECT_READ_TARGET.match(text, i)
+        if m:
+            targets.append(m.group(2))
+    return targets
 _DOTENV_TEMPLATES = frozenset({".env.example", ".env.sample", ".env.template"})
 _DOTENV_SAFE_HEADS = frozenset({
     "cp", "mv", "ls", "dir", "rm", "del", "touch", "test", "[", "[[", "stat", "chmod", "attrib",
@@ -452,9 +485,6 @@ def _path_tokens(text):
             skip = False
             continue
         tok = _TOKEN_WRAPPERS.sub("", raw.strip("`")).translate(_SENTINEL_LITERALS)
-        # 붙여 쓴 입력 리디렉션(`<.env.local` · `0<.env` · `<>.env`)은 그 파일을 읽는다 — 연산자를 걷고 이름을 본다
-        # (AntiGravity 2차 — `<.env` 는 끝 글자 덕에 우연히 걸렸다). An attached input redirect reads its file.
-        tok = _INPUT_REDIRECT_PREFIX.sub("", tok)
         name, eq, value = tok.partition("=")
         low = name.lower()
         if low in excludes:
@@ -653,8 +683,11 @@ def _has_dotenv_path(text):
 
 
 def _mentions_dotenv(stage):
-    """쓰기 대상을 뺀 나머지에 .env 꼴 경로가 있는가 / A .env-like path outside write targets?"""
-    return _has_dotenv_path(_REDIRECT_TARGET.sub(" ", stage))
+    """쓰기 대상을 뺀 나머지에 .env 꼴 경로가 있는가 — 따옴표 밖 입력 리디렉션이 읽는 낱말(붙여 쓴 `cat<.env.local` 도)을
+    더해 본다(낱말 나누기는 `<` 에서 끊지 않는다 · AntiGravity 2 · 3차).
+    A .env-like path outside write targets, plus what unquoted input redirections read (attached ones too)."""
+    return (_has_dotenv_path(_REDIRECT_TARGET.sub(" ", stage))
+            or any(_has_dotenv_path(target) for target in _input_redirect_targets(stage)))
 
 
 def _pattern_positions(args, valued):
@@ -718,7 +751,7 @@ def _without_search_pattern(stage):
     findstr 은 제 문법이라 그대로 둔다. Drop the pattern argument of a search only when certain; otherwise return
     the stage unchanged so the original (fail-closed) verdict applies."""
     text = _OUTPUT_REDIRECT.sub(" ", stage)
-    if "<" in text or not _quotes_trustworthy(text):
+    if not _quotes_trustworthy(text) or _unquoted_lt(text):
         return stage
     try:
         words = shlex.split(_slashed(text), posix=True)
@@ -783,14 +816,23 @@ _SEARCH_COMMANDS = frozenset({"grep", "egrep", "fgrep", "rgrep", "rg", "findstr"
 
 
 def _plain_words(text):
-    """shlex 낱말 — 백슬래시는 / 로(따옴표 앞 이스케이프는 남긴다), 괄호 · 치환 껍데기는 벗기고 빈 것은 뺀다.
-    shlex words with backslashes as slashes and grouping/substitution wrappers peeled."""
+    """shlex 낱말 — 백슬래시는 / 로(Bash 의 따옴표 앞 이스케이프는 남긴다), 괄호 · 치환 껍데기는 벗긴다. 껍데기뿐이던
+    낱말은 앞뒤 끝(묶음 `( … )` · `{ …`)에서만 빼고 가운데 것은 빈 낱말로 남긴다 — 검색 인자의 자리를 셀 때 `""` ·
+    `"{}"` · 따옴표 없는 `{}` 도 한 자리다(`grep -rn "{}" . 문서` 의 `.` 은 대상이다 · 교차 검토 2 · 3차).
+    shlex words with wrappers peeled; wrapper-only words are dropped only at either end (grouping) and kept as
+    empty words in the middle, so an argument slot is never lost."""
     text = _slashed(text)
     try:
         toks = shlex.split(text, posix=True)
     except ValueError:
         toks = text.split()
-    return [w for w in (_TOKEN_WRAPPERS.sub("", t.strip("`")) for t in toks) if w]
+    words = [_TOKEN_WRAPPERS.sub("", t.strip("`")) for t in toks]
+    start, end = 0, len(words)
+    while start < end and not words[start]:
+        start += 1
+    while end > start and not words[end - 1]:
+        end -= 1
+    return words[start:end]
 
 
 def _command_name(word):
@@ -862,15 +904,9 @@ def _search_call(stage):
     return None
 
 
-# 따옴표로 준, 껍데기 글자뿐인 낱말(`""` · `"()"` · `"{}"`) — 낱말 나누기가 벗겨 버려 패턴 자리를 셀 수 없다.
-# A quoted word of wrapper characters only; peeling erases it, so the pattern slot cannot be counted.
-_WRAPPER_ONLY_QUOTED = re.compile(r"""(["'])[$<>@(){}`]*\1""")
-
-
-def _search_targets(words, every_positional=False):
-    """패턴 다음의 위치 인자 = 검색 대상. -e · -f 로 패턴을 주면 첫 위치 인자부터 대상이다. every_positional 이면
-    패턴 자리를 모르니 위치 인자 전부를 대상으로 본다(막는 쪽).
-    Positional arguments after the pattern; with -e/-f, or when the pattern slot is unknown, every positional."""
+def _search_targets(words):
+    """패턴 다음의 위치 인자 = 검색 대상. -e · -f 로 패턴을 주면 첫 위치 인자부터 대상이다.
+    Positional arguments after the pattern; with -e/-f every positional argument is a target."""
     positional, skip, pattern_given = [], False, False
     for w in words:
         if skip:
@@ -882,7 +918,7 @@ def _search_targets(words, every_positional=False):
             pattern_given = pattern_given or w.startswith(("--regexp=", "--file="))
         else:
             positional.append(w)
-    return positional if pattern_given or every_positional else positional[1:]
+    return positional if pattern_given else positional[1:]
 
 
 def _recurse_value(value):
@@ -1145,11 +1181,7 @@ def _recursive_search_reads_dotenv(stage):
     # A prefix that changes directory (env -C / --chdir) leaves the cwd unknown: fail closed.
     if any(w == "-C" or w.startswith("--chdir") for w in before):
         return True
-    # 따옴표로 준 빈 패턴 · 껍데기뿐인 패턴(`""` · `"()"`)은 낱말 나누기에서 사라져 `.` 이 패턴 자리로 밀린다
-    # (`grep -rn "{}" . 문서` 의 `.` 은 대상이다 · main 때부터 · AntiGravity 2차) — 그러면 위치 인자 전부를 대상으로 본다.
-    # A quoted empty / wrapper-only pattern vanishes in word splitting; then every positional is a target.
-    every = bool(_WRAPPER_ONLY_QUOTED.search(stage))
-    for target in _search_targets(args, every_positional=every) or ["."]:
+    for target in _search_targets(args) or ["."]:
         files = _dotenv_files(target)
         if files is None:
             return True
