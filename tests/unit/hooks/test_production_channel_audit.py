@@ -164,6 +164,13 @@ _MENTIONS = ['grep -n "railway status" docs/a.md', "cat scripts/observe_db.py", 
              "echo done # ran `railway status` earlier",
              "py -3 scripts/railway_redeploy.py --he",  # 줄인 --help / an abbreviated --help
              "py -3 scripts/observer_setup.py --help",  # 사용자 몫 스크립트의 도움말 / help of a user-only script
+             # 워크플로 패스(wf_f44bc84a-458) — `-c` 없는 flock 은 낱말을 바로 실행한다(셸 글자가 아니다) · xargs 는 앞
+             # 단계 글자를 stdin 이 아니라 인자로 넘긴다 / flock without -c execs words; xargs passes text as arguments
+             'flock /tmp/x.lock git commit -m "docs: 배포 절차; railway up 은 사용자 몫"',
+             "git grep -l 'railway up' -- '*.sh' | xargs -n1 bash -n",
+             # 큰따옴표 속 `$( … )` 안의 따옴표 글자 · `command -v` 는 이름 찾기 / quotes inside "$( … )", name lookup only
+             'x="$(echo "a; railway status later")"',
+             "command -v railway status",
              # 셋째 워크플로 패스 — 본문에 큰따옴표가 든 커밋 메시지 heredoc · `EOF)` 로 붙여 쓴 heredoc · `<<\\EOF` ·
              # 이스케이프된 구분자 / a commit-message heredoc with a quote in it, a glued `EOF)`, `<<\\EOF`, an escaped `;`
              "git commit -m \"$(cat <<'EOF'\nfix(hooks): treat \"$(cat <<'EOF' bodies as data\n\n"
@@ -263,6 +270,7 @@ _POWERSHELL_ALLOWED = {
     "$who = (railway whoami).Trim()": ["railway whoami"],
     # 주석 속 짝 없는 괄호가 뒤 블록을 삼키지 않는다 / an unbalanced bracket in a comment does not swallow later blocks
     "Write-Host x # note (\n1..2 | % { railway status }": ["railway status"],
+    "$p = Start-Process -FilePath railway -ArgumentList 'logs','--json' -NoNewWindow -Wait -PassThru": ["railway logs"],
     # 넷째 워크플로 패스 — 백틱 줄 잇기 · 주석 속 플래그 · 호출 연산자 · 따옴표 안의 `@'` 는 here-string 이 아니다
     # a backtick continuation, flags in a comment, the call operator, `@'` inside quotes is not a here-string
     "py -3 scripts\\railway_redeploy.py `\n    --check": ["railway_redeploy --check"],
@@ -300,7 +308,15 @@ _POWERSHELL_MENTIONS = ["Get-ChildItem | % { Select-String -Path $_ -Pattern rai
                         "$hasRailway = 'railway' -in $tools",
                         "if (Test-Path C:\\Users\\me\\AppData\\Roaming\\npm\\railway.cmd) { Write-Host 'installed' }",
                         "$versions = @{ railway = '4.10'; node = '22' }",
-                        "@{ railway = 1; up = 2 } | ConvertTo-Json"]  # 해시 테이블 키는 명령이 아니다 / keys, not calls
+                        "@{ railway = 1; up = 2 } | ConvertTo-Json",  # 해시 테이블 키는 명령이 아니다 / keys, not calls
+                        # 워크플로 패스(wf_f44bc84a-458) — switch 라벨 · Set-Item 정의 · 붙여 쓴 `=1` · Start-Process 값 옵션
+                        # switch labels, a Set-Item definition, a glued `=1` key, a Start-Process value option
+                        "$base = switch ($Target) { railway { 'https://x.up.railway.app' } local { 'http://127.0.0.1:8000' } }",
+                        "'railway','local' | ForEach-Object { switch ($_) { railway { 'remote' } default { 'local' } } }",
+                        "Write-Output (switch ($t) { railway { 'r' } default { 'l' } })",
+                        "Set-Item -Path function:Deploy -Value { railway up }",
+                        "$h = @{ railway =1 }",
+                        "Start-Process -WorkingDirectory C:\\work\\railway pwsh"]
 
 
 @pytest.mark.parametrize("command", _POWERSHELL_MENTIONS)
@@ -354,6 +370,29 @@ _PRODUCTION_WRITES = [
     ("Bash", 'case "$ENVN" in prod) railway up ;; esac'),
     ("Bash", "timeout 60 npx @railway/cli up"),
     ("Bash", "railway status; timeout 60 bash -c \"railway redeploy -y\""),
+    # 워크플로 패스(wf_f44bc84a-458) — `-I{}` 붙여 쓴 xargs · 줄의 `#` 가 따옴표 분할을 끄던 꼴 · eval · iex 매개변수 ·
+    # 재지정 · 재지정 · 훑는 머리 뒤 heredoc 받는 명령 · Start-Process 인자 목록 · 접두어 옵션 · 띄어 쓴 case 갈래 · 주석 속
+    # `<<'EOF'` / attached -I{}, a `#` on the line, eval, iex parameters, redirects, heredoc receivers, Start-Process lists
+    ("Bash", "xargs -I{} sh -c 'railway redeploy --service {} --yes' < services.txt"),
+    ("Bash", "printf '%s\\n' api worker | xargs -I{} bash -c 'railway redeploy --service {} --yes'"),
+    ("Bash", 'bash -c "railway up --detach; echo exit=$?" # deploy'),
+    ("Bash", "bash -lc \"railway redeploy --yes && echo 'redeployed for #1917'\""),
+    ("PowerShell", 'powershell -NoProfile -Command "railway up; exit $LASTEXITCODE" # deploy'),
+    ("Bash", 'eval "railway up"'),
+    ("PowerShell", 'Invoke-Expression -Command "railway up"'),
+    ("PowerShell", "$out = Invoke-Expression -Command 'railway redeploy --yes'"),
+    ("PowerShell", 'Invoke-Expression -ErrorAction Stop "railway up"'),
+    ("Bash", 'echo "railway up" | bash 2>&1'),
+    ("Bash", "printf '%s\\n' 'railway redeploy --service api --yes' | bash > /tmp/redeploy.log"),
+    ("PowerShell", '"railway up" | iex 2>&1'),
+    ("Bash", "bash 2>&1 <<'EOF'\nrailway up --detach\nEOF"),
+    ("Bash", "timeout 600 bash <<'EOF'\nrailway up --detach\nEOF"),
+    ("PowerShell", "Start-Process pwsh -ArgumentList '-NoProfile','-Command','railway up' -Wait"),
+    ("PowerShell", "Start-Process -ArgumentList 'up' -FilePath railway -Wait"),
+    ("Bash", "time -p railway up"),
+    ("Bash", 'case "$ENV" in\n  prod ) railway up ;;\nesac'),
+    ("Bash", "# 본문은 <<'EOF' heredoc 으로 넘긴다\nrailway up"),
+    ("Bash", "echo railway up 2>&1 | bash"),  # 재지정의 `&` 는 구분자가 아니다 — main 은 거기서 나눠 놓쳤다
 ]
 
 
@@ -376,6 +415,15 @@ _USER_ONLY_SCRIPTS = [
     ("Bash", "py -3 scripts/backfill_repository_user_id.py \\\n  --apply"),
     ("Bash", "timeout 600 py -3 scripts/backfill_repository_user_id.py --apply"),
     ("Bash", "py -3 scripts/backfill_repository_user_id.py --app"),  # argparse 줄임 / an abbreviation
+    ("Bash", "py -3 scripts/backfill_repository_user_id.py --a"),  # 그 스크립트에는 `--a` 로 시작하는 옵션이 하나뿐
+    ("Bash", "ls *.csv | xargs -I{} sh -c 'py -3 scripts/backfill_repository_user_id.py --apply'"),
+    ("Bash", 'eval "py -3 scripts/observer_setup.py"'),
+    ("PowerShell", 'Invoke-Expression -Command "py -3 scripts\\observer_setup.py"'),
+    ("Bash", 'echo "py -3 scripts/backfill_repository_user_id.py --apply" | bash 2>&1'),
+    ("PowerShell", "Start-Process py -ArgumentList '-3','scripts\\observer_setup.py' -Wait -NoNewWindow"),
+    ("PowerShell", "Start-Process py -ArgumentList 'scripts\\backfill_repository_user_id.py','--apply' -Wait -NoNewWindow"),
+    ("PowerShell", 'Start-Process -FilePath python -ArgumentList "scripts\\observer_setup.py --host h --ref r" -Wait'),
+    ("Bash", "python -um scripts.observer_setup"),  # 묶은 짧은 옵션 / clustered short options
 ]
 
 
@@ -429,6 +477,19 @@ def test_powershell_railway_variable_idioms_keep_mains_verdict(command, verdict,
     work, _, _ = logs
     denied = '"permissionDecision": "deny"' in _run(monkeypatch, capsys, _shell(command, work, tool="PowerShell"))
     assert denied == (verdict == "deny"), command
+
+
+def test_script_option_table_matches_each_scripts_argparse():
+    """🔴 줄임 플래그를 스크립트마다 푸는 표(`_PROD_SCRIPT_OPTIONS`)는 각 스크립트의 argparse 긴 옵션과 같다 — 스크립트에
+    옵션을 더하면 이 시험이 표를 고치라고 알린다(argparse 는 그 스크립트의 옵션으로 줄임을 푼다).
+    The per-script option table equals each script's argparse long options."""
+    import ast
+    for script, channel in hook._PROD_CHANNEL_SCRIPTS.items():
+        tree = ast.parse((_ROOT / "scripts" / script).read_text(encoding="utf-8"))
+        longs = {arg.value for node in ast.walk(tree) if isinstance(node, ast.Call)
+                 and getattr(node.func, "attr", "") == "add_argument"
+                 for arg in node.args if isinstance(arg, ast.Constant) and str(arg.value).startswith("--")}
+        assert set(hook._PROD_SCRIPT_OPTIONS[channel]) == longs, (script, longs)
 
 
 def test_a_command_walk_failure_is_unjudged(logs, monkeypatch, capsys):
