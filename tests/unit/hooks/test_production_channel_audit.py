@@ -412,6 +412,11 @@ _POWERSHELL_VARIABLE_VERDICTS = [
     ("railway variables --kv --environment prod\\ set | wc -l", "deny"),
     ("railway variables --kv --service api\\ set | cut -d= -f1", "deny"),
     ("railway variables --kv --environment prod | wc -l", "allow"),  # 개수만 — main 처럼 / a count only, as on main
+    # 쓰기 비킴의 두 갈래 — 정의만 한 블록 속 전체 경로 쓰기는 명령 자리 순회가 보지 않으니 credential 층이 막고(main 처럼),
+    # 다른 명령의 인자인 언급은 쓰기 꼴이어도 개수만 중화로 내려가 통과한다(main 처럼)
+    # the write excuse: a full-path write inside a defined block stays denied; a mention piped to a count passes
+    ("$sb = { C:\\x\\railway.cmd variables --set K=V }", "deny"),
+    ("Write-Output railway variables --kv --environment prod\\ set | wc -l", "allow"),
     ("C:\\x\\railway.cmd variables --kv | cut -d= -f1", "allow"),
     ("npx @railway/cli variables --kv | cut -d= -f1", "allow"),  # 패키지 이름의 `@` 는 스플랫이 아니다 / not a splat
 ]
