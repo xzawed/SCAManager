@@ -206,7 +206,15 @@ _MENTIONS = ['grep -n "railway status" docs/a.md', "cat scripts/observe_db.py", 
              "[[ -f /tmp/stamp && scripts/observer_setup.py -nt /tmp/stamp ]] && echo changed",
              "printf '%s\\n' 'railway up' | bash -n 2>/dev/null && echo syntax-ok",
              'git commit -m "fix(hooks): <(py -3 scripts/observer_setup.py) 프로세스 치환 표기"',
-             "timeout 60 bash ./scripts/render.sh <<'EOF'\nrailway up 은 사용자 몫\nEOF"]
+             "timeout 60 bash ./scripts/render.sh <<'EOF'\nrailway up 은 사용자 몫\nEOF",
+             # 셋째 적대 패스(wf_b8f2f206-703)의 새 거부 — 여러 줄 배열의 원소 · 따옴표 없는 heredoc 본문의 `<( )`(본문에서
+             # 펼쳐지는 것은 `$( )` · 백틱뿐) / multi-line array elements; `<( )` in an unquoted heredoc body is text
+             'files=(\n  "scripts/observer_setup.py"\n  "scripts/observe_db.py"\n)\n'
+             + 'for f in "${files[@]}"; do py -3 -m py_compile "$f"; done',
+             "cat > pr_body.md <<EOF\nHEAD: $(git rev-parse --short HEAD)\n"
+             + "- \\`<(py -3 scripts/observer_setup.py)\\` inside double quotes is text now\nEOF",
+             "cat > notes.md <<EOF\nBranch: $(git branch --show-current)\n"
+             + "It's about \\`diff <(railway up) expected.txt\\` being read as a call\nEOF"]
 
 
 @pytest.mark.parametrize("command", _MENTIONS)
@@ -349,7 +357,14 @@ _POWERSHELL_MENTIONS = ["Get-ChildItem | % { Select-String -Path $_ -Pattern rai
                         'git commit -m "docs: @(py -3 scripts/observer_setup.py) 는 사용자 몫"',
                         "$r = Invoke-Expression 'Write-Host ''build ok; railway up is user-only'''",
                         "Start-Process pwsh -ArgumentList '-NoProfile -Command \"Write-Host ''note; railway up''\"'",
-                        "gh pr create --title \"Support 4`\" displays\" --body @'\nit's done\nrailway up\n'@"]
+                        "gh pr create --title \"Support 4`\" displays\" --body @'\nit's done\nrailway up\n'@",
+                        # 셋째 적대 패스(wf_b8f2f206-703) — 펼치는 here-string 속 `@( )` 는 글자다 · 채널 스크립트 이름의
+                        # switch 라벨 / `@( )` in an expandable here-string is text; a script name as a switch label
+                        '$body = @"\nBase: $(git rev-parse --short origin/main)\n'
+                        + '- @(py -3 scripts/observer_setup.py) inside a double-quoted string is text\n"@\n'
+                        + 'gh pr create --title "fix(hooks): array subexpression text" --body $body',
+                        "switch ((Split-Path 'scripts\\observer_setup.py' -Leaf)) { observer_setup.py { 'user-only' } "
+                        + "default { 'auto' } }"]
 
 
 @pytest.mark.parametrize("command", _POWERSHELL_MENTIONS)
@@ -436,6 +451,31 @@ _PRODUCTION_WRITES = [
     ("Bash", "( case $e in prod) railway up ;; esac )"),  # 묶음 안의 case 머리 / a case head inside a group
     ("Bash", "{ case $e in prod|production) railway up ;; esac; }"),
     ("Bash", "echo railway up | xargs bash"),  # bash 는 `railway` 를 PATH 에서 찾아 돌린다 / bash finds it on PATH
+    # 셋째 적대 패스(wf_b8f2f206-703) — main 도 놓치던 꼴: 치환 · 따옴표가 든 case 주제와 갈래 · case 갈래 안의 heredoc 받는
+    # 명령 · env 뒤의 셸 · 인자 배열 · 백틱 이스케이프 · 매개변수가 붙은 `| iex` · `eval --` · `\n` 이 든 printf ·
+    # `bash -c "$(cat)"` · PowerShell 속성 · `${}` · 여러 변수 대입 / shapes main missed as well
+    ("Bash", 'case "$(git branch --show-current)" in main) railway up ;; *) echo skip ;; esac'),
+    ("Bash", "case `uname -s` in MINGW*) railway up;; esac"),
+    ("Bash", 'case "$1 $2" in "prod up") railway up;; esac'),
+    ("Bash", "case \"$1\" in\n  deploy) bash -s <<'EOF'\nrailway up\nEOF\n  ;;\nesac"),
+    ("Bash", "env RAILWAY_ENVIRONMENT=production bash <<'EOF'\nrailway up\nEOF"),
+    ("Bash", "cat <<'EOF' | env bash -s\nrailway up\nEOF"),
+    ("Bash", 'echo "railway up" | env RAILWAY_ENVIRONMENT=production bash'),
+    ("Bash", 'NOTE="(hotfix) deploy" timeout 600 bash -c "railway up"'),
+    ("Bash", "timeout 60 bash -c \"$(cat)\" <<'EOF'\nrailway up\nEOF"),
+    ("Bash", 'eval -- "railway up"'),
+    ("Bash", "printf 'set -e\\nrailway up\\n' | bash"),
+    ("PowerShell", "Start-Process pwsh -ArgumentList @('-NoProfile', '-Command', 'railway up') -Wait"),
+    ("PowerShell", "Start-Process bash -ArgumentList @('-c', 'railway up') -NoNewWindow -Wait"),
+    ("PowerShell", 'Start-Process pwsh -ArgumentList "-NoProfile -Command `"railway up`"" -Wait'),
+    ("PowerShell", 'pwsh -NoProfile -Command "& `"$env:APPDATA\\npm\\railway.cmd`" up"'),
+    ("PowerShell", '"railway redeploy --yes" | Invoke-Expression -ErrorAction Stop'),
+    ("PowerShell", '"railway up" | Invoke-Expression -Verbose:$false'),
+    ("PowerShell", "@'\nrailway up\n'@ | & pwsh -NoProfile -Command -"),
+    ("PowerShell", "$result = Invoke-Expression @'\nrailway up\n'@"),
+    ("PowerShell", "$r.Output = railway up"),
+    ("PowerShell", "${out} = railway up"),
+    ("PowerShell", "$a, $b = railway up"),
     ("PowerShell", "Start-Process railway -ArgumentList 'up', '--detach' -NoNewWindow -Wait"),
     ("PowerShell", "$r = Invoke-Expression 'railway up; Write-Host ''done'''"),
 ]
@@ -470,6 +510,15 @@ _USER_ONLY_SCRIPTS = [
     ("PowerShell", 'Start-Process -FilePath python -ArgumentList "scripts\\observer_setup.py --host h --ref r" -Wait'),
     ("Bash", "python -um scripts.observer_setup"),  # 묶은 짧은 옵션 / clustered short options
     ("PowerShell", "Start-Process py -ArgumentList '-3', 'scripts/observer_setup.py' -Wait"),  # 띄어 쓴 배열
+    # 셋째 적대 패스(wf_b8f2f206-703) — case 갈래 · 괄호 배열 · 백틱 이스케이프 · `| iex` 매개변수 · 따옴표 속 `(` 가 든
+    # 앞 대입 · 붙여 쓴 `-m` / the same shapes reaching user-only scripts
+    ("Bash", 'case "$(git branch --show-current)" in main) py -3 scripts/observer_setup.py;; esac'),
+    ("PowerShell", "Start-Process -FilePath py -ArgumentList ('-3', 'scripts\\backfill_repository_user_id.py', '--apply')"),
+    ("PowerShell", 'Start-Process py -ArgumentList "-3 `"scripts\\observer_setup.py`"" -Wait'),
+    ("PowerShell", "'py -3 scripts\\observer_setup.py' | iex -ErrorAction Stop"),
+    ("Bash", 'MSG="(wip) rotate" py -3 scripts/observer_setup.py'),
+    ("Bash", "python -mscripts.observer_setup"),
+    ("Bash", "py -3 -mscripts.backfill_repository_user_id --apply"),
 ]
 
 
