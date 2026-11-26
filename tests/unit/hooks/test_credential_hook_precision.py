@@ -69,6 +69,8 @@ _MUST_PASS = {
     "escaped-quotes-in-recursive-pattern": 'grep -rn "\\"quoted\\"" docs/',
     "quoted-pattern-starting-with-redirect": "grep -n '<.env.local' docs/a.md",
     "brace-pattern-over-a-clean-folder": 'grep -rn "{}" docs/',
+    # rg 의 `-r`(바꿀 글자)은 값을 받는다 — 빈 값도 검색 대상이 아니다(4차). rg's -r takes a value, even an empty one.
+    "rg-empty-replacement": 'rg -uu -r "" -e KEY src/',
 }
 
 # 같은 꼴의 위험한 짝 — 값이 나온다(또는 나올 수 있다).
@@ -180,8 +182,22 @@ def test_a_powershell_backslash_is_never_an_escape(workdir):
     (오탐 · AntiGravity 3차). In PowerShell a backslash is a path separator, never an escape."""
     for command in ('Get-Content "docs\\" , .env , "src\\"', 'Select-String -Path "docs\\" , ".env" , "src\\" -Pattern KEY'):
         assert hook.decide_with_hint(command, str(workdir), "powershell") is not None, command
-    for command in ('rg "KEY" "docs\\"', 'cd "docs\\" ; rg KEY .'):
+    # 그 셸의 `\"` 는 이스케이프가 아니라 따옴표 신뢰도 깨지 않는다 — 패턴 · 교대 `|` 가 든 검색도 통과(4차).
+    # Nor does `\"` make PowerShell quoting untrusted: searches with a pattern or a quoted `|` pass (round 4).
+    for command in ('rg "KEY" "docs\\"', 'cd "docs\\" ; rg KEY .', 'rg -n "\\.env" "docs\\"',
+                    'grep -rn -E "foo|bar" "docs\\"'):
         assert hook.decide_with_hint(command, str(workdir), "powershell") is None, command
+
+
+def test_a_cd_into_a_substitution_is_an_unknown_folder(workdir):
+    """🔴 cd 의 대상이 치환 · 괄호(`$( … )` · `( … )`)면 셸만 아는 폴더다 — 낱말 나누기가 껍데기를 빈 낱말로 남겨
+    «지금 폴더» 로 풀리면 이동을 놓치고, 깨끗한 하위 폴더에서 시작한 재귀 검색이 위 폴더의 .env 를 읽는다
+    (AntiGravity 4차 HIGH). 대조군: 그 하위 폴더 안의 검색은 통과. A cd into a substitution is an unknown folder."""
+    docs = workdir / "docs"
+    assert _verdict("grep -rn KEY .", docs) is None
+    assert _verdict("cd $( git rev-parse --show-toplevel ) && grep -rn KEY .", docs) is not None
+    for command in ('Set-Location ( ".." ); Get-ChildItem | Select-String KEY', "cd ( Split-Path $PWD ); rg -uu KEY ."):
+        assert hook.decide_with_hint(command, str(docs), "powershell") is not None, command
 
 
 # witness-corpus: 덤프 뒤 «개수만 · 아무것도 안 냄» 단계 가운데 판정식(grep -c/-q/-l · wc 개수 플래그) 밖의 꼴

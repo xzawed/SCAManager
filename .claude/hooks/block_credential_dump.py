@@ -797,6 +797,11 @@ _GREP_VALUE_OPTIONS = frozenset({"-e", "-f", "-m", "-A", "-B", "-C", "-d", "-D",
                                  "--max-count", "--context", "--after-context", "--before-context",
                                  "--exclude", "--include", "--exclude-dir", "--label", "-g", "--glob",
                                  "--iglob", "-t", "-T", "--type", "--type-not", "-j", "--threads"})
+# rg 만의 값 옵션(rg 도움말) — grep 의 `-E` 는 플래그지만 rg 의 `-E` 는 인코딩 값을 받는다. `-r ""`(바꿀 글자)의 빈 값이
+# 검색 대상으로 읽혔다(교차 검토 4차). rg-only options that take a value; rg's -E takes an encoding, grep's -E does not.
+_RG_VALUE_OPTIONS = _GREP_VALUE_OPTIONS | {"-r", "--replace", "-E", "--encoding", "-M", "--max-columns", "--max-depth",
+                                           "--max-filesize", "--path-separator", "--pre", "--pre-glob", "--sort",
+                                           "--sortr", "--colors", "--engine", "--type-add", "--ignore-file"}
 # 패턴 자리를 셀 때 아는 긴 옵션 — 이 밖의 긴 옵션이 있으면 패턴을 빼지 않는다(값을 받는지 모른다).
 # Long options known when locating the pattern; any other long option means nothing is dropped.
 _KNOWN_SEARCH_LONGS = _GREP_VALUE_OPTIONS | {
@@ -815,18 +820,21 @@ _WALK_SKIP = frozenset({".git", "node_modules", ".venv", "venv", "__pycache__", 
 _SEARCH_COMMANDS = frozenset({"grep", "egrep", "fgrep", "rgrep", "rg", "findstr"})
 
 
-def _plain_words(text):
-    """shlex 낱말 — 백슬래시는 / 로(Bash 의 따옴표 앞 이스케이프는 남긴다), 괄호 · 치환 껍데기는 벗긴다. 껍데기뿐이던
-    낱말은 앞뒤 끝(묶음 `( … )` · `{ …`)에서만 빼고 가운데 것은 빈 낱말로 남긴다 — 검색 인자의 자리를 셀 때 `""` ·
-    `"{}"` · 따옴표 없는 `{}` 도 한 자리다(`grep -rn "{}" . 문서` 의 `.` 은 대상이다 · 교차 검토 2 · 3차).
-    shlex words with wrappers peeled; wrapper-only words are dropped only at either end (grouping) and kept as
-    empty words in the middle, so an argument slot is never lost."""
+def _plain_words(text, keep_slots=False):
+    """shlex 낱말 — 백슬래시는 / 로(Bash 의 따옴표 앞 이스케이프는 남긴다), 괄호 · 치환 껍데기는 벗기고 껍데기뿐이던
+    낱말은 뺀다. keep_slots 면 앞뒤 끝(묶음 `( … )` · `{ …`)의 것만 빼고 가운데 것은 빈 낱말로 남긴다 — 검색 인자의
+    자리를 셀 때 `""` · `"{}"` · 따옴표 없는 `{}` 도 한 자리다(`grep -rn "{}" . 문서` 의 `.` 은 대상이다 · 교차 검토
+    2 · 3차). 그 밖의 호출처(cd 추적 등)는 빈 낱말을 받지 않는다 — `cd $( … )` 의 빈 낱말이 «지금 폴더» 로 풀렸다(4차).
+    shlex words with wrappers peeled and wrapper-only words dropped; keep_slots keeps the middle ones as empty
+    words so a search argument slot is never lost. Other callers (cd tracking) never see empty words."""
     text = _slashed(text)
     try:
         toks = shlex.split(text, posix=True)
     except ValueError:
         toks = text.split()
     words = [_TOKEN_WRAPPERS.sub("", t.strip("`")) for t in toks]
+    if not keep_slots:
+        return [w for w in words if w]
     start, end = 0, len(words)
     while start < end and not words[start]:
         start += 1
@@ -861,7 +869,8 @@ def _dotenv_files(target, recursive=True):
     """대상(파일 · 폴더 · 와일드카드) 아래 .env 꼴 파일의 상대 경로 조각들 — 작업 폴더 후보 전부에서. 셀 수 없으면
     None(막는 쪽): 셸만 아는 경로 · 모르는 작업 폴더 · 어느 후보에도 없는 대상 · 너무 큰 폴더.
     .env-like files under the target across every cwd candidate, or None when they cannot be enumerated."""
-    if _unresolvable(target):
+    # 빈 대상(`grep -rn K "" 문서` 의 `""`)은 «지금 폴더» 가 아니다 — 셈하지 않고 막는 쪽 / an empty target is not the cwd
+    if not target or _unresolvable(target):
         return None
     if any(ch in target for ch in "*?["):
         matches = _glob_matches(target)
@@ -894,7 +903,7 @@ def _dotenv_files(target, recursive=True):
 def _search_call(stage):
     """단계 안의 검색 명령 → (이름, 인자, 앞 낱말들). `git … grep` 은 git 의 하위 명령이라 «git-grep» 으로 낸다.
     The search command in a stage as (name, args, preceding words); `git … grep` is reported as git-grep."""
-    words = _plain_words(stage)
+    words = _plain_words(stage, keep_slots=True)
     for k, word in enumerate(words):
         name = _command_name(word)
         if name not in _SEARCH_COMMANDS:
@@ -904,14 +913,16 @@ def _search_call(stage):
     return None
 
 
-def _search_targets(words):
-    """패턴 다음의 위치 인자 = 검색 대상. -e · -f 로 패턴을 주면 첫 위치 인자부터 대상이다.
+def _search_targets(words, value_options=None):
+    """패턴 다음의 위치 인자 = 검색 대상. -e · -f 로 패턴을 주면 첫 위치 인자부터 대상이다. value_options 는 값을
+    받는 옵션(기본 grep · rg 공통 — rg 는 `_RG_VALUE_OPTIONS`).
     Positional arguments after the pattern; with -e/-f every positional argument is a target."""
+    value_options = _GREP_VALUE_OPTIONS if value_options is None else value_options
     positional, skip, pattern_given = [], False, False
     for w in words:
         if skip:
             skip = False
-        elif w in _GREP_VALUE_OPTIONS:
+        elif w in value_options:
             skip = True
             pattern_given = pattern_given or w in ("-e", "-f", "--regexp", "--file")
         elif w.startswith("-"):
@@ -1181,7 +1192,7 @@ def _recursive_search_reads_dotenv(stage):
     # A prefix that changes directory (env -C / --chdir) leaves the cwd unknown: fail closed.
     if any(w == "-C" or w.startswith("--chdir") for w in before):
         return True
-    for target in _search_targets(args) or ["."]:
+    for target in _search_targets(args, _RG_VALUE_OPTIONS if name == "rg" else None) or ["."]:
         files = _dotenv_files(target)
         if files is None:
             return True
@@ -1456,8 +1467,10 @@ def _quotes_trustworthy(text):
     백슬래시는 따옴표 글자 앞에서만 따옴표 구조를 바꾼다(`\\"` · `\\'` — 셸은 글자로 읽는데 이 분할은 따옴표로 읽어,
     `echo \\"; env` 의 `; env` 를 앞에 묶는다). `\\|` · `\\.` · `\\*` 같은 정규식 이스케이프는 구조를 바꾸지 않는다 —
     그것까지 믿지 않으면 큰따옴표 안 교대(`"a\\|b"`)를 단계로 쪼개 «대상 없는 재귀 검색» 으로 오판한다(원장 #1917 P1-5).
-    No backtick or comment, no backslash right before a quote character, and every quote closed?"""
-    if "`" in text or "#" in text or re.search(r"\\['\"]", text):
+    PowerShell 의 백슬래시는 이스케이프가 아니라(백틱이 이스케이프다) 그 셸에서는 `\\"` 를 따지지 않는다 — `"docs\\"`
+    는 거기서 닫힌 문자열이다(교차 검토 4차).
+    No backtick or comment, no backslash right before a quote character (Bash only), and every quote closed?"""
+    if "`" in text or "#" in text or (_CONTEXT["shell"] != "powershell" and re.search(r"\\['\"]", text)):
         return False
     quote = None
     for ch in text:
