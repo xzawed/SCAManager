@@ -91,6 +91,16 @@ _ALLOWED = {
     # watch runs its argument through a shell; argparse accepts an abbreviated long option
     "watch -n 30 'railway status'": ["railway status"],
     "py -3 scripts/railway_redeploy.py --rest": ["railway_redeploy --restart"],
+    # 셋째 워크플로 패스(wf_f04c79d9-042) 반례 — xargs 자리표 `{}` · 겹친 훑는 머리 · 긴 옵션 값 · 주석의 아포스트로피 뒤
+    # 치환 · case 갈래 · `$'…'` 뒤 / xargs placeholder, nested scan heads, long option values, comment apostrophe, case arm
+    "railway deployment list --json | jq -r '.[].id' | head -3 | xargs -I {} railway logs --deployment {}":
+        ["railway deployment list", "railway logs"],
+    "if timeout 60 railway status; then echo ok; fi": ["railway status"],
+    "timeout 60 npx @railway/cli status": ["railway status"],
+    "watch --interval 5 railway status": ["railway status"],
+    "# it's a read-only check\nDEP=$(railway status --json | jq -r .id)\necho \"$DEP\"": ["railway status"],
+    'case "$ENVN" in prod) railway status ;; esac': ["railway status"],
+    "echo $'it\\'s'; railway status": ["railway status"],
 }
 
 
@@ -138,7 +148,20 @@ _MENTIONS = ['grep -n "railway status" docs/a.md', "cat scripts/observe_db.py", 
              # 최종 워크플로 패스 반례 — 다른 명령의 인자인 `railway`(검색어) · 주석 속 백틱 / an argument, a comment
              "if grep -q railway docs; then echo found; fi",
              "echo done # ran `railway status` earlier",
-             "py -3 scripts/railway_redeploy.py --he"]  # 줄인 --help / an abbreviated --help
+             "py -3 scripts/railway_redeploy.py --he",  # 줄인 --help / an abbreviated --help
+             # 셋째 워크플로 패스 — 본문에 큰따옴표가 든 커밋 메시지 heredoc · `EOF)` 로 붙여 쓴 heredoc · `<<\\EOF` ·
+             # 이스케이프된 구분자 / a commit-message heredoc with a quote in it, a glued `EOF)`, `<<\\EOF`, an escaped `;`
+             "git commit -m \"$(cat <<'EOF'\nfix(hooks): treat \"$(cat <<'EOF' bodies as data\n\n"
+             "railway logs inside such a body is not a call\nEOF\n)\"",
+             "NOTES=$(cat <<'EOF'\nrailway status was green\nEOF)\necho \"$NOTES\"",
+             "cat > notes.txt <<\\EOF\nrailway status looked fine\nEOF",
+             "echo done \\; railway status",
+             # 셋째 패스가 짚은 새 거부(C3) — 판정은 main 그대로라 통과한다 / new false denials of the third pass, now main's
+             "if npm ls -g @railway/cli >/dev/null 2>&1; then echo installed; fi",
+             "timeout 60 bash -c 'if grep -q railway notes.md; then echo yes; fi'",
+             "MSG=$(cat <<'EOF'\nIf railway up fails, retry by hand\nEOF)\ngit commit -m \"$MSG\"",
+             "cat > notes.md <<END-NOTES\nIf railway up fails, retry by hand\nEND-NOTES",
+             "NOTES=$(cat <<'EOF'\nrailway up was run by the user\nEOF)\necho \"$NOTES\""]
 
 
 @pytest.mark.parametrize("command", _MENTIONS)
@@ -212,6 +235,14 @@ _POWERSHELL_ALLOWED = {
     # here-string 을 여는 줄 뒤의 호출 — 본문이 빠진 뒤 `@"` 가 따옴표를 열면 다음 줄이 따옴표 안으로 보인다
     # a call after a here-string: its dangling opener must not open a quote once the body is gone
     "$sql = @\"\nSELECT 1\n\"@\npy -3 scripts\\observe_db.py $sql": ["observe_db"],
+    # 셋째 워크플로 패스 — here-string 뒤의 치환 · 블록, 본문 아포스트로피 뒤의 치환, 다음 줄의 foreach 블록, 글자를 받는 iex,
+    # 괄호 식의 멤버 / after a here-string, an apostrophe in its body, a next-line block, iex input, a member of (…)
+    "$b = @'\nx\n'@\nWrite-Output $(railway status)": ["railway status"],
+    "$report = @\"\nRailway's status: $(railway status)\n\"@\nWrite-Output $report": ["railway status"],
+    "$note = @'\ndeploy check\n'@\n1..2 | ForEach-Object { railway status }": ["railway status"],
+    "foreach ($id in @('a','b'))\n{ railway logs --deployment $id }": ["railway logs"],
+    '"railway status" | Invoke-Expression': ["railway status"],
+    "$who = (railway whoami).Trim()": ["railway whoami"],
 }
 
 
@@ -222,7 +253,20 @@ _POWERSHELL_MENTIONS = ["Get-ChildItem | % { Select-String -Path $_ -Pattern rai
                         "Write-Host done # never here (railway up)",  # 주석 속 쓰기도 글자다 — main 처럼 통과
                         "$sb = { railway logs --deployment x }",  # 블록을 정의만 한다 — 돌지 않는다 / only defined
                         # here-string 본문의 괄호는 글자다 — `$(…)` 만 돈다 / parentheses in a here-string body are text
-                        "Write-Output @\"\nUse (railway up) to deploy\n\"@"]
+                        "Write-Output @\"\nUse (railway up) to deploy\n\"@",
+                        # 셋째 워크플로 패스 — 정의만 한 블록 안 · 블록 주석 / inside a block only defined, a block comment
+                        "$check = { railway whoami; railway status }",
+                        "function Get-DeployStatus {\n    railway status --json\n}",
+                        "<#\nrailway logs --deployment X\n#>\nGet-Date",
+                        # 셋째 패스가 짚은 새 거부(C3) — 판정은 main 그대로라 통과한다 / now main's verdict
+                        "@'\n## 요약\n- 허용된 운영 채널 호출을 값 없이 기록한다\n'@ | Set-Content -Encoding utf8 pr-body.md\n"
+                        "gh pr create --base main --title 'feat(hooks): 운영 채널 감사 기록 (railway 읽기 · 운영 스크립트)' "
+                        "--body-file pr-body.md",
+                        "git log --oneline -20 | ForEach-Object { if ($_ -match 'railway') { $_ } }",
+                        "$counts = @{ 'railway' = 0; 'supabase' = 0 }",
+                        "$hasRailway = 'railway' -in $tools",
+                        "if (Test-Path C:\\Users\\me\\AppData\\Roaming\\npm\\railway.cmd) { Write-Host 'installed' }",
+                        "$versions = @{ railway = '4.10'; node = '22' }"]
 
 
 @pytest.mark.parametrize("command", _POWERSHELL_MENTIONS)
@@ -241,50 +285,52 @@ def test_powershell_production_reads_are_audited(command, logs, monkeypatch, cap
     assert [r["channels"] for r in _records(audit)] == [_POWERSHELL_ALLOWED[command]]
 
 
-# 교차 검토가 짚은 막히지 않던 운영 변경(main 때부터) — PowerShell 대입 · ForEach-Object · `%` · 괄호 하위 식 · Measure-Command,
-# 시간 제한 안의 셸 래퍼, Git Bash 의 `cmd //c`, 따옴표 안 명령 치환 속 셸 heredoc. Production changes that slipped through.
-_UNBLOCKED_PRODUCTION_WRITES = [
-    ("PowerShell", "$x = railway up"),
-    ("PowerShell", "1..3 | ForEach-Object { railway up }"),
-    ("PowerShell", "1..3 | % { railway up }"),
-    ("PowerShell", "Write-Output (railway redeploy -y)"),
-    ("PowerShell", "[void](railway up)"),
-    ("PowerShell", "Measure-Command { railway redeploy }"),
-    ("PowerShell", "Start-Job { railway up } | Receive-Job -Wait"),
-    ("PowerShell", "Invoke-Command -ScriptBlock { railway redeploy }"),
-    # PowerShell 의 전체 경로 railway — 백슬래시를 이스케이프로 읽어 운영 판정이 railway 를 못 알아봤다(main 때부터 · 변수 쓰기는
-    # credential 층이 «덤프» 로 우연히 막고 있었다 · 워크플로 C3 재검토). A full-path railway in PowerShell was unrecognised.
-    ("PowerShell", "C:\\Users\\x\\AppData\\Roaming\\npm\\railway.cmd variables --set FOO=bar"),
-    ("PowerShell", "C:\\tools\\railway.cmd up"),
-    ("PowerShell", 'cmd /c "C:\\tools\\railway.cmd up"'),
-    ("Bash", 'timeout 60 bash -c "railway up"'),
-    ("Bash", "cmd //c railway up"),
-    ("Bash", "x=$(bash <<'EOF'\nrailway up\nEOF\n)"),
-    ("Bash", "git commit -m \"$(bash <<'EOF'\nrailway up\nEOF\n)\""),
-    # 최종 워크플로 패스 반례(C3) — 바깥 명령이 치환의 출력을 실행한다 · 붙여 쓴 `EOF)` 뒤의 줄은 돈다 · 큰따옴표 안 산술은
-    # heredoc 이 아니다 · 한 줄 if/else 의 두 번째 블록 / an outer runner, `EOF)` glued, arithmetic, the else block
-    ("Bash", "bash -c \"$(cat <<'EOF'\nrailway up\nEOF\n)\""),
-    ("Bash", "eval \"$(cat <<'EOF'\nrailway up\nEOF\n)\""),
-    ("Bash", "git commit -m \"$(cat <<'EOF'\nmsg\nEOF)\"\nrailway up"),
-    ("Bash", "x=$(cat <<'EOF'\nbody\nEOF)\nrailway up"),
-    ("Bash", "echo \"$(( 1 << n ))\"\nrailway up\nn"),
-    ("Bash", "echo $(( 1 << n ))\nrailway up\nn"),  # 따옴표 없는 산술 — main 은 `<< n` 을 heredoc 으로 읽었다
-    ("PowerShell", "if ($x) { railway status } else { railway up }"),
-    # watch · flock -c 는 인자 글자를 셸로 돌린다 · 형 제약이 붙은 대입(main 때부터) / shell text of watch and flock -c,
-    # typed PowerShell assignments
-    ("Bash", "watch -n 30 'railway up'"),
-    ("Bash", "flock /tmp/x -c 'railway up'"),
-    ("PowerShell", "[string]$s = railway up"),
-    ("PowerShell", "[int[]]$a = railway up"),
+# 운영 변경 — 감사 채널에 오르지 않는다(채널은 읽기 · 운영 채널 스크립트뿐이다). 판정은 main 그대로라 이 가운데 main 이
+# 놓치는 꼴(PowerShell 대입 · 블록 · 하위 식 · 전체 경로 · 시간 제한 뒤 래퍼 · `cmd //c` · watch · 닫는 줄이 붙은 heredoc …)은
+# 아직 통과한다 — 원장 #1917 의 후속 항목이 판정을 고친다. 값은 그 명령 안에서 함께 기록될 읽기 채널이다.
+# Production changes never become audit channels; the verdict stays main's (the follow-up closes these gaps).
+_PRODUCTION_WRITES = [
+    ("PowerShell", "$x = railway up", []),
+    ("PowerShell", "1..3 | ForEach-Object { railway up }", []),
+    ("PowerShell", "1..3 | % { railway up }", []),
+    ("PowerShell", "Write-Output (railway redeploy -y)", []),
+    ("PowerShell", "[void](railway up)", []),
+    ("PowerShell", "Measure-Command { railway redeploy }", []),
+    ("PowerShell", "Start-Job { railway up } | Receive-Job -Wait", []),
+    ("PowerShell", "Invoke-Command -ScriptBlock { railway redeploy }", []),
+    ("PowerShell", "C:\\Users\\x\\AppData\\Roaming\\npm\\railway.cmd variables --set FOO=bar", []),
+    ("PowerShell", "C:\\tools\\railway.cmd up", []),
+    ("PowerShell", 'cmd /c "C:\\tools\\railway.cmd up"', []),
+    ("PowerShell", "if ($x) { railway status } else { railway up }", ["railway status"]),
+    ("PowerShell", "[string]$s = railway up", []),
+    ("Bash", 'timeout 60 bash -c "railway up"', []),
+    ("Bash", "cmd //c railway up", []),
+    ("Bash", "x=$(bash <<'EOF'\nrailway up\nEOF\n)", []),
+    ("Bash", "git commit -m \"$(bash <<'EOF'\nrailway up\nEOF\n)\"", []),
+    ("Bash", "x=$(cat <<'EOF'\nbody\nEOF)\nrailway up", []),
+    ("Bash", "echo $(( 1 << n ))\nrailway up\nn", []),
+    ("Bash", "watch -n 30 'railway up'", []),
+    ("Bash", "flock /tmp/x -c 'railway up'", []),
+    ("Bash", "railway status; timeout 60 bash -c \"railway redeploy -y\"", ["railway status"]),
 ]
 
 
-@pytest.mark.parametrize("tool,command", _UNBLOCKED_PRODUCTION_WRITES)
-def test_a_production_change_inside_a_wrapper_or_assignment_is_denied(tool, command, logs, monkeypatch, capsys):
-    """🔴 운영 변경은 대입 · 블록 · 하위 식 · 래퍼 · heredoc 안에서도 막는다 — 감사 기록도 남지 않는다.
-    A production change is denied inside assignments, blocks, subexpressions, wrappers and heredocs."""
+@pytest.mark.parametrize("tool,command,reads", _PRODUCTION_WRITES)
+def test_a_production_change_never_becomes_an_audit_channel(tool, command, reads, logs, monkeypatch, capsys):
+    """🔴 감사 채널은 읽기뿐이다 — 운영 변경은 막히든(거부 기록) 판정이 놓치든 채널로 적히지 않는다.
+    Audit channels are reads only: a production change is never written as a channel, denied or not."""
     work, audit, _ = logs
-    assert '"permissionDecision": "deny"' in _run(monkeypatch, capsys, _shell(command, work, tool=tool)), command
+    _run(monkeypatch, capsys, _shell(command, work, tool=tool))
+    assert [channel for record in _records(audit) for channel in record["channels"]] == reads, command
+
+
+def test_a_full_path_railway_variable_write_in_powershell_stays_denied(logs, monkeypatch, capsys):
+    """🔴 회귀 잠금(검증 검토) — credential 층이 PowerShell 백슬래시를 글자로 읽어 전체 경로 `railway.cmd variables --set` 를
+    «쓰기» 로 알아보고 덤프 판정을 비켰는데, main 의 운영 판정은 그 전체 경로를 못 알아봐 변수 쓰기가 통과했다. 쓰기로
+    비키는 것은 운영 판정이 그 단계를 막을 때만이다. Regression lock: the write excuse needs the production verdict."""
+    work, audit, _ = logs
+    command = "C:\\Users\\x\\AppData\\Roaming\\npm\\railway.cmd variables --set FOO=bar"
+    assert '"permissionDecision": "deny"' in _run(monkeypatch, capsys, _shell(command, work, tool="PowerShell"))
     assert not audit.exists()
 
 
