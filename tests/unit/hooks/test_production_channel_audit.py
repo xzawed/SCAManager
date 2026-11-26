@@ -400,7 +400,14 @@ _POWERSHELL_MENTIONS = ["Get-ChildItem | % { Select-String -Path $_ -Pattern rai
                         "Start-Process pwsh -ArgumentList \"-NoProfile -Command Get-Content app.log | Select-String 'ERROR|railway up'\"",
                         "$v = (pwsh -v) + @'\nrailway up\n'@",
                         # 여섯째 적대 패스 — cmd 는 겹따옴표 글자를 남겨 그 안의 `&&` 는 글자다 / cmd keeps the quotes
-                        "Start-Process cmd -ArgumentList '/c', 'echo \"deploy with: npm run build && railway up\" > plan.txt'"]
+                        "Start-Process cmd -ArgumentList '/c', 'echo \"deploy with: npm run build && railway up\" > plan.txt'",
+                        # 일곱째 적대 패스(wf_b29f7d89-996) — Git Bash 가 받는 -c 글자는 Bash 규칙(`\"` 이스케이프 · 배열)이고, 따옴표
+                        # 안 `""` 는 글자 따옴표다 / bash text follows bash rules; `""` inside quotes is a literal quote
+                        "Start-Process bash -ArgumentList '-c', "
+                        + "'''git commit -m \"docs: never run \\\"railway status; railway up\\\" from agents\"'''",
+                        "Start-Process bash -ArgumentList '-c', '''tools=(railway gh git); for t in \"${tools[@]}\"; do command -v \"$t\"; done'''",
+                        "Start-Process pwsh -ArgumentList '-NoProfile', '-Command', '\"Write-Host \"\"Steps: build; railway up (by the user)\"\"\"'",
+                        "Start-Process bash -ArgumentList '-c', '\"git commit -m \"\"docs: build; railway up stays manual\"\"\"'"]
 
 
 @pytest.mark.parametrize("command", _POWERSHELL_MENTIONS)
@@ -546,6 +553,17 @@ _PRODUCTION_WRITES = [
     # cmd /c 는 따옴표로 시작하는 명령줄의 첫 · 마지막 따옴표를 뗀다 / cmd /c strips the outer quotes
     ("PowerShell", 'Start-Process cmd -ArgumentList "/c `"railway up`""'),
     ("PowerShell", 'cmd /c "`"railway`" up"'),
+    # 일곱째 적대 패스(wf_b29f7d89-996) — 중첩 case · cmd 문장의 따옴표 친 실행 파일 · 여러 줄 글자 속 백슬래시 경로 · eval 이
+    # 다시 읽는 줄 · 산술 case 주제 / nested case, quoted cmd heads, backslash paths, eval re-reads, arithmetic subjects
+    ("Bash", 'case "$1" in\n  db) case "$2" in check) echo ok ;; esac ;;\n  deploy) railway up ;;\nesac'),
+    ("Bash", 'for e in a b; do case "$e" in a) case "$x" in 1) echo one ;; esac ;; b) railway up ;; esac; done'),
+    ("PowerShell", "Start-Process cmd -ArgumentList '/c cd /d C:\\repo && \"C:\\Users\\me\\AppData\\Roaming\\npm\\railway.cmd\" up'"),
+    ("PowerShell", '$out = C:\\Users\\me\\scoop\\shims\\railway.exe run -- python -c "import os\nprint(os.getcwd())"'),
+    ("Bash", "printf 'echo start\\nrailway up\\n' | eval echo \"$(cat)\""),
+    ("Bash", "echo 'railway up' | eval \"$(cat)\" \"$@\""),
+    ("Bash", "case $((RANDOM % 2)) in\n  0) bash <<'EOF'\nrailway up\nEOF\n  ;;\nesac"),
+    ("Bash", 'cmd //c "C:\\\\Users\\\\me\\\\AppData\\\\Roaming\\\\npm\\\\railway.cmd up"'),  # cmd 글자의 백슬래시는 글자다
+    ("PowerShell", "Start-Process cmd -ArgumentList '/c echo hi & railway up'"),  # cmd 의 `&` 는 문장 구분이다
 ]
 
 
@@ -645,6 +663,14 @@ _USER_ONLY_SCRIPTS = [
     ("Bash", "{ eval \"$(cat)\"; } <<'EOF'\npy -3 scripts/observer_setup.py\nEOF"),
     ("Bash", "case \"$x\" in a) echo a;;\nesac; (cd /tmp && bash) <<'EOF'\npy -3 scripts/observer_setup.py\nEOF"),
     ("PowerShell", "Start-Process pwsh -ArgumentList @(\n  '-Command'\n  \"Set-Location F:/proj\npy -3 scripts/observer_setup.py\"\n)"),
+    # 일곱째 적대 패스(wf_b29f7d89-996) — 갈래 안 `&&` 뒤의 묶음 끝 · 여러 줄 중첩 case · cmd 의 따옴표 친 인터프리터
+    # a group tail after `&&` inside an arm, a multi-line nested case, a quoted interpreter in cmd
+    ("Bash", 'case "$1" in  # closed by esac\n  setup) (cd scripts && ./observer_setup.py) ;;\nesac'),
+    ("Bash", 'case "$1" in\n  db) case "$2" in prod) py -3 scripts/observer_setup.py ;; esac ;;\nesac'),  # 한 줄 중첩 갈래
+    ("Bash", 'case "$1" in\n  db) case "$2" in\n        check) echo check ;;\n      esac\n      ;;\n'
+     + '  fix) py -3 scripts/backfill_repository_user_id.py --apply ;;\nesac'),
+    ("PowerShell", "Start-Process cmd -ArgumentList '/c', 'cd /d C:\\repo &&', '\"C:\\Python312\\python.exe\"', "
+     + "'scripts\\observer_setup.py'"),
 ]
 
 

@@ -2342,7 +2342,7 @@ def _command_walk(text, depth, channels):
         # 구분자는 코드 자리(mask 'c')에서만 나눈다 — 줄의 `#` · 백틱이 따옴표 분할을 끄면 `bash -c "railway up; …" # 메모` 를
         # 따옴표 안에서 잘랐다(워크플로 패스 wf_f44bc84a-458). Split only at separators standing in code positions.
         for seg_at, segment in _code_split(line, line_start, mask, _segment_separators()):
-            cut = _case_prefix(segment, case_depth > 0)  # 갈래 패턴의 `|` 는 파이프가 아니다 / a case pattern's `|` is not a pipe
+            cut = _case_prefix(segment, case_depth > 0, _arm_start(line[:seg_at]))  # 패턴의 `|` 는 파이프가 아니다
             case_depth = _case_depth(segment, case_depth)
             seg_at, segment = seg_at + cut, segment[cut:]
             stages = _code_split(segment, line_start + seg_at, mask, ("|&", "|"))
@@ -2469,20 +2469,32 @@ def _blank_arrays(text, mask):
     return "".join(chars)
 
 
-def _case_prefix(segment, case_seen=False):
+def _case_prefix(segment, case_seen=False, arm_start=True):
     """Bash case 머리 · 갈래 패턴의 길이 — `case "$f" in a|b) …` 의 `|` 는 파이프가 아니라 패턴의 «또는» 이다(워크플로 패스
     wf_150f221f-097: 패턴 속 스크립트 이름을 단계 머리로 읽어 막았다). 머리 없이 패턴만 있는 세그먼트(`prod)` · `a|b)`)는 앞에서
     `case` 를 보았을 때만 갈래다 — 아니면 묶음을 닫는 `bash)` 를 패턴으로 지웠다(넷째 워크플로 패스 wf_509d2619-75b:
     `(cd x && bash) <<'EOF'` 의 받는 명령이 사라졌다). PowerShell 은 0.
+    머리 없는 패턴은 갈래가 시작하는 자리(줄 처음 · `;;` · `;&` 뒤)에서만이다 — 갈래 안 `&&` 뒤의 `./x.py)` 는 묶음 끝이다.
+    걷은 뒤 중첩 case 머리가 오면 이어서 걷는다(일곱째 워크플로 패스 wf_b29f7d89-996).
     The length of a Bash case head and arm pattern at the start of a segment; a bare pattern counts only after a case."""
     if _CONTEXT["shell"] == "powershell":
         return 0
     head = _AUDIT_CASE_HEAD.match(segment)
-    if head is None and not case_seen:
+    if head is None and not (case_seen and arm_start):
         return 0
     cut = head.end() if head else 0
     pattern = _AUDIT_CASE_PATTERN.match(segment[cut:])
-    return cut + (pattern.end() if pattern else 0)
+    cut += pattern.end() if pattern else 0
+    if cut and _AUDIT_CASE_HEAD.match(segment[cut:]):
+        cut += _case_prefix(segment[cut:], True)  # `db) case "$2" in prod) …` / a nested case
+    return cut
+
+
+def _arm_start(before):
+    """그 세그먼트가 case 갈래가 시작하는 자리인가 — 앞 글자가 비었거나 `;;` · `;&` 로 끝난다(`&&` · `||` 뒤는 갈래 안이다).
+    Does a segment preceded by before start a case arm?"""
+    stripped = before.rstrip()
+    return not stripped.strip() or stripped.endswith((";;", ";&"))
 
 
 def _segment_separators():
@@ -2526,7 +2538,8 @@ def _command_stage(stage, earlier, depth, channels):
     # xargs 를 거친 셸도 같이 본다 — 앞 단계 글자가 인자로 가도 bash 는 그 이름을 PATH 에서 찾아 돌린다(`echo railway up |
     # xargs bash` = `bash railway up` = npm 심 실행). 문법만 보는 `xargs -n1 bash -n` 은 `_audit_reads_commands` 가 뺀다.
     # a shell behind xargs counts too: bash looks its script name up on PATH
-    if earlier and (_audit_reads_commands(head, rest) or _runs_piped_text(head, rest)):
+    piped = _piped_text_mode(head, rest)
+    if earlier and (_audit_reads_commands(head, rest) or piped):
         # 앞 단계가 내보내는 글자를 이 명령이 돌린다 — `echo railway status | bash` · `printf '%s\\n' 'railway status' | bash` ·
         # `"railway status" | iex`. 낱말 하나씩과 이어 붙인 인자 전체를 본다. Earlier stages' text is executed here.
         for prior in earlier:
@@ -2535,7 +2548,9 @@ def _command_stage(stage, earlier, depth, channels):
             # printf · `echo -e` 의 `\\n` 과 PowerShell 의 `` `n `` 은 줄바꿈이다 — 그 뒤 줄도 명령이다(셋째 워크플로 패스)
             # an escaped newline separates commands too
             for piece in dict.fromkeys([first, *more, joined, _escaped_lines(first), _escaped_lines(joined)]):
-                reason = _command_walk(piece, depth + 1, channels)
+                if piped == "after-first":
+                    piece = piece.split("\n", 1)[1] if "\n" in piece else ""  # 첫 줄은 eval 의 인자 / the first line is data
+                reason = _walk_as(_inner_shell(head), piece, depth + 1, channels)
                 if reason:
                     return reason
     if _CONTEXT["shell"] == "powershell" and rest[:1] and (rest[0] == "{" or rest[0].startswith("=")):
@@ -2556,7 +2571,28 @@ def _command_stage(stage, earlier, depth, channels):
         channels.append(script)
         return None
     inner = _audit_unwrap(head, rest)
-    return _command_walk(inner, depth + 1, channels) if inner else None
+    return _walk_as(_inner_shell(head), inner, depth + 1, channels) if inner else None
+
+
+def _inner_shell(head):
+    """래퍼가 돌리는 글자의 셸 — bash · sh · eval 은 Bash, pwsh · powershell · iex · cmd 는 PowerShell 규칙(cmd 글자의 백슬래시는
+    글자다), 그 밖은 지금 셸(일곱째 워크플로 패스: `Start-Process bash` 의 -c 글자를 PowerShell 규칙으로 읽었다).
+    The shell whose rules the wrapped text follows."""
+    if head in _PROD_SHELL_WRAPPERS or head == "eval":
+        return "bash"
+    if head in _PROD_PS_WRAPPERS or head in ("invoke-expression", "iex", "cmd"):
+        return "powershell"
+    return _CONTEXT["shell"]
+
+
+def _walk_as(shell, text, depth, channels):
+    """text 를 그 셸의 규칙으로 걷는다 — 걷는 동안만 셸 문맥을 바꾼다 / walk text under that shell's rules."""
+    saved = _CONTEXT["shell"]
+    _CONTEXT["shell"] = shell
+    try:
+        return _command_walk(text, depth, channels)
+    finally:
+        _CONTEXT["shell"] = saved
 
 
 def _escaped_lines(text):
@@ -2590,14 +2626,14 @@ _PS_EXPRESSION_OPEN = re.compile(r"^\s*(?:\[[\w.]+(?:\[\])?\]\s*)*[@$]?\(\s*")
 # a Bash case head (also after a group opener or then/do/else) and arm pattern
 # 주제는 따옴표 · 치환(덮여 공백만 남은 몸도) · `${…}` 가 든 한 셸 낱말이다(`case "$(git branch --show-current)" in` —
 # 셋째 워크플로 패스) / the subject is one shell word that may hold quotes and substitutions
-_CASE_WORD = r"""(?:"[^"]*"|'[^']*'|`[^`]*`|\$\([^)]*\)|\$\{[^}]*\}|[^\s"'`;|&()<>{}])+"""
+_CASE_WORD = r"""(?:"[^"]*"|'[^']*'|`[^`]*`|\$\(\([^)]*\)\)|\$\([^)]*\)|\$\{[^}]*\}|[^\s"'`;|&()<>{}])+"""
 _CASE_PATTERN_WORD = r"""(?:"[^"]*"|'[^']*'|[^\s"'()|;])+"""
 _AUDIT_CASE_HEAD = re.compile(r"^\s*(?:(?:[({]|then|do|else)\s+|\(\s*)*case\s+" + _CASE_WORD + r"\s+in\s+")
 # case · esac 낱말 — 여러 줄 case 의 갈래 줄은 머리 없이 패턴만 있다. 깊이는 case 에서 늘고 esac 에서 준다
 # case / esac words; the depth rises at case and falls at esac
 # 명령 자리(글 처음 · `;` `&` `|` `(` `{` 뒤, then · do · else 뒤)의 낱말만 — `grep -w esac` 의 인자는 키워드가 아니다
 # only at a command position; an argument such as `grep -w esac` is not the keyword
-_CASE_WORDS = re.compile(r"(?:^|[;&|({])\s*(?:(?:then|do|else)\s+)*(?:(case)\s+" + _CASE_WORD + r"\s+in(?=\s|$)"
+_CASE_WORDS = re.compile(r"(?:^|[;&|({)])\s*(?:(?:then|do|else)\s+)*(?:(case)\s+" + _CASE_WORD + r"\s+in(?=\s|$)"
                          r"|(esac)(?=[\s;&|)}]|$))")
 
 
@@ -2718,7 +2754,8 @@ def _audit_words(stage):
     try:
         toks = shlex.split(text, posix=True)
     except ValueError:
-        toks = text.split()
+        # str.split() 은 `\x1f` 를 공백으로 읽어 경로를 백슬래시마다 잘랐다(일곱째 워크플로 패스) / real whitespace only
+        toks = [tok for tok in re.split(r"[ \t\r\n]+", text) if tok]
     if powershell:
         toks = [tok.replace(_BACKSLASH_MARK, "\\") for tok in toks]
     words, skip = [], False
@@ -2940,8 +2977,27 @@ def _audit_argument_list(value, program):
     value = value[:-1] if value.endswith(")") else value
     line = " ".join(value.split(","))
     if program in _PROD_SHELL_WRAPPERS:
-        return _shell_words(line)
+        return _shell_words(_msys_doubled_quotes(line))
     return _windows_argv(line, keep_quotes=program == "cmd")
+
+
+def _msys_doubled_quotes(text):
+    """MSYS2(Git Bash)가 겹따옴표 안 `""` 를 글자 따옴표로 읽는 것을 셸 낱말 나누기(shlex)가 읽는 꼴(`\\"`)로 — 일곱째 워크플로
+    패스. Rewrite MSYS2's `""` inside double quotes as an escaped quote for shlex."""
+    out, quote, i = [], None, 0
+    while i < len(text):
+        ch = text[i]
+        if quote == '"' and text.startswith('""', i):
+            out.append('\\"')
+            i += 2
+            continue
+        if quote:
+            quote = None if ch == quote else quote
+        elif ch in ("'", '"'):
+            quote = ch
+        out.append(ch)
+        i += 1
+    return "".join(out)
 
 
 def _windows_argv(text, keep_quotes=False):
@@ -2963,6 +3019,10 @@ def _windows_argv(text, keep_quotes=False):
             word.append("\\" * run)
             i, started = i + run, True
             continue
+        if ch == '"' and quoted and not keep_quotes and text.startswith('""', i):
+            word.append('"')  # 따옴표 안 `""` 는 글자 따옴표다 / a doubled quote inside quotes is a literal
+            i, started = i + 2, True
+            continue
         if ch == '"':
             quoted, started = not quoted, True
             if keep_quotes:
@@ -2980,6 +3040,31 @@ def _windows_argv(text, keep_quotes=False):
     return words
 
 
+def _cmd_calls(text):
+    """cmd 글자를 PowerShell 규칙으로 걸을 꼴로 — 문장(`&&` · `||` · `&` · `|` 로 나뉜, 겹따옴표 밖)마다 따옴표로 시작하는 머리는
+    호출 연산자 꼴(`& "C:\\…\\railway.cmd" up`)로, cmd 의 `&` 는 `;` 로 둔다(일곱째 워크플로 패스: 따옴표 친 실행 파일을 글자
+    식으로 읽었다). cmd text rewritten for a PowerShell-rules walk."""
+    out, piece, quoted, i = [], [], False, 0
+    while i < len(text):
+        ch = text[i]
+        if ch == '"':
+            quoted = not quoted
+        if not quoted and ch in "&|":
+            sep = text[i:i + 2] if text[i:i + 2] in ("&&", "||") else ch
+            out.append(_cmd_call("".join(piece)) + (";" if sep == "&" else sep))
+            piece, i = [], i + len(sep)
+            continue
+        piece.append(ch)
+        i += 1
+    out.append(_cmd_call("".join(piece)))
+    return "".join(out)
+
+
+def _cmd_call(statement):
+    """따옴표로 시작하는 cmd 문장 머리를 PowerShell 호출 연산자 꼴로 / a quoted statement head as a PowerShell call."""
+    return " & " + statement.lstrip() if statement.lstrip().startswith('"') else statement
+
+
 def _audit_unwrap(head, rest):
     """래퍼 안쪽 명령 글자 — `_prod_unwrap` 에 Git Bash 의 `cmd //c`, Bash `eval`, `Invoke-Expression` 의 매개변수(`-Command`
     값 · 공통 매개변수 — 바인더처럼 푼다)를 더한다(워크플로 패스 wf_f44bc84a-458: `eval "railway up"` ·
@@ -2993,7 +3078,7 @@ def _audit_unwrap(head, rest):
                     # cmd /c 는 명령줄이 따옴표로 시작하면 첫 · 마지막 따옴표를 떼고 돈다(cmd /? — `/c "railway up"` · 여섯째 패스
                     # 고침의 회귀) / cmd /c strips the first and the last quote when the command line starts with one
                     inner = inner[1:last] + inner[last + 1:]
-                return inner
+                return _cmd_calls(inner)
         return None
     if head == "eval":
         return " ".join(rest[1:] if rest[:1] == ["--"] else rest) or None
@@ -3086,7 +3171,7 @@ def _audit_receiver(prefix, case_seen=False):
     mask = _audit_mask(prefix)
     segments = [part for part in _code_split(prefix, 0, mask, _segment_separators()) if part[1].strip()]
     seg_at, segment = segments[-1] if segments else (0, "")
-    cut = _case_prefix(segment, case_seen)  # case 갈래 안의 받는 명령 / a receiver inside a case arm
+    cut = _case_prefix(segment, case_seen, _arm_start(prefix[:seg_at]))  # case 갈래 안의 받는 명령 / in a case arm
     return _audit_stage_head(_code_split(segment[cut:], seg_at + cut, mask, ("|&", "|"))[-1][1])
 
 
@@ -3105,16 +3190,25 @@ def _audit_stage_head(stage):
 
 
 def _runs_piped_text(head, rest):
+    """`_piped_text_mode` 가 무엇이든 돌리는가 / does it run any of its piped stdin?"""
+    return _piped_text_mode(head, rest) is not None
+
+
+def _piped_text_mode(head, rest):
     """파이프 뒤에서 stdin 글자 전체를 명령으로 돌리는가 — `| eval "$(cat)"` · `| bash -c "$(cat)"`(파이프는 낱말 펼치기 전에
     이어져 치환이 앞 단계 글자를 읽는다 — 다섯째 워크플로 패스). 치환이 명령 글자 전체일 때만이다(`--body "$(cat)"` 는 데이터).
-    같은 명령의 heredoc 재지정은 펼치기 뒤라 해당하지 않는다. Does it run its whole piped stdin as commands?"""
+    같은 명령의 heredoc 재지정은 펼치기 뒤라 해당하지 않는다. eval 은 인자를 이어 다시 읽으므로 `"$(cat)"` 이 첫 인자면 글자
+    전체("all"), 뒤 인자 속이면 둘째 줄부터("after-first")가 돈다(`eval echo "$(cat)"` — 여섯째 · 일곱째 워크플로 패스).
+    "all", "after-first" or None: how much of its piped stdin it runs as commands."""
     if head == "eval":
-        args = rest[1:] if rest[:1] == ["--"] else rest  # `eval echo "$(cat)"` 은 찍기만 한다(여섯째 워크플로 패스)
-        return len(args) == 1 and bool(_STDIN_TEXT_WORD.fullmatch(args[0]))
+        args = rest[1:] if rest[:1] == ["--"] else rest
+        if args and _STDIN_TEXT_WORD.fullmatch(args[0]):
+            return "all"
+        return "after-first" if any(_STDIN_TEXT_WORD.search(word) for word in args) else None
     if head in _PROD_SHELL_WRAPPERS:
         inner = _prod_shell_scan(rest)[0]
-        return inner is not None and bool(_STDIN_TEXT_WORD.fullmatch(inner.strip()))
-    return False
+        return "all" if inner is not None and _STDIN_TEXT_WORD.fullmatch(inner.strip()) else None
+    return None
 
 
 def _audit_reads_commands(head, rest):
