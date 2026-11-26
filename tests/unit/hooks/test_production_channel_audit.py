@@ -108,6 +108,9 @@ _ALLOWED = {
     "x=$(cat <<'EOF'\nbody\nEOF)\nrailway status": ["railway status"],
     "x=$(bash <<'EOF'\nrailway status\nEOF\n)": ["railway status"],
     "cat > notes.md <<END-NOTES\nhello\nEND-NOTES\nrailway status": ["railway status"],
+    # 큰따옴표 속 `$( … )` 안의 따옴표는 바깥과 따로다 — 안쪽 아포스트로피가 뒤 호출을 홑따옴표 안으로 삼키지 않는다
+    # quotes inside "$( … )" are their own; an inner apostrophe does not swallow the call that follows
+    'x="$(echo "it\'s")"; railway status': ["railway status"],
     # 넷째 워크플로 패스(wf_410501e1-acb) — 줄 잇기 뒤 플래그 · 주석 속 플래그 이름 · 따옴표 친 Windows 인터프리터 경로 ·
     # printf 로 넘긴 명령 / a flag after a line continuation, flag names in a comment, a quoted Windows interpreter path
     "py -3 scripts/railway_redeploy.py \\\n  --restart": ["railway_redeploy --restart"],
