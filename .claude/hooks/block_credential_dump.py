@@ -3119,26 +3119,30 @@ def _cmd_literal(text):
     return " '" + text.replace("'", "''") + "'"
 
 
-# 블록 안 · do · else · if 조건 뒤의 인자가 글자인 명령 — 조건 뒤는 공백이다(`if exist scripts\observer_setup.py (…)` 의
-# `set` 을 명령으로 읽고 뒤 블록을 덮었다 — 열째 패스 고침의 회귀)
+# 블록 안 · do · else · if 조건 뒤의 인자가 글자인 명령(앞 `@` 허용) — 조건 뒤는 공백이다(`if exist scripts\observer_setup.py (…)`
+# 의 `set` 을 명령으로 읽고 뒤 블록을 덮었다 — 열째 패스 고침의 회귀). 조건 값은 공백 든 겹따옴표 글자일 수 있다.
 # a text-argument builtin opening a block or after do / else / an if test (whitespace after the test)
+_CMD_OPERAND = r'(?:"[^"]*"|\S+)'
 _CMD_BLOCK_TEXT = re.compile(
-    r"(?i)(?:\(\s*|\b(?:do|else)\s+|\bif\s+(?:/i\s+)?(?:not\s+)?(?:(?:exist|defined|errorlevel)\s+\S+|\S+\s*==\s*\S+"
-    r"|\S+\s+(?:equ|neq|lss|leq|gtr|geq)\s+\S+)\s+)(?:echo|set|title)")
+    r"(?i)(?:\(\s*|\b(?:do|else)\s+|\bif\s+(?:/i\s+)?(?:not\s+)?(?:(?:exist|defined|errorlevel)\s+" + _CMD_OPERAND
+    + r"|" + _CMD_OPERAND + r"\s*==\s*" + _CMD_OPERAND + r"|" + _CMD_OPERAND + r"\s+(?:equ|neq|lss|leq|gtr|geq)\s+"
+    + _CMD_OPERAND + r")\s+)@?(?:echo|set|title)")
 
 
 def _cmd_block_text(statement):
-    """블록(`if … (echo …)` · `do (echo …)` · `else echo …`) 안 echo · set · title 의 인자를 블록을 닫는 `)` 까지 글자로 —
-    cmd 는 블록 안에서 따옴표 밖 `)` 에서 블록을 닫는다(열째 워크플로 패스: `(echo built; railway up is next)` 의 `;` 를 PowerShell
-    문장 구분으로 읽었다). 따옴표(겹 · 홑 — 홑따옴표 글자는 자식 셸 몫이다) 속은 건너뛴다.
-    Text of echo/set/title inside a block, up to the block's closing parenthesis."""
-    out, i, quote = [], 0, None
+    """블록 문장 안 echo · set · title 의 인자를 글자로 — 블록 안이면(`if … (echo …)` · `(… & echo …)`) 블록을 닫는 따옴표 밖
+    `)` 까지, 블록 밖의 `do echo` · `else echo` · `if … echo` 는 문장 끝까지(열째 · 열한째 워크플로 패스: `(echo built; railway up
+    is next)` 의 `;` 를 PowerShell 문장 구분으로 읽었고, 블록 밖 echo 를 첫 `)` 에서 끊었다). 따옴표(겹 · 홑 — 홑따옴표 글자는
+    자식 셸 몫이다) 속은 건너뛴다. Text of echo/set/title in a cmd block statement."""
+    out, i, quote, depth = [], 0, None, 0
     while i < len(statement):
         ch = statement[i]
         found = None if quote else _CMD_BLOCK_TEXT.match(statement, i)
         if found:
+            opens = ch == "("
+            depth += opens
             end, inner = found.end(), None
-            while end < len(statement) and (inner or statement[end] != ")"):
+            while end < len(statement) and (inner or not (depth and statement[end] == ")")):
                 inner = (None if statement[end] == inner else inner) if inner else ('"' if statement[end] == '"' else None)
                 end += 1
             out.append(statement[i:found.end()] + _cmd_literal(statement[found.end():end]))
@@ -3148,6 +3152,8 @@ def _cmd_block_text(statement):
             quote = None if ch == quote else quote
         elif ch in "\"'":
             quote = ch
+        elif ch in "()":
+            depth = depth + 1 if ch == "(" else max(0, depth - 1)
         out.append(ch)
         i += 1
     return "".join(out)
@@ -3160,11 +3166,19 @@ def _audit_unwrap(head, rest):
     if head == "cmd":
         for k, word in enumerate(rest):
             if word.lower() in ("/c", "/k", "/r", "//c", "//k", "//r"):
-                inner = " ".join(rest[k + 1:])
+                # 공백 든 인자는 겹따옴표로 싸서 넘어간다(MSYS2 · PowerShell — 열한째 워크플로 패스: `bash -c '… && ( … )'` 의
+                # `&&` · 괄호를 cmd 문장 · 블록으로 읽었다). 따옴표를 이미 지닌 낱말(Start-Process 인자 목록)은 그대로다.
+                # arguments with whitespace reach cmd double-quoted; words that still carry quotes stay as they are
+                inner = " ".join(f'"{arg}"' if not arg or (any(ch in arg for ch in " \t") and '"' not in arg) else arg
+                                 for arg in rest[k + 1:])
                 last = inner.rfind('"')
-                if inner.startswith('"') and last > 0:
-                    # cmd /c 는 명령줄이 따옴표로 시작하면 첫 · 마지막 따옴표를 떼고 돈다(cmd /? — `/c "railway up"` · 여섯째 패스
-                    # 고침의 회귀) / cmd /c strips the first and the last quote when the command line starts with one
+                kept = inner[1:last] if inner.startswith('"') and last > 0 else ""
+                if inner.startswith('"') and last > 0 and not (
+                        inner.count('"') == 2 and " " in kept and not any(ch in kept for ch in "&<>()@^|")
+                        and kept.lower().endswith((".exe", ".cmd", ".bat", ".com"))):
+                    # cmd /c 는 명령줄이 따옴표로 시작하면 첫 · 마지막 따옴표를 떼고 돈다 — 따옴표가 둘뿐이고 사이에 공백이 있고
+                    # 특수 문자가 없고 실행 파일 이름이면 그대로 둔다(cmd /? — `/c "railway up"` · 여섯째 패스 고침의 회귀)
+                    # cmd /c strips the first and the last quote unless they quote one executable path with spaces
                     inner = inner[1:last] + inner[last + 1:]
                 return _cmd_calls(inner)
         return None
@@ -3482,16 +3496,18 @@ def _audit_substitutions(text, string_body=False):
 
 
 # 치환 몸 속 명령 자리의 case · esac — 줄 처음 · `;` `&` `|` `(` `)` `{` · then · do · else 뒤(열째 워크플로 패스: 여러 줄 몸의
-# 둘째 줄 case 와 `;;` 없는 마지막 갈래 뒤 esac 를 놓쳤다). `case 낱말 in` 꼴은 따지지 않는다 — 주제에 겹친 치환이 올 수 있다.
-# a case or esac keyword at a command position inside a substitution body
-_BODY_CASE_WORD = re.compile(r"(?:(?<=[\n;&|(){])|(?<=\bthen)|(?<=\bdo)|(?<=\belse))[ \t]*(case|esac)(?=[\s;&|)]|$)")
+# 둘째 줄 case 와 `;;` 없는 마지막 갈래 뒤 esac 를 놓쳤다). case 는 같은 줄의 `… in` 까지가 머리다(주제에 겹친 치환이 올 수
+# 있다 — 열한째 워크플로 패스: `then case prod below` 같은 낱말이 없는 case 를 열었다).
+# a case head or esac at a command position inside a substitution body
+_BODY_CASE_WORD = re.compile(r"(?:(?<=[\n;&|(){])|(?<=\bthen)|(?<=\bdo)|(?<=\belse))[ \t]*(case)[ \t]+[^\n]*?[ \t]in(?=\s|$)"
+                             r"|(?<=[\n;])[ \t]*(esac)(?=[\s;&|)]|$)")  # esac 는 `;;` · 줄바꿈 뒤에만 온다 / only after ;; or a newline
 
 
 @functools.lru_cache(maxsize=8)
 def _body_case_words(text):
     """text 속 명령 자리 case · esac 의 {자리: 낱말} — 치환마다 남은 글자를 다시 훑지 않게 글자마다 한 번(열째 워크플로 패스의
     시간 측정: 치환 2000개에서 제곱으로 늘었다). Command-position case/esac positions, computed once per text."""
-    return {found.start(1): found.group(1) for found in _BODY_CASE_WORD.finditer(text)}
+    return {found.start(found.lastindex): found.group(found.lastindex) for found in _BODY_CASE_WORD.finditer(text)}
 
 
 def _audit_paren_end(text, start, escape):
@@ -3499,8 +3515,8 @@ def _audit_paren_end(text, start, escape):
     가 몸을 일찍 닫아 남은 `railway whoami)` 를 알 수 없는 하위 명령으로 막았다 — 워크플로 패스 wf_150f221f-097). 따옴표가
     닫히지 않으면 괄호만 센다. The end of a substitution body, quote-aware; parentheses only when a quote stays open."""
     for aware in (True, False):
-        # 몸 속 명령 자리의 case · esac(`_CASE_WORDS` — 몸을 여는 `(` 부터) — 갈래 패턴의 `)` 가 몸을 닫지 않게(여덟째 워크플로
-        # 패스), 인자 속 낱말(`grep -c case`)은 세지 않는다(아홉째 워크플로 패스)
+        # 몸 속 명령 자리의 case · esac(`_body_case_words`) — 갈래 패턴의 `)` 가 몸을 닫지 않게(여덟째 워크플로 패스), 인자 속
+        # 낱말(`grep -c case`)은 세지 않는다(아홉째 워크플로 패스)
         # command-position case/esac inside the body, so an arm pattern's `)` does not close it
         words = _body_case_words(text) if aware else {}
         depth, j, quote, cases = 1, start, None, []  # cases — 열린 case 마다 그 안의 짝 괄호 수 / per open case
@@ -3512,6 +3528,12 @@ def _audit_paren_end(text, start, escape):
                 continue
             if aware and ch == escape:
                 j += 2
+                continue
+            if aware and ch == "#" and text[j - 1] in " \t\n;&|()":
+                # 몸 속 주석은 줄 끝까지 — 그 안의 괄호 · case 낱말은 세지 않는다(열한째 워크플로 패스: `# handle the else case`
+                # 가 case 를 열었다) / a comment runs to the end of the line
+                newline = text.find("\n", j)
+                j = len(text) if newline < 0 else newline
                 continue
             word = words.get(j)
             if word == "case":

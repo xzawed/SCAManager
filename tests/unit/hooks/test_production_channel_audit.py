@@ -265,6 +265,10 @@ _MENTIONS = ['grep -n "railway status" docs/a.md', "cat scripts/observe_db.py", 
              'kind=$(\n  # classify\n  case "$1" in\n    *.md) echo docs ;;\n    observer_setup.py) echo user-only ;;\n  esac\n)',
              'kind=$(\n  f="${1##*/}"\n  case "$f" in\n    observer_setup.py) echo user-only ;;\n    *) echo other ;;\n  esac\n)',
              'x=$(case "$1" in a) case "$2" in b) echo b;; esac;; scripts/observer_setup.py) echo user;; esac)',  # 갈래 `)` 뒤 case
+             'n=$(grep -c "2) railway up" CHANGELOG.md   # count (case sensitive)\n)\necho "$n"',  # 주석 속 괄호 · case
+             "cmd //c 'if errorlevel 1 echo build failed (exit 1); see railway logs; railway up skipped'",  # 블록 밖 echo
+             "cmd //c 'for %f in (a b) do @echo %f; railway up later'",
+             'cmd //c \'if exist "C:\\Program Files\\nodejs\\railway.cmd" echo railway CLI found; railway up is next\'',
              'case "$1" in\n  a) echo "(x) esac done" ;;\n  scripts/observer_setup.py) echo "user-only" ;;\nesac',
              'case "$1" in\n  start) echo starting ;;   # (nested case ends with) esac\n'
              + '  stop|scripts/observer_setup.py) echo stop ;;\nesac']
@@ -623,7 +627,16 @@ _PRODUCTION_WRITES = [
     ("Bash", 'log=$(\n  echo "target: $1"\n  case "$1" in\n    dev) echo "dev only" ;;\n    prod) railway up --detach ;;\n  esac\n)'),
     ("Bash", 'x=$(case "$1" in\n  a) echo a ;;  # first\n  b) railway redeploy --yes ;;  # second\nesac)'),
     ("Bash", 'cmd //c "npm config set registry= & railway up"'),
-    ("Bash", "cmd //c \"bash -c '(echo hi; railway up)'\""),
+    ("Bash", "cmd //c \"if exist x (bash -c '(echo hi; railway up)')\""),  # 블록 안 홑따옴표 글자는 자식 셸 몫
+    # 열한째 적대 패스(wf_0aa50126-6c0) — cmd 로 넘어가는 공백 든 인자는 겹따옴표로 싸인다, 치환 몸 속 주석의 case 낱말 ·
+    # `then esac` 같은 인자 낱말은 case 를 열고 닫지 않는다
+    # arguments with spaces reach cmd quoted; case words in comments or as arguments do not open or close a case
+    ("Bash", "cmd //c bash -c 'test -f package.json && (echo deploying; railway up)'"),
+    ("Bash", "cmd //c bash -c 'for f in a b; do echo $f; done; railway up'"),
+    ("Bash", 'cmd //c "C:\\Program Files\\x\\railway.cmd" up'),
+    ("Bash", 'x="$(case "$1" in\n  deploy) railway up --detach ;;\n  # handle the else case\n  *) echo skip ;;\nesac)"'),
+    ("Bash", 'x=$(case "$1" in\n  dev) echo dev ;;  # if not dev then case prod below\n  prod) railway redeploy --yes ;;\nesac)'),
+    ("Bash", 'x="$(case "$1" in a) echo then esac;; prod) railway up;; esac)"'),
     ("Bash", 'cmd //c "if exist deploy-set.flag (railway up)"'),  # 조건 속 `set` 은 명령이 아니다 / not a command word
 ]
 
@@ -776,9 +789,9 @@ _USER_ONLY_SCRIPTS = [
     # 치환 몸의 case 는 `&&` · `||` · then · do · else 뒤도 / case inside a body after && || then do else
     ("Bash", 'out=$(cd /tmp && case "$1" in dev) echo dev;; prod) py -3 scripts/observer_setup.py;; esac)'),
     ("Bash", 'out=$(false || case "$1" in dev) echo dev;; prod) py -3 scripts/observer_setup.py;; esac)'),
-    ("Bash", 'r=$(if true; then case "$1" in p) py -3 scripts/observer_setup.py;; esac; fi)'),
-    ("Bash", 'r=$(for e in a; do case "$e" in a) py -3 scripts/observer_setup.py;; esac; done)'),
-    ("Bash", 'r=$(if false; then :; else case "$1" in p) py -3 scripts/observer_setup.py;; esac; fi)'),
+    ("Bash", 'r=$(if true; then case "$1" in a) echo a;; p) py -3 scripts/observer_setup.py;; esac; fi)'),
+    ("Bash", 'r=$(for e in a; do case "$e" in b) echo b;; a) py -3 scripts/observer_setup.py;; esac; done)'),
+    ("Bash", 'r=$(if false; then :; else case "$1" in a) echo a;; p) py -3 scripts/observer_setup.py;; esac; fi)'),
 ]
 
 
