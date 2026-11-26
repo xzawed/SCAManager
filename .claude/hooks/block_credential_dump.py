@@ -2223,10 +2223,12 @@ def _prod_decide_text(text, depth, channels=None):
             return reason
     quoted_lines = _prod_lines_opening_in_quotes(text) if channels is not None else frozenset()
     for number, line in enumerate(text.split("\n")):
-        # 여는 따옴표 안에서 시작하는 줄(따옴표 안 여러 줄 글자 — 커밋 메시지 등)은 명령이 아니다. 판정은 그 줄도 그대로 보지만
-        # 감사 채널은 세지 않는다(교차 검토: 커밋 메시지 속 낱말을 운영 호출로 적었다).
-        # A line that starts inside an open quote is text: still judged, never counted as an audit channel.
-        line_channels = None if number in quoted_lines else channels
+        # 여는 따옴표 안에서 시작하는 줄(따옴표 안 여러 줄 글자 — 커밋 메시지 등)은 명령이 아니다. 따옴표가 있는데 믿을 수 없는
+        # 줄(`-m "… && … (#1917)"` — `#` 때문에 따옴표 밖으로 보고 `&&` 에서 자른다)도 조각이 명령인지 모른다. 판정은 그 줄도
+        # 그대로 보지만(막는 쪽) 감사 채널은 세지 않는다 — 없던 운영 호출을 적는 것보다 낫다(교차 검토 · 하위 에이전트 재검토).
+        # Lines that start inside an open quote, or hold quotes that cannot be trusted, are still judged but never audited.
+        untrusted = any(q in line for q in "'\"") and not _quotes_trustworthy(line)
+        line_channels = None if number in quoted_lines or untrusted else channels
         for segment in _split_segments(line):
             stages = _split_stages(segment)
             for index, stage in enumerate(stages):

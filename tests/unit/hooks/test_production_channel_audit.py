@@ -121,7 +121,10 @@ _MENTIONS = ['grep -n "railway status" docs/a.md', "cat scripts/observe_db.py", 
              "git ls-files | xargs grep -l railway",
              "if command -v railway; then echo ok; fi",
              "py -3 scripts/observe_db.py --help",
-             "python scripts/perf_measure.py --local-only"]
+             "python scripts/perf_measure.py --local-only",
+             # 한 줄 따옴표 안의 `#` 은 따옴표 신뢰를 깨 `&&` 에서 잘린다 — 그 조각을 운영 호출로 적었다(하위 에이전트 재검토)
+             # a `#` inside a one-line quoted message made the splitter cut at `&&` and audit the piece
+             'git commit -m "feat: audit railway status && railway logs (#1917)"']
 
 
 @pytest.mark.parametrize("command", _MENTIONS)
