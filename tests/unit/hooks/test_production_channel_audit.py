@@ -82,6 +82,15 @@ _ALLOWED = {
     'python -W ignore scripts/observe_db.py "SELECT 1"': ["observe_db"],
     "py -3 scripts/railway_redeploy.py --log-errors": ["railway_redeploy --log-errors"],
     "./scripts/railway_config.py": ["railway_config"],  # 실행 비트로 직접 돌린 스크립트 / run directly via its shebang
+    # 최종 워크플로 패스(wf_bb53a27d-3cf) 반례 — 여러 줄 SQL 을 여는 줄의 호출 · 주석 속 아포스트로피 뒤의 다음 줄 ·
+    # 시간 제한 뒤 직접 돌린 스크립트 / a call that opens a multi-line SQL string, the line after a comment's apostrophe
+    "py -3 scripts/observe_db.py \"SELECT id, 'tag' AS t\nFROM analyses\nLIMIT 5\"": ["observe_db"],
+    "railway logs # it's the deploy log\nrailway status": ["railway logs", "railway status"],
+    "timeout 60 ./scripts/railway_config.py": ["railway_config"],
+    # watch 는 인자 글자를 셸로 돌린다 · argparse 는 줄인 긴 옵션을 받는다(`--rest` = `--restart`)
+    # watch runs its argument through a shell; argparse accepts an abbreviated long option
+    "watch -n 30 'railway status'": ["railway status"],
+    "py -3 scripts/railway_redeploy.py --rest": ["railway_redeploy --restart"],
 }
 
 
@@ -125,7 +134,11 @@ _MENTIONS = ['grep -n "railway status" docs/a.md', "cat scripts/observe_db.py", 
              "python scripts/perf_measure.py --local-only",
              # 한 줄 따옴표 안의 `#` 은 따옴표 신뢰를 깨 `&&` 에서 잘린다 — 그 조각을 운영 호출로 적었다(하위 에이전트 재검토)
              # a `#` inside a one-line quoted message made the splitter cut at `&&` and audit the piece
-             'git commit -m "feat: audit railway status && railway logs (#1917)"']
+             'git commit -m "feat: audit railway status && railway logs (#1917)"',
+             # 최종 워크플로 패스 반례 — 다른 명령의 인자인 `railway`(검색어) · 주석 속 백틱 / an argument, a comment
+             "if grep -q railway docs; then echo found; fi",
+             "echo done # ran `railway status` earlier",
+             "py -3 scripts/railway_redeploy.py --he"]  # 줄인 --help / an abbreviated --help
 
 
 @pytest.mark.parametrize("command", _MENTIONS)
@@ -193,7 +206,25 @@ _POWERSHELL_ALLOWED = {
     # 전체 경로 railway 의 읽기 · 이름만 관용구는 통과하고 기록된다 / full-path reads and the names idiom pass and are audited
     "C:\\Users\\x\\AppData\\Roaming\\npm\\railway.cmd status": ["railway status"],
     "C:\\Users\\x\\AppData\\Roaming\\npm\\railway.cmd variables --kv | cut -d= -f1": ["railway variables"],
+    # 한 줄 if/else 의 두 블록은 둘 다 코드다(최종 워크플로 패스) / both blocks of a one-line if/else are code
+    "if ($x) { railway status } else { railway logs }": ["railway status", "railway logs"],
+    "[string]$s = railway status --service x": ["railway status"],  # 형 제약이 붙은 대입 / a typed assignment
 }
+
+
+# PowerShell 의 언급 — 블록 안 검색어 · 주석 속 괄호. 막지도 기록하지도 않는다(최종 워크플로 패스: 새 블록 머리가 블록 안의
+# 아무 `railway` 낱말이나 호출로 읽었다). PowerShell mentions: a search term in a block, parentheses in a comment.
+_POWERSHELL_MENTIONS = ["Get-ChildItem | % { Select-String -Path $_ -Pattern railway }",
+                        "Write-Host done # see (railway status) docs",
+                        "$sb = { railway logs --deployment x }"]  # 블록을 정의만 한다 — 돌지 않는다 / only defined
+
+
+@pytest.mark.parametrize("command", _POWERSHELL_MENTIONS)
+def test_a_powershell_mention_is_neither_denied_nor_audited(command, logs, monkeypatch, capsys):
+    """블록 · 주석 속 언급은 호출이 아니다 / a mention inside a block or a comment is not a call."""
+    work, audit, denials = logs
+    assert _run(monkeypatch, capsys, _shell(command, work, tool="PowerShell")) == "", command
+    assert not audit.exists() and not denials.exists()
 
 
 @pytest.mark.parametrize("command", sorted(_POWERSHELL_ALLOWED))
@@ -224,6 +255,20 @@ _UNBLOCKED_PRODUCTION_WRITES = [
     ("Bash", "cmd //c railway up"),
     ("Bash", "x=$(bash <<'EOF'\nrailway up\nEOF\n)"),
     ("Bash", "git commit -m \"$(bash <<'EOF'\nrailway up\nEOF\n)\""),
+    # 최종 워크플로 패스 반례(C3) — 바깥 명령이 치환의 출력을 실행한다 · 붙여 쓴 `EOF)` 뒤의 줄은 돈다 · 큰따옴표 안 산술은
+    # heredoc 이 아니다 · 한 줄 if/else 의 두 번째 블록 / an outer runner, `EOF)` glued, arithmetic, the else block
+    ("Bash", "bash -c \"$(cat <<'EOF'\nrailway up\nEOF\n)\""),
+    ("Bash", "eval \"$(cat <<'EOF'\nrailway up\nEOF\n)\""),
+    ("Bash", "git commit -m \"$(cat <<'EOF'\nmsg\nEOF)\"\nrailway up"),
+    ("Bash", "x=$(cat <<'EOF'\nbody\nEOF)\nrailway up"),
+    ("Bash", "echo \"$(( 1 << n ))\"\nrailway up\nn"),
+    ("PowerShell", "if ($x) { railway status } else { railway up }"),
+    # watch · flock -c 는 인자 글자를 셸로 돌린다 · 형 제약이 붙은 대입(main 때부터) / shell text of watch and flock -c,
+    # typed PowerShell assignments
+    ("Bash", "watch -n 30 'railway up'"),
+    ("Bash", "flock /tmp/x -c 'railway up'"),
+    ("PowerShell", "[string]$s = railway up"),
+    ("PowerShell", "[int[]]$a = railway up"),
 ]
 
 
