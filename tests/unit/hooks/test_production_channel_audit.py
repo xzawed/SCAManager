@@ -214,7 +214,12 @@ _MENTIONS = ['grep -n "railway status" docs/a.md', "cat scripts/observe_db.py", 
              "cat > pr_body.md <<EOF\nHEAD: $(git rev-parse --short HEAD)\n"
              + "- \\`<(py -3 scripts/observer_setup.py)\\` inside double quotes is text now\nEOF",
              "cat > notes.md <<EOF\nBranch: $(git branch --show-current)\n"
-             + "It's about \\`diff <(railway up) expected.txt\\` being read as a call\nEOF"]
+             + "It's about \\`diff <(railway up) expected.txt\\` being read as a call\nEOF",
+             # 넷째 적대 패스(wf_509d2619-75b) — 명령 치환은 재지정보다 먼저 펼쳐져 heredoc 본문을 읽지 않는다(`-c` 글자 속
+             # `"$(cat)"` 은 gh 의 인자) · 색인 대입의 값은 실행이 아니다 / command substitution expands before the redirection
+             "bash -c 'gh issue comment 1917 --body \"$(cat)\"' <<'EOF'\n- user runs: `py -3 scripts/observer_setup.py`\nEOF",
+             "timeout 60 bash -c \"$(cat)\" <<'EOF'\nrailway up\nEOF",
+             'declare -A s; s[setup]=scripts/observer_setup.py; s[db]=scripts/observe_db.py; echo "${s[setup]}"']
 
 
 @pytest.mark.parametrize("command", _MENTIONS)
@@ -307,6 +312,10 @@ _POWERSHELL_ALLOWED = {
     'py -3 scripts\\observe_db.py "SELECT 2"  # -h lists options': ["observe_db"],
     "& 'C:\\x\\railway.cmd' status": ["railway status"],
     "Get-Content docs\\a.md | Select-String -Pattern '@'\nrailway status": ["railway status"],
+    # 넷째 적대 패스(wf_509d2619-75b) — 인자 배열 원소의 `"$( … )"` 는 PowerShell 이 Start-Process 전에 펼친다(읽기 — 그 안의
+    # `;` 는 줄을 나누지 않는다) / expanded before the call; its `;` does not split the line
+    "Start-Process pwsh -ArgumentList @('-NoExit', '-Command', \"Write-Host $(git rev-parse HEAD; railway status)\")":
+        ["railway status"],
 }
 
 
@@ -364,7 +373,10 @@ _POWERSHELL_MENTIONS = ["Get-ChildItem | % { Select-String -Path $_ -Pattern rai
                         + '- @(py -3 scripts/observer_setup.py) inside a double-quoted string is text\n"@\n'
                         + 'gh pr create --title "fix(hooks): array subexpression text" --body $body',
                         "switch ((Split-Path 'scripts\\observer_setup.py' -Leaf)) { observer_setup.py { 'user-only' } "
-                        + "default { 'auto' } }"]
+                        + "default { 'auto' } }",
+                        # 넷째 적대 패스 — Start-Process 는 원소를 공백으로 잇는다: `bash -c railway up` 은 맨 `railway` 만
+                        # 돌린다(`up` 은 $0) / joined with spaces, bash -c runs a bare `railway`
+                        "Start-Process bash -ArgumentList @('-c', 'railway up') -NoNewWindow -Wait"]
 
 
 @pytest.mark.parametrize("command", _POWERSHELL_MENTIONS)
@@ -462,11 +474,11 @@ _PRODUCTION_WRITES = [
     ("Bash", "cat <<'EOF' | env bash -s\nrailway up\nEOF"),
     ("Bash", 'echo "railway up" | env RAILWAY_ENVIRONMENT=production bash'),
     ("Bash", 'NOTE="(hotfix) deploy" timeout 600 bash -c "railway up"'),
-    ("Bash", "timeout 60 bash -c \"$(cat)\" <<'EOF'\nrailway up\nEOF"),
     ("Bash", 'eval -- "railway up"'),
     ("Bash", "printf 'set -e\\nrailway up\\n' | bash"),
     ("PowerShell", "Start-Process pwsh -ArgumentList @('-NoProfile', '-Command', 'railway up') -Wait"),
-    ("PowerShell", "Start-Process bash -ArgumentList @('-c', 'railway up') -NoNewWindow -Wait"),
+    # 공백이 든 원소는 이스케이프한 큰따옴표로 감싸야 한 인자다(Start-Process 문서) / quote an element that holds a space
+    ("PowerShell", "Start-Process bash -ArgumentList @('-c', '\"railway up\"') -NoNewWindow -Wait"),
     ("PowerShell", 'Start-Process pwsh -ArgumentList "-NoProfile -Command `"railway up`"" -Wait'),
     ("PowerShell", 'pwsh -NoProfile -Command "& `"$env:APPDATA\\npm\\railway.cmd`" up"'),
     ("PowerShell", '"railway redeploy --yes" | Invoke-Expression -ErrorAction Stop'),
@@ -476,6 +488,23 @@ _PRODUCTION_WRITES = [
     ("PowerShell", "$r.Output = railway up"),
     ("PowerShell", "${out} = railway up"),
     ("PowerShell", "$a, $b = railway up"),
+    # 넷째 적대 패스(wf_509d2619-75b) — Start-Process 는 원소를 공백으로 이어 받는 프로그램이 다시 나눈다 · 띄어 쓴 · 여러 줄
+    # 배열 · 위치 배열 · 첫 낱말의 `` `n `` · 괄호 식 속 iex · `-Command` 값인 here-string · 훑는 머리 뒤 env 옵션 · 묶음 끝 `)` ·
+    # 본문 `<( )` 안의 `$( )` / elements joined by spaces; spaced, multi-line and positional arrays; and more
+    ("PowerShell", "Start-Process pwsh -ArgumentList '-NoProfile', '-Command railway up'"),
+    ("PowerShell", "Start-Process pwsh -ArgumentList '-NoProfile -Command', 'railway up'"),
+    ("PowerShell", "Start-Process pwsh -ArgumentList '-NoProfile', '-Command', '\"railway up\"'"),
+    ("PowerShell", "Start-Process cmd -ArgumentList '/c railway up', '--detach'"),
+    ("PowerShell", "Start-Process pwsh -ArgumentList @( '-NoProfile', '-Command', 'railway up' )"),
+    ("PowerShell", "Start-Process pwsh -ArgumentList @(\n    '-NoProfile',\n    '-Command',\n    'railway up'\n) -Wait"),
+    ("PowerShell", "Start-Process pwsh '-NoProfile', '-Command', 'railway up'"),
+    ("PowerShell", '"git status`nrailway up" | iex'),
+    ("PowerShell", "$r = (iex @'\nrailway up\n'@)"),
+    ("PowerShell", "pwsh -NoProfile -Command @'\nrailway up\n'@"),
+    ("Bash", "timeout 600 env -u PGPASSWORD bash <<'EOF'\nrailway up\nEOF"),
+    ("Bash", "(cd /repo && bash) <<'EOF'\nrailway up\nEOF"),
+    ("Bash", "( cd /repo; sh ) <<'EOF'\nrailway up\nEOF"),
+    ("Bash", "cat > notes.md <<EOF\nsee <(echo $(railway up))\nEOF"),
     ("PowerShell", "Start-Process railway -ArgumentList 'up', '--detach' -NoNewWindow -Wait"),
     ("PowerShell", "$r = Invoke-Expression 'railway up; Write-Host ''done'''"),
 ]
@@ -524,6 +553,19 @@ _USER_ONLY_SCRIPTS = [
     ("Bash", '# 배열 예: arr=(\npy -3 scripts/observer_setup.py\ncase "$x" in b) echo ok;; esac'),
     ("Bash", 'arr=("(" a); py -3 scripts/observer_setup.py; case "$x" in b) echo ok;; esac'),
     ("Bash", "STAMP=$(date +%s) py -3 scripts/observer_setup.py"),
+    # 넷째 적대 패스(wf_509d2619-75b) — 공백으로 이어지는 원소 · 따옴표 친 위치 값 · 띄어 쓴 배열 · 괄호 식 · 훑는 머리 뒤 env ·
+    # 이어 쓴 · `??=` 대입 / the same shapes reaching user-only scripts
+    ("PowerShell", "Start-Process py -ArgumentList '-3 scripts/observer_setup.py', '--host', 'db.internal'"),
+    ("PowerShell", "Start-Process py -ArgumentList '-3', 'scripts/backfill_repository_user_id.py --apply' -Wait"),
+    ("PowerShell", "Start-Process py '-3 scripts/observer_setup.py'"),
+    ("PowerShell", "Start-Process py -ArgumentList @( '-3', 'scripts/observer_setup.py' ) -NoNewWindow -Wait"),
+    ("PowerShell", "(iex @'\npy -3 scripts/observer_setup.py --host db.internal\n'@)"),
+    ("PowerShell", "[void](iex @'\npy -3 scripts/observer_setup.py --host db.internal\n'@)"),
+    ("PowerShell", "$x = $y = py -3 scripts/observer_setup.py --host db.internal"),
+    ("PowerShell", "$x ??= py -3 scripts/observer_setup.py --host db.internal"),
+    ("Bash", "nice -n 10 env -C /repo py -3 scripts/observer_setup.py --host db.internal"),
+    ("Bash", "timeout 600 env -u PGPASSWORD py -3 scripts/backfill_repository_user_id.py --apply"),
+    ("Bash", "timeout 600 nohup py -3 scripts/observer_setup.py --host db.internal"),  # 훑는 머리 뒤 실행 접두어
 ]
 
 
@@ -604,6 +646,17 @@ _BASH_OPTION_SPELLINGS = {
     "py -3 scripts/observer_setup.py --he": False,  # 도움말 줄임 / an abbreviated --help
     "py -3 scripts/observer_setup.py -h": False,
 }
+# witness-corpus: 표에 글자 그대로 없는 Start-Process 매개변수 철자 — 바인더는 대소문자를 가리지 않고 유일한 앞부분으로 푼다
+_PS_PARAMETER_PREFIXES = {"-Wor": "workingdirectory", "-RedirectStandardOut": "redirectstandardoutput",
+                          "-NoNew": "nonewwindow", "-PassT": "passthru", "-UseNew": "usenewenvironment",
+                          "-LoadU": "loaduserprofile", "-Cred": "credential", "-FILEP": "filepath"}
+
+
+@pytest.mark.parametrize("spelling,name", sorted(_PS_PARAMETER_PREFIXES.items()))
+def test_a_start_process_parameter_resolves_from_an_unlisted_spelling(spelling, name):
+    """🔴 매개변수 표는 이름 · 별칭만 적는다 — 표에 없는 앞부분 · 대소문자 철자도 PowerShell 바인더처럼 그 매개변수로 푼다.
+    Unlisted prefixes and casings resolve to the parameter the PowerShell binder would bind."""
+    assert hook._ps_parameter(spelling, hook._PS_START_PARAMS, hook._PS_START_ALIASES)[0] == name
 
 
 @pytest.mark.parametrize("tool,command,denied",
