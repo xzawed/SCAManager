@@ -242,6 +242,16 @@ _MENTIONS = ['grep -n "railway status" docs/a.md', "cat scripts/observe_db.py", 
              'kind=$(case "$f" in */observer_setup.py) echo user;; *) echo agent;; esac)',
              'kind=$(case "$f" in a) (echo a);; */observer_setup.py) echo user;; esac)',
              'cmd //c "ECHO (railway up) stays manual"',
+             # 아홉째 적대 패스(wf_bdaef787-daf) — cmd 의 주석 · `@` · set · title · echo 중괄호, 인자 속 case 낱말
+             # cmd comments, `@`, set, title and echo braces; a case word as an argument
+             "cmd <<'EOF'\n:: (railway up is manual)\ngit status\nEOF",
+             "cmd <<'EOF'\nrem (railway up is manual)\ngit status\nEOF",
+             "cmd <<'EOF'\n@echo Step 2 (railway up) is for the user\nEOF",
+             "cmd <<'EOF'\nset NOTE=(railway up later)\necho %NOTE%\nEOF",
+             "cmd <<'EOF'\ntitle Deploy helper (railway CLI)\ndir\nEOF",
+             'cmd //c "echo {railway up} later"',
+             'kind=$(case "$f" in */observer_setup.py) echo because;; *) echo other;; esac)',
+             'kind=$(case "$f" in */observer_setup.py) cases=1;; *) echo other;; esac)',
              'case "$1" in\n  a) echo "(x) esac done" ;;\n  scripts/observer_setup.py) echo "user-only" ;;\nesac',
              'case "$1" in\n  start) echo starting ;;   # (nested case ends with) esac\n'
              + '  stop|scripts/observer_setup.py) echo stop ;;\nesac']
@@ -592,6 +602,7 @@ _PRODUCTION_WRITES = [
     ("Bash", "case $((RANDOM % 2)) in\n  0) bash <<'EOF'\nrailway up\nEOF\n  ;;\nesac"),
     ("Bash", 'cmd //c "C:\\\\Users\\\\me\\\\AppData\\\\Roaming\\\\npm\\\\railway.cmd up"'),  # cmd 글자의 백슬래시는 글자다
     ("PowerShell", "Start-Process cmd -ArgumentList '/c echo hi & railway up'"),  # cmd 의 `&` 는 문장 구분이다
+    ("Bash", 'cmd //c "@railway up"'),  # cmd 의 `@` 는 되풀이를 끌 뿐이다 / `@` only turns echoing off
 ]
 
 
@@ -716,7 +727,22 @@ _USER_ONLY_SCRIPTS = [
      + '  deploy) py -3 scripts/observer_setup.py ;;\nesac'),
     ("Bash", 'case "$1" in\n  a) msg="first line\n) esac\n"; echo "$msg" ;;\n  b) py -3 scripts/observer_setup.py ;;\nesac'),
     ("Bash", 'x=$(case "$1" in a) echo a;; b) py -3 scripts/observer_setup.py;; esac)'),
-    ("Bash", 'y=$(echo showcase ")"; py -3 scripts/observer_setup.py)'),
+    # 아홉째 적대 패스(wf_bdaef787-daf) — cmd 는 줄마다 읽고 `;` 는 자식에게 넘긴다, 다른 셸이 받는 본문도 바깥 셸이 먼저
+    # 펼친다(같은 깊이), 인자 속 case 낱말은 치환 몸을 늘이지 않는다
+    # cmd reads line by line and hands `;` to its child; the outer shell expands a foreign body first; a case argument
+    ("Bash", "cmd <<'EOF'\ncd /d C:\\repo\n\"C:\\Python312\\python.exe\" scripts/observer_setup.py\nEOF"),
+    ("Bash", "cat <<'EOF' | cmd\ncd /d C:\\repo\n\"C:\\Python312\\python.exe\" scripts\\observer_setup.py\nEOF"),
+    ("Bash", "printf 'cd /d C:\\\\repo\\n\"C:\\\\Python312\\\\python.exe\" scripts/observer_setup.py\\n' | cmd"),
+    ("Bash", "cmd <<'EOF'\necho start\nif exist scripts (py -3 scripts/observer_setup.py)\nEOF"),
+    ("Bash", "cmd <<'EOF'\necho Don't forget\npy -3 scripts\\observer_setup.py\nEOF"),
+    ("Bash", "cmd <<'EOF'\n@echo off\n\"C:\\Program Files\\Python312\\python.exe\" scripts\\observer_setup.py\nEOF"),
+    ("Bash", "cmd //c \"bash -c 'cd /c/repo; py -3 scripts/observer_setup.py'\""),
+    ("Bash", "pwsh -NoProfile -Command - <<EOF\nWrite-Host 'Result: $(py -3 scripts/observer_setup.py)'\nEOF"),
+    ("PowerShell", '@"\nexport HOST=$(py -3 scripts\\observer_setup.py --print-host)\n"@ | bash'),
+    ("PowerShell", "bash -c @'\na=$(b=$(c=$(d=$(py -3 scripts/observer_setup.py))))\n'@"),
+    ("Bash", 'echo "cases=$(grep -c case x.sh) esacs=$(grep -c esac x.sh)"; py -3 scripts/observer_setup.py; echo "1) done"'),
+    ("Bash", 'git commit -m "wip:\nhandle prod"; case "$1" in\n  prod) bash <<\'EOF\'\npy -3 scripts/observer_setup.py\nEOF\n'
+     + '  ;;\nesac'),  # 여러 줄 메시지가 닫히는 줄의 case 머리 / a case head on the line that ends a multi-line message
 ]
 
 

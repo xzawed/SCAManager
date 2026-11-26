@@ -2328,7 +2328,7 @@ def _command_walk(text, depth, channels):
     foreign = []  # 다른 셸이 받는 heredoc · here-string 본문 / bodies another shell receives
     text = _audit_joined_lines(_audit_without_heredoc_data(text, foreign))
     for shell, body in foreign:
-        reason = _walk_as(shell, body, depth + 1, channels)
+        reason = _walk_as(shell, body, depth, channels)  # 펼쳐 넣던 본문과 같은 깊이(아홉째 워크플로 패스) / same depth
         if reason:
             return reason
     mask = _audit_mask(text)
@@ -2522,7 +2522,8 @@ def _code_split(text, base, mask, separators):
                 sep = None  # 재지정 · 표준 출력과 오류를 함께 넘기는 파이프 `|&` / a redirection or the `|&` pipe
             if sep == "&" and _CONTEXT["shell"] == "powershell":
                 before = text[begin:i].rstrip()
-                if not before or before[-1] in "=({|":
+                # `( … )` · `{ … }` 몸은 따로 걷고 덮는다 — 그 안의 `&` 는 몸의 처음이다 / bodies are walked on their own
+                if not before or before[-1] in "=|":
                     sep = None  # 명령 자리의 호출 연산자 / the call operator at a command position
             if sep in ("|", "|&") and (text.startswith("||", i) or (i and text[i - 1] == "|")):
                 sep = None  # `||` 는 세그먼트 구분자다 / `||` separates segments
@@ -2654,13 +2655,19 @@ def _case_depth(text, depth, mask=None):
     """text 를 지난 뒤의 case 깊이 — 명령 자리의 `case 낱말 in` 에서 늘고 `esac` 에서 준다(다섯째 워크플로 패스: 앞 case 뒤의
     묶음 끝 `bash)` 를 갈래로 지웠다). 명령 자리가 아닌 낱말(`# just in case` · `grep -w esac`)은 세지 않는다(여섯째 워크플로 패스).
     따옴표 · 주석 속 낱말(`echo "(x) esac"` · `# (old) esac`)도 세지 않는다(여덟째 워크플로 패스 — `)` 뒤를 세면서 드러났다).
-    The case depth after text: a command-position `case WORD in` opens one, `esac` closes one."""
-    mask = _audit_mask(text) if mask is None else mask
+    mask 없이 줄 하나만 받으면(heredoc 순회) 앞 줄에서 이어지는 따옴표를 모른다 — case 를 여는 낱말은 날 글자에서도 센다
+    (아홉째 워크플로 패스: 여러 줄 `git commit -m "…` 이 닫히는 줄의 `; case "$1" in` 을 따옴표 안으로 읽었다). 닫는 esac 는
+    코드 자리에서만 센다. The case depth after text: a command-position `case WORD in` opens one, `esac` closes one."""
+    local = mask is None
+    mask = _audit_mask(text) if local else mask
     # 따옴표 문자는 남긴다 — 여는 따옴표는 'c', 닫는 따옴표는 따옴표 안 상태라 둘 다 남겨야 `"xx"` 가 한 낱말이다
     # keep the quote characters: the closing one carries the quoted state
     code = "".join(ch if state == "c" or ch in "\"'" else "x" for ch, state in zip(text, mask))
-    for found in _CASE_WORDS.finditer(code):
-        depth = depth + 1 if found.group(1) else max(0, depth - 1)
+    events = {found.start(found.lastindex): bool(found.group(1)) for found in _CASE_WORDS.finditer(code)}
+    if local:
+        events.update({found.start(1): True for found in _CASE_WORDS.finditer(text) if found.group(1)})
+    for _, opens in sorted(events.items()):
+        depth = depth + 1 if opens else max(0, depth - 1)
     return depth
 _AUDIT_CASE_PATTERN = re.compile(r"^\s*\(?\s*" + _CASE_PATTERN_WORD + r"(?:\s*\|\s*" + _CASE_PATTERN_WORD
                                  + r")*\s*\)\s*")
@@ -3059,33 +3066,49 @@ def _windows_argv(text, keep_quotes=False):
 
 
 def _cmd_calls(text):
-    """cmd 글자를 PowerShell 규칙으로 걸을 꼴로 — 문장(`&&` · `||` · `&` · `|` 로 나뉜, 겹따옴표 밖)마다 따옴표로 시작하는 머리는
-    호출 연산자 꼴(`& "C:\\…\\railway.cmd" up`)로, cmd 의 `&` 는 `;` 로 둔다(일곱째 워크플로 패스: 따옴표 친 실행 파일을 글자
-    식으로 읽었다). cmd text rewritten for a PowerShell-rules walk."""
+    """cmd 글자를 PowerShell 규칙으로 걸을 꼴로 — 문장(줄바꿈 · `&&` · `||` · `&` · `|` 로 나뉜, 겹따옴표 밖 — 따옴표는 줄마다
+    새로 센다)마다 `_cmd_call` 로 바꾼다(아홉째 워크플로 패스: cmd 는 stdin 을 줄마다 읽는데 첫 줄만 바꿨다). cmd 의 `&` 는 그대로
+    둔다 — PowerShell 규칙에서도 명령 자리 밖의 `&` 는 문장 끝이다. cmd 의 `;` 도 그대로다 — 자식(`bash -c '…; …'`)이 받는다.
+    cmd text rewritten statement by statement for a PowerShell-rules walk."""
     out, piece, quoted, i = [], [], False, 0
     while i < len(text):
         ch = text[i]
+        if ch == "\n":
+            out.append(_cmd_call("".join(piece)) + "\n")
+            piece, quoted, i = [], False, i + 1
+            continue
         if ch == '"':
             quoted = not quoted
         if not quoted and ch in "&|":
             sep = text[i:i + 2] if text[i:i + 2] in ("&&", "||") else ch
-            out.append(_cmd_call("".join(piece)) + (";" if sep == "&" else sep))
+            out.append(_cmd_call("".join(piece)) + sep)
             piece, i = [], i + len(sep)
             continue
-        piece.append(" " if ch == ";" and not quoted else ch)  # cmd 의 `;` 는 낱말 구분이다 / an argument delimiter
+        piece.append(ch)
         i += 1
     out.append(_cmd_call("".join(piece)))
     return "".join(out)
 
 
+# cmd 의 주석 줄 · 인자가 글자인 명령(cmd 은 대소문자를 가리지 않는다) / cmd comments and builtins whose arguments are text
+_CMD_COMMENT = re.compile(r"(?i)(?:rem(?![\w-])|::)")
+_CMD_TEXT_STATEMENT = re.compile(r"(?i)(?:echo|set|title)(?![\w-])")
+
+
 def _cmd_call(statement):
-    """따옴표로 시작하는 cmd 문장 머리를 PowerShell 호출 연산자 꼴로 — echo 의 인자는 글자라 그 괄호를 PowerShell 하위 식으로
-    읽지 않게 지운다(여덟째 워크플로 패스: `echo (railway up needs approval)` 를 막았다).
-    A quoted statement head as a PowerShell call; echo text loses its parentheses."""
-    stripped = statement.lstrip()
-    if stripped.lower().split(None, 1)[:1] == ["echo"]:  # cmd 은 대소문자를 가리지 않는다 / case-insensitive
-        return statement.replace("(", " ").replace(")", " ")
-    return " & " + stripped if stripped.startswith('"') else statement
+    """cmd 문장 하나를 PowerShell 규칙으로 걸을 꼴로 — 앞 `@`(되풀이 끄기)는 떼고, 주석(`rem` · `::`)은 빼고, 인자가 글자인 명령
+    (echo · set · title)의 인자는 홑따옴표 글자로, 따옴표로 시작하는 머리는 호출 연산자 꼴(`& "C:\\…\\railway.cmd" up`)로 둔다
+    (여덟째 · 아홉째 워크플로 패스: echo 의 괄호 · `;` · 중괄호와 `::` · `@echo` · `set X=(…)` · `title` 을 PowerShell 식으로 읽었다).
+    One cmd statement rewritten for a PowerShell-rules walk."""
+    stripped = statement.strip()
+    if stripped.startswith("@"):
+        stripped = stripped[1:].lstrip()
+    if _CMD_COMMENT.match(stripped):
+        return ""
+    text = _CMD_TEXT_STATEMENT.match(stripped)
+    if text:
+        return stripped[:text.end()] + " '" + stripped[text.end():].replace("'", "''") + "'"
+    return " & " + stripped if stripped.startswith('"') else stripped
 
 
 def _audit_unwrap(head, rest):
@@ -3332,6 +3355,9 @@ def _audit_without_heredoc_data(text, foreign=None):
             if foreign is not None and (shell != _CONTEXT["shell"] or runner == "cmd"):
                 joined = "\n".join(body)
                 foreign.append((shell, _cmd_calls(joined) if runner == "cmd" else joined))
+                if not literal:
+                    # 바깥 셸이 먼저 펼친다 — 그 치환은 바깥 규칙으로(아홉째 워크플로 패스) / the outer shell expands first
+                    kept.extend(_live_bodies(joined, powershell))
             else:
                 kept.extend(body)
         elif not literal:
@@ -3413,15 +3439,16 @@ def _audit_substitutions(text, string_body=False):
     return bodies
 
 
-# 치환 몸 안의 case · esac 낱말 / case and esac words inside a substitution body
-_CASE_KEYWORD_AT = re.compile(r"(?:case|esac)(?=[\s;)]|$)")
-
-
 def _audit_paren_end(text, start, escape):
     """치환 몸이 끝난 다음 자리와 닫혔는가 — 몸 속 따옴표 · 이스케이프 안의 괄호는 세지 않는다(`sed 's/\\([^)]*\\)/'` 의 `)`
     가 몸을 일찍 닫아 남은 `railway whoami)` 를 알 수 없는 하위 명령으로 막았다 — 워크플로 패스 wf_150f221f-097). 따옴표가
     닫히지 않으면 괄호만 센다. The end of a substitution body, quote-aware; parentheses only when a quote stays open."""
     for aware in (True, False):
+        # 몸 속 명령 자리의 case · esac(`_CASE_WORDS` — 몸을 여는 `(` 부터) — 갈래 패턴의 `)` 가 몸을 닫지 않게(여덟째 워크플로
+        # 패스), 인자 속 낱말(`grep -c case`)은 세지 않는다(아홉째 워크플로 패스)
+        # command-position case/esac inside the body, so an arm pattern's `)` does not close it
+        found = _CASE_WORDS.finditer(text, start - 1) if aware else ()
+        words = {match.start(match.lastindex): match.group(match.lastindex) for match in found}
         depth, j, quote, cases = 1, start, None, []  # cases — 열린 case 마다 그 안의 짝 괄호 수 / per open case
         while j < len(text) and depth:
             ch = text[j]
@@ -3432,16 +3459,11 @@ def _audit_paren_end(text, start, escape):
             if aware and ch == escape:
                 j += 2
                 continue
-            word = _CASE_KEYWORD_AT.match(text, j) if aware and (j == 0 or text[j - 1] in " \t\n;(|&") else None
-            if word:
-                # `$(case "$f" in */x.py) …;; esac)` — 갈래 패턴의 `)` 가 몸을 닫지 않게(여덟째 워크플로 패스)
-                # an arm pattern's `)` must not close the substitution body
-                if word.group(0) == "case":
-                    cases.append(0)
-                elif cases:
-                    cases.pop()
-                j = word.end()
-                continue
+            word = words.get(j)
+            if word == "case":
+                cases.append(0)
+            elif word and cases:
+                cases.pop()
             if aware and ch in ("'", '"'):
                 quote = ch
             elif ch == "(":
