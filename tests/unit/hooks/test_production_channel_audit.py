@@ -219,7 +219,9 @@ _MENTIONS = ['grep -n "railway status" docs/a.md', "cat scripts/observe_db.py", 
              # `"$(cat)"` 은 gh 의 인자) · 색인 대입의 값은 실행이 아니다 / command substitution expands before the redirection
              "bash -c 'gh issue comment 1917 --body \"$(cat)\"' <<'EOF'\n- user runs: `py -3 scripts/observer_setup.py`\nEOF",
              "timeout 60 bash -c \"$(cat)\" <<'EOF'\nrailway up\nEOF",
-             'declare -A s; s[setup]=scripts/observer_setup.py; s[db]=scripts/observe_db.py; echo "${s[setup]}"']
+             'declare -A s; s[setup]=scripts/observer_setup.py; s[db]=scripts/observe_db.py; echo "${s[setup]}"',
+             # 파이프 뒤 `$(cat)` 이 인자의 일부면 데이터다(명령 글자 전체일 때만 돈다) / part of an argument is data
+             "echo \"py -3 scripts/observer_setup.py\" | bash -c 'gh issue comment 1 --body \"$(cat)\"'"]
 
 
 @pytest.mark.parametrize("command", _MENTIONS)
@@ -376,7 +378,19 @@ _POWERSHELL_MENTIONS = ["Get-ChildItem | % { Select-String -Path $_ -Pattern rai
                         + "default { 'auto' } }",
                         # 넷째 적대 패스 — Start-Process 는 원소를 공백으로 잇는다: `bash -c railway up` 은 맨 `railway` 만
                         # 돌린다(`up` 은 $0) / joined with spaces, bash -c runs a bare `railway`
-                        "Start-Process bash -ArgumentList @('-c', 'railway up') -NoNewWindow -Wait"]
+                        "Start-Process bash -ArgumentList @('-c', 'railway up') -NoNewWindow -Wait",
+                        # 다섯째 적대 패스 — 이은 명령줄은 Windows 규칙으로 나뉜다: 홑따옴표는 묶지 않아 PowerShell 이 다시 읽는
+                        # 글자로 남고(`'ERROR|railway up'`), `\"` 는 글자 따옴표다 · 닫힌 괄호 식 뒤 here-string 은 이어 붙일 글자다
+                        # Windows argv rules: single quotes stay for PowerShell to re-read; a closed expression concatenates
+                        "Start-Process pwsh -ArgumentList '-NoProfile', '-Command', "
+                        + "\"Get-Content app.log | Select-String 'ERROR|railway up'\"",
+                        "Start-Process pwsh -ArgumentList '-NoExit', '-Command', "
+                        + "\"Write-Host 'Next: ask the user; py -3 scripts/backfill_repository_user_id.py --apply'\"",
+                        "Start-Process pwsh -ArgumentList '-NoProfile', '-Command', 'Write-Host \\\"Build done; railway up is next\\\"'",
+                        "Start-Process pwsh -ArgumentList @(\n  '-NoExit',\n  '-Command',\n"
+                        + "  \"Get-Content -Wait app.log | Select-String 'ERROR|railway up'\"\n)",
+                        "Start-Process pwsh -ArgumentList \"-NoProfile -Command Get-Content app.log | Select-String 'ERROR|railway up'\"",
+                        "$v = (pwsh -v) + @'\nrailway up\n'@"]
 
 
 @pytest.mark.parametrize("command", _POWERSHELL_MENTIONS)
@@ -504,6 +518,13 @@ _PRODUCTION_WRITES = [
     ("Bash", "( cd /repo; sh ) <<'EOF'\nrailway up\nEOF"),
     ("PowerShell", "Start-Process railway -ArgumentList 'up', '--detach' -NoNewWindow -Wait"),
     ("PowerShell", "$r = Invoke-Expression 'railway up; Write-Host ''done'''"),
+    # 다섯째 적대 패스(wf_89808011-a19) — 같은 꼴의 railway 쓰기 / the same shapes with railway writes
+    ("Bash", "case \"$1\" in help) cat <<'EOF'\nusage: run.sh deploy\nEOF\n;;\ndeploy) bash <<'EOF'\nrailway up\nEOF\n;;\nesac"),
+    ("Bash", "cat <<'EOF' | eval \"$(cat)\"\nrailway up\nEOF"),
+    ("Bash", "cat <<'EOF' | timeout 60 bash -c \"$(cat)\"\nrailway up\nEOF"),
+    ("Bash", "for i in 1 2 3; do env RETRY=$i nohup bash -c 'railway redeploy -y' && break; sleep 10; done"),
+    ("Bash", "timeout 600 env X=1 nohup bash <<'EOF'\nrailway up\nEOF"),
+    ("Bash", "for s in api; do env X=1 nohup npx @railway/cli redeploy -y; done"),
 ]
 
 
@@ -568,6 +589,25 @@ _USER_ONLY_SCRIPTS = [
     ("PowerShell", "pwsh -NoProfile -Command @'\npy -3 scripts/observer_setup.py --host db.internal\n'@"),
     ("Bash", "(cd /repo && bash) <<'EOF'\npy -3 scripts/observer_setup.py --host db.internal\nEOF"),
     ("Bash", "cat > notes.md <<EOF\nsee <(echo $(py -3 scripts/observer_setup.py --host db.internal))\nEOF"),
+    # 다섯째 적대 패스(wf_89808011-a19) — heredoc 줄의 case 머리 뒤 갈래 · 파이프 뒤 `eval "$(cat)"` · env 뒤 실행 접두어 ·
+    # Start-Process 의 `--` · 묶음이 받는 heredoc 의 `$(cat)` · `source /dev/stdin` / case heads on heredoc lines and more
+    ("Bash", "case \"$1\" in help) cat <<'EOF'\nusage: run.sh deploy\nEOF\n;;\n"
+     + "setup) bash <<'EOF'\npy -3 scripts/observer_setup.py --host db\nEOF\n;;\nesac"),
+    ("Bash", "cat <<'EOF' | eval \"$(cat)\"\npy -3 scripts/backfill_repository_user_id.py --apply\nEOF"),
+    ("Bash", "timeout 600 env PGHOST=db nohup py -3 scripts/observer_setup.py"),
+    ("Bash", "if env DRY_RUN=0 time py -3 scripts/backfill_repository_user_id.py --apply; then echo done; fi"),
+    ("PowerShell", "Start-Process py -- '-3', 'scripts/observer_setup.py'"),
+    ("Bash", "( bash -c \"$(cat)\" ) <<'EOF'\npy -3 scripts/observer_setup.py\nEOF"),
+    ("Bash", "(cd sub && bash -c \"$(cat)\") <<'EOF'\npy -3 scripts/backfill_repository_user_id.py --apply\nEOF"),
+    ("Bash", "source /dev/stdin <<'EOF'\npy -3 scripts/observer_setup.py --host db\nEOF"),
+    # 여러 줄 case 의 갈래 줄 · 파이프 뒤 `$(cat)` 이 명령 글자 전체 · 쉼표 없는 여러 줄 인자 배열(줄바꿈이 원소 구분)
+    # a multi-line case arm, `$(cat)` as the whole command text after a pipe, a comma-less multi-line argument array
+    ("Bash", 'case "$1" in\n  setup) py -3 scripts/observer_setup.py ;;\nesac'),
+    ("Bash", 'echo "py -3 scripts/observer_setup.py" | eval "$(cat)"'),
+    ("Bash", "cat <<'EOF' | timeout 60 bash -c \"$(cat)\"\npy -3 scripts/observer_setup.py\nEOF"),
+    ("PowerShell", "Start-Process py -ArgumentList @(\n  '-3'\n  'scripts/observer_setup.py'\n)"),
+    # 앞 case 가 esac 로 끝난 뒤의 묶음 끝 `bash)` 는 갈래 패턴이 아니다 / after esac, `bash)` closes a group
+    ("Bash", "case \"$x\" in a) echo a;; esac\n(cd sub && bash) <<'EOF'\npy -3 scripts/observer_setup.py\nEOF"),
 ]
 
 
