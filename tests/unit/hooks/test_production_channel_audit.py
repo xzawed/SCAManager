@@ -655,6 +655,10 @@ _PRODUCTION_WRITES = [
     ("Bash", 'x=$(echo "or else case in point"; case "$1" in a) echo a;; b) railway up;; esac)'),
     ("Bash", 'cmd //c "cd it\'s here & railway up"'),  # cmd 의 `\'` 는 글자 — 뒤 문장을 덮지 않는다 / a literal apostrophe
     ("Bash", 'cmd //c "echo \'quoted & text\' & railway up"'),
+    ("Bash", "cmd //c 'for %s in (settings worker) do (railway up -s %s)'"),
+    ("Bash", "cmd //c 'for %s in (echo a b) do (railway up -s %s)'"),
+    ("Bash", "cmd //c 'if exist .deployed (echo already deployed); else (railway up)'"),
+    ("Bash", 'out="$(case "$1" in a) echo what to do case by case;; prod) railway up;; esac)"'),  # 인자 속 `do case` 는 case 가 아니다
     ("Bash", 'cmd //c "if exist deploy-set.flag (railway up)"'),  # 조건 속 `set` 은 명령이 아니다 / not a command word
 ]
 
@@ -817,6 +821,12 @@ _USER_ONLY_SCRIPTS = [
     ("Bash", 'x="$(echo "(" ${#a})"; py -3 scripts/observer_setup.py'),
     ("Bash", "timeout 60 cmd <<'EOF'\nif exist dist (\n  echo built) else (py -3 scripts\\observer_setup.py)\nEOF"),  # 줄을 넘는 블록
     ("Bash", "cmd //c \"if exist x (bash -c '(echo hi; py -3 scripts/observer_setup.py)')\""),  # 블록 안 홑따옴표는 자식 셸 몫
+    # 열넷째 적대 패스(wf_99240b16-4fc) — FOR 집합은 블록이 아니다, `)` 뒤 `;` · `,` · `=` · do · `0<nul` 은 cmd 가 이어 읽는다,
+    # cmd 의 `#` · 백틱은 글자 / a FOR set is not a block; cmd continues after `) ;` `) do` `0<nul`; `#` and backticks are text
+    ("Bash", "cmd //c 'if exist C:\\nonexist (for %s in (settings) do (echo %s)) else (py -3 scripts\\observer_setup.py)'"),
+    ("Bash", "cmd //c 'if exist x (echo a) 0<nul else (py -3 scripts\\observer_setup.py)'"),
+    ("Bash", "timeout 60 cmd <<'EOF'\ngh issue view #12 & py -3 scripts\\observer_setup.py\nEOF"),
+    ("Bash", "timeout 60 cmd <<'EOF'\ncd x`'b\"c\npy -3 scripts\\observer_setup.py\nEOF"),
     # 치환 몸의 case 는 `&&` · `||` · then · do · else 뒤도 / case inside a body after && || then do else
     ("Bash", 'out=$(cd /tmp && case "$1" in dev) echo dev;; prod) py -3 scripts/observer_setup.py;; esac)'),
     ("Bash", 'out=$(false || case "$1" in dev) echo dev;; prod) py -3 scripts/observer_setup.py;; esac)'),
