@@ -488,7 +488,11 @@ def _review_with_state(review_state, *, raw):
     return item
 
 
-@pytest.mark.parametrize("review_state", ["missing", None, "pending", "PENDING ", "DISMISSED", "CHANGES_REQUESTED"])
+# witness-corpus: Grok 적대 검토(956c36dc)가 재현한 반례(빠짐 · null · 소문자 · 공백)와 GitHub 리뷰 state 문서의 나머지 값 — 허용 목록에서 뽑지 않았다
+_UNCOUNTED_REVIEW_STATES = ["missing", None, "pending", "PENDING ", "DISMISSED", "CHANGES_REQUESTED"]
+
+
+@pytest.mark.parametrize("review_state", _UNCOUNTED_REVIEW_STATES)
 def test_review_state_outside_approved_or_commented_is_refused(review_state):
     """리뷰는 state 가 APPROVED 또는 COMMENTED 가 아니면 기록이 있어도 막는다."""
     assert _decide(_state(comments=[], reviews=[_review_with_state(review_state, raw=False)]))
