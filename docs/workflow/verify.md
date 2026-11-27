@@ -45,6 +45,8 @@
 
    볼드(`**WEAKENED**`)는 미매칭. 라운드마다 한 묶음 — BROKEN 으로 고친 라운드도 지우지 않는다.
    왜 그 분기로 갔는지는 `py -3 scripts/check_claim_review_trace.py --explain <base> <head>`.
+   Grok 은 `grok_build_plan`(셸 · 편집 · MCP 를 Grok 쪽에서 거부)으로만 부른다 — cwd 는 .env 가 없는 워크트리, 프롬프트
+   첫 줄에 «.env · 자격 파일을 열지 않는다». 탐침은 Grok 이 명령으로 적고 Claude 가 셸에서 돌린다(훅이 본다).
 
 7. **게이트 분기를 완화했으면** — 조건 제거 · 범위 확대 · `except` 통합 · 면제 추가.
    본문에 `## 새로 도달 가능해진 입력 클래스` 를 두고 **클래스마다 테스트 1건**을 건다.
@@ -92,6 +94,10 @@
    문서가 처방한 MCP 도구 이름을 `git grep -n "MCP" -- docs/` 로 모아 목록과 대조한다.
 4. 공개 쓰기(gh 의 Issue · PR 본문 · 댓글 · 릴리스 노트)는 `scripts/scan_publish.py` 가 훅으로 먼저 잰다 — 비밀값 · 개인정보 꼴이
    있으면 막고 종류 · 개수만 알린다. 본문 파일 경로는 그대로 적는다(명령 치환 · 정의 안 된 변수는 못 재서 막는다).
+5. 훅 밖의 길은 `.claude/settings.json` `permissions.deny` 가 막는다 — 파일 도구의 .env 꼴(작업 폴더 아래 `.env.*` 전체 ·
+   템플릿만 `!` 예외, 그 밖은 `//**/` 이름 목록)과 Grok 의 셸 도구. Read 거부는 Grep · Glob 과 이름을 적은 셸의 cat · grep · ls
+   에도 걸려, 남는 값 없는 확인은 `test -f .env` 다(이름 · 개수는 사용자 `!`). .env 꼴 이름을 넓히면 훅 `_is_dotenv_name` 과
+   거부 목록을 같이 고친다 — 시험이 둘을 대조한다.
 
 ### side-effect-only ORM import
 

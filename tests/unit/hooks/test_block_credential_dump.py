@@ -287,6 +287,19 @@ _BLOCKED = [
     pytest.param("grep -C 3 KEY .env", id="grep-context-dotenv"),
     pytest.param("grep -c -A2 KEY .env", id="grep-count-with-context-flag"),
     pytest.param("ls .env | xargs cat", id="safe-head-piped-to-reader"),
+    # 🔴 자격 파일 사본 이름 — 키 하나 교체 승인이 .env 전체 사본으로 넓어졌고 그 이름이 판정 밖이었다(원장 #1940 M08).
+    #    `env` 뒤 구분자 + 백업 낱말 · 편집기 백업(`~`).
+    # Credential-file copy names were outside the .env name test (ledger #1940 M08).
+    pytest.param("cat env.backup", id="dotenv-copy-env-backup"),
+    pytest.param("cat env.backup-20261125", id="dotenv-copy-dated"),
+    pytest.param("type C:/Users/x/AppData/Local/Temp/prod_env.bak", id="dotenv-copy-bak-abspath"),
+    pytest.param("cat my-env.old", id="dotenv-copy-separator-head"),
+    pytest.param("cat .env~", id="dotenv-editor-backup"),
+    pytest.param("cat prod.env~", id="dotenv-name-suffix-editor-backup"),
+    pytest.param("cat '.env - Copy'", id="dotenv-explorer-duplicate"),
+    pytest.param('cat "prod.env - Copy"', id="dotenv-name-suffix-explorer-duplicate"),
+    pytest.param('cat "env.backup (1)"', id="dotenv-copy-download-duplicate"),
+    pytest.param("cat env.original", id="dotenv-copy-word-continues"),
 ]
 
 
@@ -392,6 +405,22 @@ _ALLOWED = [
     pytest.param("grep KEY .env.example", id="grep-dotenv-example"),
     pytest.param("cp .env.example .env", id="copy-template-to-dotenv"),
     pytest.param("ls -la .envrc", id="envrc-not-dotenv"),
+    # 사본 이름 판정의 대조군 — `env` 와 백업 낱말이 붙어 있지 않으면 .env 꼴이 아니다(원장 #1940 M08).
+    # Controls for the copy-name test: `env` not directly followed by a backup word is not .env-like.
+    pytest.param("cat alembic/env.py", id="alembic-env-py"),
+    pytest.param("cat env.py.bak", id="env-py-backup-is-not-dotenv"),
+    pytest.param("cat scripts/backup.sh", id="backup-script"),
+    pytest.param("cat docs/reference/env-vars.md", id="env-vars-doc"),
+    # 🔴 사본 판정은 이름 «전체» 에 댄다 — 안쪽 검색이면 아래가 막혔다(Grok 반례 · 원장 #1940 M08).
+    # The copy test matches the whole name; a search denied these honest commands (Grok counterexamples).
+    pytest.param('git commit -m "block env.backup copies"', id="commit-message-mentions-copy-name"),
+    pytest.param('git commit -m "remove venv_backup"', id="commit-message-venv-backup"),
+    pytest.param("du -sh venv.bak", id="venv-backup-folder"),
+    pytest.param('gh pr create --title "M08 env.backup" --body-file C:/tmp/body.md', id="pr-title-mentions-copy-name"),
+    # 복제 표지는 이름 끝에서만 떼고, 뗀 앞이 낱말 여럿이면 글이다(Grok 2차 반례 · 1차 수정이 만든 오탐 포함).
+    # Duplicate marks are removed only at the end, and what remains must be one word (Grok round 2).
+    pytest.param('git commit -m ".env docs update"', id="commit-message-starts-with-dotenv"),
+    pytest.param('git commit -m "fix .env (1)"', id="commit-message-ends-with-duplicate-mark"),
     # 안전한 꼴 — 옮기기 · 지우기 · 정보만 보기 · 쓰기 대상으로만 나오는 .env · 템플릿 · 이름만 자르기.
     # Safe forms: move/remove/metadata, .env only as a write target, templates, names-only cut.
     pytest.param("ls -la .env", id="ls-dotenv"),
@@ -785,6 +814,21 @@ def test_recursive_search_in_a_tree_without_dotenv_passes(tmp_path):
     (tmp_path / "src" / "app.py").write_text("X = 1\n", encoding="utf-8")
     decision, reason = _decide("grep -rn KEY .", cwd=tmp_path)
     assert decision != "deny", f".env 가 없는데 막혔다: {reason}"
+
+
+def test_recursive_search_sees_a_copy_named_file(tmp_path):
+    """🔴 재귀 검색 대상 폴더에 자격 파일 사본(env.backup)만 있어도 읽기다 — 이름 판정은 폴더 순회에도 쓰인다.
+    닮은 이름(env.py · environment.py · env.py.bak)만 있는 폴더는 대조군으로 통과한다(원장 #1940 M08).
+    A recursive search over a folder holding only a copy-named file is a read; look-alike names pass."""
+    (tmp_path / "keep").mkdir()
+    (tmp_path / "keep" / "env.backup").write_text("PLANT=1\n", encoding="utf-8")
+    decision, _ = _decide("grep -rn KEY keep", cwd=tmp_path)
+    assert decision == "deny", "사본 이름 파일이 든 폴더의 재귀 검색이 통과했다 — 사본의 일치 줄이 값째 나온다."
+    (tmp_path / "plain").mkdir()
+    for name in ("env.py", "environment.py", "env.py.bak", "venv.bak"):
+        (tmp_path / "plain" / name).write_text("X = 1\n", encoding="utf-8")
+    decision, reason = _decide("grep -rn KEY plain", cwd=tmp_path)
+    assert decision != "deny", f".env 꼴이 아닌 이름만 있는 폴더인데 막혔다: {reason}"
 
 
 def test_recursive_search_deny_reason_points_to_safe_search(repo_like):
