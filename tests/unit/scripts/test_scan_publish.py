@@ -50,6 +50,11 @@ _HARMLESS = [
     "/home/runner/work/SCAManager/SCAManager/tests",
     "`SESSION_SECRET` 은 값 없이 이름만 적는다 · sk-ant- 접두만 언급",
     "D:\\Source\\SCAManager\\docs\\workflow\\verify.md",
+    # 원장 #1940 M03 — 꼴을 넓히며 리포 문서 · 소스에서 실측한 닮은 꼴(API 경로 · 코드 대입 · 템플릿 자리표시자 · 개수 설정)
+    "언어 = `POST /api/users/me/preferred-language` → DB",
+    "n8n_secret=settings.n8n_webhook_secret,",
+    "GITHUB_WEBHOOK_SECRET=your_webhook_secret_here",
+    "CLAUDE_REVIEW_MAX_TOKENS=8192",
 ]
 
 
@@ -62,6 +67,74 @@ def test_each_planted_shape_is_counted_under_its_kind(kind):
 def test_harmless_lookalikes_count_nothing():
     """대조군(뒤집기) — 닮았지만 공개해도 되는 값은 0 이다."""
     assert {line: scan.count_kinds(line) for line in _HARMLESS if scan.count_kinds(line)} == {}
+
+
+# --- 꼴마다 양성 시료 · 값에 붙은 한글 · 이 리포의 비밀 이름 (원장 #1940 M03 P1-14 · P1-16) ---
+# 합성 값은 조각을 이어 만든다 — 파일 글자에 비밀값 꼴이 통째로 나오지 않게 한다(gitleaks · push protection).
+# Synthetic samples are built from pieces so no whole secret shape appears in this file.
+_SAMPLES = {
+    "anthropic-key": _ANTHROPIC,
+    "openai-key": "sk" + "-proj-" + "Ab1" * 12,
+    "github-token": _GH_TOKEN,
+    "db-url-with-password": _DB_URL,
+    "jwt": "eyJ" + "a1" * 10 + ".eyJ" + "b2" * 10 + "." + "c3" * 6,
+    "telegram-bot-token": "1234567890" + ":AA" + "Bc9" * 11,
+    "slack-token": "xox" + "b-" + "1234567890" + "-" + "Ab1" * 4,
+    "aws-key": "AK" + "IA" + "ABCDEFGHIJ234567",
+    "private-key": "-----BEGIN " + "RSA PRIVATE" + " KEY-----",
+    "assigned-secret": "SESSION" + "_SECRET=" + "a1B2" * 8,
+    "email": _EMAIL,
+    "local-home-path": _HOME,
+}
+# 한국어 글의 기본형 — 값 바로 앞뒤에 한글이 붙는다(조사 · 붙여 쓴 낱말). 유니코드 `\b` 는 한글을 낱말 글자로 본다.
+# Korean text glues particles and words right onto a value; a Unicode `\b` treats Hangul as word characters.
+_KOREAN_WRAPS = ("토큰{}를 썼다", "값은{}입니다", "{}으로 바꿨다", "키:{}이고")
+
+
+def test_every_kind_has_a_positive_sample():
+    """🔴 꼴마다 양성 시료가 있다 — 꼴 목록에서 파생해 빠진 꼴이 없게 한다(12꼴 중 7꼴이 양성 시험 0 이었다)."""
+    assert set(_SAMPLES) == set(scan._KINDS)
+
+
+@pytest.mark.parametrize("kind", sorted(scan._KINDS))
+def test_each_kind_catches_its_sample(kind):
+    assert scan.count_kinds(_SAMPLES[kind]).get(kind, 0) >= 1, kind
+
+
+@pytest.mark.parametrize("wrap", _KOREAN_WRAPS)
+@pytest.mark.parametrize("kind", sorted(scan._KINDS))
+def test_a_value_glued_to_korean_text_is_still_caught(kind, wrap):
+    """🔴 값 앞뒤에 한글이 붙어도 잡는다 — 경계를 ASCII 로 본다."""
+    assert scan.count_kinds(wrap.format(_SAMPLES[kind])).get(kind, 0) >= 1, (kind, wrap)
+
+
+def _repo_secret_names():
+    """앱 설정이 «값을 찍지 않는» 문자열 필드(`src/config.py::_is_sensitive_field`) — URL · 사용자 이름은 다른 꼴이
+    맡는다. 손 사본이 아니라 앱의 판정에서 파생한다. / Derived from the app's own sensitive-field test."""
+    from src.config import Settings, _is_sensitive_field  # pylint: disable=import-outside-toplevel
+    return sorted(name.upper() for name in Settings.model_fields
+                  if _is_sensitive_field(name) and not any(hint in name for hint in ("url", "dsn", "user")))
+
+
+_SECRET_FORMS = ("{n}={v}", '"{n}": "{v}"', "{n}: {v}", "export {n}='{v}'", "{n}={v}를 넣었다", "토큰{n}={v}")
+
+
+def test_repo_secret_names_are_derived():
+    """공허화 방어 — 파생한 이름 집합이 비지 않았다."""
+    assert _repo_secret_names()
+
+
+@pytest.mark.parametrize("name", _repo_secret_names())
+def test_every_repo_secret_name_with_a_value_is_caught(name):
+    """🔴 이 리포의 비밀 이름 전부가 값과 함께 나오면 잡힌다 — 접두가 붙은 이름(`SESSION_SECRET` 등)을 놓쳤다."""
+    value = "Qz7" + "a1B2" * 6
+    missed = [form for form in _SECRET_FORMS if "assigned-secret" not in scan.count_kinds(form.format(n=name, v=value))]
+    assert not missed, f"{name}: {missed}"
+
+
+def test_the_committed_env_template_counts_nothing():
+    """대조군(파생) — 커밋된 템플릿에는 값이 없다: 자리표시자 · 빈 값 · localhost 주소는 꼴이 아니다."""
+    assert scan.count_kinds((_ROOT / ".env.example").read_text(encoding="utf-8")) == {}
 
 
 def test_the_file_check_prints_counts_only_and_fails(tmp_path):
@@ -708,3 +781,29 @@ def test_the_hook_is_wired_for_gh_on_both_shells_and_blocks_on_failure():
     handlers = _publish_handlers()
     assert sorted(h.get("if") for h in handlers) == ["Bash(gh *)", "PowerShell(gh *)"], handlers
     assert all(h.get("onFailure") == "block" and re.search(r"scan_publish\.py --hook$", h["command"]) for h in handlers)
+
+
+# --- 리포 스크립트의 공개 쓰기 — 게시 전 검사 훅은 gh 로 시작하는 명령만 본다 (원장 #1940 M03 P2-16) ---
+# 스크립트가 안에서 부르는 gh 는 훅 밖이다 — 그 자리는 스크립트가 올리기 전에 `count_kinds` 로 직접 잰다. 새 자리가 생기면
+# 이 시험이 붉어져 같은 장치를 달게 한다(동작은 각 스크립트의 시험이 잰다).
+# Scripts call gh outside the hook; each such site scans its own body. A new site turns this red.
+_PUBLISH_WORDS = {"comment", "create", "edit", "review", "--body", "--body-file", "--notes", "--notes-file"}
+_KNOWN_PUBLISHERS = {"merge_approved.py", "semgrep_audit.py"}
+
+
+def _scripts_with_publish_calls():
+    import ast  # pylint: disable=import-outside-toplevel
+    found = set()
+    for path in sorted((_ROOT / "scripts").glob("*.py")):
+        if path.name == "scan_publish.py":
+            continue
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.List) and _PUBLISH_WORDS & {
+                    elt.value for elt in node.elts if isinstance(elt, ast.Constant) and isinstance(elt.value, str)}:
+                found.add(path.name)
+    return found
+
+
+def test_every_script_that_publishes_is_a_known_scanned_site():
+    """🔴 공개 쓰기 자리 집합이 알려진 자리와 같다 — 하나는 늘고(새 자리) 하나는 비면(탐지 공허) 붉어진다."""
+    assert _scripts_with_publish_calls() == _KNOWN_PUBLISHERS

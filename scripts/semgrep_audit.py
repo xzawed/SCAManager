@@ -25,6 +25,11 @@ import sys
 import tempfile
 from pathlib import Path
 
+# 감사 이슈도 공개 쓰기다 — 게시 전 검사 훅은 CI 도 스크립트 안의 gh 도 보지 않는다: 올리기 전에 같은 꼴로 잰다(원장 #1940 M03 P2-16).
+# The audit issue is a public write no hook sees; scan it with the same shapes before posting.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from scan_publish import count_kinds  # noqa: E402  # pylint: disable=wrong-import-position
+
 _ROOT = Path(__file__).resolve().parents[1]
 REQS = "requirements-semgrep.txt"
 ISSUE_TITLE = "semgrep venv 감사 — 예외 밖 권고 (주간)"
@@ -237,8 +242,15 @@ def notify(report: Path | None) -> int:
         print("🔴 이슈 목록을 해석하지 못했다 — 알리지 못했다", file=sys.stderr)
         return 1
     same = [item for item in issues if item.get("title") == ISSUE_TITLE]
+    body = _issue_body(report)
+    found = count_kinds(body)
+    if found:
+        shapes = " · ".join(f"{kind} {n}" for kind, n in sorted(found.items()))
+        print(f"🔴 이슈 본문에 비밀값 · 개인정보 꼴 {shapes}(값은 열지 않는다) — 올리지 않았다. 실행 로그에서 감사 출력을 본다",
+              file=sys.stderr)
+        return 1
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".md", delete=False) as fh:
-        fh.write(_issue_body(report))
+        fh.write(body)
         body_file = fh.name
     try:
         if same:
