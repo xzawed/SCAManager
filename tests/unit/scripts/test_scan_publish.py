@@ -63,6 +63,8 @@ _HARMLESS = [
     "api_token = loadtokenfromdisk.cache",
     "/Users/runner/work/SCAManager/SCAManager",
     "러너 홈은 C:\\Users\\runneradmin이다",
+    # Cursor Bugbot(#1943) — 슬래시로 쓴 Windows 러너 경로가 macOS 갈래(`/Users/`)에 다시 걸렸다
+    "C:/Users/runneradmin/work/SCAManager/SCAManager",
 ]
 
 
