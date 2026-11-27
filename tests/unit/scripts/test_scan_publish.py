@@ -59,6 +59,7 @@ _HARMLESS = [
     # Grok M03 2차 — camelCase 코드 호출 · macOS 러너 · 러너 이름 뒤에 붙은 한글
     "const apiToken = getApiTokenFromStorage()",
     "webhook_secret = loadWebhookSecretFromEnv",
+    "api_token = loadtokenfromdiskcache()",
     "/Users/runner/work/SCAManager/SCAManager",
     "러너 홈은 C:\\Users\\runneradmin이다",
 ]
