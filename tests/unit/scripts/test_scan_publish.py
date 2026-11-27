@@ -704,7 +704,8 @@ def _publish_handlers():
 
 
 def test_the_hook_is_wired_for_gh_on_both_shells_and_blocks_on_failure():
-    """🔴 배선 — Bash · PowerShell 의 gh 명령에만 뜨는 두 handler, 고장 나면 막는다."""
+    """🔴 배선 — Bash · PowerShell 은 gh 명령에만 뜨는 두 handler, Monitor 는 거름 없는 한 handler(gh 가 없는 명령은
+    스크립트가 거른다 · 원장 #1940 «정할 것» 7). 모두 고장 나면 막는다."""
     handlers = _publish_handlers()
-    assert sorted(h.get("if") for h in handlers) == ["Bash(gh *)", "PowerShell(gh *)"], handlers
+    assert sorted(h.get("if") or "" for h in handlers) == ["", "Bash(gh *)", "PowerShell(gh *)"], handlers
     assert all(h.get("onFailure") == "block" and re.search(r"scan_publish\.py --hook$", h["command"]) for h in handlers)

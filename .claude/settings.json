@@ -83,7 +83,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash|PowerShell|mcp__.*[Rr]ailway.*|mcp__.*[Ss]upabase.*",
+        "matcher": "Bash|PowerShell|Monitor|mcp__.*[Rr]ailway.*|mcp__.*[Ss]upabase.*|mcp__plugin_antigravity-delegate_antigravity-delegate__.*",
         "hooks": [
           {
             "type": "command",
@@ -101,6 +101,17 @@
           {
             "type": "command",
             "if": "PowerShell(gh *)",
+            "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY ${CLAUDE_PROJECT_DIR:-.}/scripts/scan_publish.py --hook",
+            "timeout": 30,
+            "onFailure": "block"
+          }
+        ]
+      },
+      {
+        "matcher": "Monitor",
+        "hooks": [
+          {
+            "type": "command",
             "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY ${CLAUDE_PROJECT_DIR:-.}/scripts/scan_publish.py --hook",
             "timeout": 30,
             "onFailure": "block"

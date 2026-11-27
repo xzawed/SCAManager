@@ -594,6 +594,10 @@ def _hook() -> int:
             raise TypeError("command")
     except (ValueError, TypeError, AttributeError, RecursionError):
         return _deny("[게시 전 검사] 판정 불가 — 훅 입력을 읽지 못했다. 명령을 다시 시도하세요(scripts/scan_publish.py).")
+    if tool == "Monitor" and not _GH_START.search(command):
+        # Monitor 는 gh 거름(`if`) 없이 모든 명령에 뜬다 — gh 가 없으면 게시가 아니다(원장 #1940 «정할 것» 7).
+        # Monitor runs without an `if: … (gh *)` filter; with no gh call nothing is published.
+        return 0
     counts, unread = judge_command(command, cwd, "powershell" if tool == "PowerShell" else "bash")
     if not counts and not unread:
         return 0

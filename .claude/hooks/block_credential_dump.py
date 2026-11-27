@@ -22,8 +22,10 @@ The Railway MCP list_variables tool is denied by name.
 
 🔴 이 훅 밖의 길 — 파일 도구(Read · Grep · Glob)로 .env 꼴을 여는 길과 Grok 의 셸 위임(위임 · 검증 · CLI 도구)은
 `.claude/settings.json` 의 `permissions.deny` 가 막는다(원장 #1940 M08 · 시험 = `test_file_tool_dotenv_deny.py`).
-.env 꼴 이름을 넓히면 그 거부 목록도 같이 고친다 — 시험이 이 파일의 이름 판정과 대조한다.
-Outside this hook: file-tool reads of .env-like names and Grok's shell-running tools are denied in settings.
+.env 꼴 이름을 넓히면 그 거부 목록도 같이 고친다 — 시험이 이 파일의 이름 판정과 대조한다. Monitor 도구는 이 훅이 Bash 처럼
+판정하고, AntiGravity 위임은 계획 모드 인자만 통과시킨다(`decide_delegation` · 원장 #1940 «정할 것» 7).
+Outside this hook: file-tool reads of .env-like names and Grok's shell-running tools are denied in settings; Monitor
+gets the Bash verdict here and AntiGravity delegation passes only in plan mode.
 
 🔴 설계 원칙 — **대안 없는 차단은 훅을 무력화시킨다.** 차단 시 반드시 안전한 관용구를
 안내한다(이름만 → `cut -d= -f1`, 배포 설정 → `scripts/railway_config.py`). 그래야 다음 세션이 훅을
@@ -67,8 +69,8 @@ import subprocess
 import sys
 import time
 
-# 판정하는 셸 도구 / shell tools this hook judges
-_SHELL_TOOLS = ("Bash", "PowerShell")
+# 판정하는 셸 도구 — Monitor 도 `command` 로 셸을 돌린다(원장 #1940 «정할 것» 7) / shell tools this hook judges
+_SHELL_TOOLS = ("Bash", "PowerShell", "Monitor")
 # 셸을 거치지 않는 같은 덤프 — Railway MCP `list_variables` 는 «KEY=VALUE 쌍을 반환» 한다(도구 설명).
 # 값 개수만 내는 `get_service_config` 는 대상이 아니다.
 # The same dump without a shell: Railway MCP list_variables returns KEY=VALUE pairs.
@@ -3844,6 +3846,54 @@ def decide_mcp_production_access(tool_name):
     return None
 
 
+# AntiGravity 위임 — agy 셸이 이 훅 밖에서 돈다. 실행 도구는 계획 모드(`agyMode: "plan"`)이고 권한 건너뛰기가 아닐 때만,
+# 관리 도구는 읽기 동작만 통과한다. 셸을 돌리지 않는 도구(결과 · 상태 · 취소 · 되돌리기 · 로그인)는 둔다 — 그 밖의 모르는
+# 도구는 막는 쪽이다(원장 #1940 «정할 것» 7 · 11-28 사용자 «둘 다 막기»). 시험 = test_monitor_and_delegation_gate.py.
+# AntiGravity runs the agy shell outside this hook: runners pass only in plan mode, admin only for reads, unknown tools deny.
+_AG_PREFIX = "mcp__plugin_antigravity-delegate_antigravity-delegate__"
+_AG_RUNNERS = frozenset({"delegate_to_antigravity", "start_ag_task"})
+_AG_SESSION_QUIET = frozenset({"list", "close"})
+_AG_ADMIN_READS = frozenset({"mcp_list", "remote_status", "changelog"})
+_AG_QUIET = frozenset({"get_ag_job", "cancel_ag_job", "list_ag_artifacts", "list_ag_capabilities",
+                       "check_ag_environment", "get_ag_usage", "ag_auth", "rollback_ag_task"})
+
+
+def decide_delegation(tool_name, tool_input):
+    """AntiGravity 위임 도구의 차단 사유 — 계획 모드 실행 · 읽기 · 셸 없는 도구 · 다른 서버면 None.
+    Why an AntiGravity call is denied; None for plan-mode runs, reads, shell-free tools and other servers."""
+    if not tool_name.startswith(_AG_PREFIX):
+        return None
+    tool = tool_name[len(_AG_PREFIX):]
+    args = tool_input if isinstance(tool_input, dict) else {}
+    plan = args.get("agyMode") == "plan" and not args.get("dangerouslySkipPermissions")
+    if tool in _AG_RUNNERS:
+        return None if plan else f"AntiGravity `{tool}` — 계획 모드가 아닌 위임 실행"
+    if tool == "ag_session":
+        return None if args.get("action") in _AG_SESSION_QUIET or plan else "AntiGravity `ag_session` — 계획 모드가 아닌 세션 실행"
+    if tool == "ag_cli_admin":
+        return None if args.get("action") in _AG_ADMIN_READS else "AntiGravity `ag_cli_admin` — agy 설정 · 데몬 · 바이너리 변경"
+    return None if tool in _AG_QUIET else f"AntiGravity `{tool}` — 셸을 도는지 모르는 도구(막는 쪽)"
+
+
+def _emit_delegation_deny(tool, reason):
+    """위임 실행 차단 출력 — 계획 모드로 다시 부르는 길을 늘 함께 알린다 / always with the plan-mode alternative."""
+    _record_denial("delegation", reason.rpartition(" — ")[2], tool)
+    output = {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": (
+                f"[위임 실행] {tool} 차단 — 위임한 셸은 이 리포의 훅을 거치지 않는다 (원장 #1940 «정할 것» 7)\n\n"
+                f"사유: {reason}\n\n"
+                "→ 검토는 계획 모드(`agyMode: \"plan\"`)로 다시 부른다 — 탐침은 결과로 받아 Claude 가 셸에서 돌린다"
+                "(docs/workflow/verify.md 6). agy 설정 · 데몬 · 갱신은 사용자가 직접 한다."
+            ),
+        }
+    }
+    print(json.dumps(output, ensure_ascii=True))
+    return 0
+
+
 def _mcp_production_channel(tool_name):
     """허용된 운영 MCP 읽기 도구의 감사 채널(`Railway MCP get_logs`) — 운영 MCP 가 아니면 None. 도구 이름은 하네스가
     정한 고정 이름이라 그대로 적고, 도구 입력(배포 ID 등)은 적지 않는다.
@@ -4023,6 +4073,9 @@ def _judge(payload):
         if found is None and channels:
             _record_allowed(channels, command)
     else:
+        delegation = decide_delegation(tool, payload.get("tool_input"))
+        if delegation:
+            return _emit_delegation_deny(tool, delegation)
         production = decide_mcp_production_access(tool)
         if production:
             return _emit_production_deny(tool, production)
