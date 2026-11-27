@@ -357,7 +357,8 @@ _ALLOWED_MCP = [
     "mcp__supabase-local__search_docs",
     "mcp__supabase-local__list_tables",
     "mcp__plugin_supabase_supabase__get_advisors",
-    # 운영과 무관한 MCP — 이 판정의 대상이 아니다 / unrelated MCP servers are out of scope
+    # 이 판정의 대상이 아니다 — Grok 위임 실행은 이 훅 밖이고 settings 의 permissions.deny 가 막는다(원장 #1940 M08 ·
+    # test_file_tool_dotenv_deny.py). Grok's delegated execution is outside this hook; the settings deny list blocks it.
     "mcp__plugin_grok_grok-build__grok_build_delegate",
     "mcp__claude_ai_Notion__notion-search",
 ]
