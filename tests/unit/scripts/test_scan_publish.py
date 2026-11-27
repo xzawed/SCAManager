@@ -55,6 +55,7 @@ _HARMLESS = [
     "n8n_secret=settings.n8n_webhook_secret,",
     "GITHUB_WEBHOOK_SECRET=your_webhook_secret_here",
     "CLAUDE_REVIEW_MAX_TOKENS=8192",
+    "C:\\Users\\runneradmin\\work\\SCAManager\\SCAManager",
 ]
 
 
@@ -130,6 +131,20 @@ def test_every_repo_secret_name_with_a_value_is_caught(name):
     value = "Qz7" + "a1B2" * 6
     missed = [form for form in _SECRET_FORMS if "assigned-secret" not in scan.count_kinds(form.format(n=name, v=value))]
     assert not missed, f"{name}: {missed}"
+
+
+# witness-corpus: 숫자 규칙 밖의 실제 비밀값 꼴 — Gmail 앱 비밀번호(소문자 16자) · 패스프레이즈 · 굽은 따옴표로 감싼 값(Grok M03 1차)
+_OUTSIDE_DIGIT_RULE = [
+    "SMTP_PASS=" + "abcd" * 4,
+    "SESSION_SECRET=" + "correcthorse" + "batterystaple",
+    "SESSION_SECRET=“" + "Qz7a1B2" * 4 + "”",
+]
+
+
+@pytest.mark.parametrize("text", _OUTSIDE_DIGIT_RULE)
+def test_letter_only_and_curly_quoted_values_are_caught(text):
+    """🔴 숫자가 없어도 구분자 없는 글자 16자 이상이면 값이다 · 굽은 따옴표도 따옴표다."""
+    assert scan.count_kinds(text).get("assigned-secret", 0) >= 1
 
 
 def test_the_committed_env_template_counts_nothing():
@@ -787,23 +802,29 @@ def test_the_hook_is_wired_for_gh_on_both_shells_and_blocks_on_failure():
 # 스크립트가 안에서 부르는 gh 는 훅 밖이다 — 그 자리는 스크립트가 올리기 전에 `count_kinds` 로 직접 잰다. 새 자리가 생기면
 # 이 시험이 붉어져 같은 장치를 달게 한다(동작은 각 스크립트의 시험이 잰다).
 # Scripts call gh outside the hook; each such site scans its own body. A new site turns this red.
-_PUBLISH_WORDS = {"comment", "create", "edit", "review", "--body", "--body-file", "--notes", "--notes-file"}
-_KNOWN_PUBLISHERS = {"merge_approved.py", "semgrep_audit.py"}
+_GH_GROUPS = {"pr", "issue", "api", "release", "gist", "label", "repo"}
+_PUBLISH_WORDS = {"comment", "create", "edit", "review", "--body", "--body-file", "--notes", "--notes-file",
+                  "-f", "-F", "--field", "--raw-field", "--input", "POST", "PATCH", "PUT"}
+# 파일마다 공개 쓰기 자리 수 — 같은 파일에 둘째 자리가 생겨도 붉어진다(Grok M03 1차 반례) / site count per file
+_KNOWN_PUBLISH_SITES = {"merge_approved.py": 1, "semgrep_audit.py": 2}
 
 
-def _scripts_with_publish_calls():
+def _publish_sites():
+    """gh 무리 낱말과 쓰기 낱말이 함께 든 인자 목록 · 튜플 리터럴을 파일마다 센다(`gh api` 의 필드 · 메서드도 쓰기다)."""
     import ast  # pylint: disable=import-outside-toplevel
-    found = set()
+    sites: dict[str, int] = {}
     for path in sorted((_ROOT / "scripts").glob("*.py")):
         if path.name == "scan_publish.py":
             continue
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if isinstance(node, ast.List) and _PUBLISH_WORDS & {
-                    elt.value for elt in node.elts if isinstance(elt, ast.Constant) and isinstance(elt.value, str)}:
-                found.add(path.name)
-    return found
+            if not isinstance(node, (ast.List, ast.Tuple)):
+                continue
+            words = {elt.value for elt in node.elts if isinstance(elt, ast.Constant) and isinstance(elt.value, str)}
+            if words & _GH_GROUPS and words & _PUBLISH_WORDS:
+                sites[path.name] = sites.get(path.name, 0) + 1
+    return sites
 
 
 def test_every_script_that_publishes_is_a_known_scanned_site():
-    """🔴 공개 쓰기 자리 집합이 알려진 자리와 같다 — 하나는 늘고(새 자리) 하나는 비면(탐지 공허) 붉어진다."""
-    assert _scripts_with_publish_calls() == _KNOWN_PUBLISHERS
+    """🔴 공개 쓰기 자리가 알려진 자리와 같다 — 새 파일 · 같은 파일의 새 자리는 늘어서, 탐지가 비면 줄어서 붉어진다."""
+    assert _publish_sites() == _KNOWN_PUBLISH_SITES
