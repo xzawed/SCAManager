@@ -10,7 +10,7 @@ playwright==1.65.2
 pytest-playwright==0.10.0
 # pre-commit — 커밋 훅(.pre-commit-config.yaml). `make install` 이 `pre-commit install` 까지 한다.
 # pre-commit runs the commit hooks; `make install` installs them.
-pre-commit==4.6.0
+pre-commit==4.7.0
 # openai 는 머지 검증자(2nd-LLM) 런타임 의존으로 requirements.txt(프로덕션)로 이동 — 위 `-r` 로 포함.
 # openai moved to requirements.txt (prod, 2nd-LLM verifier runtime dep); included here via `-r` above.
 # 개발 전용 추가 사용처: src/scripts/generate_illustrations.py (DALL-E 3 일러스트 생성, 사이클 93).
