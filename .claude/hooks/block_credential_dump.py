@@ -35,12 +35,13 @@ cannot be enumerated by a text hook; prior approval of production access covers 
 🔴 운영 접근(회고 2026-11-06 원장 L02, P0) — 같은 훅이 그 «사전 승인» 을 기계로 집행한다. 운영은 SQL 동사가
 아니라 행위로 가른다: railway 는 읽기(배포 목록 · 로그 · 상태 · 지표 · 도움말)만 통과시키는 허용 목록이고,
 운영 컨테이너 코드 실행 · 운영 변수를 넣은 실행 · 배포 · 변수 · 환경 변경과 Railway · Supabase MCP 의 변경 ·
-SQL 도구는 막는다 — 사용자가 `!` 로 직접 실행한다. 훅을 하나 더 띄우지 않고 이 파일에 둔 것은 셸 명령마다
+SQL 도구, 사용자 몫 스크립트(관측 역할 설정 `observer_setup` · 운영 DB 쓰기 `backfill_repository_user_id --apply`)는
+막는다 — 사용자가 `!` 로 직접 실행한다. 훅을 하나 더 띄우지 않고 이 파일에 둔 것은 셸 명령마다
 드는 훅 고정 비용 때문이다(회고 L11) — 해석기(세그먼트 · 단계 · 명령 자리)도 같이 쓴다.
 The same hook enforces that prior approval: production is judged by action (railway reads only; code in
-the production container, runs with production variables, deploy/variable/environment changes and the
-changing or SQL MCP tools are denied — the user runs them with `!`). Kept in this file to avoid a second
-hook process per shell call; it reuses the same parser.
+the production container, runs with production variables, deploy/variable/environment changes, the
+changing or SQL MCP tools and the user-only scripts are denied — the user runs them with `!`). Kept in
+this file to avoid a second hook process per shell call; it reuses the same parser.
 
 🔴 판정하지 못한 호출 — 훅 프로세스가 시작하지 못하거나 · 0/2 밖의 코드로 끝나거나 · 시간을 넘기면 settings 의
 `onFailure: "block"` 이 그 호출을 막는다. 판정 중 예외 · JSON 객체가 아닌 입력은 «판정 불가» 로 받아 운영 · 자격 표지
@@ -1951,40 +1952,60 @@ def _prod_script_channel(head, rest):
     if not _PYTHON_HEAD.fullmatch(head):
         return None
     k = 0
-    while k < len(rest) and rest[k].startswith("-") and rest[k] not in ("-m", "-c"):
+    while k < len(rest) and rest[k].startswith("-") and not _PYTHON_RUN_FLAG.fullmatch(rest[k]):
         # `py -3` · `python -u` 의 인터프리터 옵션 — `-X utf8` · `-W ignore` 는 값까지(교차 검토: utf8 을 스크립트로 읽었다)
         # interpreter options; -X / -W take a value
         k += 2 if rest[k] in _PYTHON_VALUE_OPTIONS else 1
-    if k + 1 < len(rest) and rest[k] == "-m":
-        name, args = rest[k + 1].rsplit(".", 1)[-1] + ".py", rest[k + 2:]  # `python -m scripts.observe_db`
-    elif k < len(rest) and rest[k] != "-c":
+    run = _PYTHON_RUN_FLAG.fullmatch(rest[k]) if k < len(rest) else None
+    if run and run.group(1) == "m" and (run.group(2) or k + 1 < len(rest)):
+        # `python -m scripts.observe_db` · `-um` · 붙여 쓴 `-mscripts.observe_db` / attached module name
+        module, args = (run.group(2), rest[k + 1:]) if run.group(2) else (rest[k + 1], rest[k + 2:])
+        name = module.rsplit(".", 1)[-1] + ".py"
+    elif k < len(rest) and not run:
         name, args = rest[k].replace("\\", "/").rsplit("/", 1)[-1].lower(), rest[k + 1:]
     else:
         return None  # 인터프리터만 · `-c` 의 글자 코드는 스크립트가 아니다 / no script (bare interpreter or -c code)
     channel = _PROD_CHANNEL_SCRIPTS.get(name)
-    flags = _prod_script_flags(args)
-    if channel is None or flags & set(_PROD_SCRIPT_NO_REACH):
+    if channel is None:
+        return None
+    flags = _prod_script_flags(args, channel)
+    if "--help" in flags:
         return None
     if channel == "perf_measure" and "--local-only" in flags:
         return None  # 로컬만 잰다 — 운영에 닿지 않는다 / local only
     return " ".join([channel, *(flag for flag in _PROD_SCRIPT_FLAGS if flag in flags)])
 
 
-def _prod_script_flags(args):
-    """인자 가운데 고정 어휘 플래그 — 여섯 스크립트는 argparse 라 줄인 긴 옵션(`--rest` = `--restart` · `--he` = `--help`)도
-    받는다. 어휘의 한 플래그로만 풀리는 앞부분은 그 플래그로 센다(최종 워크플로 패스: `--rest` 가 플래그 없이 적혔다).
-    The fixed-vocabulary flags present, resolving argparse abbreviations against the vocabulary."""
-    vocabulary = (*_PROD_SCRIPT_FLAGS, *_PROD_SCRIPT_NO_REACH, "--local-only")
+def _prod_script_flags(args, channel):
+    """인자 가운데 그 스크립트의 긴 옵션 — argparse 는 줄인 긴 옵션(`--rest` = `--restart` · `--he` = `--help`)을 그 스크립트의
+    옵션으로 푼다(`--a` 는 backfill 에서 `--apply` 다 — 여섯 스크립트를 한 어휘로 풀면 `--audit` 와 겹쳐 빠졌다 · 워크플로 패스
+    wf_f44bc84a-458). 한 옵션으로만 풀리는 앞부분은 그 옵션으로 센다. `-h` 는 `--help` 다.
+    The script's long options present, resolving argparse abbreviations against that script's own options."""
+    vocabulary = (*_PROD_SCRIPT_OPTIONS[channel], "--help")
     found = set()
     for arg in args:
         name = arg.split("=", 1)[0]
-        if name in vocabulary:
+        if name == "-h":
+            found.add("--help")
+        elif name in vocabulary:
             found.add(name)
         elif name.startswith("--") and len(name) > 2:
             matches = [flag for flag in vocabulary if flag.startswith(name)]
             if len(matches) == 1:
                 found.add(matches[0])
     return found
+
+
+# 값 없는 짧은 옵션 묶음의 끝이 `-m`(모듈) · `-c`(글자 코드)인 인터프리터 옵션(`-um` · `-Bc` · 붙여 쓴 `-mscripts.x`) —
+# 값을 받는 `-X` · `-W` 는 묶음에 들지 않는다 / clustered no-value flags ending in -m / -c, a value may be attached
+_PYTHON_RUN_FLAG = re.compile(r"-[bBdEhiIOPqRsSuvVx]*([mc])(.*)")
+# 스크립트마다의 긴 옵션 — argparse 는 그 스크립트의 옵션으로 줄임을 푼다. 시험이 각 스크립트의 argparse 와 대조한다.
+# Each script's argparse long options; a test checks this table against the scripts.
+_PROD_SCRIPT_OPTIONS = {
+    "observe_db": ("--audit", "--max-rows"), "railway_redeploy": ("--restart", "--check", "--log-errors"),
+    "railway_config": ("--environment",), "observer_setup": ("--host", "--ref"),
+    "backfill_repository_user_id": ("--apply",), "perf_measure": ("--local-only", "--prod-only"),
+}
 
 
 def _prod_railway_args(head, rest):
@@ -2272,8 +2293,10 @@ def _prod_decide_text(text, depth):
 
 def decide_production_access(command, shell=None, channels=None):
     """명령이 운영에 닿는가 — 사유 또는 None. 세그먼트 · 명령 치환 · 알려진 래퍼 안까지 본다.
-    railway 를 «언급» 만 하는 명령(`grep "railway ssh"`)은 명령 자리가 아니라 통과한다. channels(목록)를 주면 허용한
-    명령 안의 운영 채널 호출을 감사 순회(`_audit_text`)로 거기 더한다 — 판정에는 쓰지 않는다(원장 #1917 M02 P2-3 ②).
+    railway 를 «언급» 만 하는 명령(`grep "railway ssh"`)은 명령 자리가 아니라 통과한다. 판정은 main 그대로의 순회
+    (`_prod_decide_text`)와 명령 자리 순회(`_command_walk`) 둘 중 하나라도 막으면 막는다 — 뒤의 것이 main 순회가 놓치던
+    PowerShell 대입 · 블록 · 하위 식 · 전체 경로, 시간 제한 뒤 래퍼, `cmd //c`, heredoc 받는 명령 등을 본다(원장 #1917 P1-19).
+    channels(목록)를 주면 허용한 명령 안의 운영 채널 호출을 거기 더한다(감사 기록 · P2-3 ②).
     🔴 위협 모형은 credential 판정과 같다 — 정직한 세션이 칠 만한 꼴을 막는다. 스크립트 파일 안의 호출 ·
     인코딩된 명령 같은 의도적 우회는 글자 훅 밖이다(원장 R-3 부류).
     Does the command touch production? Mentions are not invocations. Same threat model as the credential
@@ -2281,42 +2304,54 @@ def decide_production_access(command, shell=None, channels=None):
     if shell is not None:
         _CONTEXT["shell"] = shell
     reason = _prod_decide_text(command or "", 0)
-    if reason is None and channels is not None:
-        try:
-            _audit_text(command or "", 0, channels)
-        except Exception as exc:  # pylint: disable=broad-exception-caught  # 감사는 판정을 바꾸지 않는다 / never the verdict
-            # 죽음이 main() 의 «판정 불가» 로 올라가면 railway 가 든 허용 명령이 막힌다 — 값 없는 실패 표지만 남긴다.
-            # Raised to main() it would deny an allowed command; leave a value-free failure marker instead.
-            channels.append(f"audit-error {type(exc).__name__}")
+    if reason is None:
+        # 명령 자리 순회는 판정이다 — 죽으면 main 순회처럼 main() 의 «판정 불가»(표지 있는 호출만 막음)로 간다.
+        # The command-position walk is part of the verdict; a crash is unjudged, like one in main's walk.
+        reason = _command_walk(command or "", 0, [] if channels is None else channels)
     return reason
 
 
-# ── 감사 순회 — 허용된 운영 채널 호출의 채널만 모은다(원장 #1917 M02 P2-3 ②) ──────────────────────────────────
-# 판정은 위 순회(main 그대로)가 한다. 이 순회는 그 판정이 허용한 명령에만 돌고 결과는 감사 기록뿐이다 — 판정 순회를 고쳐
-# 감사를 얹었더니 고칠 때마다 main 이 막던 꼴을 풀거나 언급을 새로 막았다(워크플로 적대 패스 세 번). 판정 순회의 구멍
-# (PowerShell 블록 · 대입 · 전체 경로 · 시간 제한 뒤 래퍼 등)은 원장의 후속 항목이다.
-# The audit walk only collects channels for commands the walk above (main's, unchanged) already allowed.
+# ── 명령 자리 순회 — 위 순회(main 그대로)가 허용한 명령을 명령 자리에서 다시 본다 ──────────────────────────────
+# 운영 변경 · 사용자 몫 스크립트면 사유를 돌려주고(판정 — 원장 #1917 P1-19), 허용이면 운영 채널 호출의 채널을 모은다(감사
+# 기록 — P2-3 ②). main 순회는 바꾸지 않고 이것을 더하기만 한다 — main 순회를 고쳐 구멍을 막았을 때는 고칠 때마다 main 이 막던
+# 꼴을 풀거나 언급을 새로 막았다(P2-3 ② 의 워크플로 적대 패스 세 번). 아래 `_audit_*` 도우미는 이 순회의 것이다.
+# The command-position walk re-reads what main's walk allowed: it returns a reason for production changes and
+# user-only scripts (verdict) and collects channels otherwise (audit). Main's walk is unchanged; this only adds.
 
 
-def _audit_text(text, depth, channels):
-    """허용된 명령 안에서 명령 자리에 선 운영 채널 호출의 채널을 channels 에 더한다 — railway 읽기(쓰기는 적지 않는다) ·
-    운영 채널 스크립트. 따옴표 · 주석 · heredoc 데이터 · 정의만 한 PowerShell 블록 안에서 시작하는 단계는 세지 않는다.
-    Collect the channels of production-channel calls at command positions in an allowed command; never a verdict."""
+def _command_walk(text, depth, channels):
+    """명령 자리에 선 운영 호출을 본다 — 운영 변경 · 사용자 몫 스크립트면 그 사유, 아니면 None 이고 railway 읽기 · 운영
+    채널 스크립트의 채널을 channels 에 더한다. 따옴표 · 주석 · heredoc 데이터 · 정의만 한 PowerShell 블록 안에서 시작하는
+    단계는 명령이 아니다. The reason for a production change at a command position, else None (channels collected)."""
     if depth > _PROD_MAX_DEPTH or not text.strip():
-        return
-    text = _audit_joined_lines(_audit_without_heredoc_data(text))
+        return None
+    foreign = []  # 다른 셸이 받는 heredoc · here-string 본문 / bodies another shell receives
+    text = _audit_joined_lines(_audit_without_heredoc_data(text, foreign))
+    for shell, body in foreign:
+        reason = _walk_as(shell, body, depth, channels)  # 펼쳐 넣던 본문과 같은 깊이(아홉째 워크플로 패스) / same depth
+        if reason:
+            return reason
     mask = _audit_mask(text)
-    for start, body in _audit_substitutions(text):
-        if mask[start:start + 1] in ("c", "d"):
-            _audit_text(body, depth + 1, channels)
-    offset = 0
+    substitutions = _audit_substitutions(text)
+    for start, body in substitutions:
+        if _substitution_runs(text, mask, start):
+            reason = _command_walk(body, depth + 1, channels)
+            if reason:
+                return reason
+    # 치환 · 블록 몸은 위에서 따로 걸었다 — 줄 순회에서는 같은 길이의 빈 낱말로 덮는다(`x="$(echo "a; railway status")"` 는
+    # 몸 속 따옴표가 낱말 나누기(shlex)에서 바깥 따옴표를 닫아 `railway` 를 명령으로 읽었다). Blank the walked spans.
+    text = _blank_arrays(_blank_tests(_blank_spans(text, substitutions, mask), mask), mask)
+    offset, case_depth = 0, 0
     for line in text.split("\n"):
         line_start, offset = offset, offset + len(line) + 1
-        for seg_at, segment in _audit_parts(_split_segments(line), line):
-            stages = _split_stages(segment)
-            for index, (stage_at, stage) in enumerate(_audit_parts(stages, segment)):
-                if seg_at is None or stage_at is None:
-                    continue
+        # 구분자는 코드 자리(mask 'c')에서만 나눈다 — 줄의 `#` · 백틱이 따옴표 분할을 끄면 `bash -c "railway up; …" # 메모` 를
+        # 따옴표 안에서 잘랐다(워크플로 패스 wf_f44bc84a-458). Split only at separators standing in code positions.
+        for seg_at, segment in _code_split(line, line_start, mask, _segment_separators()):
+            cut = _case_prefix(segment, case_depth > 0, _arm_start(line[:seg_at]))  # 패턴의 `|` 는 파이프가 아니다
+            case_depth = _case_depth(segment, case_depth, mask[line_start + seg_at:line_start + seg_at + len(segment)])
+            seg_at, segment = seg_at + cut, segment[cut:]
+            stages = _code_split(segment, line_start + seg_at, mask, ("|&", "|"))
+            for index, (stage_at, stage) in enumerate(stages):
                 begin = line_start + seg_at + stage_at
                 at = begin + len(stage) - len(stage.lstrip())
                 if mask[at:at + 1] != "c":
@@ -2324,8 +2359,10 @@ def _audit_text(text, depth, channels):
                 # 단계의 주석 글자는 낱말이 아니다 — `--check  # 다음엔 --restart` 의 `--restart` 를 플래그로 세었다(넷째 패스)
                 # comment characters are not words of the stage
                 code = "".join(ch for ch, state in zip(stage, mask[begin:begin + len(stage)]) if state != "m")
-                called = index == 0 and _audit_call_operator(line[:seg_at])
-                _audit_stage(code, stages[:index], depth, channels, called)
+                reason = _command_stage(code, [prior for _, prior in stages[:index]], depth, channels)
+                if reason:
+                    return reason
+    return None
 
 
 def _audit_joined_lines(text):
@@ -2337,82 +2374,329 @@ def _audit_joined_lines(text):
     return re.sub(f"(?<!{pattern})((?:{pattern}{pattern})*){pattern}\n", lambda m: m.group(1) + " ", text)
 
 
-def _audit_call_operator(before):
-    """PowerShell 호출 연산자 `&` 바로 뒤의 조각인가 — 분할기가 `&` 에서 나눠 `& 'C:\\…\\railway.cmd' status` 의 따옴표 경로가
-    조각 첫머리에 온다. Is this segment right after PowerShell's call operator?"""
-    tail = before.rstrip()
-    return _CONTEXT["shell"] == "powershell" and tail.endswith("&") and not tail.endswith("&&")
+def _blank_spans(text, substitutions, mask):
+    """치환 · 블록의 몸을 같은 길이의 공백으로 덮는다 — 여는 · 닫는 글자(`$(` · `{` · `)` · `}`)와 줄바꿈은 남겨 자리와 꼴을
+    맞춘다(`railway { … }` 의 `{` 가 남아야 switch 라벨로 본다). Blank each body with spaces of the same length, keeping
+    the opening and closing characters and newlines so offsets and shapes stay aligned."""
+    chars = list(text)
+    for start, body in substitutions:
+        if _STDIN_TEXT_BODY.fullmatch(body):
+            continue  # `$(cat)` 은 남긴다 — 파이프 뒤 eval · bash -c 가 그 낱말로 stdin 을 돈다 / kept for the stdin check
+        width = 2 if text.startswith(("$(", "<(", ">(", "@("), start) else 1
+        if _argument_list_value(text, start):
+            # Start-Process 인자 배열은 원소를 남긴다 — 원소가 넘길 인자다. 그 안 치환 몸만 덮고(`"$(a; railway status)"` 의 `;` 가
+            # 줄을 나눴다), 여러 줄 배열은 한 줄로 잇는다(넷째 워크플로 패스) / keep the elements, blank nested bodies, join lines
+            for nested, nested_body in _audit_substitutions(body):
+                inner = start + width + nested + (2 if body.startswith(("$(", "<(", ">(", "@("), nested) else 1)
+                chars[inner:inner + len(nested_body)] = " " * len(nested_body)
+            for k in range(start + width, min(len(text), start + width + len(body))):
+                if chars[k] == "\n":
+                    # 따옴표 밖 줄바꿈은 원소 구분, 따옴표 안은 -Command 글자의 문장 구분이다(여섯째 워크플로 패스)
+                    # outside quotes a newline separates elements; inside, it separates -Command statements
+                    chars[k] = "," if mask[k:k + 1] == "c" else ";"
+            continue
+        for k in range(start + width, min(len(text), start + width + len(body))):
+            if chars[k] != "\n":
+                chars[k] = " "
+    return "".join(chars)
 
 
-def _audit_parts(parts, text):
-    """분할 조각마다 (text 안의 자리, 조각) — 분할기는 text 의 부분 문자열을 순서대로 낸다. 못 찾았거나 이스케이프된
-    구분자(`\\;` · `\\|`) 뒤의 조각은 자리 None 이다(셸은 거기서 나누지 않는다 — 워크플로 셋째 패스).
-    Each split part with its offset in text; None when not found or after an escaped separator."""
-    escape = "`" if _CONTEXT["shell"] == "powershell" else "\\"
-    located, cursor = [], 0
-    for n, part in enumerate(parts):
-        at = text.find(part, cursor)
-        run = 0
-        while n and cursor - run - 1 >= 0 and text[cursor - run - 1] == escape:
-            run += 1
-        located.append((None if at < 0 or run % 2 else at, part))
-        cursor = cursor if at < 0 else at + len(part)
-    return located
+def _substitution_runs(text, mask, start):
+    """그 치환이 도는 자리인가 — 코드 자리, 또는 큰따옴표 안의 `$(` · Bash 백틱. 큰따옴표 안 `@(` · `<(` 는 글자다(워크플로
+    패스 wf_150f221f-097: 커밋 메시지 속 `<(py -3 scripts/observer_setup.py)` 를 실행으로 읽었다). 정의만 한 블록 안은 b 다.
+    Does the substitution at start run? In double quotes only `$(` and Bash backticks do."""
+    state = mask[start:start + 1]
+    if state == "c":
+        return True
+    backtick = text[start:start + 1] == "`" and _CONTEXT["shell"] != "powershell"
+    return state == "d" and (text.startswith("$(", start) or backtick)
 
 
-def _audit_stage(stage, earlier, depth, channels, called=False):
-    """단계 하나의 감사 — 대입 · case 패턴 · 훑는 머리를 벗긴 명령 자리에서 railway 읽기 · 운영 채널 스크립트 · 래퍼 안을 본다.
-    called 는 PowerShell 호출 연산자 `&` 뒤의 조각이다. Audit one stage at its command position."""
-    stage = _audit_without_prefix(stage, called)
+def _argument_list_value(text, start):
+    """그 `@(` · `(` 가 PowerShell `-ArgumentList`(별칭 · 줄임 · 붙여 쓴 `:` 포함)의 값인가 — 그 배열 원소는 Start-Process 가
+    넘길 인자라 읽어야 한다(셋째 워크플로 패스 wf_b8f2f206-703: `-ArgumentList @('-Command', 'railway up')` 을 놓쳤다).
+    Is the array at start the value of a PowerShell -ArgumentList parameter?"""
+    if _CONTEXT["shell"] != "powershell" or not text.startswith(("@(", "("), start):
+        return False
+    found = _PS_PARAMETER_BEFORE.search(text, max(0, start - 64), start)
+    param = _ps_parameter(found.group(1) + found.group(2), _PS_START_PARAMS, _PS_START_ALIASES) if found else None
+    return bool(param) and param[0] == "argumentlist"
+
+
+# 바로 앞의 PowerShell 매개변수 낱말(`-ArgumentList ` · `-Args:`) / the PowerShell parameter word right before
+_PS_PARAMETER_BEFORE = re.compile(r"(?<![\w-])(-[A-Za-z]+)(:?)\s*$")
+
+
+def _blank_tests(text, mask):
+    """Bash `[[ … ]]` 의 몸을 공백으로 덮는다 — 시험식 안의 `&&` · `||` 는 구분자가 아니고 낱말은 명령이 아니다(몸의 치환은
+    위에서 따로 걸었다 · 워크플로 패스 wf_150f221f-097). 같은 줄에서 닫히지 않으면 덮지 않는다.
+    Blank the bodies of Bash `[[ … ]]` tests closed on the same line."""
+    if _CONTEXT["shell"] == "powershell":
+        return text
+    chars, i = list(text), 0
+    while (start := text.find("[[", i)) >= 0:
+        i = start + 2
+        if mask[start:start + 1] != "c" or (start and text[start - 1] not in " \t\n;&|(!{"):
+            continue
+        line_end = text.find("\n", start)
+        line_end = len(text) if line_end < 0 else line_end
+        end = start + 2
+        while (end := text.find("]]", end, line_end)) >= 0 and mask[end:end + 1] != "c":
+            end += 2
+        if end < 0:
+            continue
+        chars[start + 2:end] = " " * (end - start - 2)
+        i = end + 2
+    return "".join(chars)
+
+
+def _blank_arrays(text, mask):
+    """Bash 배열 대입의 원소를 공백으로 덮는다 — 원소는 명령이 아니다(여러 줄이어도 · 셋째 워크플로 패스 wf_b8f2f206-703:
+    줄마다 놓인 원소의 스크립트 경로를 실행으로 읽었다). 여는 `(` 가 코드 자리일 때만 덮고(`NOTE="(hotfix)"` 는 글자),
+    닫는 `)` 가 없으면 덮지 않는다. Blank Bash array elements, across lines, when the array opens in code."""
+    if _CONTEXT["shell"] == "powershell":
+        return text
+    chars = list(text)
+    for found in _ARRAY_OPEN.finditer(text):
+        start = found.end() - 1  # 여는 `(` / the opening parenthesis
+        if mask[start:start + 1] != "c":
+            continue
+        depth, j = 1, start + 1
+        while j < len(text) and depth:
+            if mask[j:j + 1] == "c":
+                depth += {"(": 1, ")": -1}.get(text[j], 0)
+            j += 1
+        if depth:
+            continue
+        for k in range(start + 1, j - 1):
+            if chars[k] != "\n":
+                chars[k] = " "
+    return "".join(chars)
+
+
+def _case_prefix(segment, case_seen=False, arm_start=True):
+    """Bash case 머리 · 갈래 패턴의 길이 — `case "$f" in a|b) …` 의 `|` 는 파이프가 아니라 패턴의 «또는» 이다(워크플로 패스
+    wf_150f221f-097: 패턴 속 스크립트 이름을 단계 머리로 읽어 막았다). 머리 없이 패턴만 있는 세그먼트(`prod)` · `a|b)`)는 앞에서
+    `case` 를 보았을 때만 갈래다 — 아니면 묶음을 닫는 `bash)` 를 패턴으로 지웠다(넷째 워크플로 패스 wf_509d2619-75b:
+    `(cd x && bash) <<'EOF'` 의 받는 명령이 사라졌다). PowerShell 은 0.
+    머리 없는 패턴은 갈래가 시작하는 자리(줄 처음 · `;;` · `;&` 뒤)에서만이다 — 갈래 안 `&&` 뒤의 `./x.py)` 는 묶음 끝이다.
+    걷은 뒤 중첩 case 머리가 오면 이어서 걷는다(일곱째 워크플로 패스 wf_b29f7d89-996).
+    The length of a Bash case head and arm pattern at the start of a segment; a bare pattern counts only after a case."""
+    if _CONTEXT["shell"] == "powershell":
+        return 0
+    head = _AUDIT_CASE_HEAD.match(segment)
+    if head is None and not (case_seen and arm_start):
+        return 0
+    cut = head.end() if head else 0
+    pattern = _AUDIT_CASE_PATTERN.match(segment[cut:])
+    cut += pattern.end() if pattern else 0
+    if cut and _AUDIT_CASE_HEAD.match(segment[cut:]):
+        cut += _case_prefix(segment[cut:], True)  # `db) case "$2" in prod) …` / a nested case
+    return cut
+
+
+def _arm_start(before):
+    """그 세그먼트가 case 갈래가 시작하는 자리인가 — 앞 글자가 비었거나 `;;` · `;&` 로 끝난다(`&&` · `||` 뒤는 갈래 안이다).
+    Does a segment preceded by before start a case arm?"""
+    stripped = before.rstrip()
+    return not stripped.strip() or stripped.endswith((";;", ";&"))
+
+
+def _segment_separators():
+    """명령 구분자 — PowerShell 의 `&` 는 명령 자리에서는 호출 연산자이고 그 밖에서는 배경 실행 · 문장 끝이다(PowerShell 7 —
+    여덟째 워크플로 패스: `Set-Location x & py -3 scripts/…` 의 뒤 문장을 놓쳤다). 가르는 일은 `_code_split` 이 한다.
+    Command separators; in PowerShell `&` is the call operator at a command position, else a statement end."""
+    return ("&&", "||", ";", "&")
+
+
+def _code_split(text, base, mask, separators):
+    """text(전체 글의 base 자리부터)를 코드 자리(mask 'c')의 구분자에서만 나눈 (text 안 자리, 조각) 목록 — 따옴표 · 주석 ·
+    이스케이프된 글자(`\\;`) 안의 구분자는 나누지 않고, 재지정의 `&`(`2>&1` · `&>`)도 구분자가 아니다.
+    Split text only at separators standing in code positions (not in quotes, comments, escapes or redirections)."""
+    parts, begin, i = [], 0, 0
+    while i < len(text):
+        sep = None
+        if mask[base + i:base + i + 1] == "c":
+            sep = next((each for each in separators if text.startswith(each, i)), None)
+            if sep == "&" and ((i and text[i - 1] in "<>|") or text.startswith("&>", i)):
+                sep = None  # 재지정 · 표준 출력과 오류를 함께 넘기는 파이프 `|&` / a redirection or the `|&` pipe
+            if sep == "&" and _CONTEXT["shell"] == "powershell":
+                before = text[begin:i].rstrip()
+                # `( … )` · `{ … }` 몸은 따로 걷고 덮는다 — 그 안의 `&` 는 몸의 처음이다 / bodies are walked on their own
+                if not before or before[-1] in "=|":
+                    sep = None  # 명령 자리의 호출 연산자 / the call operator at a command position
+            if sep in ("|", "|&") and (text.startswith("||", i) or (i and text[i - 1] == "|")):
+                sep = None  # `||` 는 세그먼트 구분자다 / `||` separates segments
+        if sep:
+            parts.append((begin, text[begin:i]))
+            i += len(sep)
+            begin = i
+        else:
+            i += 1
+    parts.append((begin, text[begin:]))
+    return parts
+
+
+def _command_stage(stage, earlier, depth, channels):
+    """단계 하나 — 대입 · 호출 연산자 · case 패턴 · 훑는 머리를 벗긴 명령 자리에서 railway 호출 · 운영 채널 스크립트 · 래퍼
+    안을 본다. 운영 변경 · 사용자 몫 스크립트면 사유를 돌려준다.
+    One stage at its command position: the reason for a production change or a user-only script, else None."""
+    stage = _audit_without_prefix(stage)
     if stage is None:
-        return
+        return None
     head, rest = _audit_peel(stage)
     if not head:
-        return
-    if earlier and _prod_reads_stdin(head, rest):
+        return None
+    # xargs 를 거친 셸도 같이 본다 — 앞 단계 글자가 인자로 가도 bash 는 그 이름을 PATH 에서 찾아 돌린다(`echo railway up |
+    # xargs bash` = `bash railway up` = npm 심 실행). 문법만 보는 `xargs -n1 bash -n` 은 `_audit_reads_commands` 가 뺀다.
+    # a shell behind xargs counts too: bash looks its script name up on PATH
+    piped = _piped_text_mode(head, rest)
+    if earlier and (_audit_reads_commands(head, rest) or piped):
         # 앞 단계가 내보내는 글자를 이 명령이 돌린다 — `echo railway status | bash` · `printf '%s\\n' 'railway status' | bash` ·
         # `"railway status" | iex`. 낱말 하나씩과 이어 붙인 인자 전체를 본다. Earlier stages' text is executed here.
         for prior in earlier:
             first, more = _command_words(prior, ps_literal=True)
-            for piece in dict.fromkeys([first, *more, " ".join(more)]):
-                _audit_text(piece, depth + 1, channels)
+            joined = " ".join(more)
+            # printf · `echo -e` 의 `\\n` 과 PowerShell 의 `` `n `` 은 줄바꿈이다 — 그 뒤 줄도 명령이다(셋째 워크플로 패스)
+            # an escaped newline separates commands too
+            for piece in dict.fromkeys([first, *more, joined, _escaped_lines(first), _escaped_lines(joined)]):
+                if piped == "after-first":
+                    piece = piece.split("\n", 1)[1] if "\n" in piece else ""  # 첫 줄은 eval 의 인자 / the first line is data
+                if head == "cmd":
+                    piece = _cmd_calls(piece)  # cmd 가 stdin 으로 받는 글자도 cmd 규칙으로(여덟째 워크플로 패스)
+                reason = _walk_as(_inner_shell(head), piece, depth + 1, channels)
+                if reason:
+                    return reason
+    if _CONTEXT["shell"] == "powershell" and rest[:1] and (rest[0] == "{" or rest[0].startswith("=")):
+        # `이름 = 1` · `이름 =1` 해시 테이블 키, `이름 { … }` switch 라벨 — 머리가 railway 든 스크립트 이름이든 호출이 아니다
+        # (워크플로 패스 wf_f44bc84a-458 · wf_b8f2f206-703) / a hashtable key or a switch label is never a call
+        return None
     args = _prod_railway_args(head, rest)
     if args is not None:
-        _prod_classify(args, channels)
-        return
+        return _prod_classify(args, channels)
     if head in _PROD_CHANNEL_SCRIPTS:
         script = _prod_script_channel("python", [head, *rest])  # `./scripts/x.py` — 머리가 곧 스크립트다 / run directly
     else:
         script = _prod_script_channel(head, rest)
     if script:
+        reason = _user_only_script(script)
+        if reason:
+            return reason
         channels.append(script)
-        return
+        return None
     inner = _audit_unwrap(head, rest)
-    if inner:
-        _audit_text(inner, depth + 1, channels)
+    return _walk_as(_inner_shell(head), inner, depth + 1, channels) if inner else None
+
+
+def _inner_shell(head):
+    """래퍼가 돌리는 글자의 셸 — bash · sh · eval 은 Bash, pwsh · powershell · iex · cmd 는 PowerShell 규칙(cmd 글자의 백슬래시는
+    글자다), 그 밖은 지금 셸(일곱째 워크플로 패스: `Start-Process bash` 의 -c 글자를 PowerShell 규칙으로 읽었다).
+    The shell whose rules the wrapped text follows."""
+    if head in _PROD_SHELL_WRAPPERS or head == "eval":
+        return "bash"
+    if head in _PROD_PS_WRAPPERS or head in ("invoke-expression", "iex", "cmd"):
+        return "powershell"
+    return _CONTEXT["shell"]
+
+
+def _walk_as(shell, text, depth, channels):
+    """text 를 그 셸의 규칙으로 걷는다 — 걷는 동안만 셸 문맥을 바꾼다 / walk text under that shell's rules."""
+    saved = _CONTEXT["shell"]
+    _CONTEXT["shell"] = shell
+    try:
+        return _command_walk(text, depth, channels)
+    finally:
+        _CONTEXT["shell"] = saved
+
+
+def _escaped_lines(text):
+    """printf · `echo -e` 의 `\\n` 과 PowerShell 의 `` `n `` 을 줄바꿈으로 — 그 뒤 줄도 셸이 돌리는 명령이다(셋째 · 넷째 워크플로
+    패스: `"git status`nrailway up" | iex`). Escaped newlines as real ones."""
+    return text.replace("\\n", "\n").replace("`n", "\n")
+
+
+def _user_only_script(channel):
+    """사용자가 `!` 로 돌리는 운영 스크립트인가 — 관측 역할 비밀번호 설정(`observer_setup`, 도움말 말고 모두) · backfill
+    적용(`--apply`). 건식 실행은 막지 않는다(11-26 사용자 결정 · 원장 #1917 P1-19). 채널 낱말로 가른다.
+    The reason when the channel is a user-only production script run (observer_setup; backfill with --apply)."""
+    words = channel.split()
+    if words[0] == "observer_setup":
+        return "observer_setup — 관측 역할 비밀번호 설정(사용자 몫)"
+    if words[0] == "backfill_repository_user_id" and "--apply" in words[1:]:
+        return "backfill_repository_user_id --apply — 운영 DB 쓰기(사용자 몫)"
+    return None
 
 
 # PowerShell 대입 — `$x = 명령` · 형 제약 `[string]$x = 명령` 의 오른쪽 명령은 돈다 / an assignment still runs its command
 # 형 제약은 `[string]` · `[int[]]` · `[System.String]` 꼴만 — 괄호가 든 글자 무리를 겹쳐 세면 무리마다 되짚기가 두 배가 돼
 # 괄호 31 무리 명령이 훅 시간 제한을 넘겼다(넷째 워크플로 패스). Type constraints only as `[name]` / `[name[]]` (no backtracking).
-_PS_ASSIGNMENT = re.compile(r"^\s*(?:\[[\w.]+(?:\[\])?\]\s*)*\$[\w:]+\s*[-+*/]?=(?!=)\s*")
-# Bash case 갈래 — `case x in` 머리와 `prod)` · `a|b)` 패턴 / a Bash case head and arm pattern
-_AUDIT_CASE_HEAD = re.compile(r"^\s*case\s+\S+\s+in\s+")
-_AUDIT_CASE_PATTERN = re.compile(r"^\s*\(?[^\s()|;]+(?:\s*\|\s*[^\s()|;]+)*\)\s*")
+# 왼쪽은 `$x` · `$x.y` · `$x['k']` · `${x}` · `$a, $b` — 셋째 워크플로 패스(wf_b8f2f206-703)가 속성 · 여러 변수 대입을 짚었다
+_PS_ASSIGNMENT = re.compile(r"^\s*(?:\[[\w.]+(?:\[\])?\]\s*)*(?:\$\{[^}]+\}|\$[\w:]+(?:\.\w+|\[[^\]]*\])*)"
+                            r"(?:\s*,\s*\$[\w:]+)*\s*(?:[-+*/%]|\?\?)?=(?!=)\s*")
+# PowerShell 괄호 식 · 형 변환의 여는 글자 — `(iex @'` · `[void](iex @'` 의 받는 명령은 그 안 첫 명령이다
+# the opening of a PowerShell parenthesised expression or cast
+_PS_EXPRESSION_OPEN = re.compile(r"^\s*(?:\[[\w.]+(?:\[\])?\]\s*)*[@$]?\(\s*")
+# Bash case 갈래 — `case x in` 머리(묶음 `(` · `{` 와 then · do · else 뒤도)와 `prod)` · `a|b)` 패턴
+# a Bash case head (also after a group opener or then/do/else) and arm pattern
+# 주제는 따옴표 · 치환(덮여 공백만 남은 몸도) · `${…}` 가 든 한 셸 낱말이다(`case "$(git branch --show-current)" in` —
+# 셋째 워크플로 패스) / the subject is one shell word that may hold quotes and substitutions
+_CASE_WORD = r"""(?:"[^"]*"|'[^']*'|`[^`]*`|\$\(\([^)]*\)\)|\$\([^)]*\)|\$\{[^}]*\}|[^\s"'`;|&()<>{}])+"""
+_CASE_PATTERN_WORD = r"""(?:"[^"]*"|'[^']*'|[^\s"'()|;])+"""
+_AUDIT_CASE_HEAD = re.compile(r"^\s*(?:(?:[({]|then|do|else)\s+|\(\s*)*case\s+" + _CASE_WORD + r"\s+in\s+")
+# case · esac 낱말 — 여러 줄 case 의 갈래 줄은 머리 없이 패턴만 있다. 깊이는 case 에서 늘고 esac 에서 준다
+# case / esac words; the depth rises at case and falls at esac
+# 명령 자리(글 처음 · `;` `&` `|` `(` `{` 뒤, then · do · else 뒤)의 낱말만 — `grep -w esac` 의 인자는 키워드가 아니다
+# only at a command position; an argument such as `grep -w esac` is not the keyword
+_CASE_WORDS = re.compile(r"(?:^|[;&|({)])\s*(?:(?:then|do|else)\s+)*(?:(case)\s+" + _CASE_WORD + r"\s+in(?=\s|$)"
+                         r"|(esac)(?=[\s;&|)}]|$))")
 
 
-def _audit_without_prefix(stage, called=False):
-    """명령 자리 앞의 것을 걷는다 — PowerShell 대입의 왼쪽, Bash case 머리 · 갈래 패턴. PowerShell 에서 블록 · 괄호 식으로
-    시작하는 단계는 None(그 몸은 블록 순회가 본다 — `$who = (railway whoami).Trim()` 의 괄호 몸), 따옴표 글자로 시작하는 단계도
-    None 이다 — 호출 연산자 `&` 없이는 글자 식이다(`$s = 'scripts\\railway_redeploy.py'` 를 직접 돌린 스크립트로 적었다 — 넷째 패스).
-    Strip what precedes the command position; None for a PowerShell stage that is a block, parentheses or a string."""
+def _case_depth(text, depth, mask=None):
+    """text 를 지난 뒤의 case 깊이 — 명령 자리의 `case 낱말 in` 에서 늘고 `esac` 에서 준다(다섯째 워크플로 패스: 앞 case 뒤의
+    묶음 끝 `bash)` 를 갈래로 지웠다). 명령 자리가 아닌 낱말(`# just in case` · `grep -w esac`)은 세지 않는다(여섯째 워크플로 패스).
+    따옴표 · 주석 속 낱말(`echo "(x) esac"` · `# (old) esac`)도 세지 않는다(여덟째 워크플로 패스 — `)` 뒤를 세면서 드러났다).
+    mask 없이 줄 하나만 받으면(heredoc 순회) 앞 줄에서 이어지는 따옴표를 모른다 — case 를 여는 낱말은 날 글자에서도 센다
+    (아홉째 워크플로 패스: 여러 줄 `git commit -m "…` 이 닫히는 줄의 `; case "$1" in` 을 따옴표 안으로 읽었다). 닫는 esac 는
+    코드 자리에서만 센다. The case depth after text: a command-position `case WORD in` opens one, `esac` closes one."""
+    local = mask is None
+    mask = _audit_mask(text) if local else mask
+    # 따옴표 문자는 남긴다 — 여는 따옴표는 'c', 닫는 따옴표는 따옴표 안 상태라 둘 다 남겨야 `"xx"` 가 한 낱말이다
+    # keep the quote characters: the closing one carries the quoted state
+    code = "".join(ch if state == "c" or ch in "\"'" else "x" for ch, state in zip(text, mask))
+    events = {found.start(found.lastindex): bool(found.group(1)) for found in _CASE_WORDS.finditer(code)}
+    if local:
+        events.update({found.start(1): True for found in _CASE_WORDS.finditer(text) if found.group(1)})
+    for _, opens in sorted(events.items()):
+        depth = depth + 1 if opens else max(0, depth - 1)
+    return depth
+_AUDIT_CASE_PATTERN = re.compile(r"^\s*\(?\s*" + _CASE_PATTERN_WORD + r"(?:\s*\|\s*" + _CASE_PATTERN_WORD
+                                 + r")*\s*\)\s*")
+
+
+def _strip_ps_assignments(stage):
+    """PowerShell 대입의 왼쪽을 모두 걷는다 — `$x = $y = 명령` 처럼 이어 쓴 대입도(넷째 워크플로 패스).
+    Strip every PowerShell assignment target in front of the command, chained ones included."""
+    while True:
+        stripped = _PS_ASSIGNMENT.sub("", stage, count=1)
+        if stripped == stage:
+            return stage
+        stage = stripped
+
+
+def _audit_without_prefix(stage):
+    """명령 자리 앞의 것을 걷는다 — PowerShell 대입의 왼쪽과 호출 연산자 `&`(그 뒤의 따옴표 경로도 명령이다 — `& 'C:\\…\\
+    railway.cmd' up`). PowerShell 에서 블록 · 괄호 식으로 시작하는 단계는 None(그 몸은 블록 순회가 본다), `&` 없이 따옴표
+    글자로 시작하는 단계도 None 이다 — 글자 식이다(`$s = 'scripts\\railway_redeploy.py'` — 넷째 패스). Bash case 머리 · 갈래
+    패턴은 세그먼트를 단계로 나누기 전에 걷었다(`_case_prefix`).
+    Strip what precedes the command position; None for a PowerShell block, parenthesised expression or string."""
     if _CONTEXT["shell"] == "powershell":
-        stage = _PS_ASSIGNMENT.sub("", stage, count=1)
+        stage = _strip_ps_assignments(stage)
         head = stage.lstrip()
-        if head.startswith(("{", "(", "@(", "$(", "@{")) or (head[:1] in ("'", '"') and not called):
+        if head.startswith("&") and not head.startswith("&&"):
+            return head[1:]  # 호출 연산자 / the call operator
+        if head.startswith(("{", "(", "@(", "$(", "@{")) or head[:1] in ("'", '"'):
             return None
-        return stage
-    return _AUDIT_CASE_PATTERN.sub("", _AUDIT_CASE_HEAD.sub("", stage, count=1), count=1)
+    return stage
 
 
 # PowerShell 의 블록 낱말 — 뒤는 조건 · 블록이라 명령 자리가 아니다(블록 몸은 블록 순회가 본다) / PowerShell block keywords
@@ -2428,37 +2712,152 @@ _AUDIT_SCAN_VALUE_OPTIONS = {
     "watch": ("-n", "--interval"), "flock": ("-w", "-E", "--timeout", "--wait", "--conflict-exit-code"),
     "stdbuf": ("-i", "-o", "-e", "--input", "--output", "--error"),
 }
-# 명령 자리의 낱말을 이어 셸로 돌리는 훑는 머리 / scan heads that run their command words as shell text
-_AUDIT_SHELL_TEXT_HEADS = frozenset({"watch", "flock"})
+# 재지정 낱말 — `2>&1` · `>&2`(자리 복사), `>` · `2>` · `>>` · `&>` · `<`(다음 낱말이 대상), `>log` · `2>/dev/null`(붙은 대상)
+# redirection words: fd duplication, an operator whose target is the next word, an operator with its target attached
+_REDIRECT_DUP = re.compile(r"(?:\d|\*)?[<>]&(?:\d|-)")
+_REDIRECT_ALONE = re.compile(r"(?:\d|\*|&)?(?:>>?|<)")
+_REDIRECT_ATTACHED = re.compile(r"(?:\d|\*|&)?(?:>>?|<)[^&<>].*")
+# 낱말 나누기 동안 PowerShell 백슬래시를 감추는 자리표 / a placeholder hiding PowerShell backslashes from shlex
+_BACKSLASH_MARK = "\x1f"
+# 명령 앞 대입 — main 의 꼴에 색인(`s[setup]=x`) · 덧붙이기(`x+=y`)를 더한다(넷째 워크플로 패스: 색인 대입의 값을 스크립트
+# 실행으로 읽었다) / a prefix assignment, indexed and appending forms included
+_AUDIT_ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]*\])?\+?=.*", re.DOTALL)
+# Bash 배열 대입의 여는 꼴 — `files=(` · `arr[2]=(` · `arr+=(` / a Bash array assignment opener
+_ARRAY_OPEN = re.compile(r"(?<![\w$])[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]\n]*\])?\+?=\(")
+# stdin 글자 전체로 펼쳐지는 낱말 — `$(cat)` · `$(< /dev/stdin)` · 백틱 cat(낱말 끝 `)` 는 떼였을 수 있다)
+# a word that expands to the whole of stdin
+_STDIN_TEXT_WORD = re.compile(r"\$\(\s*(?:cat|<\s*/dev/stdin)\s*\)?|`\s*cat\s*`")
+_STDIN_TEXT_BODY = re.compile(r"\s*(?:cat|<\s*/dev/stdin)\s*")  # 그 치환의 몸 / the body of such a substitution
+# 명령 값을 받는 옵션 — 받는 명령의 마지막 낱말이면 heredoc · here-string 본문이 그 명령이다(`pwsh -Command @'…'@`)
+# an option whose value is the command; as the receiver's last word, the body is that command
+_COMMAND_VALUE_OPTIONS = frozenset({"-c", "-command", "-commandwithargs", "-cwa", "/c", "//c", "/k", "//k"})
+# 문법만 보는 셸 옵션(`bash -n` · 묶음 `-xn`) — stdin 의 글자를 실행하지 않는다 / a syntax-only shell option
+_SHELL_NOEXEC = re.compile(r"-[A-Za-z]*n[A-Za-z]*")
+# 실행 접두어의 값 옵션 — 짧은 꼴과 긴 꼴(`sudo --user x` · `time --output f`) / value-taking options of exec prefixes
+_PREFIX_VALUE_OPTIONS = {"sudo": ("-u", "-g", "-C", "-D", "-h", "-p", "-r", "-t", "-U", "-T", "--user", "--group",
+                                  "--close-from", "--chdir", "--host", "--prompt", "--role", "--type", "--other-user",
+                                  "--command-timeout"),
+                         "time": ("-f", "-o", "--format", "--output"), "exec": ("-a",)}
+# PowerShell Start-Process 머리 / Start-Process heads
+_PS_START_HEADS = frozenset({"start-process", "saps", "start"})
+# PowerShell 매개변수 표 — 이름 → 값을 받는가, 별칭 → 이름(cmdlet 문서 · about_CommonParameters 그대로). 바인더처럼
+# 이름 · 별칭 그대로, 아니면 유일한 앞부분으로 푼다(`_ps_parameter`). Parameter tables as the cmdlet docs list them.
+_PS_COMMON_PARAMS = {"verbose": False, "debug": False, "erroraction": True, "warningaction": True,
+                     "informationaction": True, "progressaction": True, "errorvariable": True, "warningvariable": True,
+                     "informationvariable": True, "outvariable": True, "outbuffer": True, "pipelinevariable": True}
+_PS_COMMON_ALIASES = {"vb": "verbose", "db": "debug", "ea": "erroraction", "wa": "warningaction",
+                      "infa": "informationaction", "proga": "progressaction", "ev": "errorvariable",
+                      "wv": "warningvariable", "iv": "informationvariable", "ov": "outvariable", "ob": "outbuffer",
+                      "pv": "pipelinevariable"}
+_PS_START_PARAMS = {"filepath": True, "argumentlist": True, "credential": True, "workingdirectory": True,
+                    "redirectstandarderror": True, "redirectstandardinput": True, "redirectstandardoutput": True,
+                    "windowstyle": True, "verb": True, "environment": True, "loaduserprofile": False,
+                    "nonewwindow": False, "passthru": False, "wait": False, "usenewenvironment": False,
+                    "whatif": False, "confirm": False}
+_PS_START_ALIASES = {"pspath": "filepath", "path": "filepath", "args": "argumentlist", "runas": "credential",
+                     "rse": "redirectstandarderror", "rsi": "redirectstandardinput", "rso": "redirectstandardoutput",
+                     "lup": "loaduserprofile", "nnw": "nonewwindow", "wi": "whatif", "cf": "confirm"}
+_PS_IEX_PARAMS = {"command": True}
 
 
 def _audit_words(stage):
-    """감사용 낱말 — PowerShell 백슬래시는 글자로 읽고, 앞 대입 · 실행 접두어 · 무리 여는 글자(`{` · `(` · `!`)를 건너뛴다.
-    낱말 양끝 괄호는 떼지만 괄호만인 낱말(`{}` — xargs 자리표)은 남긴다(워크플로 셋째 패스: `-I {}` 의 값이 사라졌다).
-    Audit words: PowerShell backslashes literal, leading assignments, prefixes and group openers skipped."""
-    text = _ps_literal_backslashes(stage)
+    """감사용 낱말 — PowerShell 백슬래시는 글자로 읽고, 재지정 낱말(`2>&1` · `> log`)을 빼고, 앞 대입 · 무리 여는 글자(`{` ·
+    `(` · `!`) · 실행 접두어와 그 옵션(`time -p` · `sudo -u x`)을 건너뛴다. `command -v` · `-V` 는 이름 찾기라 실행이 아니다.
+    낱말 양끝 괄호는 떼지만 괄호만인 낱말(`{}`)과 옵션 낱말(`-I{}`)은 그대로 둔다(워크플로 패스 wf_f44bc84a-458: `-I{}` 가
+    `-I` 가 되어 다음 명령을 값으로 삼켰고, `| bash 2>&1` 의 재지정을 스크립트 파일로 읽었다).
+    PowerShell 따옴표 속 겹친 따옴표 · 백틱으로 이스케이프한 따옴표도 그 셸처럼 읽는다(워크플로 패스 wf_150f221f-097 ·
+    wf_b8f2f206-703). Bash 배열 원소는 순회가 이미 덮었다(`_blank_arrays`).
+    Words for the command-position walk: redirections dropped, prefixes and their options skipped."""
+    powershell = _CONTEXT["shell"] == "powershell"
+    # PowerShell 의 백슬래시는 글자다 — 낱말 나누기(shlex) 동안만 자리표로 감추고 되돌린다(`/` 로 바꾸면 인자 배열의 `\\"` 와
+    # 진짜 `/"` 를 가를 수 없었다 — 여섯째 워크플로 패스) / hide backslashes from shlex, then restore them
+    text = _ps_doubled_quotes(stage.replace("\\", _BACKSLASH_MARK)) if powershell else stage
+    if powershell:
+        # 띄어 쓴 배열 `@( 'a', 'b' )` 의 괄호를 원소에 붙인다 — 여는 `@(` 가 홀로 값이 되지 않게(넷째 워크플로 패스)
+        # glue a spaced array's brackets to its elements
+        text = re.sub(r"\s+\)", ")", re.sub(r"([@$]?\()\s+", r"\1", text))
     try:
         toks = shlex.split(text, posix=True)
     except ValueError:
-        toks = text.split()
-    words = [tok.strip("(){}") or tok for tok in toks]
+        # str.split() 은 `\x1f` 를 공백으로 읽어 경로를 백슬래시마다 잘랐다(일곱째 워크플로 패스) / real whitespace only
+        toks = [tok for tok in re.split(r"[ \t\r\n]+", text) if tok]
+    if powershell:
+        toks = [tok.replace(_BACKSLASH_MARK, "\\") for tok in toks]
+    words, skip = [], False
+    for tok in toks:
+        if skip:
+            skip = False
+        elif _REDIRECT_DUP.fullmatch(tok) or _REDIRECT_ATTACHED.fullmatch(tok) or tok in (")", "}", "))"):
+            continue  # 재지정 · 홀로 선 닫는 괄호(`( cd x; sh )` 의 `)`) / redirections and lone closing brackets
+        elif _REDIRECT_ALONE.fullmatch(tok):
+            skip = True
+        else:
+            words.append(tok if tok.startswith("-") else (tok.strip("(){}") or tok))
+    return _skip_prefixes(words)
+
+
+def _skip_prefixes(words):
+    """명령 자리 앞의 것을 건너뛴 낱말 — 대입(`X=1` · 색인 `a[k]=v` · 덧붙이기 `x+=y`) · 무리 여는 글자 · 실행 접두어와 그
+    옵션(`time -p` · `sudo -u x`). 훑는 머리 뒤에도 쓴다(`timeout 600 sudo -u x bash` — 넷째 워크플로 패스). `command -v` ·
+    `-V` 는 이름 찾기라 빈 목록이다. Words after what precedes a command position (assignments, group openers, prefixes)."""
     i = 0
-    while i < len(words) and (words[i] in ("{", "(", "!") or words[i].lower() in _LISTING_PREFIXES
-                              or _ASSIGNMENT.fullmatch(words[i])):
-        i += 1
+    while i < len(words):
+        word = words[i].lower()
+        if word in ("{", "(", "!") or _AUDIT_ASSIGNMENT.fullmatch(words[i]):
+            i += 1
+        elif word in _LISTING_PREFIXES:
+            if word == "command" and any(flag in ("-v", "-V") for flag in words[i + 1:i + 3]):
+                return []  # `command -v x` 는 이름을 찾기만 한다 / only looks the name up
+            values = _PREFIX_VALUE_OPTIONS.get(word, ())
+            i += 1
+            while i < len(words) and words[i].startswith("-") and len(words[i]) > 1:
+                i += 2 if words[i] in values else 1
+        else:
+            break
     return words[i:]
 
 
+def _ps_doubled_quotes(text):
+    """PowerShell 따옴표 글자 속 겹친 따옴표(`'it''s'` · `"a ""b"" c"`)와 백틱 이스케이프를 셸 낱말 나누기(shlex)가 같은 글자로
+    읽는 꼴로 —
+    그대로 넘기면 따옴표가 닫혔다 다시 열려 속 글자의 `;` 가 명령 구분자로 드러났다(워크플로 패스 wf_150f221f-097).
+    Rewrite PowerShell doubled quotes inside quoted text so shlex reads the same literal."""
+    out, quote, i = [], None, 0
+    while i < len(text):
+        ch = text[i]
+        if ch == "`" and quote != "'" and i + 1 < len(text):
+            # 백틱은 다음 글자를 글자로 만든다 — 이스케이프한 따옴표는 따옴표를 열거나 닫지 않는다(셋째 워크플로 패스:
+            # `-ArgumentList "-Command `"railway up`""` 를 놓쳤다) / a backtick-escaped quote neither opens nor closes
+            escaped = text[i + 1]
+            if escaped in ("'", '"'):
+                out.append("\\" + escaped if quote is None or escaped == '"' else escaped)
+            else:
+                out.append(ch + escaped)
+            i += 2
+            continue
+        if quote and text.startswith(quote * 2, i):
+            out.append("'\"'\"'" if quote == "'" else '\\"')
+            i += 2
+            continue
+        if quote:
+            quote = None if ch == quote else quote
+        elif ch in ("'", '"'):
+            quote = ch
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
 def _audit_command_index(head, rest):
-    """훑는 머리(`timeout 60` · `if` · `xargs -I {}`)가 돌리는 명령 낱말의 자리 — 옵션 · 그 값 · 앞 위치 인자 · `!` · 실행
-    접두어 · `env` · 대입을 건너뛴다. 없으면 None. Where the command a scan head runs starts in rest, or None."""
+    """훑는 머리(`timeout 60` · `if` · `xargs -I {}`)가 돌리는 명령 낱말의 자리 — 옵션 · 그 값 · 앞 위치 인자 · `!` · 대입을
+    건너뛴다. 실행 접두어 · `env` 는 그 자리에서 멈춰 낱말 벗기기가 그 옵션과 함께 걷는다(넷째 워크플로 패스: `timeout 600
+    env -u X bash` 의 `X` 를 명령으로 읽었다). 없으면 None. Where the command a scan head runs starts in rest, or None."""
     values = _AUDIT_SCAN_VALUE_OPTIONS.get(head, ())
     positionals = _AUDIT_SCAN_POSITIONALS.get(head, 0)
     k = 0
     while k < len(rest):
         word = rest[k]
-        if (word == "!" or word.lower() in _LISTING_PREFIXES or word.lower() == "env" or _ASSIGNMENT.fullmatch(word)
-                or (word.startswith("-") and len(word) > 1)):
+        if word == "!" or _ASSIGNMENT.fullmatch(word) or (word.startswith("-") and len(word) > 1):
             k += 2 if word in values else 1
         elif positionals:
             positionals, k = positionals - 1, k + 1
@@ -2468,32 +2867,425 @@ def _audit_command_index(head, rest):
 
 
 def _audit_peel(stage):
-    """단계의 명령 자리 (머리, 나머지) — 훑는 머리를 겹쳐도 벗긴다(`if timeout 60 railway status` — 워크플로 셋째 패스).
-    watch · flock 은 남은 낱말을 셸 글자로 돌리므로 (`sh`, [`-c`, 글자]) 로 낸다. PowerShell 의 블록 낱말 뒤는 명령 자리가
-    아니다. The (head, rest) at a stage's command position, nested scan heads peeled."""
+    """단계의 명령 자리 (머리, 나머지) — 훑는 머리를 겹쳐도 벗긴다(`if timeout 60 railway status` —
+    셋째 패스). watch 와 `flock … -c` 는 셸 글자를 돌리므로 (`sh`, [`-c`, 글자]) 로 낸다 — `-c` 없는 flock 은 낱말을 바로
+    실행한다(그것을 셸 글자로 이어 커밋 메시지 속 `;` 뒤를 명령으로 읽었다). PowerShell Start-Process 는 실행 파일과
+    `-ArgumentList` 를 펼친다. PowerShell 의 블록 낱말 뒤는 명령 자리가 아니다.
+    The (head, rest) at a stage's command position, nested scan heads and Start-Process peeled."""
     words = _audit_words(stage)
     while words:
         # 따옴표 친 Windows 경로(`"C:\\…\\python.exe"`)의 백슬래시도 구분자다(넷째 워크플로 패스) / backslashes separate too
         head, rest = _prod_head(_command_name(words[0].replace("\\", "/"))), words[1:]
+        if head in _PS_START_HEADS:
+            command, args = _audit_start_process(rest)
+            if command is None:
+                return "", []
+            words = [command, *args]
+            continue
+        if head == "env":
+            # `env X=1 bash <<'EOF'` · `| env -i bash` — 옵션 · 대입 · `-S` 를 main 의 해석으로 걷는다(셋째 워크플로 패스)
+            # env options, assignments and -S, parsed as main parses them
+            inner = _prod_unwrap(head, rest)
+            words = _skip_prefixes(_shell_words(inner)) if inner else []  # `env X=1 nohup bash` (다섯째 패스)
+            continue
         if head not in _PROD_SCAN_HEADS:
             return head, rest
         if _CONTEXT["shell"] == "powershell" and head in _PS_BLOCK_KEYWORDS:
             return "", []
+        if head == "flock":
+            shell_text = _flock_shell_text(rest)
+            if shell_text is not None:
+                return "sh", ["-c", shell_text]
         k = _audit_command_index(head, rest)
         if k is None:
             return "", []
-        if head in _AUDIT_SHELL_TEXT_HEADS:
+        if head == "watch":
             return "sh", ["-c", " ".join(rest[k:])]
-        words = rest[k:]
+        words = _skip_prefixes(rest[k:])
     return "", []
 
 
+def _shell_words(text):
+    """셸 낱말 나누기 — 따옴표가 깨졌으면 공백으로 / shell words, whitespace when the quoting is broken."""
+    try:
+        return shlex.split(text, posix=True)
+    except ValueError:
+        return text.split()
+
+
+def _flock_shell_text(rest):
+    """`flock … -c 글자` · `--command 글자` 의 셸 글자 — 없으면 None / the shell text of flock -c, or None."""
+    for k, word in enumerate(rest):
+        if word in ("-c", "--command") and k + 1 < len(rest):
+            return rest[k + 1]
+        if word.startswith("--command="):
+            return word.split("=", 1)[1]
+    return None
+
+
+# PowerShell 매개변수 낱말의 꼴 — `-` 뒤 글자로 시작하는 이름(붙여 쓴 `:값` 허용). `'-3 scripts/x.py'` 같은 따옴표 글자는
+# 위치 값이다(넷째 워크플로 패스: 그것을 못 푼 매개변수로 건너뛰었다) / the shape of a parameter word
+_PS_PARAMETER_WORD = re.compile(r"-[A-Za-z][\w-]*(?::.*)?", re.DOTALL)
+
+
+def _ps_parameter(word, params, aliases):
+    """PowerShell 매개변수 낱말(`-Name` · `-Name:값`)을 (이름, 값을 받는가, 붙은 값 또는 None) 으로 — 바인더처럼 이름 · 별칭
+    그대로, 아니면 이름 · 별칭의 유일한 앞부분(`-Work` = `-WorkingDirectory`). 공통 매개변수는 늘 함께 본다. 매개변수 꼴이
+    아니거나 못 풀면(모르는 이름 · 겹치는 앞부분 — PowerShell 도 그 호출을 거부한다) None.
+    Resolve a PowerShell parameter word like the binder: exact name or alias, else a unique prefix; None otherwise."""
+    if not word.startswith("-") or len(word) < 2:
+        return None
+    name, colon, attached = word[1:].partition(":")
+    table, names = {**params, **_PS_COMMON_PARAMS}, {**aliases, **_PS_COMMON_ALIASES}
+    low = name.lower()
+    canonical = low if low in table else names.get(low)
+    if canonical is None and low:
+        found = {names.get(each, each) for each in (*table, *names) if each.startswith(low)}
+        canonical = found.pop() if len(found) == 1 else None
+    if canonical is None:
+        return None
+    return canonical, table[canonical], (attached if colon else None)
+
+
+def _audit_start_process(rest):
+    """PowerShell Start-Process 의 (실행 파일, 인자) — `-FilePath` 또는 첫 위치 낱말이 실행 파일이고, `-ArgumentList`(쉼표
+    목록 · 한 글자열) 또는 둘째 위치 낱말이 인자다. 매개변수는 바인더처럼 풀어(`_ps_parameter` — 별칭 `-RSO` · 줄임 `-Work`
+    · 붙여 쓴 값 `-FilePath:x`) 값 매개변수의 값을 건너뛰고, 못 푼 매개변수 낱말은 그 낱말만 건너뛴다(워크플로 패스
+    wf_f44bc84a-458: 인자 목록 `logs,--json` 을 하위 명령으로 읽어 읽기를 막았고, 인자 목록 속 사용자 몫 스크립트를 놓쳤다).
+    The (executable, arguments) of a PowerShell Start-Process call, its parameters resolved like the binder."""
+    command, values, positionals, k = None, [], [], 0
+    while k < len(rest):
+        word = rest[k]
+        if word == "--":
+            k += 1  # 매개변수 끝 표지 / the end-of-parameters marker
+            continue
+        param = _ps_parameter(word, _PS_START_PARAMS, _PS_START_ALIASES)
+        if param is None:
+            if _PS_PARAMETER_WORD.fullmatch(word):
+                k += 1  # 못 푼 매개변수 낱말 / an unresolved parameter word
+            else:
+                value, k = _ps_array_tail(word, rest, k + 1)
+                positionals.append(value)
+            continue
+        name, takes_value, value = param
+        k += 1
+        if value is not None:
+            value, k = _ps_array_tail(value, rest, k)
+        elif takes_value and k < len(rest):
+            value, k = _ps_array_tail(rest[k], rest, k + 1)
+        if name == "filepath" and value is not None:
+            command = value
+        elif name == "argumentlist" and value is not None:
+            values.append(value)
+    if command is None and positionals:
+        command, positionals = positionals[0], positionals[1:]
+    values.extend(positionals[:1])  # 둘째 위치 낱말은 -ArgumentList 다 / the second positional
+    program = _prod_head(_command_name(command.replace("\\", "/"))) if command else ""
+    return command, [word for value in values for word in _audit_argument_list(value, program)]
+
+
+def _ps_array_tail(value, rest, k):
+    """PowerShell 배열 값의 뒤 원소를 잇는다 — `'a', 'b'` 처럼 쉼표 뒤에 띄어 쓰면 낱말 나누기가 원소마다 쪼갠다(워크플로 패스
+    wf_150f221f-097: 첫 원소만 남아 `'--help'` 가 빠졌다). (이은 값, 다음 자리) / join the rest of a spaced array value."""
+    while k < len(rest) and (value.endswith(",") or rest[k].startswith(",")):
+        value, k = value + rest[k], k + 1
+    return value, k
+
+
+def _audit_argument_list(value, program):
+    """`-ArgumentList` 값이 받는 프로그램에 닿는 낱말 — 배열 글자(`@( … )` · `( … )`)를 벗기고, Start-Process 처럼 원소를 공백
+    하나로 이어 한 명령줄로 만든 뒤(문서 그대로 · 넷째 워크플로 패스) 받는 프로그램의 규칙으로 나눈다 — Git Bash(MSYS2)는
+    홑 · 겹따옴표로 묶고, cmd 는 겹따옴표 글자를 남기며, 그 밖(pwsh · py · node)은 C 런타임 규칙이다(여섯째 워크플로 패스
+    wf_5fb5a833-51c: 한 규칙으로 나눠 `bash -c 'railway up'` 을 놓쳤다).
+    The words a -ArgumentList value reaches its program with: elements joined by spaces, split by that program's rules."""
+    value = re.sub(r"^@?\(", "", value)
+    value = value[:-1] if value.endswith(")") else value
+    line = " ".join(value.split(","))
+    if program in _PROD_SHELL_WRAPPERS:
+        return _shell_words(_msys_doubled_quotes(line))
+    return _windows_argv(line, keep_quotes=program == "cmd")
+
+
+def _msys_doubled_quotes(text):
+    """MSYS2(Git Bash)가 겹따옴표 안 `""` 를 글자 따옴표로 읽는 것을 셸 낱말 나누기(shlex)가 읽는 꼴(`\\"`)로 — 일곱째 워크플로
+    패스. Rewrite MSYS2's `""` inside double quotes as an escaped quote for shlex."""
+    out, quote, i = [], None, 0
+    while i < len(text):
+        ch = text[i]
+        if quote == '"' and text.startswith('""', i):
+            out.append('\\"')
+            i += 2
+            continue
+        if quote:
+            quote = None if ch == quote else quote
+        elif ch in ("'", '"'):
+            quote = ch
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def _windows_argv(text, keep_quotes=False):
+    """Windows 명령줄을 C 런타임처럼 낱말로 — 겹따옴표만 묶고 홑따옴표는 글자다. 겹따옴표 앞 백슬래시 2n 개는 n 개와 따옴표
+    여닫기, 2n+1 개는 n 개와 글자 따옴표다(그 밖의 백슬래시는 글자). keep_quotes 면 cmd 처럼 따옴표 글자를 낱말에 남긴다
+    (cmd 는 `\\"` 를 이스케이프로 읽지 않는다). Split a command line like the C runtime (or cmd, keeping the quotes)."""
+    words, word, quoted, started, i = [], [], False, False, 0
+    while i < len(text):
+        ch = text[i]
+        if ch == "\\" and not keep_quotes:
+            run = len(text[i:]) - len(text[i:].lstrip("\\"))
+            if text.startswith('"', i + run):
+                word.append("\\" * (run // 2))
+                if run % 2:
+                    word.append('"')  # 글자 따옴표 / a literal quote
+                    i += 1
+                i, started = i + run, True
+                continue
+            word.append("\\" * run)
+            i, started = i + run, True
+            continue
+        if ch == '"' and quoted and not keep_quotes and text.startswith('""', i):
+            word.append('"')  # 따옴표 안 `""` 는 글자 따옴표다 / a doubled quote inside quotes is a literal
+            i, started = i + 2, True
+            continue
+        if ch == '"':
+            quoted, started = not quoted, True
+            if keep_quotes:
+                word.append(ch)
+        elif ch.isspace() and not quoted:
+            if started:
+                words.append("".join(word))
+            word, started = [], False
+        else:
+            word.append(ch)
+            started = True
+        i += 1
+    if started:
+        words.append("".join(word))
+    return words
+
+
+def _cmd_calls(text):
+    """cmd 글자를 PowerShell 규칙으로 걸을 꼴로 — 문장(줄바꿈 · `&&` · `||` · `&` · `|` 로 나뉜, 겹따옴표 밖 — 따옴표는 줄마다
+    새로 센다)마다 `_cmd_call` 로 바꾼다(아홉째 워크플로 패스: cmd 는 stdin 을 줄마다 읽는데 첫 줄만 바꿨다). cmd 의 `&` 는 그대로
+    둔다 — PowerShell 규칙에서도 명령 자리 밖의 `&` 는 문장 끝이다. cmd 의 `;` 도 그대로다 — 자식(`bash -c '…; …'`)이 받는다.
+    cmd text rewritten statement by statement for a PowerShell-rules walk."""
+    out, piece, quoted, depth, i = [], [], False, 0, 0  # depth — 열린 블록 수, 문장 · 줄을 넘는다(열두째 워크플로 패스)
+    while i < len(text):
+        ch = text[i]
+        if ch == "\n":
+            line, depth = _cmd_call("".join(piece), depth)
+            out.append(line + "\n")
+            piece, quoted, i = [], False, i + 1
+            continue
+        if ch == '"':
+            quoted = not quoted
+        if not quoted and ch in "&|":
+            sep = text[i:i + 2] if text[i:i + 2] in ("&&", "||") else ch
+            # cmd 의 `&` 는 `;` 로 — PowerShell 규칙은 `=` 뒤의 `&` 를 호출 연산자로 읽는다(`set X= & railway up` — 열째 워크플로
+            # 패스) / cmd's `&` as `;`: after `=` PowerShell rules read `&` as the call operator
+            line, depth = _cmd_call("".join(piece), depth)
+            out.append(line + (";" if sep == "&" else sep))
+            piece, i = [], i + len(sep)
+            continue
+        piece.append(ch)
+        i += 1
+    out.append(_cmd_call("".join(piece), depth)[0])
+    return "".join(out)
+
+
+# cmd 의 주석 줄 · 인자가 글자인 명령(cmd 은 대소문자를 가리지 않는다) / cmd comments and builtins whose arguments are text
+_CMD_COMMENT = re.compile(r"(?i)(?:rem|::|#)")  # `#` 로 시작하는 문장은 cmd 가 돌릴 프로그램이 없다 / nothing to run
+_CMD_TEXT_STATEMENT = re.compile(r"(?i)(?:echo|set|title)")
+
+
+def _cmd_call(statement, depth=0):
+    """cmd 문장 하나를 PowerShell 규칙으로 걸을 꼴로 — 앞 `@`(되풀이 끄기)는 떼고, 주석(`rem` · `::`)은 빼고, 인자가 글자인 명령
+    (echo · set · title)의 인자는 홑따옴표 글자로, 따옴표로 시작하는 머리는 호출 연산자 꼴(`& "C:\\…\\railway.cmd" up`)로 둔다
+    (여덟째 · 아홉째 워크플로 패스: echo 의 괄호 · `;` · 중괄호와 `::` · `@echo` · `set X=(…)` · `title` 을 PowerShell 식으로 읽었다).
+    블록 안(depth)의 문장이면 글자는 블록을 닫는 `)` 까지다. (바꾼 글자, 문장 뒤의 블록 깊이)를 돌려준다.
+    One cmd statement rewritten for a PowerShell-rules walk, and the block depth after it."""
+    stripped = statement.strip()
+    if stripped.startswith("@"):
+        stripped = stripped[1:].lstrip()
+    if _CMD_COMMENT.match(stripped):
+        return "", depth
+    stripped = _CMD_INNER_AT.sub(r"\1", stripped)
+    stripped = _cmd_data_parens(_CMD_INNER_QUOTED.sub(
+        lambda found: found.group(1) + "& '" + found.group(2).replace("'", "''") + "'", stripped))
+    text = _CMD_TEXT_STATEMENT.match(stripped)
+    if text:
+        end = _cmd_text_end(stripped, text.end(), depth)
+        head = stripped[:text.end()] + _cmd_literal(stripped[text.end():end])
+        if end < len(stripped) and not _CMD_BLOCK_CONTINUES.match(stripped, end + 1):
+            return _cmd_closed_quotes(head + ")" + _cmd_literal(stripped[end + 1:])), max(0, depth - 1)
+        rest, depth = _cmd_block_text(stripped[end:], depth)
+        return _cmd_closed_quotes(head + rest), depth
+    stripped, depth = _cmd_block_text(stripped, depth)
+    close = stripped.find('"', 1) if stripped.startswith('"') else -1
+    if close > 0:
+        # 따옴표 친 머리는 호출 — cmd 에서 그 글자는 펼치지 않으므로 PowerShell 홑따옴표로(`"…$(…)…"` 를 하위 식으로 읽었다)
+        # a quoted head is a call; cmd does not expand it, so it becomes a single-quoted PowerShell string
+        stripped = " & '" + stripped[1:close].replace("'", "''") + "'" + stripped[close + 1:]
+    return _cmd_closed_quotes(stripped), depth
+
+
+def _cmd_closed_quotes(statement):
+    """cmd 문장을 PowerShell 규칙에서도 cmd 처럼 읽히게 — 문장 끝에서 짝 없는 따옴표를 닫는다(cmd 에서 `'` 는 글자이고 `"` 는 줄
+    끝에서 풀리는데, PowerShell 규칙에서는 뒤 문장 · 뒤 줄까지 문자열로 덮는다 — `cd it's here & railway up`). 열린 따옴표는
+    PowerShell 규칙으로 잰다 — 홑따옴표 안 `"` 는 글자다(열셋째 워크플로 패스: `sed 's/"//g'`). cmd 의 백틱과 낱말 처음 `#` 도
+    글자라 이스케이프한다(열넷째 워크플로 패스: `` ` `` 이 뒤 따옴표를, `gh issue view #12 & railway up` 의 `#` 이 뒤 문장을 덮었다).
+    Make a rewritten cmd statement read like cmd under PowerShell rules."""
+    out, quote, i = [], None, 0
+    while i < len(statement):
+        ch = statement[i]
+        if ch == "`" and quote != "'":
+            # `` `' `` 는 PowerShell 에서도 글자 아포스트로피라 한 덩어리로 둔다(열다섯째 워크플로 패스) / a literal apostrophe
+            step = 2 if statement[i + 1:i + 2] == "'" else 1
+            out.append(statement[i:i + 2] if step == 2 else "``")
+            i += step
+            continue
+        if quote:
+            quote = None if ch == quote else quote
+        elif ch in "'\"":
+            quote = ch
+        elif ch == "#" and (i == 0 or statement[i - 1] in " \t;,(){}|&"):
+            out.append("`#")
+            i += 1
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out) + (quote or "")
+
+
+# 블록 · do · else 안 명령 앞 `@`(되풀이 끄기) / an echo-off `@` before a command inside a block or after do / else
+_CMD_INNER_AT = re.compile(r"(?i)((?:\(|\bdo\b|\belse\b)\s*)@")
+# FOR 집합 · if 의 괄호 조건 — cmd 에서는 데이터다 / a FOR set and parenthesized if operands are data in cmd
+_CMD_FOR_SET = re.compile(r"(?i)(\bfor\b([^(]*?)\bin\s*)\(([^)]*)\)")
+_CMD_IF_PARENS = re.compile(r"(?i)(\bif\s+(?:/i\s+)?(?:not\s+)?)\(([^)]*)\)(\s*==\s*|\s+(?:equ|neq|lss|leq|gtr|geq)\s+)"
+                            r"\(([^)]*)\)")
+# 블록 · do · else 안의 따옴표 친 머리는 호출 / a quoted head inside a block or after do / else is a call
+_CMD_INNER_QUOTED = re.compile(r'(?i)((?:\(|\bdo\b|\belse\b)\s*)"([^"]*)"')
+
+
+def _cmd_data_parens(statement):
+    """cmd 의 괄호 데이터를 글자로 — FOR 집합(`for %f in (a b) do …`)과 if 괄호 조건(`if (a)==(b)`)은 PowerShell 하위 식이 아니다
+    (Grok claim-review 1b291152: `for %f in (observer_setup.py observe_db.py) do echo %f` 를 막았다). `for /f … in ('명령')` 의 홑따옴표
+    집합은 cmd 가 돌리는 명령이라 그 글자를 걷는다. Parenthesized cmd data stays text; a `for /f` command set is walked."""
+    def for_set(found):
+        inner = found.group(3).strip()
+        # usebackq 면 명령은 백틱 · 홑따옴표는 글자(Grok 재확인) / with usebackq the command is in backticks
+        quote = "`" if re.search(r"(?i)usebackq", found.group(2)) else "'"
+        if re.search(r"(?i)/f\b", found.group(2)) and len(inner) > 1 and inner[0] == inner[-1] == quote:
+            return found.group(1) + "(" + _cmd_calls(inner[1:-1]) + ")"
+        return found.group(1) + _cmd_literal("(" + found.group(3) + ")").strip()
+
+    statement = _CMD_FOR_SET.sub(for_set, statement)
+    return _CMD_IF_PARENS.sub(lambda found: found.group(1) + _cmd_literal("(" + found.group(2) + ")").strip() + found.group(3)
+                              + _cmd_literal("(" + found.group(4) + ")").strip(), statement)
+
+
+def _cmd_literal(text):
+    """cmd 글자를 PowerShell 홑따옴표 글자로 / cmd text as one PowerShell single-quoted string."""
+    return " '" + text.replace("'", "''") + "'"
+
+
+# 블록 안 · do · else · if 조건 뒤의 인자가 글자인 명령(앞 `@` 허용) — 조건 뒤는 공백이다(`if exist scripts\observer_setup.py (…)`
+# 의 `set` 을 명령으로 읽고 뒤 블록을 덮었다 — 열째 패스 고침의 회귀). 조건 값은 공백 든 겹따옴표 글자일 수 있다. 명령 낱말
+# 뒤에는 공백이 온다(`for %s in (settings worker) do (…)` 의 집합을 set 블록으로 읽었다 — 열넷째 워크플로 패스).
+# a text-argument builtin opening a block or after do / else / an if test (whitespace after the test)
+_CMD_OPERAND = r'(?:"[^"]*"|\S+)'
+_CMD_BLOCK_TEXT = re.compile(
+    r"(?i)(?:\(\s*|\b(?:do|else)\s+|\bif\s+(?:/i\s+)?(?:not\s+)?(?:(?:exist|defined|errorlevel)\s+" + _CMD_OPERAND
+    + r"|" + _CMD_OPERAND + r"\s*==\s*" + _CMD_OPERAND + r"|" + _CMD_OPERAND + r"\s+(?:equ|neq|lss|leq|gtr|geq)\s+"
+    + _CMD_OPERAND + r")\s+)@?(?:echo|set|title)(?=[\s.(:/\\\[\]+,;=]|$)")  # cmd 의 echo 구분자(`echo.` · `echo(`)
+
+
+# 블록을 닫는 `)` 뒤에 cmd 가 이어 읽는 꼴 — 끝 · else · do · 다른 `)` · 재지정(cmd 는 `,` `;` `=` 도 공백처럼 건너뛴다). 그 밖은
+# 구문 오류다(열셋째 워크플로 패스: `(echo built (ok); railway up later)` 의 `;` 뒤를 명령으로 읽었는데 cmd 는 그 줄을 «예기치
+# 않은» 으로 버린다. 열넷째 패스: `(…); else (…)` · `0<nul else` 는 cmd 가 돌린다)
+# what cmd can read after a block-closing parenthesis; anything else is a syntax error
+_CMD_BLOCK_CONTINUES = re.compile(r"(?i)[\s,;=]*(?:$|else\b|do\b|[)<>]|\d[<>])")
+
+
+def _cmd_text_end(statement, start, depth):
+    """글자 인자의 끝 — 블록 안이면 따옴표 밖 `)` 앞, 아니면 문장 끝 / where a text argument ends."""
+    end, quote = start, None
+    while end < len(statement) and (quote or not (depth and statement[end] == ")")):
+        quote = (None if statement[end] == quote else quote) if quote else ('"' if statement[end] == '"' else None)
+        end += 1
+    return end
+
+
+def _cmd_block_text(statement, depth=0):
+    """블록 문장 안 echo · set · title 의 인자를 글자로 — 블록 안이면(`if … (echo …)` · `(… & echo …)`) 블록을 닫는 따옴표 밖
+    `)` 까지, 블록 밖의 `do echo` · `else echo` · `if … echo` 는 문장 끝까지(열째 · 열한째 워크플로 패스: `(echo built; railway up
+    is next)` 의 `;` 를 PowerShell 문장 구분으로 읽었고, 블록 밖 echo 를 첫 `)` 에서 끊었다). 따옴표(겹 · 홑 — 홑따옴표 글자는
+    자식 셸 몫이다) 속은 건너뛴다. (바꾼 글자, 블록 깊이)를 돌려준다. Text of echo/set/title in a cmd statement."""
+    out, i, quote = [], 0, None
+    while i < len(statement):
+        ch = statement[i]
+        found = None if quote else _CMD_BLOCK_TEXT.match(statement, i)
+        if found:
+            depth += ch == "("
+            end = _cmd_text_end(statement, found.end(), depth)
+            out.append(statement[i:found.end()] + _cmd_literal(statement[found.end():end]))
+            if end < len(statement) and not _CMD_BLOCK_CONTINUES.match(statement, end + 1):
+                # 블록을 닫은 `)` 뒤를 cmd 는 이어 읽지 못한다 — 구문 오류라 돌지 않는다 / a syntax error never runs
+                out.append(")" + _cmd_literal(statement[end + 1:]))
+                return "".join(out), max(0, depth - 1)
+            i = end
+            continue
+        if quote:
+            quote = None if ch == quote else quote
+        elif ch in "\"'":
+            quote = ch
+        elif ch in "()":
+            depth = depth + 1 if ch == "(" else max(0, depth - 1)
+        out.append(ch)
+        i += 1
+    return "".join(out), depth
+
+
 def _audit_unwrap(head, rest):
-    """래퍼 안쪽 명령 글자 — `_prod_unwrap` 에 Git Bash 의 `cmd //c` 를 더한다 / the wrapped command text."""
+    """래퍼 안쪽 명령 글자 — `_prod_unwrap` 에 Git Bash 의 `cmd //c`, Bash `eval`, `Invoke-Expression` 의 매개변수(`-Command`
+    값 · 공통 매개변수 — 바인더처럼 푼다)를 더한다(워크플로 패스 wf_f44bc84a-458: `eval "railway up"` ·
+    `iex -Command "railway up"` 을 놓쳤다). The wrapped command text."""
     if head == "cmd":
         for k, word in enumerate(rest):
             if word.lower() in ("/c", "/k", "/r", "//c", "//k", "//r"):
-                return " ".join(rest[k + 1:])
+                # 공백 든 인자는 겹따옴표로 싸서 넘어간다(MSYS2 · PowerShell — 열한째 워크플로 패스: `bash -c '… && ( … )'` 의
+                # `&&` · 괄호를 cmd 문장 · 블록으로 읽었다). 따옴표를 이미 지닌 낱말(Start-Process 인자 목록)은 그대로다.
+                # arguments with whitespace reach cmd double-quoted; words that still carry quotes stay as they are
+                inner = " ".join(f'"{arg}"' if any(ch in arg for ch in " \t") and '"' not in arg else arg
+                                 for arg in rest[k + 1:])
+                last = inner.rfind('"')
+                if inner.startswith('"') and last > 0:
+                    # cmd /c 는 명령줄이 따옴표로 시작하면 첫 · 마지막 따옴표를 떼고 돈다 — 따옴표 둘이 있는 실행 파일 이름을
+                    # 감싸면 그대로 둔다(cmd /?). 파일이 있는지는 글자로 알 수 없으니 두 읽기를 다 걷는다(`/c "railway up"` ·
+                    # 여섯째 패스 고침의 회귀, `/c "railway run deploy.bat"` · 열두째 워크플로 패스)
+                    # cmd /c strips the outer quotes unless they name an existing executable — walk both readings
+                    return _cmd_calls(inner[1:last] + inner[last + 1:]) + "\n" + _cmd_calls(inner)
+                return _cmd_calls(inner)
+        return None
+    if head == "eval":
+        return " ".join(rest[1:] if rest[:1] == ["--"] else rest) or None
+    if head in ("invoke-expression", "iex"):
+        k = 0
+        while k < len(rest):
+            param = _ps_parameter(rest[k], _PS_IEX_PARAMS, {})
+            if param is None:
+                if rest[k].startswith("-") and len(rest[k]) > 1:
+                    k += 1  # 못 푼 매개변수 낱말 / an unresolved parameter word
+                    continue
+                return " ".join(rest[k:])
+            name, takes_value, value = param
+            if takes_value and value is None:
+                value = rest[k + 1] if k + 1 < len(rest) else None
+                k += 1
+            k += 1
+            if name == "command":
+                return value
         return None
     return _prod_unwrap(head, rest)
 
@@ -2531,6 +3323,8 @@ def _audit_find_heredoc(line):
                 continue
         elif ch in ("'", '"'):
             contexts.append(ch)
+        elif ch == "#" and not contexts and (i == 0 or line[i - 1] in _BASH_COMMENT_AFTER):
+            return None  # 주석 속 `<<'EOF'` 는 heredoc 이 아니다(워크플로 패스 wf_f44bc84a-458) / a comment
         elif ch == "\\":
             i += 1
         elif line.startswith(("$((", "(("), i):
@@ -2557,27 +3351,100 @@ def _audit_find_heredoc(line):
     return None
 
 
-def _audit_receiver(prefix):
-    """heredoc 을 받는 명령의 첫 낱말(PowerShell 백슬래시는 글자) / the head of the command that receives a heredoc."""
-    segments = _split_segments(prefix) or [""]
-    stages = _split_stages(segments[-1]) or [""]
-    return _prod_head(_command_words(stages[-1], ps_literal=True)[0])
+def _audit_receiver(prefix, case_seen=False):
+    """heredoc 을 받는 명령 (머리, 나머지) — 앞부분을 코드 자리의 구분자로만 나눠(`_code_split`) 마지막 단계의 명령 자리를
+    본다(재지정 · 훑는 머리를 벗긴다 — `bash 2>&1 <<'EOF'` · `timeout 600 bash <<'EOF'`). 따옴표 속 `| bash` 는 받는 명령이
+    아니다(워크플로 패스 wf_150f221f-097: 제목의 `#` · 백틱이 main 의 분할기를 따옴표 안에서 자르게 해 PR 본문을 명령으로
+    걸었다). The (head, rest) of the command that receives a heredoc, split at code positions only."""
+    mask = _audit_mask(prefix)
+    segments = [part for part in _code_split(prefix, 0, mask, _segment_separators()) if part[1].strip()]
+    seg_at, segment = segments[-1] if segments else (0, "")
+    cut = _case_prefix(segment, case_seen, _arm_start(prefix[:seg_at]))  # case 갈래 안의 받는 명령 / in a case arm
+    return _audit_stage_head(_code_split(segment[cut:], seg_at + cut, mask, ("|&", "|"))[-1][1])
+
+
+def _audit_stage_head(stage):
+    """단계의 (머리, 나머지) — PowerShell 대입 · 호출 연산자를 걷고(`$r = Invoke-Expression @'` · `| & pwsh -Command -`) 훑는
+    머리를 벗긴다. PowerShell 괄호 식 · 형 변환(`(iex @'` · `$r = (iex @'` · `[void](iex @'`)은 그 안 첫 명령이 받는다(넷째
+    워크플로 패스). 블록 · 글자 식이면 ("", []). The (head, rest) of a stage after its prefix is stripped."""
+    if _CONTEXT["shell"] == "powershell":
+        stage = _strip_ps_assignments(stage)
+        if stage.count("(") > stage.count(")"):
+            # 열린 괄호 식 안의 명령이 받는다 — 닫힌 식(`(pwsh -v) + @'`)의 here-string 은 이어 붙일 글자다(다섯째 패스)
+            # the command inside a still-open parenthesis receives it; a closed expression only concatenates
+            stage = _PS_EXPRESSION_OPEN.sub("", stage, count=1)
+    stage = _audit_without_prefix(stage)
+    return ("", []) if stage is None else _audit_peel(stage)
+
+
+def _runs_piped_text(head, rest):
+    """`_piped_text_mode` 가 무엇이든 돌리는가 / does it run any of its piped stdin?"""
+    return _piped_text_mode(head, rest) is not None
+
+
+def _piped_text_mode(head, rest):
+    """파이프 뒤에서 stdin 글자 전체를 명령으로 돌리는가 — `| eval "$(cat)"` · `| bash -c "$(cat)"`(파이프는 낱말 펼치기 전에
+    이어져 치환이 앞 단계 글자를 읽는다 — 다섯째 워크플로 패스). 치환이 명령 글자 전체일 때만이다(`--body "$(cat)"` 는 데이터).
+    같은 명령의 heredoc 재지정은 펼치기 뒤라 해당하지 않는다. eval 은 인자를 이어 다시 읽으므로 `"$(cat)"` 이 첫 인자면 글자
+    전체("all"), 뒤 인자 속이면 둘째 줄부터("after-first")가 돈다(`eval echo "$(cat)"` — 여섯째 · 일곱째 워크플로 패스).
+    "all", "after-first" or None: how much of its piped stdin it runs as commands."""
+    if head == "eval":
+        args = rest[1:] if rest[:1] == ["--"] else rest
+        if args and _STDIN_TEXT_WORD.fullmatch(args[0]):
+            return "all"
+        return "after-first" if any(_STDIN_TEXT_WORD.search(word) for word in args) else None
+    if head in _PROD_SHELL_WRAPPERS:
+        inner = _prod_shell_scan(rest)[0]
+        return "all" if inner is not None and _STDIN_TEXT_WORD.fullmatch(inner.strip()) else None
+    return None
+
+
+def _audit_reads_commands(head, rest):
+    """stdin 의 글자를 명령으로 읽는가 — `_prod_reads_stdin`(main 그대로)에서 문법만 보는 셸(`bash -n`)을 뺀다.
+    Does the command read its stdin as commands? A syntax-only shell run does not."""
+    if head in ("source", "."):
+        return rest[:1] == ["/dev/stdin"]  # `source /dev/stdin` 은 stdin 을 스크립트로 읽는다 / reads stdin as a script
+    if head in ("invoke-expression", "iex"):
+        # 매개변수(`-ErrorAction Stop` · `-Verbose`)만 있고 명령 글자가 없으면 stdin 을 돌린다(셋째 워크플로 패스)
+        # with parameters but no command text, iex runs its pipeline input
+        return _audit_unwrap(head, rest) is None
+    noexec = head in _PROD_SHELL_WRAPPERS and any(_SHELL_NOEXEC.fullmatch(word) for word in rest)
+    return _prod_reads_stdin(head, rest) and not noexec
+
+
+def _audit_reads_body(head, rest):
+    """받는 명령이 heredoc 본문을 명령으로 읽는가 — stdin 을 읽는 셸 · PowerShell · iex · cmd 와 railway. 스크립트 파일 ·
+    `-c` 를 받은 셸에게 본문은 그 스크립트의 데이터다(`timeout 60 bash ./render.sh <<'EOF'`).
+    받는 명령의 마지막 낱말이 명령 값을 받는 옵션이면(`pwsh -Command @'…'@`) 본문이 그 명령이다(넷째 워크플로 패스).
+    `bash -c "$(cat)" <<'EOF'` 의 치환은 재지정보다 먼저 펼쳐져 본문을 읽지 않는다 — 본문은 돌지 않는다(넷째 패스가 셋째 패스의
+    반례를 반증했다). Does the receiver run the body as commands?"""
+    runner = head in _PROD_SHELL_WRAPPERS or head in _PROD_PS_WRAPPERS or head == "cmd"
+    if runner and rest and rest[-1].lower() in _COMMAND_VALUE_OPTIONS:
+        return True
+    return _audit_reads_commands(head, rest) or _is_railway(head)
 
 
 def _audit_pipes_into_runner(text):
-    """뒤 파이프 단계가 글자를 실행하는가(`cat <<'EOF' | bash` · `'@ | iex`) / does a later stage execute the text?"""
-    return any(_prod_runs_text(_prod_head(_command_words(stage, ps_literal=True)[0])) for stage in _split_stages(text)[1:])
+    """heredoc · here-string 뒤의 같은 파이프라인 단계가 글자를 명령으로 읽는가(`cat <<'EOF' | bash` · `|& bash` ·
+    `'@ | iex`) — 코드 자리의 구분자로만 나눈다. 그 단계의 머리, 아니면 None.
+    The head of a later stage of the same pipeline that reads the text as commands, or None."""
+    mask = _audit_mask(text)
+    seg_at, segment = _code_split(text, 0, mask, _segment_separators())[0]
+    later = [_audit_stage_head(stage) for _, stage in _code_split(segment, seg_at, mask, ("|&", "|"))[1:]]
+    return next((head for head, rest in later if _audit_reads_body(head, rest) or _runs_piped_text(head, rest)), None)
 
 
-def _audit_without_heredoc_data(text):
+def _audit_without_heredoc_data(text, foreign=None):
     """감사용 heredoc · here-string 데이터 빼기 — 판정 쪽(`_prod_without_heredoc_data`, main 그대로)보다 정밀하다. 큰따옴표 속
     명령 치환 안의 heredoc 도 heredoc 이고, 치환 안이면 `EOF)` 로 붙여 쓴 줄에서 닫히며(bash 5.3), 닫는 줄이 없으면 끝까지
     데이터다. 본문을 돌리는 받는 명령(앞부분 전체의 마지막 명령 · 치환 몸의 첫 명령 · 뒤 파이프)이면 본문을 남긴다.
     here-string 을 여는 `@'` · `@"` 는 걷는다 — 남기면 닫히지 않은 따옴표로 보여 뒤가 모두 따옴표 안이 된다(워크플로 셋째 패스).
+    본문을 받는 셸이 지금 셸과 다르면(`bash -c @'…'@` · `pwsh -Command - <<'EOF'` · cmd) 그 본문은 foreign 에 (셸, 글자)로 넘겨
+    받는 셸의 규칙으로 따로 걷게 한다(여덟째 워크플로 패스: 바깥 셸 규칙으로 걸어 Bash 배열 · case 패턴을 머리로 읽었다).
     Drop heredoc and here-string data for the audit, more precisely than the verdict side."""
     powershell = _CONTEXT["shell"] == "powershell"
     lines = text.split("\n")
-    kept, i = [], 0
+    kept, i, case_depth = [], 0, 0
     while i < len(lines):
         line = lines[i]
         i += 1
@@ -2588,12 +3455,23 @@ def _audit_without_heredoc_data(text):
         match, inner = found if found else (None, None)
         if not here and not match:
             kept.append(line)
+            case_depth = _case_depth(line, case_depth)
             continue
         start = (here or match).start()
         kept.append(line[:start] if here else line)
-        runs = (_prod_runs_text(_audit_receiver(line[:start]))
-                or (inner is not None and _prod_runs_text(_audit_receiver(line[inner:start])))
-                or (match is not None and _audit_pipes_into_runner(line[match.end():])))
+        # 묶음(`( … )` · `{ …; }`)이 받으면 heredoc 은 묶음의 stdin 이라 안쪽 마지막 명령이 받고, 그 `$(cat)` 도 그것을 읽는다
+        # (다섯째 · 여섯째 워크플로 패스)
+        # a group passes the heredoc to its last command (and to a `$(cat)` inside)
+        prefix = line[:start].rstrip()
+        grouped = prefix.endswith((")", "}"))
+        receiver = _audit_receiver(prefix[:-1] if grouped else line[:start], case_depth > 0)
+        runner = receiver[0] if _audit_reads_body(*receiver) or (grouped and _runs_piped_text(*receiver)) else None
+        if runner is None and inner is not None:
+            inner_receiver = _audit_receiver(line[inner:start])
+            runner = inner_receiver[0] if _audit_reads_body(*inner_receiver) else None
+        if runner is None and match is not None:
+            runner = _audit_pipes_into_runner(line[match.end():])
+        case_depth = _case_depth(line[:start], case_depth)  # heredoc 줄의 case 머리도 센다(다섯째 워크플로 패스)
         body, closing = [], None
         delimiter = match.group(2).lstrip("\\") if match else None
         while i < len(lines):
@@ -2612,20 +3490,43 @@ def _audit_without_heredoc_data(text):
         i += 1  # 닫는 줄 / the closing line
         if closing:
             kept.append(closing)  # 닫는 글자 뒤(`)"` · `| iex`)는 명령이다 / what follows the closing mark is a command
-            runs = runs or _audit_pipes_into_runner(closing)
+            runner = runner or _audit_pipes_into_runner(closing)
         literal = here.group(1) == "'" if here else bool(match.group(1)) or match.group(2).startswith("\\")
-        if runs:
-            kept.extend(body)
+        if runner:
+            shell = _inner_shell(runner)
+            if foreign is not None and (shell != _CONTEXT["shell"] or runner == "cmd"):
+                joined = "\n".join(body)
+                foreign.append((shell, _cmd_calls(joined) if runner == "cmd" else joined))
+                if not literal:
+                    # 바깥 셸이 먼저 펼친다 — 그 치환은 바깥 규칙으로(아홉째 워크플로 패스) / the outer shell expands first
+                    kept.extend(_live_bodies(joined, powershell))
+            else:
+                kept.extend(body)
         elif not literal:
-            kept.extend(found_body for _, found_body in _audit_substitutions("\n".join(body), string_body=True))
+            kept.extend(_live_bodies("\n".join(body), powershell))
     return "\n".join(kept)
 
 
+def _live_bodies(text, powershell, depth=0):
+    """heredoc · 펼치는 here-string 본문에서 펼쳐지는 치환 몸 — `$( )` · Bash 백틱(셋째 워크플로 패스). `<( )` · PowerShell
+    `@( )` 는 글자지만 그 안의 `$( )` 는 펼쳐진다(넷째 워크플로 패스). Bodies that expand inside a heredoc body."""
+    for at, body in _audit_substitutions(text, string_body=True):
+        if text.startswith("$(", at) or (not powershell and text[at] == "`"):
+            yield body
+        elif depth < _PROD_MAX_DEPTH:
+            yield from _live_bodies(body, powershell, depth + 1)
+
+
 def _audit_quoted_at(line, position):
-    """그 자리가 PowerShell 따옴표 안인가 / is the position inside a PowerShell quote?"""
-    quote = None
+    """그 자리가 PowerShell 따옴표 안인가 — 홑따옴표 밖의 백틱은 다음 글자를 글자로 만든다(`"4`" wide"` — 워크플로 패스
+    wf_150f221f-097). Is the position inside a PowerShell quote? A backtick escapes outside single quotes."""
+    quote, escaped = None, False
     for ch in line[:position]:
-        if quote:
+        if escaped:
+            escaped = False
+        elif ch == "`" and quote != "'":
+            escaped = True
+        elif quote:
             quote = None if ch == quote else quote
         elif ch in ("'", '"'):
             quote = ch
@@ -2665,11 +3566,8 @@ def _audit_substitutions(text, string_body=False):
             end = text.find("\n", i)
             i = len(text) if end < 0 else end
         elif text.startswith(openers, i):
-            depth, j = 1, i + 2
-            while j < len(text) and depth:
-                depth += {"(": 1, ")": -1}.get(text[j], 0)
-                j += 1
-            bodies.append((i, text[i + 2: j - 1 if depth == 0 else j]))
+            j, closed = _audit_paren_end(text, i + 2, escape)
+            bodies.append((i, text[i + 2: j - 1 if closed else j]))
             i = j
         elif ch == "`" and not powershell:
             end = text.find("`", i + 1)
@@ -2681,6 +3579,70 @@ def _audit_substitutions(text, string_body=False):
     if powershell and not string_body:
         bodies.extend(_ps_code_blocks(text))
     return bodies
+
+
+# 치환 몸 속 명령 자리의 case · esac — 줄 처음 · `;` `&` `|` `(` `)` `{` · then · do · else 뒤(열째 워크플로 패스: 여러 줄 몸의
+# 둘째 줄 case 와 `;;` 없는 마지막 갈래 뒤 esac 를 놓쳤다). case 는 같은 줄의 `… in` 까지가 머리다(주제에 겹친 치환이 올 수
+# 있다 — 열한째 워크플로 패스: `echo what to do case by case` 의 `do case` 가 없는 case 를 열었다). 주석은 몸 끝 찾기가 건너뛴다.
+# a case head or esac at a command position inside a substitution body
+_BODY_CASE_WORD = re.compile(r"(?:(?<=[\n;&|(){])|(?<=\bthen)|(?<=\bdo)|(?<=\belse))[ \t]*(case)(?=[ \t]+[^\n]*?[ \t]in(?:\s|$))"
+                             r"|(?<=[\n;&])[ \t]*(esac)(?=[\s;&|)]|$)")  # esac 는 `;;` · `;&` · 줄바꿈 뒤, 온 낱말(`esacfoo)` 는 패턴)
+
+
+@functools.lru_cache(maxsize=8)
+def _body_case_words(text):
+    """text 속 명령 자리 case · esac 의 {자리: 낱말} — 치환마다 남은 글자를 다시 훑지 않게 글자마다 한 번(열째 워크플로 패스의
+    시간 측정: 치환 2000개에서 제곱으로 늘었다). Command-position case/esac positions, computed once per text."""
+    return {found.start(found.lastindex): found.group(found.lastindex) for found in _BODY_CASE_WORD.finditer(text)}
+
+
+def _audit_paren_end(text, start, escape):
+    """치환 몸이 끝난 다음 자리와 닫혔는가 — 몸 속 따옴표 · 이스케이프 안의 괄호는 세지 않는다(`sed 's/\\([^)]*\\)/'` 의 `)`
+    가 몸을 일찍 닫아 남은 `railway whoami)` 를 알 수 없는 하위 명령으로 막았다 — 워크플로 패스 wf_150f221f-097). 따옴표가
+    닫히지 않으면 괄호만 센다. The end of a substitution body, quote-aware; parentheses only when a quote stays open."""
+    for aware in (True, False):
+        # 몸 속 명령 자리의 case · esac(`_body_case_words`) — 갈래 패턴의 `)` 가 몸을 닫지 않게(여덟째 워크플로 패스), 인자 속
+        # 낱말(`grep -c case`)은 세지 않는다(아홉째 워크플로 패스)
+        # command-position case/esac inside the body, so an arm pattern's `)` does not close it
+        words = _body_case_words(text) if aware else {}
+        depth, j, quote, cases = 1, start, None, []  # cases — 열린 case 마다 그 안의 짝 괄호 수 / per open case
+        while j < len(text) and depth:
+            ch = text[j]
+            if aware and quote:
+                quote = None if ch == quote else quote
+                j += 2 if ch == escape and quote == '"' else 1
+                continue
+            if aware and ch == escape:
+                j += 2
+                continue
+            if aware and ch == "#" and text[j - 1] in " \t\n;&|()":
+                # 몸 속 주석은 줄 끝까지 — 그 안의 괄호 · case 낱말은 세지 않는다(열한째 워크플로 패스: `# handle the else case`
+                # 가 case 를 열었다) / a comment runs to the end of the line
+                newline = text.find("\n", j)
+                j = len(text) if newline < 0 else newline
+                continue
+            word = words.get(j)
+            if word == "case":
+                cases.append(0)
+            elif word and cases:
+                cases.pop()
+            if aware and ch in ("'", '"'):
+                quote = ch
+            elif ch == "(":
+                depth += 1
+                if aware and cases:
+                    cases[-1] += 1
+            elif ch == ")":
+                if aware and cases and cases[-1] == 0:
+                    pass  # 갈래 패턴을 닫는 괄호 / closes an arm pattern
+                else:
+                    depth -= 1
+                    if aware and cases:
+                        cases[-1] -= 1
+            j += 1
+        if depth == 0 or not aware:
+            return j, depth == 0
+    return len(text), False
 
 
 def _ps_code_blocks(text):
@@ -2740,7 +3702,9 @@ def _ps_code_blocks(text):
 # 블록을 정의만 하는 앞부분 — 대입(`$sb = {`) · 정의(`function f {` · `function f($x) {` · `class C {`)
 # what precedes a block that is only defined: an assignment or a definition
 _PS_DEFINES_BLOCK = re.compile(
-    r"(?i)(?:(?<![=!<>])[-+*/]?=|\b(?:function|filter|workflow|class|enum)\s+[\w:.-]+\s*(?:\([^()]*\))?)\s*$")
+    r"(?i)(?:(?<![=!<>])[-+*/]?=|\b(?:function|filter|workflow|class|enum)\s+[\w:.-]+\s*"
+    r"(?::\s*[\w.]+(?:\s*,\s*[\w.]+)*\s*)?(?:\([^()]*\))?"
+    r"|(?<![\w-])-value|\[scriptblock\])\s*$")
 
 
 def _ps_block_runs(text, start):
@@ -2758,10 +3722,15 @@ def _audit_mask(text):
     powershell = _CONTEXT["shell"] == "powershell"
     escape = "`" if powershell else "\\"
     comment_after = _PS_COMMENT_AFTER if powershell else _BASH_COMMENT_AFTER
-    states, state, defined, i = [], "c", [], 0  # defined — PowerShell 코드의 `{` 마다 정의만 하는 블록인가
+    # defined — PowerShell 코드의 `{` 마다 정의만 하는 블록인가 · nest — 큰따옴표 속 `$( … )` 마다 그 안 괄호 깊이
+    # defined: per PowerShell code brace, is the block only defined; nest: paren depth inside each "$( … )"
+    states, state, defined, nest, i = [], "c", [], [], 0
     while i < len(text):
         ch = text[i]
         code = "b" if any(defined) else "c"
+        # 정의만 한 블록 안의 큰따옴표 글자도 b — 그 속 `"$(…)"` 는 정의될 뿐 돌지 않는다(워크플로 패스 wf_150f221f-097)
+        # double-quoted text inside a block that is only defined is b too
+        quoted = "b" if any(defined) else "d"
         if state == "m":
             state = "c" if ch == "\n" else "m"
             states.append(code if state == "c" else "m")
@@ -2779,12 +3748,30 @@ def _audit_mask(text):
             states.append("s")
             state = "c" if ch == "'" else state
         elif ch == escape and i + 1 < len(text):
-            states.extend(("d", "e") if state == "d" else (code, code))
+            # 이스케이프된 글자는 코드에서도 e — `\\;` 은 구분자가 아니다 / an escaped character is never a separator
+            states.extend((quoted, "e") if state == "d" else (code, "e"))
             i += 2
             continue
+        elif state == "d" and text.startswith("$(", i):
+            # 큰따옴표 속 명령 치환은 다시 코드다(그 안의 따옴표 · 구분자) / a substitution inside double quotes is code
+            states.extend((quoted, quoted))
+            nest.append(0)
+            state, i = "c", i + 2
+            continue
         elif state == "d":
-            states.append("d")
+            states.append(quoted)
             state = "c" if ch == '"' else "d"
+        elif nest and ch == "(":
+            nest[-1] += 1
+            states.append(code)
+        elif nest and ch == ")":
+            if nest[-1]:
+                nest[-1] -= 1
+                states.append(code)
+            else:
+                nest.pop()
+                states.append(quoted)
+                state = "d"
         elif powershell and text.startswith("<#", i):
             states.extend("mm")
             state, i = "k", i + 2

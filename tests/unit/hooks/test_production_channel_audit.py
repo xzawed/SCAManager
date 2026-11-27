@@ -67,9 +67,9 @@ _ALLOWED = {
     f'py -3 scripts/observe_db.py "SELECT {_MARKER} FROM t"': ["observe_db"],
     "py -3 scripts/railway_redeploy.py --check": ["railway_redeploy --check"],
     "python scripts/railway_config.py": ["railway_config"],
-    # 사용자 몫인데 훅이 막지 않는 운영 DB 스크립트 — 에이전트가 돌리면 기록에 남아야 회고가 본다 / user-run DB scripts
-    f"py -3 scripts/observer_setup.py --host {_MARKER} --ref r1": ["observer_setup"],
-    "python -m scripts.backfill_repository_user_id --apply": ["backfill_repository_user_id --apply"],
+    # backfill 의 건식 실행(기본 — SQL 만 출력)은 막지 않고 기록한다. `--apply` 와 observer_setup 은 아래 거부 목록
+    # the backfill dry run (its default) is allowed and audited; --apply and observer_setup are denied below
+    "python -m scripts.backfill_repository_user_id": ["backfill_repository_user_id"],
     "python scripts/perf_measure.py --prod-only": ["perf_measure --prod-only"],
     "Railway.EXE status": ["railway status"],
     # 교차 검토(하위 에이전트 · 워크플로 wf_8b259a5e-212) 반례 — 시간 제한 · 반복문 · 조건문 안의 스크립트, 값을 받는
@@ -108,13 +108,19 @@ _ALLOWED = {
     "x=$(cat <<'EOF'\nbody\nEOF)\nrailway status": ["railway status"],
     "x=$(bash <<'EOF'\nrailway status\nEOF\n)": ["railway status"],
     "cat > notes.md <<END-NOTES\nhello\nEND-NOTES\nrailway status": ["railway status"],
+    # 큰따옴표 속 `$( … )` 안의 따옴표는 바깥과 따로다 — 안쪽 아포스트로피가 뒤 호출을 홑따옴표 안으로 삼키지 않는다
+    # quotes inside "$( … )" are their own; an inner apostrophe does not swallow the call that follows
+    'x="$(echo "it\'s")" && railway status': ["railway status"],
     # 넷째 워크플로 패스(wf_410501e1-acb) — 줄 잇기 뒤 플래그 · 주석 속 플래그 이름 · 따옴표 친 Windows 인터프리터 경로 ·
     # printf 로 넘긴 명령 / a flag after a line continuation, flag names in a comment, a quoted Windows interpreter path
-    "py -3 scripts/backfill_repository_user_id.py \\\n  --apply": ["backfill_repository_user_id --apply"],
+    "py -3 scripts/railway_redeploy.py \\\n  --restart": ["railway_redeploy --restart"],
     "py -3 scripts/railway_redeploy.py --check  # if green, --restart next": ["railway_redeploy --check"],
     'py -3 scripts/observe_db.py "SELECT 1"  # -h shows the options': ["observe_db"],
     '"C:\\Users\\me\\venv312\\Scripts\\python.exe" -B scripts/observe_db.py "SELECT 3"': ["observe_db"],
     "printf '%s\\n' 'railway status' | bash": ["railway status"],
+    # 둘째 적대 패스(wf_150f221f-097) — 치환 몸 속 따옴표 안 `)` 는 몸을 닫지 않는다 / a quoted `)` does not close the body
+    "echo \"now: $(railway status | sed -n 's/^Service: \\([^)]*\\).*/\\1/p'; railway whoami)\"":
+        ["railway status", "railway whoami"],
 }
 
 
@@ -163,6 +169,14 @@ _MENTIONS = ['grep -n "railway status" docs/a.md', "cat scripts/observe_db.py", 
              "if grep -q railway docs; then echo found; fi",
              "echo done # ran `railway status` earlier",
              "py -3 scripts/railway_redeploy.py --he",  # 줄인 --help / an abbreviated --help
+             "py -3 scripts/observer_setup.py --help",  # 사용자 몫 스크립트의 도움말 / help of a user-only script
+             # 워크플로 패스(wf_f44bc84a-458) — `-c` 없는 flock 은 낱말을 바로 실행한다(셸 글자가 아니다) · xargs 는 앞
+             # 단계 글자를 stdin 이 아니라 인자로 넘긴다 / flock without -c execs words; xargs passes text as arguments
+             'flock /tmp/x.lock git commit -m "docs: 배포 절차; railway up 은 사용자 몫"',
+             "git grep -l 'railway up' -- '*.sh' | xargs -n1 bash -n",
+             # 큰따옴표 속 `$( … )` 안의 따옴표 글자 · `command -v` 는 이름 찾기 / quotes inside "$( … )", name lookup only
+             'x="$(echo "a; railway status later")"',
+             "command -v railway status",
              # 셋째 워크플로 패스 — 본문에 큰따옴표가 든 커밋 메시지 heredoc · `EOF)` 로 붙여 쓴 heredoc · `<<\\EOF` ·
              # 이스케이프된 구분자 / a commit-message heredoc with a quote in it, a glued `EOF)`, `<<\\EOF`, an escaped `;`
              "git commit -m \"$(cat <<'EOF'\nfix(hooks): treat \"$(cat <<'EOF' bodies as data\n\n"
@@ -177,7 +191,101 @@ _MENTIONS = ['grep -n "railway status" docs/a.md', "cat scripts/observe_db.py", 
              "timeout 60 bash -c 'if grep -q railway notes.md; then echo yes; fi'",
              "MSG=$(cat <<'EOF'\nIf railway up fails, retry by hand\nEOF)\ngit commit -m \"$MSG\"",
              "cat > notes.md <<END-NOTES\nIf railway up fails, retry by hand\nEND-NOTES",
-             "NOTES=$(cat <<'EOF'\nrailway up was run by the user\nEOF)\necho \"$NOTES\""]
+             "NOTES=$(cat <<'EOF'\nrailway up was run by the user\nEOF)\necho \"$NOTES\"",
+             # 둘째 적대 패스(wf_150f221f-097)의 새 거부 — 갈래 패턴의 `|` · 배열 원소 · 따옴표 속 `| bash` 가 든 제목 뒤
+             # heredoc 본문 · `[[ … && … ]]` · 문법만 보는 `bash -n` · 큰따옴표 속 `<(` · 스크립트 파일을 받은 셸의 heredoc
+             'case "$f" in scripts/observer_setup.py|scripts/backfill_repository_user_id.py) echo skip ;; *) echo check ;; esac',
+             'if true; then case "$f" in scripts/observer_setup.py|*.sh) echo skip ;; esac; fi',
+             'files=(scripts/railway_config.py scripts/observer_setup.py); for f in "${files[@]}"; do wc -l "$f"; done',
+             "gh pr create --title 'fix(hooks): `… | xargs -n1 bash -n` 을 실행으로 읽지 않는다 (원장 #1917 P1-19)' "
+             + "--body-file - <<'EOF'\n## Summary\n- `railway up` · `railway redeploy` 는 그대로 막는다\nEOF",
+             "gh release create v1.4.0 --title 'v1.4.0 — curl … | sh 설치 (#1917)' --notes-file - <<'EOF'\n"
+             + "- observer 설정: `py -3 scripts/observer_setup.py --host <host>` (사용자)\nEOF",
+             "gh pr create --title 'fix(hooks): … | timeout 60 bash 오독 (#1917)' --body \"$(cat <<'EOF'\n## 변경\n"
+             + "1) 사용자 몫 스크립트: `py -3 scripts/observer_setup.py`\n2) 그 밖은 그대로\nEOF\n)\"",
+             "[[ -f /tmp/stamp && scripts/observer_setup.py -nt /tmp/stamp ]] && echo changed",
+             "printf '%s\\n' 'railway up' | bash -n 2>/dev/null && echo syntax-ok",
+             'git commit -m "fix(hooks): <(py -3 scripts/observer_setup.py) 프로세스 치환 표기"',
+             "timeout 60 bash ./scripts/render.sh <<'EOF'\nrailway up 은 사용자 몫\nEOF",
+             # 셋째 적대 패스(wf_b8f2f206-703)의 새 거부 — 여러 줄 배열의 원소 · 따옴표 없는 heredoc 본문의 `<( )`(본문에서
+             # 펼쳐지는 것은 `$( )` · 백틱뿐) / multi-line array elements; `<( )` in an unquoted heredoc body is text
+             'files=(\n  "scripts/observer_setup.py"\n  "scripts/observe_db.py"\n)\n'
+             + 'for f in "${files[@]}"; do py -3 -m py_compile "$f"; done',
+             "cat > pr_body.md <<EOF\nHEAD: $(git rev-parse --short HEAD)\n"
+             + "- \\`<(py -3 scripts/observer_setup.py)\\` inside double quotes is text now\nEOF",
+             "cat > notes.md <<EOF\nBranch: $(git branch --show-current)\n"
+             + "It's about \\`diff <(railway up) expected.txt\\` being read as a call\nEOF",
+             # 넷째 적대 패스(wf_509d2619-75b) — 명령 치환은 재지정보다 먼저 펼쳐져 heredoc 본문을 읽지 않는다(`-c` 글자 속
+             # `"$(cat)"` 은 gh 의 인자) · 색인 대입의 값은 실행이 아니다 / command substitution expands before the redirection
+             "bash -c 'gh issue comment 1917 --body \"$(cat)\"' <<'EOF'\n- user runs: `py -3 scripts/observer_setup.py`\nEOF",
+             "timeout 60 bash -c \"$(cat)\" <<'EOF'\nrailway up\nEOF",
+             'declare -A s; s[setup]=scripts/observer_setup.py; s[db]=scripts/observe_db.py; echo "${s[setup]}"',
+             # 파이프 뒤 `$(cat)` 이 인자의 일부면 데이터다(명령 글자 전체일 때만 돈다) / part of an argument is data
+             "echo \"py -3 scripts/observer_setup.py\" | bash -c 'gh issue comment 1 --body \"$(cat)\"'",
+             # 여섯째 적대 패스(wf_5fb5a833-51c) — 앞 묶음 뒤 같은 명령의 heredoc · `eval echo` · 주석 · 인자 속 esac
+             # a group earlier on the line, `eval echo`, esac in a comment or as an argument
+             "(cd /f/proj) ; eval \"$(cat)\" <<'EOF'\nrailway up\nEOF",
+             'echo "railway up" | eval echo "$(cat)"',
+             'case "$1" in\n  # every arm ends with ;; and the block ends with esac\n'
+             + '  scripts/observer_setup.py) echo "user-only script" ;;\n  *) echo other ;;\nesac',
+             'for f in scripts/*.sh scripts/*.py; do\n  case "$f" in\n    *.sh) grep -cw esac "$f" ;;\n'
+             + '    scripts/observer_setup.py|scripts/backfill_repository_user_id.py) echo "skip $f" ;;\n  esac\ndone',
+             # 여덟째 적대 패스(wf_13faf998-b43) — cmd 의 echo 인자 · `;` 는 글자, 다른 셸이 받는 본문은 그 셸의 규칙, 치환 속
+             # case 패턴의 `)`, 따옴표 · 주석 속 esac
+             # cmd echo text and `;`, a body under its receiver's rules, an arm pattern inside `$( )`, esac in quotes
+             'cmd //c "echo Deploy blocked (railway up needs approval) > NOTE.txt"',
+             'cmd //c "echo (py -3 scripts\\observer_setup.py) is user-only"',
+             'cmd //c "echo build;railway up"',
+             "printf 'echo (railway up) later\\n' | cmd",
+             "cat <<'EOF' | powershell -NoProfile -Command -\n'scripts\\observer_setup.py' | Test-Path\nEOF",
+             "pwsh -NoProfile -Command - <<'EOF'\n$s = @(\n  'scripts/observer_setup.py'\n)\n$s | Test-Path\nEOF",
+             'kind=$(case "$f" in */observer_setup.py) echo user;; *) echo agent;; esac)',
+             'kind=$(case "$f" in a) (echo a);; */observer_setup.py) echo user;; esac)',
+             'cmd //c "ECHO (railway up) stays manual"',
+             # 아홉째 적대 패스(wf_bdaef787-daf) — cmd 의 주석 · `@` · set · title · echo 중괄호, 인자 속 case 낱말
+             # cmd comments, `@`, set, title and echo braces; a case word as an argument
+             "cmd <<'EOF'\n:: (railway up is manual)\ngit status\nEOF",
+             "cmd <<'EOF'\nrem (railway up is manual)\ngit status\nEOF",
+             "cmd <<'EOF'\nREM (railway up is manual)\ngit status\nEOF",
+             "cmd <<'EOF'\n@echo Step 2 (railway up) is for the user\nEOF",
+             "cmd <<'EOF'\nset NOTE=(railway up later)\necho %NOTE%\nEOF",
+             "cmd <<'EOF'\ntitle Deploy helper (railway CLI)\ndir\nEOF",
+             'cmd //c "echo {railway up} later"',
+             'kind=$(case "$f" in */observer_setup.py) echo because;; *) echo other;; esac)',
+             'kind=$(case "$f" in */observer_setup.py) cases=1;; *) echo other;; esac)',
+             # 열째 적대 패스(wf_149fff06-860) — cmd 블록 · do · else · if 조건 뒤 echo · set 의 `;` 는 글자, 여러 줄 치환 몸의 case
+             # `;` in echo/set text of a cmd block, after do / else / an if test; case in a multi-line substitution body
+             'cmd //c "if exist dist (echo dist found; railway up stays user-only) else (echo no dist)"',
+             'cmd //c "for %f in (api web) do echo %f; railway up --service %f"',
+             'cmd //c "if exist dist (echo ok) else echo missing; railway up needs dist"',
+             'cmd //c "if exist dist echo built; railway up next"',
+             'cmd //c "if exist dist (set MSG=built; railway up next)"',
+             'cmd //c "dir dist >nul 2>&1 && (echo built; railway up is next)"',
+             "cmd //c 'if exist dist (echo \"step 2) build; railway up later\")'",
+             'kind=$(\n  # classify\n  case "$1" in\n    *.md) echo docs ;;\n    observer_setup.py) echo user-only ;;\n  esac\n)',
+             'kind=$(\n  f="${1##*/}"\n  case "$f" in\n    observer_setup.py) echo user-only ;;\n    *) echo other ;;\n  esac\n)',
+             'x=$(case "$1" in a) case "$2" in b) echo b;; esac;; scripts/observer_setup.py) echo user;; esac)',  # 갈래 `)` 뒤 case
+             'n=$(grep -c "2) railway up" CHANGELOG.md   # count (case sensitive)\n)\necho "$n"',  # 주석 속 괄호 · case
+             "cmd //c 'if errorlevel 1 echo build failed (exit 1); see railway logs; railway up skipped'",  # 블록 밖 echo
+             "cmd //c 'for %f in (a b) do @echo %f; railway up later'",
+             'cmd //c \'if exist "C:\\Program Files\\nodejs\\railway.cmd" echo railway CLI found; railway up is next\'',
+             "cmd //c 'if exist x (echo $(railway up) is literal)'",  # 둔 읽기의 따옴표 머리는 글자 / a literal quoted head
+             'cmd //c "cd it\'s here & echo railway up later"',
+             # 블록을 닫은 `)` 뒤를 cmd 는 이어 읽지 못한다 — 그 줄은 돌지 않는다 / a syntax error after a closing parenthesis
+             "timeout 60 cmd <<'EOF'\nif exist dist (\n  echo built (ok); railway up later\n)\nEOF",
+             'cmd //c "if exist dist (echo built (ok) (railway up))"',
+             "timeout 60 cmd <<'EOF'\nif exist dist (\n  echo built) else (echo none; railway up later)\nEOF",
+             'cmd //c "if exist dist (echo(railway up failed)"',  # cmd 의 echo( 꼴
+             "cmd //c 'if exist x (echo \"a) else (railway up later\") else (echo b)'",  # 따옴표 속 `)` 는 블록을 닫지 않는다
+             # Grok claim-review(1b291152) — FOR 집합 · if 괄호 조건은 데이터 / a FOR set and if operands are data
+             'cmd //c "for %f in (observer_setup.py observe_db.py) do echo %f"',
+             "timeout 60 cmd <<'EOF'\nfor %s in (railway up) do echo %s\nEOF",
+             "timeout 60 cmd <<'EOF'\nfor /f \"usebackq\" %i in ('railway up') do echo %i\nEOF",  # usebackq 의 홑따옴표는 글자
+             'cmd //c "if (observer_setup.py) equ (observer_setup.py) echo same"',
+             "timeout 60 cmd <<'EOF'\n# deploy step (railway up); later\nEOF",  # `#` 로 시작하는 줄은 돌지 않는다
+             'case "$1" in\n  a) echo "(x) esac done" ;;\n  scripts/observer_setup.py) echo "user-only" ;;\nesac',
+             'case "$1" in\n  start) echo starting ;;   # (nested case ends with) esac\n'
+             + '  stop|scripts/observer_setup.py) echo stop ;;\nesac']
 
 
 @pytest.mark.parametrize("command", _MENTIONS)
@@ -262,6 +370,7 @@ _POWERSHELL_ALLOWED = {
     "$who = (railway whoami).Trim()": ["railway whoami"],
     # 주석 속 짝 없는 괄호가 뒤 블록을 삼키지 않는다 / an unbalanced bracket in a comment does not swallow later blocks
     "Write-Host x # note (\n1..2 | % { railway status }": ["railway status"],
+    "$p = Start-Process -FilePath railway -ArgumentList 'logs','--json' -NoNewWindow -Wait -PassThru": ["railway logs"],
     # 넷째 워크플로 패스 — 백틱 줄 잇기 · 주석 속 플래그 · 호출 연산자 · 따옴표 안의 `@'` 는 here-string 이 아니다
     # a backtick continuation, flags in a comment, the call operator, `@'` inside quotes is not a here-string
     "py -3 scripts\\railway_redeploy.py `\n    --check": ["railway_redeploy --check"],
@@ -269,6 +378,16 @@ _POWERSHELL_ALLOWED = {
     'py -3 scripts\\observe_db.py "SELECT 2"  # -h lists options': ["observe_db"],
     "& 'C:\\x\\railway.cmd' status": ["railway status"],
     "Get-Content docs\\a.md | Select-String -Pattern '@'\nrailway status": ["railway status"],
+    # 넷째 적대 패스(wf_509d2619-75b) — 인자 배열 원소의 `"$( … )"` 는 PowerShell 이 Start-Process 전에 펼친다(읽기 — 그 안의
+    # `;` 는 줄을 나누지 않는다) / expanded before the call; its `;` does not split the line
+    "Start-Process pwsh -ArgumentList @('-NoExit', '-Command', \"Write-Host $(git rev-parse HEAD; railway status)\")":
+        ["railway status"],
+    # 여덟째 적대 패스(wf_13faf998-b43) — 명령 자리의 `&` 는 호출 연산자다(그 밖은 배경 실행 · 문장 끝)
+    # `&` at a command position calls; elsewhere it backgrounds and ends the statement
+    '$s = & "C:\\x\\railway.cmd" status': ["railway status"],
+    '(& "C:\\x\\railway.cmd" status)': ["railway status"],
+    'if ($true) { & "C:\\x\\railway.cmd" status }': ["railway status"],
+    '"x" | & "C:\\x\\railway.cmd" status': ["railway status"],
 }
 
 
@@ -298,7 +417,68 @@ _POWERSHELL_MENTIONS = ["Get-ChildItem | % { Select-String -Path $_ -Pattern rai
                         "$counts = @{ 'railway' = 0; 'supabase' = 0 }",
                         "$hasRailway = 'railway' -in $tools",
                         "if (Test-Path C:\\Users\\me\\AppData\\Roaming\\npm\\railway.cmd) { Write-Host 'installed' }",
-                        "$versions = @{ railway = '4.10'; node = '22' }"]
+                        "$versions = @{ railway = '4.10'; node = '22' }",
+                        "@{ railway = 1; up = 2 } | ConvertTo-Json",  # 해시 테이블 키는 명령이 아니다 / keys, not calls
+                        # 워크플로 패스(wf_f44bc84a-458) — switch 라벨 · Set-Item 정의 · 붙여 쓴 `=1` · Start-Process 값 옵션
+                        # switch labels, a Set-Item definition, a glued `=1` key, a Start-Process value option
+                        "$base = switch ($Target) { railway { 'https://x.up.railway.app' } local { 'http://127.0.0.1:8000' } }",
+                        "'railway','local' | ForEach-Object { switch ($_) { railway { 'remote' } default { 'local' } } }",
+                        "Write-Output (switch ($t) { railway { 'r' } default { 'l' } })",
+                        "Set-Item -Path function:Deploy -Value { railway up }",
+                        "$h = @{ railway =1 }",
+                        "Start-Process -WorkingDirectory C:\\work\\railway pwsh",
+                        # 둘째 적대 패스(wf_150f221f-097) — 띄어 쓴 배열의 도움말 · 줄인 값 매개변수 · class 상속 · 정의 블록 속
+                        # "$( )" · 큰따옴표 속 `@(` · 겹친 홑따옴표 · 백틱으로 이스케이프한 따옴표 뒤 here-string
+                        "Start-Process py -ArgumentList '-3', 'scripts/observer_setup.py', '--help' -NoNewWindow -Wait",
+                        "Start-Process -FilePath py -ArgumentList '-3', 'scripts\\observer_setup.py', '-h' -Wait",
+                        "Start-Process railway -ArgumentList 'up', '--help' -NoNewWindow -Wait",
+                        "Start-Process -WorkingDir C:\\work\\railway notepad",
+                        "class Deployer : Object {\n  [void] Run() { railway up }\n}",
+                        'function Setup { Write-Host "$(py -3 scripts/observer_setup.py)" }',
+                        'git commit -m "docs: @(py -3 scripts/observer_setup.py) 는 사용자 몫"',
+                        "$r = Invoke-Expression 'Write-Host ''build ok; railway up is user-only'''",
+                        "Start-Process pwsh -ArgumentList '-NoProfile -Command \"Write-Host ''note; railway up''\"'",
+                        "gh pr create --title \"Support 4`\" displays\" --body @'\nit's done\nrailway up\n'@",
+                        # 셋째 적대 패스(wf_b8f2f206-703) — 펼치는 here-string 속 `@( )` 는 글자다 · 채널 스크립트 이름의
+                        # switch 라벨 / `@( )` in an expandable here-string is text; a script name as a switch label
+                        '$body = @"\nBase: $(git rev-parse --short origin/main)\n'
+                        + '- @(py -3 scripts/observer_setup.py) inside a double-quoted string is text\n"@\n'
+                        + 'gh pr create --title "fix(hooks): array subexpression text" --body $body',
+                        "switch ((Split-Path 'scripts\\observer_setup.py' -Leaf)) { observer_setup.py { 'user-only' } "
+                        + "default { 'auto' } }",
+                        # 넷째 적대 패스 — Start-Process 는 원소를 공백으로 잇는다: `bash -c railway up` 은 맨 `railway` 만
+                        # 돌린다(`up` 은 $0) / joined with spaces, bash -c runs a bare `railway`
+                        "Start-Process bash -ArgumentList @('-c', 'railway up') -NoNewWindow -Wait",
+                        # 다섯째 적대 패스 — 이은 명령줄은 Windows 규칙으로 나뉜다: 홑따옴표는 묶지 않아 PowerShell 이 다시 읽는
+                        # 글자로 남고(`'ERROR|railway up'`), `\"` 는 글자 따옴표다 · 닫힌 괄호 식 뒤 here-string 은 이어 붙일 글자다
+                        # Windows argv rules: single quotes stay for PowerShell to re-read; a closed expression concatenates
+                        "Start-Process pwsh -ArgumentList '-NoProfile', '-Command', "
+                        + "\"Get-Content app.log | Select-String 'ERROR|railway up'\"",
+                        "Start-Process pwsh -ArgumentList '-NoExit', '-Command', "
+                        + "\"Write-Host 'Next: ask the user; py -3 scripts/backfill_repository_user_id.py --apply'\"",
+                        "Start-Process pwsh -ArgumentList '-NoProfile', '-Command', 'Write-Host \\\"Build done; railway up is next\\\"'",
+                        "Start-Process pwsh -ArgumentList @(\n  '-NoExit',\n  '-Command',\n"
+                        + "  \"Get-Content -Wait app.log | Select-String 'ERROR|railway up'\"\n)",
+                        "Start-Process pwsh -ArgumentList \"-NoProfile -Command Get-Content app.log | Select-String 'ERROR|railway up'\"",
+                        "$v = (pwsh -v) + @'\nrailway up\n'@",
+                        # 여섯째 적대 패스 — cmd 는 겹따옴표 글자를 남겨 그 안의 `&&` 는 글자다 / cmd keeps the quotes
+                        "Start-Process cmd -ArgumentList '/c', 'echo \"deploy with: npm run build && railway up\" > plan.txt'",
+                        # 일곱째 적대 패스(wf_b29f7d89-996) — Git Bash 가 받는 -c 글자는 Bash 규칙(`\"` 이스케이프 · 배열)이고, 따옴표
+                        # 안 `""` 는 글자 따옴표다 / bash text follows bash rules; `""` inside quotes is a literal quote
+                        "Start-Process bash -ArgumentList '-c', "
+                        + "'''git commit -m \"docs: never run \\\"railway status; railway up\\\" from agents\"'''",
+                        "Start-Process bash -ArgumentList '-c', '''tools=(railway gh git); for t in \"${tools[@]}\"; do command -v \"$t\"; done'''",
+                        "Start-Process pwsh -ArgumentList '-NoProfile', '-Command', '\"Write-Host \"\"Steps: build; railway up (by the user)\"\"\"'",
+                        "Start-Process bash -ArgumentList '-c', '\"git commit -m \"\"docs: build; railway up stays manual\"\"\"'",
+                        # 여덟째 적대 패스(wf_13faf998-b43) — cmd 의 echo 인자는 글자, bash 가 받는 here-string 은 Bash 규칙
+                        # cmd echo text is literal; a here-string bash receives follows Bash rules
+                        'cmd /c "echo Deploy blocked (railway up needs approval)"',
+                        "Start-Process cmd -ArgumentList '/c','for %f in (observer_setup.py) do echo %f'",
+                        "cmd /c 'if (observer_setup.py)==(observer_setup.py) echo same'",
+                        "bash -c @'\nfiles=(scripts/observer_setup.py scripts/observe_db.py)\nwc -l \"${files[@]}\"\n'@",
+                        "@'\nfiles=(\n  scripts/observer_setup.py\n  scripts/observe_db.py\n)\nwc -l \"${files[@]}\"\n'@ | bash",
+                        "bash -c @'\nfor s in observer_setup.py backfill_repository_user_id.py; do\n  case \"$s\" in\n"
+                        + "    observer_setup.py) echo \"observer: user-only\" ;;\n    *) echo \"$s\" ;;\n  esac\ndone\n'@"]
 
 
 @pytest.mark.parametrize("command", _POWERSHELL_MENTIONS)
@@ -317,43 +497,379 @@ def test_powershell_production_reads_are_audited(command, logs, monkeypatch, cap
     assert [r["channels"] for r in _records(audit)] == [_POWERSHELL_ALLOWED[command]]
 
 
-# 운영 변경 — 감사 채널에 오르지 않는다(채널은 읽기 · 운영 채널 스크립트뿐이다). 판정은 main 그대로라 이 가운데 main 이
-# 놓치는 꼴(PowerShell 대입 · 블록 · 하위 식 · 전체 경로 · 시간 제한 뒤 래퍼 · `cmd //c` · watch · 닫는 줄이 붙은 heredoc …)은
-# 아직 통과한다 — 원장 #1917 의 후속 항목이 판정을 고친다. 값은 그 명령 안에서 함께 기록될 읽기 채널이다.
-# Production changes never become audit channels; the verdict stays main's (the follow-up closes these gaps).
+# 운영 변경 — main 의 판정 순회가 놓치던 꼴까지 명령 자리 순회가 막는다(원장 #1917 P1-19 — PowerShell 대입 · 블록 · 하위 식
+# · 전체 경로, 시간 제한 뒤 래퍼, `cmd //c`, heredoc 받는 명령 · 산술 · 붙여 쓴 `EOF)` · 하이픈 구분자, watch · flock, case
+# 갈래, 겹친 훑는 머리 뒤 패키지 실행기). 막힌 호출은 감사 기록에 오르지 않는다.
+# Production changes main's walk missed are denied by the command-position walk, and never audited.
 _PRODUCTION_WRITES = [
-    ("PowerShell", "$x = railway up", []),
-    ("PowerShell", "1..3 | ForEach-Object { railway up }", []),
-    ("PowerShell", "1..3 | % { railway up }", []),
-    ("PowerShell", "Write-Output (railway redeploy -y)", []),
-    ("PowerShell", "[void](railway up)", []),
-    ("PowerShell", "Measure-Command { railway redeploy }", []),
-    ("PowerShell", "Start-Job { railway up } | Receive-Job -Wait", []),
-    ("PowerShell", "Invoke-Command -ScriptBlock { railway redeploy }", []),
-    ("PowerShell", "C:\\Users\\x\\AppData\\Roaming\\npm\\railway.cmd variables --set FOO=bar", []),
-    ("PowerShell", "C:\\tools\\railway.cmd up", []),
-    ("PowerShell", 'cmd /c "C:\\tools\\railway.cmd up"', []),
-    ("PowerShell", "if ($x) { railway status } else { railway up }", ["railway status"]),
-    ("PowerShell", "[string]$s = railway up", []),
-    ("Bash", 'timeout 60 bash -c "railway up"', []),
-    ("Bash", "cmd //c railway up", []),
-    ("Bash", "x=$(bash <<'EOF'\nrailway up\nEOF\n)", []),
-    ("Bash", "git commit -m \"$(bash <<'EOF'\nrailway up\nEOF\n)\"", []),
-    ("Bash", "x=$(cat <<'EOF'\nbody\nEOF)\nrailway up", []),
-    ("Bash", "echo $(( 1 << n ))\nrailway up\nn", []),
-    ("Bash", "watch -n 30 'railway up'", []),
-    ("Bash", "flock /tmp/x -c 'railway up'", []),
-    ("Bash", "railway status; timeout 60 bash -c \"railway redeploy -y\"", ["railway status"]),
+    ("PowerShell", "$x = railway up"),
+    ("PowerShell", "1..3 | ForEach-Object { railway up }"),
+    ("PowerShell", "1..3 | % { railway up }"),
+    ("PowerShell", "Write-Output (railway redeploy -y)"),
+    ("PowerShell", "[void](railway up)"),
+    ("PowerShell", "Measure-Command { railway redeploy }"),
+    ("PowerShell", "Start-Job { railway up } | Receive-Job -Wait"),
+    ("PowerShell", "Invoke-Command -ScriptBlock { railway redeploy }"),
+    ("PowerShell", "C:\\Users\\x\\AppData\\Roaming\\npm\\railway.cmd variables --set FOO=bar"),
+    ("PowerShell", "C:\\tools\\railway.cmd up"),
+    ("PowerShell", 'cmd /c "C:\\tools\\railway.cmd up"'),
+    ("PowerShell", "if ($x) { railway status } else { railway up }"),
+    ("PowerShell", "[string]$s = railway up"),
+    ("PowerShell", "[int[]]$a = railway up"),
+    ("PowerShell", "& 'C:\\x\\railway.cmd' up"),
+    ("PowerShell", "try { railway status } catch { railway redeploy -y }"),
+    ("PowerShell", "foreach ($s in 1..2) { railway up }"),
+    ("PowerShell", "'$x = railway up' | Invoke-Expression"),  # 앞 단계 글자를 돌린다 — main 은 대입 머리를 못 봤다
+    ("Bash", 'timeout 60 bash -c "railway up"'),
+    ("Bash", "cmd //c railway up"),
+    ("Bash", "x=$(bash <<'EOF'\nrailway up\nEOF\n)"),
+    ("Bash", "git commit -m \"$(bash <<'EOF'\nrailway up\nEOF\n)\""),
+    ("Bash", "x=$(cat <<'EOF'\nbody\nEOF)\nrailway up"),
+    ("Bash", "echo $(( 1 << n ))\nrailway up\nn"),
+    ("Bash", "cat > notes.md <<END-NOTES\nhello\nEND-NOTES\nrailway up"),
+    ("Bash", "watch -n 30 'railway up'"),
+    ("Bash", "flock /tmp/x -c 'railway up'"),
+    ("Bash", 'case "$ENVN" in prod) railway up ;; esac'),
+    ("Bash", "timeout 60 npx @railway/cli up"),
+    ("Bash", "railway status; timeout 60 bash -c \"railway redeploy -y\""),
+    # 워크플로 패스(wf_f44bc84a-458) — `-I{}` 붙여 쓴 xargs · 줄의 `#` 가 따옴표 분할을 끄던 꼴 · eval · iex 매개변수 ·
+    # 재지정 · 재지정 · 훑는 머리 뒤 heredoc 받는 명령 · Start-Process 인자 목록 · 접두어 옵션 · 띄어 쓴 case 갈래 · 주석 속
+    # `<<'EOF'` / attached -I{}, a `#` on the line, eval, iex parameters, redirects, heredoc receivers, Start-Process lists
+    ("Bash", "xargs -I{} sh -c 'railway redeploy --service {} --yes' < services.txt"),
+    ("Bash", "printf '%s\\n' api worker | xargs -I{} bash -c 'railway redeploy --service {} --yes'"),
+    ("Bash", 'bash -c "railway up --detach; echo exit=$?" # deploy'),
+    ("Bash", "bash -lc \"railway redeploy --yes && echo 'redeployed for #1917'\""),
+    ("PowerShell", 'powershell -NoProfile -Command "railway up; exit $LASTEXITCODE" # deploy'),
+    ("Bash", 'eval "railway up"'),
+    ("PowerShell", 'Invoke-Expression -Command "railway up"'),
+    ("PowerShell", "$out = Invoke-Expression -Command 'railway redeploy --yes'"),
+    ("PowerShell", 'Invoke-Expression -ErrorAction Stop "railway up"'),
+    ("Bash", 'echo "railway up" | bash 2>&1'),
+    ("Bash", "printf '%s\\n' 'railway redeploy --service api --yes' | bash > /tmp/redeploy.log"),
+    ("PowerShell", '"railway up" | iex 2>&1'),
+    ("Bash", "bash 2>&1 <<'EOF'\nrailway up --detach\nEOF"),
+    ("Bash", "timeout 600 bash <<'EOF'\nrailway up --detach\nEOF"),
+    ("PowerShell", "Start-Process pwsh -ArgumentList '-NoProfile','-Command','railway up' -Wait"),
+    ("PowerShell", "Start-Process -ArgumentList 'up' -FilePath railway -Wait"),
+    ("Bash", "time -p railway up"),
+    ("Bash", 'case "$ENV" in\n  prod ) railway up ;;\nesac'),
+    ("Bash", "# 본문은 <<'EOF' heredoc 으로 넘긴다\nrailway up"),
+    ("Bash", "echo railway up 2>&1 | bash"),  # 재지정의 `&` 는 구분자가 아니다 — main 은 거기서 나눠 놓쳤다
+    # 둘째 적대 패스(wf_150f221f-097) 고침의 대조군 — 갈래 · 배열 · `[[ ]]` 뒤 · 몸 속 따옴표 괄호 · `|&` 로 받는 셸 ·
+    # 띄어 쓴 배열 · 겹친 따옴표 / controls for that pass's fixes; `|& bash` was missed by main too
+    ("Bash", 'case "$env" in prod|production) railway up ;; esac'),
+    ("Bash", 'svc=(api worker); for s in "${svc[@]}"; do railway redeploy --service "$s" -y; done'),
+    ("Bash", '[[ -n "$CI" ]] && railway up'),
+    ("Bash", "x=$(echo 'a)b'; railway up)"),
+    ("Bash", "cat <<'EOF' |& bash\nrailway up\nEOF"),
+    ("Bash", "( case $e in prod) railway up ;; esac )"),  # 묶음 안의 case 머리 / a case head inside a group
+    ("Bash", "{ case $e in prod|production) railway up ;; esac; }"),
+    ("Bash", "echo railway up | xargs bash"),  # bash 는 `railway` 를 PATH 에서 찾아 돌린다 / bash finds it on PATH
+    # 셋째 적대 패스(wf_b8f2f206-703) — main 도 놓치던 꼴: 치환 · 따옴표가 든 case 주제와 갈래 · case 갈래 안의 heredoc 받는
+    # 명령 · env 뒤의 셸 · 인자 배열 · 백틱 이스케이프 · 매개변수가 붙은 `| iex` · `eval --` · `\n` 이 든 printf ·
+    # `bash -c "$(cat)"` · PowerShell 속성 · `${}` · 여러 변수 대입 / shapes main missed as well
+    ("Bash", 'case "$(git branch --show-current)" in main) railway up ;; *) echo skip ;; esac'),
+    ("Bash", "case `uname -s` in MINGW*) railway up;; esac"),
+    ("Bash", 'case "$1 $2" in "prod up") railway up;; esac'),
+    ("Bash", "case \"$1\" in\n  deploy) bash -s <<'EOF'\nrailway up\nEOF\n  ;;\nesac"),
+    ("Bash", "env RAILWAY_ENVIRONMENT=production bash <<'EOF'\nrailway up\nEOF"),
+    ("Bash", "cat <<'EOF' | env bash -s\nrailway up\nEOF"),
+    ("Bash", 'echo "railway up" | env RAILWAY_ENVIRONMENT=production bash'),
+    ("Bash", 'NOTE="(hotfix) deploy" timeout 600 bash -c "railway up"'),
+    ("Bash", 'eval -- "railway up"'),
+    ("Bash", "printf 'set -e\\nrailway up\\n' | bash"),
+    ("PowerShell", "Start-Process pwsh -ArgumentList @('-NoProfile', '-Command', 'railway up') -Wait"),
+    # 공백이 든 원소는 이스케이프한 큰따옴표로 감싸야 한 인자다(Start-Process 문서) / quote an element that holds a space
+    ("PowerShell", "Start-Process bash -ArgumentList @('-c', '\"railway up\"') -NoNewWindow -Wait"),
+    ("PowerShell", 'Start-Process pwsh -ArgumentList "-NoProfile -Command `"railway up`"" -Wait'),
+    ("PowerShell", 'pwsh -NoProfile -Command "& `"$env:APPDATA\\npm\\railway.cmd`" up"'),
+    ("PowerShell", '"railway redeploy --yes" | Invoke-Expression -ErrorAction Stop'),
+    ("PowerShell", '"railway up" | Invoke-Expression -Verbose:$false'),
+    ("PowerShell", "@'\nrailway up\n'@ | & pwsh -NoProfile -Command -"),
+    ("PowerShell", "$result = Invoke-Expression @'\nrailway up\n'@"),
+    ("PowerShell", "$r.Output = railway up"),
+    ("PowerShell", "${out} = railway up"),
+    ("PowerShell", "$a, $b = railway up"),
+    # 넷째 적대 패스(wf_509d2619-75b) — Start-Process 는 원소를 공백으로 이어 받는 프로그램이 다시 나눈다 · 띄어 쓴 · 여러 줄
+    # 배열 · 위치 배열 · 첫 낱말의 `` `n `` · 괄호 식 속 iex · `-Command` 값인 here-string · 훑는 머리 뒤 env 옵션 · 묶음 끝 `)` ·
+    # 본문 `<( )` 안의 `$( )` / elements joined by spaces; spaced, multi-line and positional arrays; and more
+    ("PowerShell", "Start-Process pwsh -ArgumentList '-NoProfile', '-Command railway up'"),
+    ("PowerShell", "Start-Process pwsh -ArgumentList '-NoProfile -Command', 'railway up'"),
+    ("PowerShell", "Start-Process pwsh -ArgumentList '-NoProfile', '-Command', '\"railway up\"'"),
+    ("PowerShell", "Start-Process cmd -ArgumentList '/c railway up', '--detach'"),
+    ("PowerShell", "Start-Process pwsh -ArgumentList @( '-NoProfile', '-Command', 'railway up' )"),
+    ("PowerShell", "Start-Process pwsh -ArgumentList @(\n    '-NoProfile',\n    '-Command',\n    'railway up'\n) -Wait"),
+    ("PowerShell", "Start-Process pwsh '-NoProfile', '-Command', 'railway up'"),
+    ("PowerShell", '"git status`nrailway up" | iex'),
+    ("PowerShell", "$r = (iex @'\nrailway up\n'@)"),
+    ("Bash", "timeout 600 env -u PGPASSWORD bash <<'EOF'\nrailway up\nEOF"),
+    ("Bash", "( cd /repo; sh ) <<'EOF'\nrailway up\nEOF"),
+    ("PowerShell", "Start-Process railway -ArgumentList 'up', '--detach' -NoNewWindow -Wait"),
+    ("PowerShell", "$r = Invoke-Expression 'railway up; Write-Host ''done'''"),
+    # 다섯째 적대 패스(wf_89808011-a19) — 같은 꼴의 railway 쓰기 / the same shapes with railway writes
+    ("Bash", "case \"$1\" in help) cat <<'EOF'\nusage: run.sh deploy\nEOF\n;;\ndeploy) bash <<'EOF'\nrailway up\nEOF\n;;\nesac"),
+    ("Bash", "cat <<'EOF' | eval \"$(cat)\"\nrailway up\nEOF"),
+    ("Bash", "cat <<'EOF' | timeout 60 bash -c \"$(cat)\"\nrailway up\nEOF"),
+    ("Bash", "for i in 1 2 3; do env RETRY=$i nohup bash -c 'railway redeploy -y' && break; sleep 10; done"),
+    ("Bash", "timeout 600 env X=1 nohup bash <<'EOF'\nrailway up\nEOF"),
+    ("Bash", "for s in api; do env X=1 nohup npx @railway/cli redeploy -y; done"),
+    # 여섯째 적대 패스(wf_5fb5a833-51c) — 받는 프로그램마다의 명령줄 규칙: Git Bash 는 홑따옴표로 묶고, pwsh 는 진짜 `/"` 를
+    # 글자로 두며, cmd 는 `\"` 를 이스케이프로 읽지 않는다 / each receiving program's command-line rules
+    ("PowerShell", "Start-Process bash -ArgumentList \"-c 'railway up'\""),
+    ("PowerShell", "Start-Process bash -ArgumentList '-c', \"'railway up'\""),
+    ("PowerShell", "saps bash -Args \"-c 'railway up'\""),
+    ("PowerShell", "Start-Process bash -ArgumentList @(\n  '-c'\n  \"'railway up'\"\n)"),
+    ("PowerShell", "Start-Process pwsh -ArgumentList '-NoProfile', '-Command', 'Set-Location \"F:/proj/\"; railway up'"),
+    ("PowerShell", "Start-Process cmd -ArgumentList '/c', 'cd /d \"F:\\proj\\\" && railway up'"),
+    # cmd /c 는 따옴표로 시작하는 명령줄의 첫 · 마지막 따옴표를 뗀다 / cmd /c strips the outer quotes
+    ("PowerShell", 'Start-Process cmd -ArgumentList "/c `"railway up`""'),
+    ("PowerShell", 'cmd /c "`"railway`" up"'),
+    # 일곱째 적대 패스(wf_b29f7d89-996) — 중첩 case · cmd 문장의 따옴표 친 실행 파일 · 여러 줄 글자 속 백슬래시 경로 · eval 이
+    # 다시 읽는 줄 · 산술 case 주제 / nested case, quoted cmd heads, backslash paths, eval re-reads, arithmetic subjects
+    ("Bash", 'case "$1" in\n  db) case "$2" in check) echo ok ;; esac ;;\n  deploy) railway up ;;\nesac'),
+    ("Bash", 'for e in a b; do case "$e" in a) case "$x" in 1) echo one ;; esac ;; b) railway up ;; esac; done'),
+    ("PowerShell", "Start-Process cmd -ArgumentList '/c cd /d C:\\repo && \"C:\\Users\\me\\AppData\\Roaming\\npm\\railway.cmd\" up'"),
+    ("PowerShell", '$out = C:\\Users\\me\\scoop\\shims\\railway.exe run -- python -c "import os\nprint(os.getcwd())"'),
+    ("Bash", "printf 'echo start\\nrailway up\\n' | eval echo \"$(cat)\""),
+    ("Bash", "echo 'railway up' | eval \"$(cat)\" \"$@\""),
+    ("Bash", "case $((RANDOM % 2)) in\n  0) bash <<'EOF'\nrailway up\nEOF\n  ;;\nesac"),
+    ("Bash", 'cmd //c "C:\\\\Users\\\\me\\\\AppData\\\\Roaming\\\\npm\\\\railway.cmd up"'),  # cmd 글자의 백슬래시는 글자다
+    ("PowerShell", "Start-Process cmd -ArgumentList '/c echo hi & railway up'"),  # cmd 의 `&` 는 문장 구분이다
+    ("Bash", 'cmd //c "@railway up"'),  # cmd 의 `@` 는 되풀이를 끌 뿐이다 / `@` only turns echoing off
+    # 열째 적대 패스(wf_149fff06-860) — 여러 줄 치환 몸의 둘째 줄 case · `;;` 없는 마지막 갈래 뒤 esac · 줄 끝 주석, `=` 로 끝나는
+    # cmd 문장 뒤의 `&`, 홑따옴표 속 블록은 자식 셸 몫
+    # case on a later line of a multi-line body, esac after an arm without `;;`, `&` after `=`, a block inside single quotes
+    ("Bash", 'out=$(case "$1" in\n  dev) echo "skip dev" ;;\n  prod) railway up --detach\nesac)'),
+    ("Bash", 'log=$(\n  echo "target: $1"\n  case "$1" in\n    dev) echo "dev only" ;;\n    prod) railway up --detach ;;\n  esac\n)'),
+    ("Bash", 'x=$(case "$1" in\n  a) echo a ;;  # first\n  b) railway redeploy --yes ;;  # second\nesac)'),
+    ("Bash", 'cmd //c "npm config set registry= & railway up"'),
+    ("Bash", "cmd //c \"if exist x (bash -c '(echo hi; railway up)')\""),  # 블록 안 홑따옴표 글자는 자식 셸 몫
+    # 열한째 적대 패스(wf_0aa50126-6c0) — cmd 로 넘어가는 공백 든 인자는 겹따옴표로 싸인다, 치환 몸 속 주석의 case 낱말 ·
+    # `then esac` 같은 인자 낱말은 case 를 열고 닫지 않는다
+    # arguments with spaces reach cmd quoted; case words in comments or as arguments do not open or close a case
+    ("Bash", "cmd //c bash -c 'test -f package.json && (echo deploying; railway up)'"),
+    ("Bash", "cmd //c bash -c 'for f in a b; do echo $f; done; railway up'"),
+    ("Bash", 'cmd //c "C:\\Program Files\\x\\railway.cmd" up'),
+    ("Bash", 'x="$(case "$1" in\n  deploy) railway up --detach ;;\n  # handle the else case\n  *) echo skip ;;\nesac)"'),
+    ("Bash", 'x=$(case "$1" in\n  dev) echo dev ;;  # if not dev then case prod below\n  prod) railway redeploy --yes ;;\nesac)'),
+    ("Bash", 'x="$(case "$1" in a) echo then esac;; prod) railway up;; esac)"'),
+    # 열두째 적대 패스(wf_f25c2229-9b3) — 따옴표 친 cmd /c 줄은 두 읽기를 다 걷는다, cmd 블록 깊이는 문장 · 줄을 넘는다, 치환 몸의
+    # case 머리는 글자를 먹지 않고 esac 는 `;&` 뒤도 온다
+    # both readings of a quoted cmd /c line; block depth across statements; a zero-width case head; esac after `;&`
+    ("Bash", 'cmd //c "railway run deploy.bat"'),
+    ("Bash", 'cmd //c "if exist .git (git pull & if errorlevel 1 echo pull failed) else (railway up)"'),
+    ("Bash", 'cmd //c "if exist x (cd y & echo done) else (railway up)"'),
+    ("Bash", 'cmd //c "if exist x (echo a) else (railway up)"'),
+    ("Bash", "cmd <<'EOF'\nif exist dist (\n  echo found (ok)\n  railway up\n)\nEOF"),
+    ("Bash", 'x=$(case "$1" in a) echo a ;; b) railway up ;& esac)'),
+    ("Bash", 'x=$(echo "or else case in point"; case "$1" in a) echo a;; b) railway up;; esac)'),
+    ("Bash", 'cmd //c "cd it\'s here & railway up"'),  # cmd 의 `\'` 는 글자 — 뒤 문장을 덮지 않는다 / a literal apostrophe
+    ("Bash", 'cmd //c "echo \'quoted & text\' & railway up"'),
+    ("Bash", "cmd //c 'for %s in (settings worker) do (railway up -s %s)'"),
+    ("Bash", "cmd //c 'for %s in (echo a b) do (railway up -s %s)'"),
+    ("Bash", "cmd //c 'if exist .deployed (echo already deployed); else (railway up)'"),
+    ("Bash", 'out="$(case "$1" in a) echo what to do case by case;; prod) railway up;; esac)"'),  # 인자 속 `do case` 는 case 가 아니다
+    # 열다섯째 적대 패스(wf_c8be1568-5f2) — cmd 의 echo 꼴(`echo.` · `echo:` · `echo(`), 패턴 `esacfoo)` 는 esac 가 아니다
+    # cmd's echo forms; a pattern named esacfoo is not esac
+    ("Bash", 'cmd //c "if not exist dist\\index.html (echo.Build missing, can\'t deploy) else (railway up)"'),
+    ("Bash", 'x=$(case "$1" in\n  a) echo a ;;\n  esacfoo) railway up ;;\nesac)'),
+    ("Bash", 'cmd //c "if (setup)==(setup) (railway up)"'),  # if 조건의 `(setup)` 은 set 블록이 아니다
+    ("Bash", 'cmd //c "if exist a (if exist b (echo x)) else (railway up)"'),  # 겹친 블록의 `))` 뒤 else
+    # Grok claim-review(1b291152) — 블록 · do · else 안의 `@`, `for /f` 의 명령 집합 / `@` inside blocks; a for /f command set
+    ("Bash", 'cmd //c "if exist dist (@railway up)"'),
+    ("Bash", 'cmd //c "for %s in (api web) do (@railway up -s %s)"'),
+    ("Bash", "cmd //c \"for /f %a in ('railway up') do echo %a\""),
+    ("Bash", "timeout 60 cmd <<'EOF'\nfor /f \"usebackq\" %i in (`railway up`) do echo %i\nEOF"),  # usebackq 의 명령은 백틱
+    ("Bash", 'cmd //c "if exist dist (@\\"C:\\\\npm\\\\railway.cmd\\" up)"'),  # 블록 안 따옴표 친 머리
+    ("Bash", 'cmd //c "if exist deploy-set.flag (railway up)"'),  # 조건 속 `set` 은 명령이 아니다 / not a command word
 ]
 
 
-@pytest.mark.parametrize("tool,command,reads", _PRODUCTION_WRITES)
-def test_a_production_change_never_becomes_an_audit_channel(tool, command, reads, logs, monkeypatch, capsys):
-    """🔴 감사 채널은 읽기뿐이다 — 운영 변경은 막히든(거부 기록) 판정이 놓치든 채널로 적히지 않는다.
-    Audit channels are reads only: a production change is never written as a channel, denied or not."""
+@pytest.mark.parametrize("tool,command", _PRODUCTION_WRITES)
+def test_a_production_change_is_denied_and_never_audited(tool, command, logs, monkeypatch, capsys):
+    """🔴 운영 변경은 대입 · 블록 · 하위 식 · 래퍼 · heredoc 안에서도 막는다 — 감사 기록에는 오르지 않는다(채널은 읽기뿐).
+    A production change is denied in every shape above and never becomes an audit channel."""
     work, audit, _ = logs
-    _run(monkeypatch, capsys, _shell(command, work, tool=tool))
-    assert [channel for record in _records(audit) for channel in record["channels"]] == reads, command
+    assert '"permissionDecision": "deny"' in _run(monkeypatch, capsys, _shell(command, work, tool=tool)), command
+    assert not audit.exists(), command
+
+
+# 사용자 몫 운영 스크립트 — 관측 역할 비밀번호 설정 · backfill 적용(11-26 사용자 결정 · 원장 P1-19). 도움말과 backfill
+# 건식 실행은 막지 않는다. User-only production scripts are denied; help and the backfill dry run are not.
+_USER_ONLY_SCRIPTS = [
+    ("Bash", f"py -3 scripts/observer_setup.py --host {_MARKER} --ref r1"),
+    ("Bash", "py -3 scripts/observer_setup.py"),
+    ("PowerShell", "py -3 scripts\\observer_setup.py"),
+    ("Bash", "python -m scripts.backfill_repository_user_id --apply"),
+    ("Bash", "py -3 scripts/backfill_repository_user_id.py \\\n  --apply"),
+    ("Bash", "timeout 600 py -3 scripts/backfill_repository_user_id.py --apply"),
+    ("Bash", "py -3 scripts/backfill_repository_user_id.py --app"),  # argparse 줄임 / an abbreviation
+    ("Bash", "py -3 scripts/backfill_repository_user_id.py --a"),  # 그 스크립트에는 `--a` 로 시작하는 옵션이 하나뿐
+    ("Bash", "ls *.csv | xargs -I{} sh -c 'py -3 scripts/backfill_repository_user_id.py --apply'"),
+    ("Bash", 'eval "py -3 scripts/observer_setup.py"'),
+    ("PowerShell", 'Invoke-Expression -Command "py -3 scripts\\observer_setup.py"'),
+    ("Bash", 'echo "py -3 scripts/backfill_repository_user_id.py --apply" | bash 2>&1'),
+    ("PowerShell", "Start-Process py -ArgumentList '-3','scripts\\observer_setup.py' -Wait -NoNewWindow"),
+    ("PowerShell", "Start-Process py -ArgumentList 'scripts\\backfill_repository_user_id.py','--apply' -Wait -NoNewWindow"),
+    ("PowerShell", 'Start-Process -FilePath python -ArgumentList "scripts\\observer_setup.py --host h --ref r" -Wait'),
+    ("Bash", "python -um scripts.observer_setup"),  # 묶은 짧은 옵션 / clustered short options
+    ("PowerShell", "Start-Process py -ArgumentList '-3', 'scripts/observer_setup.py' -Wait"),  # 띄어 쓴 배열
+    # 셋째 적대 패스(wf_b8f2f206-703) — case 갈래 · 괄호 배열 · 백틱 이스케이프 · `| iex` 매개변수 · 따옴표 속 `(` 가 든
+    # 앞 대입 · 붙여 쓴 `-m` / the same shapes reaching user-only scripts
+    ("Bash", 'case "$(git branch --show-current)" in main) py -3 scripts/observer_setup.py;; esac'),
+    ("PowerShell", "Start-Process -FilePath py -ArgumentList ('-3', 'scripts\\backfill_repository_user_id.py', '--apply')"),
+    ("PowerShell", 'Start-Process py -ArgumentList "-3 `"scripts\\observer_setup.py`"" -Wait'),
+    ("PowerShell", "'py -3 scripts\\observer_setup.py' | iex -ErrorAction Stop"),
+    ("Bash", 'MSG="(wip) rotate" py -3 scripts/observer_setup.py'),
+    ("Bash", "python -mscripts.observer_setup"),
+    ("Bash", "py -3 -mscripts.backfill_repository_user_id --apply"),
+    # 배열 덮기는 코드 자리의 괄호만 센다 — 주석 · 따옴표 속 괄호가 뒤 case 갈래 `)` 까지 덮어 명령을 가리면 안 된다 · 치환을
+    # 값으로 둔 앞 대입 뒤 / array blanking counts code parentheses only; a substitution-valued prefix assignment
+    ("Bash", '# 배열 예: arr=(\npy -3 scripts/observer_setup.py\ncase "$x" in b) echo ok;; esac'),
+    ("Bash", 'arr=("(" a); py -3 scripts/observer_setup.py; case "$x" in b) echo ok;; esac'),
+    ("Bash", "STAMP=$(date +%s) py -3 scripts/observer_setup.py"),
+    # 넷째 적대 패스(wf_509d2619-75b) — 공백으로 이어지는 원소 · 따옴표 친 위치 값 · 띄어 쓴 배열 · 괄호 식 · 훑는 머리 뒤 env ·
+    # 이어 쓴 · `??=` 대입 / the same shapes reaching user-only scripts
+    ("PowerShell", "Start-Process py -ArgumentList '-3 scripts/observer_setup.py', '--host', 'db.internal'"),
+    ("PowerShell", "Start-Process py -ArgumentList '-3', 'scripts/backfill_repository_user_id.py --apply' -Wait"),
+    ("PowerShell", "Start-Process py '-3 scripts/observer_setup.py'"),
+    ("PowerShell", "Start-Process py -ArgumentList @( '-3', 'scripts/observer_setup.py' ) -NoNewWindow -Wait"),
+    ("PowerShell", "(iex @'\npy -3 scripts/observer_setup.py --host db.internal\n'@)"),
+    ("PowerShell", "[void](iex @'\npy -3 scripts/observer_setup.py --host db.internal\n'@)"),
+    ("PowerShell", "$x = $y = py -3 scripts/observer_setup.py --host db.internal"),
+    ("PowerShell", "$x ??= py -3 scripts/observer_setup.py --host db.internal"),
+    ("Bash", "nice -n 10 env -C /repo py -3 scripts/observer_setup.py --host db.internal"),
+    ("Bash", "timeout 600 env -u PGPASSWORD py -3 scripts/backfill_repository_user_id.py --apply"),
+    ("Bash", "timeout 600 nohup py -3 scripts/observer_setup.py --host db.internal"),  # 훑는 머리 뒤 실행 접두어
+    # main 이 이미 막는 railway 본문으로는 이 순회의 판정식을 가를 수 없다 — 사용자 몫 스크립트로 잠근다: `-Command` 값인
+    # here-string · 묶음 끝 `bash)` · 본문 `<( )` 안의 `$( )` / locked with user-only scripts, which main does not deny
+    ("PowerShell", "pwsh -NoProfile -Command @'\npy -3 scripts/observer_setup.py --host db.internal\n'@"),
+    ("Bash", "(cd /repo && bash) <<'EOF'\npy -3 scripts/observer_setup.py --host db.internal\nEOF"),
+    ("Bash", "cat > notes.md <<EOF\nsee <(echo $(py -3 scripts/observer_setup.py --host db.internal))\nEOF"),
+    # 다섯째 적대 패스(wf_89808011-a19) — heredoc 줄의 case 머리 뒤 갈래 · 파이프 뒤 `eval "$(cat)"` · env 뒤 실행 접두어 ·
+    # Start-Process 의 `--` · 묶음이 받는 heredoc 의 `$(cat)` · `source /dev/stdin` / case heads on heredoc lines and more
+    ("Bash", "case \"$1\" in help) cat <<'EOF'\nusage: run.sh deploy\nEOF\n;;\n"
+     + "setup) bash <<'EOF'\npy -3 scripts/observer_setup.py --host db\nEOF\n;;\nesac"),
+    ("Bash", "cat <<'EOF' | eval \"$(cat)\"\npy -3 scripts/backfill_repository_user_id.py --apply\nEOF"),
+    ("Bash", "timeout 600 env PGHOST=db nohup py -3 scripts/observer_setup.py"),
+    ("Bash", "if env DRY_RUN=0 time py -3 scripts/backfill_repository_user_id.py --apply; then echo done; fi"),
+    ("PowerShell", "Start-Process py -- '-3', 'scripts/observer_setup.py'"),
+    ("Bash", "( bash -c \"$(cat)\" ) <<'EOF'\npy -3 scripts/observer_setup.py\nEOF"),
+    ("Bash", "(cd sub && bash -c \"$(cat)\") <<'EOF'\npy -3 scripts/backfill_repository_user_id.py --apply\nEOF"),
+    ("Bash", "source /dev/stdin <<'EOF'\npy -3 scripts/observer_setup.py --host db\nEOF"),
+    # 여러 줄 case 의 갈래 줄 · 파이프 뒤 `$(cat)` 이 명령 글자 전체 · 쉼표 없는 여러 줄 인자 배열(줄바꿈이 원소 구분)
+    # a multi-line case arm, `$(cat)` as the whole command text after a pipe, a comma-less multi-line argument array
+    ("Bash", 'case "$1" in\n  setup) py -3 scripts/observer_setup.py ;;\nesac'),
+    ("Bash", 'echo "py -3 scripts/observer_setup.py" | eval "$(cat)"'),
+    ("Bash", "cat <<'EOF' | timeout 60 bash -c \"$(cat)\"\npy -3 scripts/observer_setup.py\nEOF"),
+    ("PowerShell", "Start-Process py -ArgumentList @(\n  '-3'\n  'scripts/observer_setup.py'\n)"),
+    ("PowerShell", "Start-Process pwsh -ArgumentList @(\n  '-NoProfile'\n  '-Command'\n  'py -3 scripts/observer_setup.py'\n)"),
+    # 앞 case 가 esac 로 끝난 뒤의 묶음 끝 `bash)` 는 갈래 패턴이 아니다 / after esac, `bash)` closes a group
+    ("Bash", "case \"$x\" in a) echo a;; esac\n(cd sub && bash) <<'EOF'\npy -3 scripts/observer_setup.py\nEOF"),
+    # 여섯째 적대 패스(wf_5fb5a833-51c) — Git Bash 의 홑따옴표 · 주석 · 따옴표 속 case 낱말 · 묶음 `{ …; }` 이 받는 heredoc ·
+    # 같은 줄 esac 뒤 · 인자 배열 따옴표 속 줄바꿈 / single quotes for Git Bash, case words in comments and quotes, groups
+    ("PowerShell", "Start-Process bash -ArgumentList \"-c 'py -3 scripts/observer_setup.py'\" -Wait"),
+    ("Bash", "# just in case\n(cd /tmp && bash) <<'EOF'\npy -3 scripts/observer_setup.py\nEOF"),
+    ("Bash", "git commit -m \"fix: trim input (edge case)\"\n(cd /tmp && bash) <<'EOF'\npy -3 scripts/observer_setup.py\nEOF"),
+    ("Bash", "# worst case\n(cd /f/repo && ./scripts/observer_setup.py)"),
+    ("Bash", "# 예: case \"$x\" in a) …\n(cd /tmp && bash) <<'EOF'\npy -3 scripts/observer_setup.py\nEOF"),  # 주석 속 case … in
+    # 묶음 끝이 heredoc 이 아닌 `./x.py)` 는 case 깊이를 탄다 — esac 에서 되돌리고 주석 속 case … in 은 세지 않는다
+    # a group closing on `./x.py)` still rides the case depth: esac resets it, a comment does not count
+    ("Bash", "case \"$x\" in a) echo a;; esac\n(cd /f/repo && ./scripts/observer_setup.py)"),
+    ("Bash", "case \"$x\" in a) echo a;; esac\n(\n  cd /f/repo\n  ./scripts/observer_setup.py)"),  # 줄 처음의 묶음 끝
+    ("Bash", "# 예: case \"$x\" in a) …\n(cd /f/repo && ./scripts/observer_setup.py)"),
+    ("Bash", "{ cd /f/proj && bash; } <<'EOF'\npy -3 scripts/observer_setup.py\nEOF"),
+    ("Bash", "{ eval \"$(cat)\"; } <<'EOF'\npy -3 scripts/observer_setup.py\nEOF"),
+    ("Bash", "case \"$x\" in a) echo a;;\nesac; (cd /tmp && bash) <<'EOF'\npy -3 scripts/observer_setup.py\nEOF"),
+    ("PowerShell", "Start-Process pwsh -ArgumentList @(\n  '-Command'\n  \"Set-Location F:/proj\npy -3 scripts/observer_setup.py\"\n)"),
+    # 일곱째 적대 패스(wf_b29f7d89-996) — 갈래 안 `&&` 뒤의 묶음 끝 · 여러 줄 중첩 case · cmd 의 따옴표 친 인터프리터
+    # a group tail after `&&` inside an arm, a multi-line nested case, a quoted interpreter in cmd
+    ("Bash", 'case "$1" in  # closed by esac\n  setup) (cd scripts && ./observer_setup.py) ;;\nesac'),
+    ("Bash", 'case "$1" in\n  db) case "$2" in prod) py -3 scripts/observer_setup.py ;; esac ;;\nesac'),  # 한 줄 중첩 갈래
+    ("Bash", 'case "$1" in\n  db) case "$2" in\n        check) echo check ;;\n      esac\n      ;;\n'
+     + '  fix) py -3 scripts/backfill_repository_user_id.py --apply ;;\nesac'),
+    ("PowerShell", "Start-Process cmd -ArgumentList '/c', 'cd /d C:\\repo &&', '\"C:\\Python312\\python.exe\"', "
+     + "'scripts\\observer_setup.py'"),
+    # 여덟째 적대 패스(wf_13faf998-b43) — PowerShell 7 의 `&` 뒤 문장, cmd 가 stdin · heredoc 으로 받는 글자, 다른 셸이 받는
+    # 본문, 따옴표 · 주석 속 esac 뒤의 갈래
+    # the statement after PowerShell 7's `&`, text cmd reads, a body another shell runs, arms after a quoted esac
+    ("Bash", 'pwsh -NoProfile -Command "Set-Location F:/proj & py -3 scripts/backfill_repository_user_id.py --apply"'),
+    ("Bash", 'echo "npm run build & py -3 scripts/observer_setup.py" | pwsh -c -'),
+    ("PowerShell", "Set-Location F:\\proj & py -3 scripts\\observer_setup.py"),
+    ("Bash", "echo '\"C:\\Python312\\python.exe\" scripts\\observer_setup.py' | cmd"),
+    ("Bash", "cmd <<'EOF'\n\"C:\\Python312\\python.exe\" scripts\\observer_setup.py\nEOF"),
+    ("PowerShell", "@'\n\"C:\\Python312\\python.exe\" scripts\\observer_setup.py\n'@ | cmd"),
+    ("PowerShell", "bash -c @'\nfiles=(a b)\npy -3 scripts/observer_setup.py\n'@"),
+    ("Bash", "pwsh -NoProfile -Command - <<'EOF'\nSet-Location F:/proj\npy -3 scripts/observer_setup.py\nEOF"),
+    ("Bash", 'case "$1" in\n  a) echo "(x) esac done" ;;\n  b) py -3 scripts/observer_setup.py ;;\nesac'),
+    ("Bash", 'case "$1" in\n  start) echo starting ;;   # (nested case ends with) esac\n'
+     + '  deploy) py -3 scripts/observer_setup.py ;;\nesac'),
+    ("Bash", 'case "$1" in\n  a) msg="first line\n) esac\n"; echo "$msg" ;;\n  b) py -3 scripts/observer_setup.py ;;\nesac'),
+    ("Bash", 'x=$(case "$1" in a) echo a;; b) py -3 scripts/observer_setup.py;; esac)'),
+    # 아홉째 적대 패스(wf_bdaef787-daf) — cmd 는 줄마다 읽고 `;` 는 자식에게 넘긴다, 다른 셸이 받는 본문도 바깥 셸이 먼저
+    # 펼친다(같은 깊이), 인자 속 case 낱말은 치환 몸을 늘이지 않는다
+    # cmd reads line by line and hands `;` to its child; the outer shell expands a foreign body first; a case argument
+    ("Bash", "cmd <<'EOF'\ncd /d C:\\repo\n\"C:\\Python312\\python.exe\" scripts/observer_setup.py\nEOF"),
+    ("Bash", "cat <<'EOF' | cmd\ncd /d C:\\repo\n\"C:\\Python312\\python.exe\" scripts\\observer_setup.py\nEOF"),
+    ("Bash", "printf 'cd /d C:\\\\repo\\n\"C:\\\\Python312\\\\python.exe\" scripts/observer_setup.py\\n' | cmd"),
+    ("Bash", "cmd <<'EOF'\necho start\nif exist scripts (py -3 scripts/observer_setup.py)\nEOF"),
+    ("Bash", "cmd <<'EOF'\necho Don't forget\npy -3 scripts\\observer_setup.py\nEOF"),
+    ("Bash", "cmd <<'EOF'\n@echo off\n\"C:\\Program Files\\Python312\\python.exe\" scripts\\observer_setup.py\nEOF"),
+    ("Bash", "cmd //c \"bash -c 'cd /c/repo; py -3 scripts/observer_setup.py'\""),
+    ("Bash", "pwsh -NoProfile -Command - <<EOF\nWrite-Host 'Result: $(py -3 scripts/observer_setup.py)'\nEOF"),
+    ("PowerShell", '@"\nexport HOST=$(py -3 scripts\\observer_setup.py --print-host)\n"@ | bash'),
+    ("PowerShell", "bash -c @'\na=$(b=$(c=$(d=$(py -3 scripts/observer_setup.py))))\n'@"),
+    ("Bash", 'echo "cases=$(grep -c case x.sh) esacs=$(grep -c esac x.sh)"; py -3 scripts/observer_setup.py; echo "1) done"'),
+    ("Bash", 'git commit -m "wip:\nhandle prod"; case "$1" in\n  prod) bash <<\'EOF\'\npy -3 scripts/observer_setup.py\nEOF\n'
+     + '  ;;\nesac'),  # 여러 줄 메시지가 닫히는 줄의 case 머리 / a case head on the line that ends a multi-line message
+    # cmd 의 따옴표는 줄마다 새로 센다 · 따옴표 속 case 머리는 (전체를 보는) 줄 순회에서 세지 않는다
+    # cmd quotes reset per line; a quoted case head does not count in the full-text walk
+    ("Bash", "cmd <<'EOF'\necho \"unclosed\necho hi & \"C:\\Python312\\python.exe\" scripts\\observer_setup.py\nEOF"),
+    ("Bash", 'echo "note; case $x in it"\n(\n  cd /f/repo\n  ./scripts/observer_setup.py)'),
+    ("Bash", 'x=$(case $(basename "$(pwd)") in\n  app) py -3 scripts/observer_setup.py ;;\nesac)'),  # 겹친 치환 주제
+    ("Bash", 'r=$(if true\nthen\n  case "$1" in\n    p) py -3 scripts/observer_setup.py ;;\n  esac\nfi)'),  # 줄 처음 then 뒤
+    ("PowerShell", "@'\ncd /d C:\\repo && echo In repo\nif exist scripts\\observer_setup.py (py -3 scripts\\observer_setup.py --host db)\n'@ | cmd"),
+    ("Bash", 'out=$(\n  echo x\n  { case "$1" in dev) echo dev ;; prod) py -3 scripts/observer_setup.py ;; esac; }\n)'),  # 묶음 `{` 뒤
+    ("PowerShell", 'cmd /c "py -3 scripts/observer_setup.py --host db.pooler.supabase.com"'),  # 뗀 읽기 / the stripped reading
+    ("Bash", "cmd <<'EOF'\ncd \"C:\\x\npy -3 scripts\\observer_setup.py\nEOF"),  # cmd 의 `\"` 는 줄 끝에서 풀린다 / quotes reset per line
+    ("Bash", 'cmd //c "git commit -m \\"it\'s done\\" & py -3 scripts/observer_setup.py"'),  # 겹따옴표 속 `\'` 는 글자
+    # 열셋째 적대 패스(wf_69a39851-109) — 블록을 닫은 echo 글자 뒤 · 홑따옴표 속 `"` 가 뒤 줄을 덮지 않는다
+    # an apostrophe after an echo that closed its block, a double quote inside single quotes
+    ("Bash", "cmd <<'EOF'\nif exist .venv (\n  echo venv found (skipping create) - it's ready\n) else (\n  py -3 -m venv .venv\n)\n"
+     + "py -3 scripts\\observer_setup.py --host db.example.com\nEOF"),
+    ("Bash", "cmd <<'EOF'\nsed 's/\"//g' a.txt\npy -3 scripts\\observer_setup.py\nEOF"),
+    # 치환 몸 속 주석의 짝 없는 괄호 · 주석이 아닌 `#`(`${#a}`) / an unpaired parenthesis in a comment, a `#` that is not one
+    ("Bash", 'x="$(echo a  # see (notes\n)"; py -3 scripts/observer_setup.py'),
+    ("Bash", 'x="$(echo "(" ${#a})"; py -3 scripts/observer_setup.py'),
+    ("Bash", "timeout 60 cmd <<'EOF'\nif exist dist (\n  echo built) else (py -3 scripts\\observer_setup.py)\nEOF"),  # 줄을 넘는 블록
+    ("Bash", "cmd //c \"if exist x (bash -c '(echo hi; py -3 scripts/observer_setup.py)')\""),  # 블록 안 홑따옴표는 자식 셸 몫
+    ("PowerShell", "cmd /c 'if exist dist (echo ok) else (@py -3 scripts\\observer_setup.py --host db)'"),
+    ("Bash", 'cmd //c "if exist data.csv (@py -3 scripts\\backfill_repository_user_id.py --apply)"'),
+    # 열넷째 적대 패스(wf_99240b16-4fc) — FOR 집합은 블록이 아니다, `)` 뒤 `;` · `,` · `=` · do · `0<nul` 은 cmd 가 이어 읽는다,
+    # cmd 의 `#` · 백틱은 글자 / a FOR set is not a block; cmd continues after `) ;` `) do` `0<nul`; `#` and backticks are text
+    ("Bash", "cmd //c 'if exist C:\\nonexist (for %s in (settings) do (echo %s)) else (py -3 scripts\\observer_setup.py)'"),
+    ("Bash", "cmd //c 'if exist x (echo a) 0<nul else (py -3 scripts\\observer_setup.py --host db)'"),
+    ("Bash", "timeout 60 cmd <<'EOF'\ngh issue view #12 & py -3 scripts\\observer_setup.py\nEOF"),
+    ("Bash", "timeout 60 cmd <<'EOF'\ncd x`'b\"c\npy -3 scripts\\observer_setup.py\nEOF"),
+    ("Bash", 'cmd //c "if exist x (echo:ready, it\'s fine) else (py -3 scripts\\observer_setup.py)"'),
+    ("Bash", "timeout 60 cmd <<'EOF'\nif exist a`'b (echo x) else (py -3 scripts\\observer_setup.py)\nEOF"),  # 백틱 뒤 아포스트로피
+    # 치환 몸의 case 는 `&&` · `||` · then · do · else 뒤도 / case inside a body after && || then do else
+    ("Bash", 'out=$(cd /tmp && case "$1" in dev) echo dev;; prod) py -3 scripts/observer_setup.py;; esac)'),
+    ("Bash", 'out=$(false || case "$1" in dev) echo dev;; prod) py -3 scripts/observer_setup.py;; esac)'),
+    ("Bash", 'r=$(if true; then case "$1" in a) echo a;; p) py -3 scripts/observer_setup.py;; esac; fi)'),
+    ("Bash", 'r=$(for e in a; do case "$e" in b) echo b;; a) py -3 scripts/observer_setup.py;; esac; done)'),
+    ("Bash", 'r=$(if false; then :; else case "$1" in a) echo a;; p) py -3 scripts/observer_setup.py;; esac; fi)'),
+]
+
+
+@pytest.mark.parametrize("tool,command", _USER_ONLY_SCRIPTS)
+def test_a_user_only_production_script_is_denied(tool, command, logs, monkeypatch, capsys):
+    """🔴 사용자가 `!` 로 돌리는 운영 스크립트는 막는다 — 거부 기록에 인자는 남지 않는다.
+    A script the user runs with `!` is denied; its arguments never reach the denial record."""
+    work, audit, denials = logs
+    assert '"permissionDecision": "deny"' in _run(monkeypatch, capsys, _shell(command, work, tool=tool)), command
+    assert not audit.exists() and denials.exists()
+    assert _MARKER not in denials.read_text(encoding="utf-8")
 
 
 def test_a_full_path_railway_variable_write_in_powershell_stays_denied(logs, monkeypatch, capsys):
@@ -367,15 +883,23 @@ def test_a_full_path_railway_variable_write_in_powershell_stays_denied(logs, mon
 
 
 # PowerShell 변수 · 배열 · 굽은 따옴표는 shlex 가 모르는 인자를 만든다 — 백슬래시 경로의 «이름만» 관용구에 `--set` ·
-# `--json` 을 숨기면 main 은 막았고(경로를 못 읽어서) 글자 읽기는 이름만으로 비켰다(넷째 워크플로 패스). 개수만 내는
-# 단계는 main 처럼 통과한다. PowerShell variables, arrays and curly quotes smuggle flags past the names-only excuse.
+# `--json` 을 숨기면 main 은 막았고(경로를 못 읽어서) 글자 읽기는 이름만으로 비켰다(넷째 워크플로 패스). PowerShell 의
+# `prod\ set` 은 두 낱말이라 `set` 이 하위 명령 자리에 선 변수 쓰기 꼴이다 — main 은 Bash 읽기로 서비스 이름에 붙여 통과시켰고
+# 명령 자리 순회가 막는다(원장 P1-19). PowerShell variables, arrays and curly quotes smuggle flags past the names-only
+# excuse; in PowerShell `prod\ set` is two words, a variable-write shape the command-position walk denies.
 _POWERSHELL_VARIABLE_VERDICTS = [
     ("$s = '--set'; C:\\x\\railway.cmd variables $s K=V --kv | cut -d= -f1", "deny"),
     ("C:\\x\\railway.cmd variables --kv --service api,--set,K=V | cut -d= -f1", "deny"),
     ("C:\\x\\railway.cmd variables --kv \u2018--set\u2019 K=V | cut -d= -f1", "deny"),
     ("$f = '--json'; C:\\x\\railway.cmd variables $f --kv | cut -d= -f1", "deny"),
-    ("railway variables --kv --environment prod\\ set | wc -l", "allow"),
-    ("railway variables --kv --service api\\ set | cut -d= -f1", "allow"),
+    ("railway variables --kv --environment prod\\ set | wc -l", "deny"),
+    ("railway variables --kv --service api\\ set | cut -d= -f1", "deny"),
+    ("railway variables --kv --environment prod | wc -l", "allow"),  # 개수만 — main 처럼 / a count only, as on main
+    # 쓰기 비킴의 두 갈래 — 정의만 한 블록 속 전체 경로 쓰기는 명령 자리 순회가 보지 않으니 credential 층이 막고(main 처럼),
+    # 다른 명령의 인자인 언급은 쓰기 꼴이어도 개수만 중화로 내려가 통과한다(main 처럼)
+    # the write excuse: a full-path write inside a defined block stays denied; a mention piped to a count passes
+    ("$sb = { C:\\x\\railway.cmd variables --set K=V }", "deny"),
+    ("Write-Output railway variables --kv --environment prod\\ set | wc -l", "allow"),
     ("C:\\x\\railway.cmd variables --kv | cut -d= -f1", "allow"),
     ("npx @railway/cli variables --kv | cut -d= -f1", "allow"),  # 패키지 이름의 `@` 는 스플랫이 아니다 / not a splat
 ]
@@ -390,18 +914,81 @@ def test_powershell_railway_variable_idioms_keep_mains_verdict(command, verdict,
     assert denied == (verdict == "deny"), command
 
 
-def test_an_audit_failure_never_changes_the_verdict(logs, monkeypatch, capsys):
-    """🔴 감사는 판정을 바꾸지 않는다 — 감사 순회가 죽어도 허용은 허용이고, 기록에는 값 없는 실패 표지만 남는다(죽음이
-    main() 의 «판정 불가» 로 올라가면 railway 가 든 명령은 막혔다). An audit crash leaves the verdict alone."""
+# witness-corpus: 손으로 적은 이름 목록 밖의 같은 PowerShell 매개변수 — 문서 별칭(-RSO · -RunAs · -proga) · 앞부분 줄임 · 붙여 쓴 값
+_POWERSHELL_PARAMETER_SPELLINGS = {
+    "Start-Process -RSO out.txt railway up -Wait": True,  # -RSO = -RedirectStandardOutput — 값을 받는다
+    "Start-Process -Arg up -File railway -Wait": True,  # -Arg · -File = -ArgumentList · -FilePath 의 앞부분
+    "Start-Process -FilePath:railway -ArgumentList:up": True,  # 붙여 쓴 값 / colon-attached values
+    "Start-Process -RunAs $cred railway up": True,  # -RunAs = -Credential
+    'Invoke-Expression -ErrorA Stop "railway up"': True,  # -ErrorA = -ErrorAction 의 앞부분
+    'Invoke-Expression -proga SilentlyContinue "railway up"': True,  # -proga = -ProgressAction
+    'Invoke-Expression -Command:"railway up"': True,
+    'Invoke-Expression -wa SilentlyContinue "railway up"': True,  # -wa = -WarningAction 별칭 — 앞부분으로는 -WarningVariable 과 겹친다
+    "Start-Process -Work C:\\railway notepad": False,  # -Work = -WorkingDirectory — 그 경로는 실행 파일이 아니다
+    "Start-Process -RSO railway.log notepad readme.md": False,
+    'Invoke-Expression -ErrorA Stop "Write-Host railway up"': False,
+}
+# witness-corpus: Bash 의 같은 꼴 — 목록 밖 긴 옵션(sudo --user · time --output) · 표준 출력과 오류를 함께 넘기는 파이프 `|&`
+_BASH_OPTION_SPELLINGS = {
+    "sudo --user deploy railway up": True,
+    "time --output t.log railway up": True,
+    'echo "railway up" |& bash': True,
+    "printf 'railway redeploy -y\\n' |& sh": True,
+    "git log --oneline |& grep railway": False,
+    "py -3 scripts/backfill_repository_user_id.py --ap": True,  # argparse 줄임 — 목록 글자 `--apply` 가 없다
+    "py -3 scripts/observer_setup.py --he": False,  # 도움말 줄임 / an abbreviated --help
+    "py -3 scripts/observer_setup.py -h": False,
+}
+# witness-corpus: 표에 글자 그대로 없는 Start-Process 매개변수 철자 — 바인더는 대소문자를 가리지 않고 유일한 앞부분으로 푼다
+_PS_PARAMETER_PREFIXES = {"-Wor": "workingdirectory", "-RedirectStandardOut": "redirectstandardoutput",
+                          "-NoNew": "nonewwindow", "-PassT": "passthru", "-UseNew": "usenewenvironment",
+                          "-LoadU": "loaduserprofile", "-Cred": "credential", "-FILEP": "filepath"}
+
+
+@pytest.mark.parametrize("spelling,name", sorted(_PS_PARAMETER_PREFIXES.items()))
+def test_a_start_process_parameter_resolves_from_an_unlisted_spelling(spelling, name):
+    """🔴 매개변수 표는 이름 · 별칭만 적는다 — 표에 없는 앞부분 · 대소문자 철자도 PowerShell 바인더처럼 그 매개변수로 푼다.
+    Unlisted prefixes and casings resolve to the parameter the PowerShell binder would bind."""
+    assert hook._ps_parameter(spelling, hook._PS_START_PARAMS, hook._PS_START_ALIASES)[0] == name
+
+
+@pytest.mark.parametrize("tool,command,denied",
+                         [("PowerShell", c, d) for c, d in _POWERSHELL_PARAMETER_SPELLINGS.items()]
+                         + [("Bash", c, d) for c, d in _BASH_OPTION_SPELLINGS.items()])
+def test_an_option_spelled_outside_the_listed_names_reads_like_the_listed_name(tool, command, denied, logs,
+                                                                               monkeypatch, capsys):
+    """🔴 매개변수 · 옵션 목록은 손으로 적었다 — PowerShell 바인더처럼 별칭 · 유일한 앞부분 · 붙여 쓴 값을 풀고, Bash 의 긴
+    옵션 · `|&` 도 같은 자리로 읽는다. Option spellings outside the hand-written lists read like the listed names."""
+    work, _, _ = logs
+    verdict = '"permissionDecision": "deny"' in _run(monkeypatch, capsys, _shell(command, work, tool=tool))
+    assert verdict == denied, command
+
+
+def test_script_option_table_matches_each_scripts_argparse():
+    """🔴 줄임 플래그를 스크립트마다 푸는 표(`_PROD_SCRIPT_OPTIONS`)는 각 스크립트의 argparse 긴 옵션과 같다 — 스크립트에
+    옵션을 더하면 이 시험이 표를 고치라고 알린다(argparse 는 그 스크립트의 옵션으로 줄임을 푼다).
+    The per-script option table equals each script's argparse long options."""
+    import ast
+    for script, channel in hook._PROD_CHANNEL_SCRIPTS.items():
+        tree = ast.parse((_ROOT / "scripts" / script).read_text(encoding="utf-8"))
+        longs = {arg.value for node in ast.walk(tree) if isinstance(node, ast.Call)
+                 and getattr(node.func, "attr", "") == "add_argument"
+                 for arg in node.args if isinstance(arg, ast.Constant) and str(arg.value).startswith("--")}
+        assert set(hook._PROD_SCRIPT_OPTIONS[channel]) == longs, (script, longs)
+
+
+def test_a_command_walk_failure_is_unjudged(logs, monkeypatch, capsys):
+    """🔴 명령 자리 순회는 판정이다(원장 P1-19) — 죽으면 main 순회처럼 «판정 불가» 로 가서 운영 표지가 있는 호출은 막힌다.
+    감사 기록은 남지 않고, 거부 기록에 예외 글자는 없다. A crash in the command-position walk is unjudged."""
     work, audit, denials = logs
 
     def broken(*_args, **_kwargs):
         raise RuntimeError(_MARKER)
 
-    monkeypatch.setattr(hook, "_audit_text", broken)
-    assert _run(monkeypatch, capsys, _shell("railway status", work)) == ""
-    assert [r["channels"] for r in _records(audit)] == [["audit-error RuntimeError"]]
-    assert _MARKER not in audit.read_text(encoding="utf-8") and not denials.exists()
+    monkeypatch.setattr(hook, "_command_walk", broken)
+    assert '"permissionDecision": "deny"' in _run(monkeypatch, capsys, _shell("railway status", work))
+    assert not audit.exists() and denials.exists()
+    assert _MARKER not in denials.read_text(encoding="utf-8")
 
 
 def test_a_bracket_heavy_powershell_command_is_judged_quickly(logs, monkeypatch, capsys):
