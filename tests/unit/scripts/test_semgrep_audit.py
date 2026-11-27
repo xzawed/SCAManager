@@ -214,6 +214,16 @@ def test_a_similar_title_is_another_issue(gh, tmp_path):
     assert ["issue", "create"] in _verbs(gh) and ["issue", "comment"] not in _verbs(gh)
 
 
+def test_notify_does_not_post_a_body_with_a_secret_or_personal_shape(gh, tmp_path):
+    """🔴 감사 이슈도 공개 쓰기다 — 게시 전 검사 훅은 CI 에서도 이 스크립트 안의 gh 도 보지 않는다. 꼴이 있으면 올리지 않고
+    red(종류 · 개수만)로 끝난다(원장 #1940 M03 P2-16). / The audit issue body is scanned before posting."""
+    gh["issues"] = [{"number": 42, "title": mod.ISSUE_TITLE}]
+    report = tmp_path / "report.txt"
+    report.write_text("audit owner " + "someone.private" + "@" + "mailhost.io\n", encoding="utf-8")
+    assert mod.notify(report) == 1
+    assert ["issue", "comment"] not in _verbs(gh) and ["issue", "create"] not in _verbs(gh)
+
+
 def test_notify_fails_when_it_cannot_list_issues(gh, tmp_path):
     """🔴 열린 이슈를 못 읽으면 새로 만들지도 않고 red — 중복 이슈를 쌓거나 조용히 넘어가지 않는다."""
     gh["list_rc"] = 1

@@ -22,6 +22,12 @@ import json
 import re
 import subprocess
 import sys
+from pathlib import Path
+
+# 머지 기록 댓글도 공개 쓰기다 — 게시 전 검사 훅은 gh 로 시작하는 명령만 보므로 올리기 전에 같은 꼴로 잰다(원장 #1940 M03 P2-16).
+# The merge record is a public write the hook never sees; scan it with the same shapes before posting.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from scan_publish import count_kinds  # noqa: E402  # pylint: disable=wrong-import-position
 
 _BASE = "main"
 # 화면을 정하는 파일 — 마크업 · 스타일 · 문구. 데이터 로직(`src/ui/`)은 단위 · e2e 가 잰다
@@ -321,6 +327,12 @@ def main(argv=None, *, run=_run, out=print) -> int:
         return 2
     evidence = matching_approval(state, args.approval)
     problems = decide(state, head=head, approval=args.approval, visual=args.visual, tested_tree=tested_tree)
+    body = comment_body(state, approval=args.approval, visual=args.visual, evidence=evidence)
+    found = count_kinds(body)
+    if found:
+        shapes = " · ".join(f"{kind} {n}" for kind, n in sorted(found.items()))
+        problems.append(f"머지 기록 댓글에 비밀값 · 개인정보 꼴 {shapes}(값은 열지 않는다) — 발화 · 화면 확인 글에서 "
+                        "그 부분을 뺀 발화를 다시 받는다")
     if problems:
         out(f"⛔ PR #{args.pr} 머지하지 않는다:")
         for problem in problems:
@@ -331,8 +343,7 @@ def main(argv=None, *, run=_run, out=print) -> int:
         return 0
     expected = tested_tree or state["head_tree"]
     try:
-        run(["gh", "pr", "comment", str(args.pr), "--body", comment_body(state, approval=args.approval,
-                                                                          visual=args.visual, evidence=evidence)])
+        run(["gh", "pr", "comment", str(args.pr), "--body", body])
         run(["gh", "pr", "merge", str(args.pr), "--squash", "--match-head-commit", state["head"]])
         merge_commit = _json(run, ["gh", "pr", "view", str(args.pr), "--json", "mergeCommit"])["mergeCommit"]["oid"]
         run(["git", "fetch", "-q", "origin", _BASE])
