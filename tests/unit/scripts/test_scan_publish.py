@@ -56,6 +56,11 @@ _HARMLESS = [
     "GITHUB_WEBHOOK_SECRET=your_webhook_secret_here",
     "CLAUDE_REVIEW_MAX_TOKENS=8192",
     "C:\\Users\\runneradmin\\work\\SCAManager\\SCAManager",
+    # Grok M03 2차 — camelCase 코드 호출 · macOS 러너 · 러너 이름 뒤에 붙은 한글
+    "const apiToken = getApiTokenFromStorage()",
+    "webhook_secret = loadWebhookSecretFromEnv",
+    "/Users/runner/work/SCAManager/SCAManager",
+    "러너 홈은 C:\\Users\\runneradmin이다",
 ]
 
 
@@ -810,7 +815,8 @@ _KNOWN_PUBLISH_SITES = {"merge_approved.py": 1, "semgrep_audit.py": 2}
 
 
 def _publish_sites():
-    """gh 무리 낱말과 쓰기 낱말이 함께 든 인자 목록 · 튜플 리터럴을 파일마다 센다(`gh api` 의 필드 · 메서드도 쓰기다)."""
+    """`gh` 또는 gh 무리 낱말과 쓰기 낱말이 함께 든 인자 목록 · 튜플 리터럴을 파일마다 센다(`gh api` 의 필드 · 메서드도
+    쓰기다). 무리 낱말이 변수여도 `gh` 가 있으면 센다(Grok M03 2차). / Counts gh write argv literals per file."""
     import ast  # pylint: disable=import-outside-toplevel
     sites: dict[str, int] = {}
     for path in sorted((_ROOT / "scripts").glob("*.py")):
@@ -820,7 +826,7 @@ def _publish_sites():
             if not isinstance(node, (ast.List, ast.Tuple)):
                 continue
             words = {elt.value for elt in node.elts if isinstance(elt, ast.Constant) and isinstance(elt.value, str)}
-            if words & _GH_GROUPS and words & _PUBLISH_WORDS:
+            if ("gh" in words or words & _GH_GROUPS) and words & _PUBLISH_WORDS:
                 sites[path.name] = sites.get(path.name, 0) + 1
     return sites
 
