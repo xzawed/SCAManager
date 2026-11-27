@@ -20,6 +20,7 @@
       "Read(//**/.env.*~)",
       "Read(//**/*.env)",
       "Read(//**/*.env~)",
+      "Read(//**/[#]*.env[#])",
       "Read(//**/env[._-]backup*)",
       "Read(//**/*[._-]env[._-]backup*)",
       "Read(//**/env[._-]bak*)",
