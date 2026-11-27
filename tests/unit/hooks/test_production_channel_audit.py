@@ -275,6 +275,8 @@ _MENTIONS = ['grep -n "railway status" docs/a.md', "cat scripts/observe_db.py", 
              "timeout 60 cmd <<'EOF'\nif exist dist (\n  echo built (ok); railway up later\n)\nEOF",
              'cmd //c "if exist dist (echo built (ok) (railway up))"',
              "timeout 60 cmd <<'EOF'\nif exist dist (\n  echo built) else (echo none; railway up later)\nEOF",
+             'cmd //c "if exist dist (echo(railway up failed)"',  # cmd 의 echo( 꼴
+             "timeout 60 cmd <<'EOF'\n# deploy step (railway up); later\nEOF",  # `#` 로 시작하는 줄은 돌지 않는다
              'case "$1" in\n  a) echo "(x) esac done" ;;\n  scripts/observer_setup.py) echo "user-only" ;;\nesac',
              'case "$1" in\n  start) echo starting ;;   # (nested case ends with) esac\n'
              + '  stop|scripts/observer_setup.py) echo stop ;;\nesac']
@@ -659,6 +661,10 @@ _PRODUCTION_WRITES = [
     ("Bash", "cmd //c 'for %s in (echo a b) do (railway up -s %s)'"),
     ("Bash", "cmd //c 'if exist .deployed (echo already deployed); else (railway up)'"),
     ("Bash", 'out="$(case "$1" in a) echo what to do case by case;; prod) railway up;; esac)"'),  # 인자 속 `do case` 는 case 가 아니다
+    # 열다섯째 적대 패스(wf_c8be1568-5f2) — cmd 의 echo 꼴(`echo.` · `echo:` · `echo(`), 패턴 `esacfoo)` 는 esac 가 아니다
+    # cmd's echo forms; a pattern named esacfoo is not esac
+    ("Bash", 'cmd //c "if not exist dist\\index.html (echo.Build missing, can\'t deploy) else (railway up)"'),
+    ("Bash", 'x=$(case "$1" in\n  a) echo a ;;\n  esacfoo) railway up ;;\nesac)'),
     ("Bash", 'cmd //c "if exist deploy-set.flag (railway up)"'),  # 조건 속 `set` 은 명령이 아니다 / not a command word
 ]
 
@@ -827,6 +833,8 @@ _USER_ONLY_SCRIPTS = [
     ("Bash", "cmd //c 'if exist x (echo a) 0<nul else (py -3 scripts\\observer_setup.py)'"),
     ("Bash", "timeout 60 cmd <<'EOF'\ngh issue view #12 & py -3 scripts\\observer_setup.py\nEOF"),
     ("Bash", "timeout 60 cmd <<'EOF'\ncd x`'b\"c\npy -3 scripts\\observer_setup.py\nEOF"),
+    ("Bash", 'cmd //c "if exist x (echo:ready, it\'s fine) else (py -3 scripts\\observer_setup.py)"'),
+    ("Bash", "timeout 60 cmd <<'EOF'\nif exist a`'b (echo x) else (py -3 scripts\\observer_setup.py)\nEOF"),  # 백틱 뒤 아포스트로피
     # 치환 몸의 case 는 `&&` · `||` · then · do · else 뒤도 / case inside a body after && || then do else
     ("Bash", 'out=$(cd /tmp && case "$1" in dev) echo dev;; prod) py -3 scripts/observer_setup.py;; esac)'),
     ("Bash", 'out=$(false || case "$1" in dev) echo dev;; prod) py -3 scripts/observer_setup.py;; esac)'),

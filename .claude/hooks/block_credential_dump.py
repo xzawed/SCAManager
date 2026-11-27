@@ -3095,7 +3095,7 @@ def _cmd_calls(text):
 
 
 # cmd 의 주석 줄 · 인자가 글자인 명령(cmd 은 대소문자를 가리지 않는다) / cmd comments and builtins whose arguments are text
-_CMD_COMMENT = re.compile(r"(?i)(?:rem|::)")
+_CMD_COMMENT = re.compile(r"(?i)(?:rem|::|#)")  # `#` 로 시작하는 문장은 cmd 가 돌릴 프로그램이 없다 / nothing to run
 _CMD_TEXT_STATEMENT = re.compile(r"(?i)(?:echo|set|title)")
 
 
@@ -3133,10 +3133,14 @@ def _cmd_closed_quotes(statement):
     PowerShell 규칙으로 잰다 — 홑따옴표 안 `"` 는 글자다(열셋째 워크플로 패스: `sed 's/"//g'`). cmd 의 백틱과 낱말 처음 `#` 도
     글자라 이스케이프한다(열넷째 워크플로 패스: `` ` `` 이 뒤 따옴표를, `gh issue view #12 & railway up` 의 `#` 이 뒤 문장을 덮었다).
     Make a rewritten cmd statement read like cmd under PowerShell rules."""
-    out, quote = [], None
-    for i, ch in enumerate(statement):
+    out, quote, i = [], None, 0
+    while i < len(statement):
+        ch = statement[i]
         if ch == "`" and quote != "'":
-            out.append("``")
+            # `` `' `` 는 PowerShell 에서도 글자 아포스트로피라 한 덩어리로 둔다(열다섯째 워크플로 패스) / a literal apostrophe
+            step = 2 if statement[i + 1:i + 2] == "'" else 1
+            out.append(statement[i:i + 2] if step == 2 else "``")
+            i += step
             continue
         if quote:
             quote = None if ch == quote else quote
@@ -3144,8 +3148,10 @@ def _cmd_closed_quotes(statement):
             quote = ch
         elif ch == "#" and (i == 0 or statement[i - 1] in " \t;,(){}|&"):
             out.append("`#")
+            i += 1
             continue
         out.append(ch)
+        i += 1
     return "".join(out) + (quote or "")
 
 
@@ -3162,7 +3168,7 @@ _CMD_OPERAND = r'(?:"[^"]*"|\S+)'
 _CMD_BLOCK_TEXT = re.compile(
     r"(?i)(?:\(\s*|\b(?:do|else)\s+|\bif\s+(?:/i\s+)?(?:not\s+)?(?:(?:exist|defined|errorlevel)\s+" + _CMD_OPERAND
     + r"|" + _CMD_OPERAND + r"\s*==\s*" + _CMD_OPERAND + r"|" + _CMD_OPERAND + r"\s+(?:equ|neq|lss|leq|gtr|geq)\s+"
-    + _CMD_OPERAND + r")\s+)@?(?:echo|set|title)(?=\s|$)")
+    + _CMD_OPERAND + r")\s+)@?(?:echo|set|title)(?=[\s.(:/\\\[\]+,;=]|$)")  # cmd 의 echo 구분자(`echo.` · `echo(`)
 
 
 # 블록을 닫는 `)` 뒤에 cmd 가 이어 읽는 꼴 — 끝 · else · do · 다른 `)` · 재지정(cmd 는 `,` `;` `=` 도 공백처럼 건너뛴다). 그 밖은
@@ -3550,7 +3556,7 @@ def _audit_substitutions(text, string_body=False):
 # 있다 — 열한째 워크플로 패스: `echo what to do case by case` 의 `do case` 가 없는 case 를 열었다). 주석은 몸 끝 찾기가 건너뛴다.
 # a case head or esac at a command position inside a substitution body
 _BODY_CASE_WORD = re.compile(r"(?:(?<=[\n;&|(){])|(?<=\bthen)|(?<=\bdo)|(?<=\belse))[ \t]*(case)(?=[ \t]+[^\n]*?[ \t]in(?:\s|$))"
-                             r"|(?<=[\n;&])[ \t]*(esac)")  # esac 는 `;;` · `;&` · 줄바꿈 뒤 / after ;; ;& or a newline
+                             r"|(?<=[\n;&])[ \t]*(esac)(?=[\s;&|)]|$)")  # esac 는 `;;` · `;&` · 줄바꿈 뒤, 온 낱말(`esacfoo)` 는 패턴)
 
 
 @functools.lru_cache(maxsize=8)
