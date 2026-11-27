@@ -43,13 +43,25 @@ _KINDS = {
     "slack-token": r"\bxox[abprs]-[A-Za-z0-9-]{10,}",
     "aws-key": r"\bAKIA[0-9A-Z]{16}\b",
     "private-key": r"-----BEGIN [A-Z ]*PRIVATE KEY-----",
-    "assigned-secret": r"(?i)\b(?:SECRET|TOKEN|PASSWORD|API_KEY|ENCRYPTION_KEY)[A-Z_]*\s*[=:]\s*[\"']?[A-Za-z0-9+/_-]{24,}",
+    # 이름 «안에» 비밀 낱말이 든 대입(`SESSION_SECRET=…` · `"SMTP_PASS": "…"`) — 접두 이름을 놓쳤다(원장 #1940 M03 P1-14).
+    # 값은 숫자가 든 16자 이상이거나, 한 가지 대소문자 글자만 16자 이상이다(Gmail 앱 비밀번호 · 패스프레이즈) — 템플릿
+    # 자리표시자(`your_webhook_secret_here`) · 코드 이름(`settings.x` · camelCase 호출 `getApiToken()`)은 값이 아니다.
+    # 굽은 따옴표도 따옴표다(Grok M03 1 · 2차 반례).
+    # A value holds a digit, or is 16+ single-case letters; placeholders and code names (dotted, camelCase calls) are not.
+    "assigned-secret": (r"(?i)(?<![A-Za-z0-9])[A-Z0-9_]*(?:SECRET|TOKEN|PASS|API_KEY|ENCRYPTION_KEY)[A-Z0-9_]*[\"'“”‘’]?"
+                        r"\s*[=:]\s*[\"'“”‘’]?(?:(?=[A-Za-z0-9+/_-]*\d)[A-Za-z0-9+/_-]{16,}"
+                        r"|(?-i:[a-z]{16,}|[A-Z]{16,})(?![A-Za-z0-9+/_(-]|\.[A-Za-z0-9_]))"),
     # 사람 주소 — 공개용 주소(noreply · 예시 · git SSH)는 아래 `_PUBLIC_EMAIL` 이 뺀다.
     "email": r"(?<![\w.+%-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\b",
-    # 개인 홈 경로(사용자 이름이 든다) — CI 러너 경로는 사람 것이 아니다.
-    "local-home-path": r"(?i)\b[A-Z]:[\\/]+Users[\\/]+[^\\/\s\"'`]+|/Users/[^/\s\"'`]+|/home/(?!runner/)[^/\s\"'`]+",
+    # 개인 홈 경로(사용자 이름이 든다) — CI 러너 경로(Linux `runner` · Windows `runneradmin`)는 사람 것이 아니다. 대소문자를
+    # 가리지 않는 것은 Windows 쪽뿐이다 — 통째로 가리지 않으면 API 경로 `/api/users/me` 가 macOS 홈으로 읽혔다.
+    # CI runner homes are not personal; case-insensitive on the Windows side only (else `/api/users/me` read as a home).
+    "local-home-path": (r"\b[A-Za-z]:[\\/]+(?i:users)[\\/]+(?!(?i:runneradmin)\b)[^\\/\s\"'`]+"
+                        r"|/Users/(?!runner\b)[^/\s\"'`]+|/home/(?!runner\b)[^/\s\"'`]+"),
 }
-_COMPILED = {kind: re.compile(rx) for kind, rx in _KINDS.items()}
+# 경계(`\b` · `\w`)는 ASCII 로 본다 — 유니코드로 보면 값 앞뒤에 붙은 한글(조사 · 낱말)이 낱말 글자라 경계가 사라져 놓쳤다
+# (원장 #1940 M03 P1-16). / Boundaries are ASCII: Hangul glued to a value erased a Unicode `\b`.
+_COMPILED = {kind: re.compile(rx, re.ASCII) for kind, rx in _KINDS.items()}
 # 공개해도 되는 주소 — 커밋 서명용 noreply · 예시 도메인 · git SSH 원격.
 # Public addresses: noreply signatures, example domains, the git SSH remote.
 _PUBLIC_EMAIL = re.compile(r"(?i)^(?:noreply@anthropic\.com|[^@]+@users\.noreply\.github\.com|[^@]+@example\.(?:com|org|net)"

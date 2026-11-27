@@ -308,6 +308,26 @@ def test_main_comments_then_merges_once_at_the_approved_head():
     assert "«머지 승인합니다»" in body and _HEAD in body and "시각 변경 없음" in body
 
 
+def test_main_does_not_post_an_approval_record_with_a_secret_or_personal_shape():
+    """🔴 머지 기록 댓글도 공개 쓰기다 — 게시 전 검사 훅은 gh 로 시작하는 명령만 보므로 이 스크립트가 올리기 전에 잰다.
+    꼴이 있으면 댓글도 머지도 하지 않고, 종류 · 개수만 알린다(원장 #1940 M03 P2-16).
+    The merge record is a public write the hook never sees; it is scanned here and nothing is sent on a hit."""
+    approval = "머지 승인합니다 " + "someone.private" + "@" + "mailhost.io"
+    fake = _Fake(comments=[_raw_comment(_approval_body(approval=approval))])
+    code, out = _main(fake, approval=approval)
+    assert code == 1, out
+    assert not fake.sent("comment") and not fake.sent("merge"), fake.calls
+    assert "email 1" in out and "mailhost" not in out, out
+
+
+def test_check_mode_reports_a_secret_shaped_record_too():
+    """`--check` 도 같은 막힘을 알린다 — 조건만 보는 실행이 «충족» 이라고 말하면 실제 머지에서 처음 막힌다."""
+    approval = "머지 승인합니다 " + "someone.private" + "@" + "mailhost.io"
+    fake = _Fake(comments=[_raw_comment(_approval_body(approval=approval))])
+    code, out = _main(fake, "--check", approval=approval)
+    assert code == 1 and "email 1" in out, out
+
+
 @pytest.mark.parametrize("fake_kwargs", [
     {"view": {"state": "OPEN", "isDraft": False, "baseRefName": "main", "headRefOid": "a" * 40,
               "changedFiles": 1, "files": [{"path": "src/services/x.py"}]}},
