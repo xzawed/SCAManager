@@ -277,6 +277,9 @@ _MENTIONS = ['grep -n "railway status" docs/a.md', "cat scripts/observe_db.py", 
              "timeout 60 cmd <<'EOF'\nif exist dist (\n  echo built) else (echo none; railway up later)\nEOF",
              'cmd //c "if exist dist (echo(railway up failed)"',  # cmd 의 echo( 꼴
              "cmd //c 'if exist x (echo \"a) else (railway up later\") else (echo b)'",  # 따옴표 속 `)` 는 블록을 닫지 않는다
+             # Grok claim-review(1b291152) — FOR 집합 · if 괄호 조건은 데이터 / a FOR set and if operands are data
+             'cmd //c "for %f in (observer_setup.py observe_db.py) do echo %f"',
+             "timeout 60 cmd <<'EOF'\nfor %s in (railway up) do echo %s\nEOF",
              "timeout 60 cmd <<'EOF'\n# deploy step (railway up); later\nEOF",  # `#` 로 시작하는 줄은 돌지 않는다
              'case "$1" in\n  a) echo "(x) esac done" ;;\n  scripts/observer_setup.py) echo "user-only" ;;\nesac',
              'case "$1" in\n  start) echo starting ;;   # (nested case ends with) esac\n'
@@ -468,6 +471,8 @@ _POWERSHELL_MENTIONS = ["Get-ChildItem | % { Select-String -Path $_ -Pattern rai
                         # 여덟째 적대 패스(wf_13faf998-b43) — cmd 의 echo 인자는 글자, bash 가 받는 here-string 은 Bash 규칙
                         # cmd echo text is literal; a here-string bash receives follows Bash rules
                         'cmd /c "echo Deploy blocked (railway up needs approval)"',
+                        "Start-Process cmd -ArgumentList '/c','for %f in (observer_setup.py) do echo %f'",
+                        "cmd /c 'if (observer_setup.py)==(observer_setup.py) echo same'",
                         "bash -c @'\nfiles=(scripts/observer_setup.py scripts/observe_db.py)\nwc -l \"${files[@]}\"\n'@",
                         "@'\nfiles=(\n  scripts/observer_setup.py\n  scripts/observe_db.py\n)\nwc -l \"${files[@]}\"\n'@ | bash",
                         "bash -c @'\nfor s in observer_setup.py backfill_repository_user_id.py; do\n  case \"$s\" in\n"
@@ -668,6 +673,10 @@ _PRODUCTION_WRITES = [
     ("Bash", 'x=$(case "$1" in\n  a) echo a ;;\n  esacfoo) railway up ;;\nesac)'),
     ("Bash", 'cmd //c "if (setup)==(setup) (railway up)"'),  # if 조건의 `(setup)` 은 set 블록이 아니다
     ("Bash", 'cmd //c "if exist a (if exist b (echo x)) else (railway up)"'),  # 겹친 블록의 `))` 뒤 else
+    # Grok claim-review(1b291152) — 블록 · do · else 안의 `@`, `for /f` 의 명령 집합 / `@` inside blocks; a for /f command set
+    ("Bash", 'cmd //c "if exist dist (@railway up)"'),
+    ("Bash", 'cmd //c "for %s in (api web) do (@railway up -s %s)"'),
+    ("Bash", "cmd //c \"for /f %a in ('railway up') do echo %a\""),
     ("Bash", 'cmd //c "if exist deploy-set.flag (railway up)"'),  # 조건 속 `set` 은 명령이 아니다 / not a command word
 ]
 
@@ -830,6 +839,8 @@ _USER_ONLY_SCRIPTS = [
     ("Bash", 'x="$(echo "(" ${#a})"; py -3 scripts/observer_setup.py'),
     ("Bash", "timeout 60 cmd <<'EOF'\nif exist dist (\n  echo built) else (py -3 scripts\\observer_setup.py)\nEOF"),  # 줄을 넘는 블록
     ("Bash", "cmd //c \"if exist x (bash -c '(echo hi; py -3 scripts/observer_setup.py)')\""),  # 블록 안 홑따옴표는 자식 셸 몫
+    ("PowerShell", "cmd /c 'if exist dist (echo ok) else (@py -3 scripts\\observer_setup.py --host db)'"),
+    ("Bash", 'cmd //c "if exist data.csv (@py -3 scripts\\backfill_repository_user_id.py --apply)"'),
     # 열넷째 적대 패스(wf_99240b16-4fc) — FOR 집합은 블록이 아니다, `)` 뒤 `;` · `,` · `=` · do · `0<nul` 은 cmd 가 이어 읽는다,
     # cmd 의 `#` · 백틱은 글자 / a FOR set is not a block; cmd continues after `) ;` `) do` `0<nul`; `#` and backticks are text
     ("Bash", "cmd //c 'if exist C:\\nonexist (for %s in (settings) do (echo %s)) else (py -3 scripts\\observer_setup.py)'"),

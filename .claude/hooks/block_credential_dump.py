@@ -3110,6 +3110,7 @@ def _cmd_call(statement, depth=0):
         stripped = stripped[1:].lstrip()
     if _CMD_COMMENT.match(stripped):
         return "", depth
+    stripped = _cmd_data_parens(_CMD_INNER_AT.sub(r"\1", stripped))
     text = _CMD_TEXT_STATEMENT.match(stripped)
     if text:
         end = _cmd_text_end(stripped, text.end(), depth)
@@ -3153,6 +3154,28 @@ def _cmd_closed_quotes(statement):
         out.append(ch)
         i += 1
     return "".join(out) + (quote or "")
+
+
+# 블록 · do · else 안 명령 앞 `@`(되풀이 끄기) / an echo-off `@` before a command inside a block or after do / else
+_CMD_INNER_AT = re.compile(r"(?i)((?:\(|\bdo\b|\belse\b)\s*)@")
+# FOR 집합 · if 의 괄호 조건 — cmd 에서는 데이터다 / a FOR set and parenthesized if operands are data in cmd
+_CMD_FOR_SET = re.compile(r"(?i)(\bfor\b([^(]*?)\bin\s*)\(([^)]*)\)")
+_CMD_IF_PARENS = re.compile(r"(?i)(\bif\s+(?:/i\s+)?(?:not\s+)?)\(([^)]*)\)(\s*==\s*)\(([^)]*)\)")
+
+
+def _cmd_data_parens(statement):
+    """cmd 의 괄호 데이터를 글자로 — FOR 집합(`for %f in (a b) do …`)과 if 괄호 조건(`if (a)==(b)`)은 PowerShell 하위 식이 아니다
+    (Grok claim-review 1b291152: `for %f in (observer_setup.py observe_db.py) do echo %f` 를 막았다). `for /f … in ('명령')` 의 홑따옴표
+    집합은 cmd 가 돌리는 명령이라 그 글자를 걷는다. Parenthesized cmd data stays text; a `for /f` command set is walked."""
+    def for_set(found):
+        inner = found.group(3).strip()
+        if re.search(r"(?i)/f\b", found.group(2)) and len(inner) > 1 and inner[0] == inner[-1] == "'":
+            return found.group(1) + "(" + _cmd_calls(inner[1:-1]) + ")"
+        return found.group(1) + _cmd_literal("(" + found.group(3) + ")").strip()
+
+    statement = _CMD_FOR_SET.sub(for_set, statement)
+    return _CMD_IF_PARENS.sub(lambda found: found.group(1) + _cmd_literal("(" + found.group(2) + ")").strip() + found.group(3)
+                              + _cmd_literal("(" + found.group(4) + ")").strip(), statement)
 
 
 def _cmd_literal(text):
