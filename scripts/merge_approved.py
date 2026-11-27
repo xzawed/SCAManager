@@ -8,8 +8,8 @@ Squash-merge a PR only at the head the user approved, after mechanical checks (r
 하나라도 못 재면 막는다(fail-closed):
   1. PR 이 열려 있고 초안이 아니며 base 가 main 이다 · --head 는 지금 head 의 앞자리일 뿐이다. 승인은 PR 댓글·리뷰의
      기록이다. 본문의 CRLF 를 LF 로 바꾸고 앞뒤를 뺀 뒤 첫 줄이 `**사용자 승인**` 이고, `- head:` 줄이 지금 head
-     40자리, `- 발화:` 줄이 --approval 발화와 정확히 같아야 한다. `**머지 승인 기록**` 이 있거나 리뷰 state 가
-     PENDING 이면 세지 않는다. 승인 뒤 head 가 바뀌었으면 그 40자리로 다시 받는다.
+     40자리, `- 발화:` 줄이 --approval 발화와 정확히 같아야 한다. `**머지 승인 기록**` 이 있으면 세지 않는다.
+     리뷰는 state 가 APPROVED 또는 COMMENTED 일 때만 센다. 승인 뒤 head 가 바뀌었으면 그 40자리로 다시 받는다.
   2. 그 head 의 검사가 모두 끝났고 실패 · 취소가 없다 · main 의 required 검사가 모두 그 안에서 통과했다.
   3. `src/templates/` · `src/static/` · `src/i18n/` 를 바꾼 PR 은 사용자가 화면을 본 발화(`--visual`)가 있다 — 정적
      시험 통과는 근거가 아니다. 문구도 화면이다(길이가 줄바꿈을 바꾼다). 바꾼 파일 목록을 다 못 읽으면 시각 변경으로 본다.
@@ -39,6 +39,9 @@ _TREE = re.compile(r"^[0-9a-f]{40}$")
 _MARKER = "**머지 승인 기록**"
 # 사용자가 PR 에 올리는 승인 기록의 첫 줄 / the first line of the user's approval record.
 _USER_APPROVAL = "**사용자 승인**"
+# 세는 리뷰 state — 이 둘만. 빠짐 · 빈 값 · 대소문자 · 공백은 제출이 아니다
+# Review states that count. Missing, empty, case, and padding do not.
+_COUNTED_REVIEW_STATES = frozenset({"APPROVED", "COMMENTED"})
 # 훅 표면 — 리포 훅 · 설정은 주 체크아웃의 파일로 돈다. 여기를 바꾼 머지는 주 체크아웃을 당겨야 적용된다(원장 #1917 M01)
 # The hook surface runs from the main checkout's files; a merge touching it applies only after that checkout pulls.
 _HOOK_SURFACE = (".claude/", "scripts/")
@@ -193,16 +196,19 @@ def _is_user_approval(body: str, head: str, utterance: str) -> bool:
 
 
 def matching_approval(state: dict, approval: str) -> dict | None:
-    """사용자 승인 기록 중 가장 이른 것. PENDING 리뷰와 머지 기록 표식은 세지 않는다.
-    Earliest user-approval record. PENDING reviews and the merge-record marker do not count.
+    """사용자 승인 기록 중 가장 이른 것. 리뷰는 state 가 APPROVED · COMMENTED 일 때만 센다.
+    Earliest record. A review counts only when its state is APPROVED or COMMENTED.
     """
-    records = _note_records(state)
+    comments, reviews = state.get("comments"), state.get("reviews")
     text = approval.strip()
     head = state.get("head") if isinstance(state.get("head"), str) else ""
-    if records is None or len(head) != 40 or not text:
+    if _note_records(state) is None or len(head) != 40 or not text:
         return None
-    found = [rec for rec in records
-             if rec.get("state") != "PENDING" and _is_user_approval(rec["body"], head, text)]
+    # 댓글과 리뷰는 어느 목록에 있었는지로 가른다 — 항목 안의 필드로 추정하지 않는다
+    # Comments and reviews are told apart by which list they came from, not by a field.
+    found = [rec for rec in comments if _is_user_approval(rec["body"], head, text)]
+    found += [rec for rec in reviews
+              if rec.get("state") in _COUNTED_REVIEW_STATES and _is_user_approval(rec["body"], head, text)]
     return min(found, key=_when_key) if found else None
 
 

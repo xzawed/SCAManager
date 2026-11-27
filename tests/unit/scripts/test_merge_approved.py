@@ -475,6 +475,52 @@ def test_submitted_review_with_a_valid_record_counts():
     assert _REVIEW_URL in _posted(fake)
 
 
+def _review_with_state(review_state, *, raw):
+    """리뷰 목록의 기록. missing 은 state 키 자체가 없다."""
+    if raw:
+        item = _raw_review(_approval_body(), state="APPROVED")
+    else:
+        item = _record(_approval_body(), kind="review", state="APPROVED")
+    if review_state == "missing":
+        del item["state"]
+    else:
+        item["state"] = review_state
+    return item
+
+
+@pytest.mark.parametrize("review_state", ["missing", None, "pending", "PENDING ", "DISMISSED", "CHANGES_REQUESTED"])
+def test_review_state_outside_approved_or_commented_is_refused(review_state):
+    """리뷰는 state 가 APPROVED 또는 COMMENTED 가 아니면 기록이 있어도 막는다."""
+    assert _decide(_state(comments=[], reviews=[_review_with_state(review_state, raw=False)]))
+    fake = _Fake(comments=[], reviews=[_review_with_state(review_state, raw=True)])
+    code, out = _main(fake)
+    assert code == 1, out
+    assert not fake.sent("comment") and not fake.sent("merge"), fake.calls
+
+
+@pytest.mark.parametrize("review_state", ["APPROVED", "COMMENTED"])
+def test_approved_or_commented_review_counts(review_state):
+    """리뷰 state 가 APPROVED 또는 COMMENTED 이면 승인 기록으로 센다."""
+    fake = _Fake(comments=[], reviews=[_review_with_state(review_state, raw=True)])
+    code, out = _main(fake)
+    assert code == 0, out
+    assert len(fake.sent("merge")) == 1
+    assert _REVIEW_URL in _posted(fake)
+
+
+def test_issue_comment_without_a_state_still_counts():
+    """이슈 댓글은 state 가 없어도 승인 기록이면 센다."""
+    comment = _record(_approval_body())
+    assert "state" not in comment
+    assert _decide(_state(comments=[comment], reviews=[])) == []
+    raw = _raw_comment(_approval_body())
+    assert "state" not in raw
+    fake = _Fake(comments=[raw], reviews=[])
+    code, out = _main(fake)
+    assert code == 0, out
+    assert len(fake.sent("merge")) == 1
+
+
 def test_merge_record_names_the_earlier_matching_approval():
     """댓글과 리뷰가 둘 다 맞으면 더 이른 쪽을 기록에 적는다."""
     review = _raw_review(_approval_body(), ident=5, submitted_at="2026-11-01T00:00:00Z", url=_REVIEW_URL)
