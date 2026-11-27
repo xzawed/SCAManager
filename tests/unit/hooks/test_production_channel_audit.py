@@ -280,6 +280,8 @@ _MENTIONS = ['grep -n "railway status" docs/a.md', "cat scripts/observe_db.py", 
              # Grok claim-review(1b291152) — FOR 집합 · if 괄호 조건은 데이터 / a FOR set and if operands are data
              'cmd //c "for %f in (observer_setup.py observe_db.py) do echo %f"',
              "timeout 60 cmd <<'EOF'\nfor %s in (railway up) do echo %s\nEOF",
+             "timeout 60 cmd <<'EOF'\nfor /f \"usebackq\" %i in ('railway up') do echo %i\nEOF",  # usebackq 의 홑따옴표는 글자
+             'cmd //c "if (observer_setup.py) equ (observer_setup.py) echo same"',
              "timeout 60 cmd <<'EOF'\n# deploy step (railway up); later\nEOF",  # `#` 로 시작하는 줄은 돌지 않는다
              'case "$1" in\n  a) echo "(x) esac done" ;;\n  scripts/observer_setup.py) echo "user-only" ;;\nesac',
              'case "$1" in\n  start) echo starting ;;   # (nested case ends with) esac\n'
@@ -677,6 +679,8 @@ _PRODUCTION_WRITES = [
     ("Bash", 'cmd //c "if exist dist (@railway up)"'),
     ("Bash", 'cmd //c "for %s in (api web) do (@railway up -s %s)"'),
     ("Bash", "cmd //c \"for /f %a in ('railway up') do echo %a\""),
+    ("Bash", "timeout 60 cmd <<'EOF'\nfor /f \"usebackq\" %i in (`railway up`) do echo %i\nEOF"),  # usebackq 의 명령은 백틱
+    ("Bash", 'cmd //c "if exist dist (@\\"C:\\\\npm\\\\railway.cmd\\" up)"'),  # 블록 안 따옴표 친 머리
     ("Bash", 'cmd //c "if exist deploy-set.flag (railway up)"'),  # 조건 속 `set` 은 명령이 아니다 / not a command word
 ]
 

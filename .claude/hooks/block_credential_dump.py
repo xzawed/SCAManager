@@ -3110,7 +3110,9 @@ def _cmd_call(statement, depth=0):
         stripped = stripped[1:].lstrip()
     if _CMD_COMMENT.match(stripped):
         return "", depth
-    stripped = _cmd_data_parens(_CMD_INNER_AT.sub(r"\1", stripped))
+    stripped = _CMD_INNER_AT.sub(r"\1", stripped)
+    stripped = _cmd_data_parens(_CMD_INNER_QUOTED.sub(
+        lambda found: found.group(1) + "& '" + found.group(2).replace("'", "''") + "'", stripped))
     text = _CMD_TEXT_STATEMENT.match(stripped)
     if text:
         end = _cmd_text_end(stripped, text.end(), depth)
@@ -3160,7 +3162,10 @@ def _cmd_closed_quotes(statement):
 _CMD_INNER_AT = re.compile(r"(?i)((?:\(|\bdo\b|\belse\b)\s*)@")
 # FOR 집합 · if 의 괄호 조건 — cmd 에서는 데이터다 / a FOR set and parenthesized if operands are data in cmd
 _CMD_FOR_SET = re.compile(r"(?i)(\bfor\b([^(]*?)\bin\s*)\(([^)]*)\)")
-_CMD_IF_PARENS = re.compile(r"(?i)(\bif\s+(?:/i\s+)?(?:not\s+)?)\(([^)]*)\)(\s*==\s*)\(([^)]*)\)")
+_CMD_IF_PARENS = re.compile(r"(?i)(\bif\s+(?:/i\s+)?(?:not\s+)?)\(([^)]*)\)(\s*==\s*|\s+(?:equ|neq|lss|leq|gtr|geq)\s+)"
+                            r"\(([^)]*)\)")
+# 블록 · do · else 안의 따옴표 친 머리는 호출 / a quoted head inside a block or after do / else is a call
+_CMD_INNER_QUOTED = re.compile(r'(?i)((?:\(|\bdo\b|\belse\b)\s*)"([^"]*)"')
 
 
 def _cmd_data_parens(statement):
@@ -3169,7 +3174,9 @@ def _cmd_data_parens(statement):
     집합은 cmd 가 돌리는 명령이라 그 글자를 걷는다. Parenthesized cmd data stays text; a `for /f` command set is walked."""
     def for_set(found):
         inner = found.group(3).strip()
-        if re.search(r"(?i)/f\b", found.group(2)) and len(inner) > 1 and inner[0] == inner[-1] == "'":
+        # usebackq 면 명령은 백틱 · 홑따옴표는 글자(Grok 재확인) / with usebackq the command is in backticks
+        quote = "`" if re.search(r"(?i)usebackq", found.group(2)) else "'"
+        if re.search(r"(?i)/f\b", found.group(2)) and len(inner) > 1 and inner[0] == inner[-1] == quote:
             return found.group(1) + "(" + _cmd_calls(inner[1:-1]) + ")"
         return found.group(1) + _cmd_literal("(" + found.group(3) + ")").strip()
 
