@@ -20,6 +20,11 @@ Railway MCP `list_variables` 는 도구 이름으로 막는다.
 The hook reads command text, not execution: every alias that dumps the same values must be listed.
 The Railway MCP list_variables tool is denied by name.
 
+🔴 이 훅 밖의 길 — 파일 도구(Read · Grep · Glob)로 .env 꼴을 여는 길과 Grok 의 셸 위임(위임 · 검증 · CLI 도구)은
+`.claude/settings.json` 의 `permissions.deny` 가 막는다(원장 #1940 M08 · 시험 = `test_file_tool_dotenv_deny.py`).
+.env 꼴 이름을 넓히면 그 거부 목록도 같이 고친다 — 시험이 이 파일의 이름 판정과 대조한다.
+Outside this hook: file-tool reads of .env-like names and Grok's shell-running tools are denied in settings.
+
 🔴 설계 원칙 — **대안 없는 차단은 훅을 무력화시킨다.** 차단 시 반드시 안전한 관용구를
 안내한다(이름만 → `cut -d= -f1`, 배포 설정 → `scripts/railway_config.py`). 그래야 다음 세션이 훅을
 우회하지 않는다.
@@ -103,7 +108,9 @@ def _is_railway_cli(tok):
 _SAFE_IDIOM = 'railway variables --kv | cut -d= -f1 | grep -i CRON'
 _SAFE_CONFIG = "py -3 scripts/railway_config.py"
 _SAFE_ENV = "$env:NAME  (YAML 의 env: 키를 찾는 grep 이면 콜론을 빼고: grep -n 'env' <파일>)"
-_SAFE_DOTENV = "grep -c NAME .env  (있는지만 센다 — 값은 열지 않는다)"
+# settings 의 Read 거부가 .env 를 이름으로 적은 셸 읽기(cat · grep · ls)도 막는다 — 남는 확인은 존재뿐이다(11-28 실측).
+# The settings Read deny also blocks shell reads that name .env (cat, grep, ls); only existence checks remain.
+_SAFE_DOTENV = "test -f .env  (있는지만 본다 — 이름 · 개수는 사용자에게 `! grep -c NAME .env` 를 부탁한다)"
 _SAFE_SEARCH = "Grep 도구 · git grep KEY · grep -rn --exclude='.env*' --exclude='*.env' KEY <폴더>"
 
 # ── 무엇이 덤프를 «중화» 하는가 ─────────────────────────────────────────────
@@ -444,16 +451,28 @@ def _name_glob_may_hit_dotenv(pattern):
     Fail-closed fallback when the folder cannot be read: could this name glob match a .env-like name?"""
     pattern = pattern.lower()
     dot_ok = _star_hits_dotfiles(pattern)
-    return any(fnmatch.fnmatchcase(probe, pattern) for probe in (".env", ".env.local", "prod.env")
+    return any(fnmatch.fnmatchcase(probe, pattern) for probe in _DOTENV_NAME_PROBES
                if dot_ok or not probe.startswith("."))
 
 
+# .env 꼴 이름의 대표 — 폴더를 못 읽을 때의 판정과, settings 의 파일 도구 거부(Read)가 같은 이름을 덮는지 재는 시험
+# (`tests/unit/hooks/test_file_tool_dotenv_deny.py`)이 쓴다. / Representative .env-like names, shared with that test.
+_DOTENV_NAME_PROBES = (".env", ".env.local", "prod.env", "env.backup")
+# 자격 파일 사본 — `env` 바로 뒤 구분자와 백업 낱말(`env.backup` · `prod_env.bak` · `dotenv-old`). 키 하나 교체 승인이
+# .env 전체 사본으로 넓어졌고 그 이름이 이 판정 밖이었다(원장 #1940 M08). settings 의 Read 거부가 같은 꼴을 덮는다.
+# Credential-file copies: `env`, a separator, then a backup word; the settings Read deny covers the same shapes.
+_DOTENV_COPY = re.compile(r"env[._-](?:backup|bak|old|orig|save|copy)")
+
+
 def _is_dotenv_name(comp):
-    """마지막 경로 이름이 .env 꼴인가(템플릿 제외 · NTFS 스트림 접미 제거) / Is this name .env-like?"""
+    """마지막 경로 이름이 .env 꼴인가(템플릿 제외 · NTFS 스트림 접미 · 편집기 백업 표지 제거 · 사본 포함) /
+    Is this name .env-like (templates excluded; stream suffix and editor-backup marks stripped; copies included)?"""
     comp = re.sub(r"^[a-z]:", "", comp).split(":", 1)[0]  # 드라이브 · `.env::$DATA` 스트림 접미 제거
+    comp = comp.strip("#").rstrip("~")  # 편집기 백업 · 자동 저장(`.env~` · `#.env#`)은 원본과 같은 내용이다
     if not comp or comp in _DOTENV_TEMPLATES:
         return False
-    return comp == ".env" or comp.startswith((".env.", ".env-", ".env_")) or comp.endswith(".env")
+    return (comp == ".env" or comp.startswith((".env.", ".env-", ".env_")) or comp.endswith(".env")
+            or bool(_DOTENV_COPY.search(comp)))
 
 
 def _glob_matches(norm):

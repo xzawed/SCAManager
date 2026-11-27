@@ -32,6 +32,7 @@ prod 판정 = `ENVIRONMENT=production` 이거나 `APP_BASE_URL` 이 https (`src/
    non-provider patterns 가 켜져 있을 때만 막는다 — 그 앞의 1층 `.pre-commit-config.yaml::id: check-db-url-in-diff` 가 커밋 때 막는다.
 3. 커밋 메시지에는 토큰 대신 `<REDACTED>` (`.pre-commit-config.yaml::id: check-commit-msg-secrets`).
 4. 유출 시: 발급처에서 즉시 회전 → `trufflehog git file://. --only-verified` 로 잔존 확인 → 이력에 남았으면 `git filter-repo` 후 force push.
+5. 자격 파일(.env)은 사본을 만들지 않는다 — 생겼으면 지우기는 사용자 `!` 몫으로 원장 «사용자 몫» 에 올린다.
 
 ## 새 코드에 붙이는 것
 

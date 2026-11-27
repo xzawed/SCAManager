@@ -287,6 +287,14 @@ _BLOCKED = [
     pytest.param("grep -C 3 KEY .env", id="grep-context-dotenv"),
     pytest.param("grep -c -A2 KEY .env", id="grep-count-with-context-flag"),
     pytest.param("ls .env | xargs cat", id="safe-head-piped-to-reader"),
+    # 🔴 자격 파일 사본 이름 — 키 하나 교체 승인이 .env 전체 사본으로 넓어졌고 그 이름이 판정 밖이었다(원장 #1940 M08).
+    #    `env` 뒤 구분자 + 백업 낱말 · 편집기 백업(`~`).
+    # Credential-file copy names were outside the .env name test (ledger #1940 M08).
+    pytest.param("cat env.backup", id="dotenv-copy-env-backup"),
+    pytest.param("cat env.backup-20261125", id="dotenv-copy-dated"),
+    pytest.param("type C:/Users/x/AppData/Local/Temp/prod_env.bak", id="dotenv-copy-bak-abspath"),
+    pytest.param("cat dotenv-old", id="dotenv-copy-dash-old"),
+    pytest.param("cat .env~", id="dotenv-editor-backup"),
 ]
 
 
@@ -392,6 +400,12 @@ _ALLOWED = [
     pytest.param("grep KEY .env.example", id="grep-dotenv-example"),
     pytest.param("cp .env.example .env", id="copy-template-to-dotenv"),
     pytest.param("ls -la .envrc", id="envrc-not-dotenv"),
+    # 사본 이름 판정의 대조군 — `env` 와 백업 낱말이 붙어 있지 않으면 .env 꼴이 아니다(원장 #1940 M08).
+    # Controls for the copy-name test: `env` not directly followed by a backup word is not .env-like.
+    pytest.param("cat alembic/env.py", id="alembic-env-py"),
+    pytest.param("cat env.py.bak", id="env-py-backup-is-not-dotenv"),
+    pytest.param("cat scripts/backup.sh", id="backup-script"),
+    pytest.param("cat docs/reference/env-vars.md", id="env-vars-doc"),
     # 안전한 꼴 — 옮기기 · 지우기 · 정보만 보기 · 쓰기 대상으로만 나오는 .env · 템플릿 · 이름만 자르기.
     # Safe forms: move/remove/metadata, .env only as a write target, templates, names-only cut.
     pytest.param("ls -la .env", id="ls-dotenv"),
@@ -785,6 +799,21 @@ def test_recursive_search_in_a_tree_without_dotenv_passes(tmp_path):
     (tmp_path / "src" / "app.py").write_text("X = 1\n", encoding="utf-8")
     decision, reason = _decide("grep -rn KEY .", cwd=tmp_path)
     assert decision != "deny", f".env 가 없는데 막혔다: {reason}"
+
+
+def test_recursive_search_sees_a_copy_named_file(tmp_path):
+    """🔴 재귀 검색 대상 폴더에 자격 파일 사본(env.backup)만 있어도 읽기다 — 이름 판정은 폴더 순회에도 쓰인다.
+    닮은 이름(env.py · environment.py · env.py.bak)만 있는 폴더는 대조군으로 통과한다(원장 #1940 M08).
+    A recursive search over a folder holding only a copy-named file is a read; look-alike names pass."""
+    (tmp_path / "keep").mkdir()
+    (tmp_path / "keep" / "env.backup").write_text("PLANT=1\n", encoding="utf-8")
+    decision, _ = _decide("grep -rn KEY keep", cwd=tmp_path)
+    assert decision == "deny", "사본 이름 파일이 든 폴더의 재귀 검색이 통과했다 — 사본의 일치 줄이 값째 나온다."
+    (tmp_path / "plain").mkdir()
+    for name in ("env.py", "environment.py", "env.py.bak"):
+        (tmp_path / "plain" / name).write_text("X = 1\n", encoding="utf-8")
+    decision, reason = _decide("grep -rn KEY plain", cwd=tmp_path)
+    assert decision != "deny", f".env 꼴이 아닌 이름만 있는 폴더인데 막혔다: {reason}"
 
 
 def test_recursive_search_deny_reason_points_to_safe_search(repo_like):
