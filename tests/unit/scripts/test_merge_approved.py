@@ -3,7 +3,8 @@ Merge only at the head the user approved (retro ledger L06).
 
 판정(`decide`)은 표로 돌리고 — 막는 값과 통과하는 값을 같은 표에 심는다 — `main` 은 가짜 실행기로 «조건이 하나라도
 안 맞으면 댓글도 머지도 나가지 않는다» 와 «맞으면 승인 기록 댓글 뒤 승인한 head 로 정확히 한 번 머지한다» 를 잰다.
-실제 gh · git 은 부르지 않는다.
+실제 gh · git 은 부르지 않는다. --head 가 지금 head 의 앞자리인 것만으로는 승인이 아니다 — 본문은
+`**사용자 승인**` 으로 시작하는 기록이어야 하고, 스크립트 자신의 «머지 승인 기록» 은 세지 않는다.
 decide() is table-tested; main() is wired against a fake runner (no real gh/git calls).
 """
 import json
@@ -20,6 +21,38 @@ _REQUIRED = ["E2E (Playwright)", "pytest + Codecov + SonarCloud"]
 _GREEN = [{"name": "E2E (Playwright)", "bucket": "pass"},
           {"name": "pytest + Codecov + SonarCloud", "bucket": "pass"},
           {"name": "codecov/patch", "bucket": "skipping"}]
+_APPROVAL = "머지 승인합니다"
+_COMMENT_URL = "https://github.com/example/repo/pull/1836#issuecomment-1917"
+_REVIEW_URL = "https://github.com/example/repo/pull/1836#pullrequestreview-1918"
+
+
+def _approval_body(head=_HEAD, approval=_APPROVAL):
+    """사용자 승인 기록 — 첫 줄 · head 줄 · 발화 줄."""
+    return "\n".join(["**사용자 승인**", f"- head: `{head}`", f"- 발화: «{approval}»"])
+
+
+def _record(body, *, kind="comment", ident=1917, author="dirtc",
+            when="2026-11-27T01:02:03Z", url=_COMMENT_URL, state="APPROVED"):
+    """decide 가 읽는 기록 — gather 가 gh 응답에서 만드는 꼴."""
+    rec = {"id": ident, "body": body, "author": author, "html_url": url}
+    if kind == "review":
+        rec["submitted_at"] = when
+        rec["state"] = state
+    else:
+        rec["created_at"] = when
+    return rec
+
+
+def _raw_comment(body, *, ident=1917, author="dirtc", created_at="2026-11-27T01:02:03Z", url=_COMMENT_URL):
+    """gh 이슈 댓글 원형 / a raw issue-comment payload."""
+    return {"id": ident, "body": body, "user": {"login": author}, "created_at": created_at, "html_url": url}
+
+
+def _raw_review(body, *, ident=1918, author="dirtc", submitted_at="2026-11-27T02:03:04Z",
+                url=_REVIEW_URL, state="APPROVED"):
+    """gh 리뷰 원형 / a raw pull-request review payload."""
+    return {"id": ident, "body": body, "user": {"login": author}, "state": state,
+            "submitted_at": submitted_at, "html_url": url}
 
 
 def _state(**over):
@@ -28,12 +61,14 @@ def _state(**over):
         "files": ["src/services/x.py", "tests/unit/test_x.py"], "changed_files": 2,
         "checks": [dict(c) for c in _GREEN], "required": list(_REQUIRED),
         "head_tree": _TREE, "merged_tree": _TREE,
+        # 통과 기준선 — 사용자 승인 기록. --head 짧은 SHA 는 승인이 아니다.
+        "comments": [_record(_approval_body())], "reviews": [],
     }
     state.update(over)
     return state
 
 
-def _decide(state, *, head=_HEAD[:8], approval="머지 승인합니다", visual=None, tested_tree=None):
+def _decide(state, *, head=_HEAD[:8], approval=_APPROVAL, visual=None, tested_tree=None):
     return ma.decide(state, head=head, approval=approval, visual=visual, tested_tree=tested_tree)
 
 
@@ -45,7 +80,7 @@ def _with_bucket(name, bucket):
 
 
 def test_approved_head_with_green_checks_may_merge():
-    """승인한 head(짧은 SHA) = 지금 head · 검사 전부 통과 · 시각 변경 없음 · 합친 트리 = 시험한 트리."""
+    """승인 기록이 지금 head 와 발화를 적고, 짧은 --head 는 그 앞자리일 뿐이며, 검사·트리가 맞으면 통과."""
     assert _decide(_state()) == []
 
 
@@ -155,12 +190,26 @@ def test_unreadable_file_list_counts_as_a_visual_change(changed):
 class _Fake:
     """명령 앞머리로 답을 고르는 가짜 실행기 — 부른 명령을 모두 적는다 / a fake runner that records every call."""
 
-    def __init__(self, *, view=None, checks=None, merged_tree=_TREE, merge_commit_tree=_TREE, fail=None):
+    def __init__(self, *, view=None, checks=None, merged_tree=_TREE, merge_commit_tree=_TREE, fail=None,
+                 comments=None, reviews=None, comment_pages=None):
         self.view = view or {"state": "OPEN", "isDraft": False, "baseRefName": "main", "headRefOid": _HEAD,
                              "changedFiles": 1, "files": [{"path": "src/services/x.py"}]}
         self.checks = _GREEN if checks is None else checks
         self.merged_tree, self.merge_commit_tree, self.fail = merged_tree, merge_commit_tree, fail
+        # None = 지금 head 40자리와 발화를 담은 댓글 한 건. 빈 목록은 «승인 댓글 없음».
+        self.comments, self.reviews, self.comment_pages = comments, reviews, comment_pages
         self.calls = []
+
+    def _comment_json(self):
+        """`--paginate --slurp` 꼴 — 바깥 배열이 페이지, 안쪽이 댓글."""
+        if self.comment_pages is not None:
+            return json.dumps(self.comment_pages)
+        page = [_raw_comment(_approval_body())] if self.comments is None else self.comments
+        return json.dumps([page])
+
+    def _review_json(self):
+        page = [] if self.reviews is None else self.reviews
+        return json.dumps([page])
 
     def __call__(self, args, ok_codes=frozenset({0})):
         self.calls.append(list(args))
@@ -172,7 +221,12 @@ class _Fake:
         if head == ["gh", "pr", "checks"]:
             assert 8 in ok_codes, "진행 중(8)일 때도 JSON 을 읽어야 한다"
             return json.dumps(self.checks)
-        if head[:2] == ["gh", "api"]:
+        if args[:2] == ["gh", "api"]:
+            endpoint = next((part for part in args if part.startswith("repos/")), "")
+            if endpoint.endswith("/comments"):
+                return self._comment_json()
+            if endpoint.endswith("/reviews"):
+                return self._review_json()
             return json.dumps(_REQUIRED)
         if head == ["git", "rev-parse", f"{_HEAD}^{{tree}}"]:
             return _TREE + "\n"
@@ -186,7 +240,7 @@ class _Fake:
         return [c for c in self.calls if c[:3] == ["gh", "pr", verb]]
 
 
-def _main(fake, *extra, approval="머지 승인합니다"):
+def _main(fake, *extra, approval=_APPROVAL):
     lines = []
     code = ma.main(["1836", "--head", _HEAD[:8], "--approval", approval, *extra], run=fake, out=lines.append)
     return code, "\n".join(lines)
@@ -295,6 +349,228 @@ def test_merge_commit_tree_mismatch_is_reported_loudly():
     fake = _Fake(merge_commit_tree="3" * 40)
     code, out = _main(fake)
     assert code == 3 and "≠ 시험한 트리" in out, out
+
+
+def _posted(fake):
+    sent = fake.sent("comment")
+    assert len(sent) == 1, fake.calls
+    return sent[0][sent[0].index("--body") + 1]
+
+
+# --- 4b. 승인 근거 — --head 는 승인이 아니다 (원장 #1917 M03 P1-8) ---------------------------
+
+
+def test_decide_refuses_when_the_pr_has_no_approval_comment():
+    """댓글·리뷰가 없으면 --head 가 지금 head 와 맞아도 막히고, 올릴 기록 세 줄을 보여 준다."""
+    problems = _decide(_state(comments=[], reviews=[]))
+    assert len(problems) == 1, problems
+    reason = problems[0]
+    assert _approval_body() in reason
+    assert "gh pr comment <PR> --body-file <파일>" in reason
+    assert "다시" in reason
+
+
+def test_main_sends_nothing_when_the_pr_has_no_approval():
+    fake = _Fake(comments=[], reviews=[])
+    code, out = _main(fake)
+    assert code == 1, out
+    assert not fake.sent("comment") and not fake.sent("merge"), fake.calls
+    assert _approval_body() in out
+
+
+def test_free_text_approval_request_does_not_count():
+    """head 와 발화가 본문에 있어도, 승인 기록이 아니면 막는다."""
+    body = f"head {_HEAD} 에 «{_APPROVAL}» 를 받으면 머지한다"
+    assert _HEAD in body and _APPROVAL in body
+    assert _decide(_state(comments=[_record(body)], reviews=[]))
+    fake = _Fake(comments=[_raw_comment(body)], reviews=[])
+    code, out = _main(fake)
+    assert code == 1, out
+    assert not fake.sent("comment") and not fake.sent("merge"), fake.calls
+
+
+def test_main_merges_when_the_approval_record_matches():
+    fake = _Fake()
+    code, out = _main(fake)
+    assert code == 0, out
+    assert len(fake.sent("merge")) == 1
+    body = _posted(fake)
+    assert _COMMENT_URL in body
+    assert f"«{_APPROVAL}»" in body and _HEAD in body and "시각 변경 없음" in body
+
+
+def test_decide_refuses_when_the_comment_names_an_older_head():
+    """force-push 뒤 연산자가 새 tip 을 --head 로 넘겨도, 기록의 옛 head 줄은 승인이 아니다."""
+    older = "a" * 40
+    problems = _decide(_state(comments=[_record(_approval_body(head=older))], reviews=[]), head=_HEAD[:8])
+    assert len(problems) == 1, problems
+    assert _HEAD in problems[0] and older not in problems[0]
+
+
+@pytest.mark.parametrize("width", [7, 12, 39])
+def test_decide_refuses_a_prefix_only_sha(width):
+    """head 줄이 7~39자리이면 40자리 기록이 아니다."""
+    body = _approval_body(head=_HEAD[:width])
+    assert _HEAD not in body
+    problems = _decide(_state(comments=[_record(body)], reviews=[]))
+    assert len(problems) == 1, problems
+    assert _HEAD in problems[0]
+
+
+def test_decide_refuses_when_the_utterance_line_differs():
+    body = _approval_body(approval="다른 발화")
+    problems = _decide(_state(comments=[_record(body)], reviews=[]))
+    assert len(problems) == 1, problems
+    assert f"- 발화: «{_APPROVAL}»" in problems[0]
+
+
+def test_crlf_approval_record_counts():
+    body = _approval_body().replace("\n", "\r\n")
+    assert "\r\n" in body
+    assert _decide(_state(comments=[_record(body)], reviews=[])) == []
+
+
+def test_approval_record_not_on_the_first_line_is_refused():
+    body = "앞말\n" + _approval_body()
+    assert _decide(_state(comments=[_record(body)], reviews=[]))
+
+
+def test_head_sha_in_prose_is_not_the_head_line():
+    """첫 줄과 발화 줄이 맞아도, head 가 정확한 줄이 아니면 막는다."""
+    body = "\n".join(["**사용자 승인**", f"head {_HEAD} 를 적었다", f"- 발화: «{_APPROVAL}»"])
+    assert _HEAD in body
+    assert _decide(_state(comments=[_record(body)], reviews=[]))
+
+
+def test_the_scripts_own_marker_comment_does_not_count():
+    """표식이 있는 본문은 head 줄 · 발화 줄이 있어도 사용자 승인이 아니다."""
+    posted = ma.comment_body(_state(), approval=_APPROVAL, visual=None)
+    assert "**머지 승인 기록**" in posted
+    body = _approval_body() + "\n**머지 승인 기록**\n"
+    assert _decide(_state(comments=[_record(body)], reviews=[]))
+
+
+def test_a_real_approval_still_counts_beside_the_marker():
+    """표식 댓글이 옆에 있어도, 표식이 없는 승인 기록은 근거가 된다."""
+    marker = ma.comment_body(_state(), approval=_APPROVAL, visual=None)
+    state = _state(comments=[_record(marker, ident=1, url="https://example.invalid/marker"),
+                             _record(_approval_body(), ident=2)], reviews=[])
+    assert _decide(state) == []
+
+
+def test_pending_review_with_a_valid_record_is_refused():
+    raw = _raw_review(_approval_body(), state="PENDING")
+    assert _decide(_state(comments=[], reviews=[_record(_approval_body(), kind="review", state="PENDING")]))
+    fake = _Fake(comments=[], reviews=[raw])
+    code, out = _main(fake)
+    assert code == 1, out
+    assert not fake.sent("comment") and not fake.sent("merge"), fake.calls
+
+
+def test_submitted_review_with_a_valid_record_counts():
+    fake = _Fake(comments=[], reviews=[_raw_review(_approval_body(), state="APPROVED")])
+    code, out = _main(fake)
+    assert code == 0, out
+    assert len(fake.sent("merge")) == 1
+    assert _REVIEW_URL in _posted(fake)
+
+
+def _review_with_state(review_state, *, raw):
+    """리뷰 목록의 기록. missing 은 state 키 자체가 없다."""
+    if raw:
+        item = _raw_review(_approval_body(), state="APPROVED")
+    else:
+        item = _record(_approval_body(), kind="review", state="APPROVED")
+    if review_state == "missing":
+        del item["state"]
+    else:
+        item["state"] = review_state
+    return item
+
+
+# witness-corpus: Grok 적대 검토(956c36dc)가 재현한 반례(빠짐 · null · 소문자 · 공백)와 GitHub 리뷰 state 문서의 나머지 값 — 허용 목록에서 뽑지 않았다
+_UNCOUNTED_REVIEW_STATES = ["missing", None, "pending", "PENDING ", "DISMISSED", "CHANGES_REQUESTED"]
+
+
+@pytest.mark.parametrize("review_state", _UNCOUNTED_REVIEW_STATES)
+def test_review_state_outside_approved_or_commented_is_refused(review_state):
+    """리뷰는 state 가 APPROVED 또는 COMMENTED 가 아니면 기록이 있어도 막는다."""
+    assert _decide(_state(comments=[], reviews=[_review_with_state(review_state, raw=False)]))
+    fake = _Fake(comments=[], reviews=[_review_with_state(review_state, raw=True)])
+    code, out = _main(fake)
+    assert code == 1, out
+    assert not fake.sent("comment") and not fake.sent("merge"), fake.calls
+
+
+@pytest.mark.parametrize("review_state", ["APPROVED", "COMMENTED"])
+def test_approved_or_commented_review_counts(review_state):
+    """리뷰 state 가 APPROVED 또는 COMMENTED 이면 승인 기록으로 센다."""
+    fake = _Fake(comments=[], reviews=[_review_with_state(review_state, raw=True)])
+    code, out = _main(fake)
+    assert code == 0, out
+    assert len(fake.sent("merge")) == 1
+    assert _REVIEW_URL in _posted(fake)
+
+
+def test_issue_comment_without_a_state_still_counts():
+    """이슈 댓글은 state 가 없어도 승인 기록이면 센다."""
+    comment = _record(_approval_body())
+    assert "state" not in comment
+    assert _decide(_state(comments=[comment], reviews=[])) == []
+    raw = _raw_comment(_approval_body())
+    assert "state" not in raw
+    fake = _Fake(comments=[raw], reviews=[])
+    code, out = _main(fake)
+    assert code == 0, out
+    assert len(fake.sent("merge")) == 1
+
+
+def test_merge_record_names_the_earlier_matching_approval():
+    """댓글과 리뷰가 둘 다 맞으면 더 이른 쪽을 기록에 적는다."""
+    review = _raw_review(_approval_body(), ident=5, submitted_at="2026-11-01T00:00:00Z", url=_REVIEW_URL)
+    comment = _raw_comment(_approval_body(), ident=9, created_at="2026-11-02T00:00:00Z", url=_COMMENT_URL)
+    fake = _Fake(comments=[comment], reviews=[review])
+    code, out = _main(fake)
+    assert code == 0, out
+    body = _posted(fake)
+    assert _REVIEW_URL in body and _COMMENT_URL not in body
+
+
+def test_merge_record_names_the_comment_id_when_it_has_no_url():
+    fake = _Fake(comments=[_raw_comment(_approval_body(), ident=4242, url="")])
+    code, out = _main(fake)
+    assert code == 0, out
+    assert "4242" in _posted(fake)
+
+
+def test_gather_loads_issue_comments_and_reviews():
+    comment = _raw_comment("본문-가", ident=11, author="alice", created_at="2026-11-01T00:00:00Z",
+                           url=_COMMENT_URL)
+    review = _raw_review("본문-나", ident=22, author="bob", submitted_at="2026-11-02T00:00:00Z",
+                         url=_REVIEW_URL)
+    fake = _Fake(comments=[comment], reviews=[review])
+    state = ma.gather(1836, fake)
+    comment_calls = [c for c in fake.calls if any(str(part).endswith("/issues/1836/comments") for part in c)]
+    review_calls = [c for c in fake.calls if any(str(part).endswith("/pulls/1836/reviews") for part in c)]
+    assert len(comment_calls) == 1 and len(review_calls) == 1, fake.calls
+    assert comment_calls[0][:2] == ["gh", "api"]
+    assert "--paginate" in comment_calls[0] and "--slurp" in comment_calls[0]
+    assert "-f" not in comment_calls[0] and "-F" not in comment_calls[0] and "POST" not in comment_calls[0]
+    assert "--paginate" in review_calls[0] and "--slurp" in review_calls[0]
+    assert state["comments"] == [{"id": 11, "body": "본문-가", "author": "alice",
+                                  "created_at": "2026-11-01T00:00:00Z", "html_url": _COMMENT_URL}]
+    assert state["reviews"] == [{"id": 22, "body": "본문-나", "author": "bob", "state": "APPROVED",
+                                "submitted_at": "2026-11-02T00:00:00Z", "html_url": _REVIEW_URL}]
+
+
+def test_gather_flattens_paginated_comment_pages():
+    first = _raw_comment("하나", ident=1, author="ann", created_at="2026-11-01T00:00:00Z", url=_COMMENT_URL)
+    second = _raw_comment("둘", ident=2, author="beau", created_at="2026-11-03T00:00:00Z",
+                          url="https://github.com/example/repo/pull/1836#issuecomment-2")
+    fake = _Fake(comment_pages=[[first], [second]], reviews=[])
+    state = ma.gather(1836, fake)
+    assert [item["id"] for item in state.get("comments") or []] == [1, 2]
+    assert [item["author"] for item in state.get("comments") or []] == ["ann", "beau"]
 
 
 def test_visual_confirmation_is_recorded_in_the_comment():

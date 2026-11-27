@@ -17,7 +17,7 @@ GitHub Push/PR → 정적 분석 + AI 리뷰 → 점수·등급 → 알림(Teleg
 4. **구현**
 5. **검증** — [verify.md](docs/workflow/verify.md) 의 절차를 그대로 따른다.
 6. **PR** — `gh pr create --body-file <임시파일>`(URL 안내 금지).
-7. **머지** — `py -3 scripts/merge_approved.py <PR> --head <승인한 SHA> --approval "<사용자 발화>"`. 승인(위임 포함)은
+7. **머지** — 승인 발화 · head 40자리를 PR 댓글로 남기고 `py -3 scripts/merge_approved.py <PR> --head <SHA> --approval "<발화>"`. 승인(위임 포함)은
    그 head 에 묶인다 — 뒤에 push 했으면 다시 받는다. 시각 변경(`templates/`·`static/`·`i18n/`)은 화면을 본
    발화(`--visual`)까지 받는다 — 위임으로 덮지 않고, 정적 테스트 통과는 근거가 아니다. 머지 뒤 배포를 확인한다([deploy.md](docs/workflow/deploy.md)).
 

@@ -6,13 +6,15 @@ Squash-merge a PR only at the head the user approved, after mechanical checks (r
     py -3 scripts/merge_approved.py 1836 --head 9c01d5c2 --approval "…" --check   # 조건만 본다
 
 하나라도 못 재면 막는다(fail-closed):
-  1. PR 이 열려 있고 초안이 아니며 base 가 main 이다 · 지금 head 가 승인한 head 다 — 승인은 그 순간의 head 에
-     묶인다. 승인 뒤 push 했으면 다시 받는다.
+  1. PR 이 열려 있고 초안이 아니며 base 가 main 이다 · --head 는 지금 head 의 앞자리일 뿐이다. 승인은 PR 댓글·리뷰의
+     기록이다. 본문의 CRLF 를 LF 로 바꾸고 앞뒤를 뺀 뒤 첫 줄이 `**사용자 승인**` 이고, `- head:` 줄이 지금 head
+     40자리, `- 발화:` 줄이 --approval 발화와 정확히 같아야 한다. `**머지 승인 기록**` 이 있으면 세지 않는다.
+     리뷰는 state 가 APPROVED 또는 COMMENTED 일 때만 센다. 승인 뒤 head 가 바뀌었으면 그 40자리로 다시 받는다.
   2. 그 head 의 검사가 모두 끝났고 실패 · 취소가 없다 · main 의 required 검사가 모두 그 안에서 통과했다.
   3. `src/templates/` · `src/static/` · `src/i18n/` 를 바꾼 PR 은 사용자가 화면을 본 발화(`--visual`)가 있다 — 정적
      시험 통과는 근거가 아니다. 문구도 화면이다(길이가 줄바꿈을 바꾼다). 바꾼 파일 목록을 다 못 읽으면 시각 변경으로 본다.
   4. main 과 합친 트리 = 시험한 트리(기본 = PR head 의 트리 · 합친 트리를 따로 돌렸으면 `--tested-tree`).
-건 뒤에는 PR 에 승인 기록 댓글(발화 인용 · head · 화면 확인 · 트리)을 남기고 `--match-head-commit` 으로 머지한 다음,
+건 뒤에는 PR 에 승인 기록 댓글(발화 인용 · 근거 댓글 · head · 화면 확인 · 트리)을 남기고 `--match-head-commit` 으로 머지한 다음,
 머지 커밋의 트리가 시험한 트리인지 다시 본다. 발화는 사용자가 한 말을 그대로 옮긴다 — 지어내지 않는다.
 """
 import argparse
@@ -32,6 +34,14 @@ _PASSED = frozenset({"pass", "skipping"})
 _CHECKS_EXIT_OK = frozenset({0, 1, 8})
 _HEX = re.compile(r"^[0-9a-f]{7,40}$")
 _TREE = re.compile(r"^[0-9a-f]{40}$")
+# 스크립트가 다는 기록의 표식 — 이 본문은 사용자 승인이 아니다
+# Marker on the record this script posts; that body is not the user's approval.
+_MARKER = "**머지 승인 기록**"
+# 사용자가 PR 에 올리는 승인 기록의 첫 줄 / the first line of the user's approval record.
+_USER_APPROVAL = "**사용자 승인**"
+# 세는 리뷰 state — 이 둘만. 빠짐 · 빈 값 · 대소문자 · 공백은 제출이 아니다
+# Review states that count. Missing, empty, case, and padding do not.
+_COUNTED_REVIEW_STATES = frozenset({"APPROVED", "COMMENTED"})
 # 훅 표면 — 리포 훅 · 설정은 주 체크아웃의 파일로 돈다. 여기를 바꾼 머지는 주 체크아웃을 당겨야 적용된다(원장 #1917 M01)
 # The hook surface runs from the main checkout's files; a merge touching it applies only after that checkout pulls.
 _HOOK_SURFACE = (".claude/", "scripts/")
@@ -61,6 +71,52 @@ def _json(run, args, ok_codes=frozenset({0})):
     return json.loads(run(args, ok_codes) or "null")
 
 
+def _flatten_pages(data):
+    """`gh api --paginate --slurp` 는 페이지 배열의 배열이다 — 한 목록으로 펼친다.
+    Slurped pages are a list of arrays; flatten them into one list.
+    """
+    if not isinstance(data, list) or any(not isinstance(page, list) for page in data):
+        raise ValueError("댓글·리뷰 페이지 꼴을 못 읽었다")
+    return [item for page in data for item in page]
+
+
+def _author(item: dict) -> str:
+    user = item.get("user")
+    if isinstance(user, dict) and isinstance(user.get("login"), str):
+        return user["login"]
+    return ""
+
+
+def _text_field(item: dict, key: str) -> str:
+    value = item.get(key)
+    return value if isinstance(value, str) else ""
+
+
+def _norm_comment(item) -> dict:
+    """이슈 댓글에서 본문 · 작성자 · 시각만 남긴다 / keep body, author, and created time."""
+    if not isinstance(item, dict):
+        raise ValueError("댓글 항목이 객체가 아니다")
+    return {"id": item.get("id"), "body": _text_field(item, "body"), "author": _author(item),
+            "created_at": _text_field(item, "created_at"), "html_url": _text_field(item, "html_url")}
+
+
+def _norm_review(item) -> dict:
+    """리뷰에서 본문 · 작성자 · 제출 시각만 남긴다 / keep body, author, and submitted time."""
+    if not isinstance(item, dict):
+        raise ValueError("리뷰 항목이 객체가 아니다")
+    return {"id": item.get("id"), "body": _text_field(item, "body"), "author": _author(item),
+            "state": _text_field(item, "state"), "submitted_at": _text_field(item, "submitted_at"),
+            "html_url": _text_field(item, "html_url")}
+
+
+def _load_notes(run, path: str, norm) -> list:
+    """GET 이다 — `-f` 를 붙이면 gh 가 POST 로 바꾼다. `--jq` 는 페이지마다 따로 돌아 한 JSON 이 아니게 된다.
+    GET only: `-f` switches gh to POST. `--jq` runs per page, so it is not one JSON value.
+    """
+    data = _json(run, ["gh", "api", "--paginate", "--slurp", path])
+    return [norm(item) for item in _flatten_pages(data)]
+
+
 def gather(pr: int, run=_run) -> dict:
     """판정에 쓸 사실을 모은다 — 값만, 판정은 `decide` 가 한다 / collect the facts; `decide` judges them."""
     view = _json(run, ["gh", "pr", "view", str(pr), "--json",
@@ -69,6 +125,9 @@ def gather(pr: int, run=_run) -> dict:
     checks = _json(run, ["gh", "pr", "checks", str(pr), "--json", "name,bucket"], _CHECKS_EXIT_OK)
     required = _json(run, ["gh", "api", f"repos/{{owner}}/{{repo}}/branches/{_BASE}/protection/required_status_checks",
                            "--jq", ".contexts"])
+    notes = f"repos/{{owner}}/{{repo}}"
+    comments = _load_notes(run, f"{notes}/issues/{pr}/comments", _norm_comment)
+    reviews = _load_notes(run, f"{notes}/pulls/{pr}/reviews", _norm_review)
     run(["git", "fetch", "-q", "origin", _BASE, f"pull/{pr}/head"])
     head_tree = run(["git", "rev-parse", f"{head}^{{tree}}"]).strip() if head else ""
     # 충돌이면 merge-tree 가 1 로 끝난다 — 그때 합친 트리는 없다 / exit 1 = conflict: no merged tree
@@ -81,6 +140,7 @@ def gather(pr: int, run=_run) -> dict:
         "head": head, "files": [f.get("path", "") for f in view.get("files") or []],
         "changed_files": view.get("changedFiles"), "checks": checks, "required": required,
         "head_tree": head_tree, "merged_tree": merged_tree,
+        "comments": comments, "reviews": reviews,
     }
 
 
@@ -98,6 +158,77 @@ def _check_problems(state: dict) -> list[str]:
     return problems
 
 
+def _note_records(state: dict) -> list | None:
+    """댓글·리뷰를 못 읽으면 None — 빈 목록과 구별한다 / None means unreadable, not an empty list."""
+    comments, reviews = state.get("comments"), state.get("reviews")
+    if not isinstance(comments, list) or not isinstance(reviews, list):
+        return None
+    records = []
+    for item in [*comments, *reviews]:
+        if not isinstance(item, dict) or not isinstance(item.get("body"), str):
+            return None
+        records.append(item)
+    return records
+
+
+def _when_key(rec: dict) -> tuple:
+    when = rec.get("created_at") or rec.get("submitted_at") or ""
+    ident = rec.get("id")
+    return (when if isinstance(when, str) else "", ident if isinstance(ident, int) else 0)
+
+
+def _user_approval_text(head: str, utterance: str) -> str:
+    """올릴 승인 기록 세 줄 / the three-line approval record to post."""
+    return "\n".join([_USER_APPROVAL, f"- head: `{head}`", f"- 발화: «{utterance}»"])
+
+
+def _is_user_approval(body: str, head: str, utterance: str) -> bool:
+    """CRLF 를 LF 로 바꾸고 strip 한 기록이 지금 head · 발화와 정확히 맞는가.
+    Whether the normalized lines match this head and utterance exactly.
+    """
+    normalized = body.replace("\r\n", "\n").replace("\r", "\n")
+    if _MARKER in normalized:
+        return False
+    lines = normalized.strip().split("\n")
+    if not lines or lines[0] != _USER_APPROVAL:
+        return False
+    return f"- head: `{head}`" in lines and f"- 발화: «{utterance}»" in lines
+
+
+def matching_approval(state: dict, approval: str) -> dict | None:
+    """사용자 승인 기록 중 가장 이른 것. 리뷰는 state 가 APPROVED · COMMENTED 일 때만 센다.
+    Earliest record. A review counts only when its state is APPROVED or COMMENTED.
+    """
+    comments, reviews = state.get("comments"), state.get("reviews")
+    text = approval.strip()
+    head = state.get("head") if isinstance(state.get("head"), str) else ""
+    if _note_records(state) is None or len(head) != 40 or not text:
+        return None
+    # 댓글과 리뷰는 어느 목록에 있었는지로 가른다 — 항목 안의 필드로 추정하지 않는다
+    # Comments and reviews are told apart by which list they came from, not by a field.
+    found = [rec for rec in comments if _is_user_approval(rec["body"], head, text)]
+    found += [rec for rec in reviews
+              if rec.get("state") in _COUNTED_REVIEW_STATES and _is_user_approval(rec["body"], head, text)]
+    return min(found, key=_when_key) if found else None
+
+
+def _approval_refusal(state: dict, approval: str) -> str | None:
+    """사용자 승인이 PR 에 없으면 막을 이유 / why the PR has no usable user approval."""
+    if _note_records(state) is None:
+        return "PR 댓글·리뷰를 못 읽었다 — 못 읽으면 머지하지 않는다"
+    if matching_approval(state, approval) is not None:
+        return None
+    head = state.get("head") if isinstance(state.get("head"), str) else ""
+    shown = head if len(head) == 40 else (head[:12] or "?")
+    record = _user_approval_text(shown, approval.strip())
+    return (
+        "PR 에 사용자 승인이 없다 — 사용자가 이 head 에 대해 그 발화를 한 뒤에만 "
+        "`gh pr comment <PR> --body-file <파일>` 로 올린다. "
+        "승인 뒤에 head 가 바뀌었으면 사용자에게 다시 받는다.\n"
+        + record
+    )
+
+
 def decide(state: dict, *, head: str, approval: str, visual: str | None, tested_tree: str | None) -> list[str]:
     """막을 이유 목록 — 비면 머지해도 된다 / reasons to refuse; empty means the merge may go ahead."""
     problems = []
@@ -112,6 +243,9 @@ def decide(state: dict, *, head: str, approval: str, visual: str | None, tested_
         problems.append(f"base 가 {_BASE} 가 아니다({state['base']})")
     if not state["head"] or not state["head"].startswith(head):
         problems.append(f"지금 head {state['head'][:12] or '?'} ≠ 승인한 head {head[:12]} — 승인 뒤 바뀌었다, 다시 받는다")
+    refusal = _approval_refusal(state, approval)
+    if refusal:
+        problems.append(refusal)
     problems += _check_problems(state)
     files_seen = type(state["changed_files"]) is int and state["changed_files"] == len(state["files"])
     visual_change = not files_seen or any(path.startswith(_VISUAL_PREFIXES) for path in state["files"])
@@ -127,13 +261,25 @@ def decide(state: dict, *, head: str, approval: str, visual: str | None, tested_
     return problems
 
 
-def comment_body(state: dict, *, approval: str, visual: str | None) -> str:
+def _evidence_label(evidence: dict) -> str:
+    """근거로 URL 을 적고, 없으면 id / cite the comment URL, or its id when the URL is missing."""
+    url = evidence.get("html_url")
+    if isinstance(url, str) and url.strip():
+        return url.strip()
+    return str(evidence.get("id"))
+
+
+def comment_body(state: dict, *, approval: str, visual: str | None, evidence=None) -> str:
     """승인 기록 댓글 — GitHub 에서 승인 주체 · 범위를 되짚을 수 있게 / an approval record on the PR."""
     checks = state["checks"]
     lines = [
-        "**머지 승인 기록** (`scripts/merge_approved.py`)",
+        f"{_MARKER} (`scripts/merge_approved.py`)",
         "",
         f"- 승인: «{approval.strip()}»",
+    ]
+    if evidence is not None:
+        lines.append(f"- 근거 댓글: {_evidence_label(evidence)}")
+    lines += [
         f"- head: `{state['head']}` — 승인한 head 로만 머지한다(`--match-head-commit`)",
         f"- 화면 확인: «{visual.strip()}»" if (visual or "").strip() else "- 화면 확인: 시각 변경 없음",
         f"- 검사: {len(checks)}개 통과(required {len(state['required'])}개 포함)",
@@ -160,7 +306,7 @@ def after_merge_notes(files: list[str]) -> list[str]:
 def main(argv=None, *, run=_run, out=print) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("pr", type=int)
-    parser.add_argument("--head", required=True, help="사용자가 승인한 head SHA(7~40자리)")
+    parser.add_argument("--head", required=True, help="지금 head 의 앞자리(7~40) — 승인은 PR 에 올린 기록")
     parser.add_argument("--approval", required=True, help="사용자의 승인 발화 그대로")
     parser.add_argument("--visual", help="시각 변경 PR — 사용자가 화면을 본 발화 그대로")
     parser.add_argument("--tested-tree", help="합친 트리를 따로 돌렸을 때 그 트리(40자리)")
@@ -173,6 +319,7 @@ def main(argv=None, *, run=_run, out=print) -> int:
     except (CommandFailed, ValueError, AttributeError, TypeError) as exc:
         out(f"⛔ 사실을 다 못 모았다 — 머지하지 않는다: {exc}")
         return 2
+    evidence = matching_approval(state, args.approval)
     problems = decide(state, head=head, approval=args.approval, visual=args.visual, tested_tree=tested_tree)
     if problems:
         out(f"⛔ PR #{args.pr} 머지하지 않는다:")
@@ -185,7 +332,7 @@ def main(argv=None, *, run=_run, out=print) -> int:
     expected = tested_tree or state["head_tree"]
     try:
         run(["gh", "pr", "comment", str(args.pr), "--body", comment_body(state, approval=args.approval,
-                                                                          visual=args.visual)])
+                                                                          visual=args.visual, evidence=evidence)])
         run(["gh", "pr", "merge", str(args.pr), "--squash", "--match-head-commit", state["head"]])
         merge_commit = _json(run, ["gh", "pr", "view", str(args.pr), "--json", "mergeCommit"])["mergeCommit"]["oid"]
         run(["git", "fetch", "-q", "origin", _BASE])
