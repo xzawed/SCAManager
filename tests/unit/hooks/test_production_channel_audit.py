@@ -276,6 +276,7 @@ _MENTIONS = ['grep -n "railway status" docs/a.md', "cat scripts/observe_db.py", 
              'cmd //c "if exist dist (echo built (ok) (railway up))"',
              "timeout 60 cmd <<'EOF'\nif exist dist (\n  echo built) else (echo none; railway up later)\nEOF",
              'cmd //c "if exist dist (echo(railway up failed)"',  # cmd 의 echo( 꼴
+             "cmd //c 'if exist x (echo \"a) else (railway up later\") else (echo b)'",  # 따옴표 속 `)` 는 블록을 닫지 않는다
              "timeout 60 cmd <<'EOF'\n# deploy step (railway up); later\nEOF",  # `#` 로 시작하는 줄은 돌지 않는다
              'case "$1" in\n  a) echo "(x) esac done" ;;\n  scripts/observer_setup.py) echo "user-only" ;;\nesac',
              'case "$1" in\n  start) echo starting ;;   # (nested case ends with) esac\n'
@@ -665,6 +666,8 @@ _PRODUCTION_WRITES = [
     # cmd's echo forms; a pattern named esacfoo is not esac
     ("Bash", 'cmd //c "if not exist dist\\index.html (echo.Build missing, can\'t deploy) else (railway up)"'),
     ("Bash", 'x=$(case "$1" in\n  a) echo a ;;\n  esacfoo) railway up ;;\nesac)'),
+    ("Bash", 'cmd //c "if (setup)==(setup) (railway up)"'),  # if 조건의 `(setup)` 은 set 블록이 아니다
+    ("Bash", 'cmd //c "if exist a (if exist b (echo x)) else (railway up)"'),  # 겹친 블록의 `))` 뒤 else
     ("Bash", 'cmd //c "if exist deploy-set.flag (railway up)"'),  # 조건 속 `set` 은 명령이 아니다 / not a command word
 ]
 
