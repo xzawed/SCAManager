@@ -50,7 +50,7 @@ _KINDS = {
     # A value holds a digit, or is 16+ single-case letters; placeholders and code names (dotted, camelCase calls) are not.
     "assigned-secret": (r"(?i)(?<![A-Za-z0-9])[A-Z0-9_]*(?:SECRET|TOKEN|PASS|API_KEY|ENCRYPTION_KEY)[A-Z0-9_]*[\"'“”‘’]?"
                         r"\s*[=:]\s*[\"'“”‘’]?(?:(?=[A-Za-z0-9+/_-]*\d)[A-Za-z0-9+/_-]{16,}"
-                        r"|(?-i:[a-z]{16,}|[A-Z]{16,})(?![A-Za-z0-9+/_.(-]))"),
+                        r"|(?-i:[a-z]{16,}|[A-Z]{16,})(?![A-Za-z0-9+/_(-]|\.[A-Za-z0-9_]))"),
     # 사람 주소 — 공개용 주소(noreply · 예시 · git SSH)는 아래 `_PUBLIC_EMAIL` 이 뺀다.
     "email": r"(?<![\w.+%-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\b",
     # 개인 홈 경로(사용자 이름이 든다) — CI 러너 경로(Linux `runner` · Windows `runneradmin`)는 사람 것이 아니다. 대소문자를

@@ -60,6 +60,7 @@ _HARMLESS = [
     "const apiToken = getApiTokenFromStorage()",
     "webhook_secret = loadWebhookSecretFromEnv",
     "api_token = loadtokenfromdiskcache()",
+    "api_token = loadtokenfromdisk.cache",
     "/Users/runner/work/SCAManager/SCAManager",
     "러너 홈은 C:\\Users\\runneradmin이다",
 ]
@@ -144,6 +145,7 @@ _OUTSIDE_DIGIT_RULE = [
     "SMTP_PASS=" + "abcd" * 4,
     "SESSION_SECRET=" + "correcthorse" + "batterystaple",
     "SESSION_SECRET=“" + "Qz7a1B2" * 4 + "”",
+    "SMTP_PASS=" + "correcthorse" + "battery.",
 ]
 
 
