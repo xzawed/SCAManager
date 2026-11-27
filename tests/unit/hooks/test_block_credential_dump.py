@@ -293,8 +293,10 @@ _BLOCKED = [
     pytest.param("cat env.backup", id="dotenv-copy-env-backup"),
     pytest.param("cat env.backup-20261125", id="dotenv-copy-dated"),
     pytest.param("type C:/Users/x/AppData/Local/Temp/prod_env.bak", id="dotenv-copy-bak-abspath"),
-    pytest.param("cat dotenv-old", id="dotenv-copy-dash-old"),
+    pytest.param("cat my-env.old", id="dotenv-copy-separator-head"),
     pytest.param("cat .env~", id="dotenv-editor-backup"),
+    pytest.param("cat prod.env~", id="dotenv-name-suffix-editor-backup"),
+    pytest.param("cat '.env - Copy'", id="dotenv-explorer-duplicate"),
 ]
 
 
@@ -406,6 +408,12 @@ _ALLOWED = [
     pytest.param("cat env.py.bak", id="env-py-backup-is-not-dotenv"),
     pytest.param("cat scripts/backup.sh", id="backup-script"),
     pytest.param("cat docs/reference/env-vars.md", id="env-vars-doc"),
+    # 🔴 사본 판정은 이름 «전체» 에 댄다 — 안쪽 검색이면 아래가 막혔다(Grok 반례 · 원장 #1940 M08).
+    # The copy test matches the whole name; a search denied these honest commands (Grok counterexamples).
+    pytest.param('git commit -m "block env.backup copies"', id="commit-message-mentions-copy-name"),
+    pytest.param('git commit -m "remove venv_backup"', id="commit-message-venv-backup"),
+    pytest.param("du -sh venv.bak", id="venv-backup-folder"),
+    pytest.param('gh pr create --title "M08 env.backup" --body-file C:/tmp/body.md', id="pr-title-mentions-copy-name"),
     # 안전한 꼴 — 옮기기 · 지우기 · 정보만 보기 · 쓰기 대상으로만 나오는 .env · 템플릿 · 이름만 자르기.
     # Safe forms: move/remove/metadata, .env only as a write target, templates, names-only cut.
     pytest.param("ls -la .env", id="ls-dotenv"),
@@ -810,7 +818,7 @@ def test_recursive_search_sees_a_copy_named_file(tmp_path):
     decision, _ = _decide("grep -rn KEY keep", cwd=tmp_path)
     assert decision == "deny", "사본 이름 파일이 든 폴더의 재귀 검색이 통과했다 — 사본의 일치 줄이 값째 나온다."
     (tmp_path / "plain").mkdir()
-    for name in ("env.py", "environment.py", "env.py.bak"):
+    for name in ("env.py", "environment.py", "env.py.bak", "venv.bak"):
         (tmp_path / "plain" / name).write_text("X = 1\n", encoding="utf-8")
     decision, reason = _decide("grep -rn KEY plain", cwd=tmp_path)
     assert decision != "deny", f".env 꼴이 아닌 이름만 있는 폴더인데 막혔다: {reason}"

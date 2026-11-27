@@ -458,10 +458,12 @@ def _name_glob_may_hit_dotenv(pattern):
 # .env 꼴 이름의 대표 — 폴더를 못 읽을 때의 판정과, settings 의 파일 도구 거부(Read)가 같은 이름을 덮는지 재는 시험
 # (`tests/unit/hooks/test_file_tool_dotenv_deny.py`)이 쓴다. / Representative .env-like names, shared with that test.
 _DOTENV_NAME_PROBES = (".env", ".env.local", "prod.env", "env.backup")
-# 자격 파일 사본 — `env` 바로 뒤 구분자와 백업 낱말(`env.backup` · `prod_env.bak` · `dotenv-old`). 키 하나 교체 승인이
-# .env 전체 사본으로 넓어졌고 그 이름이 이 판정 밖이었다(원장 #1940 M08). settings 의 Read 거부가 같은 꼴을 덮는다.
-# Credential-file copies: `env`, a separator, then a backup word; the settings Read deny covers the same shapes.
-_DOTENV_COPY = re.compile(r"env[._-](?:backup|bak|old|orig|save|copy)")
+# 자격 파일 사본 — 이름 «전체» 가 (구분자로 끝나는 머리) + `env` + 구분자 + 백업 낱말 + (구분자로 시작하는 꼬리)인 꼴
+# (`env.backup` · `prod_env.bak` · `env.backup-20261125`). 키 하나 교체 승인이 .env 전체 사본으로 넓어졌고 그 이름이 이 판정
+# 밖이었다(원장 #1940 M08). 안쪽 검색이 아니라 전체 일치다 — 검색이면 커밋 메시지(`"block env.backup copies"`)와 `venv.bak`
+# 까지 막았다(Grok 반례). settings 의 Read 거부가 같은 꼴을 덮는다.
+# Credential-file copies, matched against the WHOLE name (a search also hit commit messages and `venv.bak`).
+_DOTENV_COPY = re.compile(r"(?:\S*[._-])?env[._-](?:backup|bak|old|orig|save|copy)(?:[._-]\S*)?")
 
 
 def _is_dotenv_name(comp):
@@ -471,8 +473,9 @@ def _is_dotenv_name(comp):
     comp = comp.strip("#").rstrip("~")  # 편집기 백업 · 자동 저장(`.env~` · `#.env#`)은 원본과 같은 내용이다
     if not comp or comp in _DOTENV_TEMPLATES:
         return False
-    return (comp == ".env" or comp.startswith((".env.", ".env-", ".env_")) or comp.endswith(".env")
-            or bool(_DOTENV_COPY.search(comp)))
+    # `.env ` — 파일 관리자 · 내려받기의 복제 이름(`.env - Copy` · `.env (1)`)
+    return (comp == ".env" or comp.startswith((".env.", ".env-", ".env_", ".env ")) or comp.endswith(".env")
+            or bool(_DOTENV_COPY.fullmatch(comp)))
 
 
 def _glob_matches(norm):
