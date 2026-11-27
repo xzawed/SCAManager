@@ -463,7 +463,13 @@ _DOTENV_NAME_PROBES = (".env", ".env.local", "prod.env", "env.backup")
 # 밖이었다(원장 #1940 M08). 안쪽 검색이 아니라 전체 일치다 — 검색이면 커밋 메시지(`"block env.backup copies"`)와 `venv.bak`
 # 까지 막았다(Grok 반례). settings 의 Read 거부가 같은 꼴을 덮는다.
 # Credential-file copies, matched against the WHOLE name (a search also hit commit messages and `venv.bak`).
-_DOTENV_COPY = re.compile(r"(?:\S*[._-])?env[._-](?:backup|bak|old|orig|save|copy)(?:[._-]\S*)?")
+_DOTENV_COPY = re.compile(r"(?:\S*[._-])?env[._-](?:backup|bak|old|orig|save|copy)[a-z0-9]*(?:[._-]\S*)?")
+# 파일 관리자 · 내려받기가 이름 끝에 붙이는 복제 표지(`.env - Copy` · `prod.env (1)` · `.env copy 2` · `.env - 복사본`). 표지를 떼고
+# 남은 것이 낱말 여럿이면 파일 이름이 아니라 글이다(`git commit -m "fix .env (1)"`) — Grok 2차 반례. 닫는 괄호는 없어도 된다 —
+# 경로 후보는 괄호 껍데기(`_TOKEN_WRAPPERS`)를 벗긴 뒤 온다(`env.backup (1)` → `env.backup (1`).
+# Duplicate marks that file managers and downloads append; what remains must be a single word, else it is prose.
+# The closing paren is optional: path candidates arrive with wrapper parens already peeled.
+_COPY_MARK = re.compile(r"(?: - (?:copy|복사본)(?: \(\d+\)?)?| copy(?: \d+)?| \(\d+\)?)$")
 
 
 def _is_dotenv_name(comp):
@@ -471,10 +477,14 @@ def _is_dotenv_name(comp):
     Is this name .env-like (templates excluded; stream suffix and editor-backup marks stripped; copies included)?"""
     comp = re.sub(r"^[a-z]:", "", comp).split(":", 1)[0]  # 드라이브 · `.env::$DATA` 스트림 접미 제거
     comp = comp.strip("#").rstrip("~")  # 편집기 백업 · 자동 저장(`.env~` · `#.env#`)은 원본과 같은 내용이다
+    unmarked = _COPY_MARK.sub("", comp)
+    if unmarked != comp:
+        if any(ch.isspace() for ch in unmarked):
+            return False  # 표지 앞이 낱말 여럿 — 글이다 / several words before the mark: prose, not a file name
+        comp = unmarked
     if not comp or comp in _DOTENV_TEMPLATES:
         return False
-    # `.env ` — 파일 관리자 · 내려받기의 복제 이름(`.env - Copy` · `.env (1)`)
-    return (comp == ".env" or comp.startswith((".env.", ".env-", ".env_", ".env ")) or comp.endswith(".env")
+    return (comp == ".env" or comp.startswith((".env.", ".env-", ".env_")) or comp.endswith(".env")
             or bool(_DOTENV_COPY.fullmatch(comp)))
 
 

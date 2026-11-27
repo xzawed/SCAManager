@@ -297,6 +297,9 @@ _BLOCKED = [
     pytest.param("cat .env~", id="dotenv-editor-backup"),
     pytest.param("cat prod.env~", id="dotenv-name-suffix-editor-backup"),
     pytest.param("cat '.env - Copy'", id="dotenv-explorer-duplicate"),
+    pytest.param('cat "prod.env - Copy"', id="dotenv-name-suffix-explorer-duplicate"),
+    pytest.param('cat "env.backup (1)"', id="dotenv-copy-download-duplicate"),
+    pytest.param("cat env.original", id="dotenv-copy-word-continues"),
 ]
 
 
@@ -414,6 +417,10 @@ _ALLOWED = [
     pytest.param('git commit -m "remove venv_backup"', id="commit-message-venv-backup"),
     pytest.param("du -sh venv.bak", id="venv-backup-folder"),
     pytest.param('gh pr create --title "M08 env.backup" --body-file C:/tmp/body.md', id="pr-title-mentions-copy-name"),
+    # 복제 표지는 이름 끝에서만 떼고, 뗀 앞이 낱말 여럿이면 글이다(Grok 2차 반례 · 1차 수정이 만든 오탐 포함).
+    # Duplicate marks are removed only at the end, and what remains must be one word (Grok round 2).
+    pytest.param('git commit -m ".env docs update"', id="commit-message-starts-with-dotenv"),
+    pytest.param('git commit -m "fix .env (1)"', id="commit-message-ends-with-duplicate-mark"),
     # 안전한 꼴 — 옮기기 · 지우기 · 정보만 보기 · 쓰기 대상으로만 나오는 .env · 템플릿 · 이름만 자르기.
     # Safe forms: move/remove/metadata, .env only as a write target, templates, names-only cut.
     pytest.param("ls -la .env", id="ls-dotenv"),

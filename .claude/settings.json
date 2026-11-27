@@ -14,7 +14,7 @@
       "Read(//**/.env.test*)",
       "Read(//**/.env-*)",
       "Read(//**/.env_*)",
-      "Read(//**/.env *)",
+      "Read(//**/*.env *)",
       "Read(//**/.env*.sw?)",
       "Read(//**/.env.*~)",
       "Read(//**/*.env)",

@@ -40,8 +40,8 @@ _MOD = _load_hook()
 # Common variants measured on top of the hook's own probes.
 _COMMON_DOTENV_NAMES = (
     ".env.production", ".env.development", ".env.staging.local", ".env.test", ".env-old", ".env_prod",
-    "docker.env", "env.backup-20261125", "prod_env.bak", "my-env.old", "env.orig", ".env~", "prod.env~",
-    ".env - copy", ".env.swp",
+    "docker.env", "env.backup-20261125", "prod_env.bak", "my-env.old", "env.orig", "env.original", ".env~", "prod.env~",
+    ".env - copy", "prod.env - copy", ".env (1)", "env.backup (1)", ".env - 복사본", ".env.swp",
 )
 # witness-corpus: env 낱말이 든 이 리포 · 흔한 도구의 보통 파일 이름(마이그레이션 · 문서 · 가상환경) — 거부 꼴에서 뽑지 않았다
 _LOOKALIKES = ("env.py", "environment.py", "env-vars.md", "venv.cfg", "env.py.bak", "venv.bak", "venv_backup")
