@@ -833,7 +833,7 @@ _USER_ONLY_SCRIPTS = [
     # 열넷째 적대 패스(wf_99240b16-4fc) — FOR 집합은 블록이 아니다, `)` 뒤 `;` · `,` · `=` · do · `0<nul` 은 cmd 가 이어 읽는다,
     # cmd 의 `#` · 백틱은 글자 / a FOR set is not a block; cmd continues after `) ;` `) do` `0<nul`; `#` and backticks are text
     ("Bash", "cmd //c 'if exist C:\\nonexist (for %s in (settings) do (echo %s)) else (py -3 scripts\\observer_setup.py)'"),
-    ("Bash", "cmd //c 'if exist x (echo a) 0<nul else (py -3 scripts\\observer_setup.py)'"),
+    ("Bash", "cmd //c 'if exist x (echo a) 0<nul else (py -3 scripts\\observer_setup.py --host db)'"),
     ("Bash", "timeout 60 cmd <<'EOF'\ngh issue view #12 & py -3 scripts\\observer_setup.py\nEOF"),
     ("Bash", "timeout 60 cmd <<'EOF'\ncd x`'b\"c\npy -3 scripts\\observer_setup.py\nEOF"),
     ("Bash", 'cmd //c "if exist x (echo:ready, it\'s fine) else (py -3 scripts\\observer_setup.py)"'),
