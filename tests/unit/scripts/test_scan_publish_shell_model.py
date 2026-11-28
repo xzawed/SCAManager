@@ -168,6 +168,16 @@ def test_a_monitor_command_that_only_mentions_gh_is_not_a_publish(bodies, monkey
     assert _hook(monkeypatch, capsys, 'tail -f build.log | grep --line-buffered "gh"', bodies, tool="Monitor") is None
 
 
+@pytest.mark.parametrize("command", [
+    pytest.param('gh pr create --title "fix: GH Actions cache" --body-file clean.md', id="title-mentions-GH"),
+    pytest.param('gh issue comment 1 --body "see GH docs"', id="body-mentions-GH"),
+])
+def test_an_uppercase_gh_in_quoted_text_is_not_read_as_a_call(command, bodies, monkeypatch, capsys):
+    """대조군 — 호출 판정은 대소문자를 가린다: 제목 · 본문 속 «GH» 를 gh 호출로 읽어 정직한 게시를 막지 않는다
+    (대소문자를 무시하면 둘 다 «낱말로 나누지 못했다» 로 막혔다 — 실측)."""
+    assert _hook(monkeypatch, capsys, command, bodies) is None, command
+
+
 def test_an_uppercase_gh_word_inside_a_read_only_call_keeps_it_read_only(bodies, monkeypatch, capsys):
     """대조군 — 대소문자를 가리지 않는 gh 낱말 판정이 읽기 호출의 인자(`"GH Actions"`)를 다른 gh 로 읽지 않는다."""
     command = f"gh pr list --search 'GH Actions {_EMAIL_TEXT}' --json number"
