@@ -61,6 +61,15 @@ def test_a_connector_read_passes_the_wired_hook(tool):
     assert _run(_CONNECTOR + tool) == (None, ""), tool
 
 
+def test_a_connector_read_leaves_an_audit_record(tmp_path, monkeypatch):
+    """허용된 운영 읽기는 감사 기록 한 줄을 남긴다 — 커넥터 읽기도 로컬 MCP 읽기처럼 채널 이름으로 적힌다."""
+    audit = tmp_path / "allows.jsonl"
+    monkeypatch.setenv("SCAMANAGER_HOOK_AUDIT_LOG", str(audit))
+    assert _run(_CONNECTOR + "get-logs") == (None, "")
+    records = [json.loads(line) for line in audit.read_text(encoding="utf-8").splitlines()]
+    assert [record["channels"] for record in records] == [["Railway MCP get-logs"]]
+
+
 # witness-corpus: 설정 · 변수 · 비밀이 섞이거나 운영을 바꾸는 커넥터 도구 — 읽기 목록에 넣지 않았다(사용자 결정)
 _CONNECTOR_NOT_READS = ["describe-service", "get-service-config", "describe-environment", "get-bucket-credentials",
                         "get-staged-changes", "railway-agent", "redeploy", "accept-deploy", "set-variables"]
