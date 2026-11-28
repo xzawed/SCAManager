@@ -383,10 +383,12 @@ def _harmless_redirect(op: str, target: str, shell: str) -> bool:
     return op.endswith("&") and bool(_FD_TARGET.fullmatch(target))
 
 
-def _substitution_spans(text: str) -> list[tuple[int, int, bool]] | None:
+def _substitution_spans(text: str, shell: str = "bash") -> list[tuple[int, int, bool]] | None:
     """명령 치환 · 프로세스 치환(`$(…)` · `<(…)` · `>(…)`) · 산술 펼침(`$((…))`)의 자리 — (여는 표시, 닫는 괄호 다음, 산술인가).
-    작은따옴표 안은 글자 그대로라 뺀다. 백틱 치환 · 닫히지 않은 치환이 있으면 None(안을 모른다).
-    Substitution spans outside single quotes as (open, after close, arithmetic); None for backticks or an unclosed one."""
+    작은따옴표 안은 글자 그대로라 뺀다. bash 의 백틱 치환 · 닫히지 않은 치환이 있으면 None(안을 모른다). PowerShell 에서는
+    백틱이 이스케이프다(`$(…)` 은 그대로 하위 식이다).
+    Substitution spans outside single quotes; None for a bash backtick or an unclosed one. In PowerShell a backtick escapes."""
+    escape = "`" if shell == "powershell" else "\\"
     spans: list[tuple[int, int, bool]] = []
     quote: str | None = None
     i = 0
@@ -394,7 +396,7 @@ def _substitution_spans(text: str) -> list[tuple[int, int, bool]] | None:
         ch = text[i]
         if quote == "'":
             quote = None if ch == "'" else quote
-        elif ch == "\\":
+        elif ch == escape:
             i += 2
             continue
         elif ch == "`":
@@ -418,7 +420,7 @@ def _substitution_rewriter(text: str, shell: str, spans: list[tuple[int, int, bo
     """`text` 의 치환 안에서 파일을 쓰거나 변수를 다시 묶을 수 있는 명령 — 치환은 gh 보다 먼저 돈다(그 자리가 gh 의 인자여도).
     백틱 · 닫히지 않은 치환은 안을 모르니 그 자체로 돌려준다.
     A rewriting command inside a substitution of `text`; substitutions run before gh, even inside its own arguments."""
-    spans = _substitution_spans(text) if spans is None else spans
+    spans = _substitution_spans(text, shell) if spans is None else spans
     if spans is None:
         return "`…`"
     for start, end, arithmetic in spans:
@@ -436,7 +438,7 @@ def _rewriting_command(before: str, shell: str = "bash") -> str | None:
     """`before`(게시하는 gh 앞 글자)에서 본문 파일을 쓰거나 변수를 다시 묶을 수 있는 첫 단순 명령 — 없으면 None. 출력 리디렉션
     (버리는 곳 · fd 복제 밖)과 치환 안의 명령도 본다. gh 자신의 단순 명령(마지막 구분자 뒤)은 치환만 본다.
     The first command before gh that may rewrite a file or rebind a variable (redirections and substitutions count)."""
-    spans = _substitution_spans(before)
+    spans = _substitution_spans(before, shell)
     found = _substitution_rewriter(before, shell, spans)
     if found:
         return found

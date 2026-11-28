@@ -86,6 +86,14 @@ def test_commands_that_write_no_file_keep_the_body_measurable(between, bodies, m
     assert _denied(result) and "email 1" in _reason(result), result
 
 
+def test_a_powershell_backtick_is_an_escape_not_a_substitution(bodies, monkeypatch, capsys):
+    """대조군 — PowerShell 의 백틱은 이스케이프다(bash 의 치환이 아니다): gh 앞 명령의 백틱 뒤에도 본문 파일을 그대로 잰다.
+    (인라인 본문 안의 백틱은 셸과 상관없이 막는다 — 기존 규칙)"""
+    command = 'echo "a`tb"; gh pr comment 1 --body-file clean.md'
+    assert _hook(monkeypatch, capsys, command, bodies, tool="PowerShell") is None
+    assert _denied(_hook(monkeypatch, capsys, command.replace("clean.md", "dirty.md"), bodies, tool="PowerShell"))
+
+
 def test_a_powershell_discard_redirect_keeps_the_body_measurable(bodies, monkeypatch, capsys):
     """대조군 — PowerShell 의 `2>$null` 은 버리는 곳이다: 그 뒤의 게시는 미리 만든 본문을 잰다."""
     command = "git status 2>$null; gh pr comment 1 --body-file clean.md"
