@@ -62,6 +62,27 @@ def test_a_substitution_or_redirect_that_rewrites_the_body_is_not_measured(rewri
     assert "나눠" in _reason(result), _reason(result)
 
 
+@pytest.mark.parametrize("template", [
+    pytest.param("URL=$(gh pr comment 1 --body-file {body})", id="assignment-captures-the-post"),
+    pytest.param('echo "$(gh pr comment 1 --body-file {body})"', id="quoted-substitution-around-the-post"),
+])
+def test_a_post_wrapped_in_a_substitution_is_measured(template, bodies, monkeypatch, capsys):
+    """대조군 — gh 를 감싼 치환(`URL=$(gh …)`)은 «닫히지 않은 치환» 이 아니다: 본문을 잰다(Cursor Bugbot #1946 — 막던 오탐)."""
+    assert _hook(monkeypatch, capsys, template.format(body="clean.md"), bodies) is None
+    result = _hook(monkeypatch, capsys, template.format(body="dirty.md"), bodies)
+    assert _denied(result) and "email 1" in _reason(result), result
+
+
+@pytest.mark.parametrize("command", [
+    pytest.param("URL=$(cp dirty.md clean.md; gh pr comment 1 --body-file clean.md)", id="writer-inside-the-wrapper"),
+    pytest.param("cp dirty.md clean.md; URL=$(gh pr comment 1 --body-file clean.md)", id="writer-outside-the-wrapper"),
+])
+def test_a_rewrite_around_a_wrapped_post_is_not_measured(command, bodies, monkeypatch, capsys):
+    """🔴 gh 를 감싼 치환의 바깥 · 안에서 gh 보다 먼저 도는 쓰기는 그대로 잡는다."""
+    result = _hook(monkeypatch, capsys, command, bodies)
+    assert _denied(result) and "나눠" in _reason(result), result
+
+
 @pytest.mark.parametrize("command", _REWRITE_THEN_POST)
 def test_a_body_rewritten_in_the_same_command_is_not_measured(command, bodies, monkeypatch, capsys):
     """🔴 gh 앞에서 파일을 바꿀 수 있는 명령이 돌면, 검사가 읽은 것은 옛 본문이다 — 못 잰 것으로 막고 나눠 부르라고 알린다."""

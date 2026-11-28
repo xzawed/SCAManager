@@ -350,8 +350,12 @@ def _runs_gh_directly(before: str) -> bool:
     """gh 가 단순 명령의 명령 자리에 있는가 — 같은 단순 명령 안의 앞 낱말이 대입 · 투명한 앞붙임뿐이면 참.
     Is gh in command position, preceded only by assignments and pass-through prefixes in its simple command?"""
     masked = _mask_quoted(before)
-    breaks = list(_COMMAND_BREAK.finditer(masked))
-    start = breaks[-1].end() if breaks else 0
+    # gh 를 감싼 치환(`echo "$(gh …)"` · `URL=$(gh …)`) 안이면 gh 의 단순 명령은 그 치환 안에서 시작한다(Cursor Bugbot #1946)
+    # Inside a substitution wrapping gh, gh's simple command starts within it.
+    events = list(_substitution_events(before, "bash"))
+    floor = events[-1][2] if events and events[-1][0] == "unclosed" else 0
+    breaks = [brk for brk in _COMMAND_BREAK.finditer(masked) if brk.start() >= floor]
+    start = breaks[-1].end() if breaks else floor
     words = [before[start + m.start():start + m.end()] for m in re.finditer(r"\S+", masked[start:])]
     return all(w in _TRANSPARENT_PREFIXES or _ASSIGNMENT_WORD.fullmatch(w) for w in words)
 
@@ -392,12 +396,11 @@ def _substitution_opener(text: str, i: int, quoted: bool, shell: str) -> int:
     return 2 if text.startswith(("<(", ">("), i) else 0
 
 
-def _substitution_spans(text: str, shell: str = "bash") -> list[tuple[int, int, bool]] | None:
-    """명령 치환 · 프로세스 치환 · 산술 펼침(`$((…))`, bash 만)의 자리 — (여는 표시, 닫는 괄호 다음, 산술인가). 작은따옴표
-    안은 글자 그대로라 뺀다. bash 의 백틱 치환 · 닫히지 않은 치환이 있으면 None(안을 모른다). PowerShell 에서는 백틱이 이스케이프다.
-    Substitution spans outside single quotes; None for a bash backtick or an unclosed one. In PowerShell a backtick escapes."""
+def _substitution_events(text: str, shell: str):
+    """치환을 따라 읽으며 (종류, 여는 자리, 끝, 산술인가) 를 낸다 — "span"(끝 = 닫는 괄호 다음) · "unclosed"(끝 = 안쪽이 시작하는
+    자리, 거기서 멈춘다) · "backtick"(bash 의 백틱 치환, 거기서 멈춘다). 작은따옴표 안은 글자 그대로라 뺀다. PowerShell 은 백틱이
+    이스케이프다. / Walk the substitutions of `text`, yielding spans, then an unclosed opener or a bash backtick if any."""
     escape = "`" if shell == "powershell" else "\\"
-    spans: list[tuple[int, int, bool]] = []
     quote: str | None = None
     i = 0
     while i < len(text):
@@ -408,7 +411,8 @@ def _substitution_spans(text: str, shell: str = "bash") -> list[tuple[int, int, 
             i += 2
             continue
         elif ch == "`":
-            return None
+            yield "backtick", i, i, False
+            return
         elif ch == '"':
             quote = None if quote == '"' else '"'
         elif ch == "'" and quote is None:
@@ -416,11 +420,23 @@ def _substitution_spans(text: str, shell: str = "bash") -> list[tuple[int, int, 
         elif opener := _substitution_opener(text, i, quote is not None, shell):
             end = _substitution_end(text[i + opener:], shell)
             if end is None:
-                return None
-            spans.append((i, i + opener + end + 1, shell != "powershell" and text.startswith("$((", i)))
+                yield "unclosed", i, i + opener, False
+                return
+            yield "span", i, i + opener + end + 1, shell != "powershell" and text.startswith("$((", i)
             i += opener + end + 1
             continue
         i += 1
+
+
+def _substitution_spans(text: str, shell: str = "bash") -> list[tuple[int, int, bool]] | None:
+    """명령 치환 · 프로세스 치환 · 산술 펼침(`$((…))`, bash 만)의 자리 — (여는 표시, 닫는 괄호 다음, 산술인가). bash 의 백틱
+    치환 · 닫히지 않은 치환이 있으면 None(안을 모른다).
+    Substitution spans; None for a bash backtick or an unclosed one."""
+    spans: list[tuple[int, int, bool]] = []
+    for kind, start, end, arithmetic in _substitution_events(text, shell):
+        if kind != "span":
+            return None
+        spans.append((start, end, arithmetic))
     return spans
 
 
@@ -454,6 +470,12 @@ def _rewriting_command(before: str, shell: str = "bash") -> str | None:
         # 있으면(호출 연산자 `&` 만 빼고) 본문 파일을 못 잰 것으로 본다(나눠 부른다 · Cursor #1946).
         # PowerShell parses differently; anything before gh but the call operator leaves the body unmeasured.
         return "PowerShell 의 앞 명령" if before.strip() not in ("", "&") else None
+    events = list(_substitution_events(before, shell))
+    if events and events[-1][0] == "unclosed":
+        # gh 를 감싼 치환(`URL=$(… gh …)`) — 닫는 괄호는 gh 뒤에 있다. 그 바깥과, 그 안에서 gh 앞에 도는 명령을 따로 잰다
+        # (Cursor Bugbot #1946 — «닫히지 않은 치환» 으로 막던 오탐). / gh sits inside this substitution: judge outside and inside.
+        _kind, open_at, inner_at, _arithmetic = events[-1]
+        return _rewriting_command(before[:open_at], shell) or _rewriting_command(before[inner_at:], shell)
     spans = _substitution_spans(before, shell)
     found = _substitution_rewriter(before, shell, spans)
     if found:
