@@ -4037,7 +4037,11 @@ def _emit_unjudged(text, why):
 
 def main():
     _make_stdout_safe()
-    raw = sys.stdin.read()
+    # 하네스는 UTF-8 로 보낸다 — 로캘(cp949) 문자열로 읽으면 한글이 바뀌어 기록 sha256 · 길이가 어긋난다(원장 #1940 M06 P2-31)
+    # The harness sends UTF-8; reading the locale-decoded text stream changed Hangul and skewed the record.
+    raw = getattr(sys.stdin, "buffer", sys.stdin).read()
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8", errors="replace")
     try:
         payload = json.loads(raw)
     except (ValueError, RecursionError):  # JSONDecodeError 포함 · 아주 깊은 중첩은 RecursionError / deep nesting

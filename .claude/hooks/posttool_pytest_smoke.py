@@ -302,7 +302,9 @@ def _run(cmd, cwd):
 
 def main():
     try:
-        data = json.load(sys.stdin)
+        # 바이트로 읽어 UTF-8 로 — 로캘(cp949)로 읽으면 한글 경로가 바뀐다(원장 #1940 M06 P2-32) / bytes, decoded as UTF-8
+        raw = getattr(sys.stdin, "buffer", sys.stdin).read()
+        data = json.loads(raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else raw)
     except (json.JSONDecodeError, ValueError):
         return 0  # 입력 파싱 실패 — advisory 훅은 조용히 통과 / unparsable input, pass quietly
     path = data.get("tool_input", {}).get("file_path", "")

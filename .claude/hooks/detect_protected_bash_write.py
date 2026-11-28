@@ -133,7 +133,9 @@ def build_message(fresh: list[tuple[str, str]]) -> str:
 def main() -> int:
     _make_stdout_safe()
     try:
-        payload = json.load(sys.stdin)  # 세션 id 만 읽는다 — 판정은 작업 트리로 한다
+        # 세션 id 만 읽는다 — 판정은 작업 트리로 한다. 바이트로 읽어 UTF-8 로(원장 #1940 M06 P2-32) / bytes, decoded as UTF-8
+        raw = getattr(sys.stdin, "buffer", sys.stdin).read()
+        payload = json.loads(raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else raw)
     except (ValueError, RecursionError):
         payload = {}  # 입력이 없거나 깨져도 판정은 작업 트리로 한다 / verdict comes from the tree
     # 비어 있지 않은 문자열 id 만 세션으로 친다. 세션을 모르면 억제를 쓰지 않는다 — 모르는 두 실행을
