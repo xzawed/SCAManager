@@ -107,6 +107,13 @@ _POWERSHELL_REWRITES = [
 ]
 
 
+def test_a_powershell_substitution_in_gh_arguments_is_named_as_such(bodies, monkeypatch, capsys):
+    """gh 인자 안 PowerShell 치환은 안쪽이 읽기뿐이어도(`(Get-Date)`) 막고, 이유를 «PowerShell 의 치환» 으로 댄다 — 안쪽을 bash
+    모형으로 재지 않는다(보수 규칙이 낳는 오탐 · 나눠 부르면 풀린다)."""
+    result = _hook(monkeypatch, capsys, "gh pr comment 1 --body-file clean.md --repo (Get-Date)", bodies, tool="PowerShell")
+    assert _denied(result) and "PowerShell 의 치환" in _reason(result), _reason(result)
+
+
 def test_the_substitution_end_follows_the_shell_escape():
     """`$(` 의 끝 — bash 는 `\\` 가, PowerShell 은 백틱이 이스케이프다. PowerShell 의 블록 주석은 끝을 모른다(None)."""
     from scripts import scan_publish  # pylint: disable=import-outside-toplevel
