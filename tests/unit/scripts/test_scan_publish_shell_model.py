@@ -36,6 +36,7 @@ _REWRITE_THEN_POST = [
     pytest.param("sed -i 's/clean/x/' clean.md && gh pr comment 1 -F clean.md", id="sed-in-place"),
     pytest.param("cp dirty.md clean.md && gh pr comment 1 --body-file - < clean.md", id="stdin-file"),
     pytest.param("git checkout HEAD -- clean.md && gh pr comment 1 --body-file clean.md", id="git-checkout"),
+    pytest.param("gh pr checkout 12 && gh pr comment 12 --body-file clean.md", id="gh-pr-checkout"),
 ]
 
 
@@ -55,6 +56,8 @@ def test_a_body_rewritten_in_the_same_command_is_not_measured(command, bodies, m
     pytest.param("cd . && ", id="cd"),
     pytest.param("echo hi 2>/dev/null && ", id="stderr-to-devnull"),
     pytest.param("if test -f clean.md; then ", id="if-test"),
+    pytest.param("if test -f clean.md; then true; fi && ", id="closed-if-block"),
+    pytest.param('[[ "a" > "b" ]] || ', id="string-comparison"),
 ])
 def test_commands_that_write_no_file_keep_the_body_measurable(between, bodies, monkeypatch, capsys):
     """대조군 — 파일을 쓰지 않는 흔한 명령 뒤의 게시는 미리 만든 본문을 그대로 잰다(깨끗하면 통과 · 꼴이면 막힘)."""

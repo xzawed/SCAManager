@@ -342,7 +342,7 @@ def _runs_gh_directly(before: str) -> bool:
 # 복사 · 편집기 · 목록 밖 모두)이 돌면 검사가 읽은 본문 파일은 옛 내용일 수 있다(원장 #1940 M03 P1-12 · P1-13).
 # Commands that write no file and rebind no variable before a publishing gh; anything else may have rewritten the body.
 _NON_WRITING_HEADS = frozenset({"cd", "echo", "test", "[", "[[", "true", "false", ":", "pwd", "ls", "cat", "head", "tail",
-                                "wc", "grep", "sleep", "date", "which", "type", "mkdir"})
+                                "wc", "grep", "sleep", "date", "which", "type", "mkdir", "fi", "done", "esac", "}", ")"})
 _GIT_NON_WRITING = frozenset({"status", "log", "diff", "show", "rev-parse", "push", "fetch", "ls-remote", "ls-files",
                               "remote", "branch", "describe"})
 _LEADING_KEYWORDS = frozenset({"if", "then", "else", "elif", "do", "while", "until", "!", "{", "(", "time", "nohup"})
@@ -364,7 +364,10 @@ def _rewriting_command(before: str) -> str | None:
         words = list(itertools.dropwhile(lambda w: w in _LEADING_KEYWORDS or _ASSIGNMENT_WORD.fullmatch(w), words))
         if not words:
             continue
-        for target in _OUTPUT_REDIRECT_TARGET.finditer(seg_masked):
+        # `[[ a > b ]]` · `(( a > b ))` 의 `>` 는 비교다 — 리디렉션이 아니다(Grok M03-b 반례)
+        # Inside `[[ … ]]` and `(( … ))` a `>` compares; it is not a redirection.
+        comparisons = words[0] in ("[[", "((")
+        for target in () if comparisons else _OUTPUT_REDIRECT_TARGET.finditer(seg_masked):
             if not _HARMLESS_REDIRECT_TARGET.fullmatch(seg[target.start(1):target.end(1)]):
                 return f"{words[0]} > …"
         head = _unquote(words[0]).replace("\\", "/").rsplit("/", 1)[-1].lower().removesuffix(".exe")
@@ -380,7 +383,8 @@ def _rewriting_command(before: str) -> str | None:
             if sub not in _GIT_NON_WRITING:
                 return f"git {sub}".strip()
         elif head == "gh":
-            if any(word in ("download", "clone") for word in words[1:]):
+            # 받기 · 복제 · 체크아웃 · 동기화는 작업 트리 파일을 바꾼다(`gh pr checkout` — Grok M03-b 반례)
+            if any(word in ("download", "clone", "checkout", "sync") for word in words[1:]):
                 return "gh"
         elif head == "printf":
             if "-v" in words[1:]:
