@@ -757,7 +757,8 @@ def _word_at(text: str, pos: int) -> str | None:
 
 def _measure_stdin(rest: str, before: str, assigned: dict[str, str | None], path_assigned: dict[str, str | None],
                    base: Path | None,
-                   counts: dict[str, int], unread: list[str], rewritten_note: str | None = None) -> None:
+                   counts: dict[str, int], unread: list[str], rewritten_note: str | None = None,
+                   shell: str = "bash") -> None:
     """stdin 본문(`-`)을 잰다 — 출처가 정확히 하나일 때만: fd 0 의 heredoc(본문은 따로 잰다) · here-string 낱말 · `<` 파일,
     또는 출처가 없고 파이프 앞 단계가 `cat <<EOF |` 일 때. 출처가 여럿(덮어쓰기) · `<&` 복제 · 못 읽은 heredoc · 모르는 출처는
     못 잰 것이다. 연산자는 따옴표를 가린 글자에서 찾는다(`--title '<<<x'` 는 연산자가 아니다).
@@ -798,7 +799,7 @@ def _measure_stdin(rest: str, before: str, assigned: dict[str, str | None], path
         unread.append(rewritten_note)  # `<` 파일도 같은 명령이 다시 썼을 수 있다 / the `<` file may have been rewritten too
         return
     raw = _unquote(word)
-    text = _read(_resolve(raw, path_assigned, base))
+    text = _read(_resolve(raw, path_assigned, base, shell))
     if text is None:
         unread.append(raw)
         return
@@ -889,7 +890,7 @@ def judge_command(command: str, cwd: str | None, shell: str) -> tuple[dict[str, 
                 continue
             _add(counts, _count_value(expanded, expanded=expanded != text))
         if "-" in paths:
-            _measure_stdin(rest, before, assigned, path_assigned, base, counts, unread, rewritten_note)
+            _measure_stdin(rest, before, assigned, path_assigned, base, counts, unread, rewritten_note, shell)
         for raw in paths:
             if raw is None:
                 unread.append("(값이 빠진 본문 파일 플래그 — 다른 명령이 덧붙인 파일이 게시될 수 있다)")

@@ -118,6 +118,17 @@ def test_the_publish_scan_reads_the_body_file_bash_opens(tmp_path, monkeypatch, 
     assert _denied(_hook(monkeypatch, capsys, "gh pr comment 1 --body-file /fake/dirty.md", tmp_path))
 
 
+def test_the_publish_scan_does_not_translate_a_powershell_stdin_path(tmp_path, monkeypatch, capsys):
+    """🔴 PowerShell 의 `<` 본문 경로에는 Git Bash 규칙을 쓰지 않는다 — 본문 파일 · cd 처럼 셸을 따른다(Cursor Bugbot #1948).
+    `/fake/clean.md` 는 PowerShell 에선 작업 드라이브 아래의 없는 파일이라 못 잰 것(막음)이다 — Bash 규칙으로 바꾸면 깨끗한
+    tmp_path 파일을 재 통과했다."""
+    (tmp_path / "clean.md").write_text("clean body\n", encoding="utf-8")
+    monkeypatch.setattr(scan_publish, "git_bash_to_windows", _fake_git_bash(tmp_path))
+    command = "gh pr comment 1 --body-file - < /fake/clean.md"
+    assert _hook(monkeypatch, capsys, command, tmp_path) is None
+    assert _denied(_hook(monkeypatch, capsys, command, tmp_path, tool="PowerShell"))
+
+
 def test_the_publish_scan_denies_a_body_path_bash_cannot_place(tmp_path, monkeypatch, capsys):
     """🔴 어디를 여는지 모르는 Git Bash 경로(장치 · Git 뿌리를 못 물음)의 본문은 못 잰 것이다 — 막는다."""
     monkeypatch.setattr(scan_publish, "git_bash_to_windows", lambda path: None if path.startswith("/") else path)
