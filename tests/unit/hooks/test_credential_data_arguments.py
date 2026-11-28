@@ -103,6 +103,7 @@ def test_an_env_name_outside_the_list_is_still_a_dump(command, repo):
     pytest.param("env | grep -v '^PYTHON'", id="inverted"),
     pytest.param("env | grep -A2 '^PYTHON'", id="context-lines"),
     pytest.param("env | grep '^PYTHON' notes.md", id="file-argument"),
+    pytest.param("env | grep '^PYTHON' '^LC_'", id="second-word-is-a-file-not-a-pattern"),
     pytest.param("printenv PYTHONUTF8 GH_TOKEN", id="one-name-outside-the-list"),
     pytest.param("railway variables --kv | grep '^PYTHON'", id="railway-service-variables"),
 ])
