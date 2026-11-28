@@ -66,6 +66,16 @@ def test_commands_that_write_no_file_keep_the_body_measurable(between, bodies, m
     assert _denied(result) and "email 1" in _reason(result), result
 
 
+# witness-corpus: 파일을 쓰는 흔한 명령 가운데 판정 목록에 이름이 없는 것 — 목록 밖이면 쓰는 쪽으로 본다(막는 쪽)
+_UNLISTED_WRITERS = ["unzip -o bundle.zip", "patch -p1", "tar -xzf pkg.tgz", "curl -o page.html"]
+
+
+@pytest.mark.parametrize("writer", _UNLISTED_WRITERS)
+def test_an_unlisted_command_before_a_post_is_treated_as_writing(writer, bodies, monkeypatch, capsys):
+    """🔴 목록 밖 명령은 파일을 쓰는지 모른다 — gh 앞에 오면 본문 파일을 못 잰 것으로 본다(허용 목록이 닫혀 있다)."""
+    assert _denied(_hook(monkeypatch, capsys, f"{writer} && gh pr comment 1 --body-file clean.md", bodies)), writer
+
+
 # --- 2. 사이 명령이 변수를 다시 묶는 꼴 (P1-13) ------------------------------------------------------------------
 
 _REBIND_THEN_POST = [
