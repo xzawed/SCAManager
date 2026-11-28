@@ -319,7 +319,7 @@ def _lists_environment(stage):
 _DATA_ARGUMENT_COMMANDS = frozenset({"grep", "egrep", "fgrep", "findstr", "select-string", "sls", "echo", "printf",
                                      "ls", "dir", "cat", "head", "tail", "wc", "uniq", "cut", "tr"})
 _RUNNERS = frozenset({"sh", "bash", "zsh", "dash", "ksh", "fish", "xargs", "eval", "source", ".", "powershell", "pwsh",
-                      "cmd", "parallel"})
+                      "cmd", "parallel", "python", "python3", "py", "node", "perl", "ruby", "php"})
 # 사용자 결정(11-28 «무해 이름 목록만 허용») — 값이 비밀이 아닌 이름 · 접두사. 정확한 이름은 그 이름만, 접두사는 그 아래 전부.
 # User decision 2026-11-28: names and prefixes whose values are not secret.
 _HARMLESS_ENV_NAMES = frozenset({"LANG", "TEMP", "TMP", "TMPDIR", "TERM", "SHELL", "PATH"})
@@ -331,12 +331,14 @@ _HARMLESS_GREP_FLAGS = frozenset("iEFwxnchsqo")
 
 
 def _data_argument_stages(stages):
-    """인자를 글자로만 받는 단계의 번호 — 뒤 단계에 셸 · 실행기가 있으면 하나도 없다(`grep … | sh` 는 인자를 돌린다).
-    Indices of plain-data stages; none at all when a later stage is a shell or runner."""
-    heads = [_command_words(stage)[0] for stage in stages]
-    if any(head in _RUNNERS for head in heads):
-        return frozenset()
-    return frozenset(i for i, head in enumerate(heads) if head in _DATA_ARGUMENT_COMMANDS)
+    """인자를 글자로만 받는 단계의 번호 — 글자 단계가 아닌 단계의 **어느 낱말이든** 셸 · 실행기 · 인터프리터면 하나도 없다.
+    명령 이름만 보면 `env bash` · `tee >(sh)` · `env -i sh` 의 실행기를 놓친다(Grok 8b065704).
+    Indices of plain-data stages; none at all when any word of another stage names a shell, runner or interpreter."""
+    data = [i for i, stage in enumerate(stages) if _command_words(stage)[0] in _DATA_ARGUMENT_COMMANDS]
+    for i, stage in enumerate(stages):
+        if i not in data and any(_command_name(word) in _RUNNERS for word in _plain_words(stage)):
+            return frozenset()
+    return frozenset(data)
 
 
 def _harmless_env_name(name, exact):

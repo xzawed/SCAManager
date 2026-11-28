@@ -52,6 +52,10 @@ def test_a_command_name_inside_data_arguments_is_not_run(command, repo):
     pytest.param("sh -c printenv", id="printenv-in-shell-string"),
     pytest.param("grep -h printenv tests/test_x.py | sh", id="data-stage-piped-into-shell"),
     pytest.param("xargs printenv < tests/test_x.py", id="printenv-run-by-xargs"),
+    # Grok(8b065704) — 실행기가 명령 이름이 아닌 자리에 있다 / the runner is not the stage's command name
+    pytest.param("echo printenv HOME | env bash", id="data-stage-piped-into-env-bash"),
+    pytest.param("echo printenv HOME | tee >(sh)", id="data-stage-teed-into-a-shell"),
+    pytest.param("echo printenv HOME | python3", id="data-stage-piped-into-an-interpreter"),
 ])
 def test_a_command_name_that_runs_is_still_judged(command, repo):
     """🔴 대조군 — 명령 자리의 popd · 모르는 cd · printenv 와, 글자 단계의 출력을 셸이 돌리는 꼴은 그대로 막힌다."""
