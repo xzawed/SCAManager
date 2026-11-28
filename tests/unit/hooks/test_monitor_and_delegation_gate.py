@@ -170,9 +170,14 @@ def test_antigravity_status_tools_pass(tool):
     assert _decision(_HOOK, {"tool_name": _AG + tool, "tool_input": {}}) is None
 
 
-def test_an_unknown_antigravity_tool_is_denied():
-    """🔴 플러그인이 새 도구를 더하면 셸을 도는지 모른다 — 막는 쪽이다(허용 목록이 닫혀 있다)."""
-    assert _decision(_HOOK, {"tool_name": _AG + "brand_new_tool", "tool_input": {"agyMode": "plan"}}) == "deny"
+# witness-corpus: AntiGravity 가 앞으로 도구로 낼 수 있는 기능 — 플러그인 스킬의 기능명(swarm · goal · boost · browser)에서 왔다(허용 목록 밖)
+_AG_FUTURE_TOOLS = ["ag_swarm", "ag_goal", "ag_boost", "ag_browser"]
+
+
+@pytest.mark.parametrize("tool", _AG_FUTURE_TOOLS)
+def test_an_unknown_antigravity_tool_is_denied(tool):
+    """🔴 플러그인이 새 도구를 더하면 셸을 도는지 모른다 — 계획 모드 인자가 있어도 막는 쪽이다(허용 목록이 닫혀 있다)."""
+    assert _decision(_HOOK, {"tool_name": _AG + tool, "tool_input": {"agyMode": "plan"}}) == "deny"
 
 
 def test_another_plugin_server_is_not_judged_here():
