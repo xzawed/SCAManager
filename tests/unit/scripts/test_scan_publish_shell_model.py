@@ -37,6 +37,11 @@ _REWRITE_THEN_POST = [
     pytest.param("cp dirty.md clean.md && gh pr comment 1 --body-file - < clean.md", id="stdin-file"),
     pytest.param("git checkout HEAD -- clean.md && gh pr comment 1 --body-file clean.md", id="git-checkout"),
     pytest.param("gh pr checkout 12 && gh pr comment 12 --body-file clean.md", id="gh-pr-checkout"),
+    # Cursor Bugbot(#1945) — 파일로 가는 `>&` · 읽기-쓰기 `<>` · git 의 --output
+    pytest.param("cat dirty.md >&clean.md && gh pr comment 1 --body-file clean.md", id="redirect-both-streams-to-file"),
+    pytest.param("cat dirty.md 1<>clean.md && gh pr comment 1 --body-file clean.md", id="read-write-redirect"),
+    pytest.param("git diff --output=clean.md && gh pr comment 1 --body-file clean.md", id="git-diff-output-option"),
+    pytest.param("git -c core.fsmonitor=./x.sh status && gh pr comment 1 --body-file clean.md", id="git-config-option"),
 ]
 
 
@@ -55,15 +60,24 @@ def test_a_body_rewritten_in_the_same_command_is_not_measured(command, bodies, m
     pytest.param("test -f clean.md && ", id="test-f"),
     pytest.param("cd . && ", id="cd"),
     pytest.param("echo hi 2>/dev/null && ", id="stderr-to-devnull"),
+    pytest.param("git status 2>&1 && ", id="stderr-to-stdout"),
+    pytest.param("echo hi >&2 && ", id="stdout-to-stderr"),
     pytest.param("if test -f clean.md; then ", id="if-test"),
     pytest.param("if test -f clean.md; then true; fi && ", id="closed-if-block"),
     pytest.param('[[ "a" > "b" ]] || ', id="string-comparison"),
+    pytest.param("if (( 2 > 1 )); then ", id="arithmetic-comparison"),
 ])
 def test_commands_that_write_no_file_keep_the_body_measurable(between, bodies, monkeypatch, capsys):
     """대조군 — 파일을 쓰지 않는 흔한 명령 뒤의 게시는 미리 만든 본문을 그대로 잰다(깨끗하면 통과 · 꼴이면 막힘)."""
     assert _hook(monkeypatch, capsys, f"{between}gh pr comment 1 --body-file clean.md", bodies) is None
     result = _hook(monkeypatch, capsys, f"{between}gh pr comment 1 --body-file dirty.md", bodies)
     assert _denied(result) and "email 1" in _reason(result), result
+
+
+def test_a_powershell_discard_redirect_keeps_the_body_measurable(bodies, monkeypatch, capsys):
+    """대조군 — PowerShell 의 `2>$null` 은 버리는 곳이다: 그 뒤의 게시는 미리 만든 본문을 잰다."""
+    command = "git status 2>$null; gh pr comment 1 --body-file clean.md"
+    assert _hook(monkeypatch, capsys, command, bodies, tool="PowerShell") is None
 
 
 # witness-corpus: 파일을 쓰는 흔한 명령 가운데 판정 목록에 이름이 없는 것 — 목록 밖이면 쓰는 쪽으로 본다(막는 쪽)
@@ -85,6 +99,7 @@ _REBIND_THEN_POST = [
     pytest.param("S=clean.md; printf -v S '%s' dirty.md; gh pr comment 1 --body-file \"$S\"", id="printf-v"),
     pytest.param('S=clean.md; for S in dirty.md; do gh pr comment 1 --body-file "$S"; done', id="for-loop"),
     pytest.param('S=clean.md; mapfile -t S < names.txt; gh pr comment 1 --body-file "$S"', id="mapfile"),
+    pytest.param('S=clean.md; (( S = 2 )); gh pr comment 1 --body-file "$S"', id="arithmetic-assignment"),
 ]
 
 
@@ -119,6 +134,33 @@ def test_a_read_only_gh_command_is_not_blocked_for_its_text(command, bodies, mon
 def test_posting_gh_commands_are_still_scanned(command, bodies, monkeypatch, capsys):
     """대조군 — 게시하는(또는 쓰기인지 모르는) gh 는 명령 글자를 그대로 잰다."""
     assert _denied(_hook(monkeypatch, capsys, command, bodies)), command
+
+
+@pytest.mark.parametrize("tool", ["Bash", "Monitor"])
+@pytest.mark.parametrize("command", [
+    pytest.param(f"/usr/bin/gh issue comment 1 --body '{_EMAIL_TEXT}'", id="path-qualified-gh"),
+    pytest.param("/usr/bin/gh issue comment 1 --body-file dirty.md", id="path-qualified-body-file"),
+    pytest.param('"C:/Program Files/GitHub CLI/gh.exe" issue comment 1 --body-file dirty.md', id="quoted-windows-path"),
+    pytest.param("\\gh issue comment 1 --body-file dirty.md", id="backslash-gh"),
+    pytest.param(f"$(which gh) issue comment 1 --body '{_EMAIL_TEXT}'", id="gh-from-which"),
+    pytest.param("G=$(command -v gh); $G issue comment 1 --body-file clean.md", id="gh-path-by-lookup"),
+    pytest.param(f"gh pr view 1 && $(which gh) issue comment 1 --body '{_EMAIL_TEXT}'", id="read-only-then-unrecognized"),
+])
+def test_a_gh_called_by_path_is_not_treated_as_gh_less(command, tool, bodies, monkeypatch, capsys):
+    """🔴 경로 · 따옴표 · `\\gh` · `$(which gh)` 로 부른 gh 도 «gh 없음» · «읽기만» 이 아니다 — 본문을 재거나, 어떤 인자가
+    게시되는지 모르면 막는다(Cursor 보안 검토 #1945)."""
+    assert _denied(_hook(monkeypatch, capsys, command, bodies, tool=tool)), (tool, command)
+
+
+@pytest.mark.parametrize("tool", ["Bash", "Monitor"])
+def test_a_path_qualified_gh_is_measured_not_blanket_denied(tool, bodies, monkeypatch, capsys):
+    """대조군 — 경로로 부른 gh 도 본문을 잰다: 깨끗하면 통과한다(경로라서 막는 것이 아니다)."""
+    assert _hook(monkeypatch, capsys, "/usr/bin/gh issue comment 1 --body-file clean.md", bodies, tool=tool) is None
+
+
+def test_a_monitor_command_that_only_mentions_gh_is_not_a_publish(bodies, monkeypatch, capsys):
+    """대조군 — gh 낱말이 인자에만 있는 Monitor 명령은 게시가 아니다(넓힌 gh 판정이 감시 명령을 막지 않는다)."""
+    assert _hook(monkeypatch, capsys, 'tail -f build.log | grep --line-buffered "gh"', bodies, tool="Monitor") is None
 
 
 def test_a_heredoc_command_without_gh_is_not_a_publish(bodies, monkeypatch, capsys):

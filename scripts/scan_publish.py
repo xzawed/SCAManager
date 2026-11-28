@@ -136,10 +136,23 @@ _SIMPLE_WORD = re.compile(r"\"[^\"\\]*\"|'[^']*'|[^\s;&|<>()'\"\\]+")
 # `cat <<EOF | gh … -` — 파이프 앞 단계가 heredoc 하나만 받는 cat 이면 stdin 은 그 heredoc 본문이다(따로 잰다).
 # A previous pipeline stage that is a bare `cat <<EOF` feeds that heredoc body (measured separately).
 _CAT_HEREDOC_STAGE = re.compile(r"(?:^|[;&|(\n])[ \t]*cat[ \t]+" + re.escape(_HEREDOC_MARK) + r"[ \t]*\|[ \t]*$")
-# gh 호출의 시작. 끝은 그 자리부터 따옴표를 가린 글자에서 첫 구분자(`\n` · `;` · `&` · `|`)까지다 — 따옴표 안의 `|`
-# (jq 필터 · 검색어)는 구분자가 아니다. 앞쪽 글자의 따옴표 상태에 휘둘리지 않게 gh 자리부터 새로 가린다.
-# Where a gh call starts; it ends at the first unquoted separator, masked afresh from the gh position.
-_GH_START = re.compile(r"(?:^|(?<=[\s;&|(]))gh(?:\.exe)?\s+")
+# gh 호출의 시작 — 명령 낱말이 맨 `gh` · 경로(`/usr/bin/gh` · `$HOME/bin/gh` · `C:/…/gh.exe`) · `\gh` · 따옴표로 감싼 것
+# (`"C:/Program Files/GitHub CLI/gh.exe"`)인 자리. 끝은 그 자리부터 따옴표를 가린 글자에서 첫 구분자(`\n` · `;` · `&` · `|`)
+# 까지다 — 따옴표 안의 `|`(jq 필터 · 검색어)는 구분자가 아니다. 앞쪽 글자의 따옴표 상태에 휘둘리지 않게 gh 자리부터 새로 가린다.
+# Where a gh call starts (bare, path-qualified, backslashed or quoted); it ends at the first unquoted separator.
+_GH_WORD = (r"(?:\\?(?:[^\s;&|()<>'\"`]*[/\\])?gh(?:\.exe)?"
+            r"|\"(?:[^\"`]*[/\\])?gh(?:\.exe)?\""
+            r"|'(?:[^']*[/\\])?gh(?:\.exe)?')")
+_GH_START = re.compile(r"(?:^|(?<=[\s;&|(]))" + _GH_WORD + r"\s+")
+# 명령 어디든 gh 낱말이 있는가 — 없을 때만 «gh 없음» 이다(경로 · 따옴표 · `$(which gh)` · 인자 안의 gh 모두 «있음»).
+# Any gh word anywhere; only its absence means no gh call (Cursor security review #1945).
+_ANY_GH_WORD = re.compile(r"(?<![\w-])gh(?![\w-])")
+# gh 를 변수 · 명령 치환으로 부르는 꼴 — 경로를 찾아 쓰거나(`$(which gh)` · `$(command -v gh)` · `(Get-Command gh)`) 변수에
+# 담는다(`G=gh` · `G=/usr/bin/gh`). 그 호출의 인자는 낱말로 못 가린다.
+# gh reached through a lookup substitution or a variable; its arguments cannot be told apart.
+_GH_INDIRECT = re.compile(
+    r"(?:\$\(|`|\()\s*(?:which|command\s+-v|type\s+-[pP]|where(?:\.exe)?|Get-Command)\s+[\"']?gh(?:\.exe)?[\"']?\s*[)`]"
+    r"|(?<![\w-])[A-Za-z_]\w*=[\"']?(?:[^\s;&|()<>'\"`]*[/\\])?gh(?:\.exe)?[\"']?(?=[\s;&|)]|$)")
 _UNQUOTED_SEGMENT = re.compile(r"[^\n;&|]*")
 # 셸 변수를 바꾸는 대입 — 대입 낱말뿐인 단순 명령(`B=x;` · `A=1 B=2 &&`)에서만 값을 얻는다. 따옴표 안 글자 · 다른 명령의
 # 인자는 대입이 아니고, 앞붙임(`B=x cmd` · `B=x gh …` — 그 명령의 환경에만 든다) · `+=` · 배열 · 첨자는 값을 모른다. 대입과
@@ -346,8 +359,17 @@ _NON_WRITING_HEADS = frozenset({"cd", "echo", "test", "[", "[[", "true", "false"
 _GIT_NON_WRITING = frozenset({"status", "log", "diff", "show", "rev-parse", "push", "fetch", "ls-remote", "ls-files",
                               "remote", "branch", "describe"})
 _LEADING_KEYWORDS = frozenset({"if", "then", "else", "elif", "do", "while", "until", "!", "{", "(", "time", "nohup"})
-_OUTPUT_REDIRECT_TARGET = re.compile(r"(?<![<\\])(?:\d+|&)?>{1,2}\|?[ \t]*([^\s;&|()<>]*)")
-_HARMLESS_REDIRECT_TARGET = re.compile(r"(?:&?\d*-?|/dev/null|NUL)", re.I)
+# 단순 명령의 경계 — 리디렉션 안의 `&`(`2>&1` · `>&f` · `&>f`) · `>|` 의 `|` 는 경계가 아니다(Cursor Bugbot #1945).
+# Simple-command breaks; the `&` of a redirection and the `|` of `>|` are not breaks.
+_SIMPLE_COMMAND_BREAK = re.compile(r"&&|\|\||(?<![<>])&(?!>)|(?<!>)\||[;\n]")
+# 출력 리디렉션과 그 대상 — `>f` · `>>f` · `2>f` · `&>f` · `>&f` · `>|f` · `n<>f`(읽기-쓰기로 연다). fd 복제(`2>&1` · `>&2` ·
+# `>&-`)와 버리는 곳(`/dev/null` · `NUL` · `$null`)은 쓰기가 아니다. 대상이 비면(`> >(…)`) 쓰기로 본다.
+# Output redirections and their targets; fd duplication and discard targets are not writes, an empty target is.
+_OUTPUT_REDIRECT_TARGET = re.compile(r"(?<![<>\\])(?:\d+|&)?(?:>{1,2}&?|<>)\|?[ \t]*([^\s;&|()<>]*)")
+_HARMLESS_REDIRECT_TARGET = re.compile(r"(?:\d+-?|-|/dev/null|NUL|\$null)", re.I)
+# 산술 명령 안의 대입(`=` · `+=` · `++` · `--`) — 비교(`==` · `!=` · `<=` · `>=`)는 대입이 아니다.
+# An assignment inside an arithmetic command; comparisons are not assignments.
+_ARITHMETIC_ASSIGNMENT = re.compile(r"(?<![=!<>])=(?!=)|\+\+|--")
 
 
 def _rewriting_command(before: str) -> str | None:
@@ -356,7 +378,7 @@ def _rewriting_command(before: str) -> str | None:
     The first command before gh that may rewrite a file or rebind a variable (output redirections count); else None."""
     masked = _mask_quoted(before)
     start = 0
-    for brk in _COMMAND_BREAK.finditer(masked):
+    for brk in _SIMPLE_COMMAND_BREAK.finditer(masked):
         seg, seg_masked = before[start:brk.start()], masked[start:brk.start()]
         start = brk.end()
         words = [seg[m.start():m.end()] for m in re.finditer(r"\S+", seg_masked)]
@@ -364,10 +386,14 @@ def _rewriting_command(before: str) -> str | None:
         words = list(itertools.dropwhile(lambda w: w in _LEADING_KEYWORDS or _ASSIGNMENT_WORD.fullmatch(w), words))
         if not words:
             continue
-        # `[[ a > b ]]` · `(( a > b ))` 의 `>` 는 비교다 — 리디렉션이 아니다(Grok M03-b 반례)
-        # Inside `[[ … ]]` and `(( … ))` a `>` compares; it is not a redirection.
-        comparisons = words[0] in ("[[", "((")
-        for target in () if comparisons else _OUTPUT_REDIRECT_TARGET.finditer(seg_masked):
+        # `(( a > b ))` 의 `>` 는 비교다(Cursor Bugbot #1945) — 산술 안의 대입은 변수를 다시 묶는다
+        # In `(( … ))` a `>` compares; an assignment there rebinds a variable.
+        if words[0].startswith("(("):
+            if _ARITHMETIC_ASSIGNMENT.search(seg_masked):
+                return "(( … = … ))"
+            continue
+        # `[[ a > b ]]` 의 `>` 도 비교다 — 리디렉션이 아니다(Grok M03-b 반례) / inside `[[ … ]]` a `>` compares
+        for target in () if words[0] == "[[" else _OUTPUT_REDIRECT_TARGET.finditer(seg_masked):
             if not _HARMLESS_REDIRECT_TARGET.fullmatch(seg[target.start(1):target.end(1)]):
                 return f"{words[0]} > …"
         head = _unquote(words[0]).replace("\\", "/").rsplit("/", 1)[-1].lower().removesuffix(".exe")
@@ -375,13 +401,20 @@ def _rewriting_command(before: str) -> str | None:
             rest = iter(words[1:])
             sub = ""
             for word in rest:
-                if word in ("-C", "-c"):
+                if word == "-c" or word.startswith("--config-env"):
+                    # 설정이 명령을 돌릴 수 있다(`core.fsmonitor` · `core.pager` · 별칭 — Cursor Bugbot #1945)
+                    # A config override can run a command.
+                    return "git -c"
+                if word == "-C":
                     next(rest, None)
                 elif not word.startswith("-"):
                     sub = word
                     break
             if sub not in _GIT_NON_WRITING:
                 return f"git {sub}".strip()
+            # diff · log · show 의 `--output` 은 파일을 쓴다(Cursor Bugbot #1945) / `--output` writes a file
+            if any(word == "--output" or word.startswith("--output=") for word in words):
+                return f"git {sub} --output"
         elif head == "gh":
             # 받기 · 복제 · 체크아웃 · 동기화는 작업 트리 파일을 바꾼다(`gh pr checkout` — Grok M03-b 반례)
             if any(word in ("download", "clone", "checkout", "sync") for word in words[1:]):
@@ -447,9 +480,9 @@ def _substitution_end(text: str) -> int | None:
     return None
 
 
-def _gh_segments(stripped: str, shell: str) -> list[tuple[int, str, list[str] | None]]:
-    """명령 글자 속 gh 호출마다 (시작 자리, 그 호출의 글자, 낱말 또는 None). 끝은 따옴표 밖 첫 구분자 — `$(gh …)` 안이면 그
-    치환을 닫는 괄호에서 먼저 자른다. / Each gh call: (start, its text, words or None), cut at a `$(…)` close first."""
+def _gh_segments(stripped: str, shell: str) -> list[tuple[int, int, str, list[str] | None]]:
+    """명령 글자 속 gh 호출마다 (시작 자리, 끝 자리, 그 호출의 인자 글자, 낱말 또는 None). 끝은 따옴표 밖 첫 구분자 — `$(gh …)`
+    안이면 그 치환을 닫는 괄호에서 먼저 자른다. / Each gh call: (start, end, its argument text, words or None)."""
     segments = []
     for seg in _GH_START.finditer(stripped):
         tail = stripped[seg.end():]
@@ -457,8 +490,15 @@ def _gh_segments(stripped: str, shell: str) -> list[tuple[int, str, list[str] | 
             end = _substitution_end(tail)
             tail = tail if end is None else tail[:end]
         rest = tail[:_UNQUOTED_SEGMENT.match(_mask_quoted(tail)).end()]
-        segments.append((seg.start(), rest, _split(rest, shell)))
+        segments.append((seg.start(), seg.end() + len(rest), rest, _split(rest, shell)))
     return segments
+
+
+def _every_gh_word_is_a_call(stripped: str, segments: list[tuple[int, int, str, list[str] | None]]) -> bool:
+    """명령 글자의 gh 낱말이 모두 알아본 gh 호출(호출 낱말 · 그 인자) 안에 있는가 — 밖에 있으면 알아보지 못한 꼴로 gh 를 부를
+    수 있다. / Is every gh word inside a recognised gh call? One outside may be a gh call in an unrecognised form."""
+    return all(any(start <= word.start() < end for start, end, _rest, _words in segments)
+               for word in _ANY_GH_WORD.finditer(stripped))
 
 
 def _record(assigned: dict[str, str | None], match: re.Match[str], *, keeps: bool) -> None:
@@ -643,13 +683,18 @@ def judge_command(command: str, cwd: str | None, shell: str) -> tuple[dict[str, 
     """
     unread: list[str] = []
     counts: dict[str, int] = {}
-    if not _GH_START.search(command):
-        return counts, unread  # gh 가 없으면 gh 로 게시되는 글도 없다(원장 #1940 M03 P2-13) / no gh call, no gh publish
+    if not _ANY_GH_WORD.search(command):
+        return counts, unread  # gh 낱말이 없으면 gh 로 게시되는 글도 없다(원장 #1940 M03 P2-13) / no gh word, no gh publish
     stripped = _join_continuations(_HEREDOC.sub(
         lambda m: (_HEREDOC_MARK if m.group("fd") in (None, "0") else _OTHER_FD_HEREDOC_MARK) + m.group("tail"), command))
     segments = _gh_segments(stripped, shell)
-    if segments and all(words is not None and _is_read_only_gh(words) for _start, _rest, words in segments):
-        return counts, unread  # 읽기만 하는 gh 뿐 — 게시가 아니다(P2-12) / only read-only gh calls: nothing is published
+    if _GH_INDIRECT.search(stripped):
+        unread.append("(gh 를 변수 · 명령 치환으로 부른다 — 어떤 인자가 게시되는지 못 잰다 · gh 를 바로 부른다)")
+    elif (segments and all(words is not None and _is_read_only_gh(words) for _start, _end, _rest, words in segments)
+          and _every_gh_word_is_a_call(stripped, segments)):
+        # 읽기만 하는 gh 뿐이고 다른 꼴로 부른 gh 가 없다 — 게시가 아니다(P2-12)
+        # Only read-only gh calls and no gh word outside them: nothing is published.
+        return counts, unread
     for heredoc in _HEREDOC.finditer(command):
         body = heredoc.group("body") or ""
         if heredoc.group("quote"):
@@ -666,7 +711,7 @@ def judge_command(command: str, cwd: str | None, shell: str) -> tuple[dict[str, 
             continue
         _add(counts, count_kinds(value))
     _add(counts, count_kinds(stripped, skip=("local-home-path",)))
-    for seg_start, rest, words in segments:
+    for seg_start, _seg_end, rest, words in segments:
         if words is None:
             unread.append("(gh 명령을 낱말로 나누지 못했다)")
             continue
@@ -764,9 +809,9 @@ def _hook() -> int:
     except (ValueError, TypeError, AttributeError, RecursionError):
         _record_denial(raw, "판정 불가")
         return _deny("[게시 전 검사] 판정 불가 — 훅 입력을 읽지 못했다. 명령을 다시 시도하세요(scripts/scan_publish.py).")
-    if tool == "Monitor" and not _GH_START.search(command):
-        # Monitor 는 gh 거름(`if`) 없이 모든 명령에 뜬다 — gh 가 없으면 게시가 아니다(원장 #1940 «정할 것» 7).
-        # Monitor runs without an `if: … (gh *)` filter; with no gh call nothing is published.
+    if tool == "Monitor" and not _ANY_GH_WORD.search(command):
+        # Monitor 는 gh 거름(`if`) 없이 모든 명령에 뜬다 — gh 낱말이 없으면 게시가 아니다(원장 #1940 «정할 것» 7 · 경로 · 치환으로
+        # 부른 gh 도 낱말은 있다 — Cursor 보안 검토 #1945). / With no gh word anywhere nothing is published.
         return 0
     counts, unread = judge_command(command, cwd, "powershell" if tool == "PowerShell" else "bash")
     if not counts and not unread:
