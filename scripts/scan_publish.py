@@ -918,7 +918,11 @@ def _record_denial(subject: str, category: str) -> None:
 
 
 def _hook() -> int:
-    raw = sys.stdin.read()
+    # 하네스는 UTF-8 로 보낸다 — 로캘(cp949)로 읽으면 한글 바로 뒤의 ASCII 한 글자가 두 바이트 글자에 먹혀 한글에 붙은 토큰 ·
+    # DB 주소를 놓친다(원장 #1940 M06 P2-31 · 실측). / The harness sends UTF-8; a locale read swallowed the char after Hangul.
+    raw = getattr(sys.stdin, "buffer", sys.stdin).read()
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8", errors="replace")
     try:
         payload = json.loads(raw)
         tool = payload.get("tool_name") or ""
