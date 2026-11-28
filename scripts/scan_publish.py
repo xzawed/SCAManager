@@ -350,8 +350,12 @@ def _runs_gh_directly(before: str) -> bool:
     """gh 가 단순 명령의 명령 자리에 있는가 — 같은 단순 명령 안의 앞 낱말이 대입 · 투명한 앞붙임뿐이면 참.
     Is gh in command position, preceded only by assignments and pass-through prefixes in its simple command?"""
     masked = _mask_quoted(before)
-    breaks = list(_COMMAND_BREAK.finditer(masked))
-    start = breaks[-1].end() if breaks else 0
+    # gh 를 감싼 치환(`echo "$(gh …)"` · `URL=$(gh …)`) 안이면 gh 의 단순 명령은 그 치환 안에서 시작한다(Cursor Bugbot #1946)
+    # Inside a substitution wrapping gh, gh's simple command starts within it.
+    events = list(_substitution_events(before, "bash"))
+    floor = events[-1][2] if events and events[-1][0] == "unclosed" else 0
+    breaks = [brk for brk in _COMMAND_BREAK.finditer(masked) if brk.start() >= floor]
+    start = breaks[-1].end() if breaks else floor
     words = [before[start + m.start():start + m.end()] for m in re.finditer(r"\S+", masked[start:])]
     return all(w in _TRANSPARENT_PREFIXES or _ASSIGNMENT_WORD.fullmatch(w) for w in words)
 
@@ -367,21 +371,121 @@ _LEADING_KEYWORDS = frozenset({"if", "then", "else", "elif", "do", "while", "unt
 # 단순 명령의 경계 — 리디렉션 안의 `&`(`2>&1` · `>&f` · `&>f`) · `>|` 의 `|` 는 경계가 아니다(Cursor Bugbot #1945).
 # Simple-command breaks; the `&` of a redirection and the `|` of `>|` are not breaks.
 _SIMPLE_COMMAND_BREAK = re.compile(r"&&|\|\||(?<![<>])&(?!>)|(?<!>)\||[;\n]")
-# 출력 리디렉션과 그 대상 — `>f` · `>>f` · `2>f` · `&>f` · `>&f` · `>|f` · `n<>f`(읽기-쓰기로 연다). fd 복제(`2>&1` · `>&2` ·
-# `>&-`)와 버리는 곳(`/dev/null` · `NUL` · `$null`)은 쓰기가 아니다. 대상이 비면(`> >(…)`) 쓰기로 본다.
-# Output redirections and their targets; fd duplication and discard targets are not writes, an empty target is.
-_OUTPUT_REDIRECT_TARGET = re.compile(r"(?<![<>\\])(?:\d+|&)?(?:>{1,2}&?|<>)\|?[ \t]*([^\s;&|()<>]*)")
-_HARMLESS_REDIRECT_TARGET = re.compile(r"(?:\d+-?|-|/dev/null|NUL|\$null)", re.I)
+# 출력 리디렉션과 그 대상 — `>f` · `>>f` · `2>f` · `&>f` · `>&f` · `>|f` · `n<>f`(읽기-쓰기로 연다). 쓰기가 아닌 것은
+# `/dev/null` 과 `&` 가 붙은 연산자의 fd 복제(`2>&1` · `>&2` · `>&-`)뿐이다 — `> 1` 은 파일 `1` 에 쓰고, `NUL` · `$null` 은 bash
+# (리눅스 · Codespaces)에서 파일 이름이 될 수 있다(Cursor #1946). 대상이 비면(`> >(…)`) 쓰기로 본다.
+# Output redirections; only /dev/null and fd duplication after an `&` operator are not writes.
+_OUTPUT_REDIRECT_TARGET = re.compile(r"(?<![<>\\])(?:\d+|&)?(?P<op>>{1,2}&?|<>)\|?[ \t]*(?P<target>[^\s;&|()<>]*)")
+_FD_TARGET = re.compile(r"\d+-?|-")
+
+
+def _harmless_redirect(op: str, target: str) -> bool:
+    """버리는 곳(`/dev/null`)이거나 fd 복제인가 / Is this redirection a discard or an fd duplication?"""
+    return target == "/dev/null" or (op.endswith("&") and bool(_FD_TARGET.fullmatch(target)))
+
+
+def _substitution_opener(text: str, i: int, quoted: bool, shell: str) -> int:
+    """`text[i]` 에서 여는 치환 표시의 길이(없으면 0) — bash: `$(` · 따옴표 밖 `<(` · `>(`. PowerShell: `$(` · 따옴표 밖 `@(` · `(`
+    (인자 자리 그룹도 gh 보다 먼저 돈다 — Cursor #1946). / Length of a substitution opener at `text[i]`, or 0."""
+    if text.startswith("$(", i):
+        return 2
+    if quoted:
+        return 0
+    if shell == "powershell":
+        return 2 if text.startswith("@(", i) else (1 if text[i] == "(" else 0)
+    return 2 if text.startswith(("<(", ">("), i) else 0
+
+
+def _substitution_events(text: str, shell: str):
+    """치환을 따라 읽으며 (종류, 여는 자리, 끝, 산술인가) 를 낸다 — "span"(끝 = 닫는 괄호 다음) · "unclosed"(끝 = 안쪽이 시작하는
+    자리, 거기서 멈춘다) · "backtick"(bash 의 백틱 치환, 거기서 멈춘다). 작은따옴표 안은 글자 그대로라 뺀다. PowerShell 은 백틱이
+    이스케이프다. / Walk the substitutions of `text`, yielding spans, then an unclosed opener or a bash backtick if any."""
+    escape = "`" if shell == "powershell" else "\\"
+    quote: str | None = None
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if quote == "'":
+            quote = None if ch == "'" else quote
+        elif ch == escape:
+            i += 2
+            continue
+        elif ch == "`":
+            yield "backtick", i, i, False
+            return
+        elif ch == '"':
+            quote = None if quote == '"' else '"'
+        elif ch == "'" and quote is None:
+            quote = "'"
+        elif opener := _substitution_opener(text, i, quote is not None, shell):
+            end = _substitution_end(text[i + opener:], shell)
+            if end is None:
+                yield "unclosed", i, i + opener, False
+                return
+            yield "span", i, i + opener + end + 1, shell != "powershell" and text.startswith("$((", i)
+            i += opener + end + 1
+            continue
+        i += 1
+
+
+def _substitution_spans(text: str, shell: str = "bash") -> list[tuple[int, int, bool]] | None:
+    """명령 치환 · 프로세스 치환 · 산술 펼침(`$((…))`, bash 만)의 자리 — (여는 표시, 닫는 괄호 다음, 산술인가). bash 의 백틱
+    치환 · 닫히지 않은 치환이 있으면 None(안을 모른다).
+    Substitution spans; None for a bash backtick or an unclosed one."""
+    spans: list[tuple[int, int, bool]] = []
+    for kind, start, end, arithmetic in _substitution_events(text, shell):
+        if kind != "span":
+            return None
+        spans.append((start, end, arithmetic))
+    return spans
+
+
+def _substitution_rewriter(text: str, shell: str, spans: list[tuple[int, int, bool]] | None = None) -> str | None:
+    """`text` 의 치환 안에서 파일을 쓰거나 변수를 다시 묶을 수 있는 명령 — 치환은 gh 보다 먼저 돈다(그 자리가 gh 의 인자여도).
+    백틱 · 닫히지 않은 치환은 안을 모르니 그 자체로 돌려준다. PowerShell 의 치환은 안쪽을 bash 모형으로 재지 않고 그 자체로
+    돌려준다(따옴표 · 이스케이프 · 대입이 다르다 — Cursor #1946).
+    A rewriting command inside a substitution of `text`; substitutions run before gh, even inside its own arguments."""
+    spans = _substitution_spans(text, shell) if spans is None else spans
+    if spans is None:
+        return "`…`"
+    if shell == "powershell":
+        return "PowerShell 의 치환 `(…)`" if spans else None
+    for start, end, arithmetic in spans:
+        inner = f"(( {text[start + 3:end - 2]} ))" if arithmetic else text[start + 2:end - 1]
+        found = _rewriting_command(inner + "\n", shell)
+        if found:
+            return f"$({found})"
+    return None
 # 산술 명령 안의 대입(`=` · `+=` · `++` · `--`) — 비교(`==` · `!=` · `<=` · `>=`)는 대입이 아니다.
 # An assignment inside an arithmetic command; comparisons are not assignments.
 _ARITHMETIC_ASSIGNMENT = re.compile(r"(?<![=!<>])=(?!=)|\+\+|--")
 
 
-def _rewriting_command(before: str) -> str | None:
+def _rewriting_command(before: str, shell: str = "bash") -> str | None:
     """`before`(게시하는 gh 앞 글자)에서 본문 파일을 쓰거나 변수를 다시 묶을 수 있는 첫 단순 명령 — 없으면 None. 출력 리디렉션
-    (`/dev/null` · fd 복제 밖)도 쓰기다. gh 자신의 단순 명령(마지막 구분자 뒤)은 보지 않는다.
-    The first command before gh that may rewrite a file or rebind a variable (output redirections count); else None."""
-    masked = _mask_quoted(before)
+    (버리는 곳 · fd 복제 밖)과 치환 안의 명령도 본다. gh 자신의 단순 명령(마지막 구분자 뒤)은 치환만 본다.
+    The first command before gh that may rewrite a file or rebind a variable (redirections and substitutions count)."""
+    if shell == "powershell":
+        # PowerShell 의 따옴표 · 이스케이프(백틱 · `\` 는 글자) · 그룹 · 대입은 이 셸 모형(bash)과 다르다 — gh 앞에 무엇이든
+        # 있으면(호출 연산자 `&` 만 빼고) 본문 파일을 못 잰 것으로 본다(나눠 부른다 · Cursor #1946).
+        # PowerShell parses differently; anything before gh but the call operator leaves the body unmeasured.
+        return "PowerShell 의 앞 명령" if before.strip() not in ("", "&") else None
+    events = list(_substitution_events(before, shell))
+    if events and events[-1][0] == "unclosed":
+        # gh 를 감싼 치환(`URL=$(… gh …)`) — 닫는 괄호는 gh 뒤에 있다. 그 바깥과, 그 안에서 gh 앞에 도는 명령을 따로 잰다
+        # (Cursor Bugbot #1946 — «닫히지 않은 치환» 으로 막던 오탐). / gh sits inside this substitution: judge outside and inside.
+        _kind, open_at, inner_at, _arithmetic = events[-1]
+        return _rewriting_command(before[:open_at], shell) or _rewriting_command(before[inner_at:], shell)
+    spans = _substitution_spans(before, shell)
+    found = _substitution_rewriter(before, shell, spans)
+    if found:
+        return found
+    # 치환 안은 따로 쟀다 — 바깥 경계 · 낱말 · 리디렉션 판정에서 가린다(`N=$(gh pr view …; true)` 가 한 낱말)
+    # Substitutions were judged on their own; mask them so they stay one word outside.
+    masked_chars = list(_mask_quoted(before))
+    for open_at, end, _arithmetic in spans or ():
+        masked_chars[open_at:end] = "_" * (end - open_at)
+    masked = "".join(masked_chars)
     start = 0
     for brk in _SIMPLE_COMMAND_BREAK.finditer(masked):
         seg, seg_masked = before[start:brk.start()], masked[start:brk.start()]
@@ -398,8 +502,9 @@ def _rewriting_command(before: str) -> str | None:
                 return "(( … = … ))"
             continue
         # `[[ a > b ]]` 의 `>` 도 비교다 — 리디렉션이 아니다(Grok M03-b 반례) / inside `[[ … ]]` a `>` compares
-        for target in () if words[0] == "[[" else _OUTPUT_REDIRECT_TARGET.finditer(seg_masked):
-            if not _HARMLESS_REDIRECT_TARGET.fullmatch(seg[target.start(1):target.end(1)]):
+        for redirect in () if words[0] == "[[" else _OUTPUT_REDIRECT_TARGET.finditer(seg_masked):
+            target = seg[redirect.start("target"):redirect.end("target")]
+            if not _harmless_redirect(redirect.group("op"), target):
                 return f"{words[0]} > …"
         head = _unquote(words[0]).replace("\\", "/").rsplit("/", 1)[-1].lower().removesuffix(".exe")
         if head == "git":
@@ -460,17 +565,21 @@ def _is_read_only_gh(words: list[str]) -> bool:
     return allowed is None or (len(words) > 1 and words[1] in allowed)
 
 
-def _substitution_end(text: str) -> int | None:
+def _substitution_end(text: str, shell: str = "bash") -> int | None:
     """`$(` 바로 뒤 글자에서 그 치환을 닫는 `)` 의 자리 — 따옴표 · 안쪽 괄호를 따라 센다. 못 찾으면 None(원장 #1940 M03 P2-15).
+    PowerShell 은 백틱이 이스케이프(`\\` 는 글자)이고, 블록 주석(`<#`)이 있으면 닫는 괄호를 모르니 None 이다(Cursor #1946).
     Where the `)` closing a `$(` substitution sits, following quotes and nested parens; None when it never closes."""
+    escape = "`" if shell == "powershell" else "\\"
     depth, quote, i = 0, None, 0
     while i < len(text):
         ch = text[i]
         if quote == "'":
             quote = None if ch == "'" else quote
-        elif ch == "\\":
+        elif ch == escape:
             i += 2
             continue
+        elif shell == "powershell" and text.startswith("<#", i):
+            return None
         elif quote == '"':
             quote = None if ch == '"' else quote
         elif ch in "'\"":
@@ -492,7 +601,7 @@ def _gh_segments(stripped: str, shell: str) -> list[tuple[int, int, str, list[st
     for seg in _GH_START.finditer(stripped):
         tail = stripped[seg.end():]
         if stripped[:seg.start()].rstrip().endswith("$("):
-            end = _substitution_end(tail)
+            end = _substitution_end(tail, shell)
             tail = tail if end is None else tail[:end]
         rest = tail[:_UNQUOTED_SEGMENT.match(_mask_quoted(tail)).end()]
         segments.append((seg.start(), seg.end() + len(rest), rest, _split(rest, shell)))
@@ -744,7 +853,7 @@ def judge_command(command: str, cwd: str | None, shell: str) -> tuple[dict[str, 
             continue
         # 같은 명령에서 gh 앞의 명령이 본문 파일을 다시 쓰거나 경로 변수를 다시 묶을 수 있다 — 검사가 읽은 것은 옛 내용이다(P1-12 · 13)
         # A command before gh may have rewritten the body file or rebound its path variable.
-        rewriter = _rewriting_command(before)
+        rewriter = _rewriting_command(before, shell) or _substitution_rewriter(rest, shell)
         rewritten_note = (f"(같은 명령에서 gh 앞의 `{rewriter}` 가 본문 파일을 바꿀 수 있다 — 본문 파일을 만드는 명령과 게시를 "
                           "나눠 부른다)") if rewriter else None
         for text in texts:

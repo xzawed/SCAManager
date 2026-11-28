@@ -42,7 +42,45 @@ _REWRITE_THEN_POST = [
     pytest.param("cat dirty.md 1<>clean.md && gh pr comment 1 --body-file clean.md", id="read-write-redirect"),
     pytest.param("git diff --output=clean.md && gh pr comment 1 --body-file clean.md", id="git-diff-output-option"),
     pytest.param("git -c core.fsmonitor=./x.sh status && gh pr comment 1 --body-file clean.md", id="git-config-option"),
+    # 치환은 gh 보다 먼저 돈다 — 그 안의 쓰기 / substitutions run before gh
+    pytest.param("X=$(py -3 gen.py); gh pr comment 1 --body-file clean.md", id="unlisted-writer-inside-substitution"),
+    pytest.param('gh pr comment 1 --body-file clean.md --repo "$(cp dirty.md clean.md; echo x/y)"',
+                 id="writer-inside-gh-own-argument"),
+    pytest.param("echo `cp dirty.md clean.md` && gh pr comment 1 --body-file clean.md", id="backtick-substitution"),
 ]
+
+# witness-corpus: 자체 재검토(#1945 머지 전)에서 찾은, gh 보다 먼저 본문 파일을 바꾸는 치환 · 리디렉션 꼴 — 셸이 하는 일로 고른 것
+_REWRITES_BEFORE_GH = ['echo "$(cp dirty.md clean.md)"', "X=$(cp dirty.md clean.md)", "cat dirty.md > 1",
+                       "cat dirty.md > $null"]
+
+
+@pytest.mark.parametrize("rewrite", _REWRITES_BEFORE_GH)
+def test_a_substitution_or_redirect_that_rewrites_the_body_is_not_measured(rewrite, bodies, monkeypatch, capsys):
+    """🔴 치환 안의 쓰기 · fd 처럼 생긴 파일 이름(`> 1`) · bash 의 `$null` 변수 — 셋 다 gh 보다 먼저 파일을 쓴다."""
+    result = _hook(monkeypatch, capsys, f"{rewrite} && gh pr comment 1 --body-file clean.md", bodies)
+    assert _denied(result), rewrite
+    assert "나눠" in _reason(result), _reason(result)
+
+
+@pytest.mark.parametrize("template", [
+    pytest.param("URL=$(gh pr comment 1 --body-file {body})", id="assignment-captures-the-post"),
+    pytest.param('echo "$(gh pr comment 1 --body-file {body})"', id="quoted-substitution-around-the-post"),
+])
+def test_a_post_wrapped_in_a_substitution_is_measured(template, bodies, monkeypatch, capsys):
+    """대조군 — gh 를 감싼 치환(`URL=$(gh …)`)은 «닫히지 않은 치환» 이 아니다: 본문을 잰다(Cursor Bugbot #1946 — 막던 오탐)."""
+    assert _hook(monkeypatch, capsys, template.format(body="clean.md"), bodies) is None
+    result = _hook(monkeypatch, capsys, template.format(body="dirty.md"), bodies)
+    assert _denied(result) and "email 1" in _reason(result), result
+
+
+@pytest.mark.parametrize("command", [
+    pytest.param("URL=$(cp dirty.md clean.md; gh pr comment 1 --body-file clean.md)", id="writer-inside-the-wrapper"),
+    pytest.param("cp dirty.md clean.md; URL=$(gh pr comment 1 --body-file clean.md)", id="writer-outside-the-wrapper"),
+])
+def test_a_rewrite_around_a_wrapped_post_is_not_measured(command, bodies, monkeypatch, capsys):
+    """🔴 gh 를 감싼 치환의 바깥 · 안에서 gh 보다 먼저 도는 쓰기는 그대로 잡는다."""
+    result = _hook(monkeypatch, capsys, command, bodies)
+    assert _denied(result) and "나눠" in _reason(result), result
 
 
 @pytest.mark.parametrize("command", _REWRITE_THEN_POST)
@@ -66,6 +104,11 @@ def test_a_body_rewritten_in_the_same_command_is_not_measured(command, bodies, m
     pytest.param("if test -f clean.md; then true; fi && ", id="closed-if-block"),
     pytest.param('[[ "a" > "b" ]] || ', id="string-comparison"),
     pytest.param("if (( 2 > 1 )); then ", id="arithmetic-comparison"),
+    pytest.param("N=$(gh pr view 1 --json number -q .number); ", id="read-only-substitution"),
+    pytest.param("N=$(gh pr view 1 --json number -q .number; true); ", id="substitution-with-a-break-inside"),
+    pytest.param("N=$(gh pr view 1 --json body -q '.body | length > 0'); ", id="quoted-comparison-inside-substitution"),
+    pytest.param('echo "$(date +%F)" && ', id="date-substitution"),
+    pytest.param("echo $((1 + 2)) && ", id="arithmetic-expansion"),
 ])
 def test_commands_that_write_no_file_keep_the_body_measurable(between, bodies, monkeypatch, capsys):
     """대조군 — 파일을 쓰지 않는 흔한 명령 뒤의 게시는 미리 만든 본문을 그대로 잰다(깨끗하면 통과 · 꼴이면 막힘)."""
@@ -74,10 +117,64 @@ def test_commands_that_write_no_file_keep_the_body_measurable(between, bodies, m
     assert _denied(result) and "email 1" in _reason(result), result
 
 
-def test_a_powershell_discard_redirect_keeps_the_body_measurable(bodies, monkeypatch, capsys):
-    """대조군 — PowerShell 의 `2>$null` 은 버리는 곳이다: 그 뒤의 게시는 미리 만든 본문을 잰다."""
-    command = "git status 2>$null; gh pr comment 1 --body-file clean.md"
+_POWERSHELL_REWRITES = [
+    pytest.param("echo @(Copy-Item dirty.md clean.md); gh pr comment 1 --body-file clean.md", id="array-subexpression"),
+    pytest.param("gh pr comment 1 --body-file clean.md --repo (Copy-Item dirty.md clean.md)", id="argument-grouping"),
+    pytest.param('gh pr comment 1 --body-file clean.md --repo "$(echo `); Copy-Item dirty.md clean.md; echo x/y)"',
+                 id="backtick-escaped-paren"),
+    pytest.param("git status 2>$null; gh pr comment 1 --body-file clean.md", id="anything-before-gh"),
+    pytest.param('echo `"; Copy-Item dirty.md clean.md; echo `"; gh pr comment 1 --body-file clean.md',
+                 id="backtick-escaped-quote-hides-a-writer"),
+]
+
+
+def test_a_powershell_substitution_in_gh_arguments_is_named_as_such(bodies, monkeypatch, capsys):
+    """gh 인자 안 PowerShell 치환은 안쪽이 읽기뿐이어도(`(Get-Date)`) 막고, 이유를 «PowerShell 의 치환» 으로 댄다 — 안쪽을 bash
+    모형으로 재지 않는다(보수 규칙이 낳는 오탐 · 나눠 부르면 풀린다)."""
+    result = _hook(monkeypatch, capsys, "gh pr comment 1 --body-file clean.md --repo (Get-Date)", bodies, tool="PowerShell")
+    assert _denied(result) and "PowerShell 의 치환" in _reason(result), _reason(result)
+
+
+def test_the_substitution_end_follows_the_shell_escape():
+    """`$(` 의 끝 — bash 는 `\\` 가, PowerShell 은 백틱이 이스케이프다. PowerShell 의 블록 주석은 끝을 모른다(None)."""
+    from scripts import scan_publish  # pylint: disable=import-outside-toplevel
+    assert scan_publish._substitution_end("echo `)x)", "bash") == 6
+    assert scan_publish._substitution_end("echo `)x)", "powershell") == 8
+    assert scan_publish._substitution_end("echo \\)x)", "bash") == 8
+    assert scan_publish._substitution_end("echo \\)x)", "powershell") == 6
+    assert scan_publish._substitution_end("echo <# ) #> x)", "powershell") is None
+
+
+def test_a_powershell_backslash_quote_does_not_hide_a_writer(bodies, monkeypatch, capsys):
+    """🔴 PowerShell 에서 `\\` 는 글자다 — `"C:\\temp\\"` 뒤의 Copy-Item 은 따옴표 밖에서 돈다. bash 식으로 가리면 따옴표가 안
+    닫혀 gh 앞 전체가 한 낱말이 되니, 그 게시는 «다른 명령이 gh 를 돌린다» 로 막힌다(막히는 것이 요점이다)."""
+    command = 'echo "C:\\temp\\"; Copy-Item dirty.md clean.md; gh pr comment 1 --body-file clean.md'
+    assert _denied(_hook(monkeypatch, capsys, command, bodies, tool="PowerShell"))
+
+
+@pytest.mark.parametrize("command", _POWERSHELL_REWRITES)
+def test_a_powershell_post_with_anything_before_it_is_not_measured(command, bodies, monkeypatch, capsys):
+    """🔴 PowerShell 의 따옴표 · 이스케이프 · 그룹 · 대입은 이 셸 모형(bash)과 다르다 — gh 앞에 무엇이든 있거나 gh 의 인자에
+    치환(`$(…)` · `@(…)` · `(…)`)이 있으면 본문 파일을 못 잰 것으로 막고 나눠 부르라고 알린다(Cursor #1946)."""
+    result = _hook(monkeypatch, capsys, command, bodies, tool="PowerShell")
+    assert _denied(result), command
+    assert "나눠" in _reason(result), _reason(result)
+
+
+@pytest.mark.parametrize("command", [
+    pytest.param("gh pr comment 1 --body-file clean.md", id="bare"),
+    pytest.param("& gh pr comment 1 --body-file clean.md", id="call-operator"),
+    pytest.param('gh pr comment 1 --body-file clean.md --repo "own`"er/x"', id="backtick-escape-in-argument"),
+])
+def test_a_powershell_post_standing_alone_is_measured(command, bodies, monkeypatch, capsys):
+    """대조군 — 홀로 선 PowerShell 게시는 본문을 잰다: 깨끗하면 통과, 꼴이면 막힘. 백틱은 이스케이프다(bash 의 치환이 아니다)."""
     assert _hook(monkeypatch, capsys, command, bodies, tool="PowerShell") is None
+    assert _denied(_hook(monkeypatch, capsys, command.replace("clean.md", "dirty.md"), bodies, tool="PowerShell"))
+
+
+def test_nul_is_a_file_in_bash(bodies, monkeypatch, capsys):
+    """🔴 bash(리눅스 · Codespaces)에서 `> NUL` 은 파일 NUL 에 쓴다 — 버리는 곳으로 보지 않는다(Cursor #1946)."""
+    assert _denied(_hook(monkeypatch, capsys, "cat dirty.md > NUL && gh pr comment 1 --body-file clean.md", bodies))
 
 
 # witness-corpus: 파일을 쓰는 흔한 명령 가운데 판정 목록에 이름이 없는 것 — 목록 밖이면 쓰는 쪽으로 본다(막는 쪽)
