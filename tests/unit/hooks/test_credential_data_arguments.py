@@ -106,6 +106,12 @@ def test_an_env_name_outside_the_list_is_still_a_dump(command, repo):
     pytest.param("env | grep '^PYTHON' '^LC_'", id="second-word-is-a-file-not-a-pattern"),
     pytest.param("printenv PYTHONUTF8 GH_TOKEN", id="one-name-outside-the-list"),
     pytest.param("railway variables --kv | grep '^PYTHON'", id="railway-service-variables"),
+    # Grok(642a337b) 반례 — 실측으로 막힘을 단언한다 / Grok's counterexamples, asserted blocked
+    pytest.param("echo >(printenv SECRET)", id="printenv-in-process-substitution-of-a-data-stage"),
+    pytest.param("env | grep -E '^PYTHON|.*'", id="alternation-widening-to-everything"),
+    pytest.param("env | grep -E '^PYTHON|.*' < .env", id="alternation-over-dotenv"),
+    pytest.param("env | grep '^PYTHON' -e '.*'", id="plain-word-beside-e-pattern"),
+    pytest.param("env | tee /dev/stderr | grep '^PYTHON'", id="grep-not-the-very-next-stage"),
 ])
 def test_a_wide_or_bent_selection_is_still_a_dump(command, repo):
     """🔴 줄 머리에 고정하지 않은 · 여러 갈래 · 뒤집기 · 앞뒤 줄 · 파일 인자 · 목록 밖 이름이 섞인 고르기와 railway 변수는 덤프다."""
