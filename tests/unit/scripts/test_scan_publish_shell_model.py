@@ -45,6 +45,7 @@ _REWRITE_THEN_POST = [
     # 치환은 gh 보다 먼저 돈다 — 그 안의 쓰기 / substitutions run before gh
     pytest.param('echo "$(cp dirty.md clean.md)" && gh pr comment 1 --body-file clean.md', id="writer-inside-substitution"),
     pytest.param("X=$(cp dirty.md clean.md); gh pr comment 1 --body-file clean.md", id="writer-inside-assignment"),
+    pytest.param("X=$(py -3 gen.py); gh pr comment 1 --body-file clean.md", id="unlisted-writer-inside-substitution"),
     pytest.param('gh pr comment 1 --body-file clean.md --repo "$(cp dirty.md clean.md; echo x/y)"',
                  id="writer-inside-gh-own-argument"),
     pytest.param("echo `cp dirty.md clean.md` && gh pr comment 1 --body-file clean.md", id="backtick-substitution"),
@@ -76,6 +77,7 @@ def test_a_body_rewritten_in_the_same_command_is_not_measured(command, bodies, m
     pytest.param("if (( 2 > 1 )); then ", id="arithmetic-comparison"),
     pytest.param("N=$(gh pr view 1 --json number -q .number); ", id="read-only-substitution"),
     pytest.param("N=$(gh pr view 1 --json number -q .number; true); ", id="substitution-with-a-break-inside"),
+    pytest.param("N=$(gh pr view 1 --json body -q '.body | length > 0'); ", id="quoted-comparison-inside-substitution"),
     pytest.param('echo "$(date +%F)" && ', id="date-substitution"),
     pytest.param("echo $((1 + 2)) && ", id="arithmetic-expansion"),
 ])
