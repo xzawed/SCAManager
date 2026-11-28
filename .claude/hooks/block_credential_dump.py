@@ -314,12 +314,10 @@ def _lists_environment(stage):
 # `printenv` 를 덤프로 읽었다. 인자를 글자로만 받고 실행하지 않는 명령의 인자 속 낱말은 실행이 아니다 — 단 그 출력을 뒤
 # 단계의 셸 · 실행기가 돌리면 다시 실행이다. 인자를 실행할 수 있는 명령(find -exec · sed 의 e · awk system() · rg --pre ·
 # sort --compress-program · git 별칭)은 넣지 않는다.
-# Commands that take arguments as plain data and never run them; their arguments hold no invocation unless a later
-# stage hands their output to a shell or runner.
-_DATA_ARGUMENT_COMMANDS = frozenset({"grep", "egrep", "fgrep", "findstr", "select-string", "sls", "echo", "printf",
-                                     "ls", "dir", "cat", "head", "tail", "wc", "uniq", "cut", "tr"})
-_RUNNERS = frozenset({"sh", "bash", "zsh", "dash", "ksh", "fish", "xargs", "eval", "source", ".", "powershell", "pwsh",
-                      "cmd", "parallel", "python", "python3", "py", "node", "perl", "ruby", "php"})
+# Commands that take arguments as plain data and never run them. The exemption holds only when EVERY stage of the
+# pipeline is one of them — a denylist of runners never ends (awk system(), sed e, $SHELL, iex — Cursor #1949).
+_DATA_ARGUMENT_COMMANDS = frozenset({"grep", "egrep", "fgrep", "findstr", "echo", "printf", "ls", "dir", "cat", "head",
+                                     "tail", "wc", "uniq", "cut", "tr"})
 # 사용자 결정(11-28 «무해 이름 목록만 허용») — 값이 비밀이 아닌 이름 · 접두사. 정확한 이름은 그 이름만, 접두사는 그 아래 전부.
 # User decision 2026-11-28: names and prefixes whose values are not secret.
 _HARMLESS_ENV_NAMES = frozenset({"LANG", "TEMP", "TMP", "TMPDIR", "TERM", "SHELL", "PATH"})
@@ -331,14 +329,15 @@ _HARMLESS_GREP_FLAGS = frozenset("iEFwxnchsqo")
 
 
 def _data_argument_stages(stages):
-    """인자를 글자로만 받는 단계의 번호 — 글자 단계가 아닌 단계의 **어느 낱말이든** 셸 · 실행기 · 인터프리터면 하나도 없다.
-    명령 이름만 보면 `env bash` · `tee >(sh)` · `env -i sh` 의 실행기를 놓친다(Grok 8b065704).
-    Indices of plain-data stages; none at all when any word of another stage names a shell, runner or interpreter."""
-    data = [i for i, stage in enumerate(stages) if _command_words(stage)[0] in _DATA_ARGUMENT_COMMANDS]
-    for i, stage in enumerate(stages):
-        if i not in data and any(_command_name(word) in _RUNNERS for word in _plain_words(stage)):
-            return frozenset()
-    return frozenset(data)
+    """인자를 글자로만 받는 단계의 번호 — 파이프라인의 **모든** 단계가 글자 명령일 때만 전부, 아니면 하나도 없다. 실행기를
+    목록으로 막으면 끝이 없다(`| awk '{system($0)}'` · `| sed e` · `| $SHELL` · `| env bash` — Grok 8b065704 · Cursor #1949).
+    PowerShell 은 인자 속 `(…)` 를 실행하므로(`echo (printenv)`) 쓰지 않는다.
+    Indices of plain-data stages: all of them only when every stage is a data command, else none; never in PowerShell."""
+    if _CONTEXT["shell"] != "bash":
+        return frozenset()
+    if all(_command_words(stage)[0] in _DATA_ARGUMENT_COMMANDS for stage in stages):
+        return frozenset(range(len(stages)))
+    return frozenset()
 
 
 def _harmless_env_name(name, exact):

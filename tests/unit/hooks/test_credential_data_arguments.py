@@ -56,10 +56,22 @@ def test_a_command_name_inside_data_arguments_is_not_run(command, repo):
     pytest.param("echo printenv HOME | env bash", id="data-stage-piped-into-env-bash"),
     pytest.param("echo printenv HOME | tee >(sh)", id="data-stage-teed-into-a-shell"),
     pytest.param("echo printenv HOME | python3", id="data-stage-piped-into-an-interpreter"),
+    # Cursor(#1949) — 실행기를 목록으로 막으면 끝이 없다: 모든 단계가 글자 명령일 때만 면제 / allowlist every stage
+    pytest.param("echo printenv | awk '{system($0)}'", id="awk-runs-stdin"),
+    pytest.param("echo printenv | $SHELL", id="shell-from-a-variable"),
+    pytest.param("echo printenv | sed e", id="sed-e-runs-lines"),
+    pytest.param("echo printenv | python3.12", id="versioned-interpreter"),
+    pytest.param("echo printenv | timeout 5 awk '{system($0)}'", id="awk-behind-timeout"),
 ])
 def test_a_command_name_that_runs_is_still_judged(command, repo):
-    """🔴 대조군 — 명령 자리의 popd · 모르는 cd · printenv 와, 글자 단계의 출력을 셸이 돌리는 꼴은 그대로 막힌다."""
+    """🔴 대조군 — 명령 자리의 popd · 모르는 cd · printenv 와, 글자 단계의 출력을 셸 · 실행기가 돌리는 꼴은 그대로 막힌다."""
     assert _verdict(command, repo) is not None, command
+
+
+def test_powershell_never_exempts_data_arguments(repo):
+    """🔴 PowerShell 은 인자 속 `(…)` 를 실행한다(`echo (printenv)`) — 글자 단계 면제를 쓰지 않는다(Cursor #1949)."""
+    assert _verdict("echo (printenv)", repo, shell="powershell") is not None
+    assert _verdict("echo printenv | iex", repo, shell="powershell") is not None
 
 
 # witness-corpus: 인자를 글자처럼 받지만 실행도 할 수 있는 명령 — 글자 단계 목록에 넣지 않았다(넣으면 구멍)
