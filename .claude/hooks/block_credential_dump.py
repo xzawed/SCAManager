@@ -69,6 +69,16 @@ import subprocess
 import sys
 import time
 
+# Git Bash 경로 — 게시 전 검사와 함께 쓰는 도우미(원장 #1940 M06 P1-24). 못 불러오면 Windows 의 `/…` 경로는 어디를 여는지
+# 모르는 것으로 본다(막는 쪽) — 이 훅의 실패는 통과가 되기 때문이다.
+# Shared Git Bash path helper; without it Windows `/…` paths count as unknown (fail closed), since a crash here allows.
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+try:
+    from git_bash_paths import git_bash_to_windows  # noqa: E402
+except ImportError:  # pragma: no cover — 같은 폴더의 파일이다 / it ships beside this hook
+    def git_bash_to_windows(path):
+        return path if os.name != "nt" or not path.startswith("/") or path.startswith("//") else None
+
 # 판정하는 셸 도구 — Monitor 도 `command` 로 셸을 돌린다(원장 #1940 «정할 것» 7) / shell tools this hook judges
 _SHELL_TOOLS = ("Bash", "PowerShell", "Monitor")
 # 셸을 거치지 않는 같은 덤프 — Railway MCP `list_variables` 는 «KEY=VALUE 쌍을 반환» 한다(도구 설명).
@@ -424,10 +434,20 @@ def _bases():
     return [cwd or os.getcwd() for cwd in _CONTEXT["cwds"]]
 
 
-def _resolve_all(path):
-    """작업 폴더 후보마다의 절대 경로 / Absolute path against every cwd candidate."""
+def _native(path):
+    """셸이 여는 자리 — Bash 이면 Git Bash 경로(`/c/…` · `/tmp/…`)를 Windows 경로로 바꾸고, 어디를 여는지 모르면 None.
+    PowerShell 은 그대로다(원장 #1940 M06 P1-24). / Where the shell opens `path`; None when Bash's target is unknown."""
     path = os.path.expanduser(path)
-    return [path] if os.path.isabs(path) else [os.path.join(base, path) for base in _bases()]
+    return git_bash_to_windows(path) if _CONTEXT["shell"] == "bash" else path
+
+
+def _resolve_all(path):
+    """작업 폴더 후보마다의 절대 경로 — 셸이 어디를 여는지 모르면 빈 목록(호출자가 막는 쪽으로).
+    Absolute path against every cwd candidate; empty when the shell's target is unknown (callers fail closed)."""
+    native = _native(path)
+    if native is None:
+        return []
+    return [native] if os.path.isabs(native) else [os.path.join(base, native) for base in _bases()]
 
 
 def _cwd_unknown():
@@ -495,7 +515,7 @@ def _glob_matches(norm):
     PowerShell 의 `*` 는 집는다. 어느 후보에도 그 폴더가 없거나 읽을 수 없으면 None(호출자가 막는 쪽으로).
     Entries a glob really matches across every cwd candidate; None when no candidate has a readable folder."""
     folder, _, pattern = norm.rpartition("/")
-    if _cwd_unknown() and not os.path.isabs(os.path.expanduser(folder or ".")):
+    if _cwd_unknown() and not os.path.isabs(_native(folder or ".") or ""):
         return None
     dot_ok = _star_hits_dotfiles(pattern)
     found, readable = [], False
@@ -950,7 +970,7 @@ def _dotenv_files(target, recursive=True):
                 return None
             found.extend(sub)
         return found
-    if _cwd_unknown() and not os.path.isabs(os.path.expanduser(target)):
+    if _cwd_unknown() and not os.path.isabs(_native(target) or ""):
         return None
     roots = list(dict.fromkeys(os.path.normpath(r) for r in _resolve_all(target) if os.path.exists(r)))
     if not roots:

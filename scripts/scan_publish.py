@@ -24,6 +24,15 @@ import sys
 import time
 from pathlib import Path
 
+# Git Bash 경로 — credential 훅과 함께 쓰는 도우미(원장 #1940 M06 P1-24). 못 불러오면 Windows 의 `/…` 경로는 어디를 여는지
+# 모르는 것으로 본다(못 잰 것 — 막는 쪽). / Shared Git Bash path helper; without it Windows `/…` paths are unmeasured.
+sys.path.append(str(Path(__file__).resolve().parents[1] / ".claude" / "hooks"))
+try:
+    from git_bash_paths import git_bash_to_windows  # noqa: E402
+except ImportError:  # pragma: no cover — 리포 안의 파일이다 / it ships in the repo
+    def git_bash_to_windows(path: str) -> str | None:
+        return path if os.name != "nt" or not path.startswith("/") or path.startswith("//") else None
+
 # 꼴 — 종류 이름 → 정규식. DB 주소 꼴은 `.pre-commit-config.yaml` 의 `check-db-url-in-diff` 와 같은 식이다(시험이 대조한다).
 # Shapes: kind → regex. The DB URL shape is the same expression as the pre-commit `check-db-url-in-diff` hook.
 _KINDS = {
@@ -262,9 +271,10 @@ def _targets(words: list[str]) -> tuple[list[str | None], list[str | None]]:
     return [p for p in paths if p != ""], texts
 
 
-def _resolve(path: str, assigned: dict[str, str | None], base: Path | None) -> Path | None:
-    """대입 · 환경 변수로 경로를 푼다 — 명령 치환 · 못 푼 변수(값을 모르는 대입 포함) · 기준을 모르는 상대 경로는 None.
-    Resolve a path from assignments and the environment; unresolvable → None."""
+def _resolve(path: str, assigned: dict[str, str | None], base: Path | None, shell: str = "bash") -> Path | None:
+    """대입 · 환경 변수로 경로를 푼다 — 명령 치환 · 못 푼 변수(값을 모르는 대입 포함) · 기준을 모르는 상대 경로는 None. Bash 이면
+    Git Bash 경로(`/c/…` · `/tmp/…`)를 Bash 가 여는 Windows 경로로 바꾸고, 어디를 여는지 모르면 None(원장 #1940 M06 P1-24).
+    Resolve a path from assignments and the environment; unresolvable → None. Bash paths are opened where Git Bash opens them."""
     if "$(" in path or "`" in path:
         return None
 
@@ -277,7 +287,12 @@ def _resolve(path: str, assigned: dict[str, str | None], base: Path | None) -> P
     expanded = _VAR.sub(_lookup, path)
     if "\0" in expanded or "$" in expanded:
         return None
-    p = Path(os.path.expanduser(expanded))
+    expanded = os.path.expanduser(expanded)
+    if shell == "bash":
+        expanded = git_bash_to_windows(expanded)
+        if expanded is None:
+            return None
+    p = Path(expanded)
     if p.is_absolute():
         return p
     return base / p if base is not None else None
@@ -742,7 +757,8 @@ def _word_at(text: str, pos: int) -> str | None:
 
 def _measure_stdin(rest: str, before: str, assigned: dict[str, str | None], path_assigned: dict[str, str | None],
                    base: Path | None,
-                   counts: dict[str, int], unread: list[str], rewritten_note: str | None = None) -> None:
+                   counts: dict[str, int], unread: list[str], rewritten_note: str | None = None,
+                   shell: str = "bash") -> None:
     """stdin 본문(`-`)을 잰다 — 출처가 정확히 하나일 때만: fd 0 의 heredoc(본문은 따로 잰다) · here-string 낱말 · `<` 파일,
     또는 출처가 없고 파이프 앞 단계가 `cat <<EOF |` 일 때. 출처가 여럿(덮어쓰기) · `<&` 복제 · 못 읽은 heredoc · 모르는 출처는
     못 잰 것이다. 연산자는 따옴표를 가린 글자에서 찾는다(`--title '<<<x'` 는 연산자가 아니다).
@@ -783,7 +799,7 @@ def _measure_stdin(rest: str, before: str, assigned: dict[str, str | None], path
         unread.append(rewritten_note)  # `<` 파일도 같은 명령이 다시 썼을 수 있다 / the `<` file may have been rewritten too
         return
     raw = _unquote(word)
-    text = _read(_resolve(raw, path_assigned, base))
+    text = _read(_resolve(raw, path_assigned, base, shell))
     if text is None:
         unread.append(raw)
         return
@@ -844,7 +860,7 @@ def judge_command(command: str, cwd: str | None, shell: str) -> tuple[dict[str, 
         else:
             cds = [_unquote(m.group(1)) for m in _CD.finditer(before)]
             if cds:
-                base = _resolve(cds[-1], path_assigned, base)
+                base = _resolve(cds[-1], path_assigned, base, shell)
         paths, texts = _targets(words)
         if (paths or texts) and not _runs_gh_directly(before):
             # 게시하는 gh 를 다른 명령(`xargs` · `find -exec` · 목록 밖 감싸기)이 돌린다 — 인자가 바뀌어 실행될 수 있다
@@ -874,7 +890,7 @@ def judge_command(command: str, cwd: str | None, shell: str) -> tuple[dict[str, 
                 continue
             _add(counts, _count_value(expanded, expanded=expanded != text))
         if "-" in paths:
-            _measure_stdin(rest, before, assigned, path_assigned, base, counts, unread, rewritten_note)
+            _measure_stdin(rest, before, assigned, path_assigned, base, counts, unread, rewritten_note, shell)
         for raw in paths:
             if raw is None:
                 unread.append("(값이 빠진 본문 파일 플래그 — 다른 명령이 덧붙인 파일이 게시될 수 있다)")
@@ -884,7 +900,7 @@ def judge_command(command: str, cwd: str | None, shell: str) -> tuple[dict[str, 
             if rewritten_note:
                 unread.append(rewritten_note)
                 continue
-            text = _read(_resolve(raw, path_assigned, base))
+            text = _read(_resolve(raw, path_assigned, base, shell))
             if text is None:
                 unread.append(raw)
                 continue
