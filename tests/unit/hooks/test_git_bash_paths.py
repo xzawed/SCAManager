@@ -33,6 +33,11 @@ def on_windows(monkeypatch):
     ("/usr/bin/env", "D:/Tools/Git/usr/bin/env"),
     ("/dev/null", "NUL"),
     ("/dev/stdin", None),
+    # Grok(9f9325d6) — `..` 는 마운트 경계를 넘는다: Git Bash 는 바꾸기 전에 글자로 접는다 / `..` folds before mapping
+    ("/tmp/../etc/passwd", "D:/Tools/Git/etc/passwd"),
+    ("/usr/../../c/Windows/win.ini", "C:/Windows/win.ini"),
+    ("/c/../tmp/body.md", "D:/scratch/Temp/body.md"),
+    ("/proc/cpuinfo", None),
     ("C:/work/body.md", "C:/work/body.md"),
     ("docs/body.md", "docs/body.md"),
     ("//server/share/body.md", "//server/share/body.md"),

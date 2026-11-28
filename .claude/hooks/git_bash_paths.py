@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import functools
 import os
+import posixpath
 import re
 import subprocess  # nosec B404 — `cygpath -m /` 한 번 / a single fixed-argument cygpath call
 import tempfile
@@ -38,12 +39,15 @@ def _git_root() -> str | None:
 def git_bash_to_windows(path: str) -> str | None:
     """Bash 가 여는 경로를 Windows 경로로 — 바꿀 것이 없으면 그대로, 어디를 여는지 모르면 None(호출자가 막는 쪽으로).
 
-    `/c/x` → `C:/x` · `/tmp/x` → 사용자 임시 폴더 아래 · `/dev/null` → `NUL` · 그 밖의 `/dev/…` → None(장치) · 그 밖의 `/x`
-    → Git 설치 뿌리 아래(`cygpath -m /`, 못 물으면 None). UNC(`//server/…`) · 드라이브 경로 · 상대 경로 · Windows 밖은 그대로다.
+    `/c/x` → `C:/x` · `/tmp/x` → 사용자 임시 폴더 아래 · `/dev/null` → `NUL` · 그 밖의 `/dev/…` · `/proc/…` → None(장치 ·
+    가상 파일) · 그 밖의 `/x` → Git 설치 뿌리 아래(`cygpath -m /`, 못 물으면 None). `..` 는 바꾸기 전에 글자로 접는다 — 마운트
+    경계를 넘는다(`/tmp/../etc` 는 Git 뿌리의 etc · Grok 반례). UNC(`//server/…`) · 드라이브 경로 · 상대 경로 · Windows 밖은 그대로다.
     Bash path → Windows path; unchanged when nothing applies, None when the target is unknown (callers fail closed).
+    `..` folds lexically before mapping, since it crosses mount boundaries.
     """
     if not _ON_WINDOWS or not path.startswith("/") or path.startswith("//"):
         return path
+    path = posixpath.normpath(path)
     drive = _DRIVE.match(path)
     if drive:
         return f"{drive.group(1).upper()}:{path[2:] or '/'}"
@@ -51,7 +55,7 @@ def git_bash_to_windows(path: str) -> str | None:
         return _temp_dir() + path[4:]
     if path == "/dev/null":
         return "NUL"
-    if path == "/dev" or path.startswith("/dev/"):
+    if path in ("/dev", "/proc") or path.startswith(("/dev/", "/proc/")):
         return None
     root = _git_root()
     return None if root is None else root + path
