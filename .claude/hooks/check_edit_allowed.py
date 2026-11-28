@@ -197,7 +197,9 @@ def main() -> int:
     Read stdin, decide, print JSON (ensure_ascii for cp949 safety). Always exit 0."""
     _make_stdout_safe()
     try:
-        payload = json.load(sys.stdin)
+        # 바이트로 읽어 UTF-8 로 — 로캘(cp949)로 읽으면 한글 경로가 바뀐다(원장 #1940 M06 P2-32) / bytes, decoded as UTF-8
+        raw = getattr(sys.stdin, "buffer", sys.stdin).read()
+        payload = json.loads(raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else raw)
     except Exception:  # pylint: disable=broad-except
         payload = None
     # 🔴 파싱은 성공했지만 dict 가 아닌 payload(null·배열·수)는 계약 밖이다 — 구판은
