@@ -367,21 +367,85 @@ _LEADING_KEYWORDS = frozenset({"if", "then", "else", "elif", "do", "while", "unt
 # 단순 명령의 경계 — 리디렉션 안의 `&`(`2>&1` · `>&f` · `&>f`) · `>|` 의 `|` 는 경계가 아니다(Cursor Bugbot #1945).
 # Simple-command breaks; the `&` of a redirection and the `|` of `>|` are not breaks.
 _SIMPLE_COMMAND_BREAK = re.compile(r"&&|\|\||(?<![<>])&(?!>)|(?<!>)\||[;\n]")
-# 출력 리디렉션과 그 대상 — `>f` · `>>f` · `2>f` · `&>f` · `>&f` · `>|f` · `n<>f`(읽기-쓰기로 연다). fd 복제(`2>&1` · `>&2` ·
-# `>&-`)와 버리는 곳(`/dev/null` · `NUL` · `$null`)은 쓰기가 아니다. 대상이 비면(`> >(…)`) 쓰기로 본다.
-# Output redirections and their targets; fd duplication and discard targets are not writes, an empty target is.
-_OUTPUT_REDIRECT_TARGET = re.compile(r"(?<![<>\\])(?:\d+|&)?(?:>{1,2}&?|<>)\|?[ \t]*([^\s;&|()<>]*)")
-_HARMLESS_REDIRECT_TARGET = re.compile(r"(?:\d+-?|-|/dev/null|NUL|\$null)", re.I)
+# 출력 리디렉션과 그 대상 — `>f` · `>>f` · `2>f` · `&>f` · `>&f` · `>|f` · `n<>f`(읽기-쓰기로 연다). 쓰기가 아닌 것은 버리는 곳
+# (`/dev/null` · `NUL` · PowerShell 의 `$null`)과 `&` 가 붙은 연산자의 fd 복제(`2>&1` · `>&2` · `>&-`)뿐이다 — `> 1` 은 파일 `1`
+# 에 쓰고, bash 의 `$null` 은 파일 이름이 될 수 있는 변수다. 대상이 비면(`> >(…)`) 쓰기로 본다.
+# Output redirections; only discard targets and fd duplication after an `&` operator are not writes.
+_OUTPUT_REDIRECT_TARGET = re.compile(r"(?<![<>\\])(?:\d+|&)?(?P<op>>{1,2}&?|<>)\|?[ \t]*(?P<target>[^\s;&|()<>]*)")
+_DISCARD_TARGET = re.compile(r"/dev/null|NUL", re.I)
+_FD_TARGET = re.compile(r"\d+-?|-")
+
+
+def _harmless_redirect(op: str, target: str, shell: str) -> bool:
+    """버리는 곳이거나 fd 복제인가 / Is this redirection a discard or an fd duplication?"""
+    if _DISCARD_TARGET.fullmatch(target) or (shell == "powershell" and target.lower() == "$null"):
+        return True
+    return op.endswith("&") and bool(_FD_TARGET.fullmatch(target))
+
+
+def _substitution_spans(text: str) -> list[tuple[int, int, bool]] | None:
+    """명령 치환 · 프로세스 치환(`$(…)` · `<(…)` · `>(…)`) · 산술 펼침(`$((…))`)의 자리 — (여는 표시, 닫는 괄호 다음, 산술인가).
+    작은따옴표 안은 글자 그대로라 뺀다. 백틱 치환 · 닫히지 않은 치환이 있으면 None(안을 모른다).
+    Substitution spans outside single quotes as (open, after close, arithmetic); None for backticks or an unclosed one."""
+    spans: list[tuple[int, int, bool]] = []
+    quote: str | None = None
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if quote == "'":
+            quote = None if ch == "'" else quote
+        elif ch == "\\":
+            i += 2
+            continue
+        elif ch == "`":
+            return None
+        elif ch == '"':
+            quote = None if quote == '"' else '"'
+        elif ch == "'" and quote is None:
+            quote = "'"
+        elif text.startswith("$(", i) or (quote is None and text.startswith(("<(", ">("), i)):
+            end = _substitution_end(text[i + 2:])
+            if end is None:
+                return None
+            spans.append((i, i + 2 + end + 1, text.startswith("$((", i)))
+            i += 2 + end + 1
+            continue
+        i += 1
+    return spans
+
+
+def _substitution_rewriter(text: str, shell: str, spans: list[tuple[int, int, bool]] | None = None) -> str | None:
+    """`text` 의 치환 안에서 파일을 쓰거나 변수를 다시 묶을 수 있는 명령 — 치환은 gh 보다 먼저 돈다(그 자리가 gh 의 인자여도).
+    백틱 · 닫히지 않은 치환은 안을 모르니 그 자체로 돌려준다.
+    A rewriting command inside a substitution of `text`; substitutions run before gh, even inside its own arguments."""
+    spans = _substitution_spans(text) if spans is None else spans
+    if spans is None:
+        return "`…`"
+    for start, end, arithmetic in spans:
+        inner = f"(( {text[start + 3:end - 2]} ))" if arithmetic else text[start + 2:end - 1]
+        found = _rewriting_command(inner + "\n", shell)
+        if found:
+            return f"$({found})"
+    return None
 # 산술 명령 안의 대입(`=` · `+=` · `++` · `--`) — 비교(`==` · `!=` · `<=` · `>=`)는 대입이 아니다.
 # An assignment inside an arithmetic command; comparisons are not assignments.
 _ARITHMETIC_ASSIGNMENT = re.compile(r"(?<![=!<>])=(?!=)|\+\+|--")
 
 
-def _rewriting_command(before: str) -> str | None:
+def _rewriting_command(before: str, shell: str = "bash") -> str | None:
     """`before`(게시하는 gh 앞 글자)에서 본문 파일을 쓰거나 변수를 다시 묶을 수 있는 첫 단순 명령 — 없으면 None. 출력 리디렉션
-    (`/dev/null` · fd 복제 밖)도 쓰기다. gh 자신의 단순 명령(마지막 구분자 뒤)은 보지 않는다.
-    The first command before gh that may rewrite a file or rebind a variable (output redirections count); else None."""
-    masked = _mask_quoted(before)
+    (버리는 곳 · fd 복제 밖)과 치환 안의 명령도 본다. gh 자신의 단순 명령(마지막 구분자 뒤)은 치환만 본다.
+    The first command before gh that may rewrite a file or rebind a variable (redirections and substitutions count)."""
+    spans = _substitution_spans(before)
+    found = _substitution_rewriter(before, shell, spans)
+    if found:
+        return found
+    # 치환 안은 따로 쟀다 — 바깥 경계 · 낱말 · 리디렉션 판정에서 가린다(`N=$(gh pr view …; true)` 가 한 낱말)
+    # Substitutions were judged on their own; mask them so they stay one word outside.
+    masked_chars = list(_mask_quoted(before))
+    for open_at, end, _arithmetic in spans or ():
+        masked_chars[open_at:end] = "_" * (end - open_at)
+    masked = "".join(masked_chars)
     start = 0
     for brk in _SIMPLE_COMMAND_BREAK.finditer(masked):
         seg, seg_masked = before[start:brk.start()], masked[start:brk.start()]
@@ -398,8 +462,9 @@ def _rewriting_command(before: str) -> str | None:
                 return "(( … = … ))"
             continue
         # `[[ a > b ]]` 의 `>` 도 비교다 — 리디렉션이 아니다(Grok M03-b 반례) / inside `[[ … ]]` a `>` compares
-        for target in () if words[0] == "[[" else _OUTPUT_REDIRECT_TARGET.finditer(seg_masked):
-            if not _HARMLESS_REDIRECT_TARGET.fullmatch(seg[target.start(1):target.end(1)]):
+        for redirect in () if words[0] == "[[" else _OUTPUT_REDIRECT_TARGET.finditer(seg_masked):
+            target = seg[redirect.start("target"):redirect.end("target")]
+            if not _harmless_redirect(redirect.group("op"), target, shell):
                 return f"{words[0]} > …"
         head = _unquote(words[0]).replace("\\", "/").rsplit("/", 1)[-1].lower().removesuffix(".exe")
         if head == "git":
@@ -744,7 +809,7 @@ def judge_command(command: str, cwd: str | None, shell: str) -> tuple[dict[str, 
             continue
         # 같은 명령에서 gh 앞의 명령이 본문 파일을 다시 쓰거나 경로 변수를 다시 묶을 수 있다 — 검사가 읽은 것은 옛 내용이다(P1-12 · 13)
         # A command before gh may have rewritten the body file or rebound its path variable.
-        rewriter = _rewriting_command(before)
+        rewriter = _rewriting_command(before, shell) or _substitution_rewriter(rest, shell)
         rewritten_note = (f"(같은 명령에서 gh 앞의 `{rewriter}` 가 본문 파일을 바꿀 수 있다 — 본문 파일을 만드는 명령과 게시를 "
                           "나눠 부른다)") if rewriter else None
         for text in texts:

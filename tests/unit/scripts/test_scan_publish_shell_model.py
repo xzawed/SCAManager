@@ -42,6 +42,14 @@ _REWRITE_THEN_POST = [
     pytest.param("cat dirty.md 1<>clean.md && gh pr comment 1 --body-file clean.md", id="read-write-redirect"),
     pytest.param("git diff --output=clean.md && gh pr comment 1 --body-file clean.md", id="git-diff-output-option"),
     pytest.param("git -c core.fsmonitor=./x.sh status && gh pr comment 1 --body-file clean.md", id="git-config-option"),
+    # 치환은 gh 보다 먼저 돈다 — 그 안의 쓰기 / substitutions run before gh
+    pytest.param('echo "$(cp dirty.md clean.md)" && gh pr comment 1 --body-file clean.md', id="writer-inside-substitution"),
+    pytest.param("X=$(cp dirty.md clean.md); gh pr comment 1 --body-file clean.md", id="writer-inside-assignment"),
+    pytest.param('gh pr comment 1 --body-file clean.md --repo "$(cp dirty.md clean.md; echo x/y)"',
+                 id="writer-inside-gh-own-argument"),
+    pytest.param("echo `cp dirty.md clean.md` && gh pr comment 1 --body-file clean.md", id="backtick-substitution"),
+    pytest.param("cat dirty.md > 1 && gh pr comment 1 --body-file clean.md", id="file-named-like-an-fd"),
+    pytest.param("cat dirty.md > $null && gh pr comment 1 --body-file clean.md", id="bash-null-is-a-variable"),
 ]
 
 
@@ -66,6 +74,10 @@ def test_a_body_rewritten_in_the_same_command_is_not_measured(command, bodies, m
     pytest.param("if test -f clean.md; then true; fi && ", id="closed-if-block"),
     pytest.param('[[ "a" > "b" ]] || ', id="string-comparison"),
     pytest.param("if (( 2 > 1 )); then ", id="arithmetic-comparison"),
+    pytest.param("N=$(gh pr view 1 --json number -q .number); ", id="read-only-substitution"),
+    pytest.param("N=$(gh pr view 1 --json number -q .number; true); ", id="substitution-with-a-break-inside"),
+    pytest.param('echo "$(date +%F)" && ', id="date-substitution"),
+    pytest.param("echo $((1 + 2)) && ", id="arithmetic-expansion"),
 ])
 def test_commands_that_write_no_file_keep_the_body_measurable(between, bodies, monkeypatch, capsys):
     """대조군 — 파일을 쓰지 않는 흔한 명령 뒤의 게시는 미리 만든 본문을 그대로 잰다(깨끗하면 통과 · 꼴이면 막힘)."""
