@@ -41,6 +41,10 @@ _ADVISORY_ALLOWLIST: dict[str, str] = {
     # 🔴 키는 파일 경로가 아니라 **stem**(확장자 없는 파일명) — `_guard_files()` 가 `path.stem` 으로 대조한다.
     "check_bilingual_comments":
         "이중언어 주석 = 스타일 규칙(사고 기반 아님). 차단 해제·수동 점검 보존 (사용자 결정 2026-07-29)",
+    # 공유 헬퍼 — 그 자체는 훅이 아니다. 배선된 두 막는 훅이 불러 쓴다(`tests/unit/hooks/test_git_bash_paths.py` 가
+    # 두 훅이 같은 함수를 쓰는지 잰다). / A shared helper imported by two wired hooks; not a hook itself.
+    "git_bash_paths":
+        "공유 헬퍼 — credential 훅 · 게시 전 검사가 불러 쓰는 Git Bash 경로 규칙(원장 #1940 M06 P1-24)",
 }
 
 

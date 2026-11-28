@@ -13,6 +13,7 @@ import os
 import posixpath
 import re
 import subprocess  # nosec B404 — `cygpath -m /<맨 위 폴더>` 만 / fixed-argument cygpath calls only
+import sys
 
 _ON_WINDOWS = os.name == "nt"
 _DRIVE = re.compile(r"/([A-Za-z])(?=/|$)")
@@ -58,3 +59,25 @@ def git_bash_to_windows(path: str) -> str | None:
     if folder is None:
         return None
     return folder + ("/" + rest if rest else "")
+
+
+def _make_stdout_safe() -> None:
+    """Windows cp949 stdout 크래시 방지 — 관용구 복제(정책 16 최소 추상화) / UTF-8 stdout on cp949 consoles."""
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass  # 캡처된 stream 등 reconfigure 미지원 — 무시 / stream without reconfigure
+
+
+def main(argv: list[str]) -> int:
+    """`MSYS_NO_PATHCONV=1 py -3 .claude/hooks/git_bash_paths.py /tmp/x …` — 훅이 그 경로를 어디서 여는지 보여 준다(모르면
+    «모름»). Git Bash 는 바깥 프로그램을 부를 때 인자를 먼저 바꾸므로(MSYS) 날글자를 넘기려면 `MSYS_NO_PATHCONV=1` 이 있어야
+    한다 — 훅은 명령의 날글자를 받으니 스스로 바꾼다. / Show where the hooks open each Git Bash path ("모름" when unknown)."""
+    _make_stdout_safe()
+    for path in argv:
+        print(f"{path} → {git_bash_to_windows(path) or '모름'}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
