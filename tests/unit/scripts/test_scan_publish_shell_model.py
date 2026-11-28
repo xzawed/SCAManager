@@ -145,6 +145,7 @@ def test_posting_gh_commands_are_still_scanned(command, bodies, monkeypatch, cap
     pytest.param(f"$(which gh) issue comment 1 --body '{_EMAIL_TEXT}'", id="gh-from-which"),
     pytest.param("G=$(command -v gh); $G issue comment 1 --body-file clean.md", id="gh-path-by-lookup"),
     pytest.param(f"gh pr view 1 && $(which gh) issue comment 1 --body '{_EMAIL_TEXT}'", id="read-only-then-unrecognized"),
+    pytest.param(f"gh pr view 1 && bash -c \"gh issue comment 1 --body '{_EMAIL_TEXT}'\"", id="read-only-then-gh-in-a-string"),
 ])
 def test_a_gh_called_by_path_is_not_treated_as_gh_less(command, tool, bodies, monkeypatch, capsys):
     """🔴 경로 · 따옴표 · `\\gh` · `$(which gh)` 로 부른 gh 도 «gh 없음» · «읽기만» 이 아니다 — 본문을 재거나, 어떤 인자가
