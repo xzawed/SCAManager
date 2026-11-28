@@ -117,7 +117,9 @@ def _is_railway_cli(tok):
     return base == "railway"
 
 
-_SAFE_IDIOM = 'railway variables --kv | cut -d= -f1 | grep -i CRON'
+_SAFE_IDIOM = ('railway variables --kv | cut -d= -f1 | grep -i CRON\n'
+               "  무해 이름(PYTHON* · LANG · LC_* · CLAUDE_PROJECT_* · MSYS* · TEMP/TMP · TERM · SHELL · PATH)의 값은 줄 머리에 "
+               "고정해 고르면 된다: env | grep '^PYTHON' · env | grep '^LANG=' · printenv PYTHONUTF8")
 _SAFE_CONFIG = "py -3 scripts/railway_config.py"
 _SAFE_ENV = "$env:NAME  (YAML 의 env: 키를 찾는 grep 이면 콜론을 빼고: grep -n 'env' <파일>)"
 # settings 의 Read 거부가 .env 를 이름으로 적은 셸 읽기(cat · grep · ls)도 막는다 — 남는 확인은 존재뿐이다(11-28 실측).
@@ -133,6 +135,9 @@ _SAFE_SEARCH = "Grep 도구 · git grep KEY · grep -rn --exclude='.env*' --excl
 # - None: 중화 수단 없음(안전 대체로 보낸다).
 # "names": the very next stage is exactly `cut -d= -f1`, KEY=VALUE output only. "write": the stage writes.
 _NAMES, _WRITE = "names", "write"
+# 무해 이름만 고르는 grep 이 다음 단계면 중화 — 셸 env 나열 항목만 이 표지를 가진다(railway 변수는 아니다 · 사용자 결정 11-28)
+# Neutralized by a next-stage grep selecting only harmless names; only the shell env listing carries this tag.
+_SAFE_NAMES = "safe-names"
 
 # 🔴 파이프라인 단계 **전체**가 정확히 이 관용구일 때만 — `-f1-` · `-f1,2` · `--complement` 는 값을 그대로
 #    낸다(Grok G1 반례). 구분자 `=` 의 따옴표 변형과 -d/-f 순서 바꿈만 허용한다.
@@ -302,6 +307,100 @@ def _lists_environment(stage):
         letters = {ch for w in rest for ch in w.lstrip("-")}
         return not rest or not letters <= {"f", "F"}
     return False
+
+
+# ── 인자를 글자로만 받는 명령 · 무해 env 이름 (원장 #1940 M06 P1-23 · P1-25) ─────────────────────────────────
+# 회고 창의 거부를 세션 기록에 대 보니 정직한 명령이 대부분이었다: grep 의 패턴 `popd` 를 디렉터리 되돌리기로, 패턴 속
+# `printenv` 를 덤프로 읽었다. 인자를 글자로만 받고 실행하지 않는 명령의 인자 속 낱말은 실행이 아니다 — 단 그 출력을 뒤
+# 단계의 셸 · 실행기가 돌리면 다시 실행이다. 인자를 실행할 수 있는 명령(find -exec · sed 의 e · awk system() · rg --pre ·
+# sort --compress-program · git 별칭)은 넣지 않는다.
+# Commands that take arguments as plain data and never run them; their arguments hold no invocation unless a later
+# stage hands their output to a shell or runner.
+_DATA_ARGUMENT_COMMANDS = frozenset({"grep", "egrep", "fgrep", "findstr", "select-string", "sls", "echo", "printf",
+                                     "ls", "dir", "cat", "head", "tail", "wc", "uniq", "cut", "tr"})
+_RUNNERS = frozenset({"sh", "bash", "zsh", "dash", "ksh", "fish", "xargs", "eval", "source", ".", "powershell", "pwsh",
+                      "cmd", "parallel"})
+# 사용자 결정(11-28 «무해 이름 목록만 허용») — 값이 비밀이 아닌 이름 · 접두사. 정확한 이름은 그 이름만, 접두사는 그 아래 전부.
+# User decision 2026-11-28: names and prefixes whose values are not secret.
+_HARMLESS_ENV_NAMES = frozenset({"LANG", "TEMP", "TMP", "TMPDIR", "TERM", "SHELL", "PATH"})
+_HARMLESS_ENV_PREFIXES = ("PYTHON", "LC_", "CLAUDE_PROJECT_", "MSYS")
+_ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+# 무해 이름만 고르는 grep 의 옵션 — 고르기를 넓히거나(-v · 앞뒤 줄 · -z) 패턴을 파일에서 읽는(-f) 옵션은 없다
+# grep options that keep the selection as narrow as its pattern
+_HARMLESS_GREP_FLAGS = frozenset("iEFwxnchsqo")
+
+
+def _data_argument_stages(stages):
+    """인자를 글자로만 받는 단계의 번호 — 뒤 단계에 셸 · 실행기가 있으면 하나도 없다(`grep … | sh` 는 인자를 돌린다).
+    Indices of plain-data stages; none at all when a later stage is a shell or runner."""
+    heads = [_command_words(stage)[0] for stage in stages]
+    if any(head in _RUNNERS for head in heads):
+        return frozenset()
+    return frozenset(i for i, head in enumerate(heads) if head in _DATA_ARGUMENT_COMMANDS)
+
+
+def _harmless_env_name(name, exact):
+    """무해 이름인가 — exact 면 이름 그대로(`LANG`), 아니면 고르는 머리(`^PYTHON` 은 PYTHON* 전부)로 본다.
+    Is this env name harmless? exact: the name itself; otherwise a leading selector."""
+    upper = name.upper()
+    if upper.startswith(_HARMLESS_ENV_PREFIXES):
+        return True
+    return exact and upper in _HARMLESS_ENV_NAMES
+
+
+def _harmless_names_grep(stage):
+    """env 나열 바로 다음의 grep 이 무해 이름만 고르는가 — 패턴마다 `^이름` 꼴이고 그 이름이 무해 접두사 아래이거나, 무해한
+    정확한 이름에 `=` 까지 붙었을 때(`^LANG=` — `^LANG` 은 LANGUAGE 도 고른다). 뒤집기 · 앞뒤 줄 · 파일 인자 · 여러 갈래는 아니다.
+    Does this grep select only harmless names (each pattern `^NAME`, exact names need the `=`)?"""
+    try:
+        words = shlex.split(stage, posix=True)
+    except ValueError:
+        return False
+    if not words or words[0] not in ("grep", "egrep"):
+        return False
+    patterns, plain, k = [], [], 1
+    while k < len(words):
+        word = words[k]
+        if word in ("-e", "--regexp"):
+            if k + 1 >= len(words):
+                return False
+            patterns.append(words[k + 1])
+            k += 2
+            continue
+        if word.startswith("--regexp="):
+            patterns.append(word.split("=", 1)[1])
+        elif word.startswith("-") and len(word) > 1 and not word.startswith("--"):
+            if not set(word[1:]) <= _HARMLESS_GREP_FLAGS:
+                return False
+        elif word.startswith("--"):
+            if word not in ("--ignore-case", "--extended-regexp", "--word-regexp", "--line-regexp", "--line-number"):
+                return False
+        else:
+            plain.append(word)
+        k += 1
+    if not patterns:
+        if len(plain) != 1:
+            return False  # 패턴 하나 — 그 밖은 파일 인자(stdin 대신 파일을 읽는다) / one pattern; extras are files
+        patterns = plain
+    elif plain:
+        return False
+    for pattern in patterns:
+        m = re.fullmatch(r"\^([A-Za-z_][A-Za-z0-9_]*)(=?)", pattern)
+        if not m or not _harmless_env_name(m.group(1), exact=bool(m.group(2))):
+            return False
+    return True
+
+
+def _runs_printenv(stage):
+    """단계가 printenv 로 값을 내는가 — 무해 이름만 정확히 고르면(`printenv PYTHONUTF8`) 덤프가 아니다(사용자 결정 11-28).
+    인자를 글자로만 받는 단계의 인자 속 printenv 는 `_decide_segment` 가 건너뛴다.
+    Does this stage print values with printenv? Naming only harmless variables is not a dump."""
+    if not re.search(r"\bprintenv\b", stage, re.IGNORECASE):
+        return False
+    head, rest = _command_words(stage)
+    if head == "printenv" and rest and all(_ENV_NAME.fullmatch(w) and _harmless_env_name(w, exact=True) for w in rest):
+        return False
+    return True
 
 
 def _railway_inner_lists_environment(stage):
@@ -1485,7 +1584,7 @@ _BLOCKED = (
     # Aliases from the CLI help; the plain form is blocked too so a CLI change cannot leak silently.
     (re.compile(_RW + r"\s+(?:environment|env)\b[^|&;]*?\s(?:config|show|info)\b", re.IGNORECASE).search,
      "railway environment config — 서비스 변수 값까지 평문 출력", (), _SAFE_CONFIG),
-    (re.compile(r"\bprintenv\b", re.IGNORECASE).search,
+    (_runs_printenv,
      "printenv — 프로세스 env 값 덤프", (_NAMES,), _SAFE_IDIOM),
     # 운영 컨테이너(ssh)나 Railway 변수를 주입한 로컬 실행(run = local)의 **안쪽 명령**이 환경 전체를
     # 찍는 꼴 — 안쪽 명령을 토큰으로 떼어 아래 셸 나열 판정에 넘긴다(`--env production` 인자는 대상 아님).
@@ -1520,7 +1619,7 @@ _BLOCKED = (
     # 줄이라 바로 다음 단계의 `cut -d= -f1` 이 중화한다.
     # Whole-env listings in Bash, read at the command position; a following exact cut neutralizes.
     (_lists_environment,
-     "env/set/export -p — 셸 env 값 덤프", (_NAMES,), _SAFE_IDIOM),
+     "env/set/export -p — 셸 env 값 덤프", (_NAMES, _SAFE_NAMES), _SAFE_IDIOM),
     # cmd 의 `set NAME` 은 그 이름으로 **시작하는** 변수를 전부 나열한다 — 대입(`set A=1`)만 대상 아님(보안 리뷰 지적).
     # cmd's `set NAME` lists every variable starting with NAME; only an assignment is not a dump.
     (re.compile(r"\bcmd(?:\.exe)?\s+/[ck]\s+[\"']?set\b(?!\s*[\"']?\w+=)", re.IGNORECASE).search,
@@ -1647,6 +1746,10 @@ def _neutralized(stages, i, neutralizers):
     # A very next stage that prints only counts prints no value.
     if _COUNT_ONLY_GREP_STAGE.fullmatch(nxt) or _WC_COUNT_ONLY.fullmatch(nxt):
         return True
+    # 무해 이름만 고르는 grep(`env | grep -i '^PYTHON'`) — 셸 env 나열만, 그 이름들의 값만 나온다(사용자 결정 11-28)
+    # A grep selecting only harmless names, for the shell env listing only.
+    if _SAFE_NAMES in neutralizers and _harmless_names_grep(nxt):
+        return True
     # 🔴 이름만 자르는 단계(cut 관용구 · `grep -o '^[A-Z_]*='`)는 덤프 **바로 다음** 이고 덤프가 KEY=VALUE 줄을 낼 때만 —
     #    사이 단계(`tee /dev/stderr` 등)는 값을 복제하고, `printenv 이름` 은 값만 내서 «`=` 앞» 이 곧 값이다(AntiGravity
     #    교차 검토 — cut 은 main 때부터 샜다). railway variable 은 KEY=VALUE(--kv · -k, --json 없음) 출력일 때만 — 토큰으로 본다.
@@ -1708,8 +1811,11 @@ def _decide_segment(segment, marked=None):
     # find hands its matches to a reader; its `*` matches dot-files and it descends.
     if _find_reads_dotenv(stages):
         return "find → 내용 읽기 — find 가 고른 .env 까지 읽는다", _SAFE_SEARCH
+    data_stages = _data_argument_stages(stages)
     for i, stage in enumerate(stages):
         for matcher, reason, neutralizers, hint in _BLOCKED:
+            if matcher is _runs_printenv and i in data_stages:
+                continue  # 글자 단계의 인자 속 `printenv` 는 실행이 아니다(`grep -n printenv 시험.py`) / data, not a run
             hit = matcher(path_stages[i] if matcher is _reads_dotenv else stage)
             # 🔴 .env 를 다루는 «안전한» 명령도 출력이 다음 단계로 넘어가면 읽기다(`ls .env | xargs cat` ·
             #    `Get-Item .env | Get-Content` — 보안 리뷰 지적). 안전은 파이프라인의 마지막 단계일 때만.
@@ -1799,8 +1905,14 @@ def _follow_directory_change(segment):
     판정이 느슨해졌다). 셸만 아는 대상(`cd $X`) · 되돌아가기(`cd -` · popd) · 어느 후보에서도 없는 폴더는 «모름» 을
     더해 뒤의 파일 시스템 판정이 막는 쪽으로 가게 한다.
     Grow (never shrink) the cwd candidates with every cd, including those in subshells, conditionals and
-    loops; unknown targets add an unknown marker so later checks fail closed."""
-    words = _plain_words(segment)
+    loops; unknown targets add an unknown marker so later checks fail closed.
+
+    인자를 글자로만 받는 단계(`grep -rn popd e2e` · `echo cd`)의 낱말은 디렉터리 이동이 아니다 — 건너뛴다(원장 #1940 M06
+    P1-25). 그 밖의 단계는 지금처럼 어느 자리의 cd 계열이든 따른다(못 알아본 꼴은 늘리는 쪽 — 막는 쪽).
+    Plain-data stages hold no directory change; every other stage keeps the conservative any-position reading."""
+    stages = _split_stages(segment)
+    data_stages = _data_argument_stages(stages)
+    words = [w for i, stage in enumerate(stages) if i not in data_stages for w in _plain_words(stage)]
     for k, word in enumerate(words):
         name = _command_name(word)
         if name == "popd":
