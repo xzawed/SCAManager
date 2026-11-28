@@ -24,6 +24,15 @@ import sys
 import time
 from pathlib import Path
 
+# Git Bash 경로 — credential 훅과 함께 쓰는 도우미(원장 #1940 M06 P1-24). 못 불러오면 Windows 의 `/…` 경로는 어디를 여는지
+# 모르는 것으로 본다(못 잰 것 — 막는 쪽). / Shared Git Bash path helper; without it Windows `/…` paths are unmeasured.
+sys.path.append(str(Path(__file__).resolve().parents[1] / ".claude" / "hooks"))
+try:
+    from git_bash_paths import git_bash_to_windows  # noqa: E402
+except ImportError:  # pragma: no cover — 리포 안의 파일이다 / it ships in the repo
+    def git_bash_to_windows(path: str) -> str | None:
+        return path if os.name != "nt" or not path.startswith("/") or path.startswith("//") else None
+
 # 꼴 — 종류 이름 → 정규식. DB 주소 꼴은 `.pre-commit-config.yaml` 의 `check-db-url-in-diff` 와 같은 식이다(시험이 대조한다).
 # Shapes: kind → regex. The DB URL shape is the same expression as the pre-commit `check-db-url-in-diff` hook.
 _KINDS = {
@@ -262,9 +271,10 @@ def _targets(words: list[str]) -> tuple[list[str | None], list[str | None]]:
     return [p for p in paths if p != ""], texts
 
 
-def _resolve(path: str, assigned: dict[str, str | None], base: Path | None) -> Path | None:
-    """대입 · 환경 변수로 경로를 푼다 — 명령 치환 · 못 푼 변수(값을 모르는 대입 포함) · 기준을 모르는 상대 경로는 None.
-    Resolve a path from assignments and the environment; unresolvable → None."""
+def _resolve(path: str, assigned: dict[str, str | None], base: Path | None, shell: str = "bash") -> Path | None:
+    """대입 · 환경 변수로 경로를 푼다 — 명령 치환 · 못 푼 변수(값을 모르는 대입 포함) · 기준을 모르는 상대 경로는 None. Bash 이면
+    Git Bash 경로(`/c/…` · `/tmp/…`)를 Bash 가 여는 Windows 경로로 바꾸고, 어디를 여는지 모르면 None(원장 #1940 M06 P1-24).
+    Resolve a path from assignments and the environment; unresolvable → None. Bash paths are opened where Git Bash opens them."""
     if "$(" in path or "`" in path:
         return None
 
@@ -277,7 +287,12 @@ def _resolve(path: str, assigned: dict[str, str | None], base: Path | None) -> P
     expanded = _VAR.sub(_lookup, path)
     if "\0" in expanded or "$" in expanded:
         return None
-    p = Path(os.path.expanduser(expanded))
+    expanded = os.path.expanduser(expanded)
+    if shell == "bash":
+        expanded = git_bash_to_windows(expanded)
+        if expanded is None:
+            return None
+    p = Path(expanded)
     if p.is_absolute():
         return p
     return base / p if base is not None else None
@@ -844,7 +859,7 @@ def judge_command(command: str, cwd: str | None, shell: str) -> tuple[dict[str, 
         else:
             cds = [_unquote(m.group(1)) for m in _CD.finditer(before)]
             if cds:
-                base = _resolve(cds[-1], path_assigned, base)
+                base = _resolve(cds[-1], path_assigned, base, shell)
         paths, texts = _targets(words)
         if (paths or texts) and not _runs_gh_directly(before):
             # 게시하는 gh 를 다른 명령(`xargs` · `find -exec` · 목록 밖 감싸기)이 돌린다 — 인자가 바뀌어 실행될 수 있다
@@ -884,7 +899,7 @@ def judge_command(command: str, cwd: str | None, shell: str) -> tuple[dict[str, 
             if rewritten_note:
                 unread.append(rewritten_note)
                 continue
-            text = _read(_resolve(raw, path_assigned, base))
+            text = _read(_resolve(raw, path_assigned, base, shell))
             if text is None:
                 unread.append(raw)
                 continue
