@@ -146,6 +146,10 @@ def test_posting_gh_commands_are_still_scanned(command, bodies, monkeypatch, cap
     pytest.param("G=$(command -v gh); $G issue comment 1 --body-file clean.md", id="gh-path-by-lookup"),
     pytest.param(f"gh pr view 1 && $(which gh) issue comment 1 --body '{_EMAIL_TEXT}'", id="read-only-then-unrecognized"),
     pytest.param(f"gh pr view 1 && bash -c \"gh issue comment 1 --body '{_EMAIL_TEXT}'\"", id="read-only-then-gh-in-a-string"),
+    # Grok 3차(42e755c9) — Windows 는 `GH` 도 gh.exe 로 돈다 / Windows runs `GH` as gh.exe
+    pytest.param(f"GH pr create --title t --body '{_EMAIL_TEXT}'", id="uppercase-gh"),
+    pytest.param("GH pr create --title t --body-file clean.md", id="uppercase-gh-body-file"),
+    pytest.param("bash -c \"gh issue comment 1 --body-file clean.md\"", id="body-file-inside-a-string"),
 ])
 def test_a_gh_called_by_path_is_not_treated_as_gh_less(command, tool, bodies, monkeypatch, capsys):
     """🔴 경로 · 따옴표 · `\\gh` · `$(which gh)` 로 부른 gh 도 «gh 없음» · «읽기만» 이 아니다 — 본문을 재거나, 어떤 인자가
@@ -162,6 +166,12 @@ def test_a_path_qualified_gh_is_measured_not_blanket_denied(tool, bodies, monkey
 def test_a_monitor_command_that_only_mentions_gh_is_not_a_publish(bodies, monkeypatch, capsys):
     """대조군 — gh 낱말이 인자에만 있는 Monitor 명령은 게시가 아니다(넓힌 gh 판정이 감시 명령을 막지 않는다)."""
     assert _hook(monkeypatch, capsys, 'tail -f build.log | grep --line-buffered "gh"', bodies, tool="Monitor") is None
+
+
+def test_an_uppercase_gh_word_inside_a_read_only_call_keeps_it_read_only(bodies, monkeypatch, capsys):
+    """대조군 — 대소문자를 가리지 않는 gh 낱말 판정이 읽기 호출의 인자(`"GH Actions"`)를 다른 gh 로 읽지 않는다."""
+    command = f"gh pr list --search 'GH Actions {_EMAIL_TEXT}' --json number"
+    assert _hook(monkeypatch, capsys, command, bodies) is None
 
 
 def test_a_heredoc_command_without_gh_is_not_a_publish(bodies, monkeypatch, capsys):

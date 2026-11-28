@@ -145,8 +145,13 @@ _GH_WORD = (r"(?:\\?(?:[^\s;&|()<>'\"`]*[/\\])?gh(?:\.exe)?"
             r"|'(?:[^']*[/\\])?gh(?:\.exe)?')")
 _GH_START = re.compile(r"(?:^|(?<=[\s;&|(]))" + _GH_WORD + r"\s+")
 # 명령 어디든 gh 낱말이 있는가 — 없을 때만 «gh 없음» 이다(경로 · 따옴표 · `$(which gh)` · 인자 안의 gh 모두 «있음»).
-# Any gh word anywhere; only its absence means no gh call (Cursor security review #1945).
-_ANY_GH_WORD = re.compile(r"(?<![\w-])gh(?![\w-])")
+# 대소문자를 가리지 않는다 — Windows 는 `GH` 도 gh.exe 로 돌린다(Grok 42e755c9). 호출 판정(`_GH_START`)은 가린다: 제목 속
+# «GH Actions» 같은 글자를 호출로 읽지 않게.
+# Any gh word anywhere, case-insensitive (Windows runs `GH`); only its absence means no gh call.
+_ANY_GH_WORD = re.compile(r"(?<![\w-])gh(?![\w-])", re.I)
+# 본문 파일 플래그 — 알아본 gh 호출 밖에 있으면 누가 그 파일을 게시하는지 모른다(`GH … --body-file f` · `bash -c "gh … --body-file f"`).
+# A body-file flag outside every recognised gh call: whoever reads that file is unknown.
+_BODY_FILE_FLAG = re.compile(r"(?<![\w-])--body-file(?![\w-])")
 # gh 를 변수 · 명령 치환으로 부르는 꼴 — 경로를 찾아 쓰거나(`$(which gh)` · `$(command -v gh)` · `(Get-Command gh)`) 변수에
 # 담는다(`G=gh` · `G=/usr/bin/gh`). 그 호출의 인자는 낱말로 못 가린다.
 # gh reached through a lookup substitution or a variable; its arguments cannot be told apart.
@@ -494,11 +499,15 @@ def _gh_segments(stripped: str, shell: str) -> list[tuple[int, int, str, list[st
     return segments
 
 
+def _inside_a_call(pos: int, segments: list[tuple[int, int, str, list[str] | None]]) -> bool:
+    """`pos` 가 알아본 gh 호출(호출 낱말 · 그 인자) 안인가 / Is `pos` inside a recognised gh call?"""
+    return any(start <= pos < end for start, end, _rest, _words in segments)
+
+
 def _every_gh_word_is_a_call(stripped: str, segments: list[tuple[int, int, str, list[str] | None]]) -> bool:
-    """명령 글자의 gh 낱말이 모두 알아본 gh 호출(호출 낱말 · 그 인자) 안에 있는가 — 밖에 있으면 알아보지 못한 꼴로 gh 를 부를
-    수 있다. / Is every gh word inside a recognised gh call? One outside may be a gh call in an unrecognised form."""
-    return all(any(start <= word.start() < end for start, end, _rest, _words in segments)
-               for word in _ANY_GH_WORD.finditer(stripped))
+    """명령 글자의 gh 낱말이 모두 알아본 gh 호출 안에 있는가 — 밖에 있으면 알아보지 못한 꼴로 gh 를 부를 수 있다.
+    Is every gh word inside a recognised gh call? One outside may be a gh call in an unrecognised form."""
+    return all(_inside_a_call(word.start(), segments) for word in _ANY_GH_WORD.finditer(stripped))
 
 
 def _record(assigned: dict[str, str | None], match: re.Match[str], *, keeps: bool) -> None:
@@ -695,6 +704,8 @@ def judge_command(command: str, cwd: str | None, shell: str) -> tuple[dict[str, 
         # 읽기만 하는 gh 뿐이고 다른 꼴로 부른 gh 가 없다 — 게시가 아니다(P2-12)
         # Only read-only gh calls and no gh word outside them: nothing is published.
         return counts, unread
+    if any(not _inside_a_call(flag.start(), segments) for flag in _BODY_FILE_FLAG.finditer(stripped)):
+        unread.append("(알아보지 못한 자리의 --body-file — 그 파일이 게시될 수 있다 · gh 를 바로 부른다)")
     for heredoc in _HEREDOC.finditer(command):
         body = heredoc.group("body") or ""
         if heredoc.group("quote"):
