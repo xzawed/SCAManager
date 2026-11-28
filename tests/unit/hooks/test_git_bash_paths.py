@@ -19,10 +19,11 @@ from tests.unit.scripts.test_scan_publish import _PLANTED, _denied, _hook  # noq
 
 @pytest.fixture
 def on_windows(monkeypatch):
-    """Git for Windows 의 뿌리 · 임시 폴더를 고정한 Windows / Windows with a fixed Git root and temp folder."""
+    """Git for Windows 의 마운트를 고정한 Windows — `/tmp` 는 사용자 임시 폴더, 그 밖은 Git 설치 뿌리 아래(`cygpath -m /<맨 위>`).
+    Windows with fixed Git Bash mounts."""
     monkeypatch.setattr(git_bash_paths, "_ON_WINDOWS", True)
-    monkeypatch.setattr(git_bash_paths, "_temp_dir", lambda: "D:/scratch/Temp")
-    monkeypatch.setattr(git_bash_paths, "_git_root", lambda: "D:/Tools/Git")
+    mounts = {"": "D:/Tools/Git", "tmp": "D:/scratch/Temp"}
+    monkeypatch.setattr(git_bash_paths, "_mount", lambda top: mounts.get(top, f"D:/Tools/Git/{top}"))
 
 
 @pytest.mark.parametrize("bash, windows", [
@@ -38,6 +39,10 @@ def on_windows(monkeypatch):
     ("/usr/../../c/Windows/win.ini", "C:/Windows/win.ini"),
     ("/c/../tmp/body.md", "D:/scratch/Temp/body.md"),
     ("/proc/cpuinfo", None),
+    # Grok(275e94e9) — 빗금 셋 이상은 하나다(POSIX) · Cygwin 은 `\` 도 구분자로 본다 / 3+ slashes are one; `\` separates
+    ("///etc/passwd", "D:/Tools/Git/etc/passwd"),
+    ("/c\\Windows\\win.ini", "C:/Windows/win.ini"),
+    ("/", "D:/Tools/Git"),
     ("C:/work/body.md", "C:/work/body.md"),
     ("docs/body.md", "docs/body.md"),
     ("//server/share/body.md", "//server/share/body.md"),
@@ -48,9 +53,15 @@ def test_git_bash_paths_become_the_windows_paths_bash_opens(bash, windows, on_wi
 
 
 def test_a_root_path_is_unknown_without_cygpath(on_windows, monkeypatch):
-    """🔴 Git 뿌리를 못 물으면 `/usr/…` 은 어디를 여는지 모른다 — None(막는 쪽)이지 작업 드라이브 아래가 아니다."""
-    monkeypatch.setattr(git_bash_paths, "_git_root", lambda: None)
-    assert git_bash_paths.git_bash_to_windows("/usr/bin/env") is None
+    """🔴 마운트를 못 물으면 `/usr/…` · `/tmp/…` 은 어디를 여는지 모른다 — None(막는 쪽)이지 작업 드라이브 아래가 아니다."""
+    monkeypatch.setattr(git_bash_paths, "_mount", lambda top: None)
+    assert [git_bash_paths.git_bash_to_windows(p) for p in ("/usr/bin/env", "/tmp/body.md")] == [None, None]
+
+
+def test_tmp_follows_the_mount_not_the_python_temp_folder(on_windows, monkeypatch):
+    """🔴 `/tmp` 는 Git Bash 의 마운트(fstab)를 따른다 — 사용자가 옮겼으면 Python 의 임시 폴더가 아니다(Grok 275e94e9)."""
+    monkeypatch.setattr(git_bash_paths, "_mount", lambda top: {"tmp": "E:/custom-tmp"}.get(top, "D:/Tools/Git"))
+    assert git_bash_paths.git_bash_to_windows("/tmp/body.md") == "E:/custom-tmp/body.md"
 
 
 def test_nothing_changes_outside_windows(monkeypatch):
