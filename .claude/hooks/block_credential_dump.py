@@ -84,7 +84,9 @@ _SHELL_TOOLS = ("Bash", "PowerShell", "Monitor")
 # 셸을 거치지 않는 같은 덤프 — Railway MCP `list_variables` 는 «KEY=VALUE 쌍을 반환» 한다(도구 설명).
 # 값 개수만 내는 `get_service_config` 는 대상이 아니다.
 # The same dump without a shell: Railway MCP list_variables returns KEY=VALUE pairs.
-_MCP_DUMP_TOOLS = re.compile(r"mcp__.*railway.*__list_variables")
+# claude.ai 커넥터는 서버 이름이 대문자로 시작하고 도구 이름이 하이픈이다(`mcp__claude_ai_Railway__list-variables`)
+# the claude.ai connector capitalizes the server and hyphenates the tool
+_MCP_DUMP_TOOLS = re.compile(r"mcp__.*railway.*__list[-_]variables", re.IGNORECASE)
 
 # railway 낱말 — 경로 · 대소문자 · npm shim 확장자(.cmd .exe .ps1) · 따옴표와 무관하게 본다(보안 리뷰 지적).
 # PowerShell 은 명령 이름 대소문자를 가리지 않고, Windows 의 npm 설치본은 railway.cmd / railway.ps1 shim 이다.
@@ -1985,6 +1987,16 @@ _PROD_RAILWAY_MCP_READS = frozenset({
     "service_metrics", "get_service_config", "domain_status", "list_domains", "list_tcp_proxies",
     "get_tcp_proxy", "private_network_status", "search_templates", "authenticate", "complete_authentication",
 })
+# claude.ai Railway 커넥터의 하이픈 이름 읽기 — CLI 의 자율 읽기(status · whoami · list · logs · metrics · docs ·
+# deployment/domain list)와 같은 것만이다. 설정 · 변수가 섞일 수 있는 도구(`describe-service` · `get-service-config` 등)는
+# 값이 없음을 확인하기 전까지 넣지 않는다(원장 #1940 이관 #1917-6 · 사용자 결정 11-28 권장안).
+# The claude.ai Railway connector's hyphenated reads, limited to those matching the autonomous CLI reads.
+_PROD_RAILWAY_CONNECTOR_READS = frozenset({
+    "list-deployments", "get-logs", "get-status", "environment-status", "list-projects", "list-workspaces",
+    "list-services", "get-service-metrics", "http-error-rate", "http-requests", "http-response-time", "search-docs",
+    "fetch-docs", "list-domains", "domain-status",
+})
+_PROD_RAILWAY_READS = _PROD_RAILWAY_MCP_READS | _PROD_RAILWAY_CONNECTOR_READS
 _PROD_SUPABASE_MCP_READS = frozenset({
     "search_docs", "list_tables", "list_extensions", "list_migrations", "get_advisors", "get_project_url",
     "get_publishable_keys", "query_logs", "list_branches", "list_edge_functions", "get_edge_function",
@@ -3973,7 +3985,7 @@ def decide_mcp_production_access(tool_name):
     server, tool = tool_name[5:].rsplit("__", 1)
     server = server.lower()
     if "railway" in server:
-        return None if tool in _PROD_RAILWAY_MCP_READS else f"Railway MCP `{tool}` — 운영 실행 · 변경"
+        return None if tool in _PROD_RAILWAY_READS else f"Railway MCP `{tool}` — 운영 실행 · 변경"
     if "supabase" in server:
         return None if tool in _PROD_SUPABASE_MCP_READS else f"Supabase MCP `{tool}` — DB SQL · 변경"
     return None
@@ -4035,7 +4047,7 @@ def _mcp_production_channel(tool_name):
         return None
     server, tool = tool_name[5:].rsplit("__", 1)
     server = server.lower()
-    if "railway" in server and tool in _PROD_RAILWAY_MCP_READS:
+    if "railway" in server and tool in _PROD_RAILWAY_READS:
         return f"Railway MCP {tool}"
     if "supabase" in server and tool in _PROD_SUPABASE_MCP_READS:
         return f"Supabase MCP {tool}"
