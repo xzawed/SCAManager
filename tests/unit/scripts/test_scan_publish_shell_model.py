@@ -96,18 +96,57 @@ def test_commands_that_write_no_file_keep_the_body_measurable(between, bodies, m
     assert _denied(result) and "email 1" in _reason(result), result
 
 
-def test_a_powershell_backtick_is_an_escape_not_a_substitution(bodies, monkeypatch, capsys):
-    """대조군 — PowerShell 의 백틱은 이스케이프다(bash 의 치환이 아니다): gh 앞 명령의 백틱 뒤에도 본문 파일을 그대로 잰다.
-    (인라인 본문 안의 백틱은 셸과 상관없이 막는다 — 기존 규칙)"""
-    command = 'echo "a`tb"; gh pr comment 1 --body-file clean.md'
+_POWERSHELL_REWRITES = [
+    pytest.param("echo @(Copy-Item dirty.md clean.md); gh pr comment 1 --body-file clean.md", id="array-subexpression"),
+    pytest.param("gh pr comment 1 --body-file clean.md --repo (Copy-Item dirty.md clean.md)", id="argument-grouping"),
+    pytest.param('gh pr comment 1 --body-file clean.md --repo "$(echo `); Copy-Item dirty.md clean.md; echo x/y)"',
+                 id="backtick-escaped-paren"),
+    pytest.param("git status 2>$null; gh pr comment 1 --body-file clean.md", id="anything-before-gh"),
+    pytest.param('echo `"; Copy-Item dirty.md clean.md; echo `"; gh pr comment 1 --body-file clean.md',
+                 id="backtick-escaped-quote-hides-a-writer"),
+]
+
+
+def test_the_substitution_end_follows_the_shell_escape():
+    """`$(` 의 끝 — bash 는 `\\` 가, PowerShell 은 백틱이 이스케이프다. PowerShell 의 블록 주석은 끝을 모른다(None)."""
+    from scripts import scan_publish  # pylint: disable=import-outside-toplevel
+    assert scan_publish._substitution_end("echo `)x)", "bash") == 6
+    assert scan_publish._substitution_end("echo `)x)", "powershell") == 8
+    assert scan_publish._substitution_end("echo \\)x)", "bash") == 8
+    assert scan_publish._substitution_end("echo \\)x)", "powershell") == 6
+    assert scan_publish._substitution_end("echo <# ) #> x)", "powershell") is None
+
+
+def test_a_powershell_backslash_quote_does_not_hide_a_writer(bodies, monkeypatch, capsys):
+    """🔴 PowerShell 에서 `\\` 는 글자다 — `"C:\\temp\\"` 뒤의 Copy-Item 은 따옴표 밖에서 돈다. bash 식으로 가리면 따옴표가 안
+    닫혀 gh 앞 전체가 한 낱말이 되니, 그 게시는 «다른 명령이 gh 를 돌린다» 로 막힌다(막히는 것이 요점이다)."""
+    command = 'echo "C:\\temp\\"; Copy-Item dirty.md clean.md; gh pr comment 1 --body-file clean.md'
+    assert _denied(_hook(monkeypatch, capsys, command, bodies, tool="PowerShell"))
+
+
+@pytest.mark.parametrize("command", _POWERSHELL_REWRITES)
+def test_a_powershell_post_with_anything_before_it_is_not_measured(command, bodies, monkeypatch, capsys):
+    """🔴 PowerShell 의 따옴표 · 이스케이프 · 그룹 · 대입은 이 셸 모형(bash)과 다르다 — gh 앞에 무엇이든 있거나 gh 의 인자에
+    치환(`$(…)` · `@(…)` · `(…)`)이 있으면 본문 파일을 못 잰 것으로 막고 나눠 부르라고 알린다(Cursor #1946)."""
+    result = _hook(monkeypatch, capsys, command, bodies, tool="PowerShell")
+    assert _denied(result), command
+    assert "나눠" in _reason(result), _reason(result)
+
+
+@pytest.mark.parametrize("command", [
+    pytest.param("gh pr comment 1 --body-file clean.md", id="bare"),
+    pytest.param("& gh pr comment 1 --body-file clean.md", id="call-operator"),
+    pytest.param('gh pr comment 1 --body-file clean.md --repo "own`"er/x"', id="backtick-escape-in-argument"),
+])
+def test_a_powershell_post_standing_alone_is_measured(command, bodies, monkeypatch, capsys):
+    """대조군 — 홀로 선 PowerShell 게시는 본문을 잰다: 깨끗하면 통과, 꼴이면 막힘. 백틱은 이스케이프다(bash 의 치환이 아니다)."""
     assert _hook(monkeypatch, capsys, command, bodies, tool="PowerShell") is None
     assert _denied(_hook(monkeypatch, capsys, command.replace("clean.md", "dirty.md"), bodies, tool="PowerShell"))
 
 
-def test_a_powershell_discard_redirect_keeps_the_body_measurable(bodies, monkeypatch, capsys):
-    """대조군 — PowerShell 의 `2>$null` 은 버리는 곳이다: 그 뒤의 게시는 미리 만든 본문을 잰다."""
-    command = "git status 2>$null; gh pr comment 1 --body-file clean.md"
-    assert _hook(monkeypatch, capsys, command, bodies, tool="PowerShell") is None
+def test_nul_is_a_file_in_bash(bodies, monkeypatch, capsys):
+    """🔴 bash(리눅스 · Codespaces)에서 `> NUL` 은 파일 NUL 에 쓴다 — 버리는 곳으로 보지 않는다(Cursor #1946)."""
+    assert _denied(_hook(monkeypatch, capsys, "cat dirty.md > NUL && gh pr comment 1 --body-file clean.md", bodies))
 
 
 # witness-corpus: 파일을 쓰는 흔한 명령 가운데 판정 목록에 이름이 없는 것 — 목록 밖이면 쓰는 쪽으로 본다(막는 쪽)

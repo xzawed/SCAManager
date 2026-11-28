@@ -367,26 +367,34 @@ _LEADING_KEYWORDS = frozenset({"if", "then", "else", "elif", "do", "while", "unt
 # 단순 명령의 경계 — 리디렉션 안의 `&`(`2>&1` · `>&f` · `&>f`) · `>|` 의 `|` 는 경계가 아니다(Cursor Bugbot #1945).
 # Simple-command breaks; the `&` of a redirection and the `|` of `>|` are not breaks.
 _SIMPLE_COMMAND_BREAK = re.compile(r"&&|\|\||(?<![<>])&(?!>)|(?<!>)\||[;\n]")
-# 출력 리디렉션과 그 대상 — `>f` · `>>f` · `2>f` · `&>f` · `>&f` · `>|f` · `n<>f`(읽기-쓰기로 연다). 쓰기가 아닌 것은 버리는 곳
-# (`/dev/null` · `NUL` · PowerShell 의 `$null`)과 `&` 가 붙은 연산자의 fd 복제(`2>&1` · `>&2` · `>&-`)뿐이다 — `> 1` 은 파일 `1`
-# 에 쓰고, bash 의 `$null` 은 파일 이름이 될 수 있는 변수다. 대상이 비면(`> >(…)`) 쓰기로 본다.
-# Output redirections; only discard targets and fd duplication after an `&` operator are not writes.
+# 출력 리디렉션과 그 대상 — `>f` · `>>f` · `2>f` · `&>f` · `>&f` · `>|f` · `n<>f`(읽기-쓰기로 연다). 쓰기가 아닌 것은
+# `/dev/null` 과 `&` 가 붙은 연산자의 fd 복제(`2>&1` · `>&2` · `>&-`)뿐이다 — `> 1` 은 파일 `1` 에 쓰고, `NUL` · `$null` 은 bash
+# (리눅스 · Codespaces)에서 파일 이름이 될 수 있다(Cursor #1946). 대상이 비면(`> >(…)`) 쓰기로 본다.
+# Output redirections; only /dev/null and fd duplication after an `&` operator are not writes.
 _OUTPUT_REDIRECT_TARGET = re.compile(r"(?<![<>\\])(?:\d+|&)?(?P<op>>{1,2}&?|<>)\|?[ \t]*(?P<target>[^\s;&|()<>]*)")
-_DISCARD_TARGET = re.compile(r"/dev/null|NUL", re.I)
 _FD_TARGET = re.compile(r"\d+-?|-")
 
 
-def _harmless_redirect(op: str, target: str, shell: str) -> bool:
-    """버리는 곳이거나 fd 복제인가 / Is this redirection a discard or an fd duplication?"""
-    if _DISCARD_TARGET.fullmatch(target) or (shell == "powershell" and target.lower() == "$null"):
-        return True
-    return op.endswith("&") and bool(_FD_TARGET.fullmatch(target))
+def _harmless_redirect(op: str, target: str) -> bool:
+    """버리는 곳(`/dev/null`)이거나 fd 복제인가 / Is this redirection a discard or an fd duplication?"""
+    return target == "/dev/null" or (op.endswith("&") and bool(_FD_TARGET.fullmatch(target)))
+
+
+def _substitution_opener(text: str, i: int, quoted: bool, shell: str) -> int:
+    """`text[i]` 에서 여는 치환 표시의 길이(없으면 0) — bash: `$(` · 따옴표 밖 `<(` · `>(`. PowerShell: `$(` · 따옴표 밖 `@(` · `(`
+    (인자 자리 그룹도 gh 보다 먼저 돈다 — Cursor #1946). / Length of a substitution opener at `text[i]`, or 0."""
+    if text.startswith("$(", i):
+        return 2
+    if quoted:
+        return 0
+    if shell == "powershell":
+        return 2 if text.startswith("@(", i) else (1 if text[i] == "(" else 0)
+    return 2 if text.startswith(("<(", ">("), i) else 0
 
 
 def _substitution_spans(text: str, shell: str = "bash") -> list[tuple[int, int, bool]] | None:
-    """명령 치환 · 프로세스 치환(`$(…)` · `<(…)` · `>(…)`) · 산술 펼침(`$((…))`)의 자리 — (여는 표시, 닫는 괄호 다음, 산술인가).
-    작은따옴표 안은 글자 그대로라 뺀다. bash 의 백틱 치환 · 닫히지 않은 치환이 있으면 None(안을 모른다). PowerShell 에서는
-    백틱이 이스케이프다(`$(…)` 은 그대로 하위 식이다).
+    """명령 치환 · 프로세스 치환 · 산술 펼침(`$((…))`, bash 만)의 자리 — (여는 표시, 닫는 괄호 다음, 산술인가). 작은따옴표
+    안은 글자 그대로라 뺀다. bash 의 백틱 치환 · 닫히지 않은 치환이 있으면 None(안을 모른다). PowerShell 에서는 백틱이 이스케이프다.
     Substitution spans outside single quotes; None for a bash backtick or an unclosed one. In PowerShell a backtick escapes."""
     escape = "`" if shell == "powershell" else "\\"
     spans: list[tuple[int, int, bool]] = []
@@ -405,12 +413,12 @@ def _substitution_spans(text: str, shell: str = "bash") -> list[tuple[int, int, 
             quote = None if quote == '"' else '"'
         elif ch == "'" and quote is None:
             quote = "'"
-        elif text.startswith("$(", i) or (quote is None and text.startswith(("<(", ">("), i)):
-            end = _substitution_end(text[i + 2:])
+        elif opener := _substitution_opener(text, i, quote is not None, shell):
+            end = _substitution_end(text[i + opener:], shell)
             if end is None:
                 return None
-            spans.append((i, i + 2 + end + 1, text.startswith("$((", i)))
-            i += 2 + end + 1
+            spans.append((i, i + opener + end + 1, shell != "powershell" and text.startswith("$((", i)))
+            i += opener + end + 1
             continue
         i += 1
     return spans
@@ -418,11 +426,14 @@ def _substitution_spans(text: str, shell: str = "bash") -> list[tuple[int, int, 
 
 def _substitution_rewriter(text: str, shell: str, spans: list[tuple[int, int, bool]] | None = None) -> str | None:
     """`text` 의 치환 안에서 파일을 쓰거나 변수를 다시 묶을 수 있는 명령 — 치환은 gh 보다 먼저 돈다(그 자리가 gh 의 인자여도).
-    백틱 · 닫히지 않은 치환은 안을 모르니 그 자체로 돌려준다.
+    백틱 · 닫히지 않은 치환은 안을 모르니 그 자체로 돌려준다. PowerShell 의 치환은 안쪽을 bash 모형으로 재지 않고 그 자체로
+    돌려준다(따옴표 · 이스케이프 · 대입이 다르다 — Cursor #1946).
     A rewriting command inside a substitution of `text`; substitutions run before gh, even inside its own arguments."""
     spans = _substitution_spans(text, shell) if spans is None else spans
     if spans is None:
         return "`…`"
+    if shell == "powershell":
+        return "PowerShell 의 치환 `(…)`" if spans else None
     for start, end, arithmetic in spans:
         inner = f"(( {text[start + 3:end - 2]} ))" if arithmetic else text[start + 2:end - 1]
         found = _rewriting_command(inner + "\n", shell)
@@ -438,6 +449,11 @@ def _rewriting_command(before: str, shell: str = "bash") -> str | None:
     """`before`(게시하는 gh 앞 글자)에서 본문 파일을 쓰거나 변수를 다시 묶을 수 있는 첫 단순 명령 — 없으면 None. 출력 리디렉션
     (버리는 곳 · fd 복제 밖)과 치환 안의 명령도 본다. gh 자신의 단순 명령(마지막 구분자 뒤)은 치환만 본다.
     The first command before gh that may rewrite a file or rebind a variable (redirections and substitutions count)."""
+    if shell == "powershell":
+        # PowerShell 의 따옴표 · 이스케이프(백틱 · `\` 는 글자) · 그룹 · 대입은 이 셸 모형(bash)과 다르다 — gh 앞에 무엇이든
+        # 있으면(호출 연산자 `&` 만 빼고) 본문 파일을 못 잰 것으로 본다(나눠 부른다 · Cursor #1946).
+        # PowerShell parses differently; anything before gh but the call operator leaves the body unmeasured.
+        return "PowerShell 의 앞 명령" if before.strip() not in ("", "&") else None
     spans = _substitution_spans(before, shell)
     found = _substitution_rewriter(before, shell, spans)
     if found:
@@ -466,7 +482,7 @@ def _rewriting_command(before: str, shell: str = "bash") -> str | None:
         # `[[ a > b ]]` 의 `>` 도 비교다 — 리디렉션이 아니다(Grok M03-b 반례) / inside `[[ … ]]` a `>` compares
         for redirect in () if words[0] == "[[" else _OUTPUT_REDIRECT_TARGET.finditer(seg_masked):
             target = seg[redirect.start("target"):redirect.end("target")]
-            if not _harmless_redirect(redirect.group("op"), target, shell):
+            if not _harmless_redirect(redirect.group("op"), target):
                 return f"{words[0]} > …"
         head = _unquote(words[0]).replace("\\", "/").rsplit("/", 1)[-1].lower().removesuffix(".exe")
         if head == "git":
@@ -527,17 +543,21 @@ def _is_read_only_gh(words: list[str]) -> bool:
     return allowed is None or (len(words) > 1 and words[1] in allowed)
 
 
-def _substitution_end(text: str) -> int | None:
+def _substitution_end(text: str, shell: str = "bash") -> int | None:
     """`$(` 바로 뒤 글자에서 그 치환을 닫는 `)` 의 자리 — 따옴표 · 안쪽 괄호를 따라 센다. 못 찾으면 None(원장 #1940 M03 P2-15).
+    PowerShell 은 백틱이 이스케이프(`\\` 는 글자)이고, 블록 주석(`<#`)이 있으면 닫는 괄호를 모르니 None 이다(Cursor #1946).
     Where the `)` closing a `$(` substitution sits, following quotes and nested parens; None when it never closes."""
+    escape = "`" if shell == "powershell" else "\\"
     depth, quote, i = 0, None, 0
     while i < len(text):
         ch = text[i]
         if quote == "'":
             quote = None if ch == "'" else quote
-        elif ch == "\\":
+        elif ch == escape:
             i += 2
             continue
+        elif shell == "powershell" and text.startswith("<#", i):
+            return None
         elif quote == '"':
             quote = None if ch == '"' else quote
         elif ch in "'\"":
@@ -559,7 +579,7 @@ def _gh_segments(stripped: str, shell: str) -> list[tuple[int, int, str, list[st
     for seg in _GH_START.finditer(stripped):
         tail = stripped[seg.end():]
         if stripped[:seg.start()].rstrip().endswith("$("):
-            end = _substitution_end(tail)
+            end = _substitution_end(tail, shell)
             tail = tail if end is None else tail[:end]
         rest = tail[:_UNQUOTED_SEGMENT.match(_mask_quoted(tail)).end()]
         segments.append((seg.start(), seg.end() + len(rest), rest, _split(rest, shell)))
