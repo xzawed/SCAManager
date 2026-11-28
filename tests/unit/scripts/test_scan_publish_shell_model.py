@@ -81,7 +81,7 @@ def test_a_powershell_discard_redirect_keeps_the_body_measurable(bodies, monkeyp
 
 
 # witness-corpus: 파일을 쓰는 흔한 명령 가운데 판정 목록에 이름이 없는 것 — 목록 밖이면 쓰는 쪽으로 본다(막는 쪽)
-_UNLISTED_WRITERS = ["unzip -o bundle.zip", "patch -p1", "tar -xzf pkg.tgz", "curl -o page.html"]
+_UNLISTED_WRITERS = ["unzip bundle.zip", "patch < change.patch", "tar xzf pkg.tgz", "wget page.html"]
 
 
 @pytest.mark.parametrize("writer", _UNLISTED_WRITERS)
