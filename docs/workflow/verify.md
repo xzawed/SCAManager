@@ -45,7 +45,7 @@
 
    볼드(`**WEAKENED**`)는 미매칭. 라운드마다 한 묶음 — BROKEN 으로 고친 라운드도 지우지 않는다.
    왜 그 분기로 갔는지는 `py -3 scripts/check_claim_review_trace.py --explain <base> <head>`.
-   Grok 은 `grok_build_plan`(셸 · 편집 · MCP 를 Grok 쪽에서 거부)으로만 부른다 — cwd 는 .env 가 없는 워크트리, 프롬프트
+   Grok 은 `grok_build_plan`(셸 · 편집 · MCP 를 Grok 쪽에서 거부), AntiGravity 는 `agyMode: "plan"` 으로만 부른다 — cwd 는 .env 가 없는 워크트리, 프롬프트
    첫 줄에 «.env · 자격 파일을 열지 않는다». 탐침은 Grok 이 명령으로 적고 Claude 가 셸에서 돌린다(훅이 본다).
 
 7. **게이트 분기를 완화했으면** — 조건 제거 · 범위 확대 · `except` 통합 · 면제 추가.
@@ -97,7 +97,8 @@
 5. 훅 밖의 길은 `.claude/settings.json` `permissions.deny` 가 막는다 — 파일 도구의 .env 꼴(작업 폴더 아래 `.env.*` 전체 ·
    템플릿만 `!` 예외, 그 밖은 `//**/` 이름 목록)과 Grok 의 셸 도구. Read 거부는 Grep · Glob 과 이름을 적은 셸의 cat · grep · ls
    에도 걸려, 남는 값 없는 확인은 `test -f .env` 다(이름 · 개수는 사용자 `!`). .env 꼴 이름을 넓히면 훅 `_is_dotenv_name` 과
-   거부 목록을 같이 고친다 — 시험이 둘을 대조한다.
+   거부 목록을 같이 고친다 — 시험이 둘을 대조한다. Monitor 는 Bash 와 같은 판정을, AntiGravity 위임은 계획 모드 인자만
+   통과를 받는다(credential 훅 · 모르는 AntiGravity 도구는 막는 쪽).
 
 ### side-effect-only ORM import
 
