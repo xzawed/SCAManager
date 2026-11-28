@@ -43,15 +43,23 @@ _REWRITE_THEN_POST = [
     pytest.param("git diff --output=clean.md && gh pr comment 1 --body-file clean.md", id="git-diff-output-option"),
     pytest.param("git -c core.fsmonitor=./x.sh status && gh pr comment 1 --body-file clean.md", id="git-config-option"),
     # 치환은 gh 보다 먼저 돈다 — 그 안의 쓰기 / substitutions run before gh
-    pytest.param('echo "$(cp dirty.md clean.md)" && gh pr comment 1 --body-file clean.md', id="writer-inside-substitution"),
-    pytest.param("X=$(cp dirty.md clean.md); gh pr comment 1 --body-file clean.md", id="writer-inside-assignment"),
     pytest.param("X=$(py -3 gen.py); gh pr comment 1 --body-file clean.md", id="unlisted-writer-inside-substitution"),
     pytest.param('gh pr comment 1 --body-file clean.md --repo "$(cp dirty.md clean.md; echo x/y)"',
                  id="writer-inside-gh-own-argument"),
     pytest.param("echo `cp dirty.md clean.md` && gh pr comment 1 --body-file clean.md", id="backtick-substitution"),
-    pytest.param("cat dirty.md > 1 && gh pr comment 1 --body-file clean.md", id="file-named-like-an-fd"),
-    pytest.param("cat dirty.md > $null && gh pr comment 1 --body-file clean.md", id="bash-null-is-a-variable"),
 ]
+
+# witness-corpus: 자체 재검토(#1945 머지 전)에서 찾은, gh 보다 먼저 본문 파일을 바꾸는 치환 · 리디렉션 꼴 — 셸이 하는 일로 고른 것
+_REWRITES_BEFORE_GH = ['echo "$(cp dirty.md clean.md)"', "X=$(cp dirty.md clean.md)", "cat dirty.md > 1",
+                       "cat dirty.md > $null"]
+
+
+@pytest.mark.parametrize("rewrite", _REWRITES_BEFORE_GH)
+def test_a_substitution_or_redirect_that_rewrites_the_body_is_not_measured(rewrite, bodies, monkeypatch, capsys):
+    """🔴 치환 안의 쓰기 · fd 처럼 생긴 파일 이름(`> 1`) · bash 의 `$null` 변수 — 셋 다 gh 보다 먼저 파일을 쓴다."""
+    result = _hook(monkeypatch, capsys, f"{rewrite} && gh pr comment 1 --body-file clean.md", bodies)
+    assert _denied(result), rewrite
+    assert "나눠" in _reason(result), _reason(result)
 
 
 @pytest.mark.parametrize("command", _REWRITE_THEN_POST)
