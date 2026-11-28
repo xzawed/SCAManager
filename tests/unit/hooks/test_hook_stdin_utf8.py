@@ -43,13 +43,16 @@ def _hook_entry_scripts() -> list[Path]:
 _ENTRY_SCRIPTS = _hook_entry_scripts()
 
 
-def _text_stdin_reads(path: Path) -> list[int]:
-    """`sys.stdin.read()` · `json.load(sys.stdin)` 처럼 stdin 을 문자열로 읽는 자리(줄 번호) / text-mode stdin reads."""
+def _text_stdin_reads_in(source: str) -> list[int]:
+    """stdin 을 로캘 글자로 읽는 자리(줄 번호) — `sys.stdin.read*()` · `json.load(sys.stdin)` · `for … in sys.stdin` · `input()` ·
+    `fileinput.input()`. / Text-mode stdin reads in `source`."""
     def is_sys_stdin(node):
         return (isinstance(node, ast.Attribute) and node.attr == "stdin"
                 and isinstance(node.value, ast.Name) and node.value.id == "sys")
     found = []
-    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, (ast.For, ast.comprehension)) and is_sys_stdin(node.iter):
+            found.append(getattr(node, "lineno", getattr(node.iter, "lineno", 0)))
         if not isinstance(node, ast.Call):
             continue
         func = node.func
@@ -58,7 +61,33 @@ def _text_stdin_reads(path: Path) -> list[int]:
         if (isinstance(func, ast.Attribute) and func.attr == "load" and isinstance(func.value, ast.Name)
                 and func.value.id == "json" and node.args and is_sys_stdin(node.args[0])):
             found.append(node.lineno)
+        if isinstance(func, ast.Name) and func.id == "input":
+            found.append(node.lineno)
+        if (isinstance(func, ast.Attribute) and func.attr == "input" and isinstance(func.value, ast.Name)
+                and func.value.id == "fileinput"):
+            found.append(node.lineno)
     return found
+
+
+def _text_stdin_reads(path: Path) -> list[int]:
+    return _text_stdin_reads_in(path.read_text(encoding="utf-8"))
+
+
+# witness-corpus: stdin 을 로캘 글자로 읽는 다른 꼴 — 줄 단위 순회 · input() · fileinput (read 계열 메서드 이름 밖)
+_OTHER_TEXT_READS = ["for line in sys.stdin:\n    pass\n", "name = input()\n",
+                     "import fileinput\nfor line in fileinput.input():\n    pass\n",
+                     "lines = [line for line in sys.stdin]\n"]
+
+
+@pytest.mark.parametrize("source", _OTHER_TEXT_READS)
+def test_other_text_mode_stdin_reads_are_caught(source):
+    """🔴 메서드 이름 목록 밖의 글자 읽기도 잡는다 — 훅이 이 꼴로 바꿔도 가드가 초록으로 지나치지 않게."""
+    assert _text_stdin_reads_in(source), source
+
+
+def test_a_bytes_read_is_not_a_text_read():
+    """대조군 — `sys.stdin.buffer.read()` 를 UTF-8 로 디코드하는 관용구는 글자 읽기가 아니다."""
+    assert _text_stdin_reads_in('raw = getattr(sys.stdin, "buffer", sys.stdin).read()\n') == []
 
 
 def _run_hook(script: Path, payload: dict, env_extra: dict) -> subprocess.CompletedProcess:
